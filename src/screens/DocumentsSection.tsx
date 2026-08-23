@@ -16,6 +16,7 @@ import styles from "./DocumentsSection.module.css";
 
 interface DocumentsSectionProps {
   refreshDecks: () => Promise<unknown>;
+  onPracticeCards: (cardIds: string[]) => Promise<void>;
   showToast: ShowToast;
 }
 
@@ -80,11 +81,13 @@ export function DocumentsSection({ refreshDecks, showToast }: DocumentsSectionPr
           {isLoading
             ? "Reading the current task default"
             : profile
-              ? "Selected in Settings"
-              : "Configure a provider before generating cards"}
+              ? "Used for document flashcards and study guides"
+              : "Configure a provider before generating document learning artifacts"}
         </small>
       </div>
-      <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
+      <div className={styles.providerActions}>
+        <HelpTrigger topicId="documents.provider" label="Help with document AI profiles" />
+      </div>
     </Surface>
   );
 

@@ -321,7 +321,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(await screen.findByText("Ready to regenerate")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Generate study guide" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry generation" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();

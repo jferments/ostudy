@@ -1,0 +1,375 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 48%);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 28%);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 12%);
+}
+
+.header h1,
+.section h2,
+.overview h2 {
+  margin: 0;
+}
+
+.eyebrow,
+.sourceLabel {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.headerActions,
+.sectionActions,
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.headerActions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.error,
+.empty {
+  margin: 1.5rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+}
+
+.error {
+  border: 1px solid color-mix(in srgb, var(--danger) 48%, var(--border));
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+
+.empty {
+  min-height: 16rem;
+  display: grid;
+  place-content: center;
+  max-width: 44rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.contents {
+  position: sticky;
+  top: 6.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: calc(100vh - 9rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.75rem;
+  background: var(--surface-soft);
+}
+
+.contents > strong {
+  margin-bottom: 0.25rem;
+}
+
+.contents a {
+  padding: 0.42rem 0.5rem;
+  border-radius: 0.45rem;
+  color: var(--text-soft);
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.contents a:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+  text-decoration-color: var(--accent);
+}
+
+.contents a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.guide {
+  min-width: 0;
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.overview,
+.section {
+  scroll-margin-top: 7rem;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--surface);
+}
+
+.section + .section,
+.overview + .section {
+  margin-top: 1rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.structuredSection > p:first-child,
+.overrideText > p:first-child {
+  margin-top: 0;
+}
+
+.structuredSection h3,
+.overview h3 {
+  margin: 1.25rem 0 0.45rem;
+  font-size: 1rem;
+}
+
+.structuredSection li,
+.overview li {
+  margin: 0.35rem 0;
+}
+
+.terms {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.terms > div,
+.comparisons article {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface-soft);
+}
+
+.terms dt {
+  font-weight: 700;
+}
+
+.terms dd {
+  margin: 0.25rem 0 0;
+}
+
+.comparisons {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.comparisons p {
+  margin-bottom: 0;
+}
+
+.personalNote,
+.visualNote,
+.conflict {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  background: var(--surface-soft);
+}
+
+.personalNote {
+  border-inline-start: 0.3rem solid currentColor;
+}
+
+.visualNote {
+  border: 1px dashed var(--border);
+}
+
+.conflict {
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+}
+
+.editor {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 -0.5rem 1.5rem rgb(0 0 0 / 10%);
+}
+
+.editor label,
+.editor textarea {
+  display: block;
+  width: 100%;
+}
+
+.editor textarea {
+  margin-top: 0.5rem;
+  resize: vertical;
+}
+
+.editor p {
+  margin: 0.5rem 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  .backdrop {
+    padding: 0;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: 100vh;
+    min-height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .header,
+  .sectionHeader {
+    flex-direction: column;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
+  }
+
+  .layout {
+    display: block;
+    padding: 0.75rem;
+  }
+
+  .contents {
+    position: static;
+    max-height: 12rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .overview,
+  .section {
+    padding: 1rem;
+  }
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 16mm;
+  }
+
+  :global(body) {
+    background: white !important;
+  }
+
+  :global(body > *:not(#root)) {
+    display: none !important;
+  }
+
+  .backdrop {
+    position: static;
+    display: block;
+    padding: 0;
+    background: white;
+  }
+
+  .dialog {
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: white;
+    color: black;
+  }
+
+  .header {
+    position: static;
+    padding: 0 0 1rem;
+    border-bottom: 1px solid #888;
+    background: white;
+    box-shadow: none;
+  }
+
+  [data-print-hidden],
+  .contents,
+  .editor {
+    display: none !important;
+  }
+
+  .layout {
+    display: block;
+    padding: 1rem 0 0;
+  }
+
+  .guide {
+    max-width: none;
+  }
+
+  .overview,
+  .section {
+    break-inside: avoid-page;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: white;
+  }
+
+  .section + .section,
+  .overview + .section {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #aaa;
+  }
+
+  .terms > div,
+  .comparisons article,
+  .personalNote,
+  .visualNote {
+    background: white;
+  }
+}

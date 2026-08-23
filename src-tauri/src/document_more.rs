@@ -1,22 +1,26 @@
 //! Additional flashcard generation for an already-generated managed document.
 //!
-//! A second pass never creates a replacement deck. It reuses retained document
-//! semantics and the validated outline, summarizes knowledge already tested by
-//! the exact generated deck, and runs the same planner/window executor used by
-//! initial generation before appending through canonical authoring.
+//! A second pass never creates a replacement deck. It reuses retained canonical
+//! semantics, the validated outline, and the same durable learning plan used by
+//! study guides and initial card generation. New notes retain source-window topic
+//! provenance through the canonical authoring transaction.
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tauri::State;
 
 use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
-    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
+    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit_context,
     database::Database,
+    document_card_topics::{
+        attach_generated_card_source_windows, link_imported_notes_to_topics,
+        retain_curated_card_provenance, SourceGroundedGeneratedCard,
+    },
     document_cost,
     document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
     document_generation::{self, GenerationExecution},
+    document_learning_service::ensure_learning_plan_for_outline,
     document_scale::{self, DocumentScalePlan},
     document_semantics::{build_partitioned_semantic_windows, validate_semantic_windows},
     document_store::{self, GenerationJobIdentity},
@@ -25,6 +29,8 @@ use crate::{
     task_cancellation::run_document_task,
     util::{unix_time_millis, validate_entity_id},
 };
+#[cfg(test)]
+use serde_json::Value;
 
 const MAX_EXISTING_COVERAGE_CHARS: usize = 36_000;
 const CANCELED_MESSAGE: &str =
@@ -121,12 +127,6 @@ async fn generate_more_impl(
     let source = context.source_descriptor()?;
     source.validate()?;
     let outline = load_outline(database.inner(), &input.document_id)?;
-    let existing_coverage = load_existing_coverage(
-        database.inner(),
-        &context.deck_id,
-        MAX_EXISTING_COVERAGE_CHARS,
-    )?;
-    let second_pass_outline = second_pass_outline(outline, &existing_coverage);
     let chunks = document_store::load_semantic_chunks(database.inner(), &input.document_id)?;
     if chunks.is_empty() {
         return Err(CommandError::new(
@@ -134,6 +134,19 @@ async fn generate_more_impl(
             "The retained document has no semantic source chunks available for another generation pass.",
         ));
     }
+    let learning_plan = ensure_learning_plan_for_outline(
+        database.inner(),
+        &input.document_id,
+        &source,
+        &outline,
+        &chunks,
+    )?;
+    let existing_coverage = load_existing_coverage(
+        database.inner(),
+        &context.deck_id,
+        MAX_EXISTING_COVERAGE_CHARS,
+    )?;
+    let second_pass_outline = second_pass_outline(outline, &existing_coverage);
 
     let mut task = document_intelligence::load_document_task_context(database.inner())?;
     let capabilities = document_provider::load_document_provider_capabilities(
@@ -215,7 +228,7 @@ async fn generate_more_impl(
         &source,
         &windows,
     )?;
-    let generated = document_generation::execute_generation_windows(GenerationExecution {
+    let generated_values = document_generation::execute_generation_windows(GenerationExecution {
         database: database.inner(),
         paths: paths.inner(),
         runtime: runtime.inner(),
@@ -232,45 +245,61 @@ async fn generate_more_impl(
     })
     .await?;
 
-    if generated.is_empty() {
+    if generated_values.is_empty() {
         return Err(CommandError::new(
             "document_no_additional_cards",
             "The second pass did not find important material that was not already tested by the existing deck.",
         ));
     }
-    let generated = document_intelligence::curate_document_cards(
+    let grounded_candidates = attach_generated_card_source_windows(
+        database.inner(),
+        &job_id,
+        &windows,
+        generated_values.clone(),
+    )?;
+    let curated_values = document_intelligence::curate_document_cards(
         runtime.inner(),
         &task,
         &second_pass_outline,
-        generated,
+        generated_values,
     )
     .await?;
-    if generated.is_empty() {
+    if curated_values.is_empty() {
         return Err(CommandError::new(
             "document_no_additional_cards",
             "The second-pass relevance check found no additional cards worth adding to the existing deck.",
         ));
     }
+    let grounded_cards = retain_curated_card_provenance(grounded_candidates, curated_values)?;
 
     document_store::mark_job_committing(
         database.inner(),
         &input.document_id,
         &job_id,
-        generated.len(),
+        grounded_cards.len(),
     )?;
     ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
-    let payload = build_append_payload(&context.deck_name, generated)?;
+    let payload = build_append_payload(&context.deck_name, &grounded_cards)?;
     let (api_token_count, api_token_usage_complete) = task.usage_summary();
-    let result = import_generated_flashcards_bytes_with_commit(
+    let result = import_generated_flashcards_bytes_with_commit_context(
         database.inner(),
         payload.as_bytes(),
-        |connection, import_result, now| {
+        |connection, import_result, commit_context, now| {
             if import_result.deck_id != context.deck_id {
                 return Err(CommandError::new(
                     "document_generated_deck_changed",
                     "The generated deck changed before additional cards could be committed. No cards were added.",
                 ));
             }
+            link_imported_notes_to_topics(
+                connection,
+                &input.document_id,
+                &job_id,
+                &learning_plan,
+                &grounded_cards,
+                commit_context,
+                now,
+            )?;
             let document_changed = connection
                 .execute(
                     "UPDATE documents
@@ -361,7 +390,7 @@ fn load_context(
     database.with_connection(|connection| {
         connection
             .query_row(
-                "SELECT document.title, document.page_count,
+                "SELECT document.title, document.source_unit_count,
                         document.source_format, document.source_unit_kind,
                         document.generated_deck_id, document.archived_at,
                         deck.name, deck.deleted_at, deck.archived_at
@@ -624,7 +653,10 @@ fn ensure_exact_append_destination(
     })
 }
 
-fn build_append_payload(deck_name: &str, cards: Vec<Value>) -> Result<String, CommandError> {
+fn build_append_payload(
+    deck_name: &str,
+    cards: &[SourceGroundedGeneratedCard],
+) -> Result<String, CommandError> {
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
         "formatVersion": 1,
@@ -633,7 +665,7 @@ fn build_append_payload(deck_name: &str, cards: Vec<Value>) -> Result<String, Co
             "name": deck_name
         },
         "defaultTags": [],
-        "cards": cards
+        "cards": cards.iter().map(|card| &card.card).collect::<Vec<_>>()
     }))
     .map_err(CommandError::serialization)
 }
@@ -682,12 +714,20 @@ mod tests {
     fn append_payload_keeps_only_card_subject_tags() {
         let payload = build_append_payload(
             "Physiology",
-            vec![serde_json::json!({
-                "type": "basic",
-                "front": "Q",
-                "back": "A",
-                "tags": ["Cardiology"]
-            })],
+            &[SourceGroundedGeneratedCard {
+                card: serde_json::json!({
+                    "type": "basic",
+                    "front": "Q",
+                    "back": "A",
+                    "tags": ["Cardiology"]
+                }),
+                source_locator: crate::document_domain::SourceLocator::new(
+                    crate::document_domain::SourceUnitKind::Page,
+                    vec![1],
+                    None,
+                )
+                .unwrap(),
+            }],
         )
         .unwrap();
         let value: Value = serde_json::from_str(&payload).unwrap();
@@ -695,5 +735,6 @@ mod tests {
         assert_eq!(value["cards"][0]["tags"], serde_json::json!(["Cardiology"]));
         assert!(!payload.contains("AI generated"));
         assert!(!payload.contains("\"PDF\""));
+        assert!(!payload.contains("source_locator"));
     }
 }

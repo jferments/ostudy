@@ -95,8 +95,9 @@ jobs:
         id: static
         if: steps.gate.outputs.gate != 'preflight'
         run: |
-          set -o pipefail
-          bash ./scripts/check-static.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-static-check.log"
+          bash ./scripts/run-ci-captured.sh \
+            "$RUNNER_TEMP/ostudy-static-check.log" \
+            bash ./scripts/check-static.sh
 
       - name: Verify unified runner resources and nested KVM
         id: preflight
@@ -117,31 +118,34 @@ jobs:
         id: fast
         if: steps.gate.outputs.gate == 'fast'
         run: |
-          set -o pipefail
-          bash ./scripts/check-fast.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-fast-check.log"
+          bash ./scripts/run-ci-captured.sh \
+            "$RUNNER_TEMP/ostudy-fast-check.log" \
+            bash ./scripts/check-fast.sh
 
       - name: Run authoritative Linux qualification
         id: linux_full
         if: steps.gate.outputs.gate == 'linux-full' || steps.gate.outputs.gate == 'all-full'
         run: |
-          set -o pipefail
-          bash ./scripts/check.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-full-check.log"
+          bash ./scripts/run-ci-captured.sh \
+            "$RUNNER_TEMP/ostudy-full-check.log" \
+            bash ./scripts/check.sh
 
       - name: Run authoritative Android compile and package qualification
         id: android_compile
         if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
         run: |
-          set -o pipefail
-          bash ./scripts/android-test.sh 2>&1 | tee "$RUNNER_TEMP/ostudy-android-test.log"
+          bash ./scripts/run-ci-captured.sh \
+            "$RUNNER_TEMP/ostudy-android-test.log" \
+            bash ./scripts/android-test.sh
 
       - name: Run authoritative Android Emulator smoke qualification
         id: android_smoke
         if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
         run: |
-          set -o pipefail
-          bash ./scripts/android-emulator-smoke.sh \
-            --artifacts "$RUNNER_TEMP/android-smoke" \
-            2>&1 | tee "$RUNNER_TEMP/ostudy-android-smoke.log"
+          bash ./scripts/run-ci-captured.sh \
+            "$RUNNER_TEMP/ostudy-android-smoke.log" \
+            bash ./scripts/android-emulator-smoke.sh \
+              --artifacts "$RUNNER_TEMP/android-smoke"
 
       - name: Write machine-readable qualification evidence
         id: qualification_evidence
@@ -201,6 +205,7 @@ jobs:
       - name: Summarize qualification failure
         if: failure()
         run: |
+          summary="$RUNNER_TEMP/ostudy-failure-summary.md"
           node ./scripts/summarize-check-failure.mjs \
             --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
             --diagnostics "$RUNNER_TEMP/android-smoke" \
@@ -209,7 +214,9 @@ jobs:
             "$RUNNER_TEMP/ostudy-full-check.log" \
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
-            >> "$GITHUB_STEP_SUMMARY"
+            > "$summary"
+          cat "$summary"
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Export diagnostics after failure
         if: failure()
@@ -224,6 +231,7 @@ jobs:
             ${{ runner.temp }}/ostudy-qualification-result.json
             ${{ runner.temp }}/ostudy-pr-contract.json
             ${{ runner.temp }}/ostudy-agent-handoff.md
+            ${{ runner.temp }}/ostudy-failure-summary.md
             ${{ runner.temp }}/ostudy-diagnostics/**
           if-no-files-found: warn
           retention-days: 7
@@ -235,6 +243,7 @@ jobs:
           name: ostudy-unified-${{ env.QUALIFIED_SHA }}
           path: |
             ${{ runner.temp }}/ostudy-unified-diagnostics.tar.gz
+            ${{ runner.temp }}/ostudy-failure-summary.md
             ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log

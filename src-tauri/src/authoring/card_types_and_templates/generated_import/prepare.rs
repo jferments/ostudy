@@ -160,6 +160,7 @@ fn prepare_import_card(
     let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);
 
     Ok(PreparedImportNote {
+        source_index: index,
         prepared,
         tags,
         normalized,

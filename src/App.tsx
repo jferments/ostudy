@@ -106,6 +106,7 @@ function App() {
                         {controller.section === "documents" ? (
                           <DocumentsSection
                             refreshDecks={controller.refreshDecks}
+                            onPracticeCards={controller.practiceCards}
                             showToast={controller.showToast}
                           />
                         ) : null}

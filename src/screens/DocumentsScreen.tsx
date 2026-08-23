@@ -15,6 +15,10 @@ import {
   type DocumentGenerationProgress,
   type DocumentSummary,
 } from "../ipc/documents";
+import {
+  cancelDocumentStudyGuideGeneration,
+  generateDocumentStudyGuide,
+} from "../ipc/studyGuides";
 import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
@@ -43,6 +47,8 @@ export function DocumentsScreen({
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
   const [cancelingDocumentId, setCancelingDocumentId] = useState<string | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [guideGeneratingDocumentId, setGuideGeneratingDocumentId] = useState<string | null>(null);
+  const [cancelingGuideDocumentId, setCancelingGuideDocumentId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const confirm = useConfirm();
 
@@ -108,7 +114,7 @@ export function DocumentsScreen({
   }, [cancelingDocumentId, documents]);
 
   async function uploadDocument(): Promise<void> {
-    if (isUploading || busyDocumentId || deletingDocumentId) return;
+    if (isUploading || busyDocumentId || deletingDocumentId || guideGeneratingDocumentId) return;
     const selected = await selectExternalImport("document");
     if (!selected) return;
 
@@ -130,7 +136,7 @@ export function DocumentsScreen({
   }
 
   async function retry(document: DocumentSummary): Promise<void> {
-    if (isUploading || busyDocumentId || deletingDocumentId) return;
+    if (isUploading || busyDocumentId || deletingDocumentId || guideGeneratingDocumentId) return;
     setBusyDocumentId(document.id);
     setErrorMessage(null);
     try {
@@ -145,7 +151,15 @@ export function DocumentsScreen({
   }
 
   async function generateMore(document: DocumentSummary): Promise<void> {
-    if (isUploading || busyDocumentId || deletingDocumentId || !document.generatedDeckId) return;
+    if (
+      isUploading ||
+      busyDocumentId ||
+      deletingDocumentId ||
+      guideGeneratingDocumentId ||
+      !document.generatedDeckId
+    ) {
+      return;
+    }
     setBusyDocumentId(document.id);
     setErrorMessage(null);
     try {
@@ -163,6 +177,59 @@ export function DocumentsScreen({
       await handleGenerationFailure(error);
     } finally {
       setBusyDocumentId(null);
+    }
+  }
+
+  async function generateStudyGuide(document: DocumentSummary): Promise<void> {
+    if (
+      isUploading ||
+      busyDocumentId ||
+      deletingDocumentId ||
+      guideGeneratingDocumentId ||
+      document.archivedAt !== null ||
+      document.lifecycleState === "processing"
+    ) {
+      return;
+    }
+    setGuideGeneratingDocumentId(document.id);
+    setCancelingGuideDocumentId(null);
+    setErrorMessage(null);
+    try {
+      const guide = await generateDocumentStudyGuide(document.id);
+      await refreshDocuments();
+      showToast(
+        "success",
+        `Study guide revision ${guide.revision} created. Open it from the Practice screen.`,
+      );
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
+        setErrorMessage(null);
+        showToast("info", "Study-guide generation stopped. Saved topic progress can be reused on retry.");
+      } else {
+        const message = getErrorMessage(error);
+        setErrorMessage(message);
+        showToast("error", message);
+      }
+      await refreshDocuments().catch(() => undefined);
+    } finally {
+      setGuideGeneratingDocumentId(null);
+      setCancelingGuideDocumentId(null);
+    }
+  }
+
+  async function stopStudyGuide(document: DocumentSummary): Promise<void> {
+    if (guideGeneratingDocumentId !== document.id || cancelingGuideDocumentId) return;
+    setCancelingGuideDocumentId(document.id);
+    try {
+      await cancelDocumentStudyGuideGeneration(document.id);
+      showToast("info", "Stopping study-guide generation…");
+    } catch (error: unknown) {
+      setCancelingGuideDocumentId(null);
+      const code = getErrorCode(error);
+      if (code !== "document_generation_not_running") {
+        showToast("error", getErrorMessage(error));
+      }
     }
   }
 
@@ -211,6 +278,7 @@ export function DocumentsScreen({
       isUploading ||
       busyDocumentId ||
       deletingDocumentId ||
+      guideGeneratingDocumentId ||
       document.lifecycleState === "processing"
     ) {
       return;
@@ -219,8 +287,8 @@ export function DocumentsScreen({
     const accepted = await confirm({
       title: "Delete this document permanently?",
       description: hasSurvivingGeneratedDeck
-        ? "The managed source, extracted structure, local derivatives, outline, and generation history for this document will be removed. The surviving generated deck will remain and its source will be preserved as a text citation instead of a file link. This cannot be undone."
-        : "The managed source, extracted structure, local derivatives, outline, and generation history for this document will be removed. No active generated deck remains, so no source citation will be preserved. This cannot be undone.",
+        ? "The managed source, extracted structure, local derivatives, outline, study guides, annotations, and generation history for this document will be removed. The surviving generated deck will remain and its source will be preserved as a text citation instead of a file link. This cannot be undone."
+        : "The managed source, extracted structure, local derivatives, outline, study guides, annotations, and generation history for this document will be removed. No active generated deck remains, so no source citation will be preserved. This cannot be undone.",
       confirmLabel: "Delete document",
       destructive: true,
     });
@@ -250,6 +318,7 @@ export function DocumentsScreen({
       isUploading ||
       busyDocumentId ||
       deletingDocumentId ||
+      guideGeneratingDocumentId ||
       document.lifecycleState === "processing"
     ) {
       return;
@@ -281,7 +350,12 @@ export function DocumentsScreen({
           <button
             type="button"
             className="primary-button"
-            disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null}
+            disabled={
+              isUploading ||
+              busyDocumentId !== null ||
+              deletingDocumentId !== null ||
+              guideGeneratingDocumentId !== null
+            }
             onClick={() => void uploadDocument()}
           >
             {isUploading ? "Processing document…" : "Upload document"}
@@ -318,13 +392,18 @@ export function DocumentsScreen({
       ) : documents.length === 0 ? (
         <div className={styles.empty}>
           <h2>No documents yet</h2>
-          <p>Upload a course handout, chapter, presentation, or study packet to create a deck.</p>
+          <p>Upload a course handout, chapter, presentation, or study packet to create learning materials.</p>
         </div>
       ) : (
         <div className={styles.list}>
           {documents.map((document) => {
-            const busy = busyDocumentId === document.id || deletingDocumentId === document.id;
+            const guideGenerating = guideGeneratingDocumentId === document.id;
+            const busy =
+              busyDocumentId === document.id ||
+              deletingDocumentId === document.id ||
+              guideGenerating;
             const canceling = cancelingDocumentId === document.id;
+            const cancelingGuide = cancelingGuideDocumentId === document.id;
             const live = generationProgress[document.id] ?? null;
             const canRetry =
               document.generatedDeckId === null &&
@@ -334,6 +413,8 @@ export function DocumentsScreen({
               document.generatedDeckId !== null &&
               document.lifecycleState === "ready" &&
               document.archivedAt === null;
+            const canGenerateGuide =
+              document.lifecycleState !== "processing" && document.archivedAt === null;
             return (
               <article key={document.id} className={styles.card}>
                 <div className={styles.cardMain}>
@@ -345,6 +426,10 @@ export function DocumentsScreen({
                     {document.lifecycleState === "processing" ? (
                       <span className={styles.processingPhase} aria-live="polite">
                         {processingPhaseLabel(document, canceling, live)}
+                      </span>
+                    ) : guideGenerating ? (
+                      <span className={styles.processingPhase} aria-live="polite">
+                        {cancelingGuide ? "Stopping study guide" : "Generating study guide"}
                       </span>
                     ) : null}
                   </div>
@@ -413,6 +498,26 @@ export function DocumentsScreen({
                       onClick={() => void stopGeneration(document)}
                     >
                       {canceling ? "Stopping…" : "Stop generation"}
+                    </button>
+                  ) : null}
+                  {canGenerateGuide ? (
+                    <button
+                      type="button"
+                      className="primary-button"
+                      disabled={busy || isUploading}
+                      onClick={() => void generateStudyGuide(document)}
+                    >
+                      {guideGenerating ? "Generating study guide…" : "Generate study guide"}
+                    </button>
+                  ) : null}
+                  {guideGenerating ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={cancelingGuide}
+                      onClick={() => void stopStudyGuide(document)}
+                    >
+                      {cancelingGuide ? "Stopping…" : "Stop study guide"}
                     </button>
                   ) : null}
                   {canRetry ? (
@@ -726,7 +831,7 @@ function statusLabel(document: DocumentSummary): string {
     case "processing":
       return "Processing";
     case "ready":
-      return document.generatedDeckId ? "Deck created" : "Ready to regenerate";
+      return document.generatedDeckId ? "Deck created" : "Ready";
     case "failed":
       return "Needs attention";
     default:

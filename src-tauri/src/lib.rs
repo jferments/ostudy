@@ -25,9 +25,11 @@ mod deletion_purge;
 mod device_sync;
 mod device_sync_qr_commands;
 mod diagnostics;
+mod document_artifacts;
 mod document_backup;
 mod document_canonical;
 mod document_canonical_store;
+mod document_card_topics;
 mod document_checkpoints;
 mod document_cost;
 mod document_delete_reconciliation;
@@ -36,12 +38,23 @@ mod document_generation;
 mod document_import;
 #[path = "document_adapters.rs"]
 mod document_ingestion;
+mod document_initial_generation;
+mod document_learning;
+mod document_learning_plan;
+mod document_learning_service;
 mod document_more;
 mod document_operations;
+mod document_outline_service;
 mod document_progress;
 mod document_scale;
 mod document_semantics;
 mod document_store;
+mod document_study_guide_commands;
+mod document_study_guide_export;
+mod document_study_guide_generation;
+mod document_study_guides;
+mod document_topic_links;
+mod document_visual_evidence;
 mod documents;
 mod editor_drafts;
 mod error;
@@ -120,9 +133,6 @@ pub fn run() {
             let tauri::WindowEvent::CloseRequested { api, .. } = event else {
                 return;
             };
-            // A startup compatibility block intentionally exits before durable
-            // platform state is managed. Do not turn that controlled path into
-            // a second panic while Tauri processes window shutdown events.
             let Some(platform_runtime) = window.try_state::<platform::PlatformRuntime>() else {
                 return;
             };
@@ -261,6 +271,17 @@ pub fn run() {
             document_operations::open_document_source,
             document_operations::delete_document,
             documents::set_document_archived,
+            document_study_guide_commands::generate_document_study_guide,
+            document_study_guide_commands::cancel_document_study_guide_generation,
+            document_study_guide_commands::get_document_study_guide,
+            document_study_guide_commands::list_document_study_guides,
+            document_study_guide_commands::get_document_learning_plan,
+            document_study_guide_commands::get_document_artifact_job,
+            document_study_guide_commands::save_document_study_guide_overlay,
+            document_study_guide_commands::discard_document_study_guide_overlay,
+            document_study_guide_commands::get_document_topic_card_projection,
+            document_study_guide_commands::get_document_topic_card_ids,
+            document_study_guide_export::prepare_document_study_guide_pdf,
             library_backup_commands::prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
             practice_selection::get_practice_workload,

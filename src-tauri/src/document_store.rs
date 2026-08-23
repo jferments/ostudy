@@ -98,27 +98,6 @@ pub(crate) fn mark_document_processing(
     })
 }
 
-pub(crate) fn mark_outline_building(
-    database: &Database,
-    document_id: &str,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let changed = connection
-            .execute(
-                "UPDATE documents SET outline_state = 'building', updated_at = ?1
-                 WHERE id = ?2 AND lifecycle_state = 'processing'",
-                params![now, document_id],
-            )
-            .map_err(|error| db_error("document_outline_state_failed", document_id, error))?;
-        require_one(
-            changed,
-            "document_changed",
-            "The document changed before outline analysis could start.",
-        )
-    })
-}
-
 pub(crate) fn initialize_ai_plan(
     database: &Database,
     document_id: &str,
@@ -187,56 +166,22 @@ pub(crate) fn initialize_additional_progress(
     })
 }
 
-pub(crate) fn update_outline_progress(
-    database: &Database,
-    document_id: &str,
-    completed: usize,
-) -> Result<(), CommandError> {
-    update_progress(
-        database,
-        document_id,
-        "outline_completed_window_count",
-        completed,
-    )
-}
-
 pub(crate) fn update_generation_progress(
     database: &Database,
     document_id: &str,
     completed: usize,
 ) -> Result<(), CommandError> {
-    update_progress(
-        database,
-        document_id,
-        "generation_completed_window_count",
-        completed,
-    )
-}
-
-fn update_progress(
-    database: &Database,
-    document_id: &str,
-    column: &str,
-    completed: usize,
-) -> Result<(), CommandError> {
-    debug_assert!(matches!(
-        column,
-        "outline_completed_window_count" | "generation_completed_window_count"
-    ));
-    let maximum_column = if column == "outline_completed_window_count" {
-        "outline_window_count"
-    } else {
-        "generation_window_count"
-    };
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
         let changed = connection
             .execute(
-                &format!(
-                    "UPDATE documents
-                     SET {column} = MIN({maximum_column}, MAX(0, ?1)), updated_at = ?2
-                     WHERE id = ?3 AND lifecycle_state = 'processing'"
-                ),
+                "UPDATE documents
+                 SET generation_completed_window_count = MIN(
+                         generation_window_count,
+                         MAX(0, ?1)
+                     ),
+                     updated_at = ?2
+                 WHERE id = ?3 AND lifecycle_state = 'processing'",
                 params![to_i64(completed), now, document_id],
             )
             .map_err(|error| db_error("document_ai_progress_write_failed", document_id, error))?;

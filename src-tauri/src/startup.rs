@@ -5,9 +5,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use crate::{
     ai::AiRuntimeState, asset_lifecycle, database, deletion, deletion_purge, device_sync,
-    document_delete_reconciliation, document_operations, documents, editor_drafts,
-    external_file_recovery, external_files, library_backup, logging, paths::AppPaths, pdf_backend,
-    pdf_render_backend::PdfRenderRuntime, platform,
+    document_artifacts, document_delete_reconciliation, document_operations, documents,
+    editor_drafts, external_file_recovery, external_files, library_backup, logging,
+    paths::AppPaths, pdf_backend, pdf_render_backend::PdfRenderRuntime, platform,
 };
 
 mod pre_public_transition;
@@ -74,6 +74,8 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|error| io::Error::other(error.message))?;
     documents::reconcile_startup(&database, &paths)
         .map_err(|error| io::Error::other(error.message))?;
+    document_artifacts::reconcile_interrupted_document_artifact_jobs(&database)
+        .map_err(|error| io::Error::other(error.message))?;
     document_operations::reconcile_deleted_document_trash(&paths)
         .map_err(|error| io::Error::other(error.message))?;
     if let Some(restore) = pending_restore {
@@ -109,6 +111,7 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "databaseFile": "library.sqlite3",
             "assetReconciliation": "complete",
             "documentReconciliation": "complete",
+            "documentArtifactReconciliation": "complete",
             "aiGateway": "ready",
             "pdfExtraction": pdf_backend::active_backend_id(),
             "pdfRenderer": crate::pdf_render_backend::active_backend_id(),

@@ -21,6 +21,7 @@ mod curation;
 mod flashcards;
 mod outline;
 mod schemas;
+mod study_guide;
 mod support;
 mod transport;
 
@@ -32,6 +33,7 @@ pub(crate) use flashcards::{
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
+pub(crate) use study_guide::generate_study_guide_topic_section;
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
 
@@ -64,7 +66,7 @@ where
         if !task.include_page_images {
             return Err(CommandError::new(
                 "document_requires_image_input",
-                "This document has no extractable text. Choose a verified image-capable llama.cpp flashcard-generation profile and retry.",
+                "This document has no extractable text. Choose a verified image-capable document-generation profile and retry.",
             ));
         }
         return Ok(DocumentOutline {

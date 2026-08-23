@@ -22,7 +22,19 @@ pub struct FlashcardImportResultDto {
     pub skipped_duplicate_count: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GeneratedImportCreatedNote {
+    pub source_index: usize,
+    pub note_id: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct GeneratedImportCommitContext {
+    pub created_notes: Vec<GeneratedImportCreatedNote>,
+}
+
 struct PreparedImportNote {
+    source_index: usize,
     prepared: PreparedGeneratedNote,
     tags: Vec<ValidatedTag>,
     normalized: (String, String),
@@ -79,17 +91,23 @@ pub fn import_generated_flashcards(
     let bytes = std::fs::read(&staged.path).map_err(CommandError::io)?;
     let prepared = prepare_flashcard_import_bytes(&bytes)?;
     database.with_connection(|connection| {
-        import_prepared_flashcards_with_commit(connection, prepared, |connection, result, now| {
-            crate::external_files::mark_import_consumed(
-                connection,
-                &input.staged_file_id,
-                result,
-                now,
-            )
-        })
+        import_prepared_flashcards_with_commit(
+            connection,
+            prepared,
+            |connection, result, _commit_context, now| {
+                crate::external_files::mark_import_consumed(
+                    connection,
+                    &input.staged_file_id,
+                    result,
+                    now,
+                )
+            },
+        )
     })
 }
 
+/// Existing internal authoring hook kept only for the rollback regression.
+#[cfg(test)]
 pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(
     database: &Database,
     bytes: &[u8],
@@ -97,6 +115,29 @@ pub(crate) fn import_generated_flashcards_bytes_with_commit<F>(
 ) -> Result<FlashcardImportResultDto, CommandError>
 where
     F: FnOnce(&rusqlite::Connection, &FlashcardImportResultDto, i64) -> Result<(), CommandError>,
+{
+    import_generated_flashcards_bytes_with_commit_context(
+        database,
+        bytes,
+        |connection, result, _context, now| before_commit(connection, result, now),
+    )
+}
+
+/// Provenance-aware generated import hook used by document artifact generation.
+/// `created_notes` maps retained JSON source indices to the exact note IDs
+/// inserted by the authoring transaction after duplicate filtering.
+pub(crate) fn import_generated_flashcards_bytes_with_commit_context<F>(
+    database: &Database,
+    bytes: &[u8],
+    before_commit: F,
+) -> Result<FlashcardImportResultDto, CommandError>
+where
+    F: FnOnce(
+        &rusqlite::Connection,
+        &FlashcardImportResultDto,
+        &GeneratedImportCommitContext,
+        i64,
+    ) -> Result<(), CommandError>,
 {
     let prepared = prepare_flashcard_import_bytes(bytes)?;
     database.with_connection(|connection| {
@@ -156,7 +197,7 @@ mod generated_import_tests {
             "front",
         )
         .expect("fenced code should preserve literal syntax-looking text");
-        crate::cards::validate_document(&fenced).expect("fenced code should validate");
+        crate::cards::validate_document(&fenced).expect("document should validate");
     }
 
     #[test]
@@ -301,6 +342,40 @@ mod generated_import_tests {
             })
             .expect_err("ambiguous append destination should fail");
         assert_eq!(ambiguous.code, "generated_import_deck_ambiguous");
+    }
+
+    #[test]
+    fn commit_hook_receives_exact_created_note_input_indices() {
+        let database = Database::open_in_memory().expect("database should open");
+        let payload = br#"{
+          "format":"ostudy-flashcards",
+          "formatVersion":1,
+          "deck":{"mode":"create","name":"Mapped generation"},
+          "cards":[
+            {"type":"basic","front":"Q1","back":"A1"},
+            {"type":"basic","front":"Q1","back":"A1"},
+            {"type":"basic","front":"Q2","back":"A2"}
+          ]
+        }"#;
+        let mut created = Vec::new();
+        let result = import_generated_flashcards_bytes_with_commit_context(
+            &database,
+            payload,
+            |_, _, context, _| {
+                created = context.created_notes.clone();
+                Ok(())
+            },
+        )
+        .expect("mapped import should succeed");
+        assert_eq!(result.created_note_count, 2);
+        assert_eq!(
+            created
+                .iter()
+                .map(|note| note.source_index)
+                .collect::<Vec<_>>(),
+            vec![0, 2]
+        );
+        assert!(created.iter().all(|note| note.note_id.len() == 32));
     }
 
     #[test]

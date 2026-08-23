@@ -5,7 +5,7 @@ pub(super) fn import_prepared_flashcards(
     connection: &mut Connection,
     prepared: PreparedImport,
 ) -> Result<FlashcardImportResultDto, CommandError> {
-    import_prepared_flashcards_with_commit(connection, prepared, |_, _, _| Ok(()))
+    import_prepared_flashcards_with_commit(connection, prepared, |_, _, _, _| Ok(()))
 }
 
 pub(super) fn import_prepared_flashcards_with_commit<F>(
@@ -14,7 +14,12 @@ pub(super) fn import_prepared_flashcards_with_commit<F>(
     before_commit: F,
 ) -> Result<FlashcardImportResultDto, CommandError>
 where
-    F: FnOnce(&Connection, &FlashcardImportResultDto, i64) -> Result<(), CommandError>,
+    F: FnOnce(
+        &Connection,
+        &FlashcardImportResultDto,
+        &GeneratedImportCommitContext,
+        i64,
+    ) -> Result<(), CommandError>,
 {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -34,9 +39,13 @@ where
     let mut created_notes = 0_i64;
     let mut created_cards = 0_i64;
     let mut skipped = 0_i64;
+    let mut commit_context = GeneratedImportCommitContext {
+        created_notes: Vec::new(),
+    };
 
     for note in prepared.notes {
         let PreparedImportNote {
+            source_index,
             prepared,
             tags,
             normalized,
@@ -88,6 +97,12 @@ where
         sync_generated_cards(&transaction, &note_id, &deck_id, &cards, now)?;
         replace_note_assets(&transaction, &note_id, &content)?;
         replace_note_tags(&transaction, &note_id, &tags, now)?;
+        commit_context
+            .created_notes
+            .push(GeneratedImportCreatedNote {
+                source_index,
+                note_id,
+            });
         created_notes += 1;
         created_cards += i64::try_from(cards.len()).unwrap_or(i64::MAX);
     }
@@ -109,7 +124,7 @@ where
         created_card_count: created_cards,
         skipped_duplicate_count: skipped,
     };
-    before_commit(&transaction, &result, now)?;
+    before_commit(&transaction, &result, &commit_context, now)?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(result)
 }

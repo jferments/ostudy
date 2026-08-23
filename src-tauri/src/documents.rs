@@ -1,31 +1,19 @@
-use std::{
-    fs,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::fs;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    ai::{document_intelligence, document_provider, AiRuntimeState},
-    authoring::card_types_and_templates::generated_import::import_generated_flashcards_bytes_with_commit,
+    ai::AiRuntimeState,
     database::Database,
-    document_checkpoints::{self, CheckpointIdentity},
-    document_cost,
-    document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
-    document_generation::{self, GenerationExecution},
-    document_ingestion,
-    document_scale::{self, DocumentScalePlan, MAX_SUPPORTED_SOURCE_UNITS},
-    document_semantics::{build_partitioned_semantic_windows, validate_semantic_windows},
-    document_store::{self, DocumentAiProgressPlan, GenerationJobIdentity},
+    document_initial_generation::process_and_generate_initial_flashcards,
     error::CommandError,
     paths::AppPaths,
     pdf_render_backend::PdfRenderRuntime,
     util::{unix_time_millis, validate_entity_id},
 };
 
-const MAX_GENERATED_CARDS: usize = 10_000;
 const MAX_DOCUMENTS_RETURNED: i64 = 500;
 const INTERRUPTED_ERROR_CODE: &str = "document_generation_interrupted";
 const INTERRUPTED_ERROR_MESSAGE: &str =
@@ -100,26 +88,6 @@ pub struct DocumentGenerationResultDto {
 struct StoredDocument {
     dto: DocumentDto,
     source_relative_path: String,
-    adapter_backend: String,
-    extraction_backend: String,
-    render_backend: String,
-    semantic_chunk_count: i64,
-}
-
-impl StoredDocument {
-    fn source_descriptor(&self) -> Result<DocumentSourceDescriptor, CommandError> {
-        let unit_count = usize::try_from(self.dto.source_unit_count).map_err(|_| {
-            CommandError::new(
-                "invalid_document_source",
-                "The saved document source-unit count is invalid.",
-            )
-        })?;
-        Ok(DocumentSourceDescriptor {
-            format: DocumentFormat::from_db(&self.dto.source_format)?,
-            unit_kind: SourceUnitKind::from_db(&self.dto.source_unit_kind)?,
-            unit_count,
-        })
-    }
 }
 
 #[tauri::command]
@@ -148,7 +116,6 @@ pub fn get_document_source_path(
     Ok(source.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
 pub async fn retry_pdf_flashcard_generation(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
@@ -172,18 +139,31 @@ pub async fn retry_pdf_flashcard_generation(
         ));
     }
 
-    let result = process_and_generate(
-        database.clone(),
-        paths.clone(),
-        runtime.clone(),
+    let result = process_and_generate_initial_flashcards(
+        database.inner(),
+        paths.inner(),
+        runtime.inner(),
         render_runtime.inner().clone(),
         &input.document_id,
     )
     .await;
-    if let Err(error) = &result {
-        record_document_failure(database.inner(), &input.document_id, error);
-    }
-    result
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            record_document_failure(database.inner(), &input.document_id, &error);
+            return Err(error);
+        }
+    };
+    let document = database
+        .with_connection(|connection| load_document(connection, &input.document_id))?
+        .dto;
+    Ok(DocumentGenerationResultDto {
+        document,
+        deck_id: result.deck_id,
+        created_note_count: result.created_note_count,
+        created_card_count: result.created_card_count,
+        skipped_duplicate_count: result.skipped_duplicate_count,
+    })
 }
 
 #[tauri::command]
@@ -201,9 +181,11 @@ pub fn set_document_archived(
 
     database.with_connection(|connection| {
         let now = unix_time_millis()?;
+        let has_learning_artifact = active_generated_deck_exists(connection, &input.document_id)?
+            || active_study_guide_exists(connection, &input.document_id)?;
         let lifecycle = if input.archived {
             "archived"
-        } else if active_generated_deck_exists(connection, &input.document_id)? {
+        } else if has_learning_artifact {
             "ready"
         } else {
             "failed"
@@ -250,7 +232,18 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
         transaction
             .execute(
                 "UPDATE documents
-                 SET lifecycle_state = 'failed',
+                 SET lifecycle_state = CASE
+                         WHEN EXISTS (
+                             SELECT 1 FROM decks deck
+                             WHERE deck.id = documents.generated_deck_id
+                               AND deck.deleted_at IS NULL
+                         ) OR EXISTS (
+                             SELECT 1 FROM document_study_guides guide
+                             WHERE guide.document_id = documents.id
+                               AND guide.state = 'active'
+                         ) THEN 'ready'
+                         ELSE 'failed'
+                     END,
                      outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
                      safe_error_code = ?1, safe_error_message = ?2,
                      processing_duration_ms = CASE
@@ -258,7 +251,7 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                          ELSE MAX(0, ?3 - processing_started_at)
                      END,
                      updated_at = ?3, revision = revision + 1
-                 WHERE lifecycle_state = 'processing'",
+                 WHERE lifecycle_state = 'processing' AND archived_at IS NULL",
                 params![INTERRUPTED_ERROR_CODE, INTERRUPTED_ERROR_MESSAGE, now],
             )
             .map_err(|error| {
@@ -302,11 +295,12 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
                     error,
                 )
             })?;
-        let managed_sources = statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let managed_sources = rows
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)?;
         Ok(managed_sources)
@@ -326,576 +320,6 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
     Ok(())
 }
 
-async fn process_and_generate(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, AiRuntimeState>,
-    render_runtime: PdfRenderRuntime,
-    document_id: &str,
-) -> Result<DocumentGenerationResultDto, CommandError> {
-    document_store::mark_document_processing(database.inner(), document_id)?;
-    let mut stored =
-        database.with_connection(|connection| load_document(connection, document_id))?;
-    let source_path = paths.resolve_relative(&stored.source_relative_path);
-    if !source_path.is_file() {
-        return Err(CommandError::new(
-            "document_source_missing",
-            "The managed source document is missing. Restore the library from backup or import it again.",
-        ));
-    }
-
-    let format = DocumentFormat::from_db(&stored.dto.source_format)?;
-    let active_adapter_backend = document_ingestion::active_adapter_backend(format)?;
-    let active_extraction_backend = document_ingestion::active_extraction_backend(format)?;
-    let active_render_backend = document_ingestion::active_render_backend(format)?;
-    let backend_changed = stored.adapter_backend != active_adapter_backend
-        || stored.extraction_backend != active_extraction_backend
-        || stored.render_backend != active_render_backend;
-    let incomplete_derivatives = stored.dto.source_unit_count == 0
-        || stored.dto.extracted_page_count != stored.dto.source_unit_count
-        || (format == DocumentFormat::Pdf
-            && stored.dto.rendered_page_count != stored.dto.source_unit_count)
-        || stored.semantic_chunk_count == 0;
-    if backend_changed || incomplete_derivatives {
-        let paths_owned = paths.inner().clone();
-        let source_owned = source_path.clone();
-        let id_owned = document_id.to_string();
-        let (progress_sender, mut progress_receiver) =
-            tokio::sync::mpsc::unbounded_channel::<document_ingestion::IngestionProgress>();
-        let processing_task = tauri::async_runtime::spawn_blocking(move || {
-            let report_progress = move |progress| {
-                progress_sender.send(progress).map_err(|_| {
-                    CommandError::new(
-                        "document_processing_stopped",
-                        "The document-processing progress channel closed unexpectedly.",
-                    )
-                })
-            };
-            if format == DocumentFormat::Pdf {
-                document_ingestion::ingest_pdf(
-                    &paths_owned,
-                    &render_runtime,
-                    &id_owned,
-                    &source_owned,
-                    MAX_SUPPORTED_SOURCE_UNITS,
-                    report_progress,
-                )
-            } else {
-                document_ingestion::ingest_document(
-                    format,
-                    &paths_owned,
-                    &render_runtime,
-                    &id_owned,
-                    &source_owned,
-                    MAX_SUPPORTED_SOURCE_UNITS,
-                    report_progress,
-                )
-            }
-        });
-        while let Some(progress) = progress_receiver.recv().await {
-            document_ingestion::update_ingestion_progress(database.inner(), document_id, progress)?;
-        }
-        let processed = processing_task.await.map_err(|error| {
-            CommandError::new(
-                "document_processing_failed",
-                format!("The document-processing task stopped unexpectedly: {error}"),
-            )
-        })??;
-        document_ingestion::persist_ingested_document(database.inner(), document_id, &processed)?;
-        stored = database.with_connection(|connection| load_document(connection, document_id))?;
-    }
-
-    let source = stored.source_descriptor()?;
-    source.validate()?;
-    if source.format == DocumentFormat::Pdf {
-        let renders = document_store::load_source_renders(database.inner(), document_id)?;
-        if renders.len() != source.unit_count
-            || renders
-                .iter()
-                .any(|render| !paths.resolve_relative(&render.relative_path).is_file())
-        {
-            return Err(CommandError::new(
-                "document_render_missing",
-                "One or more rendered source units are missing. Retry generation to rebuild the document derivatives.",
-            ));
-        }
-    }
-    let chunks = document_store::load_semantic_chunks(database.inner(), document_id)?;
-    if chunks.is_empty() {
-        return Err(CommandError::new(
-            "document_has_no_semantic_content",
-            "The document did not contain structured source content that ostudy could analyze.",
-        ));
-    }
-
-    let mut task = document_intelligence::load_document_task_context(database.inner())?;
-    let capabilities = document_provider::load_document_provider_capabilities(
-        database.inner(),
-        &task.profile_id,
-        &task.provider_kind,
-        &task.model_id,
-    )?;
-    task.apply_provider_capabilities(&capabilities);
-    let calibration = document_cost::load_cost_calibration(
-        database.inner(),
-        &task.provider_kind,
-        &task.model_id,
-    )?;
-    let plan = DocumentScalePlan::for_capabilities(
-        source.unit_count,
-        &capabilities,
-        &task.reasoning_effort,
-        calibration,
-    )?;
-    let estimated_source_tokens = chunks.iter().fold(0_usize, |total, chunk| {
-        total.saturating_add(
-            chunk
-                .token_estimate
-                .max(chunk.full_text.chars().count().div_ceil(4)),
-        )
-    });
-    let outline_windows = build_partitioned_semantic_windows(
-        &chunks,
-        plan,
-        plan.outline_window_max_tokens,
-        plan.outline_window_max_units,
-        plan.outline_window_overlap_tokens,
-    );
-    let generation_windows = build_partitioned_semantic_windows(
-        &chunks,
-        plan,
-        plan.generation_window_max_tokens,
-        plan.generation_window_max_units,
-        plan.generation_window_overlap_tokens,
-    );
-    validate_semantic_windows(&outline_windows, &source)?;
-    validate_semantic_windows(&generation_windows, &source)?;
-
-    let budget = document_scale::validate_automatic_job_calibrated(
-        source.unit_count,
-        estimated_source_tokens,
-        plan,
-        outline_windows.len(),
-        generation_windows.len(),
-        document_scale::DocumentBudgetContext {
-            capabilities: &capabilities,
-            reasoning_effort: &task.reasoning_effort,
-            calibration,
-        },
-    )?;
-    crate::logging::debug_target(
-        "ai.document.plan",
-        "document_ai_scale_plan",
-        "Planned bounded document-AI work without logging source content.",
-        serde_json::json!({
-            "document": document_id,
-            "format": source.format.as_str(),
-            "provider": task.provider_kind.as_str(),
-            "model": task.model_id.as_str(),
-            "scale": plan.label(),
-            "sourceUnits": source.unit_count,
-            "sourceTokens": estimated_source_tokens,
-            "outlineWindows": outline_windows.len(),
-            "generationWindows": generation_windows.len(),
-            "cardCapacity": budget.generation_card_capacity,
-            "estimatedJobTokens": budget.estimated_tokens,
-            "contextWindowTokens": budget.context_window_tokens,
-            "calibrationSamples": budget.calibration_sample_count,
-        }),
-    );
-
-    let capability_fingerprint = capabilities.planning_fingerprint();
-    let checkpoint_identity =
-        CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
-    let outline_contract = document_checkpoints::outline_contract_key(&checkpoint_identity, plan);
-    // Load and source-hash-validate the fragment set for the CURRENT plan before
-    // considering the persisted whole-document outline reusable.
-    let cached_outline = document_checkpoints::load_outline_fragments_best_effort(
-        database.inner(),
-        document_id,
-        &outline_contract,
-        &outline_windows,
-    );
-    let cached_count = cached_outline
-        .iter()
-        .filter(|value| value.is_some())
-        .count();
-    // A persisted whole-document outline is reusable only when every fragment
-    // required by the CURRENT semantic-window plan is also present and validates
-    // against the current source hashes. This prevents a final outline assembled
-    // under an older partition/window plan from silently surviving a planner
-    // change merely because provider/model/prompt versions stayed the same.
-    let reusable_final_outline = if cached_count == outline_windows.len() {
-        document_checkpoints::load_final_outline_best_effort(
-            database.inner(),
-            document_id,
-            &checkpoint_identity,
-        )
-    } else {
-        None
-    };
-    let outline = if let Some(outline) = reusable_final_outline {
-        document_store::initialize_ai_plan(
-            database.inner(),
-            document_id,
-            plan.label(),
-            DocumentAiProgressPlan {
-                estimated_source_tokens,
-                outline_window_count: outline_windows.len(),
-                outline_completed_window_count: outline_windows.len(),
-                generation_window_count: generation_windows.len(),
-                generation_completed_window_count: 0,
-            },
-        )?;
-        crate::logging::debug_target(
-            "ai.document.outline",
-            "document_final_outline_reused",
-            "Reused a whole-document outline only after validating the complete current-plan fragment checkpoint set.",
-            serde_json::json!({
-                "document": document_id,
-                "provider": task.provider_kind.as_str(),
-                "model": task.model_id.as_str(),
-                "outlineWindows": outline_windows.len(),
-                "cachedWindows": cached_count,
-                "sections": outline.sections.len(),
-            }),
-        );
-        outline
-    } else {
-        document_store::initialize_ai_plan(
-            database.inner(),
-            document_id,
-            plan.label(),
-            DocumentAiProgressPlan {
-                estimated_source_tokens,
-                outline_window_count: outline_windows.len(),
-                outline_completed_window_count: cached_count,
-                generation_window_count: generation_windows.len(),
-                generation_completed_window_count: 0,
-            },
-        )?;
-        document_store::mark_outline_building(database.inner(), document_id)?;
-        let generated_count = AtomicUsize::new(0);
-        let outline = document_intelligence::build_document_outline(
-            runtime.inner(),
-            &task,
-            &stored.dto.title,
-            i64::try_from(source.unit_count).unwrap_or(i64::MAX),
-            &outline_windows,
-            &cached_outline,
-            |window, fragment| {
-                document_checkpoints::persist_outline_fragment_best_effort(
-                    database.inner(),
-                    document_id,
-                    &outline_contract,
-                    window,
-                    fragment,
-                );
-                let generated_count = generated_count
-                    .fetch_add(1, Ordering::Relaxed)
-                    .saturating_add(1);
-                document_store::update_outline_progress(
-                    database.inner(),
-                    document_id,
-                    cached_count.saturating_add(generated_count),
-                )
-            },
-        )
-        .await?;
-        document_store::update_outline_progress(
-            database.inner(),
-            document_id,
-            outline_windows.len(),
-        )?;
-        persist_outline(
-            database.inner(),
-            document_id,
-            &task,
-            &stored.extraction_backend,
-            &outline,
-        )?;
-        outline
-    };
-
-    let generation_contract = document_checkpoints::generation_contract_key(
-        &checkpoint_identity,
-        plan,
-        &outline,
-        plan.max_cards_per_window,
-    );
-    let cached_generation = generation_windows
-        .iter()
-        .map(|window| {
-            generation_contract.as_deref().and_then(|contract| {
-                document_checkpoints::load_generation_cards_best_effort(
-                    database.inner(),
-                    document_id,
-                    contract,
-                    window,
-                )
-            })
-        })
-        .collect::<Vec<_>>();
-    let generation_completed = cached_generation
-        .iter()
-        .filter(|value| value.is_some())
-        .count();
-    document_store::update_generation_progress(
-        database.inner(),
-        document_id,
-        generation_completed,
-    )?;
-
-    let job_id = document_store::create_generation_job(
-        database.inner(),
-        document_id,
-        &GenerationJobIdentity::from(&task),
-        &source,
-        &generation_windows,
-    )?;
-    let generated_cards = document_generation::execute_generation_windows(GenerationExecution {
-        database: database.inner(),
-        paths: paths.inner(),
-        runtime: runtime.inner(),
-        task: &task,
-        document_id,
-        document_title: &stored.dto.title,
-        outline: &outline,
-        plan,
-        windows: &generation_windows,
-        job_id: &job_id,
-        cached_cards: cached_generation,
-        checkpoint_contract: generation_contract.as_deref(),
-        diagnostic_prefix: "initial",
-    })
-    .await?;
-
-    if generated_cards.is_empty() {
-        return Err(CommandError::new(
-            "document_generated_no_cards",
-            "The document analysis found no material important enough to generate flashcards.",
-        ));
-    }
-    let generated_cards = document_intelligence::curate_document_cards(
-        runtime.inner(),
-        &task,
-        &outline,
-        generated_cards,
-    )
-    .await?;
-    if generated_cards.is_empty() {
-        return Err(CommandError::new(
-            "document_generated_no_cards",
-            "The global relevance pass removed all generated cards as low-value or redundant.",
-        ));
-    }
-    if generated_cards.len() > MAX_GENERATED_CARDS {
-        return Err(CommandError::new(
-            "too_many_generated_cards",
-            "The generated document exceeded ostudy's defensive card limit.",
-        ));
-    }
-
-    document_store::mark_job_committing(
-        database.inner(),
-        document_id,
-        &job_id,
-        generated_cards.len(),
-    )?;
-    let payload = build_generated_import_json(&stored, generated_cards)?;
-    let (api_token_count, api_token_usage_complete) = task.usage_summary();
-    let result = import_generated_flashcards_bytes_with_commit(
-        database.inner(),
-        payload.as_bytes(),
-        |connection, import_result, now| {
-            connection
-                .execute(
-                    "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![document_id, import_result.deck_id, job_id, now],
-                )
-                .map_err(|error| {
-                    CommandError::database_at(
-                        "document_deck_provenance_insert_failed",
-                        format!("document={document_id} job={job_id}"),
-                        error,
-                    )
-                })?;
-            let document_changed = connection
-                .execute(
-                    "UPDATE documents
-                     SET lifecycle_state = 'ready', generated_note_count = ?1,
-                         generated_card_count = ?2, generated_deck_id = ?3,
-                         outline_completed_window_count = outline_window_count,
-                         generation_completed_window_count = generation_window_count,
-                         safe_error_code = '', safe_error_message = '',
-                         processing_duration_ms = CASE
-                             WHEN processing_started_at IS NULL THEN NULL
-                             ELSE MAX(0, ?4 - processing_started_at)
-                         END,
-                         api_token_count = ?5, api_token_usage_complete = ?6,
-                         updated_at = ?4, completed_at = ?4, revision = revision + 1
-                     WHERE id = ?7 AND lifecycle_state = 'processing'",
-                    params![
-                        import_result.created_note_count,
-                        import_result.created_card_count,
-                        import_result.deck_id,
-                        now,
-                        api_token_count,
-                        if api_token_usage_complete {
-                            1_i64
-                        } else {
-                            0_i64
-                        },
-                        document_id,
-                    ],
-                )
-                .map_err(|error| {
-                    CommandError::database_at(
-                        "document_generation_finalize_failed",
-                        format!("document={document_id} job={job_id}"),
-                        error,
-                    )
-                })?;
-            if document_changed != 1 {
-                return Err(CommandError::new(
-                    "document_changed",
-                    "The document changed before generated cards could be committed.",
-                ));
-            }
-            let job_changed = connection
-                .execute(
-                    "UPDATE document_generation_jobs
-                     SET state = 'succeeded', generated_candidate_count = ?1,
-                         generated_deck_id = ?2, safe_error_code = '',
-                         safe_error_message = '', updated_at = ?3, completed_at = ?3
-                     WHERE id = ?4 AND document_id = ?5 AND state = 'committing'",
-                    params![
-                        import_result.created_card_count,
-                        import_result.deck_id,
-                        now,
-                        job_id,
-                        document_id,
-                    ],
-                )
-                .map_err(|error| {
-                    CommandError::database_at(
-                        "document_generation_job_finalize_failed",
-                        format!("document={document_id} job={job_id}"),
-                        error,
-                    )
-                })?;
-            if job_changed != 1 {
-                return Err(CommandError::new(
-                    "document_job_changed",
-                    "The generation job changed before its commit completed.",
-                ));
-            }
-            Ok(())
-        },
-    )?;
-    document_checkpoints::clear_generation_checkpoints_best_effort(database.inner(), document_id);
-    let document = database
-        .with_connection(|connection| load_document(connection, document_id))?
-        .dto;
-    Ok(DocumentGenerationResultDto {
-        document,
-        deck_id: result.deck_id,
-        created_note_count: result.created_note_count,
-        created_card_count: result.created_card_count,
-        skipped_duplicate_count: result.skipped_duplicate_count,
-    })
-}
-
-fn persist_outline(
-    database: &Database,
-    document_id: &str,
-    task: &document_intelligence::DocumentTaskContext,
-    extraction_backend: &str,
-    outline: &document_intelligence::DocumentOutline,
-) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    let outline_json = serde_json::to_string(outline).map_err(CommandError::serialization)?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_outline_persist_begin_failed",
-                    format!("document={document_id}"),
-                    error,
-                )
-            })?;
-        transaction
-            .execute(
-                "INSERT INTO document_outlines (
-                     document_id, schema_version, prompt_version, profile_id,
-                     provider_kind, model_id, profile_revision, credential_epoch,
-                     extraction_backend, outline_json, summary_text, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
-                 ON CONFLICT(document_id) DO UPDATE SET
-                     schema_version = excluded.schema_version,
-                     prompt_version = excluded.prompt_version,
-                     profile_id = excluded.profile_id,
-                     provider_kind = excluded.provider_kind,
-                     model_id = excluded.model_id,
-                     profile_revision = excluded.profile_revision,
-                     credential_epoch = excluded.credential_epoch,
-                     extraction_backend = excluded.extraction_backend,
-                     outline_json = excluded.outline_json,
-                     summary_text = excluded.summary_text,
-                     updated_at = excluded.updated_at",
-                params![
-                    document_id,
-                    document_intelligence::OUTLINE_SCHEMA_VERSION,
-                    document_intelligence::OUTLINE_PROMPT_VERSION,
-                    task.profile_id,
-                    task.provider_kind,
-                    task.model_id,
-                    task.profile_revision,
-                    task.credential_epoch,
-                    extraction_backend,
-                    outline_json,
-                    outline.summary,
-                    now,
-                ],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_outline_persist_failed",
-                    format!("document={document_id}"),
-                    error,
-                )
-            })?;
-        let changed = transaction
-            .execute(
-                "UPDATE documents SET outline_state = 'ready', updated_at = ?1
-                 WHERE id = ?2 AND lifecycle_state = 'processing'",
-                params![now, document_id],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_outline_state_ready_failed",
-                    format!("document={document_id}"),
-                    error,
-                )
-            })?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "document_changed",
-                "The document changed before its outline could be committed.",
-            ));
-        }
-        transaction.commit().map_err(|error| {
-            CommandError::database_at(
-                "document_outline_commit_failed",
-                format!("document={document_id}"),
-                error,
-            )
-        })
-    })
-}
-
 fn record_document_failure(database: &Database, document_id: &str, error: &CommandError) {
     let now = unix_time_millis().unwrap_or_default();
     let usage = crate::task_cancellation::current_usage_summary();
@@ -907,7 +331,19 @@ fn record_document_failure(database: &Database, document_id: &str, error: &Comma
         transaction
             .execute(
                 "UPDATE documents
-                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'failed' ELSE 'archived' END,
+                 SET lifecycle_state = CASE
+                         WHEN archived_at IS NOT NULL THEN 'archived'
+                         WHEN EXISTS (
+                             SELECT 1 FROM decks deck
+                             WHERE deck.id = documents.generated_deck_id
+                               AND deck.deleted_at IS NULL
+                         ) OR EXISTS (
+                             SELECT 1 FROM document_study_guides guide
+                             WHERE guide.document_id = documents.id
+                               AND guide.state = 'active'
+                         ) THEN 'ready'
+                         ELSE 'failed'
+                     END,
                      outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
                      safe_error_code = ?1, safe_error_message = ?2,
                      processing_duration_ms = CASE
@@ -953,27 +389,6 @@ fn record_document_failure(database: &Database, document_id: &str, error: &Comma
     });
 }
 
-fn build_generated_import_json(
-    document: &StoredDocument,
-    cards: Vec<serde_json::Value>,
-) -> Result<String, CommandError> {
-    serde_json::to_string(&serde_json::json!({
-        "format": "ostudy-flashcards",
-        "formatVersion": 1,
-        "deck": {
-            "mode": "create",
-            "name": document.dto.title,
-            "description": format!(
-                "AI-generated flashcards from {}. Edit or delete these cards through the normal deck tools.",
-                document.dto.original_filename
-            )
-        },
-        "defaultTags": [],
-        "cards": cards,
-    }))
-    .map_err(CommandError::serialization)
-}
-
 fn list_document_rows(
     connection: &Connection,
     include_archived: bool,
@@ -1002,7 +417,7 @@ fn list_document_rows(
              LIMIT ?2",
         )
         .map_err(CommandError::database)?;
-    let documents = statement
+    let rows = statement
         .query_map(
             params![
                 if include_archived { 1_i64 } else { 0_i64 },
@@ -1010,7 +425,8 @@ fn list_document_rows(
             ],
             document_row,
         )
-        .map_err(CommandError::database)?
+        .map_err(CommandError::database)?;
+    let documents = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
     Ok(documents)
@@ -1038,18 +454,13 @@ fn load_document(
                     completed_at, archived_at, revision,
                     processing_duration_ms, api_token_count, api_token_usage_complete,
                     source_format, source_unit_kind, source_unit_count,
-                    source_relative_path, adapter_backend, extraction_backend, render_backend,
-                    semantic_chunk_count
+                    source_relative_path
              FROM documents WHERE id = ?1",
             [document_id],
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
                     source_relative_path: row.get(36)?,
-                    adapter_backend: row.get(37)?,
-                    extraction_backend: row.get(38)?,
-                    render_backend: row.get(39)?,
-                    semantic_chunk_count: row.get(40)?,
                 })
             },
         )
@@ -1122,6 +533,23 @@ fn active_generated_deck_exists(
         .map_err(CommandError::database)
 }
 
+fn active_study_guide_exists(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<bool, CommandError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM document_study_guides
+                 WHERE document_id = ?1 AND state = 'active'
+             )",
+            [document_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|value| value != 0)
+        .map_err(CommandError::database)
+}
+
 fn bounded_error(value: &str, maximum: usize) -> String {
     value.chars().take(maximum).collect()
 }
@@ -1131,62 +559,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generated_import_envelope_has_no_provenance_default_tags() {
-        let document = StoredDocument {
-            dto: DocumentDto {
-                id: "0123456789abcdef0123456789abcdef".to_string(),
-                title: "Physiology".to_string(),
-                original_filename: "physiology.pdf".to_string(),
-                byte_size: 1,
-                sha256: "0".repeat(64),
-                lifecycle_state: "processing".to_string(),
-                source_format: "pdf".to_string(),
-                source_unit_kind: "page".to_string(),
-                source_unit_count: 1,
-                page_count: 1,
-                extracted_page_count: 1,
-                rendered_page_count: 1,
-                extraction_mode: "native".to_string(),
-                ocr_page_count: 0,
-                ocr_completed_page_count: 0,
-                ocr_mean_confidence: None,
-                ocr_engine: String::new(),
-                scale_mode: "standard".to_string(),
-                estimated_source_tokens: 100,
-                outline_window_count: 1,
-                outline_completed_window_count: 1,
-                generation_window_count: 1,
-                generation_completed_window_count: 1,
-                generated_note_count: 0,
-                generated_card_count: 0,
-                generated_deck_id: None,
-                safe_error_code: String::new(),
-                safe_error_message: String::new(),
-                created_at: 1,
-                updated_at: 1,
-                completed_at: None,
-                archived_at: None,
-                revision: 1,
-                processing_duration_ms: None,
-                api_token_count: None,
-                api_token_usage_complete: false,
-            },
-            source_relative_path: "documents/id/source.pdf".to_string(),
-            adapter_backend: "adapter".to_string(),
-            extraction_backend: "extractor".to_string(),
-            render_backend: "renderer".to_string(),
-            semantic_chunk_count: 1,
-        };
-        let payload = build_generated_import_json(
-            &document,
-            vec![serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]})],
-        )
-        .unwrap();
-        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
-        assert_eq!(value["defaultTags"], serde_json::json!([]));
-        assert_eq!(value["cards"][0]["tags"], serde_json::json!([]));
-        assert!(!payload.contains("AI generated"));
-        assert!(!payload.contains("\"PDF\""));
-        assert!(payload.contains("ostudy-flashcards"));
+    fn guide_only_document_counts_as_ready_learning_artifact() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                         id, title, original_filename, mime_type, byte_size, sha256,
+                         source_relative_path, lifecycle_state, created_at, updated_at
+                     ) VALUES (?1, 'Guide only', 'guide.pdf', 'application/pdf', 1,
+                               ?2, 'documents/guide/source.pdf', 'failed', 1, 1)",
+                        params!["a".repeat(32), "b".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_learning_plans (
+                         id, document_id, revision, compiler_version, outline_fingerprint,
+                         plan_fingerprint, summary_text, learning_objectives_json,
+                         key_concepts_json, state, created_at, updated_at
+                     ) VALUES (?1, ?2, 1, 1, ?3, ?4, 'Summary', '[]', '[]', 'active', 1, 1)",
+                        params![
+                            "c".repeat(32),
+                            "a".repeat(32),
+                            "d".repeat(64),
+                            "e".repeat(64)
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_study_guides (
+                         id, document_id, plan_id, revision, schema_version, prompt_version,
+                         assembly_version, overview_json, overview_text, state,
+                         created_at, updated_at, published_at
+                     ) VALUES (?1, ?2, ?3, 1, 1, 1, 1, '{}', 'Summary', 'active', 1, 1, 1)",
+                        params!["f".repeat(32), "a".repeat(32), "c".repeat(32)],
+                    )
+                    .map_err(CommandError::database)?;
+                assert!(active_study_guide_exists(connection, &"a".repeat(32))?);
+                assert!(!active_generated_deck_exists(connection, &"a".repeat(32))?);
+                Ok(())
+            })
+            .unwrap();
     }
 }
