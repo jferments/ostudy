@@ -35,6 +35,7 @@ import {
 } from "./practice/confidence";
 import { PracticeComplete } from "./practice/PracticeComplete";
 import { PracticeSetup, type PracticeWorkloadStatus } from "./practice/PracticeSetup";
+import { StudyGuideLibrarySection } from "./StudyGuideLibrarySection";
 
 interface PracticeScreenProps {
   decks: DeckSummary[];
@@ -782,6 +783,10 @@ export function PracticeScreen({
         onStart={(deckIds, requestedShuffle, mode) =>
           void beginSession(deckIds, [...selectedTagIds], requestedShuffle, mode)
         }
+      />
+      <StudyGuideLibrarySection
+        showToast={showToast}
+        onPracticeCards={(cardIds) => beginCardSession(cardIds, settings.practiceShuffle)}
       />
     </div>
   );
