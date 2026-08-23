@@ -130,6 +130,18 @@ export interface DocumentStudyGuide {
   publishedAt: number;
 }
 
+export interface StudyGuideLibraryItem {
+  documentId: string;
+  documentTitle: string;
+  originalFilename: string;
+  sourceFormat: string;
+  sourceUnitKind: string;
+  sourceUnitCount: number;
+  guideRevision: number;
+  publishedAt: number;
+  archived: boolean;
+}
+
 export type DocumentArtifactKind = "study_guide" | "flashcards";
 export type DocumentArtifactJobState =
   | "queued"
@@ -203,6 +215,12 @@ export async function getDocumentStudyGuide(
   return invoke<DocumentStudyGuide | null>("get_document_study_guide", {
     input: { documentId },
   });
+}
+
+export async function listDocumentStudyGuides(
+  includeArchived = true,
+): Promise<StudyGuideLibraryItem[]> {
+  return invoke<StudyGuideLibraryItem[]>("list_document_study_guides", { includeArchived });
 }
 
 export async function getDocumentLearningPlan(
