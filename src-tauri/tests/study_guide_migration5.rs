@@ -100,7 +100,7 @@ fn deleting_document_cascades_through_parent_child_learning_topics() {
             params![
                 plan_id,
                 parent_topic_id,
-                r#"{"unitKind":"page","unitIndices":[1],"assetIds":[]}"#,
+                r#"{"unitKind":"page","unitNumbers":[1],"sectionLabel":null,"assetIds":[],"timeRangeMs":null}"#,
                 format!("[\"{}\"]", "8".repeat(64)),
                 "8".repeat(64),
             ],
@@ -119,7 +119,7 @@ fn deleting_document_cascades_through_parent_child_learning_topics() {
                 plan_id,
                 child_topic_id,
                 parent_topic_id,
-                r#"{"unitKind":"page","unitIndices":[2],"assetIds":[]}"#,
+                r#"{"unitKind":"page","unitNumbers":[2],"sectionLabel":null,"assetIds":[],"timeRangeMs":null}"#,
                 format!("[\"{}\"]", "9".repeat(64)),
                 "9".repeat(64),
             ],
