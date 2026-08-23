@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
+  discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide,
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
@@ -10,6 +11,7 @@ import {
   prepareDocumentStudyGuidePdf,
   saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide,
+  type StudyGuideOverlay,
 } from "../ipc/studyGuides";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 
@@ -19,6 +21,7 @@ vi.mock("../ipc/studyGuides", async () => {
   );
   return {
     ...actual,
+    discardDocumentStudyGuideOverlay: vi.fn(),
     generateDocumentStudyGuide: vi.fn(),
     getDocumentStudyGuide: vi.fn(),
     getDocumentTopicCardIds: vi.fn(),
@@ -101,11 +104,62 @@ function guide(): DocumentStudyGuide {
   };
 }
 
+function topicNote(): StudyGuideOverlay {
+  return {
+    id: "9".repeat(32),
+    documentId,
+    guideId: null,
+    topicId,
+    overlayKind: "topic_note",
+    baseContentHash: null,
+    richDoc: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Remember end-diastolic volume." }],
+        },
+      ],
+    },
+    plainText: "Remember end-diastolic volume.",
+    state: "active",
+    revision: 3,
+    createdAt: 2,
+    updatedAt: 3,
+  };
+}
+
+function conflictedOverride(): StudyGuideOverlay {
+  return {
+    id: "6".repeat(32),
+    documentId,
+    guideId: "5".repeat(32),
+    topicId,
+    overlayKind: "body_override",
+    baseContentHash: "4".repeat(64),
+    richDoc: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "My older preload explanation." }],
+        },
+      ],
+    },
+    plainText: "My older preload explanation.",
+    state: "conflicted",
+    revision: 4,
+    createdAt: 2,
+    updatedAt: 5,
+  };
+}
+
 const mockedGetGuide = vi.mocked(getDocumentStudyGuide);
 const mockedGenerate = vi.mocked(generateDocumentStudyGuide);
 const mockedProjection = vi.mocked(getDocumentTopicCardProjection);
 const mockedCardIds = vi.mocked(getDocumentTopicCardIds);
 const mockedSaveOverlay = vi.mocked(saveDocumentStudyGuideOverlay);
+const mockedDiscardOverlay = vi.mocked(discardDocumentStudyGuideOverlay);
 const mockedPreparePdf = vi.mocked(prepareDocumentStudyGuidePdf);
 const mockedPublish = vi.mocked(publishPreparedExport);
 const mockedRelease = vi.mocked(releasePreparedExport);
@@ -120,6 +174,7 @@ beforeEach(() => {
     studyableCardCount: 2,
   });
   mockedCardIds.mockResolvedValue(linkedCardIds);
+  mockedDiscardOverlay.mockResolvedValue(undefined);
   mockedRelease.mockResolvedValue(undefined);
 });
 
@@ -224,34 +279,14 @@ describe("StudyGuideDialog", () => {
         ...guide(),
         overlays: [
           {
-            id: "9".repeat(32),
-            documentId,
-            guideId: null,
-            topicId,
-            overlayKind: "topic_note",
-            baseContentHash: null,
-            richDoc: { type: "doc", content: [] },
+            ...topicNote(),
             plainText: "Remember the relationship to end-diastolic volume.",
-            state: "active",
-            revision: 1,
-            createdAt: 2,
-            updatedAt: 2,
           },
         ],
       });
     mockedSaveOverlay.mockResolvedValue({
-      id: "9".repeat(32),
-      documentId,
-      guideId: null,
-      topicId,
-      overlayKind: "topic_note",
-      baseContentHash: null,
-      richDoc: { type: "doc", content: [] },
+      ...topicNote(),
       plainText: "Remember the relationship to end-diastolic volume.",
-      state: "active",
-      revision: 1,
-      createdAt: 2,
-      updatedAt: 2,
     });
 
     render(
@@ -281,5 +316,77 @@ describe("StudyGuideDialog", () => {
       ),
     );
     expect(await screen.findByText("Remember the relationship to end-diastolic volume.")).toBeTruthy();
+  });
+
+  it("removes an existing topic note through the discard overlay boundary", async () => {
+    const withNote = { ...guide(), overlays: [topicNote()] };
+    mockedGetGuide.mockResolvedValueOnce(withNote).mockResolvedValueOnce(guide());
+    const showToast = vi.fn();
+
+    render(
+      <StudyGuideDialog
+        documentId={documentId}
+        documentTitle="Physiology"
+        showToast={showToast}
+        onPracticeCards={onPracticeCards}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Remember end-diastolic volume.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
+
+    await waitFor(() => {
+      expect(mockedDiscardOverlay).toHaveBeenCalledWith("9".repeat(32), 3);
+      expect(showToast).toHaveBeenCalledWith("success", "Topic note removed.");
+    });
+  });
+
+  it("treats clearing an existing note as removal instead of invalid empty rich content", async () => {
+    const withNote = { ...guide(), overlays: [topicNote()] };
+    mockedGetGuide.mockResolvedValueOnce(withNote).mockResolvedValueOnce(guide());
+
+    render(
+      <StudyGuideDialog
+        documentId={documentId}
+        documentTitle="Physiology"
+        showToast={vi.fn()}
+        onPracticeCards={onPracticeCards}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit note" }));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockedDiscardOverlay).toHaveBeenCalledWith("9".repeat(32), 3));
+    expect(mockedSaveOverlay).not.toHaveBeenCalled();
+  });
+
+  it("shows preserved conflicted section text and lets the learner discard it", async () => {
+    const conflict = conflictedOverride();
+    mockedGetGuide
+      .mockResolvedValueOnce({ ...guide(), overlays: [conflict] })
+      .mockResolvedValueOnce(guide());
+    const showToast = vi.fn();
+
+    render(
+      <StudyGuideDialog
+        documentId={documentId}
+        documentTitle="Physiology"
+        showToast={showToast}
+        onPracticeCards={onPracticeCards}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("My older preload explanation.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Discard older edit" }));
+
+    await waitFor(() => {
+      expect(mockedDiscardOverlay).toHaveBeenCalledWith("6".repeat(32), 4);
+      expect(showToast).toHaveBeenCalledWith("success", "Older section edit discarded.");
+    });
   });
 });
