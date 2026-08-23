@@ -51,9 +51,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "b0ce6fc9cfb1d32954b41526c4c60ab143a4397a9d900de3e34d4da7cf8629dc",
         sql: include_str!("../migrations/0004_study_guides_and_learning_topics.sql"),
     },
+    Migration {
+        version: 5,
+        name: "study_guide_pdf_exports",
+        checksum: "c98dffe452454aa3eb7f61071f7f52f5608dc54b73250983a380d2ffed5d6695",
+        sql: include_str!("../migrations/0005_study_guide_pdf_exports.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 4;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 5;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -301,7 +307,7 @@ fn apply_transactional_migration(
         .map_err(|error| format!("Could not set SQLite user_version: {error}"))?;
     transaction
         .commit()
-        .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))?;
+        .map_err(|error| format!("Could not commit migration {}: {error}"))?;
     crate::logging::info_target(
         "database.migration",
         "database_migration_completed",
