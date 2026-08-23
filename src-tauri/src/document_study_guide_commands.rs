@@ -1,5 +1,5 @@
-use rusqlite::OptionalExtension;
-use serde::Deserialize;
+use rusqlite::{params, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
@@ -34,6 +34,7 @@ use crate::{
 
 const CANCELED_MESSAGE: &str =
     "Study-guide generation was stopped. Any previously published guide remains available.";
+const MAX_STUDY_GUIDES_RETURNED: i64 = 250;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -66,6 +67,20 @@ pub(crate) struct GetTopicCardsInput {
 pub(crate) struct GetTopicCardProjectionInput {
     pub document_id: String,
     pub topic_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StudyGuideLibraryItem {
+    pub document_id: String,
+    pub document_title: String,
+    pub original_filename: String,
+    pub source_format: String,
+    pub source_unit_kind: String,
+    pub source_unit_count: i64,
+    pub guide_revision: i64,
+    pub published_at: i64,
+    pub archived: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -216,6 +231,52 @@ pub(crate) fn get_document_study_guide(
     input: GetDocumentStudyGuideInput,
 ) -> Result<Option<DocumentStudyGuide>, CommandError> {
     load_active_document_study_guide(database.inner(), &input.document_id)
+}
+
+#[tauri::command]
+pub(crate) fn list_document_study_guides(
+    database: State<'_, Database>,
+    include_archived: bool,
+) -> Result<Vec<StudyGuideLibraryItem>, CommandError> {
+    database.with_connection(|connection| {
+        let mut statement = connection
+            .prepare(
+                "SELECT document.id, document.title, document.original_filename,
+                        document.source_format, document.source_unit_kind,
+                        document.source_unit_count, guide.revision, guide.published_at,
+                        CASE WHEN document.archived_at IS NULL THEN 0 ELSE 1 END
+                 FROM document_study_guides guide
+                 JOIN documents document ON document.id = guide.document_id
+                 WHERE guide.state = 'active'
+                   AND (?1 = 1 OR document.archived_at IS NULL)
+                 ORDER BY guide.published_at DESC, document.title COLLATE NOCASE, document.id
+                 LIMIT ?2",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(
+                params![
+                    if include_archived { 1_i64 } else { 0_i64 },
+                    MAX_STUDY_GUIDES_RETURNED
+                ],
+                |row| {
+                    Ok(StudyGuideLibraryItem {
+                        document_id: row.get(0)?,
+                        document_title: row.get(1)?,
+                        original_filename: row.get(2)?,
+                        source_format: row.get(3)?,
+                        source_unit_kind: row.get(4)?,
+                        source_unit_count: row.get(5)?,
+                        guide_revision: row.get(6)?,
+                        published_at: row.get(7)?,
+                        archived: row.get::<_, i64>(8)? != 0,
+                    })
+                },
+            )
+            .map_err(CommandError::database)?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)
+    })
 }
 
 #[tauri::command]
