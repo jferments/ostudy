@@ -397,6 +397,28 @@ pub(crate) fn publish_document_study_guide(
                 .map_err(CommandError::database)?;
         }
 
+        let document_changed = transaction
+            .execute(
+                "UPDATE documents
+                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'ready' ELSE 'archived' END,
+                     safe_error_code = CASE WHEN archived_at IS NULL THEN '' ELSE safe_error_code END,
+                     safe_error_message = CASE WHEN archived_at IS NULL THEN '' ELSE safe_error_message END,
+                     completed_at = CASE
+                         WHEN archived_at IS NULL THEN COALESCE(completed_at, ?1)
+                         ELSE completed_at
+                     END,
+                     updated_at = ?1, revision = revision + 1
+                 WHERE id = ?2",
+                params![now, document_id],
+            )
+            .map_err(CommandError::database)?;
+        if document_changed != 1 {
+            return Err(CommandError::new(
+                "document_changed",
+                "The document changed before its study guide could be published.",
+            ));
+        }
+
         transaction.commit().map_err(CommandError::database)
     })?;
     load_document_study_guide(database, &guide_id)
@@ -1133,6 +1155,13 @@ fn to_usize(value: i64) -> Result<usize, CommandError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        document_domain::SourceUnitKind,
+        document_learning::{
+            ensure_document_learning_plan, DocumentLearningPlanInput, LearningEvidenceChunk,
+            LearningTopicInput,
+        },
+    };
 
     fn content() -> StudyGuideSectionContent {
         StudyGuideSectionContent {
@@ -1151,6 +1180,16 @@ mod tests {
             common_misconceptions: Vec::new(),
             visual_explanations: Vec::new(),
         }
+    }
+
+    fn rich_doc(text: &str) -> Value {
+        serde_json::json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}]
+            }]
+        })
     }
 
     #[test]
@@ -1173,7 +1212,7 @@ mod tests {
             topic_id: Some("b".repeat(32)),
             overlay_kind: StudyGuideOverlayKind::TopicNote,
             base_content_hash: None,
-            rich_doc: serde_json::json!({"type": "doc", "content": []}),
+            rich_doc: rich_doc("Remember this mechanism"),
             plain_text: "Remember this mechanism".to_string(),
             expected_revision: None,
         };
@@ -1189,7 +1228,7 @@ mod tests {
             topic_id: Some("b".repeat(32)),
             overlay_kind: StudyGuideOverlayKind::BodyOverride,
             base_content_hash: None,
-            rich_doc: serde_json::json!({"type": "doc", "content": []}),
+            rich_doc: rich_doc("Edited explanation"),
             plain_text: "Edited explanation".to_string(),
             expected_revision: None,
         };
@@ -1197,5 +1236,99 @@ mod tests {
         input.guide_id = Some("c".repeat(32));
         input.base_content_hash = Some("d".repeat(64));
         assert!(validate_overlay_contract(&input).is_ok());
+    }
+
+    #[test]
+    fn publishing_guide_atomically_marks_guide_only_document_ready() {
+        let database = Database::open_in_memory().expect("database should open");
+        let document_id = "1".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                         id, title, original_filename, mime_type, byte_size, sha256,
+                         source_relative_path, lifecycle_state, safe_error_code,
+                         safe_error_message, created_at, updated_at
+                     ) VALUES (?1, 'Guide only', 'guide.pdf', 'application/pdf', 1,
+                               ?2, 'documents/guide/source.pdf', 'failed',
+                               'prior_failure', 'Prior failure', 1, 1)",
+                        params![document_id, "2".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("document fixture should insert");
+
+        let locator = SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap();
+        let plan = ensure_document_learning_plan(
+            &database,
+            &document_id,
+            DocumentLearningPlanInput {
+                summary: "Guide summary".to_string(),
+                learning_objectives: vec!["Explain preload".to_string()],
+                key_concepts: vec!["Preload".to_string()],
+                topics: vec![LearningTopicInput {
+                    parent_index: None,
+                    title: "Preload".to_string(),
+                    summary: "Ventricular filling before systole".to_string(),
+                    learning_objectives: Vec::new(),
+                    key_concepts: vec!["Frank-Starling".to_string()],
+                    source_locator: locator.clone(),
+                }],
+            },
+            &[LearningEvidenceChunk {
+                chunk_index: 0,
+                source_locator: locator,
+                content_hash: "3".repeat(64),
+            }],
+        )
+        .expect("learning plan should publish");
+
+        let guide = publish_document_study_guide(
+            &database,
+            &document_id,
+            &plan.id,
+            None,
+            StudyGuideOverview {
+                summary: plan.summary.clone(),
+                learning_objectives: plan.learning_objectives.clone(),
+                key_concepts: plan.key_concepts.clone(),
+            },
+            vec![StudyGuideSectionDraft {
+                topic_id: plan.topics[0].id.clone(),
+                content: content(),
+            }],
+        )
+        .expect("guide should publish");
+        assert_eq!(guide.document_id, document_id);
+
+        database
+            .with_connection(|connection| {
+                let state = connection
+                    .query_row(
+                        "SELECT lifecycle_state, safe_error_code, safe_error_message,
+                                completed_at, generated_deck_id
+                         FROM documents WHERE id = ?1",
+                        [&document_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, Option<i64>>(3)?,
+                                row.get::<_, Option<String>>(4)?,
+                            ))
+                        },
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(state.0, "ready");
+                assert!(state.1.is_empty());
+                assert!(state.2.is_empty());
+                assert!(state.3.is_some());
+                assert!(state.4.is_none());
+                Ok(())
+            })
+            .expect("document lifecycle should be readable");
     }
 }
