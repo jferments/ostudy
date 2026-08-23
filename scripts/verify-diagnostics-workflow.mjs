@@ -13,6 +13,7 @@ const diagnostics = await readFile(join(root, "scripts", "lib", "diagnostics.bas
 const summary = await readFile(join(root, "scripts", "summarize-check-failure.mjs"), "utf8");
 const resultWriter = await readFile(join(root, "scripts", "write-qualification-result.mjs"), "utf8");
 const handoffRenderer = await readFile(join(root, "scripts", "render-agent-handoff.mjs"), "utf8");
+const ciCapture = await readFile(join(root, "scripts", "run-ci-captured.sh"), "utf8");
 
 const failures = [];
 
@@ -36,11 +37,13 @@ for (const required of [
   "OSTUDY_DIAGNOSTICS_ACTIVE: \"1\"",
   "OSTUDY_DIAGNOSTICS_AUTOMATIC: \"1\"",
   "OSTUDY_KEEP_FAILURE_ARTIFACTS: \"1\"",
+  "run-ci-captured.sh",
   "ostudy-static-check.log",
   "ostudy-fast-check.log",
   "ostudy-full-check.log",
   "ostudy-android-test.log",
   "ostudy-android-smoke.log",
+  "ostudy-failure-summary.md",
   "summarize-check-failure.mjs",
   "write-qualification-result.mjs",
   "render-agent-handoff.mjs",
@@ -53,6 +56,22 @@ for (const required of [
   "Upload bounded failure evidence",
 ]) {
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
+}
+
+if (/2>&1\s*\|\s*tee\s+"\$RUNNER_TEMP\/ostudy-(?:static|fast|full|android)/u.test(workflow)) {
+  failures.push(
+    "check.yml must retain full qualification logs in files instead of streaming them through tee",
+  );
+}
+
+for (const required of [
+  "OSTUDY_CI_SUCCESS_TAIL_BYTES",
+  "OSTUDY_CI_FAILURE_TAIL_BYTES",
+  "tail -c",
+  "full output retained",
+  "exit \"$status\"",
+]) {
+  if (!ciCapture.includes(required)) failures.push(`CI log capture helper missing ${required}`);
 }
 
 for (const required of [
@@ -108,5 +127,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI starts with low-noise structured diagnostics, exact-head JSON and Markdown handoff evidence are retained, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, and summaries emit focused reproductions.",
 );
