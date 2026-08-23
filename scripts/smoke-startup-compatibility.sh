@@ -20,7 +20,7 @@ fi
 
 cd "$ROOT_DIR"
 ostudy_require_current_build
-for command_name in sqlite3 python3 timeout; do
+for command_name in sqlite3 python3 node timeout; do
   command -v "$command_name" >/dev/null 2>&1 || {
     printf 'ERROR: %s is required for the startup compatibility smoke test.\n' "$command_name" >&2
     exit 1
@@ -273,12 +273,8 @@ lineage="$(sqlite3 "$DATABASE" "SELECT value FROM schema_metadata WHERE key='sch
 schema_version="$(sqlite3 "$DATABASE" 'PRAGMA user_version;')"
 migrations="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum FROM schema_migrations ORDER BY version;')"
 repairs="$(sqlite3 -separator '|' "$DATABASE" 'SELECT version, name, checksum, changed_rows FROM data_repairs ORDER BY version;')"
-expected_migrations="$(cat <<'EOF'
-1|public_baseline|2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85
-2|canonical_documents|dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733
-3|anydoc_document_adapters|3fffc105e52e531e6907a480d3479dff02b1426a4f6fa4906253e016c6052ba9
-EOF
-)"
+expected_schema_version="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --latest)"
+expected_migrations="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --ledger)"
 expected_repairs="$(cat <<'EOF'
 1|canonical_semantic_chunk_hashes|779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f|0
 2|canonical_block_hashes|02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085|0
@@ -293,12 +289,14 @@ after_attributions="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM review_event_att
   printf 'ERROR: adopted database has unexpected lineage: %s\n' "$lineage" >&2
   exit 1
 }
-[[ "$schema_version" == "3" ]] || {
-  printf 'ERROR: adopted database has unexpected SQLite schema version: %s\n' "$schema_version" >&2
+[[ "$schema_version" == "$expected_schema_version" ]] || {
+  printf 'ERROR: adopted database has unexpected SQLite schema version: %s (expected %s)\n' \
+    "$schema_version" "$expected_schema_version" >&2
   exit 1
 }
 [[ "$migrations" == "$expected_migrations" ]] || {
   printf 'ERROR: adopted database has unexpected current migration ledger:\n%s\n' "$migrations" >&2
+  printf 'Expected current migration ledger:\n%s\n' "$expected_migrations" >&2
   exit 1
 }
 [[ "$repairs" == "$expected_repairs" ]] || {
