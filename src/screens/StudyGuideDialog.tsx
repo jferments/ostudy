@@ -6,6 +6,7 @@ import { openDocumentSource } from "../ipc/documents";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
   cancelDocumentStudyGuideGeneration,
+  discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide,
   getDocumentStudyGuide,
   getDocumentTopicCardIds,
@@ -173,14 +174,40 @@ export function StudyGuideDialog({
     }
   }
 
+  async function discardOverlay(overlay: StudyGuideOverlay, successMessage: string): Promise<void> {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await discardDocumentStudyGuideOverlay(overlay.id, overlay.revision);
+      await refresh();
+      setEditing(null);
+      showToast("success", successMessage);
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function saveEditing(): Promise<void> {
     if (!editing || isSaving || !guide) return;
     const topic = editing.topicId
       ? guide.sections.find((section) => section.topicId === editing.topicId) ?? null
       : null;
     const existing = findEditingOverlay(guide.overlays, editing.topicId, editing.mode, guide.id);
+    const isBlank = editing.value.trim().length === 0;
     setIsSaving(true);
     try {
+      if (isBlank) {
+        if (existing) {
+          await discardDocumentStudyGuideOverlay(existing.id, existing.revision);
+          await refresh();
+          showToast("success", editing.mode === "override" ? "Section edit reset." : "Note removed.");
+        }
+        setEditing(null);
+        return;
+      }
+
       await saveDocumentStudyGuideOverlay({
         overlayId: existing?.id,
         documentId,
@@ -342,9 +369,21 @@ export function StudyGuideDialog({
                   <p>{guideNote.plainText}</p>
                 </aside>
               ) : null}
-              <button type="button" className="secondary-button" onClick={beginGuideNote}>
-                {guideNote ? "Edit guide note" : "Add guide note"}
-              </button>
+              <div className={styles.editorActions}>
+                <button type="button" className="secondary-button" onClick={beginGuideNote}>
+                  {guideNote ? "Edit guide note" : "Add guide note"}
+                </button>
+                {guideNote ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={isSaving}
+                    onClick={() => void discardOverlay(guideNote, "Guide note removed.")}
+                  >
+                    Remove guide note
+                  </button>
+                ) : null}
+              </div>
             </section>
 
             {guide.sections.map((section) => (
@@ -354,8 +393,10 @@ export function StudyGuideDialog({
                 overlays={guide.overlays}
                 guideId={guide.id}
                 projection={topicCards[section.topicId]}
+                actionsDisabled={isSaving}
                 onEditNote={() => beginTopicNote(section)}
                 onEditSection={() => beginSectionOverride(section)}
+                onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
                 onStudy={() => void studyTopic(section)}
                 onOpenSource={() => void openSource()}
               />
@@ -379,8 +420,8 @@ export function StudyGuideDialog({
           </label>
           <p>
             {editing.mode === "override"
-              ? "This non-destructive override is tied to the current generated base. Regeneration keeps it only when that base is compatible; otherwise it becomes an explicit conflict for review."
-              : "Personal notes attach to the document or stable learning topic and remain available across guide regeneration."}
+              ? "This non-destructive override is tied to the current generated base. Regeneration keeps it only when that base is compatible; otherwise it becomes an explicit conflict for review. Clear the text and save to reset an existing section edit."
+              : "Personal notes attach to the document or stable learning topic and remain available across guide regeneration. Clear the text and save to remove an existing note."}
           </p>
           <div className={styles.editorActions}>
             <button
@@ -411,8 +452,10 @@ interface StudyGuideSectionViewProps {
   overlays: StudyGuideOverlay[];
   guideId: string;
   projection?: TopicCardProjection;
+  actionsDisabled: boolean;
   onEditNote: () => void;
   onEditSection: () => void;
+  onDiscardOverlay: (overlay: StudyGuideOverlay, successMessage: string) => void;
   onStudy: () => void;
   onOpenSource: () => void;
 }
@@ -422,8 +465,10 @@ function StudyGuideSectionView({
   overlays,
   guideId,
   projection,
+  actionsDisabled,
   onEditNote,
   onEditSection,
+  onDiscardOverlay,
   onStudy,
   onOpenSource,
 }: StudyGuideSectionViewProps) {
@@ -451,9 +496,29 @@ function StudyGuideSectionView({
           <button type="button" className="secondary-button" onClick={onEditNote}>
             {note ? "Edit note" : "Add note"}
           </button>
+          {note ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={actionsDisabled}
+              onClick={() => onDiscardOverlay(note, "Topic note removed.")}
+            >
+              Remove note
+            </button>
+          ) : null}
           <button type="button" className="secondary-button" onClick={onEditSection}>
             {override ? "Edit override" : "Edit section"}
           </button>
+          {override ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={actionsDisabled}
+              onClick={() => onDiscardOverlay(override, "Section edit reset.")}
+            >
+              Reset section edit
+            </button>
+          ) : null}
           <button
             type="button"
             className="primary-button"
@@ -482,9 +547,18 @@ function StudyGuideSectionView({
           <strong>Older section edit needs review.</strong>
           <p>
             The generated base changed during regeneration, so ostudy did not silently apply the
-            old override to new source-grounded content. The prior edit remains preserved as a
-            conflict.
+            old override to new source-grounded content. The prior edit remains preserved below as
+            a conflict.
           </p>
+          <div className={styles.overrideText}>{renderPlainText(conflict.plainText)}</div>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={actionsDisabled}
+            onClick={() => onDiscardOverlay(conflict, "Older section edit discarded.")}
+          >
+            Discard older edit
+          </button>
         </aside>
       ) : null}
     </section>
