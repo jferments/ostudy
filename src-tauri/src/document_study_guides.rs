@@ -386,13 +386,17 @@ pub(crate) fn publish_document_study_guide(
                     params![guide_id, now, prior_id],
                 )
                 .map_err(CommandError::database)?;
+            // Remaining content-bound overlays no longer match the generated
+            // base. Attach them to the newly published guide as explicit
+            // conflicts so the learner can review or discard the preserved edit.
             transaction
                 .execute(
                     "UPDATE document_study_guide_overlays
-                     SET state = 'conflicted', updated_at = ?1, revision = revision + 1
-                     WHERE guide_id = ?2 AND state = 'active'
+                     SET guide_id = ?1, state = 'conflicted', updated_at = ?2,
+                         revision = revision + 1
+                     WHERE guide_id = ?3 AND state = 'active'
                        AND overlay_kind IN ('title_override', 'body_override', 'highlight')",
-                    params![now, prior_id],
+                    params![guide_id, now, prior_id],
                 )
                 .map_err(CommandError::database)?;
         }
@@ -599,6 +603,9 @@ pub(crate) fn save_study_guide_overlay(
             input.guide_id.as_deref(),
             input.topic_id.as_deref(),
         )?;
+        if input.overlay_kind.is_content_bound() {
+            validate_content_bound_overlay_scope(connection, &input)?;
+        }
         if let Some(expected_revision) = input.expected_revision {
             if expected_revision < 1 {
                 return Err(CommandError::new(
@@ -1067,6 +1074,55 @@ fn validate_overlay_scope(
     Ok(())
 }
 
+fn validate_content_bound_overlay_scope(
+    connection: &rusqlite::Connection,
+    input: &SaveStudyGuideOverlayInput,
+) -> Result<(), CommandError> {
+    let Some(guide_id) = input.guide_id.as_deref() else {
+        return Err(CommandError::new(
+            "invalid_study_guide_overlay",
+            "A content edit or highlight must reference a generated guide revision.",
+        ));
+    };
+    let Some(topic_id) = input.topic_id.as_deref() else {
+        return Err(CommandError::new(
+            "invalid_study_guide_overlay",
+            "A content edit or highlight must reference a generated guide topic.",
+        ));
+    };
+    let Some(base_content_hash) = input.base_content_hash.as_deref() else {
+        return Err(CommandError::new(
+            "invalid_study_guide_overlay",
+            "A content edit or highlight must reference its generated base content.",
+        ));
+    };
+
+    let matches = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM document_study_guides guide
+                 JOIN document_study_guide_sections section
+                   ON section.guide_id = guide.id
+                 WHERE guide.id = ?1 AND guide.document_id = ?2
+                   AND guide.state = 'active'
+                   AND section.topic_id = ?3
+                   AND section.content_hash = ?4
+             )",
+            params![guide_id, input.document_id, topic_id, base_content_hash],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|value| value != 0)
+        .map_err(CommandError::database)?;
+    if !matches {
+        return Err(CommandError::new(
+            "study_guide_overlay_base_changed",
+            "The generated study-guide section changed before this edit could be saved. Reload the guide and try again.",
+        ));
+    }
+    Ok(())
+}
+
 fn overview_plain_text(overview: &StudyGuideOverview) -> String {
     let mut lines = vec![overview.summary.clone()];
     lines.extend(overview.learning_objectives.iter().cloned());
@@ -1332,3 +1388,7 @@ mod tests {
             .expect("document lifecycle should be readable");
     }
 }
+
+#[cfg(test)]
+#[path = "document_study_guides/overlay_regression_tests.rs"]
+mod overlay_regression_tests;
