@@ -274,6 +274,7 @@ pub fn run() {
             document_study_guide_commands::generate_document_study_guide,
             document_study_guide_commands::cancel_document_study_guide_generation,
             document_study_guide_commands::get_document_study_guide,
+            document_study_guide_commands::list_document_study_guides,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,
             document_study_guide_commands::save_document_study_guide_overlay,
