@@ -142,10 +142,13 @@ document's shared learning plan. The guide begins with the document-level
 overview, learning objectives, and key concepts, then presents ordered topic
 sections with natural source labels such as page or section ranges. Newly
 generated topic sections deliberately favor a one- or two-sentence overview and
-a small set of prioritized key points over long narrative prose. Mechanism
-explanations, terms, processes, comparisons, misconceptions, and visual
-explanations are included only when they add distinct learning value rather than
-repeating the source.
+roughly three to seven prioritized key points over long narrative prose. The
+provider receives a much smaller completion budget than the source-analysis
+passes, and native validation rejects overlong section fields or total section
+content so the single repair attempt has to condense rather than merely rephrase
+an essay. Mechanism explanations, terms, processes, comparisons,
+misconceptions, and visual explanations are included only when they add distinct
+learning value rather than repeating the source.
 
 Open generated guides from the **Study guides** section of **Practice**. Use the
 table of contents to move through a guide and **Open source** to open the managed
