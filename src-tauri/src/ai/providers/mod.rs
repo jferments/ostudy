@@ -17,9 +17,7 @@ mod schema;
 
 use serde::{Deserialize, Serialize};
 
-pub(crate) use document::{
-    decode_document_output, prepare_document_request, PreparedDocumentRequest, ProviderOutputError,
-};
+pub(crate) use document::{decode_document_output, prepare_document_request};
 pub(crate) use models::{list_models, load_properties};
 pub(crate) use probes::{run_document_schema_probe, run_structured_probe, run_text_probe};
 
