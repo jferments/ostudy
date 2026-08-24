@@ -11,10 +11,8 @@ They extend the general architecture, code, UI, and validation guardrails.
 - React, controllers, shared UI, and `src/platform/` must not use `fetch`,
   `XMLHttpRequest`, provider JavaScript SDKs, API credentials, TLS settings, or
   provider response parsing.
-- `reqwest` remains confined to `src-tauri/src/ai/gateway/`. HTTP client
-  construction belongs only in `gateway/client.rs`; the other gateway modules
-  own bounded request/response handling, streaming, retry, usage, metadata, and
-  safe transport errors.
+- `reqwest` remains confined to `src-tauri/src/ai/gateway/`. Provider protocol
+  modules describe routes and wire contracts; they do not create independent clients.
 - Operating-system credential access remains confined to
   `src-tauri/src/ai/secrets.rs`.
 - Never add credential bytes, masked credentials, reversible encrypted secrets,
@@ -23,7 +21,7 @@ They extend the general architecture, code, UI, and validation guardrails.
 - Credentials may not appear in `.studydeck`, `.ostudy.json`, `.ostudybackup`,
   diagnostics, logs, analytics, operation payloads, probe records, or read DTOs.
 
-## Profiles, endpoints, and capability evidence
+## Profiles and endpoints
 
 - Provider profiles are durable entities separate from `AppSettings`.
 - Provider kind is immutable. A different protocol or trust boundary is a new
@@ -36,21 +34,34 @@ They extend the general architecture, code, UI, and validation guardrails.
 - Loopback HTTP is allowed. LAN HTTP requires an explicit user acknowledgement.
 - Profile, endpoint, authentication, task-default, and credential mutations use
   the shared AI mutation lane, optimistic revisions, and operation IDs.
-- Profile Tauri wrappers live in `ai/profiles/commands.rs`; profile/default SQL
-  lives in `ai/profiles/repository.rs` and `ai/profiles/defaults.rs`; policy and
-  DTO projection do not execute SQL or contact providers.
-- Probe Tauri wrappers live in `ai/probes/commands.rs`; ordered provider testing
-  lives in `runner.rs`/`phases.rs`; capability inference is pure; persisted probe
-  and capability evidence is owned by `ai/probes/repository.rs`.
-- Document and planning services consume typed profile/default and
-  probe/capability read models. They must not duplicate AI profile or evidence
-  SQL.
 - Never silently fall back from a local profile to a LAN or cloud profile.
 
-## Provider adapters and transport
+## Provider protocol family
+
+- The implemented llama.cpp, DeepSeek, and OpenRouter integrations share the
+  OpenAI-compatible protocol family under `src-tauri/src/ai/providers/`.
+- Shared model-list parsing, Chat Completions fields, response parsing, structured
+  output decoding, usage normalization, and representative document probing must
+  not be copied into per-provider modules.
+- `providers/dialect.rs` is the single dispatch seam for current provider wire
+  differences. Add custom code only for a demonstrated protocol difference.
+- `providers/llama_cpp.rs` owns local route normalization, `/props`, chat-template
+  controls, and llama.cpp structured-output compatibility.
+- `providers/deepseek.rs` owns DeepSeek thinking controls and the beta strict-tool
+  document contract.
+- `providers/openrouter.rs` owns router/privacy preferences, account-filtered
+  model metadata, and OpenRouter-specific document routing policy.
+- Document intelligence owns task semantics, source grounding, and output
+  validation; it must not branch on provider kind or construct provider wire
+  vocabulary.
+- Do not introduce an omnibus provider trait that simply mirrors every feature.
+  Add another protocol family only when a provider is genuinely not compatible
+  with the current shared protocol.
+
+## Provider adapters
 
 - An adapter owns provider routes, authentication expectations, wire DTOs,
-  structured-output semantics, and safe response normalization.
+  structured-output semantics, and safe error normalization.
 - Do not scatter provider-name conditionals across task services or React.
 - An OpenAI-compatible route is not proof of full OpenAI behavior. Capabilities
   remain `supported`, `unsupported`, or `unknown`, with `declared` versus
@@ -64,12 +75,6 @@ They extend the general architecture, code, UI, and validation guardrails.
   local structural and semantic validation.
 - Raw model reasoning, chain-of-thought, prompts, responses, provider headers,
   and unknown provider metadata are not persisted by default.
-- Ordinary discovery/probe requests use the bounded non-streaming gateway entry
-  point. Long document tasks explicitly use the cancellable SSE entry point;
-  ambient task state must not silently change a generic request method.
-- Document streaming retains one bounded transient retry, inactivity rather than
-  total wall-clock timeout semantics, exact task cancellation, response limits,
-  and normalized usage accounting.
 
 ## Task services
 
@@ -108,24 +113,16 @@ Every provider or task addition requires:
 
 - deterministic local provider-contract fixtures requiring no internet or real
   credential;
-- safe error, redirect, inactivity, retry, cancellation, and response-bound
-  tests;
-- incremental SSE tests covering fragmented events, keepalives, reasoning
-  redaction, tool arguments, terminal usage, and in-band failures;
+- safe error and response-bound tests;
 - secret sentinel tests covering DTOs, database bytes, backups, logs, and UI;
+- endpoint and redirect tests;
 - structured-output tests for malformed, truncated, semantically incorrect, and
   provider-refusal responses;
-- stale profile/model/credential-epoch tests;
+- stale profile/model/credential-epoch/**adapter-revision** tests;
+- a representative document-contract probe that exercises the same provider
+  dialect as real document generation;
 - typed IPC parity and repository-policy updates;
 - opt-in live-provider qualification separate from normal PR checks.
-
-`./scripts/check-static.sh` runs
-`verify-ai-infrastructure-boundaries.mjs`. Its fixture suite prevents the retired
-root monoliths, path aliases, replacement monoliths, `reqwest` outside the gateway
-package, Tauri commands outside command modules, and duplicated runtime
-profile/probe persistence ownership. Audited device-sync, backup, and startup
-schema-compatibility projections remain explicit exceptions rather than alternate
-runtime repositories.
 
 Do not weaken or bypass the static network, secret, migration, formatting,
 lockfile, overlay, style-entry-point, or test-policy gates to land an AI feature.

@@ -53,18 +53,53 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("retired AI-infrastructure monolith", result.stderr)
 
+    def test_rejects_provider_root_monolith(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
+            root_path = Path(root)
+            self.write_valid_topology(root_path)
+            self.write(root_path, "src-tauri/src/ai/providers.rs", "pub struct Legacy;\n")
+            result = self.run_verifier(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("retired AI-infrastructure monolith", result.stderr)
+
     def test_rejects_reqwest_outside_gateway(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
             root_path = Path(root)
             self.write_valid_topology(root_path)
             self.write(
                 root_path,
-                "src-tauri/src/ai/providers.rs",
+                "src-tauri/src/ai/providers/deepseek.rs",
                 "fn illegal(client: reqwest::Client) { let _ = client; }\n",
             )
             result = self.run_verifier(root)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("provider HTTP belongs only", result.stderr)
+
+    def test_rejects_provider_persistence_ownership(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
+            root_path = Path(root)
+            self.write_valid_topology(root_path)
+            self.write(
+                root_path,
+                "src-tauri/src/ai/providers/models.rs",
+                "fn illegal(_db: Database) {}\n",
+            )
+            result = self.run_verifier(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("provider protocol adapters may not own persistence", result.stderr)
+
+    def test_rejects_document_transport_provider_dialect(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
+            root_path = Path(root)
+            self.write_valid_topology(root_path)
+            self.write(
+                root_path,
+                "src-tauri/src/ai/document_intelligence/transport.rs",
+                'const ILLEGAL: &str = "beta/chat/completions";\n',
+            )
+            result = self.run_verifier(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("delegate provider wire dialects", result.stderr)
 
     def test_rejects_tauri_commands_outside_command_owner(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
@@ -162,6 +197,17 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
                 "capabilities.rs",
                 "repository.rs",
             ],
+            "providers": [
+                "dialect.rs",
+                "models.rs",
+                "probes.rs",
+                "document.rs",
+                "openai_compatible.rs",
+                "schema.rs",
+                "llama_cpp.rs",
+                "deepseek.rs",
+                "openrouter.rs",
+            ],
         }
         test_modules = {
             "gateway": [
@@ -179,7 +225,7 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
         self.write(
             root,
             "src-tauri/src/ai/gateway/mod.rs",
-            "pub struct AiGateway; pub struct AiGatewayError; pub struct SafeAiError;\n",
+            "pub struct AiGateway; pub struct AiGatewayError; pub struct SafeAiError; fn normalized_usage() {}\n",
         )
         self.write(
             root,
@@ -190,6 +236,11 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
             root,
             "src-tauri/src/ai/probes/mod.rs",
             "mod commands; pub struct AiProviderProbeResultDto; fn load_document_probe_evidence() {}\n",
+        )
+        self.write(
+            root,
+            "src-tauri/src/ai/providers/mod.rs",
+            "fn prepare_document_request() {} fn run_document_schema_probe() {} fn list_models() {}\n",
         )
         for package, names in modules.items():
             for name in names:

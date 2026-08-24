@@ -36,13 +36,55 @@ fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
 }
 
 #[test]
-fn deepseek_never_claims_provider_enforced_json_schema() {
+fn deepseek_never_claims_chat_completions_json_schema() {
     let capabilities = default_unknown_capabilities(ProviderKind::Deepseek);
     let schema = capabilities
         .iter()
         .find(|capability| capability.key == "json_schema_output")
         .expect("schema capability should exist");
     assert_eq!(schema.status, CapabilityStatus::Unsupported);
+}
+
+#[test]
+fn deepseek_document_tool_contract_is_independent_of_json_schema_capability() {
+    let profile = profile(ProviderKind::Deepseek, "deepseek-v4-flash");
+    let properties = ProviderProperties::default();
+    let capabilities = build_capabilities(
+        &profile,
+        CapabilityEvidence {
+            models: None,
+            model_listing: true,
+            text_completion: true,
+            structured_output: true,
+            document_generation_schema: Some(true),
+            usage_reported: true,
+            properties: &properties,
+        },
+    );
+    assert_eq!(
+        capabilities
+            .iter()
+            .find(|item| item.key == "json_schema_output")
+            .unwrap()
+            .status,
+        CapabilityStatus::Unsupported
+    );
+    assert_eq!(
+        capabilities
+            .iter()
+            .find(|item| item.key == "document_generation_schema")
+            .unwrap()
+            .status,
+        CapabilityStatus::Supported
+    );
+    assert_eq!(
+        capabilities
+            .iter()
+            .find(|item| item.key == "local_schema_validation")
+            .unwrap()
+            .status,
+        CapabilityStatus::Supported
+    );
 }
 
 #[test]
@@ -68,6 +110,14 @@ fn openrouter_can_report_json_schema_and_document_contract_support() {
             .unwrap()
             .status,
         CapabilityStatus::Supported
+    );
+    assert_eq!(
+        capabilities
+            .iter()
+            .find(|item| item.key == "json_object_output")
+            .unwrap()
+            .status,
+        CapabilityStatus::Unknown
     );
     assert_eq!(
         capabilities

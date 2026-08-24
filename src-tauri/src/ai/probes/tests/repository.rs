@@ -112,7 +112,7 @@ fn result_and_capabilities_are_replaced_atomically() {
 }
 
 #[test]
-fn revision_model_and_credential_epoch_bind_freshness() {
+fn profile_and_probe_contract_revisions_bind_freshness() {
     let profile = profile();
     let mut result = AiProviderProbeResultDto {
         profile_id: profile.id.clone(),
@@ -129,8 +129,58 @@ fn revision_model_and_credential_epoch_bind_freshness() {
         stale: false,
     };
     assert!(repository::snapshot_matches_result(&profile, &result));
+
     result.credential_epoch = 1;
     assert!(!repository::snapshot_matches_result(&profile, &result));
+    result.credential_epoch = profile.credential_epoch;
+
+    result.adapter_revision = ADAPTER_REVISION - 1;
+    assert!(!repository::snapshot_matches_result(&profile, &result));
+    result.adapter_revision = ADAPTER_REVISION;
+
+    result.result_schema_version = RESULT_SCHEMA_VERSION + 1;
+    assert!(!repository::snapshot_matches_result(&profile, &result));
+}
+
+#[test]
+fn document_capabilities_ignore_stale_adapter_evidence() {
+    let database = Database::open_in_memory().expect("database should open");
+    let profile = profile();
+    insert_profile(&database, &profile);
+    repository::finish_and_persist(
+        &database,
+        &profile,
+        ProbeOverallStatus::Verified,
+        vec![passed_phase("text", "Text", "Passed.", Some(1))],
+        vec![AiCapabilityDto {
+            key: "usage_reporting".to_string(),
+            status: CapabilityStatus::Supported,
+            source: CapabilitySource::Probed,
+            value: None,
+        }],
+        10,
+    )
+    .expect("probe should persist");
+    assert_eq!(
+        repository::load_capability_records(&database, &profile.id)
+            .expect("current capabilities should load")
+            .len(),
+        1
+    );
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "UPDATE ai_provider_probe_results SET adapter_revision = ?1 WHERE profile_id = ?2",
+                    params![ADAPTER_REVISION - 1, profile.id],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .expect("probe row should become stale");
+    assert!(repository::load_capability_records(&database, &profile.id)
+        .expect("stale capabilities should be hidden")
+        .is_empty());
 }
 
 #[test]

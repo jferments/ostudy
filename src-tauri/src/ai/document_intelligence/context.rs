@@ -111,14 +111,25 @@ pub(crate) fn load_document_task_context(
         profile.allow_insecure_http,
     )?;
     let evidence = load_document_probe_evidence(database, &profile)?;
-    if profile.provider_kind == ProviderKind::Openrouter
-        && (!evidence.probe_matches || !evidence.document_generation_schema_supported)
-    {
+
+    // Preserve OpenRouter's existing requirement for a current representative
+    // contract probe because routing can select different upstream providers.
+    if profile.provider_kind == ProviderKind::Openrouter && !evidence.probe_matches {
         return Err(CommandError::new(
             "ai_document_model_not_verified",
-            "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative flashcard structured-output contract; choose another model if that test fails.",
+            "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative document structured-output contract.",
         ));
     }
+    // Once any provider has current probe evidence, a known failure of the exact
+    // document wire contract must not be ignored. llama.cpp and DeepSeek remain
+    // backward-compatible for profiles that have not yet been re-probed.
+    if evidence.probe_matches && !evidence.document_generation_schema_supported {
+        return Err(CommandError::new(
+            "ai_document_model_not_verified",
+            "The selected AI model did not pass ostudy's representative document structured-output contract. Test the profile again or choose another model.",
+        ));
+    }
+
     let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
         && evidence.probe_matches
         && evidence.image_input_supported;

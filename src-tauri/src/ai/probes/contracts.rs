@@ -5,7 +5,7 @@ use crate::error::CommandError;
 
 use super::super::{catalog::ProviderKind, gateway::SafeAiError, providers::ProviderModel};
 
-pub(super) const ADAPTER_REVISION: i64 = 6;
+pub(super) const ADAPTER_REVISION: i64 = 7;
 pub(super) const RESULT_SCHEMA_VERSION: i64 = 1;
 pub(super) const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 

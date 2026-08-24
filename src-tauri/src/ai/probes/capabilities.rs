@@ -55,31 +55,48 @@ pub(super) fn build_capabilities(
         CapabilitySource::Probed,
         None,
     );
-    set_capability(
-        &mut capabilities,
-        "json_object_output",
-        if structured_output {
-            CapabilityStatus::Supported
-        } else {
-            CapabilityStatus::Unknown
-        },
-        CapabilitySource::Probed,
-        None,
-    );
-    set_capability(
-        &mut capabilities,
-        "json_schema_output",
-        match profile.provider_kind {
-            ProviderKind::LlamaCpp | ProviderKind::Openrouter if structured_output => {
-                CapabilityStatus::Supported
-            }
-            ProviderKind::LlamaCpp | ProviderKind::Openrouter => CapabilityStatus::Unknown,
-            ProviderKind::Deepseek => CapabilityStatus::Unsupported,
-            _ => CapabilityStatus::Unknown,
-        },
-        CapabilitySource::Probed,
-        None,
-    );
+
+    // The basic structured-output probe deliberately exercises the provider's
+    // native lightweight structured mode. DeepSeek's Chat Completions dialect
+    // uses JSON-object mode; llama.cpp and OpenRouter exercise JSON Schema.
+    // Do not claim both capabilities from one provider-specific probe.
+    match profile.provider_kind {
+        ProviderKind::Deepseek => {
+            set_capability(
+                &mut capabilities,
+                "json_object_output",
+                if structured_output {
+                    CapabilityStatus::Supported
+                } else {
+                    CapabilityStatus::Unknown
+                },
+                CapabilitySource::Probed,
+                None,
+            );
+            set_capability(
+                &mut capabilities,
+                "json_schema_output",
+                CapabilityStatus::Unsupported,
+                CapabilitySource::Probed,
+                None,
+            );
+        }
+        ProviderKind::LlamaCpp | ProviderKind::Openrouter => {
+            set_capability(
+                &mut capabilities,
+                "json_schema_output",
+                if structured_output {
+                    CapabilityStatus::Supported
+                } else {
+                    CapabilityStatus::Unknown
+                },
+                CapabilitySource::Probed,
+                None,
+            );
+        }
+        _ => {}
+    }
+
     if let Some(supported) = document_generation_schema {
         set_capability(
             &mut capabilities,
@@ -96,7 +113,7 @@ pub(super) fn build_capabilities(
     set_capability(
         &mut capabilities,
         "local_schema_validation",
-        if structured_output {
+        if structured_output || document_generation_schema == Some(true) {
             CapabilityStatus::Supported
         } else {
             CapabilityStatus::Unknown

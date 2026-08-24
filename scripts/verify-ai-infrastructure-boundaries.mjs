@@ -44,6 +44,18 @@ const requiredPackages = {
     "capabilities.rs",
     "repository.rs",
   ],
+  providers: [
+    "mod.rs",
+    "dialect.rs",
+    "models.rs",
+    "probes.rs",
+    "document.rs",
+    "openai_compatible.rs",
+    "schema.rs",
+    "llama_cpp.rs",
+    "deepseek.rs",
+    "openrouter.rs",
+  ],
 };
 const requiredTestModules = {
   gateway: ["redaction", "request", "response", "retry", "streaming", "transport", "usage"],
@@ -90,6 +102,8 @@ for (const packageName of Object.keys(requiredPackages)) {
     }
   }
 
+  const modules = requiredTestModules[packageName];
+  if (!modules) continue;
   const testsRoot = join(packageRoot, "tests");
   const testsModule = join(testsRoot, "mod.rs");
   if (!(await exists(testsModule))) {
@@ -97,7 +111,7 @@ for (const packageName of Object.keys(requiredPackages)) {
     continue;
   }
   const testsSource = await readFile(testsModule, "utf8");
-  for (const moduleName of requiredTestModules[packageName]) {
+  for (const moduleName of modules) {
     const testPath = join(testsRoot, `${moduleName}.rs`);
     if (!(await exists(testPath))) {
       violations.push(`${display(testPath)}: required package test module is missing`);
@@ -118,11 +132,14 @@ for (const path of rustFiles) {
   const relativePath = display(path);
   const isGateway = relativePath.startsWith("src-tauri/src/ai/gateway/");
   const isGatewayClient = relativePath === "src-tauri/src/ai/gateway/client.rs";
+  const isProvider = relativePath.startsWith("src-tauri/src/ai/providers/");
   const isProfileCommand = relativePath === "src-tauri/src/ai/profiles/commands.rs";
   const isProbeCommand = relativePath === "src-tauri/src/ai/probes/commands.rs";
   const isProfileRepository = relativePath === "src-tauri/src/ai/profiles/repository.rs";
   const isProfileDefaults = relativePath === "src-tauri/src/ai/profiles/defaults.rs";
   const isProbeRepository = relativePath === "src-tauri/src/ai/probes/repository.rs";
+  const isDocumentTransport =
+    relativePath === "src-tauri/src/ai/document_intelligence/transport.rs";
   const isTest = relativePath.includes("/tests/")
     || /(?:^|\/)(?:[^/]+_tests|tests)\.rs$/u.test(relativePath);
 
@@ -135,6 +152,11 @@ for (const path of rustFiles) {
   if (isGateway && /\b(?:rusqlite|Database|tauri::State|profiles::|probes::|providers::)\b/u.test(source)) {
     violations.push(
       `${relativePath}: gateway transport may not depend on persistence, Tauri, profiles, probes, or provider adapters`,
+    );
+  }
+  if (isProvider && /\b(?:rusqlite|Database|tauri::State|tauri::command)\b/u.test(source)) {
+    violations.push(
+      `${relativePath}: provider protocol adapters may not own persistence or Tauri command state`,
     );
   }
   if (
@@ -156,6 +178,22 @@ for (const path of rustFiles) {
     && !isProbeCommand
   ) {
     violations.push(`${relativePath}: probe Tauri state belongs only in commands.rs`);
+  }
+
+  if (isDocumentTransport) {
+    const dialectVocabulary = [
+      /ProviderKind::/u,
+      /chat_template_kwargs/u,
+      /tool_choice/u,
+      /provider_preferences/u,
+      /deepseek_strict_schema/u,
+      /beta\/chat\/completions/u,
+    ];
+    if (dialectVocabulary.some((pattern) => pattern.test(source))) {
+      violations.push(
+        `${relativePath}: document transport must delegate provider wire dialects to ai/providers/`,
+      );
+    }
   }
 
   if (/\b(?:ai_provider_profiles|ai_profile_operations|ai_task_defaults)\b/u.test(source)) {
@@ -188,9 +226,10 @@ for (const path of rustFiles) {
 }
 
 const facadeRequirements = {
-  gateway: ["AiGateway", "AiGatewayError", "SafeAiError"],
+  gateway: ["AiGateway", "AiGatewayError", "SafeAiError", "normalized_usage"],
   profiles: ["commands", "ProfileSnapshot", "load_profile_request"],
   probes: ["commands", "AiProviderProbeResultDto", "load_document_probe_evidence"],
+  providers: ["prepare_document_request", "run_document_schema_probe", "list_models"],
 };
 for (const [packageName, markers] of Object.entries(facadeRequirements)) {
   const path = join(aiRoot, packageName, "mod.rs");
@@ -210,7 +249,7 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "OK   AI infrastructure: bounded gateway, profile, and probe packages with explicit runtime network, command, persistence, executable-test, and audited compatibility owners.",
+  "OK   AI infrastructure: bounded gateway, profile, probe, and provider-protocol packages with explicit runtime network, command, persistence, dialect, executable-test, and audited compatibility owners.",
 );
 
 function productionSource(source) {

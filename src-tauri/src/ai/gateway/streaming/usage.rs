@@ -2,6 +2,9 @@ use serde_json::{json, Value};
 
 use crate::task_cancellation::DocumentTaskUsageDelta;
 
+/// Normalize the OpenAI-compatible usage families used by every current ostudy
+/// provider. The same function is used for ordinary probe responses, ordinary
+/// compatibility responses, and final streaming usage chunks.
 pub(crate) fn safe_usage_envelope(value: &Value) -> Option<Value> {
     let read = |pointers: &[&str]| {
         pointers.iter().find_map(|pointer| {
@@ -10,9 +13,28 @@ pub(crate) fn safe_usage_envelope(value: &Value) -> Option<Value> {
                 .and_then(|item| nonnegative_integer(Some(item)))
         })
     };
-    let prompt_tokens = read(&["/usage/prompt_tokens", "/usage/input_tokens"]);
-    let completion_tokens = read(&["/usage/completion_tokens", "/usage/output_tokens"]);
-    let total_tokens = read(&["/usage/total_tokens"]).or_else(|| {
+    let prompt_tokens = read(&[
+        "/usage/prompt_tokens",
+        "/usage/input_tokens",
+        "/response/usage/prompt_tokens",
+        "/response/usage/input_tokens",
+        "/data/usage/prompt_tokens",
+        "/data/usage/input_tokens",
+    ]);
+    let completion_tokens = read(&[
+        "/usage/completion_tokens",
+        "/usage/output_tokens",
+        "/response/usage/completion_tokens",
+        "/response/usage/output_tokens",
+        "/data/usage/completion_tokens",
+        "/data/usage/output_tokens",
+    ]);
+    let total_tokens = read(&[
+        "/usage/total_tokens",
+        "/response/usage/total_tokens",
+        "/data/usage/total_tokens",
+    ])
+    .or_else(|| {
         prompt_tokens
             .zip(completion_tokens)
             .map(|(prompt, completion)| prompt.saturating_add(completion))
@@ -20,11 +42,22 @@ pub(crate) fn safe_usage_envelope(value: &Value) -> Option<Value> {
     let cached_tokens = read(&[
         "/usage/prompt_tokens_details/cached_tokens",
         "/usage/prompt_cache_hit_tokens",
+        "/response/usage/prompt_tokens_details/cached_tokens",
+        "/data/usage/prompt_tokens_details/cached_tokens",
     ]);
-    let cache_write_tokens = read(&["/usage/prompt_tokens_details/cache_write_tokens"]);
-    let reasoning_tokens = read(&["/usage/completion_tokens_details/reasoning_tokens"]);
-    let cost = value
-        .pointer("/usage/cost")
+    let cache_write_tokens = read(&[
+        "/usage/prompt_tokens_details/cache_write_tokens",
+        "/response/usage/prompt_tokens_details/cache_write_tokens",
+        "/data/usage/prompt_tokens_details/cache_write_tokens",
+    ]);
+    let reasoning_tokens = read(&[
+        "/usage/completion_tokens_details/reasoning_tokens",
+        "/response/usage/completion_tokens_details/reasoning_tokens",
+        "/data/usage/completion_tokens_details/reasoning_tokens",
+    ]);
+    let cost = ["/usage/cost", "/response/usage/cost", "/data/usage/cost"]
+        .iter()
+        .find_map(|pointer| value.pointer(pointer))
         .and_then(Value::as_f64)
         .filter(|value| value.is_finite() && *value >= 0.0)
         .map(Value::from);

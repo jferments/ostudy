@@ -43,7 +43,8 @@ pub(super) fn persist_selected_model_declarations(
                 .map_err(CommandError::database)?;
         }
         if let Some(reasoning) = selected.and_then(|model| model.reasoning.as_ref()) {
-            let value = serde_json::to_string(&Some(reasoning)).map_err(CommandError::serialization)?;
+            let value =
+                serde_json::to_string(&Some(reasoning)).map_err(CommandError::serialization)?;
             transaction
                 .execute(
                     "INSERT INTO ai_provider_capabilities (
@@ -122,6 +123,10 @@ pub(crate) fn load_capability_records(
     profile_id: &str,
 ) -> Result<Vec<PersistedCapability>, CommandError> {
     database.with_connection(|connection| {
+        let profile = load_profile_snapshot(connection, profile_id)?;
+        if !probe_matches_current(connection, &profile)? {
+            return Ok(Vec::new());
+        }
         let mut statement = connection
             .prepare(
                 "SELECT capability_key, status, value_json
@@ -163,26 +168,7 @@ pub(crate) fn load_document_probe_evidence(
     profile: &ProfileSnapshot,
 ) -> Result<DocumentProbeEvidence, CommandError> {
     database.with_connection(|connection| {
-        let probe_matches = connection
-            .query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM ai_provider_probe_results
-                     WHERE profile_id = ?1
-                       AND profile_revision = ?2
-                       AND credential_epoch = ?3
-                       AND tested_model_id = ?4
-                       AND overall_status IN ('verified', 'partial')
-                 )",
-                params![
-                    profile.id,
-                    profile.revision,
-                    profile.credential_epoch,
-                    profile.model_id,
-                ],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|value| value != 0)
-            .map_err(CommandError::database)?;
+        let probe_matches = probe_matches_current(connection, profile)?;
         let image_status: Option<String> = connection
             .query_row(
                 "SELECT status FROM ai_provider_capabilities
@@ -203,11 +189,41 @@ pub(crate) fn load_document_probe_evidence(
             .map_err(CommandError::database)?;
         Ok(DocumentProbeEvidence {
             probe_matches,
-            image_input_supported: image_status.as_deref() == Some("supported"),
-            document_generation_schema_supported: document_schema_status.as_deref()
-                == Some("supported"),
+            image_input_supported: probe_matches && image_status.as_deref() == Some("supported"),
+            document_generation_schema_supported: probe_matches
+                && document_schema_status.as_deref() == Some("supported"),
         })
     })
+}
+
+fn probe_matches_current(
+    connection: &rusqlite::Connection,
+    profile: &ProfileSnapshot,
+) -> Result<bool, CommandError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM ai_provider_probe_results
+                 WHERE profile_id = ?1
+                   AND profile_revision = ?2
+                   AND credential_epoch = ?3
+                   AND tested_model_id = ?4
+                   AND adapter_revision = ?5
+                   AND result_schema_version = ?6
+                   AND overall_status IN ('verified', 'partial')
+             )",
+            params![
+                profile.id,
+                profile.revision,
+                profile.credential_epoch,
+                profile.model_id,
+                ADAPTER_REVISION,
+                RESULT_SCHEMA_VERSION,
+            ],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|value| value != 0)
+        .map_err(CommandError::database)
 }
 
 pub(super) fn snapshot_matches_result(
@@ -217,6 +233,8 @@ pub(super) fn snapshot_matches_result(
     profile.revision == result.profile_revision
         && profile.credential_epoch == result.credential_epoch
         && profile.model_id == result.tested_model_id
+        && result.adapter_revision == ADAPTER_REVISION
+        && result.result_schema_version == RESULT_SCHEMA_VERSION
 }
 
 fn persist_result(
