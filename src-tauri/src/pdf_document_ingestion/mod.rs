@@ -8,9 +8,9 @@ mod recovery;
 mod rendering;
 mod validation;
 
-pub(crate) use contracts::{IngestedDocument, IngestionProgress};
 #[cfg(test)]
 pub(crate) use contracts::{ExtractionMode, IngestedPage, OcrIngestionSummary};
+pub(crate) use contracts::{IngestedDocument, IngestionProgress};
 pub(crate) use pipeline::ingest_pdf;
 pub(crate) use progress::update_ingestion_progress;
 
