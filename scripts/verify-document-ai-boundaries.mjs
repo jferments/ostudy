@@ -33,7 +33,8 @@ const providerWireTerms = [
   "chat_template_kwargs",
   "DEEPSEEK_STRICT_TOOL_NAME",
   "openrouter_document_body",
-  "/usage/prompt_tokens",
+  "deepseek_strict_schema",
+  "beta/chat/completions",
 ];
 const violations = [];
 
@@ -97,17 +98,19 @@ if (await exists(facadePath)) {
   }
 }
 
+// Provider wire dialects belong to ai/providers/. Document intelligence owns
+// prompts, source grounding, semantic validation, request-size policy, and the
+// provider-neutral call into that package; even transport.rs must not recreate
+// DeepSeek/OpenRouter/llama.cpp request envelopes.
 for (const name of requiredModules) {
   const path = join(moduleRoot, name);
   if (!(await exists(path))) continue;
   const source = productionSource(await readFile(path, "utf8"));
-  if (name !== "transport.rs") {
-    for (const term of providerWireTerms) {
-      if (source.includes(term)) {
-        violations.push(
-          `${display(path)}: provider wire term ${JSON.stringify(term)} belongs only in transport.rs`,
-        );
-      }
+  for (const term of providerWireTerms) {
+    if (source.includes(term)) {
+      violations.push(
+        `${display(path)}: provider wire term ${JSON.stringify(term)} belongs in ai/providers/`,
+      );
     }
   }
 }
@@ -120,22 +123,24 @@ if (await exists(transportPath)) {
     "document_semantics",
     "CanonicalDocument",
     "SourceLocator",
+    "ProviderKind::",
   ]) {
     if (transport.includes(forbidden)) {
       violations.push(
-        `src-tauri/src/ai/document_intelligence/transport.rs: provider transport must not depend on ${forbidden}`,
+        `src-tauri/src/ai/document_intelligence/transport.rs: provider-neutral transport must not depend on ${forbidden}`,
       );
     }
   }
   for (const required of [
     "request_json",
     "record_document_usage",
-    "openrouter_document_body",
-    "deepseek_strict_schema",
+    "prepare_document_request",
+    "decode_document_output",
+    "post_document_json",
   ]) {
     if (!transport.includes(required)) {
       violations.push(
-        `src-tauri/src/ai/document_intelligence/transport.rs: missing provider transport owner ${required}`,
+        `src-tauri/src/ai/document_intelligence/transport.rs: missing provider-neutral transport boundary ${required}`,
       );
     }
   }
@@ -150,7 +155,7 @@ if (violations.length > 0) {
 const entries = await readdir(moduleRoot, { withFileTypes: true });
 const rustFiles = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".rs"));
 console.log(
-  `OK   Document-AI boundaries: ${rustFiles.length} bounded modules; provider wire transport remains isolated.`,
+  `OK   Document-AI boundaries: ${rustFiles.length} bounded modules; provider wire dialects remain isolated in ai/providers/.`,
 );
 
 function productionSource(source) {
