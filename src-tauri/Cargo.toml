@@ -16,24 +16,26 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
-anydoc = "=0.2.3"
 base64 = "=0.22.1"
 chrono = "=0.4.45"
 oxidize-pdf = { version = "=4.2.2", default-features = false, features = ["compression", "semantic"] }
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }
 reqwest = { version = "=0.13.4", default-features = false, features = ["json", "rustls"] }
+roxmltree = "=0.21.1"
 ring = "=0.17.14"
 rs-fsrs = "=1.2.1"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "trace"] }
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = "=1.0.145"
+serde_json = "=1.0.151"
 sha2 = "=0.10.9"
 tauri-plugin-dialog = "=2.7.2"
 tauri-plugin-opener = "=2.5.4"
 tauri-plugin-ostudy-platform = { path = "../plugins/ostudy-platform" }
 tauri = { version = "=2.11.5", features = ["protocol-asset"] }
 tokio = { version = "=1.53.1", features = ["macros", "rt", "sync", "time"] }
-url = "=2.5.7"
+url = "=2.5.8"
+xberg = { git = "https://github.com/xberg-io/xberg", rev = "276cbba4b7ae6a91352fc6da1358688cab72b637", default-features = false, features = ["tokio-runtime", "office", "excel"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 keyring = "=4.1.6"

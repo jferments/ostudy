@@ -1,14 +1,10 @@
 use std::collections::BTreeSet;
 
-use sha2::{Digest, Sha256};
-
 use crate::document_domain::DocumentFormat;
 
 pub(crate) const MAX_BLOCK_TEXT_CHARS: usize = 250_000;
 pub(crate) const MAX_HEADING_CHARS: usize = 500;
 pub(crate) const MAX_ATTRIBUTE_VALUE_CHARS: usize = 2_000;
-pub(crate) const MAX_UNIT_TEXT_CHARS: usize = 250_000;
-pub(crate) const MAX_CHUNK_TEXT_CHARS: usize = 1_000_000;
 
 pub(crate) fn bounded_text(value: &str, maximum: usize) -> String {
     value
@@ -36,17 +32,6 @@ pub(crate) fn deduplicate(values: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn hash_bytes(bytes: &[u8]) -> (i64, String) {
-    (
-        i64::try_from(bytes.len()).unwrap_or(i64::MAX),
-        sha256_hex(bytes),
-    )
-}
-
-pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
 pub(crate) fn media_type_for_format(format: DocumentFormat) -> &'static str {
     match format {
         DocumentFormat::Doc => "application/msword",
@@ -67,5 +52,18 @@ pub(crate) fn media_type_for_format(format: DocumentFormat) -> &'static str {
         DocumentFormat::Ods => "application/vnd.oasis.opendocument.spreadsheet",
         DocumentFormat::Csv => "text/csv",
         _ => "application/octet-stream",
+    }
+}
+
+pub(crate) fn image_media_type(format: &str) -> Option<&'static str> {
+    match format.trim().to_ascii_lowercase().as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" | "svg+xml" => Some("image/svg+xml"),
+        "bmp" => Some("image/bmp"),
+        "tif" | "tiff" => Some("image/tiff"),
+        _ => None,
     }
 }

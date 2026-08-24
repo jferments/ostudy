@@ -8,7 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    anydoc_document_adapter, assets::detect_image_bytes, document_domain::DocumentFormat,
+    assets::detect_image_bytes, document_domain::DocumentFormat, document_ingestion,
     error::CommandError, paths::AppPaths,
 };
 
@@ -489,7 +489,7 @@ fn validate_source_bytes(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or_default();
-    if anydoc_document_adapter::detected_document_format(data, filename).ok() == Some(format) {
+    if document_ingestion::detected_document_format(data, filename).ok() == Some(format) {
         Ok(())
     } else {
         Err(CommandError::new(

@@ -22,7 +22,33 @@ impl DocumentAdapterIdentity {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IngestionStage {
+    DetectingFormat,
+    ExtractingContent,
+    MappingStructure,
+    SavingAssets,
+    BuildingSourceUnits,
+    BuildingSemanticChunks,
+    ValidatingResult,
+}
+
+impl IngestionStage {
+    pub(crate) const fn phase(self) -> &'static str {
+        match self {
+            Self::DetectingFormat => "document_detecting",
+            Self::ExtractingContent => "document_extracting",
+            Self::MappingStructure => "document_mapping",
+            Self::SavingAssets => "document_saving_assets",
+            Self::BuildingSourceUnits => "document_unitizing",
+            Self::BuildingSemanticChunks => "document_chunking",
+            Self::ValidatingResult => "document_validating",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum IngestionProgress {
+    Stage(IngestionStage),
     Extracting {
         completed_units: usize,
         total_units: usize,
@@ -59,7 +85,7 @@ pub(crate) struct AdapterRequest<'a> {
     pub(crate) cancellation: &'a dyn DocumentCancellation,
 }
 
-pub(crate) trait DocumentCancellation {
+pub(crate) trait DocumentCancellation: Send + Sync {
     fn check(&self) -> Result<(), CommandError>;
 }
 

@@ -26,9 +26,9 @@ use tauri_plugin_ostudy_platform::OstudyPlatformExt;
 
 #[cfg(target_os = "android")]
 use crate::{
-    anydoc_document_adapter,
     assets::detect_image_bytes,
     document_domain::DocumentFormat,
+    document_ingestion,
     external_files::{ExternalFileKind, ExternalImportPurpose},
 };
 use crate::{
@@ -543,7 +543,7 @@ fn detect_kind(
 #[cfg(target_os = "android")]
 fn detect_document_kind(path: &Path, display_name: &str) -> Result<ExternalFileKind, CommandError> {
     let bytes = fs::read(path).map_err(CommandError::io)?;
-    let format = anydoc_document_adapter::detected_document_format(&bytes, display_name)?;
+    let format = document_ingestion::detected_document_format(&bytes, display_name)?;
     match format {
         DocumentFormat::Pdf => Ok(ExternalFileKind::Pdf),
         DocumentFormat::Doc => Ok(ExternalFileKind::Doc),

@@ -8,7 +8,6 @@
 
 mod ai;
 mod analytics;
-mod anydoc_document_adapter;
 mod asset_lifecycle;
 mod asset_protocol;
 mod assets;
@@ -87,9 +86,8 @@ mod task_cancellation;
 mod ui_checkpoint;
 mod util;
 mod workload;
+mod xberg_document_adapter;
 
-#[cfg(test)]
-mod anydoc_adapter_fixture_tests;
 #[cfg(test)]
 mod canonical_migration_tests;
 #[cfg(test)]
@@ -104,6 +102,8 @@ mod regression_tests;
 mod stage34_35_regression_tests;
 #[cfg(test)]
 mod stage36_38_regression_tests;
+#[cfg(test)]
+mod xberg_adapter_fixture_tests;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

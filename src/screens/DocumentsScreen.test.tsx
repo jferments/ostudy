@@ -75,6 +75,37 @@ function makeDocument(
   };
 }
 
+
+function makeProgress(
+  phase: string,
+): documentIpc.DocumentGenerationProgress {
+  return {
+    startedAt: Date.now() - 1_000,
+    phase,
+    currentWindow: null,
+    currentWindowEnd: null,
+    completedWindows: 0,
+    totalWindows: 0,
+    currentPageStart: null,
+    currentPageEnd: null,
+    currentPartition: null,
+    reasoningEffort: "low",
+    providerRequestCount: 0,
+    retryCount: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+    cachedPromptTokens: 0,
+    cacheWriteTokens: 0,
+    usageReportedRequests: 0,
+    usageUnreportedRequests: 0,
+    providerActivity: "preparing",
+    lastProviderActivityAt: null,
+    lastModelActivityAt: null,
+  };
+}
+
 function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolvedValue([])) {
   render(
     <OverlayProvider>
@@ -248,6 +279,31 @@ describe("DocumentsScreen", () => {
 
     expect((await screen.findAllByText("Processing")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Extracting document content").length).toBeGreaterThan(0);
+  });
+
+  it("shows coarse local Xberg stages without inventing page progress", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        sourceFormat: "docx",
+        sourceUnitKind: "section",
+        sourceUnitCount: 0,
+        pageCount: 0,
+        extractedPageCount: 0,
+        renderedPageCount: 0,
+        generatedDeckId: null,
+        generatedCardCount: 0,
+        completedAt: null,
+      }),
+    ]);
+    vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(
+      makeProgress("document_mapping"),
+    );
+    renderDocuments();
+
+    expect((await screen.findAllByText("Mapping document structure")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Converting extracted headings and content into oStudy source blocks.")).toBeTruthy();
+    expect(screen.queryByText(/Rendering pages/u)).toBeNull();
   });
 
   it("shows live rendered-page progress for PDFs once the total page count is known", async () => {

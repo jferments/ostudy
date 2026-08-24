@@ -12,7 +12,7 @@ const violations = [];
 const packageNames = [
   "documents",
   "document_ingestion",
-  "anydoc_document_adapter",
+  "xberg_document_adapter",
   "pdf_document_ingestion",
   "pdf_backend",
 ];
@@ -21,12 +21,15 @@ const forbiddenLegacyFiles = [
   "document_adapters.rs",
   "document_ingestion.rs",
   "anydoc_document_adapter.rs",
+  "xberg_document_adapter.rs",
   "pdf_backend.rs",
 ];
 const forbiddenTransitionalDirectories = [
   "document_core",
   "document_ingestion_core",
+  "anydoc_document_adapter",
   "anydoc_document_adapter_core",
+  "xberg_document_adapter_core",
   "pdf_document_ingestion_core",
   "pdf_backend_core",
 ];
@@ -98,11 +101,16 @@ if (await exists(documentsRoot)) {
 for (const path of await rustFiles(sourceRoot)) {
   const source = productionSource(await readFile(path, "utf8"));
   const normalized = display(path);
+  if (/\banydoc(?:::|\s*=)|\bAnyDoc\b/u.test(source)) {
+    violations.push(`${normalized}: retired AnyDoc production references are forbidden`);
+  }
   if (
-    /(?:^|\n)\s*use\s+anydoc(?:::|\s*\{)|\banydoc::(?:model|to_document|Format|ConvertError)\b/u.test(source) &&
-    !normalized.startsWith("src-tauri/src/anydoc_document_adapter/")
+    /(?:^|\n)\s*use\s+xberg(?:::|\s*\{)|\bxberg::/u.test(source) &&
+    !normalized.startsWith("src-tauri/src/xberg_document_adapter/") &&
+    !normalized.startsWith("src-tauri/src/document_ingestion/xberg/") &&
+    normalized !== "src-tauri/src/document_ingestion/registry.rs"
   ) {
-    violations.push(`${normalized}: third-party AnyDoc types must remain inside the AnyDoc package`);
+    violations.push(`${normalized}: third-party Xberg types must remain inside the Xberg package`);
   }
 }
 
@@ -119,7 +127,7 @@ if (await exists(contractsPath)) {
       violations.push(`${display(contractsPath)}: missing app-owned adapter contract ${required}`);
     }
   }
-  if (/\banydoc::|\boxidize_pdf::|\bPdfDocument\b/u.test(contracts)) {
+  if (/\banydoc::|\bxberg::|\boxidize_pdf::|\bPdfDocument\b/u.test(contracts)) {
     violations.push(`${display(contractsPath)}: backend library types leaked into the app-owned port`);
   }
 }
@@ -127,7 +135,7 @@ if (await exists(contractsPath)) {
 const registryPath = join(sourceRoot, "document_ingestion", "registry.rs");
 if (await exists(registryPath)) {
   const registry = productionSource(await readFile(registryPath, "utf8"));
-  for (const required of ["match format", "DocumentFormat::Pdf", "DocumentFormat::Docx", "DocumentFormat::Csv"]) {
+  for (const required of ["match format", "DocumentFormat::Pdf", "DocumentFormat::Docx", "DocumentFormat::Csv", "XbergAdapter"]) {
     if (!registry.includes(required)) {
       violations.push(`${display(registryPath)}: missing explicit registry routing marker ${required}`);
     }

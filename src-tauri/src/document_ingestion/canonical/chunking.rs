@@ -8,9 +8,10 @@ use crate::{
     error::CommandError,
 };
 
-use super::support::{bounded_text, MAX_CHUNK_TEXT_CHARS};
+use crate::document_ingestion::support::normalize_semantic_text;
 
 const MAX_CHUNK_TARGET_CHARS: usize = 24_000;
+const MAX_CHUNK_TEXT_CHARS: usize = 1_000_000;
 
 pub(crate) fn build_semantic_chunks(
     unit_kind: SourceUnitKind,
@@ -79,7 +80,7 @@ fn push_chunk(
     if full_text.is_empty() {
         return Ok(());
     }
-    full_text = bounded_text(&full_text, MAX_CHUNK_TEXT_CHARS);
+    full_text = normalize_semantic_text(&full_text, MAX_CHUNK_TEXT_CHARS);
     let heading_context = blocks
         .iter()
         .rev()
