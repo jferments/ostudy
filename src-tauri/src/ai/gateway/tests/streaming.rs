@@ -26,9 +26,7 @@ fn keepalive_and_reasoning_are_progress_without_retained_reasoning() {
     stream.push_bytes(b": OPENROUTER PROCESSING\n").unwrap();
     assert_eq!(stream.model_progress_bytes(), 0);
     stream
-        .push_bytes(
-            b"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"working\"}}]}\n",
-        )
+        .push_bytes(b"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"working\"}}]}\n")
         .unwrap();
     assert_eq!(stream.content, "");
     assert_eq!(stream.reasoning_bytes, 7);

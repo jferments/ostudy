@@ -1,9 +1,9 @@
-use super::super::runner::classify_model_match_for_test;
 use super::super::super::{
     catalog::{AuthMode, ProviderKind},
     profiles::ProfileSnapshot,
     providers::ProviderModel,
 };
+use super::super::runner::classify_model_match_for_test;
 
 fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
     ProfileSnapshot {

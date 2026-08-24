@@ -4,11 +4,7 @@ use reqwest::{Client, Method, RequestBuilder};
 use serde_json::{json, Value};
 use url::Url;
 
-use super::{
-    contracts::AiGatewayError,
-    errors::error,
-    metadata::is_openrouter_url,
-};
+use super::{contracts::AiGatewayError, errors::error, metadata::is_openrouter_url};
 
 pub(super) fn ordinary_request(
     client: &Client,

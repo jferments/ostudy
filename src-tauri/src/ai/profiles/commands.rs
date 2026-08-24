@@ -3,14 +3,17 @@ use tauri::State;
 use crate::{database::Database, error::CommandError};
 
 use super::{
+    super::{
+        catalog::{provider_catalog, ProviderCatalogEntryDto},
+        AiRuntimeState,
+    },
     contracts::{
         AiProviderProfileDetailDto, AiProviderProfileSummaryDto, AiTaskDefaultsDto,
-        ClearAiProviderCredentialInput, CreateAiProviderProfileInput,
-        DeleteAiProviderProfileInput, DeleteAiProviderProfileResultDto,
-        SetAiProviderCredentialInput, SetAiTaskDefaultInput, UpdateAiProviderProfileInput,
+        ClearAiProviderCredentialInput, CreateAiProviderProfileInput, DeleteAiProviderProfileInput,
+        DeleteAiProviderProfileResultDto, SetAiProviderCredentialInput, SetAiTaskDefaultInput,
+        UpdateAiProviderProfileInput,
     },
     service,
-    super::{catalog::{provider_catalog, ProviderCatalogEntryDto}, AiRuntimeState},
 };
 
 #[tauri::command]

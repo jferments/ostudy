@@ -140,8 +140,7 @@ impl SseChatAccumulator {
                     safe_json_string(value.get("provider"), MAX_SAFE_PROVIDER_METADATA_CHARS);
             }
             if self.model.is_none() {
-                self.model =
-                    safe_json_string(value.get("model"), MAX_SAFE_PROVIDER_METADATA_CHARS);
+                self.model = safe_json_string(value.get("model"), MAX_SAFE_PROVIDER_METADATA_CHARS);
             }
         }
         if value.get("error").is_some_and(|value| !value.is_null()) {

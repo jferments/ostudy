@@ -1,12 +1,12 @@
 use serde_json::{json, Value};
 
 use super::{
-    contracts::{AiCapabilityDto, CapabilitySource, CapabilityStatus},
     super::{
         catalog::ProviderKind,
         profiles::ProfileSnapshot,
         providers::{ProviderModel, ProviderProperties},
     },
+    contracts::{AiCapabilityDto, CapabilitySource, CapabilityStatus},
 };
 
 pub(super) struct CapabilityEvidence<'a> {
@@ -180,9 +180,7 @@ pub(super) fn build_capabilities(
     capabilities
 }
 
-pub(super) fn default_unknown_capabilities(
-    provider_kind: ProviderKind,
-) -> Vec<AiCapabilityDto> {
+pub(super) fn default_unknown_capabilities(provider_kind: ProviderKind) -> Vec<AiCapabilityDto> {
     [
         "text_input",
         "image_input",

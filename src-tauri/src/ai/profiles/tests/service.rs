@@ -1,7 +1,10 @@
 use crate::{
     ai::{
         catalog::{AiTaskKind, ProviderKind},
-        profiles::{contracts::{SetAiProviderCredentialInput, SetAiTaskDefaultInput}, service},
+        profiles::{
+            contracts::{SetAiProviderCredentialInput, SetAiTaskDefaultInput},
+            service,
+        },
         secrets::CredentialPersistence,
         AiRuntimeState,
     },
@@ -30,7 +33,10 @@ fn create_service_replays_without_duplicate_profiles() {
     retry.display_name = "Ignored retry payload".to_string();
     let replayed = service::create_profile(&database, &runtime, retry).unwrap();
     assert_eq!(created.id, replayed.id);
-    assert_eq!(service::list_profiles(&database, &runtime).unwrap().len(), 1);
+    assert_eq!(
+        service::list_profiles(&database, &runtime).unwrap().len(),
+        1
+    );
 }
 
 #[test]

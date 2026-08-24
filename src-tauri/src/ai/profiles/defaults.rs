@@ -3,9 +3,9 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use crate::{error::CommandError, util::unix_time_millis};
 
 use super::{
+    super::catalog::AiTaskKind,
     contracts::{AiTaskDefaultsDto, ProfileRequestSnapshot, SetAiTaskDefaultInput},
     repository::{load_profile, operation_replay, record_operation},
-    super::catalog::AiTaskKind,
 };
 
 pub(super) fn load_task_defaults(

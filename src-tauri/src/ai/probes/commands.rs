@@ -3,10 +3,9 @@ use tauri::State;
 use crate::{database::Database, error::CommandError, util::validate_entity_id};
 
 use super::{
-    contracts::{AiProfileReferenceInput, AiProviderModelsDto, AiProviderProbeResultDto},
-    repository,
-    runner,
     super::AiRuntimeState,
+    contracts::{AiProfileReferenceInput, AiProviderModelsDto, AiProviderProbeResultDto},
+    repository, runner,
 };
 
 #[tauri::command]

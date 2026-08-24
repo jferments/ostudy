@@ -3,13 +3,6 @@ use std::time::Instant;
 use crate::{database::Database, error::CommandError, util::unix_time_millis};
 
 use super::{
-    capabilities::{build_capabilities, default_unknown_capabilities, set_capability, CapabilityEvidence},
-    contracts::{
-        AiProfileReferenceInput, AiProviderModelsDto, AiProviderProbeResultDto, CapabilitySource,
-        CapabilityStatus, ProbeOverallStatus,
-    },
-    phases::{elapsed_ms, failed_phase, passed_phase, skipped_phase},
-    repository,
     super::{
         catalog::ProviderKind,
         gateway::{AiGatewayError, SafeAiError},
@@ -17,6 +10,15 @@ use super::{
         providers::{self, ProviderModel, ProviderProperties},
         AiRuntimeState,
     },
+    capabilities::{
+        build_capabilities, default_unknown_capabilities, set_capability, CapabilityEvidence,
+    },
+    contracts::{
+        AiProfileReferenceInput, AiProviderModelsDto, AiProviderProbeResultDto, CapabilitySource,
+        CapabilityStatus, ProbeOverallStatus,
+    },
+    phases::{elapsed_ms, failed_phase, passed_phase, skipped_phase},
+    repository,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -249,12 +251,8 @@ pub(super) async fn test_profile(
     }
 
     let text_start = Instant::now();
-    let text_outcome = match providers::run_text_probe(
-        &runtime.gateway,
-        &request_profile,
-        bearer,
-    )
-    .await
+    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer)
+        .await
     {
         Ok(outcome) => {
             let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
@@ -332,57 +330,54 @@ pub(super) async fn test_profile(
         }
     };
 
-    let (document_schema_outcome, document_schema_supported) =
-        if profile.provider_kind == ProviderKind::Openrouter {
-            if structured_outcome.is_some() {
-                let started = Instant::now();
-                match providers::run_document_schema_probe(
-                    &runtime.gateway,
-                    &request_profile,
-                    bearer,
-                )
+    let (document_schema_outcome, document_schema_supported) = if profile.provider_kind
+        == ProviderKind::Openrouter
+    {
+        if structured_outcome.is_some() {
+            let started = Instant::now();
+            match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer)
                 .await
-                {
-                    Ok(outcome) => {
-                        let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
-                        phases.push(passed_phase(
-                            "document_generation_schema",
-                            "Document generation schema",
-                            &format!(
-                                "The selected OpenRouter model satisfied ostudy's representative flashcard union contract (finish: {finish})."
-                            ),
-                            Some(elapsed_ms(started)),
-                        ));
-                        (Some(outcome), Some(true))
-                    }
-                    Err(error_value) => {
-                        optional_failure = true;
-                        phases.push(failed_phase(
-                            "document_generation_schema",
-                            "Document generation schema",
-                            "Structured JSON works, but the model did not reliably satisfy ostudy's representative flashcard generation contract.",
-                            Some(elapsed_ms(started)),
-                            error_value.safe,
-                        ));
-                        (None, Some(false))
-                    }
+            {
+                Ok(outcome) => {
+                    let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
+                    phases.push(passed_phase(
+                        "document_generation_schema",
+                        "Document generation schema",
+                        &format!(
+                            "The selected OpenRouter model satisfied ostudy's representative flashcard union contract (finish: {finish})."
+                        ),
+                        Some(elapsed_ms(started)),
+                    ));
+                    (Some(outcome), Some(true))
                 }
-            } else {
-                phases.push(skipped_phase(
-                    "document_generation_schema",
-                    "Document generation schema",
-                    "The document contract probe was skipped because the basic structured-output probe did not pass.",
-                ));
-                (None, Some(false))
+                Err(error_value) => {
+                    optional_failure = true;
+                    phases.push(failed_phase(
+                        "document_generation_schema",
+                        "Document generation schema",
+                        "Structured JSON works, but the model did not reliably satisfy ostudy's representative flashcard generation contract.",
+                        Some(elapsed_ms(started)),
+                        error_value.safe,
+                    ));
+                    (None, Some(false))
+                }
             }
         } else {
             phases.push(skipped_phase(
                 "document_generation_schema",
                 "Document generation schema",
-                "This provider uses its existing provider-specific document structured-output contract.",
+                "The document contract probe was skipped because the basic structured-output probe did not pass.",
             ));
-            (None, None)
-        };
+            (None, Some(false))
+        }
+    } else {
+        phases.push(skipped_phase(
+            "document_generation_schema",
+            "Document generation schema",
+            "This provider uses its existing provider-specific document structured-output contract.",
+        ));
+        (None, None)
+    };
 
     let usage_reported = text_outcome.prompt_tokens.is_some()
         || text_outcome.completion_tokens.is_some()

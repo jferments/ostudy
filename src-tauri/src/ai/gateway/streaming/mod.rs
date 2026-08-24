@@ -65,12 +65,9 @@ impl AiGateway {
             Err(first_error) if should_retry_document_stream_error(&first_error) => {
                 let delay = document_retry_delay(&first_error);
                 let delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
-                let model = body
-                    .get("model")
-                    .and_then(Value::as_str)
-                    .and_then(|value| {
-                        safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
-                    });
+                let model = body.get("model").and_then(Value::as_str).and_then(|value| {
+                    safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
+                });
                 record_current_provider_retry();
                 crate::logging::warn_target(
                     "ai.gateway.retry",

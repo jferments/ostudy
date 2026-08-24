@@ -184,10 +184,8 @@ pub(crate) fn load_document_provider_capabilities(
     for capability in load_capability_records(database, profile_id)? {
         match capability.key.as_str() {
             "context_window_tokens" if capability.status == CapabilityStatus::Supported => {
-                result.context_window_tokens = capability
-                    .value
-                    .as_ref()
-                    .and_then(parse_positive_usize);
+                result.context_window_tokens =
+                    capability.value.as_ref().and_then(parse_positive_usize);
             }
             "image_input" => {
                 result.image_input = capability.status == CapabilityStatus::Supported;
@@ -267,8 +265,14 @@ mod tests {
         };
         assert_eq!(capabilities.resolve_reasoning_effort("low"), "none");
         assert_eq!(capabilities.resolve_reasoning_effort("high"), "high");
-        assert_eq!(capabilities.completion_token_ceiling("none", 10_000), 10_000);
-        assert_eq!(capabilities.completion_token_ceiling("high", 10_000), 50_000);
+        assert_eq!(
+            capabilities.completion_token_ceiling("none", 10_000),
+            10_000
+        );
+        assert_eq!(
+            capabilities.completion_token_ceiling("high", 10_000),
+            50_000
+        );
     }
 
     #[test]
@@ -295,13 +299,11 @@ mod tests {
     #[test]
     fn provider_structured_output_defaults_remain_stable() {
         assert_eq!(
-            DocumentProviderCapabilities::conservative("deepseek", "model")
-                .structured_output,
+            DocumentProviderCapabilities::conservative("deepseek", "model").structured_output,
             StructuredOutputStrategy::StrictTool
         );
         assert_eq!(
-            DocumentProviderCapabilities::conservative("openrouter", "model")
-                .structured_output,
+            DocumentProviderCapabilities::conservative("openrouter", "model").structured_output,
             StructuredOutputStrategy::JsonSchema
         );
     }

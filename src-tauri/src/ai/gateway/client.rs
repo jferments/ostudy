@@ -5,11 +5,8 @@ use serde_json::Value;
 use url::Url;
 
 use super::{
-    contracts::AiGatewayError,
-    errors::classify_reqwest_error,
-    metadata::is_openrouter_url,
-    request::ordinary_request,
-    response::read_json_response,
+    contracts::AiGatewayError, errors::classify_reqwest_error, metadata::is_openrouter_url,
+    request::ordinary_request, response::read_json_response,
 };
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;

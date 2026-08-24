@@ -3,6 +3,10 @@ use serde_json::json;
 
 use crate::{database::Database, error::CommandError};
 
+use super::super::super::{
+    catalog::{AuthMode, ProviderKind},
+    profiles::ProfileSnapshot,
+};
 use super::super::{
     contracts::{
         AiCapabilityDto, AiProviderProbeResultDto, CapabilitySource, CapabilityStatus,
@@ -10,10 +14,6 @@ use super::super::{
     },
     phases::passed_phase,
     repository,
-};
-use super::super::super::{
-    catalog::{AuthMode, ProviderKind},
-    profiles::ProfileSnapshot,
 };
 
 fn profile() -> ProfileSnapshot {

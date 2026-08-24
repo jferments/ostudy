@@ -4,13 +4,13 @@ use serde_json::Value;
 use crate::{database::Database, error::CommandError};
 
 use super::{
-    contracts::{
-        AiProviderProbeResultDto, CapabilityStatus, DocumentProbeEvidence, PersistedCapability,
-        ProbeOverallStatus, ADAPTER_REVISION, MAX_PERSISTED_RESULT_BYTES, RESULT_SCHEMA_VERSION,
-    },
     super::{
         profiles::{load_profile_snapshot, ProfileSnapshot},
         providers::ProviderModel,
+    },
+    contracts::{
+        AiProviderProbeResultDto, CapabilityStatus, DocumentProbeEvidence, PersistedCapability,
+        ProbeOverallStatus, ADAPTER_REVISION, MAX_PERSISTED_RESULT_BYTES, RESULT_SCHEMA_VERSION,
     },
 };
 

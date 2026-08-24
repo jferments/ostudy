@@ -35,9 +35,10 @@ pub(super) async fn request_json(
     request: JsonTaskRequest<'_>,
 ) -> Result<Value, CommandError> {
     let profile = task.profile();
-    let credential = runtime
-        .secrets
-        .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
+    let credential =
+        runtime
+            .secrets
+            .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())
@@ -507,7 +508,10 @@ mod tests {
 
     #[test]
     fn normalizes_optional_markdown_json_fences() {
-        assert_eq!(normalize_json_content("```json\n{\"ok\":true}\n```"), "{\"ok\":true}");
+        assert_eq!(
+            normalize_json_content("```json\n{\"ok\":true}\n```"),
+            "{\"ok\":true}"
+        );
         assert_eq!(normalize_json_content(" {\"ok\":true} "), "{\"ok\":true}");
     }
 

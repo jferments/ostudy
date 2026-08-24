@@ -12,8 +12,7 @@ use super::{
         secrets::{CredentialStatus, CredentialStorage},
     },
     contracts::{CreateAiProviderProfileInput, ProfileConfigurationStatus, StoredProfile},
-    defaults as profile_defaults,
-    policy as profile_policy,
+    defaults as profile_defaults, policy as profile_policy,
     projections::configuration_status_for_test,
     repository as profile_repository,
 };
@@ -41,9 +40,7 @@ fn create_test_profile(database: &Database, provider_kind: ProviderKind) -> Stri
     input.model_id = "test-model".to_string();
     let fields = profile_policy::validate_create_profile(&input).expect("profile should validate");
     database
-        .with_connection(|connection| {
-            profile_repository::create_profile(connection, input, fields)
-        })
+        .with_connection(|connection| profile_repository::create_profile(connection, input, fields))
         .expect("profile should create")
 }
 
@@ -86,9 +83,7 @@ fn replays_create_operations_without_duplicate_profiles() {
     input.display_name = "Replay profile".to_string();
     let fields = profile_policy::validate_create_profile(&input).unwrap();
     let first = database
-        .with_connection(|connection| {
-            profile_repository::create_profile(connection, input, fields)
-        })
+        .with_connection(|connection| profile_repository::create_profile(connection, input, fields))
         .expect("profile should create");
 
     let replay = database

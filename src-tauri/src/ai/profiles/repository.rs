@@ -7,12 +7,15 @@ use crate::{
 };
 
 use super::{
+    super::{
+        catalog::{AuthMode, ProviderKind},
+        secrets::CredentialStorage,
+    },
     contracts::{
         CreateAiProviderProfileInput, DeleteAiProviderProfileInput, ProfileSnapshot, StoredProfile,
         UpdateAiProviderProfileInput,
     },
     policy::{profile_changed, ValidatedProfileFields, MAX_ACTIVE_PROFILES},
-    super::{catalog::{AuthMode, ProviderKind}, secrets::{CredentialStorage}},
 };
 
 #[derive(Debug)]
@@ -194,11 +197,7 @@ pub(super) fn update_profile(
     input: UpdateAiProviderProfileInput,
     fields: ValidatedProfileFields,
 ) -> Result<String, CommandError> {
-    ensure_name_available(
-        connection,
-        &fields.normalized_name,
-        Some(&input.profile_id),
-    )?;
+    ensure_name_available(connection, &fields.normalized_name, Some(&input.profile_id))?;
     let now = unix_time_millis()?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -435,10 +434,7 @@ fn ensure_name_available(
     Ok(())
 }
 
-fn invalidate_probe_result(
-    connection: &Connection,
-    profile_id: &str,
-) -> Result<(), CommandError> {
+fn invalidate_probe_result(connection: &Connection, profile_id: &str) -> Result<(), CommandError> {
     connection
         .execute(
             "DELETE FROM ai_provider_probe_results WHERE profile_id = ?1",

@@ -56,12 +56,8 @@ fn cloud_auth_and_privacy_policy_remain_provider_scoped() {
 
 #[test]
 fn saved_credentials_block_origin_and_auth_boundary_changes() {
-    let next = validate_endpoint(
-        ProviderKind::LlamaCpp,
-        "http://127.0.0.1:9090/v1/",
-        false,
-    )
-    .unwrap();
+    let next =
+        validate_endpoint(ProviderKind::LlamaCpp, "http://127.0.0.1:9090/v1/", false).unwrap();
     let current = stored_profile(
         "http://127.0.0.1:8080/v1/",
         AuthMode::Bearer,
@@ -71,12 +67,8 @@ fn saved_credentials_block_origin_and_auth_boundary_changes() {
         .expect_err("origin change must require credential removal");
     assert_eq!(origin_failure.code, "ai_endpoint_has_credential");
 
-    let same = validate_endpoint(
-        ProviderKind::LlamaCpp,
-        "http://127.0.0.1:8080/v1/",
-        false,
-    )
-    .unwrap();
+    let same =
+        validate_endpoint(ProviderKind::LlamaCpp, "http://127.0.0.1:8080/v1/", false).unwrap();
     let current = stored_profile(
         "http://127.0.0.1:8080/v1/",
         AuthMode::Bearer,

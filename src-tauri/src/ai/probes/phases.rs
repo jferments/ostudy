@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use super::{
-    contracts::{ProbePhaseDto, ProbePhaseStatus},
     super::gateway::SafeAiError,
+    contracts::{ProbePhaseDto, ProbePhaseStatus},
 };
 
 pub(super) fn elapsed_ms(started: Instant) -> i64 {

@@ -16,10 +16,9 @@ pub(crate) use commands::{
     update_ai_provider_profile,
 };
 pub(crate) use contracts::{
-    AiProviderProfileDetailDto, AiProviderProfileSummaryDto, AiTaskDefaultsDto,
-    AiProviderProfileDetailDto as ProviderProfileDetailDto,
-    AiProviderProfileSummaryDto as ProviderProfileSummaryDto, ProfileRequestSnapshot,
-    ProfileSnapshot,
+    AiProviderProfileDetailDto, AiProviderProfileDetailDto as ProviderProfileDetailDto,
+    AiProviderProfileSummaryDto, AiProviderProfileSummaryDto as ProviderProfileSummaryDto,
+    AiTaskDefaultsDto, ProfileRequestSnapshot, ProfileSnapshot,
 };
 pub(crate) use repository::load_profile_snapshot;
 pub(crate) use service::{load_default_profile_request, load_profile_request};

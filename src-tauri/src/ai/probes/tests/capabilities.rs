@@ -1,11 +1,11 @@
-use super::super::{
-    capabilities::{build_capabilities, default_unknown_capabilities, CapabilityEvidence},
-    contracts::CapabilityStatus,
-};
 use super::super::super::{
     catalog::{AuthMode, ProviderKind},
     profiles::ProfileSnapshot,
     providers::ProviderProperties,
+};
+use super::super::{
+    capabilities::{build_capabilities, default_unknown_capabilities, CapabilityEvidence},
+    contracts::CapabilityStatus,
 };
 
 fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {

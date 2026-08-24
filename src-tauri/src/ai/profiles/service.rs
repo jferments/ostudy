@@ -1,15 +1,12 @@
-use crate::{
-    database::Database,
-    error::CommandError,
-    util::validate_entity_id,
-};
+use crate::{database::Database, error::CommandError, util::validate_entity_id};
 
 use super::{
+    super::{secrets::CredentialStorage, AiRuntimeState},
     contracts::{
         AiProviderProfileDetailDto, AiProviderProfileSummaryDto, AiTaskDefaultsDto,
-        ClearAiProviderCredentialInput, CreateAiProviderProfileInput,
-        DeleteAiProviderProfileInput, DeleteAiProviderProfileResultDto, ProfileRequestSnapshot,
-        SetAiProviderCredentialInput, SetAiTaskDefaultInput, UpdateAiProviderProfileInput,
+        ClearAiProviderCredentialInput, CreateAiProviderProfileInput, DeleteAiProviderProfileInput,
+        DeleteAiProviderProfileResultDto, ProfileRequestSnapshot, SetAiProviderCredentialInput,
+        SetAiTaskDefaultInput, UpdateAiProviderProfileInput,
     },
     defaults,
     policy::{
@@ -18,7 +15,6 @@ use super::{
     },
     projections::{build_detail, build_summary},
     repository,
-    super::{secrets::CredentialStorage, AiRuntimeState},
 };
 
 pub(super) fn list_profiles(
@@ -60,8 +56,8 @@ pub(super) fn create_profile(
         return load_detail(database, runtime, &profile_id);
     }
     let fields = validate_create_profile(&input)?;
-    let profile_id =
-        database.with_connection(|connection| repository::create_profile(connection, input, fields))?;
+    let profile_id = database
+        .with_connection(|connection| repository::create_profile(connection, input, fields))?;
     load_detail(database, runtime, &profile_id)
 }
 
@@ -82,15 +78,15 @@ pub(super) fn update_profile(
         return load_detail(database, runtime, &input.profile_id);
     }
 
-    let current =
-        database.with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
+    let current = database
+        .with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
     let fields = validate_update_profile(current.provider_kind, &input)?;
     ensure_trust_boundary_can_change(&current, &fields.endpoint, input.auth_mode)?;
-    let profile_id =
-        database.with_connection(|connection| repository::update_profile(connection, input, fields))?;
+    let profile_id = database
+        .with_connection(|connection| repository::update_profile(connection, input, fields))?;
     load_detail(database, runtime, &profile_id)
 }
 
@@ -114,8 +110,8 @@ pub(super) fn delete_profile(
         });
     }
 
-    let current =
-        database.with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
+    let current = database
+        .with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
@@ -146,8 +142,8 @@ pub(super) fn set_credential(
         return load_detail(database, runtime, &input.profile_id);
     }
 
-    let current =
-        database.with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
+    let current = database
+        .with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
@@ -195,8 +191,8 @@ pub(super) fn clear_credential(
         return load_detail(database, runtime, &input.profile_id);
     }
 
-    let current =
-        database.with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
+    let current = database
+        .with_connection(|connection| repository::load_profile(connection, &input.profile_id))?;
     if current.revision != input.revision {
         return Err(profile_changed());
     }
@@ -259,7 +255,8 @@ fn load_detail(
     runtime: &AiRuntimeState,
     profile_id: &str,
 ) -> Result<AiProviderProfileDetailDto, CommandError> {
-    let profile = database.with_connection(|connection| repository::load_profile(connection, profile_id))?;
+    let profile =
+        database.with_connection(|connection| repository::load_profile(connection, profile_id))?;
     build_detail(&profile, runtime)
 }
 

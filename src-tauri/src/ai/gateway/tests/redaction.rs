@@ -28,7 +28,10 @@ fn provider_secret_like_text_never_enters_safe_errors() {
     );
     assert_eq!(failure.safe.code, "ai_provider_unavailable");
     assert!(failure.safe.message.contains("DeepSeek"));
-    assert!(failure.safe.message.contains("Partial output was discarded"));
+    assert!(failure
+        .safe
+        .message
+        .contains("Partial output was discarded"));
     assert!(!failure.safe.message.contains("sentinel-secret"));
     assert!(!failure.safe.message.contains("authorization"));
 }
