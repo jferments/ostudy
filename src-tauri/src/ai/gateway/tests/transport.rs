@@ -243,7 +243,10 @@ data: [DONE]
     })
     .await
     .expect("the bounded retry should succeed");
-    assert_eq!(result.pointer("/choices/0/message/content"), Some(&json!("{}")));
+    assert_eq!(
+        result.pointer("/choices/0/message/content"),
+        Some(&json!("{}"))
+    );
 
     let (first, second) = server.join().expect("mock server should finish");
     assert!(first.contains("\"stream\":true"));
@@ -280,8 +283,7 @@ fn read_http_request(stream: &mut TcpStream) -> String {
             break;
         }
         bytes.extend_from_slice(&buffer[..count]);
-        let Some(header_end) = find_subsequence(&bytes, b"\r\n\r\n").map(|index| index + 4)
-        else {
+        let Some(header_end) = find_subsequence(&bytes, b"\r\n\r\n").map(|index| index + 4) else {
             continue;
         };
         let headers = String::from_utf8_lossy(&bytes[..header_end]);
