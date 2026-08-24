@@ -28,8 +28,6 @@ use crate::{
 };
 
 const MAX_DECK_DESCRIPTION_CHARS: usize = 2_000;
-const CANCELED_MESSAGE: &str =
-    "Flashcard generation was stopped. The document remains in Documents and can be retried.";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -57,19 +55,20 @@ pub async fn run_document_flashcard_generation(
     input: RetryPdfGenerationInput,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
     let document_id = input.document_id.clone();
-    let database_after = database.clone();
     let result = run_document_task(
         &document_id,
-        documents::retry_pdf_flashcard_generation(database, paths, runtime, render_runtime, input),
+        documents::retry_pdf_flashcard_generation(
+            database.inner(),
+            paths.inner(),
+            runtime.inner(),
+            render_runtime.inner().clone(),
+            input,
+        ),
     )
     .await;
     match result {
         Err(error) if error.code == "ai_request_canceled" => {
-            record_canceled_generation(database_after.inner(), &document_id);
-            Err(CommandError::new(
-                "document_generation_canceled",
-                CANCELED_MESSAGE,
-            ))
+            Err(documents::flashcard_generation_canceled_error())
         }
         other => other,
     }
@@ -90,9 +89,9 @@ pub fn open_document_source(
     paths: State<'_, AppPaths>,
     document_id: String,
 ) -> Result<(), CommandError> {
-    let source = documents::get_document_source_path(database, paths, document_id)?;
+    let source = documents::resolve_document_source(database.inner(), paths.inner(), &document_id)?;
     app.opener()
-        .open_path(source, None::<&str>)
+        .open_path(source.to_string_lossy().into_owned(), None::<&str>)
         .map_err(|error| {
             CommandError::new(
                 "document_open_failed",
@@ -346,48 +345,6 @@ pub(crate) fn reconcile_deleted_document_trash(paths: &AppPaths) -> Result<(), C
         }
     }
     sync_directory(&trash_root)
-}
-
-fn record_canceled_generation(database: &Database, document_id: &str) {
-    let now = unix_time_millis().unwrap_or_default();
-    let _ = database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'failed' ELSE 'archived' END,
-                     outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
-                     safe_error_code = 'document_generation_canceled',
-                     safe_error_message = ?1,
-                     updated_at = ?2,
-                     revision = revision + 1
-                 WHERE id = ?3",
-                params![CANCELED_MESSAGE, now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = 'canceled',
-                     safe_error_code = 'document_generation_canceled',
-                     safe_error_message = ?1,
-                     updated_at = ?2,
-                     completed_at = ?2
-                 WHERE id = (
-                     SELECT id FROM document_generation_jobs
-                     WHERE document_id = ?3
-                       AND state = 'failed'
-                       AND safe_error_code = 'ai_request_canceled'
-                     ORDER BY created_at DESC
-                     LIMIT 1
-                 )",
-                params![CANCELED_MESSAGE, now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction.commit().map_err(CommandError::database)
-    });
 }
 
 fn deleted_document_citation(

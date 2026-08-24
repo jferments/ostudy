@@ -298,6 +298,7 @@ for (const requiredPath of [
   "scripts/verify-ipc-contract.mjs",
   "scripts/verify-repository-policy.mjs",
   "scripts/verify-document-ai-boundaries.mjs",
+  "scripts/verify-document-processing-boundaries.mjs",
   "scripts/log-run.py",
   "tests/scripts/test_log_run.py",
   "tests/scripts/test_check_gate_selection.py",
@@ -305,6 +306,7 @@ for (const requiredPath of [
   "tests/scripts/test_agent_workflow_policy.py",
   "tests/scripts/test_qualification_result.py",
   "tests/scripts/test_document_ai_boundaries.py",
+  "tests/scripts/test_document_processing_boundaries.py",
   "docs/agents/EXECUTION-STATE.md",
   "docs/agents/FAILURE-TRIAGE.md",
   "src/ipc/diagnostics.ts",
@@ -312,9 +314,12 @@ for (const requiredPath of [
   "src/ipc/documents.ts",
   "src/screens/DocumentsScreen.tsx",
   "src-tauri/src/diagnostics.rs",
-  "src-tauri/src/documents.rs",
+  "src-tauri/src/documents/mod.rs",
+  "src-tauri/src/document_ingestion/mod.rs",
+  "src-tauri/src/anydoc_document_adapter/mod.rs",
+  "src-tauri/src/pdf_document_ingestion/mod.rs",
   "src-tauri/src/document_semantics.rs",
-  "src-tauri/src/pdf_backend.rs",
+  "src-tauri/src/pdf_backend/mod.rs",
   "src-tauri/src/pdf_render_backend.rs",
   "src-tauri/src/system_resources.rs",
   "src-tauri/src/document_backup.rs",
@@ -334,6 +339,7 @@ for (const requiredPath of [
   "docs/decisions/0018-structured-document-intelligence.md",
   "docs/decisions/0025-cross-platform-ocr-runtime.md",
   "docs/decisions/0041-modular-document-ai-architecture.md",
+  "docs/decisions/0044-modular-document-core-and-ingestion-ports.md",
 ]) {
   try {
     await access(join(root, requiredPath));

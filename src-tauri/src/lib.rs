@@ -36,7 +36,6 @@ mod document_delete_reconciliation;
 mod document_domain;
 mod document_generation;
 mod document_import;
-#[path = "document_adapters.rs"]
 mod document_ingestion;
 mod document_initial_generation;
 mod document_learning;
@@ -67,7 +66,6 @@ mod library_backup_commands;
 mod logging;
 mod paths;
 mod pdf_backend;
-#[path = "document_ingestion.rs"]
 mod pdf_document_ingestion;
 mod pdf_ocr_backend;
 #[cfg_attr(mobile, allow(dead_code))]
@@ -262,7 +260,7 @@ pub fn run() {
             ai::probes::list_ai_provider_models,
             ai::probes::test_ai_provider_profile,
             ai::probes::get_ai_provider_probe_result,
-            documents::list_documents,
+            documents::commands::list_documents,
             document_import::import_document,
             document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,
@@ -270,7 +268,7 @@ pub fn run() {
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
             document_operations::delete_document,
-            documents::set_document_archived,
+            documents::commands::set_document_archived,
             document_study_guide_commands::generate_document_study_guide,
             document_study_guide_commands::cancel_document_study_guide_generation,
             document_study_guide_commands::get_document_study_guide,
