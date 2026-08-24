@@ -287,8 +287,6 @@ fn build_semantic_windows_internal(
         if unit_numbers.is_empty() {
             unit_numbers.push(1);
         }
-        let unit_start = unit_numbers.first().copied().unwrap_or(1);
-        let unit_end = unit_numbers.last().copied().unwrap_or(unit_start);
         let asset_ids = selected
             .iter()
             .flat_map(|unit| unit.chunk.source_locator.asset_ids.iter().cloned())
@@ -300,12 +298,12 @@ fn build_semantic_windows_internal(
             .map(format_unit_for_model)
             .collect::<Vec<_>>()
             .join("\n\n");
+        let exact_source_units = format_source_unit_ranges(&unit_numbers);
         let source_text = format!(
-            "<ostudy-partition index=\"{}\" title=\"{}\" source-units=\"{}-{}\">\n{}\n</ostudy-partition>",
+            "<ostudy-partition index=\"{}\" title=\"{}\" source-units=\"{}\">\n{}\n</ostudy-partition>",
             partition_index,
             escape_attribute(partition_title),
-            unit_start,
-            unit_end,
+            exact_source_units,
             chunks_text
         );
         let source_locator = SourceLocator::with_evidence(
@@ -504,6 +502,34 @@ fn segment_source_units(units: &[i64], segment_index: usize, segment_count: usiz
     }
 }
 
+fn format_source_unit_ranges(units: &[i64]) -> String {
+    if units.is_empty() {
+        return String::new();
+    }
+    let mut ranges = Vec::new();
+    let mut start = units[0];
+    let mut end = units[0];
+    for unit in units.iter().copied().skip(1) {
+        if unit == end.saturating_add(1) {
+            end = unit;
+            continue;
+        }
+        ranges.push(format_source_unit_range(start, end));
+        start = unit;
+        end = unit;
+    }
+    ranges.push(format_source_unit_range(start, end));
+    ranges.join(",")
+}
+
+fn format_source_unit_range(start: i64, end: i64) -> String {
+    if start == end {
+        start.to_string()
+    } else {
+        format!("{start}-{end}")
+    }
+}
+
 fn format_unit_for_model(unit: &SourceUnit<'_>) -> String {
     let chunk = unit.chunk;
     let heading = chunk.heading_context.as_deref().unwrap_or("(no heading)");
@@ -578,6 +604,20 @@ mod tests {
         assert_eq!(windows.len(), 1);
         assert_eq!(windows[0].source_locator.unit_numbers, vec![1, 2, 3, 4]);
         assert_eq!((windows[0].page_start, windows[0].page_end), (1, 4));
+    }
+
+    #[test]
+    fn sparse_window_markup_preserves_exact_source_unit_membership() {
+        let windows = build_semantic_windows(
+            &[chunk(0, &[11], 200), chunk(1, &[13], 200), chunk(2, &[15, 16], 200)],
+            2_000,
+            20,
+            0,
+        );
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].source_locator.unit_numbers, vec![11, 13, 15, 16]);
+        assert!(windows[0].source_text.contains("source-units=\"11,13,15-16\""));
+        assert!(!windows[0].source_text.contains("source-units=\"11-16\""));
     }
 
     #[test]
