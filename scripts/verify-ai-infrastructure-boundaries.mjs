@@ -51,6 +51,21 @@ const requiredTestModules = {
   probes: ["capabilities", "phases", "repository", "runner"],
 };
 
+// Device synchronization and startup compatibility inspect or sanitize complete
+// database snapshots. They are reviewed schema-compatibility boundaries, not
+// alternate runtime profile/probe repositories.
+const profileCompatibilityOwners = new Set([
+  "src-tauri/src/device_sync/credentials.rs",
+  "src-tauri/src/device_sync/merge.rs",
+  "src-tauri/src/device_sync/mod.rs",
+  "src-tauri/src/device_sync/package.rs",
+  "src-tauri/src/startup/pre_public_transition.rs",
+]);
+const probeCompatibilityOwners = new Set([
+  "src-tauri/src/device_sync/credentials.rs",
+  "src-tauri/src/device_sync/package.rs",
+]);
+
 for (const packageName of Object.keys(requiredPackages)) {
   const legacy = join(aiRoot, `${packageName}.rs`);
   if (await exists(legacy)) {
@@ -144,19 +159,29 @@ for (const path of rustFiles) {
   }
 
   if (/\b(?:ai_provider_profiles|ai_profile_operations|ai_task_defaults)\b/u.test(source)) {
-    if (!isProfileRepository && !isProfileDefaults && !isTest) {
+    if (
+      !isProfileRepository
+      && !isProfileDefaults
+      && !profileCompatibilityOwners.has(relativePath)
+      && !isTest
+    ) {
       violations.push(
-        `${relativePath}: profile/default SQL belongs to profiles/repository.rs or profiles/defaults.rs`,
+        `${relativePath}: runtime profile/default SQL belongs to profiles/repository.rs or profiles/defaults.rs`,
       );
     }
   }
 
   if (/\b(?:ai_provider_probe_results|ai_provider_capabilities)\b/u.test(source)) {
-    const profileInvalidationOnly = isProfileRepository
-      && !/\b(?:SELECT|INSERT|UPDATE)\b[\s\S]*\b(?:ai_provider_probe_results|ai_provider_capabilities)\b/iu.test(source);
-    if (!isProbeRepository && !profileInvalidationOnly && !isTest) {
+    const readsOrWritesProbeEvidence = /(?:SELECT[^";]*FROM|INSERT\s+INTO|UPDATE)\s+(?:ai_provider_probe_results|ai_provider_capabilities)\b/iu.test(source);
+    const profileInvalidationOnly = isProfileRepository && !readsOrWritesProbeEvidence;
+    if (
+      !isProbeRepository
+      && !profileInvalidationOnly
+      && !probeCompatibilityOwners.has(relativePath)
+      && !isTest
+    ) {
       violations.push(
-        `${relativePath}: probe/capability SQL belongs to probes/repository.rs`,
+        `${relativePath}: runtime probe/capability SQL belongs to probes/repository.rs`,
       );
     }
   }
@@ -185,7 +210,7 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "OK   AI infrastructure: bounded gateway, profile, and probe packages with explicit network, command, persistence, and executable-test owners.",
+  "OK   AI infrastructure: bounded gateway, profile, and probe packages with explicit runtime network, command, persistence, executable-test, and audited compatibility owners.",
 );
 
 function productionSource(source) {
