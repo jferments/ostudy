@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use rusqlite::OptionalExtension;
 use serde_json::json;
 
 use crate::{
@@ -8,9 +7,10 @@ use crate::{
 };
 
 use super::super::{
-    catalog::ProviderKind,
+    catalog::{AiTaskKind, ProviderKind},
     endpoint_policy::{validate_endpoint, NetworkScope},
-    profiles::{load_profile_snapshot, ProfileSnapshot},
+    probes::load_document_probe_evidence,
+    profiles::{load_default_profile_request, ProfileSnapshot},
     secrets::CredentialStorage,
 };
 
@@ -100,108 +100,46 @@ impl DocumentTaskContext {
 pub(crate) fn load_document_task_context(
     database: &Database,
 ) -> Result<DocumentTaskContext, CommandError> {
-    database.with_connection(|connection| {
-        let profile_id: Option<Option<String>> = connection
-            .query_row(
-                "SELECT profile_id FROM ai_task_defaults WHERE task_kind = 'flashcard_generation'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(CommandError::database)?;
-        let profile_id = profile_id.flatten().ok_or_else(|| {
-            CommandError::new(
-                "ai_task_profile_required",
-                "Choose a default Flashcard generation profile in Settings → AI/LLM before analyzing a document.",
-            )
-        })?;
+    let request = load_default_profile_request(database, AiTaskKind::FlashcardGeneration)?;
+    let profile = request.profile;
+    profile.validate_for_provider_request()?;
+    let endpoint = validate_endpoint(
+        profile.provider_kind,
+        &profile.base_url,
+        profile.allow_insecure_http,
+    )?;
+    let evidence = load_document_probe_evidence(database, &profile)?;
+    if profile.provider_kind == ProviderKind::Openrouter
+        && (!evidence.probe_matches || !evidence.document_generation_schema_supported)
+    {
+        return Err(CommandError::new(
+            "ai_document_model_not_verified",
+            "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative flashcard structured-output contract; choose another model if that test fails.",
+        ));
+    }
+    let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
+        && evidence.probe_matches
+        && evidence.image_input_supported;
+    let requested_reasoning_effort = crate::settings::current_ai_reasoning_effort();
+    let capabilities = DocumentProviderCapabilities::conservative(
+        profile.provider_kind.as_str(),
+        &profile.model_id,
+    );
 
-        let profile = load_profile_snapshot(connection, &profile_id)?;
-        profile.validate_for_provider_request()?;
-        let storage: String = connection
-            .query_row(
-                "SELECT credential_storage FROM ai_provider_profiles WHERE id = ?1 AND deleted_at IS NULL",
-                [profile_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(CommandError::database)?;
-        let credential_storage = CredentialStorage::from_db(&storage)?;
-        let endpoint = validate_endpoint(
-            profile.provider_kind,
-            &profile.base_url,
-            profile.allow_insecure_http,
-        )?;
-
-        let probe_matches = connection
-            .query_row(
-                "SELECT EXISTS(
-                     SELECT 1 FROM ai_provider_probe_results
-                     WHERE profile_id = ?1
-                       AND profile_revision = ?2
-                       AND credential_epoch = ?3
-                       AND tested_model_id = ?4
-                       AND overall_status IN ('verified', 'partial')
-                 )",
-                rusqlite::params![
-                    profile.id,
-                    profile.revision,
-                    profile.credential_epoch,
-                    profile.model_id,
-                ],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|value| value != 0)
-            .map_err(CommandError::database)?;
-        let image_status: Option<String> = connection
-            .query_row(
-                "SELECT status FROM ai_provider_capabilities
-                 WHERE profile_id = ?1 AND capability_key = 'image_input'",
-                [profile.id.as_str()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(CommandError::database)?;
-        if profile.provider_kind == ProviderKind::Openrouter {
-            let document_schema_status: Option<String> = connection
-                .query_row(
-                    "SELECT status FROM ai_provider_capabilities
-                     WHERE profile_id = ?1 AND capability_key = 'document_generation_schema'",
-                    [profile.id.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(CommandError::database)?;
-            if !probe_matches || document_schema_status.as_deref() != Some("supported") {
-                return Err(CommandError::new(
-                    "ai_document_model_not_verified",
-                    "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative flashcard structured-output contract; choose another model if that test fails.",
-                ));
-            }
-        }
-        let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
-            && probe_matches
-            && image_status.as_deref() == Some("supported");
-        let requested_reasoning_effort = crate::settings::current_ai_reasoning_effort();
-        let capabilities = DocumentProviderCapabilities::conservative(
-            profile.provider_kind.as_str(),
-            &profile.model_id,
-        );
-
-        Ok(DocumentTaskContext {
-            profile_id: profile.id.clone(),
-            provider_kind: profile.provider_kind.as_str().to_string(),
-            model_id: profile.model_id.clone(),
-            profile_revision: profile.revision,
-            credential_epoch: profile.credential_epoch,
-            network_scope: network_scope_name(endpoint.scope).to_string(),
-            include_page_images,
-            requested_reasoning_effort,
-            reasoning_effort: "none".to_string(),
-            profile,
-            credential_storage,
-            capabilities,
-            usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
-        })
+    Ok(DocumentTaskContext {
+        profile_id: profile.id.clone(),
+        provider_kind: profile.provider_kind.as_str().to_string(),
+        model_id: profile.model_id.clone(),
+        profile_revision: profile.revision,
+        credential_epoch: profile.credential_epoch,
+        network_scope: network_scope_name(endpoint.scope).to_string(),
+        include_page_images,
+        requested_reasoning_effort,
+        reasoning_effort: "none".to_string(),
+        profile,
+        credential_storage: request.credential_storage,
+        capabilities,
+        usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
     })
 }
 
@@ -216,7 +154,10 @@ fn network_scope_name(scope: NetworkScope) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::document_provider::{DocumentReasoningCapabilities, StructuredOutputStrategy};
+    use crate::ai::{
+        catalog::AuthMode,
+        document_provider::{DocumentReasoningCapabilities, StructuredOutputStrategy},
+    };
 
     #[test]
     fn completion_budget_delegates_to_the_negotiated_provider_capability_model() {
@@ -225,7 +166,7 @@ mod tests {
             provider_kind: ProviderKind::Openrouter,
             base_url: "https://openrouter.ai/api/v1/".to_string(),
             model_id: "openai/example".to_string(),
-            auth_mode: super::super::super::catalog::AuthMode::Bearer,
+            auth_mode: AuthMode::Bearer,
             enabled: true,
             allow_insecure_http: false,
             require_zero_data_retention: false,
