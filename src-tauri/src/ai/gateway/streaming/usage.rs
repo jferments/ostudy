@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 
 use crate::task_cancellation::DocumentTaskUsageDelta;
 
-pub(super) fn safe_usage_envelope(value: &Value) -> Option<Value> {
+pub(crate) fn safe_usage_envelope(value: &Value) -> Option<Value> {
     let read = |pointers: &[&str]| {
         pointers.iter().find_map(|pointer| {
             value
@@ -93,7 +93,7 @@ pub(super) fn safe_usage_envelope(value: &Value) -> Option<Value> {
     }))
 }
 
-pub(super) fn usage_delta(usage: &Value) -> DocumentTaskUsageDelta {
+pub(crate) fn usage_delta(usage: &Value) -> DocumentTaskUsageDelta {
     DocumentTaskUsageDelta {
         prompt_tokens: nonnegative_integer(usage.get("prompt_tokens")),
         completion_tokens: nonnegative_integer(usage.get("completion_tokens")),

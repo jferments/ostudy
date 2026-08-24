@@ -1,18 +1,16 @@
 //! Provider verification, capability evidence, and model discovery.
+//!
+//! Serialized probe responses remain owned by `contracts::AiProviderProbeResultDto`;
+//! the package facade exposes only the command module and typed capability reads.
 
 mod capabilities;
-mod commands;
+pub(crate) mod commands;
 mod contracts;
 mod phases;
 mod repository;
 mod runner;
 
-pub(crate) use commands::{
-    get_ai_provider_probe_result, list_ai_provider_models, test_ai_provider_profile,
-};
-pub(crate) use contracts::{
-    AiProviderProbeResultDto, CapabilityStatus, DocumentProbeEvidence, PersistedCapability,
-};
+pub(crate) use contracts::CapabilityStatus;
 pub(crate) use repository::{load_capability_records, load_document_probe_evidence};
 
 #[cfg(test)]

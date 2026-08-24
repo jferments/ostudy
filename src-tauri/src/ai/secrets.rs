@@ -83,6 +83,7 @@ pub struct CredentialStatusDto {
 }
 
 pub type SecretValue = SecretBytes;
+pub(crate) type ResolvedCredential = SecretValue;
 
 pub struct SecretManager {
     secure: Arc<dyn SecureSecretStore>,

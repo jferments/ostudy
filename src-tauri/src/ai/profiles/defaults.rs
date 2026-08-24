@@ -90,7 +90,7 @@ pub(super) fn clear_profile_defaults(
 }
 
 pub(crate) fn load_default_profile_request(
-    connection: &Connection,
+    connection: &mut Connection,
 ) -> Result<ProfileRequestSnapshot, CommandError> {
     let profile_id: Option<Option<String>> = connection
         .query_row(

@@ -7,28 +7,28 @@ use crate::ai::gateway::{
     metadata::{safe_json_string, MAX_SAFE_PROVIDER_METADATA_CHARS},
 };
 
-pub(super) struct SseChatAccumulator {
+pub(crate) struct SseChatAccumulator {
     pending: Vec<u8>,
-    pub(super) content: String,
-    pub(super) tool_name: Option<String>,
-    pub(super) tool_arguments: String,
-    pub(super) finish_reason: Option<String>,
-    pub(super) usage: Option<Value>,
-    pub(super) reasoning_bytes: usize,
-    pub(super) comment_events: u64,
+    pub(crate) content: String,
+    pub(crate) tool_name: Option<String>,
+    pub(crate) tool_arguments: String,
+    pub(crate) finish_reason: Option<String>,
+    pub(crate) usage: Option<Value>,
+    pub(crate) reasoning_bytes: usize,
+    pub(crate) comment_events: u64,
     wire_bytes: usize,
     maximum_content_bytes: usize,
     maximum_wire_bytes: usize,
-    pub(super) done: bool,
+    pub(crate) done: bool,
     openrouter: bool,
-    pub(super) generation_id: Option<String>,
+    pub(crate) generation_id: Option<String>,
     retry_after_seconds: Option<u64>,
-    pub(super) upstream_provider: Option<String>,
-    pub(super) model: Option<String>,
+    pub(crate) upstream_provider: Option<String>,
+    pub(crate) model: Option<String>,
 }
 
 impl SseChatAccumulator {
-    pub(super) fn new(maximum_content_bytes: usize, maximum_wire_bytes: usize) -> Self {
+    pub(crate) fn new(maximum_content_bytes: usize, maximum_wire_bytes: usize) -> Self {
         Self {
             pending: Vec::new(),
             content: String::new(),
@@ -50,7 +50,7 @@ impl SseChatAccumulator {
         }
     }
 
-    pub(super) fn for_request(
+    pub(crate) fn for_request(
         maximum_content_bytes: usize,
         maximum_wire_bytes: usize,
         openrouter: bool,
@@ -64,7 +64,7 @@ impl SseChatAccumulator {
         stream
     }
 
-    pub(super) fn push_bytes(&mut self, bytes: &[u8]) -> Result<(), AiGatewayError> {
+    pub(crate) fn push_bytes(&mut self, bytes: &[u8]) -> Result<(), AiGatewayError> {
         self.wire_bytes = self.wire_bytes.saturating_add(bytes.len());
         if self.wire_bytes > self.maximum_wire_bytes {
             return Err(error(
@@ -89,7 +89,7 @@ impl SseChatAccumulator {
         Ok(())
     }
 
-    pub(super) fn finish(&mut self) -> Result<(), AiGatewayError> {
+    pub(crate) fn finish(&mut self) -> Result<(), AiGatewayError> {
         if !self.pending.is_empty() && !self.done {
             let line = std::mem::take(&mut self.pending);
             self.process_line(&line)?;
@@ -97,7 +97,7 @@ impl SseChatAccumulator {
         Ok(())
     }
 
-    pub(super) fn model_progress_bytes(&self) -> usize {
+    pub(crate) fn model_progress_bytes(&self) -> usize {
         self.content
             .len()
             .saturating_add(self.tool_arguments.len())

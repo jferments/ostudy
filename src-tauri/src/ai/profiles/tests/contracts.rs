@@ -1,9 +1,8 @@
 use serde_json::json;
 
-use super::super::{
-    super::super::catalog::{AuthMode, ProviderKind},
-    contracts::{CreateAiProviderProfileInput, ProfileConfigurationStatus},
-};
+use crate::ai::catalog::{AuthMode, ProviderKind};
+
+use super::super::contracts::{CreateAiProviderProfileInput, ProfileConfigurationStatus};
 
 #[test]
 fn create_input_keeps_camel_case_and_rejects_unknown_fields() {
