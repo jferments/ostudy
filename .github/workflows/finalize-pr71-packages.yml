@@ -1,0 +1,500 @@
+name: PR 71 one-shot package finalization
+
+on:
+  push:
+    branches:
+      - agent/document-ingestion-modularization
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr71-package-finalization
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    steps:
+      - name: Check out the implementation branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/document-ingestion-modularization
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose pinned toolchains
+        shell: bash
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Finalize physical packages and architecture contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          move_package() {
+            local source="$1"
+            local destination="$2"
+            if [[ -d "$source" ]]; then
+              if [[ -e "$destination" ]]; then
+                echo "Destination already exists while source remains: $destination" >&2
+                exit 1
+              fi
+              git mv -- "$source" "$destination"
+            fi
+            [[ -d "$destination" ]] || {
+              echo "Required package is missing after move: $destination" >&2
+              exit 1
+            }
+          }
+
+          move_package src-tauri/src/document_core src-tauri/src/documents
+          move_package src-tauri/src/document_ingestion_core src-tauri/src/document_ingestion
+          move_package src-tauri/src/anydoc_document_adapter_core src-tauri/src/anydoc_document_adapter
+          move_package src-tauri/src/pdf_document_ingestion_core src-tauri/src/pdf_document_ingestion
+          move_package src-tauri/src/pdf_backend_core src-tauri/src/pdf_backend
+
+          git rm --ignore-unmatch -- \
+            src-tauri/src/documents.rs \
+            src-tauri/src/document_adapters.rs \
+            src-tauri/src/document_ingestion.rs \
+            src-tauri/src/anydoc_document_adapter.rs \
+            src-tauri/src/pdf_backend.rs
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          lib = root / 'src-tauri/src/lib.rs'
+          text = lib.read_text(encoding='utf-8')
+          text = text.replace('#[path = "document_adapters.rs"]\nmod document_ingestion;', 'mod document_ingestion;')
+          text = text.replace('#[path = "document_ingestion.rs"]\nmod pdf_document_ingestion;', 'mod pdf_document_ingestion;')
+          for module in ('anydoc_document_adapter', 'document_ingestion', 'documents', 'pdf_backend', 'pdf_document_ingestion'):
+              if not re.search(rf'(?m)^mod {module};$', text):
+                  raise SystemExit(f'lib.rs is missing normal module declaration: {module}')
+          if re.search(r'#\s*\[\s*path\s*=\s*["\'](?:document_adapters|document_ingestion|documents|pdf_backend|anydoc_document_adapter)', text):
+              raise SystemExit('legacy path-attributed document module remains in lib.rs')
+          lib.write_text(text, encoding='utf-8')
+
+          registry = root / 'src-tauri/src/document_ingestion/registry.rs'
+          source = registry.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r'    fn adapter_for_format\(&self, format: DocumentFormat\) -> Option<&dyn DocumentAdapter> \{.*?\n    \}\n\n(?=    fn identity_for_format)',
+              re.S,
+          )
+          replacement = '''    fn adapter_for_format(&self, format: DocumentFormat) -> Option<&dyn DocumentAdapter> {
+              match format {
+                  DocumentFormat::Pdf => Some(&self.native_pdf),
+                  DocumentFormat::Doc
+                  | DocumentFormat::Docx
+                  | DocumentFormat::Ppt
+                  | DocumentFormat::Pptx
+                  | DocumentFormat::Odt
+                  | DocumentFormat::Odp
+                  | DocumentFormat::Rtf
+                  | DocumentFormat::Epub
+                  | DocumentFormat::Excel
+                  | DocumentFormat::Ods
+                  | DocumentFormat::Csv => Some(&self.anydoc),
+                  _ => None,
+              }
+          }
+
+          '''
+          updated, count = pattern.subn(replacement, source, count=1)
+          if count != 1:
+              raise SystemExit('could not replace first-match document adapter selection')
+          registry.write_text(updated, encoding='utf-8')
+
+          manifest = root / 'scripts/verify-project-manifests.mjs'
+          source = manifest.read_text(encoding='utf-8')
+          source = source.replace(
+              '  "scripts/verify-document-ai-boundaries.mjs",\n',
+              '  "scripts/verify-document-ai-boundaries.mjs",\n  "scripts/verify-document-processing-boundaries.mjs",\n',
+          )
+          source = source.replace(
+              '  "tests/scripts/test_document_ai_boundaries.py",\n',
+              '  "tests/scripts/test_document_ai_boundaries.py",\n  "tests/scripts/test_document_processing_boundaries.py",\n',
+          )
+          source = source.replace(
+              '  "src-tauri/src/documents.rs",\n',
+              '  "src-tauri/src/documents/mod.rs",\n  "src-tauri/src/document_ingestion/mod.rs",\n  "src-tauri/src/anydoc_document_adapter/mod.rs",\n  "src-tauri/src/pdf_document_ingestion/mod.rs",\n',
+          )
+          source = source.replace('  "src-tauri/src/pdf_backend.rs",\n', '  "src-tauri/src/pdf_backend/mod.rs",\n')
+          source = source.replace(
+              '  "docs/decisions/0041-modular-document-ai-architecture.md",\n',
+              '  "docs/decisions/0041-modular-document-ai-architecture.md",\n  "docs/decisions/0044-modular-document-core-and-ingestion-ports.md",\n',
+          )
+          required = (
+              'scripts/verify-document-processing-boundaries.mjs',
+              'tests/scripts/test_document_processing_boundaries.py',
+              'src-tauri/src/documents/mod.rs',
+              'src-tauri/src/document_ingestion/mod.rs',
+              'src-tauri/src/anydoc_document_adapter/mod.rs',
+              'src-tauri/src/pdf_document_ingestion/mod.rs',
+              'src-tauri/src/pdf_backend/mod.rs',
+          )
+          for value in required:
+              if source.count(f'"{value}"') != 1:
+                  raise SystemExit(f'manifest path must occur exactly once: {value}')
+          manifest.write_text(source, encoding='utf-8')
+
+          check_static = root / 'scripts/check-static.sh'
+          source = check_static.read_text(encoding='utf-8')
+          needle = 'node "$SCRIPT_DIR/verify-document-ai-boundaries.mjs"\n'
+          addition = needle + 'node "$SCRIPT_DIR/verify-document-processing-boundaries.mjs"\n'
+          if 'verify-document-processing-boundaries.mjs' not in source:
+              if needle not in source:
+                  raise SystemExit('could not locate document-AI verifier hook')
+              source = source.replace(needle, addition, 1)
+          check_static.write_text(source, encoding='utf-8')
+
+          replacements = {
+              'src-tauri/src/document_core/': 'src-tauri/src/documents/',
+              'src-tauri/src/document_ingestion_core/': 'src-tauri/src/document_ingestion/',
+              'src-tauri/src/anydoc_document_adapter_core/': 'src-tauri/src/anydoc_document_adapter/',
+              'src-tauri/src/pdf_document_ingestion_core/': 'src-tauri/src/pdf_document_ingestion/',
+              'src-tauri/src/pdf_backend_core/': 'src-tauri/src/pdf_backend/',
+              '`document_core/`': '`documents/`',
+              '`document_ingestion_core/`': '`document_ingestion/`',
+              '`anydoc_document_adapter_core/`': '`anydoc_document_adapter/`',
+              '`pdf_document_ingestion_core/`': '`pdf_document_ingestion/`',
+              '`pdf_backend_core/`': '`pdf_backend/`',
+          }
+          for path in (root / 'docs').rglob('*.md'):
+              content = path.read_text(encoding='utf-8')
+              updated = content
+              for old, new in replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != content:
+                  path.write_text(updated, encoding='utf-8')
+          PY
+
+          cat > scripts/verify-document-processing-boundaries.mjs <<'EOF'
+          #!/usr/bin/env node
+
+          import { access, readFile, readdir, stat } from "node:fs/promises";
+          import { join, relative, resolve } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const ownRoot = fileURLToPath(new URL("..", import.meta.url));
+          const requestedRoot = process.argv.find((argument) => argument.startsWith("--root="));
+          const root = resolve(requestedRoot ? requestedRoot.slice("--root=".length) : ownRoot);
+          const sourceRoot = join(root, "src-tauri", "src");
+          const violations = [];
+          const packageNames = [
+            "documents",
+            "document_ingestion",
+            "anydoc_document_adapter",
+            "pdf_document_ingestion",
+            "pdf_backend",
+          ];
+          const forbiddenLegacyFiles = [
+            "documents.rs",
+            "document_adapters.rs",
+            "document_ingestion.rs",
+            "anydoc_document_adapter.rs",
+            "pdf_backend.rs",
+          ];
+          const forbiddenTransitionalDirectories = [
+            "document_core",
+            "document_ingestion_core",
+            "anydoc_document_adapter_core",
+            "pdf_document_ingestion_core",
+            "pdf_backend_core",
+          ];
+          const maximumModuleBytes = 64 * 1024;
+
+          const libPath = join(sourceRoot, "lib.rs");
+          if (!(await exists(libPath))) {
+            violations.push("src-tauri/src/lib.rs is missing");
+          } else {
+            const lib = productionSource(await readFile(libPath, "utf8"));
+            for (const moduleName of packageNames) {
+              if (!new RegExp(`^mod\\s+${escapeRegExp(moduleName)}\\s*;$`, "mu").test(lib)) {
+                violations.push(`src-tauri/src/lib.rs: missing normal module declaration for ${moduleName}`);
+              }
+            }
+            if (/#\s*\[\s*path\s*=/u.test(lib)) {
+              for (const moduleName of packageNames) {
+                if (new RegExp(`#\\s*\\[\\s*path[^\\]]*(?:${escapeRegExp(moduleName)}|document_adapters)`, "u").test(lib)) {
+                  violations.push(`src-tauri/src/lib.rs: path-attributed alias for ${moduleName} is forbidden`);
+                }
+              }
+            }
+          }
+
+          for (const name of forbiddenLegacyFiles) {
+            const path = join(sourceRoot, name);
+            if (await exists(path)) {
+              violations.push(`${display(path)}: retired root monolith/facade must not exist`);
+            }
+          }
+          for (const name of forbiddenTransitionalDirectories) {
+            const path = join(sourceRoot, name);
+            if (await exists(path)) {
+              violations.push(`${display(path)}: transitional package name must not exist`);
+            }
+          }
+
+          for (const packageName of packageNames) {
+            const packageRoot = join(sourceRoot, packageName);
+            const facade = join(packageRoot, "mod.rs");
+            if (!(await exists(facade))) {
+              violations.push(`${display(facade)}: required package facade is missing`);
+              continue;
+            }
+            for (const path of await rustFiles(packageRoot)) {
+              const metadata = await stat(path);
+              if (metadata.size > maximumModuleBytes) {
+                violations.push(
+                  `${display(path)}: ${metadata.size} bytes exceeds the ${maximumModuleBytes}-byte anti-monolith limit`,
+                );
+              }
+            }
+          }
+
+          for (const path of await rustFiles(sourceRoot)) {
+            const source = productionSource(await readFile(path, "utf8"));
+            const normalized = display(path);
+            if (
+              /(?:^|\n)\s*use\s+anydoc(?:::|\s*\{)|\banydoc::(?:model|to_document|Format|ConvertError)\b/u.test(source) &&
+              !normalized.startsWith("src-tauri/src/anydoc_document_adapter/")
+            ) {
+              violations.push(`${normalized}: third-party AnyDoc types must remain inside the AnyDoc package`);
+            }
+          }
+
+          const contractsPath = join(sourceRoot, "document_ingestion", "contracts.rs");
+          if (await exists(contractsPath)) {
+            const contracts = productionSource(await readFile(contractsPath, "utf8"));
+            for (const required of [
+              "trait DocumentAdapter",
+              "CanonicalIngestion",
+              "DocumentFormat",
+              "IngestionProgressSink",
+            ]) {
+              if (!contracts.includes(required)) {
+                violations.push(`${display(contractsPath)}: missing app-owned adapter contract ${required}`);
+              }
+            }
+            if (/\banydoc::|\boxidize_pdf::|\bPdfDocument\b/u.test(contracts)) {
+              violations.push(`${display(contractsPath)}: backend library types leaked into the app-owned port`);
+            }
+          }
+
+          const registryPath = join(sourceRoot, "document_ingestion", "registry.rs");
+          if (await exists(registryPath)) {
+            const registry = productionSource(await readFile(registryPath, "utf8"));
+            for (const required of ["match format", "DocumentFormat::Pdf", "DocumentFormat::Docx", "DocumentFormat::Csv"]) {
+              if (!registry.includes(required)) {
+                violations.push(`${display(registryPath)}: missing explicit registry routing marker ${required}`);
+              }
+            }
+            if (/\.find\s*\(\s*\|adapter\|\s*adapter\.supports\s*\(\s*format\s*\)\s*\)/u.test(registry)) {
+              violations.push(`${display(registryPath)}: first-supporting-backend selection is forbidden`);
+            }
+          }
+
+          const ingestionRoot = join(sourceRoot, "document_ingestion");
+          if (await exists(ingestionRoot)) {
+            for (const path of await rustFiles(ingestionRoot)) {
+              const source = productionSource(await readFile(path, "utf8"));
+              for (const forbidden of [
+                "document_intelligence",
+                "document_learning_plan",
+                "document_study_guide",
+                "document_topic_links",
+              ]) {
+                if (source.includes(forbidden)) {
+                  violations.push(`${display(path)}: ingestion must not depend on downstream ${forbidden}`);
+                }
+              }
+            }
+          }
+
+          if (violations.length > 0) {
+            console.error("Document-processing architecture verification failed:");
+            for (const violation of violations) console.error(`  - ${violation}`);
+            process.exit(1);
+          }
+
+          let moduleCount = 0;
+          for (const packageName of packageNames) {
+            moduleCount += (await rustFiles(join(sourceRoot, packageName))).length;
+          }
+          console.log(
+            `OK   Document processing: ${packageNames.length} physical packages and ${moduleCount} bounded Rust modules; app-owned adapter routing and backend isolation are enforced.`,
+          );
+
+          function productionSource(source) {
+            const testMarker = source.search(/\n\s*#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]/u);
+            return testMarker === -1 ? source : source.slice(0, testMarker);
+          }
+
+          async function rustFiles(directory) {
+            if (!(await exists(directory))) return [];
+            const output = [];
+            for (const entry of await readdir(directory, { withFileTypes: true })) {
+              const path = join(directory, entry.name);
+              if (entry.isDirectory()) output.push(...(await rustFiles(path)));
+              else if (entry.isFile() && entry.name.endsWith(".rs")) output.push(path);
+            }
+            return output;
+          }
+
+          function display(path) {
+            return relative(root, path).replaceAll("\\", "/");
+          }
+
+          function escapeRegExp(value) {
+            return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+          }
+
+          async function exists(path) {
+            try {
+              await access(path);
+              return true;
+            } catch {
+              return false;
+            }
+          }
+          EOF
+          chmod +x scripts/verify-document-processing-boundaries.mjs
+
+          cat > tests/scripts/test_document_processing_boundaries.py <<'EOF'
+          import subprocess
+          import tempfile
+          import unittest
+          from pathlib import Path
+
+
+          REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+          VERIFIER = REPOSITORY_ROOT / "scripts" / "verify-document-processing-boundaries.mjs"
+          PACKAGES = [
+              "documents",
+              "document_ingestion",
+              "anydoc_document_adapter",
+              "pdf_document_ingestion",
+              "pdf_backend",
+          ]
+
+
+          class DocumentProcessingBoundaryVerifierTests(unittest.TestCase):
+              def setUp(self) -> None:
+                  self.temporary = tempfile.TemporaryDirectory()
+                  self.root = Path(self.temporary.name)
+                  self.source_root = self.root / "src-tauri" / "src"
+                  self.source_root.mkdir(parents=True)
+                  (self.source_root / "lib.rs").write_text(
+                      "\n".join(f"mod {name};" for name in PACKAGES) + "\n",
+                      encoding="utf-8",
+                  )
+                  for name in PACKAGES:
+                      package = self.source_root / name
+                      package.mkdir()
+                      (package / "mod.rs").write_text("// package facade\n", encoding="utf-8")
+                  (self.source_root / "document_ingestion" / "contracts.rs").write_text(
+                      "\n".join(
+                          [
+                              "use crate::document_canonical::CanonicalIngestion;",
+                              "use crate::document_domain::DocumentFormat;",
+                              "trait IngestionProgressSink {}",
+                              "trait DocumentAdapter { fn supports(&self, format: DocumentFormat) -> bool; }",
+                          ]
+                      )
+                      + "\n",
+                      encoding="utf-8",
+                  )
+                  (self.source_root / "document_ingestion" / "registry.rs").write_text(
+                      "fn route(format: DocumentFormat) { match format { DocumentFormat::Pdf => {}, DocumentFormat::Docx => {}, DocumentFormat::Csv => {}, _ => {} } }\n",
+                      encoding="utf-8",
+                  )
+
+              def tearDown(self) -> None:
+                  self.temporary.cleanup()
+
+              def run_verifier(self) -> subprocess.CompletedProcess[str]:
+                  return subprocess.run(
+                      ["node", str(VERIFIER), f"--root={self.root}"],
+                      check=False,
+                      capture_output=True,
+                      text=True,
+                  )
+
+              def test_accepts_physical_packages_and_explicit_routing(self) -> None:
+                  result = self.run_verifier()
+                  self.assertEqual(result.returncode, 0, result.stderr)
+                  self.assertIn("Document processing", result.stdout)
+
+              def test_rejects_a_retired_root_facade(self) -> None:
+                  (self.source_root / "documents.rs").write_text("// facade\n", encoding="utf-8")
+                  result = self.run_verifier()
+                  self.assertNotEqual(result.returncode, 0)
+                  self.assertIn("retired root monolith/facade", result.stderr)
+
+              def test_rejects_a_path_attributed_alias(self) -> None:
+                  (self.source_root / "lib.rs").write_text(
+                      '#[path = "document_adapters.rs"]\nmod document_ingestion;\n'
+                      + "\n".join(f"mod {name};" for name in PACKAGES if name != "document_ingestion")
+                      + "\n",
+                      encoding="utf-8",
+                  )
+                  result = self.run_verifier()
+                  self.assertNotEqual(result.returncode, 0)
+                  self.assertIn("path-attributed alias", result.stderr)
+
+              def test_rejects_anydoc_types_outside_the_backend_package(self) -> None:
+                  (self.source_root / "documents" / "repository.rs").write_text(
+                      "use anydoc::model::Document;\n", encoding="utf-8"
+                  )
+                  result = self.run_verifier()
+                  self.assertNotEqual(result.returncode, 0)
+                  self.assertIn("third-party AnyDoc types", result.stderr)
+
+              def test_rejects_first_supporting_backend_selection(self) -> None:
+                  (self.source_root / "document_ingestion" / "registry.rs").write_text(
+                      "fn route(format: DocumentFormat) { adapters.into_iter().find(|adapter| adapter.supports(format)); }\n",
+                      encoding="utf-8",
+                  )
+                  result = self.run_verifier()
+                  self.assertNotEqual(result.returncode, 0)
+                  self.assertIn("first-supporting-backend", result.stderr)
+
+              def test_rejects_a_replacement_monolith(self) -> None:
+                  (self.source_root / "pdf_backend" / "extraction.rs").write_text(
+                      "x" * (64 * 1024 + 1), encoding="utf-8"
+                  )
+                  result = self.run_verifier()
+                  self.assertNotEqual(result.returncode, 0)
+                  self.assertIn("anti-monolith limit", result.stderr)
+
+
+          if __name__ == "__main__":
+              unittest.main()
+          EOF
+
+          node scripts/verify-document-processing-boundaries.mjs
+          python3 -m unittest tests.scripts.test_document_processing_boundaries
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+          git rm --ignore-unmatch -- \
+            .github/workflows/format-pr71.yml \
+            .github/workflows/format-pr71-auto.yml \
+            .github/workflows/finalize-pr71-packages.yml \
+            tmp-noop
+          git config user.name "ostudy maintenance"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add -- src-tauri/src scripts tests/scripts docs
+          git commit -m "refactor(documents): finalize physical processing packages"
+          git fetch origin agent/document-ingestion-modularization
+          git rebase origin/agent/document-ingestion-modularization
+          git push origin HEAD:agent/document-ingestion-modularization
+
+      - name: Compile the finalized Rust package graph
+        shell: bash
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
