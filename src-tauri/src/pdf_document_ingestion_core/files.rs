@@ -12,10 +12,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-pub(crate) fn write_replacing_file(
-    destination: &Path,
-    bytes: &[u8],
-) -> Result<(), CommandError> {
+pub(crate) fn write_replacing_file(destination: &Path, bytes: &[u8]) -> Result<(), CommandError> {
     let parent = destination.parent().ok_or_else(|| {
         CommandError::new(
             "invalid_document_path",

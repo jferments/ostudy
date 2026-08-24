@@ -1,11 +1,6 @@
 use tauri::State;
 
-use crate::{
-    database::Database,
-    error::CommandError,
-    paths::AppPaths,
-    util::validate_entity_id,
-};
+use crate::{database::Database, error::CommandError, paths::AppPaths, util::validate_entity_id};
 
 use super::repository;
 
@@ -16,9 +11,8 @@ pub fn get_document_source_path(
     document_id: String,
 ) -> Result<String, CommandError> {
     validate_entity_id(&document_id, "document")?;
-    let stored = database.with_connection(|connection| {
-        repository::load_document(connection, &document_id)
-    })?;
+    let stored = database
+        .with_connection(|connection| repository::load_document(connection, &document_id))?;
     let source = paths.resolve_relative(&stored.source_relative_path);
     if !source.is_file() {
         return Err(CommandError::new(

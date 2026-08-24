@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use crate::{
     document_canonical::{
@@ -16,8 +19,8 @@ use crate::{
 use super::super::{
     contracts::DocumentAdapterIdentity,
     support::{
-        format_source_units, hash_file, normalize_optional_semantic_text,
-        normalize_semantic_text, to_i64,
+        format_source_units, hash_file, normalize_optional_semantic_text, normalize_semantic_text,
+        to_i64,
     },
 };
 
@@ -276,7 +279,10 @@ mod tests {
 
     #[test]
     fn visual_semantic_types_request_grounding() {
-        assert!(chunk_needs_visual_grounding(&["table".to_string()], "values"));
+        assert!(chunk_needs_visual_grounding(
+            &["table".to_string()],
+            "values"
+        ));
         assert!(chunk_needs_visual_grounding(
             &["paragraph".to_string()],
             "source has no extractable structured text"

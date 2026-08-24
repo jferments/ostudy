@@ -1,17 +1,15 @@
 use std::{fs::File, io::Read, path::Path};
 
 use crate::{
-    document_domain::DocumentFormat,
-    error::CommandError,
-    pdf_document_ingestion,
+    document_domain::DocumentFormat, error::CommandError, pdf_document_ingestion,
     pdf_render_backend::PdfRenderRuntime,
 };
 
-use super::canonicalize::canonicalize_pdf;
 use super::super::contracts::{
     AdapterExtraction, AdapterRequest, CompatibilityProjection, DocumentAdapter,
     DocumentAdapterIdentity, IngestionProgress, IngestionProgressSink,
 };
+use super::canonicalize::canonicalize_pdf;
 
 pub(crate) const PDF_ADAPTER_BACKEND: &str = "pdf-canonical-adapter-v1";
 
@@ -50,10 +48,7 @@ impl DocumentAdapter for NativePdfAdapter<'_> {
         format == DocumentFormat::Pdf
     }
 
-    fn identity(
-        &self,
-        format: DocumentFormat,
-    ) -> Result<DocumentAdapterIdentity, CommandError> {
+    fn identity(&self, format: DocumentFormat) -> Result<DocumentAdapterIdentity, CommandError> {
         if !self.supports(format) {
             return Err(CommandError::new(
                 "document_ingestion_adapter_unavailable",

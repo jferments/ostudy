@@ -3,11 +3,8 @@ use std::collections::BTreeSet;
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 
 use crate::{
-    database::Database,
-    document_canonical::CanonicalAssetRole,
-    document_canonical_store,
-    error::CommandError,
-    util::unix_time_millis,
+    database::Database, document_canonical::CanonicalAssetRole, document_canonical_store,
+    error::CommandError, util::unix_time_millis,
 };
 
 use super::{

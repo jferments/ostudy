@@ -1,13 +1,13 @@
 use rusqlite::params;
 
 use crate::{
-    database::Database,
-    error::CommandError,
-    pdf_document_ingestion,
-    util::unix_time_millis,
+    database::Database, error::CommandError, pdf_document_ingestion, util::unix_time_millis,
 };
 
-use super::{contracts::IngestionProgress, support::{require_one, to_i64}};
+use super::{
+    contracts::IngestionProgress,
+    support::{require_one, to_i64},
+};
 
 pub(crate) fn update_ingestion_progress(
     database: &Database,

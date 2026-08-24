@@ -6,10 +6,10 @@
 #[path = "document_core/mod.rs"]
 mod implementation;
 
+pub(crate) use implementation::{
+    get_document_source_path, reconcile_startup, retry_pdf_flashcard_generation,
+};
 pub use implementation::{
     list_documents, set_document_archived, DocumentDto, DocumentGenerationResultDto,
     RetryPdfGenerationInput, SetDocumentArchivedInput,
-};
-pub(crate) use implementation::{
-    get_document_source_path, reconcile_startup, retry_pdf_flashcard_generation,
 };

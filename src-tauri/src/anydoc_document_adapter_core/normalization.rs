@@ -4,10 +4,7 @@ use anydoc::model::{
     AssetId, Block, CellSlot, Document, ImageSource, Inline, List, NoteKind, Table, TableKind,
 };
 
-use crate::{
-    document_canonical::{CanonicalBlockRole},
-    document_domain::DocumentFormat,
-};
+use crate::{document_canonical::CanonicalBlockRole, document_domain::DocumentFormat};
 
 use super::{
     model::{InlineProjection, NormalizedBlock},

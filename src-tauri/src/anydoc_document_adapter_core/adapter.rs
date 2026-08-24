@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, HashMap}, path::Path};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::Path,
+};
 
 use crate::{
     document_canonical::{
@@ -20,9 +23,7 @@ use super::{
     model::{NormalizedBlock, UnitDraft},
     normalization::normalize_document_blocks,
     segmentation::{segment_units, unit_text_projection},
-    support::{
-        bounded_text, capitalize, hash_bytes, media_type_for_format, MAX_BLOCK_TEXT_CHARS,
-    },
+    support::{bounded_text, capitalize, hash_bytes, media_type_for_format, MAX_BLOCK_TEXT_CHARS},
     ANYDOC_ADAPTER_BACKEND, ANYDOC_EXTRACTION_BACKEND,
 };
 

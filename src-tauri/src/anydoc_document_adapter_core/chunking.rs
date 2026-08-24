@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
 use crate::{
-    document_canonical::{CanonicalBlock, CanonicalBlockRole, CanonicalSemanticChunk, CanonicalSourceUnit},
+    document_canonical::{
+        CanonicalBlock, CanonicalBlockRole, CanonicalSemanticChunk, CanonicalSourceUnit,
+    },
     document_domain::{SourceLocator, SourceUnitKind},
     error::CommandError,
 };

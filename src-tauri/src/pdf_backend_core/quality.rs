@@ -4,10 +4,7 @@ const MIN_SUBSTANTIVE_NONSPACE_CHARS: usize = 24;
 const MIN_SUBSTANTIVE_ALPHA_CHARS: usize = 8;
 const MIN_SUBSTITUTION_ALPHA_CHARS: usize = 48;
 
-pub(crate) fn native_page_requires_ocr(
-    text: &str,
-    assessment: &TextQualityAssessment,
-) -> bool {
+pub(crate) fn native_page_requires_ocr(text: &str, assessment: &TextQualityAssessment) -> bool {
     if !assessment.suspicious {
         return false;
     }

@@ -1,9 +1,6 @@
 use rusqlite::params;
 
-use crate::{
-    error::CommandError,
-    pdf_document_ingestion::IngestedDocument,
-};
+use crate::{error::CommandError, pdf_document_ingestion::IngestedDocument};
 
 use super::super::support::{normalize_semantic_text, sha256_hex, to_i64};
 

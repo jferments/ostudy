@@ -1,14 +1,10 @@
 use std::path::Path;
 
-use crate::{
-    anydoc_document_adapter,
-    document_domain::DocumentFormat,
-    error::CommandError,
-};
+use crate::{anydoc_document_adapter, document_domain::DocumentFormat, error::CommandError};
 
 use super::super::contracts::{
-    AdapterExtraction, AdapterRequest, DocumentAdapter, DocumentAdapterIdentity,
-    IngestionProgress, IngestionProgressSink,
+    AdapterExtraction, AdapterRequest, DocumentAdapter, DocumentAdapterIdentity, IngestionProgress,
+    IngestionProgressSink,
 };
 
 pub(crate) struct AnyDocAdapter;
@@ -28,10 +24,7 @@ impl DocumentAdapter for AnyDocAdapter {
         anydoc_document_adapter::supports(format)
     }
 
-    fn identity(
-        &self,
-        format: DocumentFormat,
-    ) -> Result<DocumentAdapterIdentity, CommandError> {
+    fn identity(&self, format: DocumentFormat) -> Result<DocumentAdapterIdentity, CommandError> {
         if !self.supports(format) {
             return Err(CommandError::new(
                 "document_ingestion_adapter_unavailable",

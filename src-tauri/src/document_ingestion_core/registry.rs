@@ -1,11 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    document_domain::DocumentFormat,
-    error::CommandError,
-    paths::AppPaths,
-    pdf_render_backend::PdfRenderRuntime,
-    task_cancellation,
+    document_domain::DocumentFormat, error::CommandError, paths::AppPaths,
+    pdf_render_backend::PdfRenderRuntime, task_cancellation,
 };
 
 use super::{
@@ -41,7 +38,9 @@ impl<'a> DocumentAdapterRegistry<'a> {
 
     fn adapter_for_format(&self, format: DocumentFormat) -> Option<&dyn DocumentAdapter> {
         let adapters: [&dyn DocumentAdapter; 2] = [&self.native_pdf, &self.anydoc];
-        adapters.into_iter().find(|adapter| adapter.supports(format))
+        adapters
+            .into_iter()
+            .find(|adapter| adapter.supports(format))
     }
 
     fn identity_for_format(
@@ -110,9 +109,7 @@ pub(crate) fn active_pdf_render_backend() -> &'static str {
         .render_backend_or_none()
 }
 
-pub(crate) fn active_adapter_backend(
-    format: DocumentFormat,
-) -> Result<&'static str, CommandError> {
+pub(crate) fn active_adapter_backend(format: DocumentFormat) -> Result<&'static str, CommandError> {
     Ok(active_identity(format)?.adapter_backend)
 }
 
@@ -122,9 +119,7 @@ pub(crate) fn active_extraction_backend(
     Ok(active_identity(format)?.extraction_backend)
 }
 
-pub(crate) fn active_render_backend(
-    format: DocumentFormat,
-) -> Result<&'static str, CommandError> {
+pub(crate) fn active_render_backend(format: DocumentFormat) -> Result<&'static str, CommandError> {
     Ok(active_identity(format)?.render_backend_or_none())
 }
 

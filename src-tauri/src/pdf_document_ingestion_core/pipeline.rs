@@ -3,19 +3,14 @@ use std::path::Path;
 use oxidize_pdf::OcrProvider;
 
 use crate::{
-    document_domain::DocumentSourceDescriptor,
-    error::CommandError,
-    paths::AppPaths,
-    pdf_backend,
-    pdf_ocr_backend::TesseractCliOcrProvider,
-    pdf_render_backend::PdfRenderRuntime,
+    document_domain::DocumentSourceDescriptor, error::CommandError, paths::AppPaths, pdf_backend,
+    pdf_ocr_backend::TesseractCliOcrProvider, pdf_render_backend::PdfRenderRuntime,
 };
 
 use super::{
     active_pdf_extraction_backend, active_pdf_render_backend,
     contracts::{
-        ExtractionMode, IngestedDocument, IngestedPage, IngestionProgress,
-        OcrIngestionSummary,
+        ExtractionMode, IngestedDocument, IngestedPage, IngestionProgress, OcrIngestionSummary,
     },
     errors::map_pdf_backend_error,
     files::sha256_hex,

@@ -12,9 +12,8 @@ pub fn list_documents(
     database: State<'_, Database>,
     include_archived: bool,
 ) -> Result<Vec<DocumentDto>, CommandError> {
-    database.with_connection(|connection| {
-        repository::list_document_rows(connection, include_archived)
-    })
+    database
+        .with_connection(|connection| repository::list_document_rows(connection, include_archived))
 }
 
 #[tauri::command]

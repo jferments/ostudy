@@ -71,11 +71,7 @@ pub(crate) fn to_i64(value: usize) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
 
-pub(crate) fn require_one(
-    changed: usize,
-    code: &str,
-    message: &str,
-) -> Result<(), CommandError> {
+pub(crate) fn require_one(changed: usize, code: &str, message: &str) -> Result<(), CommandError> {
     if changed == 1 {
         Ok(())
     } else {

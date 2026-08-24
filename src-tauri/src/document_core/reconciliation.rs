@@ -2,12 +2,7 @@ use std::fs;
 
 use rusqlite::{params, TransactionBehavior};
 
-use crate::{
-    database::Database,
-    error::CommandError,
-    paths::AppPaths,
-    util::unix_time_millis,
-};
+use crate::{database::Database, error::CommandError, paths::AppPaths, util::unix_time_millis};
 
 use super::lifecycle;
 
@@ -15,10 +10,7 @@ const INTERRUPTED_ERROR_CODE: &str = "document_generation_interrupted";
 const INTERRUPTED_ERROR_MESSAGE: &str =
     "Document processing stopped when ostudy closed. Retry generation to continue.";
 
-pub(crate) fn reconcile_startup(
-    database: &Database,
-    paths: &AppPaths,
-) -> Result<(), CommandError> {
+pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
         let transaction = connection

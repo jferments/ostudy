@@ -1,11 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    document_canonical::CanonicalIngestion,
-    document_domain::DocumentFormat,
-    error::CommandError,
-    paths::AppPaths,
-    pdf_document_ingestion::IngestedDocument,
+    document_canonical::CanonicalIngestion, document_domain::DocumentFormat, error::CommandError,
+    paths::AppPaths, pdf_document_ingestion::IngestedDocument,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -89,10 +86,7 @@ pub(crate) trait DocumentAdapter {
 
     fn supports(&self, format: DocumentFormat) -> bool;
 
-    fn identity(
-        &self,
-        format: DocumentFormat,
-    ) -> Result<DocumentAdapterIdentity, CommandError>;
+    fn identity(&self, format: DocumentFormat) -> Result<DocumentAdapterIdentity, CommandError>;
 
     fn probe(&self, format: DocumentFormat, source_path: &Path) -> Result<bool, CommandError>;
 

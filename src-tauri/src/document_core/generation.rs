@@ -1,13 +1,9 @@
 use tauri::State;
 
 use crate::{
-    ai::AiRuntimeState,
-    database::Database,
-    document_initial_generation::process_and_generate_initial_flashcards,
-    error::CommandError,
-    paths::AppPaths,
-    pdf_render_backend::PdfRenderRuntime,
-    util::validate_entity_id,
+    ai::AiRuntimeState, database::Database,
+    document_initial_generation::process_and_generate_initial_flashcards, error::CommandError,
+    paths::AppPaths, pdf_render_backend::PdfRenderRuntime, util::validate_entity_id,
 };
 
 use super::{
@@ -23,9 +19,8 @@ pub(crate) async fn retry_pdf_flashcard_generation(
     input: RetryPdfGenerationInput,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
-    let document = database.with_connection(|connection| {
-        repository::load_document(connection, &input.document_id)
-    })?;
+    let document = database
+        .with_connection(|connection| repository::load_document(connection, &input.document_id))?;
     if document.dto.archived_at.is_some() {
         return Err(CommandError::new(
             "document_archived",
