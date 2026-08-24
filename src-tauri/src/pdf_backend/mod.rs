@@ -8,10 +8,7 @@ pub(crate) use contracts::{
     PdfBackendErrorKind, RecoveredPageText,
 };
 #[cfg(test)]
-pub(crate) use contracts::{
-    ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage, SemanticBBox,
-    TextQualityAssessment,
-};
+pub(crate) use contracts::{ExtractedSemanticChunk, ExtractedTextPage};
 pub(crate) use extraction::extract_document;
 pub(crate) use quality::{assess_text_quality, native_page_requires_ocr};
 pub(crate) use recovery::{apply_text_recovery, plan_text_recovery};

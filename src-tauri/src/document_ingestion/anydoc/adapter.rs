@@ -16,10 +16,6 @@ impl AnyDocAdapter {
 }
 
 impl DocumentAdapter for AnyDocAdapter {
-    fn name(&self) -> &'static str {
-        "anydoc"
-    }
-
     fn supports(&self, format: DocumentFormat) -> bool {
         anydoc_document_adapter::supports(format)
     }

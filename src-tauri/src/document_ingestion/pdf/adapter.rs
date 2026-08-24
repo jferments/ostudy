@@ -40,10 +40,6 @@ impl<'a> NativePdfAdapter<'a> {
 }
 
 impl DocumentAdapter for NativePdfAdapter<'_> {
-    fn name(&self) -> &'static str {
-        "native-pdf"
-    }
-
     fn supports(&self, format: DocumentFormat) -> bool {
         format == DocumentFormat::Pdf
     }

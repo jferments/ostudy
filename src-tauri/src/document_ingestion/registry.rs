@@ -108,18 +108,6 @@ pub(crate) fn active_identity(
     DocumentAdapterRegistry::catalog().identity_for_format(format)
 }
 
-pub(crate) fn active_pdf_extraction_backend() -> &'static str {
-    active_identity(DocumentFormat::Pdf)
-        .expect("the native PDF adapter must remain registered")
-        .extraction_backend
-}
-
-pub(crate) fn active_pdf_render_backend() -> &'static str {
-    active_identity(DocumentFormat::Pdf)
-        .expect("the native PDF adapter must remain registered")
-        .render_backend_or_none()
-}
-
 pub(crate) fn active_adapter_backend(format: DocumentFormat) -> Result<&'static str, CommandError> {
     Ok(active_identity(format)?.adapter_backend)
 }

@@ -82,8 +82,6 @@ where
 /// the implementation. Downstream code receives only canonical ostudy records
 /// and an explicitly isolated compatibility projection.
 pub(crate) trait DocumentAdapter {
-    fn name(&self) -> &'static str;
-
     fn supports(&self, format: DocumentFormat) -> bool;
 
     fn identity(&self, format: DocumentFormat) -> Result<DocumentAdapterIdentity, CommandError>;
