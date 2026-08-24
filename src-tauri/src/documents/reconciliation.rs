@@ -1,6 +1,6 @@
 use std::fs;
 
-use rusqlite::{params, TransactionBehavior};
+use rusqlite::TransactionBehavior;
 
 use crate::{database::Database, error::CommandError, paths::AppPaths, util::unix_time_millis};
 
@@ -18,49 +18,12 @@ pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result
             .map_err(|error| {
                 CommandError::database_at("document_reconcile_begin_failed", "scope=startup", error)
             })?;
-        transaction
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = CASE
-                         WHEN EXISTS (
-                             SELECT 1 FROM decks deck
-                             WHERE deck.id = documents.generated_deck_id
-                               AND deck.deleted_at IS NULL
-                         ) OR EXISTS (
-                             SELECT 1 FROM document_study_guides guide
-                             WHERE guide.document_id = documents.id
-                               AND guide.state = 'active'
-                         ) THEN 'ready'
-                         ELSE 'failed'
-                     END,
-                     outline_state = CASE WHEN outline_state = 'building' THEN 'failed' ELSE outline_state END,
-                     safe_error_code = ?1, safe_error_message = ?2,
-                     processing_duration_ms = CASE
-                         WHEN processing_started_at IS NULL THEN processing_duration_ms
-                         ELSE MAX(0, ?3 - processing_started_at)
-                     END,
-                     updated_at = ?3, revision = revision + 1
-                 WHERE lifecycle_state = 'processing' AND archived_at IS NULL",
-                params![INTERRUPTED_ERROR_CODE, INTERRUPTED_ERROR_MESSAGE, now],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_reconcile_documents_failed",
-                    "scope=startup",
-                    error,
-                )
-            })?;
-        transaction
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = 'interrupted', safe_error_code = ?1,
-                     safe_error_message = ?2, updated_at = ?3
-                 WHERE state IN ('queued', 'extracting', 'generating', 'committing')",
-                params![INTERRUPTED_ERROR_CODE, INTERRUPTED_ERROR_MESSAGE, now],
-            )
-            .map_err(|error| {
-                CommandError::database_at("document_reconcile_jobs_failed", "scope=startup", error)
-            })?;
+        lifecycle::reconcile_interrupted_flashcard_operations(
+            &transaction,
+            now,
+            INTERRUPTED_ERROR_CODE,
+            INTERRUPTED_ERROR_MESSAGE,
+        )?;
         transaction.commit().map_err(|error| {
             CommandError::database_at("document_reconcile_commit_failed", "scope=startup", error)
         })

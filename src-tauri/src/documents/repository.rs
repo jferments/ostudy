@@ -101,11 +101,21 @@ pub(crate) fn active_generated_deck_exists(
 ) -> Result<bool, CommandError> {
     connection
         .query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM documents document
-                 JOIN decks deck ON deck.id = document.generated_deck_id
-                 WHERE document.id = ?1 AND deck.deleted_at IS NULL
-             )",
+            "SELECT
+                 EXISTS(
+                     SELECT 1
+                     FROM document_decks provenance
+                     JOIN decks deck ON deck.id = provenance.deck_id
+                     WHERE provenance.document_id = ?1
+                       AND deck.deleted_at IS NULL
+                 )
+                 OR EXISTS(
+                     SELECT 1
+                     FROM documents document
+                     JOIN decks deck ON deck.id = document.generated_deck_id
+                     WHERE document.id = ?1
+                       AND deck.deleted_at IS NULL
+                 )",
             [document_id],
             |row| row.get::<_, i64>(0),
         )
@@ -169,4 +179,63 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         api_token_count: row.get(31)?,
         api_token_usage_complete: row.get::<_, i64>(32)? != 0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provenance_deck_counts_as_an_available_learning_artifact() {
+        let database = crate::database::Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let document_id = "a".repeat(32);
+                let deck_id = "b".repeat(32);
+                let job_id = "d".repeat(32);
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                             id, title, original_filename, mime_type, byte_size, sha256,
+                             source_relative_path, lifecycle_state, created_at, updated_at
+                         ) VALUES (?1, 'Document', 'source.pdf', 'application/pdf', 1,
+                                   ?2, 'documents/source/source.pdf', 'failed', 1, 1)",
+                        rusqlite::params![document_id, "c".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO decks (
+                             id, name, description, sort_order, created_at, updated_at,
+                             revision
+                         ) VALUES (?1, 'Generated', '', 1, 1, 1, 1)",
+                        [deck_id.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_generation_jobs (
+                             id, document_id, provider_kind, model_id, profile_revision,
+                             credential_epoch, network_scope, state, page_count,
+                             processed_page_count, generated_candidate_count,
+                             created_at, updated_at
+                         ) VALUES (
+                             ?1, ?2, 'openai_compatible', 'fixture', 1,
+                             0, 'local', 'succeeded', 1, 1, 0, 1, 1
+                         )",
+                        rusqlite::params![job_id, document_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
+                         VALUES (?1, ?2, ?3, 1)",
+                        rusqlite::params![document_id, deck_id, job_id],
+                    )
+                    .map_err(CommandError::database)?;
+                assert!(active_generated_deck_exists(connection, &document_id)?);
+                Ok(())
+            })
+            .expect("provenance lookup should succeed");
+    }
 }
