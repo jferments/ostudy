@@ -189,7 +189,14 @@ mod tests {
         }
         assert_eq!(
             llama.body.pointer("/response_format/type"),
-            Some(&json!("json_schema"))
+            Some(&json!("json_object"))
+        );
+        assert_eq!(
+            llama
+                .compatibility_body
+                .as_ref()
+                .and_then(|body| body.pointer("/json_schema/type")),
+            Some(&json!("object"))
         );
         assert_eq!(
             deepseek.body.pointer("/tools/0/function/strict"),
