@@ -36,7 +36,6 @@ mod document_delete_reconciliation;
 mod document_domain;
 mod document_generation;
 mod document_import;
-#[path = "document_adapters.rs"]
 mod document_ingestion;
 mod document_initial_generation;
 mod document_learning;
@@ -67,7 +66,6 @@ mod library_backup_commands;
 mod logging;
 mod paths;
 mod pdf_backend;
-#[path = "document_ingestion.rs"]
 mod pdf_document_ingestion;
 mod pdf_ocr_backend;
 #[cfg_attr(mobile, allow(dead_code))]

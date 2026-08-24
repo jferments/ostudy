@@ -37,10 +37,21 @@ impl<'a> DocumentAdapterRegistry<'a> {
     }
 
     fn adapter_for_format(&self, format: DocumentFormat) -> Option<&dyn DocumentAdapter> {
-        let adapters: [&dyn DocumentAdapter; 2] = [&self.native_pdf, &self.anydoc];
-        adapters
-            .into_iter()
-            .find(|adapter| adapter.supports(format))
+        match format {
+            DocumentFormat::Pdf => Some(&self.native_pdf),
+            DocumentFormat::Doc
+            | DocumentFormat::Docx
+            | DocumentFormat::Ppt
+            | DocumentFormat::Pptx
+            | DocumentFormat::Odt
+            | DocumentFormat::Odp
+            | DocumentFormat::Rtf
+            | DocumentFormat::Epub
+            | DocumentFormat::Excel
+            | DocumentFormat::Ods
+            | DocumentFormat::Csv => Some(&self.anydoc),
+            _ => None,
+        }
     }
 
     fn identity_for_format(
