@@ -32,9 +32,10 @@ pub(super) async fn request_json(
     request: JsonTaskRequest<'_>,
 ) -> Result<Value, CommandError> {
     let profile = task.profile();
-    let credential = runtime
-        .secrets
-        .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
+    let credential =
+        runtime
+            .secrets
+            .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())

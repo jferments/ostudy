@@ -149,7 +149,10 @@ mod tests {
         assert_eq!(properties.image_input_declared, Some(true));
         assert_eq!(properties.context_window_tokens, Some(8192));
         assert_eq!(
-            properties.server_chat_template_hash.as_deref().map(str::len),
+            properties
+                .server_chat_template_hash
+                .as_deref()
+                .map(str::len),
             Some(64)
         );
     }

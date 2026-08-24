@@ -80,7 +80,8 @@ pub(crate) async fn load_properties(
         return Ok(ProviderProperties::default());
     }
     let mut url = llama_cpp::root_endpoint(&profile.base_url, "props")?;
-    url.query_pairs_mut().append_pair("model", &profile.model_id);
+    url.query_pairs_mut()
+        .append_pair("model", &profile.model_id);
     match gateway
         .get_json(
             url,
@@ -95,7 +96,10 @@ pub(crate) async fn load_properties(
             if matches!(
                 error_value.safe.code.as_str(),
                 "ai_provider_protocol_error" | "ai_http_not_found"
-            ) => Ok(ProviderProperties::default()),
+            ) =>
+        {
+            Ok(ProviderProperties::default())
+        }
         Err(error_value) => Err(error_value),
     }
 }

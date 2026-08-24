@@ -2,9 +2,7 @@ use serde_json::{json, Value};
 use url::Url;
 
 use crate::ai::{
-    endpoint_policy::join_endpoint,
-    gateway::AiGatewayError,
-    profiles::ProfileSnapshot,
+    endpoint_policy::join_endpoint, gateway::AiGatewayError, profiles::ProfileSnapshot,
 };
 
 use super::{
@@ -104,7 +102,8 @@ pub(crate) fn decode_document_output(
             })?,
         DocumentOutputDecoder::StrictTool(name) => {
             openai_compatible::strict_tool_arguments(response, name).ok_or(ProviderOutputError {
-                message: "The AI provider did not return the required schema-constrained tool result.",
+                message:
+                    "The AI provider did not return the required schema-constrained tool result.",
             })?
         }
     };

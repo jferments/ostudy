@@ -82,10 +82,7 @@ mod tests {
             }),
         );
         assert_eq!(body.pointer("/thinking/type"), Some(&json!("disabled")));
-        assert_eq!(
-            body.pointer("/tools/0/function/strict"),
-            Some(&json!(true))
-        );
+        assert_eq!(body.pointer("/tools/0/function/strict"), Some(&json!(true)));
         assert!(body
             .pointer("/tools/0/function/parameters/properties/name/maxLength")
             .is_none());

@@ -38,13 +38,12 @@ impl ProviderDialect {
         }
     }
 
-    pub(super) fn model_endpoint(
-        self,
-        profile: &ProfileSnapshot,
-    ) -> Result<Url, AiGatewayError> {
+    pub(super) fn model_endpoint(self, profile: &ProfileSnapshot) -> Result<Url, AiGatewayError> {
         match self {
             Self::LlamaCpp => llama_cpp::openai_endpoint(&profile.base_url, "models"),
-            Self::Deepseek => join_endpoint(&profile.base_url, "models").map_err(command_to_gateway),
+            Self::Deepseek => {
+                join_endpoint(&profile.base_url, "models").map_err(command_to_gateway)
+            }
             Self::Openrouter => {
                 join_endpoint(&profile.base_url, "models/user").map_err(command_to_gateway)
             }
@@ -67,17 +66,11 @@ impl ProviderDialect {
     pub(super) fn model_limits(self) -> (usize, usize) {
         match self {
             Self::Openrouter => (openrouter::MAX_MODEL_LIST_BYTES, openrouter::MAX_MODELS),
-            Self::LlamaCpp | Self::Deepseek => {
-                (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS)
-            }
+            Self::LlamaCpp | Self::Deepseek => (DEFAULT_MAX_MODEL_LIST_BYTES, DEFAULT_MAX_MODELS),
         }
     }
 
-    pub(super) fn apply_probe_nonthinking(
-        self,
-        body: &mut Value,
-        profile: &ProfileSnapshot,
-    ) {
+    pub(super) fn apply_probe_nonthinking(self, body: &mut Value, profile: &ProfileSnapshot) {
         match self {
             Self::LlamaCpp => llama_cpp::apply_probe_nonthinking(body),
             Self::Deepseek => deepseek::disable_thinking(body),
@@ -112,8 +105,7 @@ impl ProviderDialect {
             }
         ]);
         let max_tokens = if self == Self::Openrouter { 256 } else { 128 };
-        let mut body =
-            openai_compatible::chat_body(&profile.model_id, messages, 0.0, max_tokens);
+        let mut body = openai_compatible::chat_body(&profile.model_id, messages, 0.0, max_tokens);
         match self {
             Self::LlamaCpp => {
                 llama_cpp::apply_probe_nonthinking(&mut body);

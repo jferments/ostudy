@@ -9,9 +9,7 @@ use serde_json::{json, Value};
 /// properties are forbidden.
 pub(super) fn portable_strict_schema(value: &Value) -> Value {
     match value {
-        Value::Array(values) => {
-            Value::Array(values.iter().map(portable_strict_schema).collect())
-        }
+        Value::Array(values) => Value::Array(values.iter().map(portable_strict_schema).collect()),
         Value::Object(object) => {
             if let Some(constant) = object.get("const") {
                 let value_type = match constant {
@@ -32,10 +30,7 @@ pub(super) fn portable_strict_schema(value: &Value) -> Value {
                 match key.as_str() {
                     "minLength" | "maxLength" | "minItems" | "maxItems" | "required" => {}
                     "oneOf" => {
-                        normalized.insert(
-                            "anyOf".to_string(),
-                            portable_strict_schema(child),
-                        );
+                        normalized.insert("anyOf".to_string(), portable_strict_schema(child));
                     }
                     _ => {
                         normalized.insert(key.clone(), portable_strict_schema(child));

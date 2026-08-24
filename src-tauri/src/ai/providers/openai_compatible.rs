@@ -113,10 +113,7 @@ pub(super) fn completion_content(value: &Value) -> Option<&str> {
         .filter(|content| !content.trim().is_empty())
 }
 
-pub(super) fn strict_tool_arguments<'a>(
-    value: &'a Value,
-    expected_name: &str,
-) -> Option<&'a str> {
+pub(super) fn strict_tool_arguments<'a>(value: &'a Value, expected_name: &str) -> Option<&'a str> {
     let function = value.pointer("/choices/0/message/tool_calls/0/function")?;
     if function.get("name").and_then(Value::as_str) != Some(expected_name) {
         return None;
@@ -142,14 +139,11 @@ pub(super) fn normalize_json_content(value: &str) -> &str {
 }
 
 fn nonnegative_i64(value: &Value) -> Option<i64> {
-    value
-        .as_i64()
-        .filter(|value| *value >= 0)
-        .or_else(|| {
-            value
-                .as_u64()
-                .map(|value| i64::try_from(value).unwrap_or(i64::MAX))
-        })
+    value.as_i64().filter(|value| *value >= 0).or_else(|| {
+        value
+            .as_u64()
+            .map(|value| i64::try_from(value).unwrap_or(i64::MAX))
+    })
 }
 
 #[cfg(test)]

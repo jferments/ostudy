@@ -334,14 +334,11 @@ fn outcome_from_response(response: &Value, content: String) -> CompletionOutcome
 }
 
 fn nonnegative_i64(value: &Value) -> Option<i64> {
-    value
-        .as_i64()
-        .filter(|value| *value >= 0)
-        .or_else(|| {
-            value
-                .as_u64()
-                .map(|value| i64::try_from(value).unwrap_or(i64::MAX))
-        })
+    value.as_i64().filter(|value| *value >= 0).or_else(|| {
+        value
+            .as_u64()
+            .map(|value| i64::try_from(value).unwrap_or(i64::MAX))
+    })
 }
 
 #[cfg(test)]
