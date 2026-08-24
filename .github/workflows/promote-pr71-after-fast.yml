@@ -1,0 +1,111 @@
+name: PR 71 one-shot fast qualification and promotion
+
+on:
+  push:
+    branches:
+      - agent/document-ingestion-modularization
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr71-fast-promotion
+  cancel-in-progress: true
+
+jobs:
+  qualify-and-promote:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    steps:
+      - name: Check out the implementation branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/document-ingestion-modularization
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Require the finalized package topology
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for path in \
+            src-tauri/src/documents/mod.rs \
+            src-tauri/src/document_ingestion/mod.rs \
+            src-tauri/src/anydoc_document_adapter/mod.rs \
+            src-tauri/src/pdf_document_ingestion/mod.rs \
+            src-tauri/src/pdf_backend/mod.rs \
+            scripts/verify-document-processing-boundaries.mjs \
+            tests/scripts/test_document_processing_boundaries.py; do
+            [[ -f "$path" ]] || {
+              echo "Finalized PR 71 path is missing: $path" >&2
+              exit 1
+            }
+          done
+          for path in \
+            src-tauri/src/documents.rs \
+            src-tauri/src/document_adapters.rs \
+            src-tauri/src/document_ingestion.rs \
+            src-tauri/src/anydoc_document_adapter.rs \
+            src-tauri/src/pdf_backend.rs \
+            src-tauri/src/document_core \
+            src-tauri/src/document_ingestion_core \
+            src-tauri/src/anydoc_document_adapter_core \
+            src-tauri/src/pdf_document_ingestion_core \
+            src-tauri/src/pdf_backend_core; do
+            [[ ! -e "$path" ]] || {
+              echo "Transitional PR 71 path still exists: $path" >&2
+              exit 1
+            }
+          done
+
+      - name: Remove this one-shot workflow and publish the exact qualification head
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git rm -- .github/workflows/promote-pr71-after-fast.yml
+          git config user.name "ostudy maintenance"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git commit -m "chore(ci): remove one-shot PR 71 promotion gate"
+          git fetch origin agent/document-ingestion-modularization
+          git rebase origin/agent/document-ingestion-modularization
+          git push origin HEAD:agent/document-ingestion-modularization
+
+      - name: Expose pinned toolchains and persistent caches
+        shell: bash
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "GRADLE_USER_HOME=$HOME/.cache/ostudy/gradle" >> "$GITHUB_ENV"
+          echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.cache/ostudy/gradle" "$HOME/.cache/ostudy/cargo-target"
+
+      - name: Run exact-head fast qualification
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/agent/document-ingestion-modularization)"
+          OSTUDY_FORCE_CHECK=1 ./scripts/check-fast.sh
+
+      - name: Mark PR 71 ready for the authoritative full matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          query='query { repository(owner: "jferments", name: "ostudy") { pullRequest(number: 71) { id isDraft } } }'
+          response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: bearer $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -nc --arg query "$query" '{query: $query}')" \
+            https://api.github.com/graphql)"
+          pull_request_id="$(jq -er '.data.repository.pullRequest.id' <<<"$response")"
+          is_draft="$(jq -er '.data.repository.pullRequest.isDraft' <<<"$response")"
+          if [[ "$is_draft" == true ]]; then
+            mutation='mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { number isDraft } } }'
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: bearer $GH_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data "$(jq -nc --arg query "$mutation" --arg id "$pull_request_id" '{query: $query, variables: {id: $id}}')" \
+              https://api.github.com/graphql \
+              | jq -e '.data.markPullRequestReadyForReview.pullRequest.isDraft == false'
+          fi
