@@ -7,7 +7,7 @@ use super::{
     },
     super::{
         endpoint_policy::validate_endpoint,
-        secrets::{CredentialStatus, CredentialStatusDto},
+        secrets::CredentialStatus,
         AiRuntimeState,
     },
 };
@@ -98,6 +98,3 @@ pub(super) fn configuration_status_for_test(
 ) -> ProfileConfigurationStatus {
     configuration_status(profile, credential_status)
 }
-
-#[allow(dead_code)]
-fn _credential_status_shape(_: CredentialStatusDto) {}
