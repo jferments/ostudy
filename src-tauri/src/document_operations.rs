@@ -89,8 +89,7 @@ pub fn open_document_source(
     paths: State<'_, AppPaths>,
     document_id: String,
 ) -> Result<(), CommandError> {
-    let source =
-        documents::resolve_document_source(database.inner(), paths.inner(), &document_id)?;
+    let source = documents::resolve_document_source(database.inner(), paths.inner(), &document_id)?;
     app.opener()
         .open_path(source.to_string_lossy().into_owned(), None::<&str>)
         .map_err(|error| {

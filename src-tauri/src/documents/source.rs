@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    database::Database,
-    document_domain::DocumentFormat,
-    error::CommandError,
-    paths::AppPaths,
+    database::Database, document_domain::DocumentFormat, error::CommandError, paths::AppPaths,
     util::validate_entity_id,
 };
 
@@ -16,8 +13,8 @@ pub(crate) fn resolve_document_source(
     document_id: &str,
 ) -> Result<PathBuf, CommandError> {
     validate_entity_id(document_id, "document")?;
-    let stored =
-        database.with_connection(|connection| repository::load_document(connection, document_id))?;
+    let stored = database
+        .with_connection(|connection| repository::load_document(connection, document_id))?;
     let format = DocumentFormat::from_db(&stored.dto.source_format)?;
     let expected_relative = AppPaths::document_source_relative_path_with_extension(
         document_id,
@@ -46,10 +43,8 @@ mod tests {
     #[test]
     fn source_resolution_rejects_a_path_outside_the_document_identity() {
         let database = Database::open_in_memory().expect("database should open");
-        let root = std::env::temp_dir().join(format!(
-            "ostudy-document-source-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("ostudy-document-source-{}", std::process::id()));
         let paths = AppPaths::new(root.clone()).expect("paths should initialize");
         let document_id = "a".repeat(32);
         database
