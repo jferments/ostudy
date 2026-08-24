@@ -1,7 +1,8 @@
 use rusqlite::params;
 
 use crate::{
-    database::Database, error::CommandError, pdf_document_ingestion, util::unix_time_millis,
+    database::Database, error::CommandError, pdf_document_ingestion, task_cancellation,
+    util::unix_time_millis,
 };
 
 use super::{
@@ -15,6 +16,10 @@ pub(crate) fn update_ingestion_progress(
     progress: IngestionProgress,
 ) -> Result<(), CommandError> {
     match progress {
+        IngestionProgress::Stage(stage) => {
+            task_cancellation::set_current_task_phase(stage.phase(), None, 0, 0, None, None, None);
+            Ok(())
+        }
         IngestionProgress::Extracting {
             completed_units,
             total_units,

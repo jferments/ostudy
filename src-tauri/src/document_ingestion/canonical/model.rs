@@ -15,6 +15,7 @@ pub(crate) struct NormalizedBlock {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct UnitDraft {
+    pub(crate) label: Option<String>,
     pub(crate) title: Option<String>,
     pub(crate) blocks: Vec<NormalizedBlock>,
     pub(crate) text_chars: usize,
@@ -37,11 +38,4 @@ impl UnitDraft {
     pub(crate) fn is_empty(&self) -> bool {
         self.blocks.is_empty()
     }
-}
-
-#[derive(Default)]
-pub(crate) struct InlineProjection {
-    pub(crate) text: String,
-    pub(crate) asset_ids: Vec<String>,
-    pub(crate) external_image_count: usize,
 }

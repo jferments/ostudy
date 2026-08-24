@@ -48,6 +48,7 @@ fi
 step "Environment and repository contracts"
 "$SCRIPT_DIR/doctor.sh"
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
+node "$SCRIPT_DIR/verify-xberg-dependency-policy.mjs"
 node "$SCRIPT_DIR/generate-ui-tokens.mjs" --check
 node "$SCRIPT_DIR/verify-ui-token-usage.mjs"
 node "$SCRIPT_DIR/verify-button-contrast.mjs"

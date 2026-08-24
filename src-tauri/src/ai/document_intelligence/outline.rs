@@ -23,7 +23,7 @@ use super::{
     transport::{request_json, JsonTaskRequest},
 };
 
-pub(crate) const OUTLINE_PROMPT_VERSION: i64 = 6;
+pub(crate) const OUTLINE_PROMPT_VERSION: i64 = 7;
 pub(crate) const OUTLINE_SCHEMA_VERSION: i64 = 2;
 
 const MAX_FRAGMENT_OBJECTIVES: usize = 4;
@@ -41,11 +41,18 @@ struct OutlineFragmentRecord {
     outline: DocumentOutline,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct OutlineSourceBounds {
     source_unit_start: i64,
     source_unit_end: i64,
     source_unit_count: i64,
+    evidence_unit_numbers: Vec<i64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UnsupportedSectionPolicy {
+    Reject,
+    Drop,
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,24 +123,20 @@ pub(super) async fn request_outline_fragment(
     images: &[SourcePageImage],
 ) -> Result<DocumentOutline, CommandError> {
     let locator = window.source_locator();
-    let user = outline_fragment_user_prompt(
-        document_title,
+    let bounds = OutlineSourceBounds {
+        source_unit_start: locator.first(),
+        source_unit_end: locator.last(),
         source_unit_count,
-        window,
-        locator.first(),
-        locator.last(),
-    );
+        evidence_unit_numbers: locator.unit_numbers.clone(),
+    };
+    let user = outline_fragment_user_prompt(document_title, source_unit_count, window, &bounds);
     request_outline_with_retry(
         runtime,
         task,
         &outline_system_prompt(),
         &user,
         images,
-        OutlineSourceBounds {
-            source_unit_start: locator.first(),
-            source_unit_end: locator.last(),
-            source_unit_count,
-        },
+        bounds,
     )
     .await
 }
@@ -228,13 +231,15 @@ fn outline_fragment_user_prompt(
     document_title: &str,
     source_unit_count: i64,
     window: &SemanticWindow,
-    source_unit_start: i64,
-    source_unit_end: i64,
+    bounds: &OutlineSourceBounds,
 ) -> String {
+    let evidence_units = format_source_unit_ranges(&bounds.evidence_unit_numbers);
     format!(
-        "Document: {document_title}\nCanonical source units: {source_unit_count}\nCurrent semantic partition: {} (partition {})\nCurrent source window: source units {source_unit_start}–{source_unit_end}\n\n<ostudy-source-window>\n{}\n</ostudy-source-window>\n\nBuild a CONCISE outline fragment for the educationally meaningful content in this bounded source window. Preserve section/chapter hierarchy and source-unit spans actually supported by this window. The required pageStart/pageEnd fields are compatibility names for one-based canonical source-unit bounds. Return at most {MAX_FRAGMENT_OBJECTIVES} learning objectives, {MAX_FRAGMENT_CONCEPTS} key concepts, and {MAX_FRAGMENT_SECTIONS} sections. Keep the fragment summary to roughly 1–3 sentences and each section summary to 1–2 short sentences, with at most {MAX_FRAGMENT_SECTION_OBJECTIVES} section learning objectives and {MAX_FRAGMENT_SECTION_CONCEPTS} section key concepts. Do not restate source prose just to fill the response. If rendered visual evidence is attached, use it as source evidence for diagrams, tables, equations, layout, and source units with little extractable text. Exclude bibliography/reference material, legal/publishing scaffolding, indexes/navigation, and incidental trivia.",
+        "Document: {document_title}\nCanonical source units: {source_unit_count}\nCurrent semantic partition: {} (partition {})\nCurrent source-window bounding range: source units {}–{}\nExact evidence-bearing source units in this window: {evidence_units}\n\n<ostudy-source-window>\n{}\n</ostudy-source-window>\n\nBuild a CONCISE outline fragment for the educationally meaningful content in this bounded source window. Preserve section/chapter hierarchy and source-unit spans actually supported by this window. The required pageStart/pageEnd fields are compatibility names for one-based canonical source-unit bounds. Every returned section range MUST include at least one of the exact evidence-bearing source units listed above; do not create a section whose range contains only a gap between evidence-bearing units. The exact evidence-unit list is authoritative even when the bounding range is continuous. Return at most {MAX_FRAGMENT_OBJECTIVES} learning objectives, {MAX_FRAGMENT_CONCEPTS} key concepts, and {MAX_FRAGMENT_SECTIONS} sections. Keep the fragment summary to roughly 1–3 sentences and each section summary to 1–2 short sentences, with at most {MAX_FRAGMENT_SECTION_OBJECTIVES} section learning objectives and {MAX_FRAGMENT_SECTION_CONCEPTS} section key concepts. Do not restate source prose just to fill the response. If rendered visual evidence is attached, use it as source evidence for diagrams, tables, equations, layout, and source units with little extractable text. Exclude bibliography/reference material, legal/publishing scaffolding, indexes/navigation, and incidental trivia.",
         window.partition_title,
         window.partition_index + 1,
+        bounds.source_unit_start,
+        bounds.source_unit_end,
         window.source_text,
     )
 }
@@ -260,7 +265,7 @@ async fn request_outline_with_retry(
         },
     )
     .await
-    .and_then(|value| parse_outline_fragment(value, bounds));
+    .and_then(|value| parse_outline_fragment(value, &bounds, UnsupportedSectionPolicy::Reject));
 
     match first {
         Ok(outline) => Ok(outline),
@@ -278,11 +283,14 @@ async fn request_outline_with_retry(
                 },
             )
             .await
-            .and_then(|value| parse_outline_fragment(value, bounds))
+            .and_then(|value| {
+                parse_outline_fragment(value, &bounds, UnsupportedSectionPolicy::Drop)
+            })
         }
         Err(error) if retryable_contract_error(&error) => {
+            crate::task_cancellation::record_current_provider_retry();
             let repaired = format!(
-                "{user}\n\nA prior response could not be decoded as the required outline object. Generate a fresh bounded outline fragment for these source units and return only the required structured result."
+                "{user}\n\nA prior response did not satisfy the required structured or source-provenance contract. Generate a fresh bounded outline fragment. Every section range must include at least one exact evidence-bearing source unit listed above. Return only the required structured result."
             );
             request_json(
                 runtime,
@@ -296,7 +304,9 @@ async fn request_outline_with_retry(
                 },
             )
             .await
-            .and_then(|value| parse_outline_fragment(value, bounds))
+            .and_then(|value| {
+                parse_outline_fragment(value, &bounds, UnsupportedSectionPolicy::Drop)
+            })
             .map_err(|retry_error| collapse_contract_error(retry_error, "outline fragment"))
         }
         Err(error) => Err(error),
@@ -350,7 +360,8 @@ fn outline_retry_completion_tokens(task: &DocumentTaskContext) -> usize {
 
 fn parse_outline_fragment(
     value: Value,
-    bounds: OutlineSourceBounds,
+    bounds: &OutlineSourceBounds,
+    unsupported_section_policy: UnsupportedSectionPolicy,
 ) -> Result<DocumentOutline, CommandError> {
     let outline: DocumentOutline = serde_json::from_value(value).map_err(|error| {
         output_error(format!(
@@ -358,18 +369,26 @@ fn parse_outline_fragment(
             bounded_diagnostic(&error.to_string(), 320)
         ))
     })?;
-    normalize_fragment_outline(outline, bounds)
+    normalize_fragment_outline(outline, bounds, unsupported_section_policy)
 }
 
 fn normalize_fragment_outline(
     outline: DocumentOutline,
-    bounds: OutlineSourceBounds,
+    bounds: &OutlineSourceBounds,
+    unsupported_section_policy: UnsupportedSectionPolicy,
 ) -> Result<DocumentOutline, CommandError> {
     let maximum_source_unit = bounds.source_unit_count.max(1);
     let window_start = bounds.source_unit_start.clamp(1, maximum_source_unit);
     let window_end = bounds
         .source_unit_end
         .clamp(window_start, maximum_source_unit);
+    let evidence_unit_numbers = normalized_evidence_units(bounds, window_start, window_end);
+    if evidence_unit_numbers.is_empty() {
+        return Err(output_error(
+            "The canonical source window did not contain any evidence-bearing source units.",
+        ));
+    }
+    let evidence_description = format_source_unit_ranges(&evidence_unit_numbers);
     let summary = sanitize_outline_text(
         &outline.summary,
         1_800,
@@ -385,8 +404,37 @@ fn normalize_fragment_outline(
         .take(MAX_FRAGMENT_SECTIONS)
         .enumerate()
     {
-        let start = section.page_start.clamp(window_start, window_end);
-        let end = section.page_end.clamp(start, window_end);
+        let requested_start = section.page_start.clamp(window_start, window_end);
+        let requested_end = section.page_end.clamp(requested_start, window_end);
+        let matching_units = evidence_unit_numbers
+            .iter()
+            .copied()
+            .filter(|unit| *unit >= requested_start && *unit <= requested_end)
+            .collect::<Vec<_>>();
+        let Some(start) = matching_units.first().copied() else {
+            if unsupported_section_policy == UnsupportedSectionPolicy::Drop {
+                crate::logging::debug_target(
+                    "ai.document.outline",
+                    "document_outline_section_without_evidence_dropped",
+                    "Dropped a model outline section whose source range contained no canonical semantic evidence.",
+                    json!({
+                        "section": index + 1,
+                        "requestedSourceUnitStart": requested_start,
+                        "requestedSourceUnitEnd": requested_end,
+                        "availableEvidenceUnits": evidence_description,
+                    }),
+                );
+                continue;
+            }
+            return Err(output_error(format!(
+                "Outline section {} requested source units {}–{}, but that range contains no canonical semantic evidence. Available evidence units in this window: {}.",
+                index + 1,
+                requested_start,
+                requested_end,
+                evidence_description
+            )));
+        };
+        let end = matching_units.last().copied().unwrap_or(start);
         sections.push(OutlineSection {
             title: sanitize_outline_text(
                 &section.title,
@@ -423,6 +471,54 @@ fn normalize_fragment_outline(
         key_concepts,
         sections,
     })
+}
+
+fn normalized_evidence_units(
+    bounds: &OutlineSourceBounds,
+    window_start: i64,
+    window_end: i64,
+) -> Vec<i64> {
+    let mut units = bounds
+        .evidence_unit_numbers
+        .iter()
+        .copied()
+        .filter(|unit| *unit >= window_start && *unit <= window_end)
+        .collect::<Vec<_>>();
+    units.sort_unstable();
+    units.dedup();
+    units
+}
+
+fn format_source_unit_ranges(units: &[i64]) -> String {
+    let mut units = units.to_vec();
+    units.sort_unstable();
+    units.dedup();
+    if units.is_empty() {
+        return "none".to_string();
+    }
+
+    let mut ranges = Vec::new();
+    let mut start = units[0];
+    let mut end = units[0];
+    for unit in units.into_iter().skip(1) {
+        if unit == end.saturating_add(1) {
+            end = unit;
+            continue;
+        }
+        ranges.push(format_source_unit_range(start, end));
+        start = unit;
+        end = unit;
+    }
+    ranges.push(format_source_unit_range(start, end));
+    ranges.join(", ")
+}
+
+fn format_source_unit_range(start: i64, end: i64) -> String {
+    if start == end {
+        start.to_string()
+    } else {
+        format!("{start}–{end}")
+    }
 }
 
 fn assemble_outline_fragments(
@@ -640,14 +736,19 @@ mod tests {
     use crate::document_domain::{SourceLocator, SourceUnitKind};
 
     fn sample_window(start: i64, end: i64) -> SemanticWindow {
+        sample_sparse_window((start..=end).collect())
+    }
+
+    fn sample_sparse_window(units: Vec<i64>) -> SemanticWindow {
+        let start = units.first().copied().unwrap_or(1);
+        let end = units.last().copied().unwrap_or(start);
         SemanticWindow {
             window_index: 0,
             partition_index: 0,
             partition_title: "Cardiovascular physiology".to_string(),
             first_chunk_index: 0,
             last_chunk_index: 0,
-            source_locator: SourceLocator::new(SourceUnitKind::Page, (start..=end).collect(), None)
-                .unwrap(),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, units, None).unwrap(),
             page_start: start,
             page_end: end,
             token_estimate: 100,
@@ -655,31 +756,87 @@ mod tests {
         }
     }
 
+    fn bounds(units: Vec<i64>, source_unit_count: i64) -> OutlineSourceBounds {
+        OutlineSourceBounds {
+            source_unit_start: units.first().copied().unwrap_or(1),
+            source_unit_end: units.last().copied().unwrap_or(1),
+            source_unit_count,
+            evidence_unit_numbers: units,
+        }
+    }
+
+    fn outline_with_section(start: i64, end: i64) -> Value {
+        json!({
+            "summary": "Window summary",
+            "learningObjectives": ["Explain preload"],
+            "keyConcepts": ["Preload"],
+            "sections": [{
+                "title": "Hemodynamics",
+                "pageStart": start,
+                "pageEnd": end,
+                "summary": "Mechanisms",
+                "learningObjectives": [],
+                "keyConcepts": []
+            }]
+        })
+    }
+
     #[test]
     fn outline_fragment_bounds_are_clamped_to_the_source_window() {
         let parsed = parse_outline_fragment(
-            json!({
-                "summary": "Window summary",
-                "learningObjectives": ["Explain preload"],
-                "keyConcepts": ["Preload"],
-                "sections": [{
-                    "title": "Hemodynamics",
-                    "pageStart": 1,
-                    "pageEnd": 99,
-                    "summary": "Mechanisms",
-                    "learningObjectives": [],
-                    "keyConcepts": []
-                }]
-            }),
-            OutlineSourceBounds {
-                source_unit_start: 10,
-                source_unit_end: 12,
-                source_unit_count: 20,
-            },
+            outline_with_section(1, 99),
+            &bounds(vec![10, 11, 12], 20),
+            UnsupportedSectionPolicy::Reject,
         )
         .unwrap();
         assert_eq!(parsed.sections[0].page_start, 10);
         assert_eq!(parsed.sections[0].page_end, 12);
+    }
+
+    #[test]
+    fn sparse_evidence_hole_is_rejected_for_provider_retry() {
+        let error = parse_outline_fragment(
+            outline_with_section(14, 14),
+            &bounds(vec![11, 12, 13, 15, 16], 20),
+            UnsupportedSectionPolicy::Reject,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "ai_document_output_invalid");
+        assert!(error.message.contains("14–14"));
+        assert!(error.message.contains("11–13, 15–16"));
+    }
+
+    #[test]
+    fn sparse_evidence_span_snaps_to_supported_units() {
+        let parsed = parse_outline_fragment(
+            outline_with_section(14, 16),
+            &bounds(vec![11, 12, 13, 15, 16], 20),
+            UnsupportedSectionPolicy::Reject,
+        )
+        .unwrap();
+        assert_eq!(parsed.sections[0].page_start, 15);
+        assert_eq!(parsed.sections[0].page_end, 16);
+    }
+
+    #[test]
+    fn retry_policy_drops_a_section_that_still_targets_only_an_evidence_hole() {
+        let parsed = parse_outline_fragment(
+            outline_with_section(14, 14),
+            &bounds(vec![11, 12, 13, 15, 16], 20),
+            UnsupportedSectionPolicy::Drop,
+        )
+        .unwrap();
+        assert!(parsed.sections.is_empty());
+        assert!(!parsed.summary.is_empty());
+    }
+
+    #[test]
+    fn sparse_evidence_prompt_names_exact_available_units() {
+        let window = sample_sparse_window(vec![11, 12, 13, 15, 16]);
+        let bounds = bounds(vec![11, 12, 13, 15, 16], 20);
+        let prompt = outline_fragment_user_prompt("Lecture", 20, &window, &bounds);
+        assert!(prompt.contains("Exact evidence-bearing source units in this window: 11–13, 15–16"));
+        assert!(prompt.contains("range contains only a gap"));
     }
 
     #[test]
@@ -753,7 +910,9 @@ mod tests {
 
     #[test]
     fn outline_prompt_is_format_neutral_but_documents_legacy_schema_names() {
-        let prompt = outline_fragment_user_prompt("Lecture", 20, &sample_window(3, 4), 3, 4);
+        let window = sample_window(3, 4);
+        let bounds = bounds(vec![3, 4], 20);
+        let prompt = outline_fragment_user_prompt("Lecture", 20, &window, &bounds);
         assert!(prompt.contains("Canonical source units"));
         assert!(prompt.contains("pageStart/pageEnd fields are compatibility names"));
         assert!(!prompt.contains("PDF pages"));

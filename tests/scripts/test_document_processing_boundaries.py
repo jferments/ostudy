@@ -9,7 +9,7 @@ VERIFIER = REPOSITORY_ROOT / "scripts" / "verify-document-processing-boundaries.
 PACKAGES = [
     "documents",
     "document_ingestion",
-    "anydoc_document_adapter",
+    "xberg_document_adapter",
     "pdf_document_ingestion",
     "pdf_backend",
 ]
@@ -42,7 +42,7 @@ class DocumentProcessingBoundaryVerifierTests(unittest.TestCase):
             encoding="utf-8",
         )
         (self.source_root / "document_ingestion" / "registry.rs").write_text(
-            "fn route(format: DocumentFormat) { match format { DocumentFormat::Pdf => {}, DocumentFormat::Docx => {}, DocumentFormat::Csv => {}, _ => {} } }\n",
+            "struct XbergAdapter; fn route(format: DocumentFormat) { match format { DocumentFormat::Pdf => {}, DocumentFormat::Docx => { let _ = XbergAdapter; }, DocumentFormat::Csv => {}, _ => {} } }\n",
             encoding="utf-8",
         )
 
@@ -79,13 +79,21 @@ class DocumentProcessingBoundaryVerifierTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("path-attributed alias", result.stderr)
 
-    def test_rejects_anydoc_types_outside_the_backend_package(self) -> None:
+    def test_rejects_xberg_types_outside_the_backend_package(self) -> None:
+        (self.source_root / "documents" / "repository.rs").write_text(
+            "use xberg::ExtractedDocument;\n", encoding="utf-8"
+        )
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("third-party Xberg types", result.stderr)
+
+    def test_rejects_retired_anydoc_production_references(self) -> None:
         (self.source_root / "documents" / "repository.rs").write_text(
             "use anydoc::model::Document;\n", encoding="utf-8"
         )
         result = self.run_verifier()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("third-party AnyDoc types", result.stderr)
+        self.assertIn("retired AnyDoc", result.stderr)
 
     def test_rejects_tauri_state_outside_document_commands(self) -> None:
         (self.source_root / "documents" / "repository.rs").write_text(

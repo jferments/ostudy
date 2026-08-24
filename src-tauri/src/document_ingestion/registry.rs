@@ -6,24 +6,24 @@ use crate::{
 };
 
 use super::{
-    anydoc::adapter::AnyDocAdapter,
     contracts::{
         AdapterExtraction, AdapterRequest, DocumentAdapter, DocumentAdapterIdentity,
         DocumentCancellation, IngestionProgress,
     },
     pdf::adapter::NativePdfAdapter,
+    xberg::adapter::XbergAdapter,
 };
 
 pub(crate) struct DocumentAdapterRegistry<'a> {
     native_pdf: NativePdfAdapter<'a>,
-    anydoc: AnyDocAdapter,
+    xberg: XbergAdapter,
 }
 
 impl DocumentAdapterRegistry<'static> {
     fn catalog() -> Self {
         Self {
             native_pdf: NativePdfAdapter::catalog(),
-            anydoc: AnyDocAdapter::new(),
+            xberg: XbergAdapter::new(),
         }
     }
 }
@@ -32,7 +32,7 @@ impl<'a> DocumentAdapterRegistry<'a> {
     fn with_runtime(render_runtime: &'a PdfRenderRuntime) -> Self {
         Self {
             native_pdf: NativePdfAdapter::with_runtime(render_runtime),
-            anydoc: AnyDocAdapter::new(),
+            xberg: XbergAdapter::new(),
         }
     }
 
@@ -49,7 +49,7 @@ impl<'a> DocumentAdapterRegistry<'a> {
             | DocumentFormat::Epub
             | DocumentFormat::Excel
             | DocumentFormat::Ods
-            | DocumentFormat::Csv => Some(&self.anydoc),
+            | DocumentFormat::Csv => Some(&self.xberg),
             _ => None,
         }
     }
@@ -184,10 +184,10 @@ mod tests {
     fn accepts_object_safe_adapter(_adapter: &dyn DocumentAdapter) {}
 
     #[test]
-    fn registry_port_is_object_safe_and_keeps_current_backend_selection() {
+    fn registry_port_is_object_safe_and_routes_non_pdf_formats_to_xberg() {
         let registry = DocumentAdapterRegistry::catalog();
         accepts_object_safe_adapter(&registry.native_pdf);
-        accepts_object_safe_adapter(&registry.anydoc);
+        accepts_object_safe_adapter(&registry.xberg);
         assert_eq!(
             registry
                 .identity_for_format(DocumentFormat::Pdf)
@@ -200,7 +200,7 @@ mod tests {
                 .identity_for_format(DocumentFormat::Docx)
                 .unwrap()
                 .adapter_backend,
-            "anydoc-canonical-adapter-v1"
+            "xberg-canonical-adapter-v1"
         );
         assert_eq!(
             registry

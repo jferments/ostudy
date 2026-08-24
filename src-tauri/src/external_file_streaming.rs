@@ -17,10 +17,10 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, State};
 
 use crate::{
-    anydoc_document_adapter,
     assets::detect_image_bytes,
     database::Database,
     document_domain::DocumentFormat,
+    document_ingestion,
     error::CommandError,
     external_files::{
         ExternalFileKind, ExternalImportPurpose, PublishPreparedExportInput, PublishReceiptDto,
@@ -601,7 +601,7 @@ fn detect_kind(
 
 fn detect_document_kind(path: &Path, display_name: &str) -> Result<ExternalFileKind, CommandError> {
     let bytes = fs::read(path).map_err(CommandError::io)?;
-    let format = anydoc_document_adapter::detected_document_format(&bytes, display_name)?;
+    let format = document_ingestion::detected_document_format(&bytes, display_name)?;
     match format {
         DocumentFormat::Pdf => Ok(ExternalFileKind::Pdf),
         DocumentFormat::Doc => Ok(ExternalFileKind::Doc),

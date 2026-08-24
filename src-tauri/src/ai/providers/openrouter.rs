@@ -373,10 +373,17 @@ mod tests {
         assert!(schema.pointer("/properties/cards/items/oneOf").is_none());
         assert!(schema.pointer("/properties/cards/items/anyOf").is_some());
         assert!(schema.pointer("/properties/cards/maxItems").is_none());
-        assert_eq!(
-            schema.pointer("/properties/cards/items/anyOf/0/required"),
-            Some(&json!(["front", "tags", "type"]))
-        );
+        let required = schema
+            .pointer("/properties/cards/items/anyOf/0/required")
+            .and_then(serde_json::Value::as_array)
+            .expect("strict object schema should require every declared property");
+        assert_eq!(required.len(), 3);
+        for property in ["front", "tags", "type"] {
+            assert!(
+                required.contains(&json!(property)),
+                "strict schema is missing required property {property}"
+            );
+        }
         assert_eq!(
             schema.pointer("/properties/cards/items/anyOf/0/properties/type/enum"),
             Some(&json!(["basic"]))

@@ -98,23 +98,6 @@ impl DocumentFormat {
         }
     }
 
-    pub(crate) fn is_anydoc(self) -> bool {
-        matches!(
-            self,
-            Self::Doc
-                | Self::Docx
-                | Self::Ppt
-                | Self::Pptx
-                | Self::Odt
-                | Self::Odp
-                | Self::Rtf
-                | Self::Epub
-                | Self::Excel
-                | Self::Ods
-                | Self::Csv
-        )
-    }
-
     pub(crate) fn display_label(self) -> &'static str {
         match self {
             Self::Pdf => "PDF",
@@ -463,8 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn anydoc_formats_use_truthful_deterministic_sections() {
-        assert!(DocumentFormat::Docx.is_anydoc());
+    fn non_pdf_document_formats_use_truthful_deterministic_sections() {
         assert_eq!(
             DocumentFormat::Pptx.source_unit_kind(),
             SourceUnitKind::Section
@@ -481,7 +463,6 @@ mod tests {
             DocumentFormat::from_db("xlsx").unwrap(),
             DocumentFormat::Excel
         );
-        assert!(!DocumentFormat::Pdf.is_anydoc());
     }
 
     #[test]

@@ -1,12 +1,15 @@
-mod anydoc;
-mod contracts;
+pub(crate) mod canonical;
+pub(crate) mod contracts;
+mod detection;
 mod pdf;
 mod persistence;
 mod progress;
 mod registry;
-mod support;
+pub(crate) mod support;
+mod xberg;
 
 pub(crate) use contracts::IngestionProgress;
+pub(crate) use detection::detected_document_format;
 pub(crate) use persistence::persist_ingested_document;
 pub(crate) use progress::update_ingestion_progress;
 pub(crate) use registry::{

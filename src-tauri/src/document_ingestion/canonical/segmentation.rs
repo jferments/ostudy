@@ -1,12 +1,11 @@
 use crate::{document_canonical::CanonicalBlockRole, document_domain::DocumentFormat};
 
-use super::{
-    model::{NormalizedBlock, UnitDraft},
-    support::{bounded_text, MAX_UNIT_TEXT_CHARS},
-};
+use super::model::{NormalizedBlock, UnitDraft};
+use crate::document_ingestion::support::normalize_semantic_text;
 
 const MAX_UNIT_TARGET_CHARS: usize = 60_000;
 const MAX_UNIT_BLOCKS: usize = 160;
+const MAX_UNIT_TEXT_CHARS: usize = 250_000;
 
 pub(crate) fn segment_units(
     format: DocumentFormat,
@@ -55,7 +54,7 @@ pub(crate) fn unit_text_projection(unit: &UnitDraft, label: &str) -> String {
             "{label} contains embedded visual material with no extractable text. Use the attached source assets as evidence and do not infer unsupported details."
         )
     } else {
-        bounded_text(&text, MAX_UNIT_TEXT_CHARS)
+        normalize_semantic_text(&text, MAX_UNIT_TEXT_CHARS)
     }
 }
 

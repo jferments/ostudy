@@ -694,7 +694,7 @@ function generationStage(
   progress: DocumentGenerationProgress | null,
 ): { title: string; detail: string } {
   if (document.sourceUnitCount === 0) {
-    return {
+    return ingestionStage(progress?.phase) ?? {
       title: "Extracting document content",
       detail: `Reading the ${formatDocumentType(document.sourceFormat)} source and building semantic chunks.`,
     };
@@ -753,6 +753,48 @@ function generationStage(
     title: "Finalizing document generation",
     detail: "Completing the current bounded task and preparing durable study content.",
   };
+}
+
+function ingestionStage(phase: string | undefined): { title: string; detail: string } | null {
+  switch (phase) {
+    case "document_detecting":
+      return {
+        title: "Checking document format",
+        detail: "Validating the managed source before local extraction begins.",
+      };
+    case "document_extracting":
+      return {
+        title: "Reading document structure",
+        detail: "Extracting text, tables, slides, sheets, and embedded images locally.",
+      };
+    case "document_mapping":
+      return {
+        title: "Mapping document structure",
+        detail: "Converting extracted headings and content into oStudy source blocks.",
+      };
+    case "document_saving_assets":
+      return {
+        title: "Saving embedded images",
+        detail: "Retaining bounded source images as immutable local evidence.",
+      };
+    case "document_unitizing":
+      return {
+        title: "Building source sections",
+        detail: "Creating deterministic source sections for study generation.",
+      };
+    case "document_chunking":
+      return {
+        title: "Building semantic chunks",
+        detail: "Preparing bounded, source-linked chunks for document analysis.",
+      };
+    case "document_validating":
+      return {
+        title: "Validating extracted document",
+        detail: "Checking canonical source records before they are committed.",
+      };
+    default:
+      return null;
+  }
 }
 
 function activeWindowDetail(
