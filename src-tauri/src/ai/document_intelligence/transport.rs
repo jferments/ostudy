@@ -502,7 +502,7 @@ mod tests {
             "required": ["name"]
         }));
         assert_eq!(normalized["additionalProperties"], false);
-        assert_eq!(normalized["required"], json!(["kind", "name"]));
+        assert_eq!(normalized["required"], json!(["name", "kind"]));
         assert!(normalized["properties"]["name"].get("minLength").is_none());
         assert_eq!(normalized["properties"]["kind"]["enum"], json!(["basic"]));
     }
