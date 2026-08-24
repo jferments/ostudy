@@ -609,14 +609,20 @@ mod tests {
     #[test]
     fn sparse_window_markup_preserves_exact_source_unit_membership() {
         let windows = build_semantic_windows(
-            &[chunk(0, &[11], 200), chunk(1, &[13], 200), chunk(2, &[15, 16], 200)],
+            &[
+                chunk(0, &[11], 200),
+                chunk(1, &[13], 200),
+                chunk(2, &[15, 16], 200),
+            ],
             2_000,
             20,
             0,
         );
         assert_eq!(windows.len(), 1);
         assert_eq!(windows[0].source_locator.unit_numbers, vec![11, 13, 15, 16]);
-        assert!(windows[0].source_text.contains("source-units=\"11,13,15-16\""));
+        assert!(windows[0]
+            .source_text
+            .contains("source-units=\"11,13,15-16\""));
         assert!(!windows[0].source_text.contains("source-units=\"11-16\""));
     }
 
