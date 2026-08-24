@@ -83,13 +83,8 @@ pub async fn generate_more_pdf_flashcards(
     validate_entity_id(&input.document_id, "document")?;
     let document_id = input.document_id.clone();
     let result = run_document_task(&document_id, async {
-        let result = generate_more_impl(
-            database.inner(),
-            paths.inner(),
-            runtime.inner(),
-            input,
-        )
-        .await;
+        let result =
+            generate_more_impl(database.inner(), paths.inner(), runtime.inner(), input).await;
         if let Err(error) = &result {
             if error.code == "ai_request_canceled" {
                 documents::record_document_cancellation_with_message(
@@ -134,13 +129,8 @@ async fn generate_more_impl(
             "The retained document has no semantic source chunks available for another generation pass.",
         ));
     }
-    let learning_plan = ensure_learning_plan_for_outline(
-        database,
-        &input.document_id,
-        &source,
-        &outline,
-        &chunks,
-    )?;
+    let learning_plan =
+        ensure_learning_plan_for_outline(database, &input.document_id, &source, &outline, &chunks)?;
     let existing_coverage =
         load_existing_coverage(database, &context.deck_id, MAX_EXISTING_COVERAGE_CHARS)?;
     let second_pass_outline = second_pass_outline(outline, &existing_coverage);
@@ -153,11 +143,8 @@ async fn generate_more_impl(
         &task.model_id,
     )?;
     task.apply_provider_capabilities(&capabilities);
-    let calibration = document_cost::load_cost_calibration(
-        database,
-        &task.provider_kind,
-        &task.model_id,
-    )?;
+    let calibration =
+        document_cost::load_cost_calibration(database, &task.provider_kind, &task.model_id)?;
     let plan = DocumentScalePlan::for_capabilities(
         source.unit_count,
         &capabilities,
