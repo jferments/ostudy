@@ -41,7 +41,7 @@ No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is install
 
 `keyring` is isolated behind `src-tauri/src/ai/secrets.rs`. It stores credential bytes in the operating-system credential service when available. SQLite stores only nonsecret provider metadata and credential epochs. An explicit session-only backend keeps a credential in native process memory and never writes it to disk.
 
-`reqwest` is isolated behind `src-tauri/src/ai/gateway.rs`. The client uses Rustls, disabled redirects, bounded response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
+`reqwest` is isolated behind the bounded modules in `src-tauri/src/ai/gateway/`, with HTTP client construction confined to `gateway/client.rs`. The clients use Rustls, disabled redirects, bounded response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
 
 `base64` is used only inside the native document-intelligence task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
 
