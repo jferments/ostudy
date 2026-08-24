@@ -1,1 +1,0 @@
-/mnt/data/ostudy-work/repo/docs/decisions/0046-modular-ai-infrastructure.md
