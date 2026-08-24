@@ -474,7 +474,8 @@ fn ensure_document_response_not_blocked(response: &Value) -> Result<(), CommandE
 }
 
 fn gateway_to_command(error_value: AiGatewayError) -> CommandError {
-    CommandError::new(error_value.safe.code, error_value.safe.message)
+    let SafeAiError { code, message, .. } = error_value.safe;
+    CommandError::new(code, message)
 }
 
 #[cfg(test)]
