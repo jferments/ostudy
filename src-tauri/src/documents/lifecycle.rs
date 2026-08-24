@@ -108,12 +108,20 @@ pub(crate) fn record_document_failure(
 }
 
 pub(crate) fn record_document_cancellation(database: &Database, document_id: &str) {
+    record_document_cancellation_with_message(database, document_id, FLASHCARD_CANCELED_MESSAGE);
+}
+
+pub(crate) fn record_document_cancellation_with_message(
+    database: &Database,
+    document_id: &str,
+    safe_error_message: &str,
+) {
     record_flashcard_terminal(
         database,
         document_id,
         FlashcardJobTerminalState::Canceled,
         FLASHCARD_CANCELED_CODE,
-        FLASHCARD_CANCELED_MESSAGE,
+        safe_error_message,
     );
 }
 
@@ -364,6 +372,33 @@ mod tests {
                     .map_err(CommandError::database)?;
                 assert_eq!(lifecycle, "ready");
                 assert_eq!(code, FLASHCARD_CANCELED_CODE);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn artifact_specific_cancellation_message_is_preserved() {
+        let database = Database::open_in_memory().expect("database should open");
+        let document_id = "2".repeat(32);
+        insert_guide_only_document(&database, &document_id);
+
+        record_document_cancellation_with_message(
+            &database,
+            &document_id,
+            "Additional flashcard generation stopped.",
+        );
+
+        database
+            .with_connection(|connection| {
+                let message: String = connection
+                    .query_row(
+                        "SELECT safe_error_message FROM documents WHERE id = ?1",
+                        [document_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(message, "Additional flashcard generation stopped.");
                 Ok(())
             })
             .unwrap();

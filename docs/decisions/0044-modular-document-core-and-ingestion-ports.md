@@ -36,8 +36,9 @@ ownership and makes backend replacement harder to review.
 
 The planned Xberg evaluation may replace AnyDoc and may eventually supply PDF
 extraction, OCR, layout understanding, or rendering. ostudy must be able to make
-that change by implementing or selecting a document adapter, not by rewriting
-learning plans, study guides, flashcard generation, persistence, or IPC.
+that change by implementing and explicitly assigning a document adapter, not by
+rewriting learning plans, study guides, flashcard generation, persistence, or
+IPC.
 
 ## Decision
 
@@ -54,12 +55,14 @@ documents/
 ├── repository.rs
 ├── source.rs
 ├── lifecycle.rs
+├── generation.rs
 └── reconciliation.rs
 ```
 
 The package root contains declarations and narrow re-exports. Core document
-modules do not depend on AI provider code, a parser crate, PDF rendering, OCR, or
-artifact-specific generation implementations.
+modules do not depend on Tauri-managed state, AI provider code, a parser crate,
+PDF rendering, OCR, or artifact-specific generation implementations. Only
+`commands.rs` owns Tauri command wrappers.
 
 - `contracts.rs` owns existing serialized request/result DTOs without changing
   command payloads or field names.
@@ -69,13 +72,15 @@ artifact-specific generation implementations.
 - `lifecycle.rs` owns the settled document-level `processing`, `ready`, `failed`,
   and `archived` policy. An unarchived document is ready when at least one usable
   learning artifact remains, even when the latest generation attempt failed.
+- `generation.rs` adapts the existing initial-flashcard use case to ordinary Rust
+  dependencies and maps its result back to the stable IPC contract.
 - `reconciliation.rs` coordinates interrupted operations, transient staging
   cleanup, and missing-source detection.
 - `commands.rs` contains thin Tauri wrappers for catalog and archive operations.
 
 Artifact modules remain responsible for their own job state and atomic artifact
-commits. They call transaction-local document lifecycle helpers rather than
-reimplementing document readiness.
+commits. They call the document lifecycle service rather than reimplementing
+settled document readiness after failure, cancellation, or interruption.
 
 ### 2. Generic ingestion is an application-owned port
 
@@ -99,17 +104,25 @@ ostudy-owned extraction output. Parser, OCR, renderer, subprocess, or RPC types
 may not cross the port.
 
 The request contains only managed source identity, the recorded app-owned
-`DocumentFormat`, bounded source-unit limits, platform rendering services needed
-by the selected implementation, and an exact-document cancellation check. The
-output contains `CanonicalIngestion`, versioned backend identities, and an
-optional app-owned compatibility projection.
+`DocumentFormat`, bounded source-unit limits, and an exact-document cancellation
+check. Runtime-specific dependencies are injected when the registry constructs
+the selected adapter implementation, rather than leaking into the generic
+request. The output contains `CanonicalIngestion`, versioned backend identities,
+and an optional app-owned compatibility projection.
 
-The registry selects from an ordered set of registered adapters. The current
-production registry contains the native PDF adapter and the AnyDoc adapter.
-Replacing either with Xberg requires a new adapter implementation and an explicit
-registry decision; downstream persistence and learning code remain unchanged.
-There is no runtime parser-selection UI and no silent fallback from one backend
-to another after extraction begins.
+The registry owns an explicit `DocumentFormat` to production-backend assignment.
+Registration order never decides ownership and “first adapter that reports
+support” selection is forbidden. The current assignment is:
+
+- PDF is owned by the native PDF/PDFium/OCR adapter;
+- the currently enabled office, OpenDocument, EPUB, RTF, spreadsheet, and CSV
+  families are owned by the AnyDoc adapter; and
+- a future Xberg adapter must explicitly take ownership of reviewed formats in
+  the registry match after its provenance, cancellation, and parity contracts
+  are qualified.
+
+There is no runtime parser-selection UI, no ambiguous overlapping ownership, and
+no silent fallback from one backend to another after extraction begins.
 
 ### 3. Backend identity is part of the port
 
@@ -119,7 +132,7 @@ Every adapter exposes a versioned `DocumentAdapterIdentity` with:
 - extraction identity; and
 - optional render identity.
 
-Persistence compares the output identity with the currently selected adapter
+Persistence compares the output identity with the currently assigned adapter
 before commit. A backend upgrade invalidates rebuildable derivatives while
 preserving immutable sources, completed learner artifacts, annotations, cards,
 schedules, and review history.
@@ -142,41 +155,60 @@ the `documents` table schema.
 
 ### 5. PDF remains one adapter implementation, not the generic model
 
-The current native PDF behavior remains the regression oracle and is organized
-under `document_ingestion::pdf`:
+The current native PDF behavior remains the regression oracle but is split across
+three explicit ownership layers:
 
 ```text
 document_ingestion/pdf/
-├── mod.rs
 ├── adapter.rs
-├── pipeline.rs
+├── canonicalize.rs
+└── compatibility.rs
+
+pdf_document_ingestion/
 ├── contracts.rs
+├── pipeline.rs
 ├── rendering.rs
 ├── ocr.rs
 ├── recovery.rs
-├── quality.rs
+├── validation.rs
 ├── errors.rs
-├── canonicalize.rs
-├── compatibility.rs
-└── backend/
+├── files.rs
+└── progress.rs
+
+pdf_backend/
+├── contracts.rs
+├── extraction.rs
+├── quality.rs
+└── recovery.rs
 ```
 
-The native PDF adapter may internally coordinate oxidize-pdf, platform PDF
-rendering, and platform OCR. That internal decomposition is not imposed on future
-adapters. An Xberg adapter may produce canonical blocks/assets directly through a
-subprocess or library while still satisfying the top-level `DocumentAdapter`
-port.
+The native PDF adapter coordinates the PDF processing service, then converts its
+output into canonical records. `pdf_document_ingestion` owns rendering, OCR,
+recovery sequencing, durable render writes, and progress. `pdf_backend` owns
+low-level extraction, semantic conversion, text-quality assessment, and recovery
+planning.
+
+This decomposition is not imposed on future adapters. An Xberg adapter may
+produce canonical blocks and assets directly through a subprocess or library
+while still satisfying the top-level `DocumentAdapter` port.
 
 The temporary PDF compatibility projection remains isolated in
-`pdf/compatibility.rs`. Non-PDF adapters never fabricate legacy page rows.
+`document_ingestion/pdf/compatibility.rs`. Non-PDF adapters never fabricate
+legacy page rows.
 
 ### 6. AnyDoc remains isolated behind its adapter
 
-AnyDoc-specific code is organized by transformation stage:
+The generic registry wrapper is intentionally small:
 
 ```text
 document_ingestion/anydoc/
-├── mod.rs
+└── adapter.rs
+```
+
+All AnyDoc-specific parsing and transformation stages live in the backend package:
+
+```text
+anydoc_document_adapter/
 ├── adapter.rs
 ├── detection.rs
 ├── model.rs
@@ -184,29 +216,19 @@ document_ingestion/anydoc/
 ├── segmentation.rs
 ├── chunking.rs
 ├── assets.rs
-└── errors.rs
+├── errors.rs
+└── support.rs
 ```
 
-`anydoc::model` values terminate in the normalization stage. The adapter first
-builds an app-owned normalized representation, then creates canonical source
-units, blocks, assets, and chunks. This creates a direct replacement seam for
-Xberg without leaking either backend into canonical persistence or document
-intelligence.
+`anydoc::model` values terminate inside this package. The backend first builds an
+app-owned normalized representation, then creates canonical source units, blocks,
+assets, and chunks. This creates a direct replacement seam for Xberg without
+leaking either backend into canonical persistence or document intelligence.
 
 Current source-unit truthfulness remains unchanged: AnyDoc-backed inputs produce
 bounded inferred sections where exact authored-unit provenance is unavailable.
 
-### 7. `pdf_backend` becomes an implementation package
-
-The existing extraction types remain app-owned but move behind a normal module
-package with separate owners for contracts, native extraction/semantic
-conversion, text-quality assessment, and recovery planning. The public facade
-needed by the native PDF adapter remains stable during the move.
-
-No backend package contacts an AI provider, writes learning artifacts, or owns
-SQLite transactions.
-
-### 8. Cancellation is explicit at the adapter boundary
+### 7. Cancellation is explicit at the adapter boundary
 
 The adapter request supplies an exact-document cancellation check. Current
 implementations bridge that check to the existing task-cancellation registry.
@@ -215,7 +237,7 @@ cancellation hook or terminate a scoped worker process. Cancellation remains
 cooperative, document-scoped, and incapable of committing partial canonical
 output.
 
-### 9. Compatibility is preserved
+### 8. Compatibility is preserved
 
 This refactor does not change:
 
@@ -226,7 +248,7 @@ This refactor does not change:
 - current backend identity strings;
 - AnyDoc format detection, segmentation, or asset limits;
 - native PDF extraction, rendering, OCR, quality, or recovery behavior;
-- provider prompts, schemas, capability routing, or concurrency;
+- provider prompts, schemas, capability routing, or concurrency; or
 - document lifecycle user-visible behavior except where a regression proves
   existing duplicated policy is inconsistent with the accepted guide/deck
   readiness rule.
@@ -270,14 +292,15 @@ not import artifact generation, provider transport, or IPC command modules.
 
 ## Enforcement and qualification
 
-The static architecture verifier will require the final module topology, reject
-the path-attributed ingestion aliases, reject third-party parser types outside
-backend implementation directories, and prevent replacement monoliths from
-reappearing.
+The static architecture verifier requires the final module topology, rejects the
+path-attributed ingestion aliases, rejects third-party parser types outside
+backend implementation directories, rejects Tauri state/commands outside the
+core command module, forbids first-supporting-backend routing, and prevents
+replacement monoliths from reappearing.
 
 Regression coverage must include:
 
-1. registry selection and content-authoritative probing;
+1. explicit registry ownership and content-authoritative probing;
 2. backend identity validation before persistence;
 3. unchanged PDF canonical and compatibility projections;
 4. unchanged AnyDoc family fixtures, segmentation, and asset identity;
@@ -295,10 +318,10 @@ and CSV generation remain human acceptance boundaries.
 
 The source tree gains more files and explicit interfaces, but each module has a
 single durable owner. Current behavior remains available while parser
-implementation decisions become local to the adapter registry. Xberg can be
-introduced incrementally and compared against the existing adapters without
-creating a parallel document-learning pipeline or changing authoritative learner
-data.
+implementation decisions become local to the explicit adapter ownership map.
+Xberg can be introduced incrementally and compared against the existing adapters
+without creating a parallel document-learning pipeline or changing authoritative
+learner data.
 
 A later Xberg integration still requires its own dependency/license/runtime,
 process-isolation, capability, provenance, cancellation, and migration analysis.

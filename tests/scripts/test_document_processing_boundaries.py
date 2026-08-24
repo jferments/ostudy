@@ -87,6 +87,14 @@ class DocumentProcessingBoundaryVerifierTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("third-party AnyDoc types", result.stderr)
 
+    def test_rejects_tauri_state_outside_document_commands(self) -> None:
+        (self.source_root / "documents" / "repository.rs").write_text(
+            "use tauri::State;\n", encoding="utf-8"
+        )
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ordinary Rust dependencies", result.stderr)
+
     def test_rejects_first_supporting_backend_selection(self) -> None:
         (self.source_root / "document_ingestion" / "registry.rs").write_text(
             "fn route(format: DocumentFormat) { adapters.into_iter().find(|adapter| adapter.supports(format)); }\n",

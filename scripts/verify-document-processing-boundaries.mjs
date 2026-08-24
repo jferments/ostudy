@@ -81,6 +81,20 @@ for (const packageName of packageNames) {
   }
 }
 
+const documentsRoot = join(sourceRoot, "documents");
+if (await exists(documentsRoot)) {
+  for (const path of await rustFiles(documentsRoot)) {
+    const normalized = display(path);
+    if (normalized === "src-tauri/src/documents/commands.rs") continue;
+    const source = productionSource(await readFile(path, "utf8"));
+    if (/\btauri::State\b/u.test(source) || /#\s*\[\s*tauri::command\s*\]/u.test(source)) {
+      violations.push(
+        `${normalized}: document core modules must use ordinary Rust dependencies; Tauri state/commands belong in commands.rs`,
+      );
+    }
+  }
+}
+
 for (const path of await rustFiles(sourceRoot)) {
   const source = productionSource(await readFile(path, "utf8"));
   const normalized = display(path);

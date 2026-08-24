@@ -5,7 +5,7 @@
 //! study guides and initial card generation. New notes retain source-window topic
 //! provenance through the canonical authoring transaction.
 
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -24,10 +24,11 @@ use crate::{
     document_scale::{self, DocumentScalePlan},
     document_semantics::{build_partitioned_semantic_windows, validate_semantic_windows},
     document_store::{self, GenerationJobIdentity},
+    documents,
     error::CommandError,
     paths::AppPaths,
     task_cancellation::run_document_task,
-    util::{unix_time_millis, validate_entity_id},
+    util::validate_entity_id,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -81,24 +82,23 @@ pub async fn generate_more_pdf_flashcards(
 ) -> Result<GenerateMorePdfFlashcardsResultDto, CommandError> {
     validate_entity_id(&input.document_id, "document")?;
     let document_id = input.document_id.clone();
-    let database_after = database.clone();
     let result = run_document_task(&document_id, async {
-        let result = generate_more_impl(database, paths, runtime, input).await;
+        let result = generate_more_impl(
+            database.inner(),
+            paths.inner(),
+            runtime.inner(),
+            input,
+        )
+        .await;
         if let Err(error) = &result {
             if error.code == "ai_request_canceled" {
-                record_additional_failure(
-                    database_after.inner(),
+                documents::record_document_cancellation_with_message(
+                    database.inner(),
                     &document_id,
-                    "document_generation_canceled",
                     CANCELED_MESSAGE,
                 );
             } else {
-                record_additional_failure(
-                    database_after.inner(),
-                    &document_id,
-                    &error.code,
-                    &error.message,
-                );
+                documents::record_document_failure(database.inner(), &document_id, error);
             }
         }
         result
@@ -115,19 +115,19 @@ pub async fn generate_more_pdf_flashcards(
 }
 
 async fn generate_more_impl(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
-    runtime: State<'_, AiRuntimeState>,
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
     input: GenerateMorePdfFlashcardsInput,
 ) -> Result<GenerateMorePdfFlashcardsResultDto, CommandError> {
-    let context = load_context(database.inner(), &input.document_id)?;
-    ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
-    document_store::mark_document_processing(database.inner(), &input.document_id)?;
+    let context = load_context(database, &input.document_id)?;
+    ensure_exact_append_destination(database, &context.deck_id, &context.deck_name)?;
+    document_store::mark_document_processing(database, &input.document_id)?;
 
     let source = context.source_descriptor()?;
     source.validate()?;
-    let outline = load_outline(database.inner(), &input.document_id)?;
-    let chunks = document_store::load_semantic_chunks(database.inner(), &input.document_id)?;
+    let outline = load_outline(database, &input.document_id)?;
+    let chunks = document_store::load_semantic_chunks(database, &input.document_id)?;
     if chunks.is_empty() {
         return Err(CommandError::new(
             "document_has_no_semantic_content",
@@ -135,29 +135,26 @@ async fn generate_more_impl(
         ));
     }
     let learning_plan = ensure_learning_plan_for_outline(
-        database.inner(),
+        database,
         &input.document_id,
         &source,
         &outline,
         &chunks,
     )?;
-    let existing_coverage = load_existing_coverage(
-        database.inner(),
-        &context.deck_id,
-        MAX_EXISTING_COVERAGE_CHARS,
-    )?;
+    let existing_coverage =
+        load_existing_coverage(database, &context.deck_id, MAX_EXISTING_COVERAGE_CHARS)?;
     let second_pass_outline = second_pass_outline(outline, &existing_coverage);
 
-    let mut task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut task = document_intelligence::load_document_task_context(database)?;
     let capabilities = document_provider::load_document_provider_capabilities(
-        database.inner(),
+        database,
         &task.profile_id,
         &task.provider_kind,
         &task.model_id,
     )?;
     task.apply_provider_capabilities(&capabilities);
     let calibration = document_cost::load_cost_calibration(
-        database.inner(),
+        database,
         &task.provider_kind,
         &task.model_id,
     )?;
@@ -216,22 +213,22 @@ async fn generate_more_impl(
     );
 
     document_store::initialize_additional_progress(
-        database.inner(),
+        database,
         &input.document_id,
         plan.label(),
         windows.len(),
     )?;
     let job_id = document_store::create_generation_job(
-        database.inner(),
+        database,
         &input.document_id,
         &GenerationJobIdentity::from(&task),
         &source,
         &windows,
     )?;
     let generated_values = document_generation::execute_generation_windows(GenerationExecution {
-        database: database.inner(),
-        paths: paths.inner(),
-        runtime: runtime.inner(),
+        database,
+        paths,
+        runtime,
         task: &task,
         document_id: &input.document_id,
         document_title: &context.title,
@@ -252,13 +249,13 @@ async fn generate_more_impl(
         ));
     }
     let grounded_candidates = attach_generated_card_source_windows(
-        database.inner(),
+        database,
         &job_id,
         &windows,
         generated_values.clone(),
     )?;
     let curated_values = document_intelligence::curate_document_cards(
-        runtime.inner(),
+        runtime,
         &task,
         &second_pass_outline,
         generated_values,
@@ -273,16 +270,16 @@ async fn generate_more_impl(
     let grounded_cards = retain_curated_card_provenance(grounded_candidates, curated_values)?;
 
     document_store::mark_job_committing(
-        database.inner(),
+        database,
         &input.document_id,
         &job_id,
         grounded_cards.len(),
     )?;
-    ensure_exact_append_destination(database.inner(), &context.deck_id, &context.deck_name)?;
+    ensure_exact_append_destination(database, &context.deck_id, &context.deck_name)?;
     let payload = build_append_payload(&context.deck_name, &grounded_cards)?;
     let (api_token_count, api_token_usage_complete) = task.usage_summary();
     let result = import_generated_flashcards_bytes_with_commit_context(
-        database.inner(),
+        database,
         payload.as_bytes(),
         |connection, import_result, commit_context, now| {
             if import_result.deck_id != context.deck_id {
@@ -565,62 +562,6 @@ fn second_pass_outline(
     outline
 }
 
-fn record_additional_failure(database: &Database, document_id: &str, code: &str, message: &str) {
-    let now = unix_time_millis().unwrap_or_default();
-    let usage = crate::task_cancellation::current_usage_summary();
-    let (api_token_count, api_token_usage_complete) = usage.unwrap_or((None, false));
-    let _ = database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        transaction
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = CASE
-                         WHEN archived_at IS NOT NULL THEN 'archived'
-                         WHEN generated_deck_id IS NOT NULL THEN 'ready'
-                         ELSE 'failed'
-                     END,
-                     safe_error_code = ?1, safe_error_message = ?2,
-                     processing_duration_ms = CASE
-                         WHEN processing_started_at IS NULL THEN processing_duration_ms
-                         ELSE MAX(0, ?3 - processing_started_at)
-                     END,
-                     api_token_count = CASE WHEN ?4 IS NULL THEN api_token_count ELSE ?4 END,
-                     api_token_usage_complete = CASE WHEN ?4 IS NULL THEN api_token_usage_complete ELSE ?5 END,
-                     updated_at = ?3, revision = revision + 1
-                 WHERE id = ?6",
-                params![
-                    bounded(code, 80),
-                    bounded(message, 1000),
-                    now,
-                    api_token_count,
-                    if api_token_usage_complete { 1_i64 } else { 0_i64 },
-                    document_id,
-                ],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_additional_failure_state_write_failed",
-                    format!("document={document_id} original_code={code}"),
-                    error,
-                )
-            })?;
-        transaction
-            .execute(
-                "UPDATE document_generation_jobs
-                 SET state = CASE WHEN ?1 = 'document_generation_canceled' THEN 'canceled' ELSE 'failed' END,
-                     safe_error_code = ?1, safe_error_message = ?2,
-                     updated_at = ?3, completed_at = ?3
-                 WHERE document_id = ?4
-                   AND state IN ('queued', 'extracting', 'generating', 'committing')",
-                params![bounded(code, 80), bounded(message, 1000), now, document_id],
-            )
-            .map_err(CommandError::database)?;
-        transaction.commit().map_err(CommandError::database)
-    });
-}
-
 fn ensure_exact_append_destination(
     database: &Database,
     expected_deck_id: &str,
@@ -678,10 +619,6 @@ fn compact_text(value: &str, maximum: usize) -> String {
         .chars()
         .take(maximum)
         .collect()
-}
-
-fn bounded(value: &str, maximum: usize) -> String {
-    value.chars().take(maximum).collect()
 }
 
 #[cfg(test)]
