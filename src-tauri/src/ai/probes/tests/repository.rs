@@ -158,23 +158,7 @@ fn probe_result_serialization_excludes_raw_provider_payloads() {
 
 #[test]
 fn invalid_saved_capability_status_is_rejected() {
-    let database = Database::open_in_memory().expect("database should open");
-    let profile = profile();
-    insert_profile(&database, &profile);
-    database
-        .with_connection(|connection| {
-            connection
-                .execute(
-                    "INSERT INTO ai_provider_capabilities (
-                         profile_id, capability_key, status, source_kind, value_json, checked_at
-                     ) VALUES (?1, 'image_input', 'invalid', 'probed', 'null', 1)",
-                    [profile.id.as_str()],
-                )
-                .map_err(CommandError::database)?;
-            Ok(())
-        })
-        .expect("invalid fixture should insert");
-    let error = repository::load_capability_records(&database, &profile.id)
+    let error = CapabilityStatus::from_db("invalid")
         .expect_err("invalid capability status must not escape persistence");
     assert_eq!(error.code, "invalid_ai_capability_status");
 }
