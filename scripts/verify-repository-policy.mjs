@@ -20,7 +20,7 @@ for (const path of rustFiles) {
   for (const match of text.matchAll(staleSuppression)) {
     failures.push(`${displayPath}:${lineNumber(text, match.index ?? 0)}: stale-code diagnostics are suppressed`);
   }
-  if (/\breqwest\b/u.test(text) && displayPath !== "src-tauri/src/ai/gateway.rs") {
+  if (/\breqwest\b/u.test(text) && !displayPath.startsWith("src-tauri/src/ai/gateway/")) {
     failures.push(`${displayPath}: provider HTTP is confined to the native AI gateway transport`);
   }
   if (
