@@ -265,9 +265,7 @@ async fn request_outline_with_retry(
         },
     )
     .await
-    .and_then(|value| {
-        parse_outline_fragment(value, &bounds, UnsupportedSectionPolicy::Reject)
-    });
+    .and_then(|value| parse_outline_fragment(value, &bounds, UnsupportedSectionPolicy::Reject));
 
     match first {
         Ok(outline) => Ok(outline),
