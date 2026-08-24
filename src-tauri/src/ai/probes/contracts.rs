@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::error::CommandError;
+
 use super::super::{catalog::ProviderKind, gateway::SafeAiError, providers::ProviderModel};
 
 pub(super) const ADAPTER_REVISION: i64 = 6;
@@ -67,6 +69,18 @@ impl CapabilityStatus {
             Self::Unknown => "unknown",
         }
     }
+
+    pub(super) fn from_db(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "supported" => Ok(Self::Supported),
+            "unsupported" => Ok(Self::Unsupported),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(CommandError::new(
+                "invalid_ai_capability_status",
+                "Saved AI capability evidence is invalid.",
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -124,8 +138,8 @@ pub struct AiProviderModelsDto {
 #[derive(Clone, Debug)]
 pub(crate) struct PersistedCapability {
     pub key: String,
-    pub status: String,
-    pub value_json: String,
+    pub status: CapabilityStatus,
+    pub value: Option<Value>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

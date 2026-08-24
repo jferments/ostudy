@@ -45,6 +45,11 @@ const requiredPackages = {
     "repository.rs",
   ],
 };
+const requiredTestModules = {
+  gateway: ["redaction", "request", "response", "retry", "streaming", "transport", "usage"],
+  profiles: ["contracts", "policy", "projections", "repository", "service"],
+  probes: ["capabilities", "phases", "repository", "runner"],
+};
 
 for (const packageName of Object.keys(requiredPackages)) {
   const legacy = join(aiRoot, `${packageName}.rs`);
@@ -67,6 +72,27 @@ for (const packageName of Object.keys(requiredPackages)) {
     const source = productionSource(await readFile(path, "utf8"));
     if (/#\s*\[\s*path\s*=/u.test(source)) {
       violations.push(`${display(path)}: path-attributed module aliases are forbidden`);
+    }
+  }
+
+  const testsRoot = join(packageRoot, "tests");
+  const testsModule = join(testsRoot, "mod.rs");
+  if (!(await exists(testsModule))) {
+    violations.push(`${display(testsModule)}: package test module root is missing`);
+    continue;
+  }
+  const testsSource = await readFile(testsModule, "utf8");
+  for (const moduleName of requiredTestModules[packageName]) {
+    const testPath = join(testsRoot, `${moduleName}.rs`);
+    if (!(await exists(testPath))) {
+      violations.push(`${display(testPath)}: required package test module is missing`);
+      continue;
+    }
+    const declaration = new RegExp(`\\bmod\\s+${escapeRegExp(moduleName)}\\s*;`, "u");
+    if (!declaration.test(testsSource)) {
+      violations.push(
+        `${display(testsModule)}: test module ${moduleName}.rs exists but is not compiled`,
+      );
     }
   }
 }
@@ -159,7 +185,7 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "OK   AI infrastructure: bounded gateway, profile, and probe packages with explicit network, command, and persistence owners.",
+  "OK   AI infrastructure: bounded gateway, profile, and probe packages with explicit network, command, persistence, and executable-test owners.",
 );
 
 function productionSource(source) {
@@ -179,6 +205,10 @@ async function collectFiles(directory, suffix) {
 
 function display(path) {
   return relative(root, path).replaceAll("\\", "/");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 async function exists(path) {

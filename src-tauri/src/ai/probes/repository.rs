@@ -1,13 +1,17 @@
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use serde_json::Value;
 
 use crate::{database::Database, error::CommandError};
 
 use super::{
     contracts::{
-        AiProviderProbeResultDto, DocumentProbeEvidence, PersistedCapability, ProbeOverallStatus,
-        ADAPTER_REVISION, MAX_PERSISTED_RESULT_BYTES, RESULT_SCHEMA_VERSION,
+        AiProviderProbeResultDto, CapabilityStatus, DocumentProbeEvidence, PersistedCapability,
+        ProbeOverallStatus, ADAPTER_REVISION, MAX_PERSISTED_RESULT_BYTES, RESULT_SCHEMA_VERSION,
     },
-    super::{profiles::{load_profile_snapshot, ProfileSnapshot}, providers::ProviderModel},
+    super::{
+        profiles::{load_profile_snapshot, ProfileSnapshot},
+        providers::ProviderModel,
+    },
 };
 
 pub(super) fn persist_selected_model_declarations(
@@ -113,7 +117,7 @@ pub(super) fn load_probe_result(
     })
 }
 
-pub(crate) fn load_capabilities(
+pub(crate) fn load_capability_records(
     database: &Database,
     profile_id: &str,
 ) -> Result<Vec<PersistedCapability>, CommandError> {
@@ -128,15 +132,29 @@ pub(crate) fn load_capabilities(
             .map_err(CommandError::database)?;
         let rows = statement
             .query_map([profile_id], |row| {
-                Ok(PersistedCapability {
-                    key: row.get(0)?,
-                    status: row.get(1)?,
-                    value_json: row.get(2)?,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             })
             .map_err(CommandError::database)?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)
+        let records = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        records
+            .into_iter()
+            .map(|(key, status, value_json)| {
+                let status = CapabilityStatus::from_db(&status)?;
+                let value: Value =
+                    serde_json::from_str(&value_json).map_err(CommandError::serialization)?;
+                Ok(PersistedCapability {
+                    key,
+                    status,
+                    value: (!value.is_null()).then_some(value),
+                })
+            })
+            .collect()
     })
 }
 

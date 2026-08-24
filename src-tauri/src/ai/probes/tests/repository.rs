@@ -103,11 +103,12 @@ fn result_and_capabilities_are_replaced_atomically() {
         .expect("result should exist");
     assert_eq!(loaded.overall_status, ProbeOverallStatus::Partial);
     assert_eq!(loaded.tested_at, 20);
-    let capabilities = repository::load_capabilities(&database, &profile.id)
+    let capabilities = repository::load_capability_records(&database, &profile.id)
         .expect("capabilities should load");
     assert_eq!(capabilities.len(), 1);
     assert_eq!(capabilities[0].key, "image_input");
-    assert_eq!(capabilities[0].status, "supported");
+    assert_eq!(capabilities[0].status, CapabilityStatus::Supported);
+    assert_eq!(capabilities[0].value, Some(json!(true)));
 }
 
 #[test]
@@ -153,4 +154,27 @@ fn probe_result_serialization_excludes_raw_provider_payloads() {
     assert!(!serialized.contains("authorization"));
     assert!(!serialized.contains("reasoning_content"));
     assert!(serialized.len() < 32 * 1024);
+}
+
+#[test]
+fn invalid_saved_capability_status_is_rejected() {
+    let database = Database::open_in_memory().expect("database should open");
+    let profile = profile();
+    insert_profile(&database, &profile);
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "INSERT INTO ai_provider_capabilities (
+                         profile_id, capability_key, status, source_kind, value_json, checked_at
+                     ) VALUES (?1, 'image_input', 'invalid', 'probed', 'null', 1)",
+                    [profile.id.as_str()],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .expect("invalid fixture should insert");
+    let error = repository::load_capability_records(&database, &profile.id)
+        .expect_err("invalid capability status must not escape persistence");
+    assert_eq!(error.code, "invalid_ai_capability_status");
 }

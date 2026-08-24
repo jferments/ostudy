@@ -1,10 +1,10 @@
 use serde_json::json;
 
-use super::super::streaming::test_usage_delta;
+use super::super::streaming::usage::usage_delta;
 
 #[test]
 fn normalized_usage_projects_to_the_document_task_accumulator() {
-    let delta = test_usage_delta(&json!({
+    let delta = usage_delta(&json!({
         "prompt_tokens": 100,
         "completion_tokens": 40,
         "total_tokens": 140,

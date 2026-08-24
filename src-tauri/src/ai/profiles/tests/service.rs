@@ -1,16 +1,14 @@
-use crate::{ai::AiRuntimeState, database::Database};
-
-use super::{
-    super::{
-        super::super::{
-            catalog::{AiTaskKind, ProviderKind},
-            secrets::CredentialPersistence,
-        },
-        contracts::{SetAiProviderCredentialInput, SetAiTaskDefaultInput},
-        service,
+use crate::{
+    ai::{
+        catalog::{AiTaskKind, ProviderKind},
+        profiles::{contracts::{SetAiProviderCredentialInput, SetAiTaskDefaultInput}, service},
+        secrets::CredentialPersistence,
+        AiRuntimeState,
     },
-    default_profile_input,
+    database::Database,
 };
+
+use super::default_input;
 
 fn runtime() -> AiRuntimeState {
     AiRuntimeState::new(crate::platform::unavailable_secret_store())
@@ -21,13 +19,13 @@ fn runtime() -> AiRuntimeState {
 fn create_service_replays_without_duplicate_profiles() {
     let database = Database::open_in_memory().expect("database should open");
     let runtime = runtime();
-    let mut first = default_profile_input(ProviderKind::LlamaCpp);
+    let mut first = default_input(ProviderKind::LlamaCpp);
     first.operation_id = "55555555555555555555555555555555".to_string();
     first.display_name = "Replay service".to_string();
     first.model_id = "model".to_string();
     let created = service::create_profile(&database, &runtime, first).unwrap();
 
-    let mut retry = default_profile_input(ProviderKind::LlamaCpp);
+    let mut retry = default_input(ProviderKind::LlamaCpp);
     retry.operation_id = "55555555555555555555555555555555".to_string();
     retry.display_name = "Ignored retry payload".to_string();
     let replayed = service::create_profile(&database, &runtime, retry).unwrap();
@@ -39,7 +37,7 @@ fn create_service_replays_without_duplicate_profiles() {
 fn session_credential_updates_epoch_without_exposing_value() {
     let database = Database::open_in_memory().expect("database should open");
     let runtime = runtime();
-    let mut input = default_profile_input(ProviderKind::Openrouter);
+    let mut input = default_input(ProviderKind::Openrouter);
     input.operation_id = "66666666666666666666666666666666".to_string();
     input.display_name = "OpenRouter".to_string();
     input.model_id = "openai/example".to_string();
@@ -66,7 +64,7 @@ fn session_credential_updates_epoch_without_exposing_value() {
 fn task_default_assignment_is_idempotent() {
     let database = Database::open_in_memory().expect("database should open");
     let runtime = runtime();
-    let mut input = default_profile_input(ProviderKind::LlamaCpp);
+    let mut input = default_input(ProviderKind::LlamaCpp);
     input.operation_id = "88888888888888888888888888888888".to_string();
     input.display_name = "Default".to_string();
     input.model_id = "model".to_string();
@@ -82,7 +80,10 @@ fn task_default_assignment_is_idempotent() {
         },
     )
     .unwrap();
-    assert_eq!(defaults.flashcard_generation_profile_id, Some(profile.id.clone()));
+    assert_eq!(
+        defaults.flashcard_generation_profile_id,
+        Some(profile.id.clone())
+    );
     let replayed = service::set_task_default(
         &database,
         &runtime,
@@ -93,5 +94,8 @@ fn task_default_assignment_is_idempotent() {
         },
     )
     .unwrap();
-    assert_eq!(replayed.flashcard_generation_profile_id, defaults.flashcard_generation_profile_id);
+    assert_eq!(
+        replayed.flashcard_generation_profile_id,
+        defaults.flashcard_generation_profile_id
+    );
 }

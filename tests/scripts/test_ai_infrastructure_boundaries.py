@@ -89,6 +89,19 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("anti-monolith limit", result.stderr)
 
+    def test_rejects_test_file_that_is_not_compiled(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ostudy-ai-infrastructure-") as root:
+            root_path = Path(root)
+            self.write_valid_topology(root_path)
+            self.write(
+                root_path,
+                "src-tauri/src/ai/probes/tests/mod.rs",
+                "mod capabilities;\nmod repository;\nmod runner;\n",
+            )
+            result = self.run_verifier(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("test module phases.rs exists but is not compiled", result.stderr)
+
     def write_valid_topology(self, root: Path) -> None:
         modules = {
             "gateway": [
@@ -121,6 +134,19 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
                 "repository.rs",
             ],
         }
+        test_modules = {
+            "gateway": [
+                "redaction",
+                "request",
+                "response",
+                "retry",
+                "streaming",
+                "transport",
+                "usage",
+            ],
+            "profiles": ["contracts", "policy", "projections", "repository", "service"],
+            "probes": ["capabilities", "phases", "repository", "runner"],
+        }
         self.write(
             root,
             "src-tauri/src/ai/gateway/mod.rs",
@@ -139,6 +165,15 @@ class AiInfrastructureBoundaryTests(unittest.TestCase):
         for package, names in modules.items():
             for name in names:
                 self.write(root, f"src-tauri/src/ai/{package}/{name}", "// bounded owner\n")
+        for package, names in test_modules.items():
+            declarations = "".join(f"mod {name};\n" for name in names)
+            self.write(root, f"src-tauri/src/ai/{package}/tests/mod.rs", declarations)
+            for name in names:
+                self.write(
+                    root,
+                    f"src-tauri/src/ai/{package}/tests/{name}.rs",
+                    "// executable package test\n",
+                )
 
     def write(self, root: Path, relative_path: str, content: str) -> None:
         path = root / relative_path

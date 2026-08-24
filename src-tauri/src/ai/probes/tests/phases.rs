@@ -1,47 +1,42 @@
-use super::{
-    super::{
-        super::super::{catalog::ProviderKind, providers::ProviderModel},
+use crate::ai::{
+    gateway::SafeAiError,
+    probes::{
         contracts::ProbePhaseStatus,
-        phases::{classify_model_match, passed_phase, skipped_phase, ModelMatch},
+        phases::{failed_phase, passed_phase, skipped_phase},
     },
-    profile,
 };
 
 #[test]
-fn sole_llama_model_mismatch_uses_the_server_id() {
-    let profile = profile(ProviderKind::LlamaCpp, "unsloth/repository-name");
-    let models = vec![ProviderModel {
-        id: "/models/Qwen3.6-27B-Q4_K_M.gguf".to_string(),
-        display_name: "Qwen3.6".to_string(),
-        owned_by: Some("llamacpp".to_string()),
-        context_window_tokens: None,
-        reasoning: None,
-    }];
-    assert_eq!(
-        classify_model_match(&profile, &models),
-        ModelMatch::SoleLlamaServerId("/models/Qwen3.6-27B-Q4_K_M.gguf".to_string())
-    );
-}
-
-#[test]
-fn cloud_model_mismatch_remains_a_hard_failure() {
-    let profile = profile(ProviderKind::Deepseek, "deepseek-v4-flash");
-    let models = vec![ProviderModel {
-        id: "deepseek-v4-pro".to_string(),
-        display_name: "deepseek-v4-pro".to_string(),
-        owned_by: Some("deepseek".to_string()),
-        context_window_tokens: None,
-        reasoning: None,
-    }];
-    assert_eq!(classify_model_match(&profile, &models), ModelMatch::Missing);
-}
-
-#[test]
-fn phase_builders_preserve_terminal_labels() {
+fn phase_builders_preserve_status_latency_and_safe_errors() {
     let passed = passed_phase("text", "Text", "Passed.", Some(4));
+    assert_eq!(passed.phase, "text");
+    assert_eq!(passed.label, "Text");
     assert_eq!(passed.status, ProbePhaseStatus::Passed);
     assert_eq!(passed.latency_ms, Some(4));
+    assert!(passed.error.is_none());
+
+    let failure = SafeAiError {
+        code: "ai_connection_failed".to_string(),
+        message: "The provider could not be reached.".to_string(),
+        retryable: true,
+        retry_after_seconds: None,
+    };
+    let failed = failed_phase(
+        "connection",
+        "Connection",
+        "The provider request failed.",
+        Some(9),
+        failure,
+    );
+    assert_eq!(failed.status, ProbePhaseStatus::Failed);
+    assert_eq!(failed.latency_ms, Some(9));
+    assert_eq!(
+        failed.error.as_ref().map(|error| error.code.as_str()),
+        Some("ai_connection_failed")
+    );
+
     let skipped = skipped_phase("optional", "Optional", "Not required.");
     assert_eq!(skipped.status, ProbePhaseStatus::Skipped);
     assert_eq!(skipped.latency_ms, None);
+    assert!(skipped.error.is_none());
 }

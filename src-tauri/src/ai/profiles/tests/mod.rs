@@ -1,15 +1,21 @@
+mod contracts;
+mod policy;
+mod projections;
+mod repository;
+mod service;
+
 use crate::{database::Database, error::CommandError};
 
-use super::super::{
+use super::{
+    super::{
+        catalog::{AuthMode, ProviderKind, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS},
+        secrets::{CredentialStatus, CredentialStorage},
+    },
     contracts::{CreateAiProviderProfileInput, ProfileConfigurationStatus, StoredProfile},
-    defaults,
-    policy,
+    defaults as profile_defaults,
+    policy as profile_policy,
     projections::configuration_status_for_test,
-    repository,
-};
-use super::super::super::{
-    catalog::{AuthMode, ProviderKind, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS},
-    secrets::{CredentialStatus, CredentialStorage},
+    repository as profile_repository,
 };
 
 fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
@@ -33,9 +39,11 @@ fn create_test_profile(database: &Database, provider_kind: ProviderKind) -> Stri
     input.operation_id = "11111111111111111111111111111111".to_string();
     input.display_name = "Local model".to_string();
     input.model_id = "test-model".to_string();
-    let fields = policy::validate_create_profile(&input).expect("profile should validate");
+    let fields = profile_policy::validate_create_profile(&input).expect("profile should validate");
     database
-        .with_connection(|connection| repository::create_profile(connection, input, fields))
+        .with_connection(|connection| {
+            profile_repository::create_profile(connection, input, fields)
+        })
         .expect("profile should create")
 }
 
@@ -63,7 +71,7 @@ fn creates_profiles_without_persisting_credentials() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(storage, "none");
-            let snapshot = repository::load_profile_snapshot(connection, &profile_id)?;
+            let snapshot = profile_repository::load_profile_snapshot(connection, &profile_id)?;
             assert_eq!(snapshot.provider_kind, ProviderKind::LlamaCpp);
             Ok(())
         })
@@ -76,14 +84,16 @@ fn replays_create_operations_without_duplicate_profiles() {
     let mut input = default_input(ProviderKind::LlamaCpp);
     input.operation_id = "22222222222222222222222222222222".to_string();
     input.display_name = "Replay profile".to_string();
-    let fields = policy::validate_create_profile(&input).unwrap();
+    let fields = profile_policy::validate_create_profile(&input).unwrap();
     let first = database
-        .with_connection(|connection| repository::create_profile(connection, input, fields))
+        .with_connection(|connection| {
+            profile_repository::create_profile(connection, input, fields)
+        })
         .expect("profile should create");
 
     let replay = database
         .with_connection(|connection| {
-            repository::operation_replay(
+            profile_repository::operation_replay(
                 connection,
                 "22222222222222222222222222222222",
                 "create_profile",
@@ -102,7 +112,7 @@ fn credential_epoch_operations_are_idempotent_and_redacted() {
     let profile_id = create_test_profile(&database, ProviderKind::LlamaCpp);
     database
         .with_connection(|connection| {
-            repository::commit_credential_epoch(
+            profile_repository::commit_credential_epoch(
                 connection,
                 &profile_id,
                 1,
@@ -112,7 +122,7 @@ fn credential_epoch_operations_are_idempotent_and_redacted() {
             )
         })
         .expect("credential epoch should commit");
-    assert!(repository::operation_was_replayed(
+    assert!(profile_repository::operation_was_replayed(
         &database,
         "44444444444444444444444444444444",
         "set_credential",
@@ -153,12 +163,14 @@ fn zero_data_retention_is_openrouter_only() {
     valid.display_name = "OpenRouter ZDR".to_string();
     valid.model_id = "openai/example".to_string();
     valid.require_zero_data_retention = true;
-    assert!(policy::validate_create_profile(&valid).is_ok());
+    assert!(profile_policy::validate_create_profile(&valid).is_ok());
 
     let mut invalid = default_input(ProviderKind::LlamaCpp);
     invalid.require_zero_data_retention = true;
     assert_eq!(
-        policy::validate_create_profile(&invalid).unwrap_err().code,
+        profile_policy::validate_create_profile(&invalid)
+            .unwrap_err()
+            .code,
         "invalid_ai_privacy_policy"
     );
 }
@@ -167,14 +179,18 @@ fn zero_data_retention_is_openrouter_only() {
 fn rejects_planned_provider_profiles_and_invalid_cloud_auth() {
     let planned = default_input(ProviderKind::Openai);
     assert_eq!(
-        policy::validate_create_profile(&planned).unwrap_err().code,
+        profile_policy::validate_create_profile(&planned)
+            .unwrap_err()
+            .code,
         "ai_provider_not_implemented"
     );
 
     let mut cloud = default_input(ProviderKind::Deepseek);
     cloud.auth_mode = AuthMode::None;
     assert_eq!(
-        policy::validate_create_profile(&cloud).unwrap_err().code,
+        profile_policy::validate_create_profile(&cloud)
+            .unwrap_err()
+            .code,
         "invalid_ai_auth_mode"
     );
 }
@@ -182,18 +198,18 @@ fn rejects_planned_provider_profiles_and_invalid_cloud_auth() {
 #[test]
 fn normalizes_profile_names_and_bounds_timeouts() {
     assert_eq!(
-        policy::validate_display_name("  Local   Model  ").unwrap(),
+        profile_policy::validate_display_name("  Local   Model  ").unwrap(),
         "Local Model"
     );
-    assert!(policy::validate_timeout(MIN_TIMEOUT_MS - 1).is_err());
-    assert!(policy::validate_timeout(MAX_TIMEOUT_MS + 1).is_err());
+    assert!(profile_policy::validate_timeout(MIN_TIMEOUT_MS - 1).is_err());
+    assert!(profile_policy::validate_timeout(MAX_TIMEOUT_MS + 1).is_err());
 }
 
 #[test]
 fn task_defaults_decode_nullable_profile_ids() {
     let database = Database::open_in_memory().expect("database should open");
     let result = database
-        .with_connection(defaults::load_task_defaults)
+        .with_connection(profile_defaults::load_task_defaults)
         .expect("defaults should load");
     assert_eq!(result.flashcard_generation_profile_id, None);
 }

@@ -1,5 +1,5 @@
-mod sse;
-mod usage;
+pub(super) mod sse;
+pub(super) mod usage;
 
 use std::time::Duration;
 

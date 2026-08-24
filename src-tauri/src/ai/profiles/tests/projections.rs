@@ -1,11 +1,10 @@
-use super::super::{
-    super::super::{
-        catalog::{AuthMode, ProviderKind},
-        secrets::{CredentialStatus, CredentialStorage},
+use crate::ai::{
+    catalog::{AuthMode, ProviderKind},
+    profiles::{
+        contracts::{ProfileConfigurationStatus, StoredProfile},
+        projections::configuration_status_for_test,
     },
-    contracts::ProfileConfigurationStatus,
-    projections::configuration_status,
-    repository::StoredProfile,
+    secrets::{CredentialStatus, CredentialStorage},
 };
 
 fn stored(enabled: bool, model_id: &str, auth_mode: AuthMode) -> StoredProfile {
@@ -31,24 +30,30 @@ fn stored(enabled: bool, model_id: &str, auth_mode: AuthMode) -> StoredProfile {
 #[test]
 fn configuration_projection_distinguishes_disabled_incomplete_and_ready() {
     assert_eq!(
-        configuration_status(&stored(false, "model", AuthMode::None), CredentialStatus::NotRequired),
+        configuration_status_for_test(
+            &stored(false, "model", AuthMode::None),
+            CredentialStatus::NotRequired,
+        ),
         ProfileConfigurationStatus::Disabled
     );
     assert_eq!(
-        configuration_status(&stored(true, "", AuthMode::None), CredentialStatus::NotRequired),
-        ProfileConfigurationStatus::Incomplete
-    );
-    assert_eq!(
-        configuration_status(
-            &stored(true, "model", AuthMode::Bearer),
-            CredentialStatus::Missing
+        configuration_status_for_test(
+            &stored(true, "", AuthMode::None),
+            CredentialStatus::NotRequired,
         ),
         ProfileConfigurationStatus::Incomplete
     );
     assert_eq!(
-        configuration_status(
+        configuration_status_for_test(
             &stored(true, "model", AuthMode::Bearer),
-            CredentialStatus::SessionOnly
+            CredentialStatus::Missing,
+        ),
+        ProfileConfigurationStatus::Incomplete
+    );
+    assert_eq!(
+        configuration_status_for_test(
+            &stored(true, "model", AuthMode::Bearer),
+            CredentialStatus::SessionOnly,
         ),
         ProfileConfigurationStatus::Ready
     );

@@ -7,7 +7,7 @@ use crate::{
 };
 
 use super::super::{
-    catalog::{AiTaskKind, ProviderKind},
+    catalog::ProviderKind,
     endpoint_policy::{validate_endpoint, NetworkScope},
     probes::load_document_probe_evidence,
     profiles::{load_default_profile_request, ProfileSnapshot},
@@ -100,7 +100,7 @@ impl DocumentTaskContext {
 pub(crate) fn load_document_task_context(
     database: &Database,
 ) -> Result<DocumentTaskContext, CommandError> {
-    let request = load_default_profile_request(database, AiTaskKind::FlashcardGeneration)?;
+    let request = load_default_profile_request(database)?;
     let profile = request.profile;
     profile.validate_for_provider_request()?;
     let endpoint = validate_endpoint(

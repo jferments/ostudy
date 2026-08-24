@@ -1,34 +1,22 @@
-use crate::{database::Database, error::CommandError};
-
-use super::{
-    super::{
-        super::super::{catalog::ProviderKind, endpoint_policy::validate_endpoint},
-        policy,
-        repository,
+use crate::{
+    ai::{
+        catalog::ProviderKind,
+        profiles::{policy, repository},
     },
-    default_profile_input,
+    database::Database,
+    error::CommandError,
 };
 
+use super::default_input;
+
 fn create_test_profile(database: &Database, operation_id: &str, name: &str) -> String {
-    let mut input = default_profile_input(ProviderKind::LlamaCpp);
+    let mut input = default_input(ProviderKind::LlamaCpp);
     input.operation_id = operation_id.to_string();
     input.display_name = name.to_string();
     input.model_id = "test-model".to_string();
-    let display_name = policy::validate_display_name(input.display_name.clone()).unwrap();
-    let normalized_name = policy::normalize_name(&display_name);
-    let model_id = policy::validate_model_id(input.model_id.clone()).unwrap();
-    let endpoint = validate_endpoint(input.provider_kind, &input.base_url, false).unwrap();
+    let fields = policy::validate_create_profile(&input).expect("profile should validate");
     database
-        .with_connection(|connection| {
-            repository::create_profile(
-                connection,
-                input,
-                display_name,
-                normalized_name,
-                model_id,
-                endpoint,
-            )
-        })
+        .with_connection(|connection| repository::create_profile(connection, input, fields))
         .expect("profile should create")
 }
 
@@ -95,23 +83,13 @@ fn active_profile_names_remain_unique() {
         "33333333333333333333333333333333",
         "Duplicate",
     );
-    let mut input = default_profile_input(ProviderKind::LlamaCpp);
+    let mut input = default_input(ProviderKind::LlamaCpp);
     input.operation_id = "44444444444444444444444444444444".to_string();
     input.display_name = "duplicate".to_string();
     input.model_id = "other".to_string();
-    let display_name = policy::validate_display_name(input.display_name.clone()).unwrap();
-    let endpoint = validate_endpoint(input.provider_kind, &input.base_url, false).unwrap();
+    let fields = policy::validate_create_profile(&input).expect("duplicate should validate");
     let error = database
-        .with_connection(|connection| {
-            repository::create_profile(
-                connection,
-                input,
-                display_name.clone(),
-                policy::normalize_name(&display_name),
-                "other".to_string(),
-                endpoint,
-            )
-        })
+        .with_connection(|connection| repository::create_profile(connection, input, fields))
         .expect_err("normalized names must remain unique");
     assert_eq!(error.code, "ai_profile_name_exists");
 }
