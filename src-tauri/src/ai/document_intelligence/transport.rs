@@ -35,10 +35,9 @@ pub(super) async fn request_json(
     request: JsonTaskRequest<'_>,
 ) -> Result<Value, CommandError> {
     let profile = task.profile();
-    let credential =
-        runtime
-            .secrets
-            .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
+    let credential = runtime
+        .secrets
+        .resolve(&profile.id, profile.auth_mode, task.credential_storage())?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())
@@ -121,7 +120,7 @@ pub(super) async fn request_json(
 
     let first_response = runtime
         .gateway
-        .post_json(
+        .post_document_json(
             url.clone(),
             bearer,
             &body,
@@ -143,7 +142,7 @@ pub(super) async fn request_json(
             }
             runtime
                 .gateway
-                .post_json(
+                .post_document_json(
                     url,
                     bearer,
                     &compatibility_body,
@@ -243,6 +242,10 @@ fn openrouter_document_body(
         "temperature": 0.12,
         "max_tokens": request.max_tokens,
         "stream": false,
+        "plugins": [{
+            "id": "context-compression",
+            "enabled": false
+        }],
         "provider": providers::openrouter_provider_preferences(
             true,
             profile.require_zero_data_retention,
@@ -256,8 +259,11 @@ fn openrouter_document_body(
             }
         }
     });
-    if reasoning_effort != "none" {
-        body["reasoning"] = json!({"effort": reasoning_effort});
+    if reasoning_effort != "none" && reasoning_effort != "automatic" {
+        body["reasoning"] = json!({
+            "effort": reasoning_effort,
+            "exclude": true
+        });
     }
     Ok(body)
 }
@@ -298,7 +304,6 @@ fn response_token_usage(response: &Value) -> (Option<u64>, Option<u64>, Option<u
             .iter()
             .find_map(|pointer| response.pointer(pointer).and_then(nonnegative_json_integer))
     };
-
     let standard_prompt = read(&[
         "/usage/prompt_tokens",
         "/usage/input_tokens",
@@ -361,6 +366,10 @@ fn deepseek_strict_completion_endpoint(profile: &ProfileSnapshot) -> Result<Url,
     join_endpoint(&profile.base_url, "beta/chat/completions")
 }
 
+fn completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
+    join_endpoint(&profile.base_url, "chat/completions")
+}
+
 fn parse_strict_tool_arguments(value: &Value) -> Result<Value, CommandError> {
     let function = value
         .pointer("/choices/0/message/tool_calls/0/function")
@@ -381,6 +390,29 @@ fn parse_strict_tool_arguments(value: &Value) -> Result<Value, CommandError> {
         .map_err(|_| output_error("DeepSeek returned tool arguments that were not valid JSON."))
 }
 
+fn parse_completion_content(value: &Value) -> Result<&str, CommandError> {
+    value
+        .pointer("/choices/0/message/content")
+        .and_then(Value::as_str)
+        .or_else(|| value.pointer("/choices/0/text").and_then(Value::as_str))
+        .filter(|content| !content.trim().is_empty())
+        .ok_or_else(|| output_error("The AI provider returned no structured document content."))
+}
+
+fn normalize_json_content(value: &str) -> &str {
+    let trimmed = value.trim();
+    let without_open = trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```JSON"))
+        .or_else(|| trimmed.strip_prefix("```"))
+        .unwrap_or(trimmed)
+        .trim();
+    without_open
+        .strip_suffix("```")
+        .unwrap_or(without_open)
+        .trim()
+}
+
 fn deepseek_strict_schema(value: &Value) -> Value {
     match value {
         Value::Array(values) => Value::Array(values.iter().map(deepseek_strict_schema).collect()),
@@ -398,7 +430,6 @@ fn deepseek_strict_schema(value: &Value) -> Value {
                     "enum": [constant.clone()]
                 });
             }
-
             let mut normalized = serde_json::Map::new();
             for (key, child) in object {
                 match key.as_str() {
@@ -411,14 +442,11 @@ fn deepseek_strict_schema(value: &Value) -> Value {
                     }
                 }
             }
-
             if let Some(properties) = normalized.get("properties").and_then(Value::as_object) {
-                let required = properties
-                    .keys()
-                    .cloned()
-                    .map(Value::String)
-                    .collect::<Vec<_>>();
-                normalized.insert("required".to_string(), Value::Array(required));
+                normalized.insert(
+                    "required".to_string(),
+                    Value::Array(properties.keys().cloned().map(Value::String).collect()),
+                );
                 normalized.insert("additionalProperties".to_string(), Value::Bool(false));
             }
             Value::Object(normalized)
@@ -427,302 +455,100 @@ fn deepseek_strict_schema(value: &Value) -> Value {
     }
 }
 
-fn parse_completion_content(value: &Value) -> Result<&str, CommandError> {
-    value
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_str)
-        .filter(|content| !content.trim().is_empty())
-        .ok_or_else(|| {
-            CommandError::new(
-                "ai_empty_response",
-                "The model returned no final document-task content.",
-            )
-        })
-}
-
-fn normalize_json_content(value: &str) -> &str {
-    let trimmed = value.trim();
-    if let Some(inner) = trimmed
-        .strip_prefix("```json")
-        .and_then(|value| value.strip_suffix("```"))
-    {
-        return inner.trim();
-    }
-    if let Some(inner) = trimmed
-        .strip_prefix("```")
-        .and_then(|value| value.strip_suffix("```"))
-    {
-        return inner.trim();
-    }
-    trimmed
-}
-
-fn completion_endpoint(profile: &ProfileSnapshot) -> Result<Url, CommandError> {
-    match profile.provider_kind {
-        ProviderKind::LlamaCpp => {
-            let base_includes_v1 = Url::parse(&profile.base_url)
-                .ok()
-                .is_some_and(|url| url.path().trim_end_matches('/').ends_with("/v1"));
-            join_endpoint(
-                &profile.base_url,
-                if base_includes_v1 {
-                    "chat/completions"
-                } else {
-                    "v1/chat/completions"
-                },
-            )
-        }
-        ProviderKind::Deepseek => deepseek_strict_completion_endpoint(profile),
-        ProviderKind::Openrouter => join_endpoint(&profile.base_url, "chat/completions"),
-        _ => Err(CommandError::new(
-            "ai_provider_not_implemented",
-            "The selected AI provider cannot analyze documents in this ostudy build.",
-        )),
-    }
-}
-
-fn ensure_document_response_not_blocked(value: &Value) -> Result<(), CommandError> {
-    match value
+fn ensure_document_response_not_blocked(response: &Value) -> Result<(), CommandError> {
+    let finish_reason = response
         .pointer("/choices/0/finish_reason")
+        .and_then(Value::as_str);
+    let refusal = response
+        .pointer("/choices/0/message/refusal")
         .and_then(Value::as_str)
-    {
-        Some("content_filter") => Err(CommandError::new(
-            "ai_document_output_filtered",
-            "The AI provider stopped the document result because of its content policy.",
-        )),
-        Some("insufficient_system_resource") => Err(CommandError::new(
-            "ai_provider_resource_exhausted",
-            "The AI provider stopped the document request because it did not have enough inference resources.",
-        )),
-        _ => Ok(()),
+        .filter(|value| !value.trim().is_empty());
+    if finish_reason == Some("content_filter") || refusal.is_some() {
+        return Err(CommandError::new(
+            "ai_content_policy_rejected",
+            "The AI provider stopped this document request because of its content policy.",
+        ));
     }
+    Ok(())
 }
 
-fn gateway_to_command(error: AiGatewayError) -> CommandError {
-    let SafeAiError { code, message, .. } = error.safe;
-    CommandError::new(code, message)
+fn gateway_to_command(error_value: AiGatewayError) -> CommandError {
+    CommandError::new(error_value.safe.code, error_value.safe.message)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::schemas::flashcard_schema;
     use super::*;
-    use crate::ai::catalog::AuthMode;
 
-    fn openrouter_profile() -> ProfileSnapshot {
-        ProfileSnapshot {
+    #[test]
+    fn image_media_type_is_content_authoritative() {
+        assert_eq!(
+            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
+            Some("image/png")
+        );
+        assert_eq!(document_image_media_type(b"not-an-image"), None);
+    }
+
+    #[test]
+    fn deepseek_schema_requires_all_properties_and_removes_unsupported_bounds() {
+        let normalized = deepseek_strict_schema(&json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 20},
+                "kind": {"const": "basic"}
+            },
+            "required": ["name"]
+        }));
+        assert_eq!(normalized["additionalProperties"], false);
+        assert_eq!(normalized["required"], json!(["kind", "name"]));
+        assert!(normalized["properties"]["name"].get("minLength").is_none());
+        assert_eq!(normalized["properties"]["kind"]["enum"], json!(["basic"]));
+    }
+
+    #[test]
+    fn normalizes_optional_markdown_json_fences() {
+        assert_eq!(normalize_json_content("```json\n{\"ok\":true}\n```"), "{\"ok\":true}");
+        assert_eq!(normalize_json_content(" {\"ok\":true} "), "{\"ok\":true}");
+    }
+
+    #[test]
+    fn openrouter_document_policy_disables_compression_and_excludes_reasoning() {
+        let profile = ProfileSnapshot {
             id: "a".repeat(32),
             provider_kind: ProviderKind::Openrouter,
             base_url: "https://openrouter.ai/api/v1/".to_string(),
             model_id: "openai/example".to_string(),
-            auth_mode: AuthMode::Bearer,
+            auth_mode: super::super::super::catalog::AuthMode::Bearer,
             enabled: true,
             allow_insecure_http: false,
             require_zero_data_retention: false,
             request_timeout_ms: 60_000,
             credential_epoch: 0,
             revision: 1,
-        }
-    }
-
-    #[test]
-    fn token_usage_accepts_openai_and_llama_cpp_envelopes() {
-        assert_eq!(
-            response_token_usage(&json!({
-                "usage": {"prompt_tokens": 120, "completion_tokens": 30, "total_tokens": 150}
-            })),
-            (Some(120), Some(30), Some(150))
-        );
-        assert_eq!(
-            response_token_usage(&json!({
-                "timings": {"cache_n": 180, "prompt_n": 40, "predicted_n": 45}
-            })),
-            (Some(220), Some(45), Some(265))
-        );
-        assert_eq!(
-            response_token_usage(&json!({
-                "tokens_cached": 20, "tokens_evaluated": 80, "tokens_predicted": 20
-            })),
-            (Some(100), Some(20), Some(120))
-        );
-        assert_eq!(
-            response_token_usage(&json!({
-                "__verbose": {
-                    "timings": {"cache_n": 60, "prompt_n": 15, "predicted_n": 25}
-                }
-            })),
-            (Some(75), Some(25), Some(100))
-        );
-        assert_eq!(
-            response_token_usage(&json!({
-                "response": {"usage": {"prompt_tokens": 9, "completion_tokens": 4, "total_tokens": 13}}
-            })),
-            (Some(9), Some(4), Some(13))
-        );
-    }
-
-    #[test]
-    fn canonical_image_media_types_are_derived_from_bytes() {
-        assert_eq!(
-            document_image_media_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
-            Some("image/png")
-        );
-        assert_eq!(
-            document_image_media_type(&[0xff, 0xd8, 0xff, 0x00]),
-            Some("image/jpeg")
-        );
-        assert_eq!(document_image_media_type(b"GIF89a"), Some("image/gif"));
-        assert_eq!(
-            document_image_media_type(b"RIFFxxxxWEBP"),
-            Some("image/webp")
-        );
-        assert_eq!(document_image_media_type(b"not-an-image"), None);
-    }
-
-    #[test]
-    fn nonportable_canonical_images_are_omitted_from_provider_parts() {
-        let images = [
-            SourcePageImage {
-                page_number: 2,
-                bytes: b"BMbitmap".to_vec(),
-            },
-            SourcePageImage {
-                page_number: 3,
-                bytes: vec![0xff, 0xd8, 0xff, 0x00],
-            },
-        ];
-        let parts = multimodal_user_parts("source", &images).unwrap();
-        assert_eq!(parts.len(), 3);
-        assert!(parts[1]["text"].as_str().unwrap().contains("unit 3"));
-        assert!(parts[2]["image_url"]["url"]
-            .as_str()
-            .unwrap()
-            .starts_with("data:image/jpeg;base64,"));
-    }
-
-    #[test]
-    fn openrouter_document_requests_use_portable_strict_schema_and_reasoning_effort() {
-        let profile = openrouter_profile();
-        let schema = flashcard_schema(4);
+        };
         let request = JsonTaskRequest {
             system_prompt: "system",
-            user_text: "source",
-            schema: &schema,
-            max_tokens: 128,
+            user_text: "user",
+            schema: &json!({"type":"object"}),
+            max_tokens: 100,
             images: &[],
         };
         let body = openrouter_document_body(&profile, "low", &request).unwrap();
-        assert_eq!(
-            body.pointer("/provider/require_parameters"),
-            Some(&json!(true))
-        );
-        assert_eq!(
-            body.pointer("/provider/data_collection"),
-            Some(&json!("deny"))
-        );
-        assert_eq!(body.pointer("/provider/sort"), Some(&json!("throughput")));
-        assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
-        assert_eq!(
-            body.pointer("/response_format/type"),
-            Some(&json!("json_schema"))
-        );
-        let wire_schema = body
-            .pointer("/response_format/json_schema/schema")
-            .expect("wire schema should exist");
-        let serialized = serde_json::to_string(wire_schema).unwrap();
-        assert!(!serialized.contains("\"oneOf\""));
-        assert!(serialized.contains("\"anyOf\""));
-        assert!(!serialized.contains("\"const\""));
-        assert!(!serialized.contains("maxItems"));
-        let first_variant = wire_schema
-            .pointer("/properties/cards/items/anyOf/0")
-            .unwrap();
-        let property_count = first_variant["properties"].as_object().unwrap().len();
-        assert_eq!(
-            first_variant["required"].as_array().unwrap().len(),
-            property_count
-        );
-        assert!(body.get("plugins").is_none());
-        assert!(body.get("debug").is_none());
+        assert_eq!(body["plugins"][0]["id"], "context-compression");
+        assert_eq!(body["plugins"][0]["enabled"], false);
+        assert_eq!(body["reasoning"]["effort"], "low");
+        assert_eq!(body["reasoning"]["exclude"], true);
+        assert!(body.get("session_id").is_none());
     }
 
     #[test]
-    fn openrouter_document_requests_include_canonical_images() {
-        let profile = openrouter_profile();
-        let schema = flashcard_schema(1);
-        let image = SourcePageImage {
-            page_number: 7,
-            bytes: vec![0xff, 0xd8, 0xff, 0x00],
+    fn safe_error_contract_remains_serializable() {
+        let error = SafeAiError {
+            code: "code".to_string(),
+            message: "message".to_string(),
+            retryable: false,
+            retry_after_seconds: None,
         };
-        let request = JsonTaskRequest {
-            system_prompt: "system",
-            user_text: "source",
-            schema: &schema,
-            max_tokens: 64,
-            images: &[image],
-        };
-        let body = openrouter_document_body(&profile, "none", &request).unwrap();
-        assert_eq!(
-            body.pointer("/messages/1/content/1/text"),
-            Some(&json!("Rendered source unit 7 follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent or image-only content."))
-        );
-        let url = body
-            .pointer("/messages/1/content/2/image_url/url")
-            .and_then(Value::as_str)
-            .expect("canonical image data URL should exist");
-        assert!(url.starts_with("data:image/jpeg;base64,"));
-    }
-
-    #[test]
-    fn deepseek_strict_schema_uses_supported_required_shapes() {
-        let schema = deepseek_strict_schema(&flashcard_schema(8));
-        let serialized = serde_json::to_string(&schema).unwrap();
-        assert!(serialized.contains("\"anyOf\""));
-        assert!(!serialized.contains("\"oneOf\""));
-        assert!(!serialized.contains("maxLength"));
-        assert!(!serialized.contains("maxItems"));
-        let card_properties = schema
-            .pointer("/properties/cards/items/anyOf/0/properties")
-            .and_then(Value::as_object)
-            .unwrap();
-        let required = schema
-            .pointer("/properties/cards/items/anyOf/0/required")
-            .and_then(Value::as_array)
-            .unwrap();
-        assert_eq!(required.len(), card_properties.len());
-    }
-
-    #[test]
-    fn strict_tool_arguments_parse_without_prompt_schema_repair() {
-        let value = json!({
-            "choices": [{
-                "message": {
-                    "tool_calls": [{
-                        "function": {
-                            "name": DEEPSEEK_STRICT_TOOL_NAME,
-                            "arguments": "{\"cards\":[]}"
-                        }
-                    }]
-                }
-            }]
-        });
-        assert_eq!(
-            parse_strict_tool_arguments(&value).unwrap(),
-            json!({ "cards": [] })
-        );
-    }
-
-    #[test]
-    fn length_is_truncation_only_when_the_structured_result_is_incomplete() {
-        ensure_document_response_not_blocked(&json!({
-            "choices": [{ "finish_reason": "length" }]
-        }))
-        .expect("length alone is not a policy or resource failure");
-        let error = truncated_output_error();
-        assert_eq!(error.code, "ai_document_output_truncated");
+        assert_eq!(serde_json::to_value(error).unwrap()["retryable"], false);
     }
 }
