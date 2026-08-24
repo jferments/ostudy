@@ -1,0 +1,44 @@
+name: PR 71 one-shot automatic Rust formatting
+
+on:
+  push:
+    branches:
+      - agent/document-ingestion-modularization
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    steps:
+      - name: Check out the implementation branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/document-ingestion-modularization
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Expose the pinned Rust toolchain
+        shell: bash
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Apply canonical Rust formatting and remove one-shot maintenance files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          git rm --ignore-unmatch -- \
+            .github/workflows/format-pr71.yml \
+            .github/workflows/format-pr71-auto.yml \
+            tmp-noop
+          git config user.name "ostudy maintenance"
+          git config user.email "158022198+jferments@users.noreply.github.com"
+          git add -- src-tauri/src src-tauri/build.rs
+          if git diff --cached --quiet; then
+            echo "The branch was already formatted and no temporary file required removal." >&2
+            exit 1
+          fi
+          git commit -m "style(rust): apply canonical formatting"
+          git push origin HEAD:agent/document-ingestion-modularization
