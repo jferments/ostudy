@@ -1,0 +1,1 @@
+/mnt/data/ostudy-work/repo/src-tauri/src/ai/providers.rs
