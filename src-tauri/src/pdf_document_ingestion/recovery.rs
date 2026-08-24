@@ -1,7 +1,6 @@
 use std::{collections::BTreeSet, path::Path};
 
 use crate::{
-    error::CommandError,
     pdf_backend::{self, ExtractedDocument, ExtractionRecoveryPlan, RecoveredPageText},
     pdf_render_backend::{self, PdfRenderRuntime},
 };

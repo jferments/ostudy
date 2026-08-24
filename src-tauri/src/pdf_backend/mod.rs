@@ -4,9 +4,13 @@ mod quality;
 mod recovery;
 
 pub(crate) use contracts::{
-    ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage,
-    ExtractionRecoveryPlan, OcrPageCandidate, PdfBackendError, PdfBackendErrorKind,
-    RecoveredPageText, SemanticBBox, TextQualityAssessment,
+    ExtractedDocument, ExtractionRecoveryPlan, OcrPageCandidate, PdfBackendError,
+    PdfBackendErrorKind, RecoveredPageText,
+};
+#[cfg(test)]
+pub(crate) use contracts::{
+    ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage, SemanticBBox,
+    TextQualityAssessment,
 };
 pub(crate) use extraction::extract_document;
 pub(crate) use quality::{assess_text_quality, native_page_requires_ocr};

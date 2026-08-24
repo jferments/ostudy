@@ -43,6 +43,12 @@ fn write_new_file(destination: &Path, bytes: &[u8]) -> Result<(), CommandError> 
     file.sync_all().map_err(CommandError::io)
 }
 
+fn sync_file(path: &Path) -> Result<(), CommandError> {
+    File::open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(CommandError::io)
+}
+
 pub(crate) fn sync_directory(path: &Path) -> Result<(), CommandError> {
     File::open(path)
         .and_then(|directory| directory.sync_all())
