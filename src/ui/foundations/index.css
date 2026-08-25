@@ -87,4 +87,11 @@
     --radius: var(--ostudy-radius-medium);
     --radius-small: var(--ostudy-radius-small);
   }
+
+  /* Temporary compatibility while Stage 5 replaces these legacy controls. */
+  .primary-button,
+  .small-primary-button,
+  .practice-reveal-button {
+    color: var(--on-accent);
+  }
 }
