@@ -1,0 +1,31 @@
+@layer components {
+  .form {
+    display: grid;
+    gap: var(--ostudy-space-4);
+    padding: var(--ostudy-space-1);
+  }
+
+  .form label {
+    display: grid;
+    gap: var(--ostudy-space-2);
+  }
+
+  .form label > span {
+    color: var(--ostudy-color-text-secondary);
+    font-size: 0.8rem;
+    font-weight: 760;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  @container deck-library (max-width: 620px) {
+    .actions > * {
+      flex: 1 1 auto;
+    }
+  }
+}

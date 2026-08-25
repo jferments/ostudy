@@ -14,6 +14,9 @@ import {
   type RescheduleIntent,
 } from "../../ipc/scheduling";
 import { scheduleActionNotice } from "./scheduleActionResult";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { DialogActions } from "../../ui/overlays/Dialog";
 
 interface ScheduleActionModalProps {
   cards: SelectionCard[];
@@ -126,11 +129,11 @@ export function ScheduleActionModal({
       onClose={close}
     >
       {action === "reset" ? (
-        <div className="inline-alert warning-alert">
+        <InlineNotice kind="warning">
           The selected cards will become New and ready now. Existing review history remains
           available for analytics. The complete selection changes in one transaction or not at
           all.
-        </div>
+        </InlineNotice>
       ) : (
         <div className="schedule-action-options">
           <label>
@@ -171,19 +174,19 @@ export function ScheduleActionModal({
           </p>
         </div>
       )}
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-      <footer className="modal-actions">
-        <button
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      <DialogActions>
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={isSaving}
           onClick={close}
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={action === "reset" ? "danger-button" : "primary-button"}
+          variant={action === "reset" ? "danger" : "primary"}
           disabled={isSaving}
           onClick={() => void submit()}
         >
@@ -192,8 +195,8 @@ export function ScheduleActionModal({
             : action === "reset"
               ? "Reset schedule"
               : "Reschedule"}
-        </button>
-      </footer>
+        </Button>
+      </DialogActions>
     </Modal>
   );
 }

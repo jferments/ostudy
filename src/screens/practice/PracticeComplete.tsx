@@ -9,6 +9,8 @@ import {
 import { Surface } from "../../ui/primitives/Surface";
 import { confidenceAverage, type ConfidenceCounts } from "./confidence";
 import styles from "./PracticeComplete.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
 
 interface PracticeCompleteProps {
   ratedCount: number;
@@ -113,23 +115,23 @@ export function PracticeComplete({
       </section>
 
       <div className={styles.actions}>
-        <button type="button" className="primary-button" onClick={onViewAnalytics}>
+        <Button type="button" variant="primary" onClick={onViewAnalytics}>
           View analytics
-        </button>
-        <button type="button" className="secondary-button" onClick={onChooseDecks}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={onChooseDecks}>
           Back to practice
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="text-button"
+          variant="text"
           disabled={isStarting}
           onClick={onRestart}
         >
           {isStarting ? "Starting…" : "Practice this scope again"}
-        </button>
+        </Button>
       </div>
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
     </div>
   );
 }

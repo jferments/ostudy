@@ -14,6 +14,9 @@ import {
   type RichDocument,
 } from "../ipc/common";
 import { managedAssetUrl } from "../platform/assets";
+import { InlineProgress } from "../ui/primitives/InlineNotice";
+import contentStyles from "./RichContent.module.css";
+import editorStyles from "./RichTextEditor.module.css";
 
 const ManagedImage = Image.extend({
   addAttributes() {
@@ -55,10 +58,20 @@ export function StudyRichEditor({
       Highlight,
       TextStyle,
       Link.configure({ openOnClick: false, autolink: false }),
-      ManagedImage.configure({ inline: false, allowBase64: false }),
+      ManagedImage.configure({
+        inline: false,
+        allowBase64: false,
+        HTMLAttributes: { class: contentStyles.image },
+      }),
     ],
     content: editorValue,
     editable: !disabled,
+    editorProps: {
+      attributes: {
+        class: `${contentStyles.content} ${editorStyles.studyContent}`,
+        "aria-label": label,
+      },
+    },
     onUpdate({ editor: current }) {
       const canonical = canonicalDocument(current.getJSON());
       onChange(canonical, extractText(canonical));
@@ -76,7 +89,7 @@ export function StudyRichEditor({
     if (current !== incoming) editor.commands.setContent(editorValue, { emitUpdate: false });
   }, [editor, editorValue, value]);
 
-  if (!editor) return <div className="inline-progress">Opening editor…</div>;
+  if (!editor) return <InlineProgress>Opening editor…</InlineProgress>;
 
   async function addImage(): Promise<void> {
     if (!onRequestImage) return;
@@ -94,21 +107,102 @@ export function StudyRichEditor({
   }
 
   return (
-    <div className="study-rich-editor" aria-label={label}>
-      <div className="rich-editor-toolbar" role="toolbar" aria-label={`${label} formatting`}>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>• List</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>1. List</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}>Quote</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>Heading</button>
-        {onRequestImage ? <button type="button" disabled={disabled} onClick={() => void addImage()}>Image</button> : null}
+    <div className={editorStyles.studyEditor} aria-label={label}>
+      <div
+        className={`${editorStyles.toolbar} ${editorStyles.studyToolbar}`}
+        role="toolbar"
+        aria-label={`${label} formatting`}
+      >
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("bold"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("bold")}
+          onClick={() => editor.chain().focus().toggleBold().run()}
+        >
+          <strong>B</strong>
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("italic"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("italic")}
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+        >
+          <em>I</em>
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("underline"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("underline")}
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+        >
+          <u>U</u>
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("bulletList"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("bulletList")}
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+        >
+          • List
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("orderedList"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("orderedList")}
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        >
+          1. List
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("blockquote"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("blockquote")}
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        >
+          Quote
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("codeBlock"))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("codeBlock")}
+          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        >
+          Code
+        </button>
+        <button
+          type="button"
+          className={studyToolbarButtonClass(editor.isActive("heading", { level: 2 }))}
+          disabled={disabled}
+          aria-pressed={editor.isActive("heading", { level: 2 })}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        >
+          Heading
+        </button>
+        {onRequestImage ? (
+          <button
+            type="button"
+            className={editorStyles.toolbarButton}
+            disabled={disabled}
+            onClick={() => void addImage()}
+          >
+            Image
+          </button>
+        ) : null}
       </div>
       <EditorContent editor={editor} />
     </div>
   );
+}
+
+function studyToolbarButtonClass(active: boolean): string {
+  return `${editorStyles.toolbarButton} ${active ? editorStyles.toolbarButtonActive : ""}`.trim();
 }
 
 export function emptyRichDocument(): RichDocument {

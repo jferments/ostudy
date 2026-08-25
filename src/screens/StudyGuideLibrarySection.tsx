@@ -9,6 +9,7 @@ import {
 import { Surface } from "../ui/primitives/Surface";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 import styles from "./StudyGuideLibrarySection.module.css";
+import { Button } from "../ui/primitives/Button";
 
 interface StudyGuideLibrarySectionProps {
   showToast: ShowToast;
@@ -53,9 +54,9 @@ export function StudyGuideLibrarySection({
             <h2 id="study-guides-heading">Study guides</h2>
             <p>Open generated document outlines, add notes, or study the flashcards linked to a topic.</p>
           </div>
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isLoading}
             onClick={() => {
               setIsLoading(true);
@@ -65,7 +66,7 @@ export function StudyGuideLibrarySection({
             }}
           >
             Refresh
-          </button>
+          </Button>
         </div>
 
         {errorMessage ? (
@@ -92,13 +93,13 @@ export function StudyGuideLibrarySection({
                     {guide.archived ? " · archived source" : ""}
                   </small>
                 </div>
-                <button
+                <Button
                   type="button"
-                  className="secondary-button"
+                  variant="secondary"
                   onClick={() => setSelected(guide)}
                 >
                   Open study guide
-                </button>
+                </Button>
               </article>
             ))}
           </div>

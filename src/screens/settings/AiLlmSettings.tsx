@@ -11,6 +11,8 @@ import type {
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import aiStyles from "./AiLlmSettings.module.css";
 import styles from "./Settings.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
@@ -50,7 +52,7 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
   return (
     <div className={styles.aiLayout}>
       {controller.errorMessage ? (
-        <div className={`${styles.fullWidth} inline-alert error-alert`}>{controller.errorMessage}</div>
+        <InlineNotice kind="error" className={styles.fullWidth}>{controller.errorMessage}</InlineNotice>
       ) : null}
 
       <div className={styles.aiSidebarStack}>
@@ -60,9 +62,9 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
             <h2>AI models</h2>
           </div>
           <div className={styles.addProviderGrid}>
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={controller.mutating || availableProviders.length === 0}
               onClick={() => {
                 const preferred =
@@ -72,9 +74,9 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
               }}
             >
               Add model
-            </button>
+            </Button>
           </div>
-          {controller.loading ? <div className="inline-progress">Loading AI models…</div> : null}
+          {controller.loading ? <InlineProgress>Loading AI models…</InlineProgress> : null}
           <div className={styles.profileList}>
             {controller.profiles.map((profile) => (
               <button
@@ -230,9 +232,9 @@ function ProfileSetup({
         </div>
 
         <div className={styles.actionRow}>
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={!canConnect || (!connectionDirty && controller.modelsLoaded)}
             onClick={() => void controller.connectSetup()}
           >
@@ -241,16 +243,16 @@ function ProfileSetup({
               : controller.modelsLoaded && !connectionDirty
                 ? "Connected"
                 : "Connect and load models"}
-          </button>
+          </Button>
           {profile && !connectionDirty ? (
-            <button
+            <Button
               type="button"
-              className="text-button"
+              variant="text"
               disabled={controller.refreshingModels || controller.dirty}
               onClick={() => void controller.refreshModels()}
             >
               {controller.refreshingModels ? "Refreshing…" : "Refresh models"}
-            </button>
+            </Button>
           ) : null}
         </div>
       </section>
@@ -294,17 +296,17 @@ function ProfileSetup({
         </label>
 
         <div className={styles.actionRow}>
-          <button
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={!canSaveProfile}
             onClick={() => void controller.saveProfile()}
           >
             {controller.mutating ? "Saving…" : "Save profile"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={
               controller.testing ||
               controller.mutating ||
@@ -315,7 +317,7 @@ function ProfileSetup({
             onClick={() => void controller.testProfile()}
           >
             {controller.testing ? "Testing…" : "Test connection"}
-          </button>
+          </Button>
         </div>
 
         {controller.probeResult ? <ProbeSummary result={controller.probeResult} /> : null}
@@ -427,24 +429,24 @@ function ProfileSetup({
 
           <div className={styles.actionRow}>
             {profile && hasCredential ? (
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={controller.mutating}
                 onClick={() => void controller.clearCredential()}
               >
                 Remove saved API key
-              </button>
+              </Button>
             ) : null}
             {profile ? (
-              <button
+              <Button
                 type="button"
-                className="danger-button"
+                variant="danger"
                 disabled={controller.mutating}
                 onClick={onDelete}
               >
                 Delete profile
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

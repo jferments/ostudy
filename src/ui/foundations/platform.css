@@ -1,0 +1,77 @@
+@layer base {
+  :root {
+    --android-safe-top: 0px;
+    --android-safe-right: 0px;
+    --android-safe-bottom: 0px;
+    --android-safe-left: 0px;
+    --android-ime-bottom: 0px;
+    --safe-top: max(env(safe-area-inset-top, 0px), var(--android-safe-top));
+    --safe-right: max(env(safe-area-inset-right, 0px), var(--android-safe-right));
+    --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--android-safe-bottom));
+    --safe-left: max(env(safe-area-inset-left, 0px), var(--android-safe-left));
+  }
+
+  :root[data-motion="none"] *,
+  :root[data-motion="none"] *::before,
+  :root[data-motion="none"] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  :root[data-motion="reduced"] [data-motion-kind="spatial"],
+  :root[data-motion="reduced"] [data-motion-kind="spatial"]::before,
+  :root[data-motion="reduced"] [data-motion-kind="spatial"]::after {
+    transition-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-duration: var(--ostudy-motion-duration-instant) !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  :root[data-material="simple"],
+  :root[data-contrast="forced"] {
+    --ostudy-material-blur-low: 0px;
+    --ostudy-material-blur-medium: 0px;
+    --ostudy-material-blur-high: 0px;
+    --ostudy-material-noise-opacity: 0;
+  }
+
+  :root[data-material="simple"] {
+    --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
+    --ostudy-material-chrome-saturation: 1;
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    :root {
+      --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
+      --ostudy-material-blur-low: 0px;
+      --ostudy-material-blur-medium: 0px;
+      --ostudy-material-blur-high: 0px;
+      --ostudy-material-noise-opacity: 0;
+    }
+  }
+
+  @media (forced-colors: active) {
+    :root {
+      --ostudy-material-noise-opacity: 0;
+      --ostudy-material-blur-low: 0px;
+      --ostudy-material-blur-medium: 0px;
+      --ostudy-material-blur-high: 0px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    :root {
+      --touch-target-min: 48px;
+    }
+
+    body {
+      overflow: auto;
+    }
+
+    :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
+      visibility: hidden;
+      pointer-events: none;
+    }
+  }
+}

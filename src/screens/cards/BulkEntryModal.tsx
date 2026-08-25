@@ -10,6 +10,10 @@ import {
 } from "../../ipc/cards";
 import { getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { DialogActions } from "../../ui/overlays/Dialog";
+import { Panel } from "../../ui/primitives/Panel";
 
 interface BulkEntryModalProps {
   decks: DeckSummary[];
@@ -274,9 +278,9 @@ export function BulkEntryModal({
                   }
                 />
               </label>
-              <button
+              <Button
                 type="button"
-                className="icon-button"
+                variant="ghost" size="icon"
                 aria-label={`Remove row ${index + 1}`}
                 disabled={isSaving || rows.length === 1}
                 onClick={() => {
@@ -285,7 +289,7 @@ export function BulkEntryModal({
                 }}
               >
                 ×
-              </button>
+              </Button>
               {duplicateRowIds.has(row.id) ? (
                 <small className="duplicate-row-label">Exact duplicate</small>
               ) : null}
@@ -293,17 +297,17 @@ export function BulkEntryModal({
           ))}
         </div>
 
-        <button
+        <Button
           type="button"
-          className="text-button bulk-add-rows"
+          variant="text" className="bulk-add-rows"
           disabled={isSaving || rows.length >= MAX_BULK_ROWS}
           onClick={() => addRows()}
         >
           {rows.length >= MAX_BULK_ROWS ? "500-row limit reached" : "+ Add three rows"}
-        </button>
+        </Button>
 
         {analysis ? (
-          <section className="duplicate-review-panel" aria-live="polite">
+          <Panel  aria-live="polite">
             <div>
               <h3>
                 Remove {analysis.duplicateCount} exact duplicate
@@ -314,45 +318,45 @@ export function BulkEntryModal({
                 {uniqueCount} unique {uniqueCount === 1 ? "card" : "cards"} will be saved.
               </p>
             </div>
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={clearAnalysis}
             >
               Keep editing
-            </button>
-          </section>
+            </Button>
+          </Panel>
         ) : null}
 
         {analysis && uniqueCount === 0 ? (
-          <div className="inline-alert info-alert">
+          <InlineNotice kind="info">
             Every populated row is already present. Change or remove the highlighted rows before
             saving.
-          </div>
+          </InlineNotice>
         ) : null}
-        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+        {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
-        <div className="modal-actions bulk-entry-actions">
-          <button
+        <DialogActions className="bulk-entry-actions">
+          <Button
             type="button"
-            className="text-button danger-text"
+            variant="dangerGhost"
             disabled={isSaving}
             onClick={() => void durableDraft.discard().then(onClose)}
           >
             Discard draft
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isSaving}
             onClick={() => void durableDraft.flush().finally(onClose)}
           >
             Close
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={!canSubmit}
             onClick={() => void reviewOrSave()}
           >
@@ -363,8 +367,8 @@ export function BulkEntryModal({
                 : `Add ${populatedRows.length} ${
                     populatedRows.length === 1 ? "card" : "cards"
                   }`}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </div>
     </Modal>
   );

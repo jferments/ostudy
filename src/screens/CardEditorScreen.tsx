@@ -44,6 +44,8 @@ import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
+import { Button } from "../ui/primitives/Button";
+import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
 
 
 interface CardEditorDraftPayload extends Record<string, unknown> {
@@ -637,32 +639,32 @@ export function CardEditorScreen({
     >
       <header className="screen-header card-editor-header">
         <div>
-          <button
+          <Button
             type="button"
-            className="back-button"
+            variant="back"
             disabled={isSaving}
             onClick={() => void cancel()}
           >
             ← {deck.name}
-          </button>
+          </Button>
           <h1>{title}</h1>
         </div>
         <div className="header-actions">
           {existing ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving || dirty}
               title={dirty ? "Save or discard edits before moving this card" : undefined}
               onClick={openMoveCopy}
             >
               Move / copy
-            </button>
+            </Button>
           ) : null}
           {!selectedCustomTemplate && builtInCardType === "basic" ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={() => {
                 setPreviewOpen((value) => !value);
@@ -670,38 +672,38 @@ export function CardEditorScreen({
               }}
             >
               {previewOpen ? "Hide preview" : "Preview card"}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isSaving}
             onClick={() => void cancel()}
           >
             Cancel
-          </button>
+          </Button>
           {!existing ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={!canSave}
               onClick={() => void save(true, false)}
             >
               {selectedCustomTemplate ? "Generate + another" : "Save + another"}
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={!canSave}
             onClick={() => void save(false, false)}
           >
             {isSaving ? (selectedCustomTemplate ? "Generating…" : "Saving…") : saveLabel}
-          </button>
+          </Button>
         </div>
       </header>
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
       {duplicateMatches.length > 0 ? (
         <section className="duplicate-warning" aria-labelledby="duplicate-warning-title">
@@ -722,22 +724,22 @@ export function CardEditorScreen({
               ))}
           </div>
           <div className="duplicate-warning-actions">
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={() => setDuplicateMatches([])}
             >
               Keep editing
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="danger-button"
+              variant="danger"
               disabled={isSaving}
               onClick={() => void save(false, true)}
             >
               Save duplicate anyway
-            </button>
+            </Button>
           </div>
         </section>
       ) : null}
@@ -796,7 +798,7 @@ export function CardEditorScreen({
             <small>A card belongs to one active deck and can have any number of tags.</small>
           </label>
 
-          {isLoadingTemplate ? <div className="inline-progress">Loading template…</div> : null}
+          {isLoadingTemplate ? <InlineProgress>Loading template…</InlineProgress> : null}
           {selectedCustomTemplate ? (
             <TemplateEntryForm
               key={`${selectedCustomTemplate.id}-${editorGeneration}`}
@@ -895,14 +897,15 @@ export function CardEditorScreen({
                 <span className="eyebrow">LIVE PREVIEW</span>
                 <h2>{previewAnswer ? "Answer" : "Question"}</h2>
               </div>
-              <button
+              <Button
                 type="button"
-                className="small-primary-button"
+                variant="primary"
+                size="small"
                 disabled={isSaving}
                 onClick={() => setPreviewAnswer((value) => !value)}
               >
                 {previewAnswer ? "Show question" : "Reveal answer"}
-              </button>
+              </Button>
             </div>
             {tags.length > 0 ? (
               <div className="preview-tag-list">

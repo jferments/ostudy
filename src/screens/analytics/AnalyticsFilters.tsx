@@ -5,6 +5,7 @@ import type {
 } from "../../ipc/analytics";
 import type { DeckSummary } from "../../ipc/decks";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
+import { Button } from "../../ui/primitives/Button";
 
 interface AnalyticsFiltersProps {
   range: AnalyticsRange;
@@ -160,9 +161,9 @@ export function AnalyticsFilters({
             <span key={`tag-${name}`}>Tag: {name}</span>
           ))}
           {highlightedSessionId ? <span>Completed session highlighted</span> : null}
-          <button type="button" className="text-button" onClick={onClearScope}>
+          <Button type="button" variant="text" onClick={onClearScope}>
             Clear scope
-          </button>
+          </Button>
         </div>
       ) : null}
     </section>

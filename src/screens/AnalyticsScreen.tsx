@@ -21,6 +21,9 @@ import {
 } from "../ipc/settings";
 import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
+import { Button } from "../ui/primitives/Button";
+import { EmptyState } from "../ui/primitives/EmptyState";
+import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
 
 interface AnalyticsScreenProps {
   decks: DeckSummary[];
@@ -142,14 +145,14 @@ export function AnalyticsScreen({
             moves and current deck/tag names while retaining immutable review presentation details.
           </p>
         </div>
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={isLoading}
           onClick={() => void load()}
         >
           {isLoading ? "Calculating…" : "Refresh"}
-        </button>
+        </Button>
       </header>
 
       <AnalyticsFilters
@@ -175,9 +178,9 @@ export function AnalyticsScreen({
         }}
       />
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {isLoading && analytics === null ? (
-        <div className="inline-progress">Calculating learning analytics…</div>
+        <InlineProgress>Calculating learning analytics…</InlineProgress>
       ) : null}
 
       {analytics ? (
@@ -194,14 +197,14 @@ export function AnalyticsScreen({
                 </p>
               </div>
               <div className="analytics-chart-actions">
-                <button
+                <Button
                   type="button"
-                  className="text-button"
+                  variant="text"
                   aria-expanded={showChartData}
                   onClick={() => setShowChartData((value) => !value)}
                 >
                   {showChartData ? "Hide chart data" : "View chart data"}
-                </button>
+                </Button>
               </div>
             </div>
             <ProgressChart
@@ -315,14 +318,15 @@ export function AnalyticsScreen({
                           <StatusBadge status={tag.status} />
                         </td>
                         <td>
-                          <button
+                          <Button
                             type="button"
-                            className="small-primary-button"
+                            variant="primary"
+                            size="small"
                             disabled={tag.studyableDueCount === 0 || practicingTagId !== null}
                             onClick={() => practiceReadyTag(tag)}
                           >
                             {practicingTagId === tag.tagId ? "Starting…" : "Practice ready"}
-                          </button>
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -421,9 +425,10 @@ export function AnalyticsScreen({
               <h2>Recent reviews</h2>
             </div>
             {analytics.recentReviews.length === 0 ? (
-              <div className="compact-empty-state">
-                <p>Complete a practice session to begin tracking review results.</p>
-              </div>
+              <EmptyState
+                compact
+                description="Complete a practice session to begin tracking review results."
+              />
             ) : (
               <div className="recent-review-list">
                 {analytics.recentReviews.map((review) => (
@@ -457,11 +462,11 @@ export function AnalyticsScreen({
           </section>
 
           {analytics.attributionCoverage.legacyBackfilledReviewCount > 0 ? (
-            <div className="inline-alert info-alert">
+            <InlineNotice kind="info">
               {analytics.attributionCoverage.legacyBackfilledReviewCount} older review
               {analytics.attributionCoverage.legacyBackfilledReviewCount === 1 ? " was" : "s were"}
               reconstructed from the card’s state during the one-time schema repair.
-            </div>
+            </InlineNotice>
           ) : null}
         </>
       ) : null}

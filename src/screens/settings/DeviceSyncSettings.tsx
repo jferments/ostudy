@@ -20,6 +20,8 @@ import {
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import settingsStyles from "./Settings.module.css";
 import styles from "./DeviceSyncSettings.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 
 interface DeviceSyncSettingsProps {
   showToast: ShowToast;
@@ -273,19 +275,19 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             each device.
           </p>
         </div>
-        <button
+        <Button
           type="button"
-          className="text-button"
+          variant="text"
           disabled={busyAction !== null}
           onClick={() => void refresh()}
         >
           Refresh
-        </button>
+        </Button>
       </div>
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {!state && busyAction === "refresh" ? (
-        <div className="inline-progress">Opening the device synchronization store…</div>
+        <InlineProgress>Opening the device synchronization store…</InlineProgress>
       ) : null}
 
       {state ? (
@@ -304,14 +306,14 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
               <span>Identity fingerprint</span>
               <code>{formatFingerprint(state.fingerprint)}</code>
             </div>
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={busyAction !== null || deviceName.trim() === state.identity.displayName}
               onClick={() => void saveDeviceName()}
             >
               {busyAction === "name" ? "Saving…" : "Save device name"}
-            </button>
+            </Button>
           </div>
 
           <div className={styles.pairingGrid}>
@@ -357,9 +359,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   Enter a private IP only when automatic LAN-address detection fails.
                 </span>
               </label>
-              <button
+              <Button
                 type="button"
-                className="primary-button"
+                variant="primary"
                 disabled={busyAction !== null || !state.localNetworkAvailable}
                 onClick={() => void hostPairing()}
               >
@@ -368,7 +370,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   : hasUnclaimedSendingOffer
                     ? "Replace waiting offer"
                     : "Create sync offer"}
-              </button>
+              </Button>
 
               {invitation && qrSource ? (
                 <div className={styles.invitationPanel}>
@@ -391,9 +393,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                       starts receiving immediately.
                     </p>
                   </div>
-                  <button type="button" className="secondary-button" onClick={() => void copyInvitation()}>
+                  <Button type="button" variant="secondary" onClick={() => void copyInvitation()}>
                     Copy invitation text
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </article>
@@ -410,9 +412,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                     Center the complete QR code inside the camera frame and hold the phone steady.
                     After detection, ostudy accepts the offer and begins receiving automatically.
                   </p>
-                  <button
+                  <Button
                     type="button"
-                    className="secondary-button"
+                    variant="secondary"
                     disabled={busyAction !== null}
                     onClick={() => void scanPairingCode()}
                   >
@@ -421,7 +423,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                       : busyAction === "receive"
                         ? "Receiving…"
                         : "Scan and receive"}
-                  </button>
+                  </Button>
                   {scanFeedback !== "idle" ? (
                     <div
                       className={styles.scanStatus}
@@ -456,9 +458,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   }}
                 />
               </label>
-              <button
+              <Button
                 type="button"
-                className="primary-button"
+                variant="primary"
                 disabled={busyAction !== null || !joinInvitation.trim() || !state.localNetworkAvailable}
                 onClick={() => void joinPairing()}
               >
@@ -467,7 +469,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   : scanFeedback === "detected" && joinInvitation.trim()
                     ? "Retry connection"
                     : "Accept sync offer"}
-              </button>
+              </Button>
             </article>
           </div>
 
@@ -479,15 +481,15 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                     <strong>{session.direction === "host" ? "Sending" : "Receiving"}</strong>
                     {humanizeState(session.state)} · {sessionPeerLabel(session, state)}
                   </span>
-                  <button
+                  <Button
                     type="button"
-                    className="text-button"
+                    variant="text"
                     disabled={cancelingSessionId !== null}
                     aria-label={`Cancel ${session.direction === "host" ? "sending" : "receiving"} request`}
                     onClick={() => void cancelSession(session)}
                   >
                     {cancelingSessionId === session.id ? "Canceling…" : "Cancel"}
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>
@@ -513,14 +515,14 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                           : `Paired ${formatDateTime(peer.pairedAt)}`}
                       </small>
                     </div>
-                    <button
+                    <Button
                       type="button"
-                      className="text-button danger-text-button"
+                      variant="dangerGhost"
                       disabled={busyAction !== null}
                       onClick={() => void removePeer(peer.id, peer.displayName)}
                     >
                       {busyAction === `remove:${peer.id}` ? "Removing…" : "Remove"}
-                    </button>
+                    </Button>
                   </article>
                 ))}
               </div>
@@ -556,30 +558,30 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                       />
                     </div>
                     <div className={settingsStyles.actionRow}>
-                      <button
+                      <Button
                         type="button"
-                        className="secondary-button"
+                        variant="secondary"
                         disabled={busyAction !== null}
                         onClick={() => void resolveConflict(conflict, "keep_left")}
                       >
                         Keep left
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="secondary-button"
+                        variant="secondary"
                         disabled={busyAction !== null}
                         onClick={() => void resolveConflict(conflict, "keep_right")}
                       >
                         Keep right
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="text-button danger-text-button"
+                        variant="dangerGhost"
                         disabled={busyAction !== null}
                         onClick={() => void resolveConflict(conflict, "delete")}
                       >
                         Delete record
-                      </button>
+                      </Button>
                     </div>
                   </article>
                 ))}

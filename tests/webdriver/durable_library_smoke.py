@@ -26,7 +26,7 @@ def verify_persistence_after_restart(
     webdriver.find_element(
         session_id,
         "xpath",
-        "//section[contains(@class, 'recent-review-panel')]"
+        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
@@ -43,7 +43,7 @@ def verify_persistence_after_restart(
     webdriver.find_element(
         session_id,
         "css selector",
-        "main .flashcards-workspace",
+        "main [role='tablist'][aria-label='Flashcards workspaces']",
         deadline,
     )
     webdriver.find_element(
@@ -85,7 +85,7 @@ def verify_persistence_after_restart(
     webdriver.find_element(
         session_id,
         "xpath",
-        "//section[contains(@class, 'recent-review-panel')]"
+        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
@@ -99,10 +99,11 @@ def verify_persistence_after_restart(
         deadline,
     )
     webdriver.click(session_id, settings_button)
-    webdriver.find_element(
+    webdriver.wait_for_element_text(
         session_id,
         "css selector",
-        "main .settings-screen",
+        "main h1",
+        "Settings",
         deadline,
     )
 

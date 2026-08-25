@@ -17,6 +17,8 @@ import { useOverlayContext } from "../../ui/overlays/overlayContext";
 import { Progress } from "../../ui/primitives/Progress";
 import type { ConfidenceScore } from "./confidence";
 import styles from "./ActivePractice.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
 
 interface ActivePracticeProps {
   session: PracticeSession;
@@ -66,7 +68,7 @@ export function ActivePractice({
   const { topId } = useOverlayContext();
   const appearance = useAppearance();
   const experience = useExperience();
-  const animateFlip = flipAnimationEnabled ?? appearance.motion === "full";
+  const animateFlip = flipAnimationEnabled?? appearance.motion === "full";
   const remainingCount = Math.max(0, session.cardCount - ratedCount);
   const stackLayers = remainingCount > 3 ? 2 : remainingCount > 1 ? 1 : 0;
 
@@ -151,7 +153,7 @@ export function ActivePractice({
           />
           {!showingAnswer ? (
             <small className="practice-flip-hint">Click the card to flip it</small>
-          ) : null}
+           ) : null}
         </div>
         <div className="practice-flip-face practice-flip-back" aria-hidden={!showingAnswer}>
           <span className="practice-side-label">Answer</span>
@@ -211,14 +213,14 @@ export function ActivePractice({
           </div>
         </div>
         <div className="practice-header-actions">
-          <button
+          <Button
             type="button"
-            className="secondary-button practice-header-button"
+            variant="secondary" className="practice-header-button"
             disabled={busy}
             onClick={onEdit}
           >
             Edit card
-          </button>
+          </Button>
           <Menu
             label="Schedule"
             className="practice-header-button"
@@ -266,7 +268,7 @@ export function ActivePractice({
         </span>
       </div>
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
       <div
         key={current.presentation.cardId}
@@ -279,14 +281,14 @@ export function ActivePractice({
 
       {!revealed ? (
         <div className="practice-primary-action">
-          <button
+          <Button
             type="button"
-            className="primary-button large-action-button"
+            variant="primary" size="large"
             disabled={isRevealing}
             onClick={onReveal}
           >
             {isRevealing ? "Calculating intervals…" : "Show answer"}
-          </button>
+          </Button>
         </div>
       ) : (
         <section

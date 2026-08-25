@@ -10,9 +10,11 @@ import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
 import { AmbientBackdrop } from "./ui/materials/AmbientBackdrop";
 import { RouteTransition } from "./ui/motion/Motion";
+import { Button } from "./ui/primitives/Button";
 import { LoadingState } from "./ui/primitives/EmptyState";
 import { TourProvider } from "./ui/tutorials/TourProvider";
 import shellStyles from "./AppShell.module.css";
+import statusStyles from "./AppStatus.module.css";
 
 const FlashcardsWorkspace = lazy(() =>
   import("./screens/flashcards/FlashcardsWorkspace").then((module) => ({
@@ -49,27 +51,23 @@ function App() {
       <AppearanceProvider settings={controller.activeSettings}>
         <TourProvider enabled={!controller.isLoading && !controller.fatalError && tutorialsEnabled}>
           {controller.isLoading ? (
-            <div className="app-loading">
-              <div className="loading-mark">O</div>
+            <div className={statusStyles.status}>
+              <div className={statusStyles.mark}>O</div>
               <h1>Opening ostudy</h1>
               <p>Loading your decks…</p>
             </div>
           ) : controller.fatalError ? (
-            <div className="fatal-screen">
+            <div className={statusStyles.status}>
               <h1>ostudy could not open the library</h1>
               <p>{controller.fatalError}</p>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => window.location.reload()}
-              >
+              <Button variant="primary" onClick={() => window.location.reload()}>
                 Try again
-              </button>
+              </Button>
             </div>
           ) : (
             <>
               <AmbientBackdrop />
-              <div className={`${shellStyles.shell} app-shell`} data-ui-root="true">
+              <div className={shellStyles.shell} data-ui-root="true">
                 <IncomingShareCoordinator
                   refreshDecks={controller.refreshDecks}
                   showToast={controller.showToast}
@@ -77,7 +75,7 @@ function App() {
                 <MobileAppBar section={controller.section} />
                 <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
 
-                <main className={`${shellStyles.main} main-area`}>
+                <main className={shellStyles.main}>
                   <RouteTransition
                     routeKey={controller.section}
                     relation="sibling"

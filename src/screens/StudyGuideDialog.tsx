@@ -20,6 +20,7 @@ import {
 } from "../ipc/studyGuides";
 import { Dialog } from "../ui/overlays/Dialog";
 import styles from "./StudyGuideDialog.module.css";
+import { Button } from "../ui/primitives/Button";
 
 interface StudyGuideDialogProps {
   documentId: string;
@@ -293,36 +294,36 @@ export function StudyGuideDialog({
             </label>
           ) : null}
           {guide ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isExporting || isGenerating || isSaving}
               onClick={() => void exportPdf()}
             >
               {isExporting ? "Exporting…" : "Export PDF"}
-            </button>
+            </Button>
           ) : null}
-          <button type="button" className="secondary-button" onClick={() => void openSource()}>
+          <Button type="button" variant="secondary" onClick={() => void openSource()}>
             Open source
-          </button>
+          </Button>
           {isGenerating ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isCanceling}
               onClick={() => void stopGeneration()}
             >
               {isCanceling ? "Stopping…" : "Stop generation"}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className={guide ? "secondary-button" : "primary-button"}
+              variant={guide ? "secondary" : "primary"}
               disabled={isSaving || isExporting}
               onClick={() => void generate()}
             >
               {guide ? "Regenerate" : "Create study guide"}
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -370,18 +371,18 @@ export function StudyGuideDialog({
                 </aside>
               ) : null}
               <div className={styles.editorActions}>
-                <button type="button" className="secondary-button" onClick={beginGuideNote}>
+                <Button type="button" variant="secondary" onClick={beginGuideNote}>
                   {guideNote ? "Edit guide note" : "Add guide note"}
-                </button>
+                </Button>
                 {guideNote ? (
-                  <button
+                  <Button
                     type="button"
-                    className="secondary-button"
+                    variant="secondary"
                     disabled={isSaving}
                     onClick={() => void discardOverlay(guideNote, "Guide note removed.")}
                   >
                     Remove guide note
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </section>
@@ -424,22 +425,22 @@ export function StudyGuideDialog({
               : "Personal notes attach to the document or stable learning topic and remain available across guide regeneration. Clear the text and save to remove an existing note."}
           </p>
           <div className={styles.editorActions}>
-            <button
+            <Button
               type="button"
-              className="primary-button"
+              variant="primary"
               disabled={isSaving}
               onClick={() => void saveEditing()}
             >
               {isSaving ? "Saving…" : "Save"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={() => setEditing(null)}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -490,43 +491,43 @@ function StudyGuideSectionView({
           <h2>{section.title}</h2>
         </div>
         <div className={styles.sectionActions}>
-          <button type="button" className="secondary-button" onClick={onOpenSource}>
+          <Button type="button" variant="secondary" onClick={onOpenSource}>
             Open source
-          </button>
-          <button type="button" className="secondary-button" onClick={onEditNote}>
+          </Button>
+          <Button type="button" variant="secondary" onClick={onEditNote}>
             {note ? "Edit note" : "Add note"}
-          </button>
+          </Button>
           {note ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={actionsDisabled}
               onClick={() => onDiscardOverlay(note, "Topic note removed.")}
             >
               Remove note
-            </button>
+            </Button>
           ) : null}
-          <button type="button" className="secondary-button" onClick={onEditSection}>
+          <Button type="button" variant="secondary" onClick={onEditSection}>
             {override ? "Edit override" : "Edit section"}
-          </button>
+          </Button>
           {override ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={actionsDisabled}
               onClick={() => onDiscardOverlay(override, "Section edit reset.")}
             >
               Reset section edit
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={!projection || projection.cardCount === 0}
             onClick={onStudy}
           >
             Study linked cards{projection ? ` (${projection.cardCount})` : ""}
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -551,14 +552,14 @@ function StudyGuideSectionView({
             a conflict.
           </p>
           <div className={styles.overrideText}>{renderPlainText(conflict.plainText)}</div>
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={actionsDisabled}
             onClick={() => onDiscardOverlay(conflict, "Older section edit discarded.")}
           >
             Discard older edit
-          </button>
+          </Button>
         </aside>
       ) : null}
     </section>

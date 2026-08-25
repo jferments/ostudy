@@ -7,6 +7,8 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 
+import contentStyles from "./RichContent.module.css";
+
 export const TEMPLATE_FIELD_INLINE = "templateFieldInline";
 export const TEMPLATE_FIELD_BLOCK = "templateFieldBlock";
 
@@ -79,7 +81,7 @@ const TemplateFieldInline = Node.create({
     return [
       "span",
       {
-        class: "template-field-placeholder inline",
+        class: `${contentStyles.templateFieldPlaceholder} ${contentStyles.inlinePlaceholder}`,
         "data-template-field-inline": "true",
         "data-field-id": HTMLAttributes.fieldId,
         contenteditable: "false",
@@ -109,7 +111,7 @@ const TemplateFieldBlock = Node.create({
     return [
       "div",
       {
-        class: "template-field-placeholder block",
+        class: `${contentStyles.templateFieldPlaceholder} ${contentStyles.blockPlaceholder}`,
         "data-template-field-block": "true",
         "data-field-id": HTMLAttributes.fieldId,
         contenteditable: "false",
@@ -146,7 +148,7 @@ export function createEditorExtensions(
     TextAlign.configure({ types: ["heading", "paragraph"] }),
     StudyImage.configure({
       allowBase64: false,
-      HTMLAttributes: { class: "study-card-image" },
+      HTMLAttributes: { class: contentStyles.image },
     }),
     Indent,
   ];

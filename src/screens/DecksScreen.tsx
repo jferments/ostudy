@@ -15,6 +15,10 @@ import {
   type CardBrowserView,
 } from "./cards/CardBrowserWorkspace";
 import { useCardPracticeLauncher } from "./cards/CardPracticeContext";
+import { Button } from "../ui/primitives/Button";
+import { EmptyState } from "../ui/primitives/EmptyState";
+import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
+import { DialogActions } from "../ui/overlays/Dialog";
 
 interface DecksScreenProps {
   decks: DeckSummary[];
@@ -335,61 +339,62 @@ export function DecksScreen({
             </div>
             <div className="header-actions">
               {onManageTemplates ? (
-                <button
+                <Button
                   type="button"
-                  className="secondary-button"
+                  variant="secondary"
                   onClick={() => void onManageTemplates()}
                 >
                   Manage templates
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={isTransferring}
                 onClick={() => void handleImport()}
               >
                 Import deck
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="primary-button"
+                variant="primary"
                 disabled={isTransferring}
                 onClick={() => setDeckDialog("create")}
               >
                 New deck
-              </button>
+              </Button>
             </div>
           </header>
 
-          {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-          {isLoadingDeck ? <div className="inline-progress">Opening deck…</div> : null}
+          {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+          {isLoadingDeck ? <InlineProgress>Opening deck…</InlineProgress> : null}
 
           {activeDecks.length === 0 ? (
-            <section className="empty-library-card">
-              <div className="empty-icon" aria-hidden="true">
-                ?
-              </div>
-              <h2>Create your first deck</h2>
-              <div className="empty-actions">
-                <button
-                  type="button"
-                  className="primary-button"
-                  disabled={isTransferring}
-                  onClick={() => setDeckDialog("create")}
-                >
-                  Create deck
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={isTransferring}
-                  onClick={() => void handleImport()}
-                >
-                  Import deck
-                </button>
-              </div>
-            </section>
+            <EmptyState
+              large
+              title="Create your first deck"
+              icon="?"
+              actions={
+                <>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    disabled={isTransferring}
+                    onClick={() => setDeckDialog("create")}
+                  >
+                    Create deck
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={isTransferring}
+                    onClick={() => void handleImport()}
+                  >
+                    Import deck
+                  </Button>
+                </>
+              }
+            />
           ) : (
             <section className="deck-grid" aria-label="Deck library">
               {activeDecks.map((deck) => {
@@ -447,13 +452,13 @@ export function DecksScreen({
                       >
                         Export
                       </button>
-                      <button
+                      <Button
                         type="button"
-                        className="danger-text"
+                        variant="dangerGhost"
                         onClick={() => void handleDeleteDeck(deck)}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </article>
                 );
@@ -503,13 +508,13 @@ export function DecksScreen({
                         >
                           Export
                         </button>
-                        <button
+                        <Button
                           type="button"
-                          className="danger-text"
+                          variant="dangerGhost"
                           onClick={() => void handleDeleteDeck(deck)}
                         >
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </article>
                   ))}
@@ -525,64 +530,66 @@ export function DecksScreen({
           {view === "detail" ? (
             <header className="screen-header deck-detail-header" key="deck-detail-header">
               <div>
-                <button type="button" className="back-button" onClick={() => setView("library")}>
+                <Button type="button" variant="back" onClick={() => setView("library")}>
                   ← All decks
-                </button>
+                </Button>
                 <div className="deck-title-row">
                   <div>
                     <h1>{selectedDeck.name}</h1>
                     {selectedDeck.description ? <p>{selectedDeck.description}</p> : null}
                   </div>
-                  <button
+                  <Button
                     type="button"
-                    className="icon-button deck-edit-button"
+                    className="deck-edit-button"
+                    variant="ghost"
+                    size="icon"
                     aria-label="Edit deck name and description"
                     title="Edit deck"
                     onClick={() => setDeckDialog("edit")}
                   >
                     ✎
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div className="header-actions wrap-actions">
-                <button
+                <Button
                   type="button"
-                  className="secondary-button"
+                  variant="secondary"
                   onClick={() => void onPracticeDeck(selectedDeck.id, "detail")}
                   disabled={selectedDeck.generatedCardCount === 0}
                   title={practiceTitle(selectedDeck)}
                 >
                   Practice
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="secondary-button"
+                  variant="secondary"
                   disabled={isTransferring}
                   onClick={() => void handleExport(selectedDeck)}
                 >
                   Export
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="secondary-button"
+                  variant="secondary"
                   onClick={() => void handleArchiveDeck(selectedDeck, true)}
                 >
                   Archive
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="secondary-button danger-text"
+                  variant="dangerSecondary"
                   aria-label={`Delete ${selectedDeck.name}`}
                   onClick={() => void handleDeleteDeck(selectedDeck)}
                 >
                   Delete deck
-                </button>
+                </Button>
               </div>
             </header>
           ) : null}
 
           {view === "detail" && errorMessage ? (
-            <div className="inline-alert error-alert">{errorMessage}</div>
+            <InlineNotice kind="error">{errorMessage}</InlineNotice>
           ) : null}
 
           <CardBrowserWorkspace
@@ -683,23 +690,23 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
           />
         </label>
         {errorMessage ? <p className="field-error">{errorMessage}</p> : null}
-        <div className="modal-actions">
-          <button
+        <DialogActions>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isSaving}
             onClick={onClose}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            className="primary-button"
+            variant="primary"
             disabled={isSaving || name.trim() === ""}
           >
             {isSaving ? "Saving…" : mode === "create" ? "Create deck" : "Save changes"}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </form>
     </Modal>
   );

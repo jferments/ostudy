@@ -12,6 +12,8 @@ import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
+import { Button } from "../ui/primitives/Button";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -184,32 +186,32 @@ export function SettingsScreen({
         actions={
           <div className="header-actions">
             {canRestoreDefaults ? (
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={isSaving}
                 onClick={restoreCurrentDefaults}
               >
                 Restore {defaultsLabel} defaults
-              </button>
+              </Button>
             ) : null}
             {preferencesDirty ? (
-              <button
+              <Button
                 type="button"
-                className="primary-button"
+                variant="primary"
                 disabled={isSaving}
                 onClick={() => void persist()}
               >
                 {isSaving ? "Saving…" : "Save preferences"}
-              </button>
+              </Button>
             ) : null}
           </div>
         }
       />
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {preferencesDirty ? (
-        <div className="inline-alert info-alert">Previewing unsaved preferences.</div>
+        <InlineNotice kind="info">Previewing unsaved preferences.</InlineNotice>
       ) : null}
 
       <Tabs

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { Button } from "../primitives/Button";
 import {
   type OverlayCloseReason,
   OverlayParentContext,
@@ -163,23 +164,22 @@ export function Dialog({
       onKeyDown={onKeyDown}
       onMouseDown={onBackdropMouseDown}
     >
-      <section
-        className={`${styles.card} ${styles[width]} modal-card modal-${width} ${className}`.trim()}
-      >
-        <header className={`${styles.header} modal-header`}>
+      <section className={`${styles.card} ${styles[width]} ${className}`.trim()}>
+        <header className={styles.header}>
           <div>
             <h2 id={titleId}>{title}</h2>
             {description ? <p id={descriptionId}>{description}</p> : null}
           </div>
-          <button
+          <Button
             type="button"
-            className="icon-button"
+            variant="ghost"
+            size="icon"
             aria-label="Close dialog"
             disabled={!dismissible || busy}
             onClick={() => requestClose("close_button")}
           >
             ×
-          </button>
+          </Button>
         </header>
         <OverlayParentContext.Provider value={id}>
           <div className={styles.body}>{children}</div>
@@ -188,6 +188,16 @@ export function Dialog({
     </dialog>,
     document.body,
   );
+}
+
+export function DialogActions({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={`${styles.actions} ${className}`.trim()}>{children}</div>;
 }
 
 export function Sheet(props: Omit<DialogProps, "presentation">) {

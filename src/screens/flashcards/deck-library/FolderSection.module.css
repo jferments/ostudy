@@ -1,0 +1,206 @@
+@layer components {
+  .folder {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-3);
+    padding: var(--ostudy-space-3);
+    transition:
+      border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      box-shadow var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+
+  .folder[data-drag-over] {
+    border-color: var(--ostudy-color-border-accent);
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .header {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ostudy-space-2);
+  }
+
+  .dragHandle {
+    display: grid;
+    width: 34px;
+    height: 42px;
+    flex: none;
+    place-items: center;
+    border-radius: var(--ostudy-radius-small);
+    color: var(--ostudy-color-text-muted);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .dragHandle:hover {
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .dragHandle:active {
+    cursor: grabbing;
+  }
+
+  .dragHandle:focus-visible {
+    outline: none;
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .toggle {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    border: 0;
+    border-radius: var(--ostudy-radius-medium);
+    padding: 0;
+    background: transparent;
+    color: var(--ostudy-color-text-primary);
+    text-align: start;
+  }
+
+  .toggle:hover {
+    background: color-mix(in srgb, var(--ostudy-color-surface-soft) 70%, transparent);
+  }
+
+  .toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .chevron {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border-radius: var(--ostudy-radius-small);
+    color: var(--ostudy-color-text-muted);
+  }
+
+  .icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: var(--ostudy-radius-medium);
+    background: var(--ostudy-color-accent-soft);
+    color: var(--ostudy-color-text-accent);
+  }
+
+  .title {
+    min-width: 0;
+  }
+
+  .title h3,
+  .title span {
+    margin: 0;
+  }
+
+  .title h3 {
+    overflow: hidden;
+    font-size: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .title span {
+    color: var(--ostudy-color-text-muted);
+    font-size: 0.76rem;
+  }
+
+  .actions {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 2px;
+  }
+
+  .actions button {
+    min-height: 34px;
+    border: 0;
+    border-radius: var(--ostudy-radius-small);
+    padding: 0 8px;
+    background: transparent;
+    color: var(--ostudy-color-text-secondary);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+  }
+
+  .actions button:hover:not(:disabled) {
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .actions .danger {
+    color: var(--ostudy-color-status-danger);
+  }
+
+  .empty {
+    display: grid;
+    min-height: 120px;
+    place-items: center;
+    align-content: center;
+    gap: var(--ostudy-space-2);
+    border: 1px dashed var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-medium);
+    padding: var(--ostudy-space-3);
+    color: var(--ostudy-color-text-muted);
+    text-align: center;
+  }
+
+  .empty [data-artwork-slot] {
+    --ostudy-artwork-max: 112px;
+  }
+
+  .empty p {
+    margin: 0;
+  }
+
+  :global(:root[data-motion="reduced"]) .folder,
+  :global(:root[data-motion="none"]) .folder {
+    transition: none;
+  }
+
+  @container deck-library (max-width: 860px) {
+    .header {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .actions {
+      grid-column: 2;
+      justify-content: flex-start;
+    }
+  }
+
+  @container deck-library (max-width: 620px) {
+    .header {
+      grid-template-columns: 34px minmax(0, 1fr);
+    }
+
+    .actions {
+      grid-column: 1 / -1;
+      justify-content: flex-end;
+    }
+
+    .icon {
+      width: 34px;
+      height: 34px;
+    }
+  }
+
+  :global(:root[data-input-mode="coarse"]) .actions button,
+  :global(:root[data-input-mode="coarse"]) .toggle {
+    min-height: var(--touch-target-min);
+  }
+
+  :global(:root[data-input-mode="coarse"]) .dragHandle {
+    width: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+  }
+}

@@ -10,6 +10,8 @@ import { useConfirm } from "../../ui/overlays/overlayContext";
 import { DeviceSyncSettings } from "./DeviceSyncSettings";
 import { PathRow } from "./SettingsControls";
 import styles from "./Settings.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 
 interface StorageBackupSettingsProps {
   draft: AppSettings;
@@ -103,7 +105,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
   return (
     <div className={styles.panelGrid}>
       {errorMessage ? (
-        <div className={`${styles.fullWidth} inline-alert error-alert`}>{errorMessage}</div>
+        <InlineNotice kind="error" className={styles.fullWidth}>{errorMessage}</InlineNotice>
       ) : null}
 
       <section className={styles.settingsCard}>
@@ -120,32 +122,32 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
           />
         </label>
         <div className={styles.actionRow}>
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isTransferringLibrary}
             onClick={() => void backupLibrary()}
           >
             {isTransferringLibrary ? "Working…" : "Back up library"}
-          </button>
+          </Button>
           {canShare ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isTransferringLibrary}
               onClick={() => void shareLibraryBackup()}
             >
               Share backup
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isTransferringLibrary}
             onClick={() => void restoreLibrary()}
           >
             Restore backup
-          </button>
+          </Button>
         </div>
         <p className={styles.note}>
           Complete backups include decks, templates, managed images, schedules, review events,
@@ -156,9 +158,9 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
           in an ostudy backup.
         </p>
         {restorePrepared ? (
-          <div className="inline-alert info-alert">
+          <InlineNotice kind="info">
             Restore is prepared. Close every ostudy window and reopen the application to apply it.
-          </div>
+          </InlineNotice>
         ) : null}
       </section>
 
@@ -185,7 +187,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
             <PathRow label="Schema" value={String(appInfo.databaseSchemaVersion)} />
           </dl>
         ) : errorMessage ? null : (
-          <div className="inline-progress">Reading storage paths…</div>
+          <InlineProgress>Reading storage paths…</InlineProgress>
         )}
       </section>
     </div>

@@ -29,6 +29,9 @@ import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 import { ScheduleActionModal } from "./ScheduleActionModal";
 import { scheduleActionNotice } from "./scheduleActionResult";
+import { Button } from "../../ui/primitives/Button";
+import { EmptyState } from "../../ui/primitives/EmptyState";
+import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 
 export type CardBrowserView = "list" | "editor";
 export type CardBrowserControls = "deck" | "search";
@@ -431,19 +434,19 @@ export function CardBrowserWorkspace({
     if (!deck) {
       return (
         <div className="screen cards-screen">
-          <div className="inline-alert error-alert">
+          <InlineNotice kind="error">
             The card’s active deck could not be found. Return to the card list and refresh.
-          </div>
-          <button
+          </InlineNotice>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             onClick={() => {
               setEditingCard(null);
               setCreatingDeckId(null);
             }}
           >
             Back to cards
-          </button>
+          </Button>
         </div>
       );
     }
@@ -570,15 +573,15 @@ export function CardBrowserWorkspace({
             <option value="reset">Reset schedules</option>
             <option value="delete">Delete cards</option>
           </select>
-          <button type="button" className="text-button" onClick={() => setSelectedCards(new Map())}>
+          <Button type="button" variant="text" onClick={() => setSelectedCards(new Map())}>
             Deselect all
-          </button>
+          </Button>
         </section>
       ) : null}
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-      {isOpeningCard ? <div className="inline-progress">Opening card…</div> : null}
-      {isLoading ? <div className="inline-progress">Searching cards…</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {isOpeningCard ? <InlineProgress>Opening card…</InlineProgress> : null}
+      {isLoading ? <InlineProgress>Searching cards…</InlineProgress> : null}
 
       <section className="card-library-panel shared-card-browser" aria-label="Card browser">
         <div className="card-browser-heading">
@@ -590,9 +593,9 @@ export function CardBrowserWorkspace({
           </div>
           {controlMode === "deck" ? (
             <div className="card-browser-actions">
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={!selectedDeck}
                 title={selectedDeck ? undefined : "This deck is unavailable for bulk card entry"}
                 onClick={() => {
@@ -600,16 +603,16 @@ export function CardBrowserWorkspace({
                 }}
               >
                 Bulk add
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="primary-button"
+                variant="primary"
                 disabled={!selectedDeck}
                 title={selectedDeck ? undefined : "This deck is unavailable for adding a card"}
                 onClick={beginCreateCard}
               >
                 Add flashcard
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -623,46 +626,46 @@ export function CardBrowserWorkspace({
               <span> cards shown</span>
             </div>
             <div className="selection-buttons" aria-label="Selection controls">
-              <button type="button" className="secondary-button" onClick={selectVisible}>
+              <Button type="button" variant="secondary" onClick={selectVisible}>
                 Select visible
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={isSelectingAll}
                 onClick={() => void selectAllMatching()}
               >
                 {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={selectedCards.size === 0}
                 onClick={() => setSelectedCards(new Map())}
               >
                 Deselect all
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
               type="button"
-              className="primary-button"
+              variant="primary"
               disabled={selectedCards.size === 0}
               onClick={() => setPracticeCards(selected)}
             >
               Practice selected
-            </button>
+            </Button>
           </div>
         ) : null}
 
         {!isLoading && page.totalCount === 0 ? (
-          <section className="compact-empty-state large-empty-state">
-            <h2>{fixedDeckId ? "This deck is empty" : "No matching cards"}</h2>
-            <p>
-              {fixedDeckId
+          <EmptyState
+            title={fixedDeckId ? "This deck is empty" : "No matching cards"}
+            description={
+              fixedDeckId
                 ? "Add a flashcard or use Bulk add to start studying this deck."
-                : "Try removing a filter or changing the search."}
-            </p>
-          </section>
+                : "Try removing a filter or changing the search."
+            }
+          />
         ) : null}
 
         {page.totalCount > 0 ? (
@@ -683,14 +686,15 @@ export function CardBrowserWorkspace({
         ) : null}
 
         {page.cards.length < page.totalCount ? (
-          <button
+          <Button
             type="button"
-            className="secondary-button load-more-cards"
+            className="load-more-cards"
+            variant="secondary"
             disabled={isLoadingMore}
             onClick={() => void loadCards(page.cards.length, true)}
           >
             {isLoadingMore ? "Loading…" : "Load more"}
-          </button>
+          </Button>
         ) : null}
       </section>
 

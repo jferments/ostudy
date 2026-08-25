@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { Button } from "./Button";
 import { EmptyState, LoadingState } from "./EmptyState";
 import { FormField } from "./FormField";
 import { InlineNotice } from "./InlineNotice";
@@ -23,6 +24,14 @@ describe("shared UI primitives", () => {
     expect(screen.getByRole("alert").textContent).toBe("Required");
   });
 
+  it("owns destructive secondary button presentation without legacy classes", () => {
+    render(<Button variant="dangerSecondary">Delete deck</Button>);
+
+    const button = screen.getByRole("button", { name: "Delete deck" });
+    expect(button.className).not.toContain("secondary-button");
+    expect(button.className).not.toContain("danger-text");
+  });
+
   it("renders semantic notices and surfaces", () => {
     render(
       <Panel title="Study settings" description="Adjust the session.">
@@ -40,6 +49,9 @@ describe("shared UI primitives", () => {
     );
     expect(screen.getByRole("heading", { name: "No decks" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+    view.rerender(<EmptyState compact description="No recent reviews yet." />);
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByText("No recent reviews yet.")).toBeTruthy();
     view.rerender(<LoadingState label="Loading decks…" />);
     expect(screen.getByRole("status").textContent).toContain("Loading decks");
   });

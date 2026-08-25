@@ -5,10 +5,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [css, tauriConfigText] = await Promise.all([
-  readFile(join(root, "src/screens/flashcards/DeckLibraryWorkspace.module.css"), "utf8"),
+const [viewCss, folderCss, deckCss, tauriConfigText] = await Promise.all([
+  readFile(join(root, "src/screens/flashcards/deck-library/DeckLibraryView.module.css"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/FolderSection.module.css"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/DeckItem.module.css"), "utf8"),
   readFile(join(root, "src-tauri/tauri.conf.json"), "utf8"),
 ]);
+const css = `${viewCss}\n${folderCss}\n${deckCss}`;
 const failures = [];
 
 expectRule(

@@ -10,6 +10,7 @@ import {
   type RichDocument,
 } from "../ipc/common";
 import { openExternalUrl } from "../platform/externalLinks";
+import contentStyles from "./RichContent.module.css";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink } from "./links";
 import { hydrateDocument } from "./richText";
@@ -38,7 +39,7 @@ export function RichTextView({
     editable: false,
     editorProps: {
       attributes: {
-        class: "rich-card-content",
+        class: contentStyles.content,
         tabindex: "0",
       },
     },
@@ -72,7 +73,7 @@ export function RichTextView({
   }
 
   return (
-    <div className={`rich-card-view ${className}`.trim()} onClick={handleClick}>
+    <div className={`${contentStyles.view} ${className}`.trim()} onClick={handleClick}>
       <EditorContent editor={editor} />
     </div>
   );

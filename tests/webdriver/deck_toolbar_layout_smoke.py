@@ -78,7 +78,7 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         "button[data-testid='nav-decks'][aria-current='page']",
         deadline,
     )
-    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
+    webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
 
     # The native smoke scripts intentionally share one temporary application
     # profile so they also exercise durable UI checkpoint restoration. A prior
