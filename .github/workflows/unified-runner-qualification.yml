@@ -20,7 +20,9 @@ on:
 
 concurrency:
   group: unified-runner-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Source changes supersede obsolete qualification, but PR metadata edits must
+  # not abort an exact-head runner qualification already in flight.
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 permissions:
   contents: read
