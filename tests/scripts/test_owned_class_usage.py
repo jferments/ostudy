@@ -5,13 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VERIFIER = ROOT / "scripts" / "verify-owned-class-usage.mjs"
-TYPESCRIPT_PACKAGE = ROOT / "node_modules" / "typescript" / "package.json"
 
 
-@unittest.skipUnless(
-    TYPESCRIPT_PACKAGE.is_file(),
-    "owned-class verifier fixtures run after the frozen JavaScript installation",
-)
 class OwnedClassUsageVerifierTests(unittest.TestCase):
     def run_verifier(self, root: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -51,7 +46,8 @@ class OwnedClassUsageVerifierTests(unittest.TestCase):
                 '''    <div className={ownedClassNames(ownedStyleMaps, `screen feature-card confidence-score-${score}`)} />\n'''
                 '''    <span className="sr-only">Label</span>\n'''
                 '''    <div className={styles.featureCard} />\n'''
-                '''  </>;\n''',
+                '''  </>;\n'''
+                '''}\n''',
                 encoding="utf-8",
             )
 
