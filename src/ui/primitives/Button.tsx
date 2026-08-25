@@ -7,7 +7,7 @@ import {
 import styles from "./Button.module.css";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "text" | "back" | "dangerGhost";
   size?: "small" | "medium" | "large" | "icon";
   loading?: boolean;
   children: ReactNode;

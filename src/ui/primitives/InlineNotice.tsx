@@ -26,3 +26,11 @@ export function InlineNotice({
     </div>
   );
 }
+
+export function InlineProgress({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.inlineProgress} role="status" aria-live="polite">
+      {children}
+    </div>
+  );
+}

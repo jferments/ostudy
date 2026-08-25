@@ -1,6 +1,8 @@
 import {
   cloneElement,
   isValidElement,
+  type FormHTMLAttributes,
+  type LabelHTMLAttributes,
   type ReactElement,
   type ReactNode,
   useId,
@@ -73,5 +75,37 @@ export function FieldGroup({ label, description, children }: { label: string; de
       {description ? <p>{description}</p> : null}
       {children}
     </fieldset>
+  );
+}
+
+export function FormStack({
+  className = "",
+  children,
+  ...props
+}: FormHTMLAttributes<HTMLFormElement>) {
+  return (
+    <form {...props} className={`${styles.formStack} ${className}`.trim()}>
+      {children}
+    </form>
+  );
+}
+
+export function FieldError({ children }: { children: ReactNode }) {
+  return (
+    <p className={styles.fieldError} role="alert">
+      {children}
+    </p>
+  );
+}
+
+export function SwitchRow({
+  className = "",
+  children,
+  ...props
+}: LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <label {...props} className={`${styles.switchRow} ${className}`.trim()}>
+      {children}
+    </label>
   );
 }

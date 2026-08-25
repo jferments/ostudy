@@ -30,6 +30,50 @@
   .emptyIcon { color: var(--ostudy-color-text-accent); font-size: 2rem; }
   .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 
+  .inlineProgress {
+    margin: 0 0 22px;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: 10px;
+    padding: 12px 15px;
+    background: var(--ostudy-color-surface-raised);
+    color: var(--ostudy-color-text-secondary);
+  }
+
+  .fieldError {
+    margin: 8px 0 0;
+    color: var(--ostudy-color-status-danger);
+    font-size: 0.84rem;
+  }
+
+  .formStack {
+    display: grid;
+    gap: 18px;
+    padding: 24px;
+  }
+  .formStack label { display: grid; gap: 7px; }
+  .formStack label > span { color: var(--ostudy-color-text-secondary); font-size: 0.77rem; font-weight: 750; }
+  .formStack small { color: var(--ostudy-color-text-muted); font-weight: 500; }
+
+  .switchRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    border-top: 1px solid var(--ostudy-color-border-subtle);
+    padding: 15px 0;
+  }
+  .switchRow:first-of-type { border-top: 0; }
+  .switchRow span,
+  .switchRow strong,
+  .switchRow small { display: block; }
+  .switchRow small { color: var(--ostudy-color-text-muted); font-size: 0.75rem; }
+  .switchRow input[type="checkbox"] {
+    width: 42px;
+    height: 23px;
+    flex: 0 0 auto;
+    accent-color: var(--ostudy-color-accent-strong);
+  }
+
   .loadingState { display: flex; min-height: 120px; align-items: center; justify-content: center; gap: var(--space-3); color: var(--ostudy-color-text-muted); }
   .spinner { width: 1.25rem; height: 1.25rem; border: 2px solid var(--ostudy-color-border-strong); border-top-color: var(--ostudy-color-accent-base); border-radius: 50%; animation: spin var(--motion-slow) linear infinite; }
 
