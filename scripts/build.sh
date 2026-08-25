@@ -46,8 +46,13 @@ log "Building the standalone ostudy application with $CARGO_BUILD_JOBS Cargo job
 pnpm tauri build --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
 
-[[ -x "$OSTUDY_BINARY" ]] || die "Expected application binary was not created at $OSTUDY_BINARY."
+[[ -x "$OSTUDY_CARGO_BINARY" ]] || \
+  die "Expected Tauri desktop output was not created at $OSTUDY_CARGO_BINARY."
+ostudy_stage_standalone_build
+[[ -x "$OSTUDY_BINARY" ]] || \
+  die "Expected staged standalone application was not created at $OSTUDY_BINARY."
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
 
 printf '\nBuild complete: %s\n' "$OSTUDY_BINARY"
+printf 'Cargo output retained at: %s\n' "$OSTUDY_CARGO_BINARY"
 printf 'Start it with: ./run-app.sh\n'
