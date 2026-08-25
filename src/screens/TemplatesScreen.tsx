@@ -19,6 +19,9 @@ import {
 } from "../ipc/templates";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
+import { Button } from "../ui/primitives/Button";
+import { EmptyState } from "../ui/primitives/EmptyState";
+import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
 
 interface TemplatesScreenProps {
   onBack?: () => void | Promise<void>;
@@ -282,9 +285,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
       <div className="screen templates-screen" aria-busy={isSaving || isOpeningAssetDraft}>
         <header className="screen-header compact-screen-header">
           <div>
-            <button type="button" className="back-button" onClick={() => void cancelEdit()}>
+            <Button type="button" variant="back" onClick={() => void cancelEdit()}>
               ← Templates
-            </button>
+            </Button>
             <h1>{draft.id ? "Edit card template" : "New card template"}</h1>
             <p>
               Define reusable rich fields and design the question and answer sides of every card
@@ -292,26 +295,26 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
             </p>
           </div>
           <div className="header-actions">
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={() => void cancelEdit()}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="primary-button"
+              variant="primary"
               disabled={isSaving || isOpeningAssetDraft || !assetDraftId || !dirty}
               onClick={() => void saveTemplate()}
             >
               {isSaving ? "Saving…" : isOpeningAssetDraft ? "Preparing…" : "Save template"}
-            </button>
+            </Button>
           </div>
         </header>
 
-        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+        {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
         <div className="template-editor-layout">
           <section className="template-editor-section">
@@ -362,9 +365,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 <h2>Fields</h2>
                 <p>Each field becomes a full rich-text editor when this template is used.</p>
               </div>
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={isSaving || draft.fields.length >= 32}
                 onClick={() =>
                   setDraft((current) =>
@@ -378,7 +381,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 }
               >
                 Add field
-              </button>
+              </Button>
             </div>
             <div className="template-definition-list">
               {draft.fields.map((field, index) => (
@@ -412,9 +415,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                       }
                     />
                   </label>
-                  <button
+                  <Button
                     type="button"
-                    className="danger-text"
+                    variant="dangerGhost"
                     disabled={isSaving || draft.fields.length === 1}
                     onClick={() =>
                       setDraft((current) =>
@@ -428,7 +431,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                     }
                   >
                     Remove
-                  </button>
+                  </Button>
                 </article>
               ))}
             </div>
@@ -444,9 +447,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                   images, headings, block quotes, code blocks, and multiple paragraphs to blocks.
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 disabled={isSaving || draft.rules.length >= 32}
                 onClick={() =>
                   setDraft((current) =>
@@ -460,7 +463,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 }
               >
                 Add card rule
-              </button>
+              </Button>
             </div>
 
             <div className="template-rule-list rich-template-rule-list">
@@ -480,9 +483,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                         }
                       />
                     </label>
-                    <button
+                    <Button
                       type="button"
-                      className="danger-text"
+                      variant="dangerGhost"
                       disabled={isSaving || draft.rules.length === 1}
                       onClick={() =>
                         setDraft((current) =>
@@ -496,7 +499,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                       }
                     >
                       Remove
-                    </button>
+                    </Button>
                   </header>
                   <TemplateLayoutEditor
                     label="Question layout"
@@ -530,36 +533,33 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
       <header className="screen-header compact-screen-header">
         <div>
           {onBack ? (
-            <button type="button" className="back-button" onClick={() => void onBack()}>
+            <Button type="button" variant="back" onClick={() => void onBack()}>
               ← Decks
-            </button>
+            </Button>
           ) : null}
           <h1>Templates</h1>
           <p>Build reusable rich entry forms that generate permanent Basic cards.</p>
         </div>
-        <button type="button" className="primary-button" onClick={beginCreate}>
+        <Button type="button" variant="primary" onClick={beginCreate}>
           New template
-        </button>
+        </Button>
       </header>
 
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-      {isLoading ? <div className="inline-progress">Loading templates…</div> : null}
-      {isOpening ? <div className="inline-progress">Opening template…</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {isLoading ? <InlineProgress>Loading templates…</InlineProgress> : null}
+      {isOpening ? <InlineProgress>Opening template…</InlineProgress> : null}
 
       {!isLoading && templates.length === 0 ? (
-        <section className="compact-empty-state large-empty-state">
-          <div className="empty-icon" aria-hidden="true">
-            ▧
-          </div>
-          <h2>Create a reusable card template</h2>
-          <p>
-            Define the facts you enter once, then design one or more cards that use those fields as
-            rich text, lists, or images.
-          </p>
-          <button type="button" className="primary-button" onClick={beginCreate}>
-            Create template
-          </button>
-        </section>
+        <EmptyState
+          title="Create a reusable card template"
+          description="Define the facts you enter once, then design one or more cards that use those fields as rich text, lists, or images."
+          icon="▧"
+          actions={
+            <Button type="button" variant="primary" onClick={beginCreate}>
+              Create template
+            </Button>
+          }
+        />
       ) : null}
 
       {templates.length > 0 ? (
@@ -589,13 +589,13 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 <button type="button" disabled={isOpening} onClick={() => void beginEdit(template)}>
                   Edit
                 </button>
-                <button
+                <Button
                   type="button"
-                  className="danger-text"
+                  variant="dangerGhost"
                   onClick={() => void removeTemplate(template)}
                 >
                   Delete
-                </button>
+                </Button>
               </div>
             </article>
           ))}

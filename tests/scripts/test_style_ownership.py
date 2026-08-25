@@ -100,6 +100,30 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_rejects_legacy_shared_control_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.write_fixture(
+                root,
+                {
+                    "schemaVersion": 1,
+                    "mode": "ratchet",
+                    "legacyFiles": {},
+                    "allowedGlobalCssImports": [
+                        {"path": "src/main.tsx", "specifier": "./ui/foundations/index.css"}
+                    ],
+                    "policyAllowances": {},
+                },
+            )
+            (root / "src/feature.tsx").write_text(
+                '<button className="primary-button">Save</button>\n', encoding="utf-8"
+            )
+
+            completed = self.run_verifier(root)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("legacy shared class .primary-button", completed.stderr)
+
     def test_dynamic_css_policy_rejects_new_raw_color(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

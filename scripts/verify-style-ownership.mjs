@@ -29,12 +29,45 @@ const legacyFiles = cssFiles.filter((path) => {
   return candidate.startsWith("src/styles/base/") || candidate.startsWith("src/styles/features/");
 });
 const globalCssImports = [];
+const forbiddenLegacySharedClasses = new Set([
+  "primary-button",
+  "secondary-button",
+  "small-primary-button",
+  "practice-reveal-button",
+  "text-button",
+  "back-button",
+  "icon-button",
+  "danger-button",
+  "danger-text-button",
+  "inline-alert",
+  "error-alert",
+  "info-alert",
+  "inline-progress",
+  "modal-backdrop",
+  "modal-card",
+  "modal-header",
+  "modal-actions",
+  "compact-empty-state",
+  "large-empty-state",
+  "empty-library-card",
+  "empty-actions",
+  "toast-action",
+]);
 
 for (const path of sourceFiles) {
   const source = await readFile(path, "utf8");
   for (const match of source.matchAll(/import\s+(?:[^;]*?\s+from\s+)?["']([^"']+\.css)["']/gu)) {
     if (!match[1].endsWith(".module.css")) {
       globalCssImports.push({ path: display(path), specifier: match[1] });
+    }
+  }
+  if (!/\.test\.[cm]?[jt]sx?$/u.test(path)) {
+    for (const className of forbiddenLegacySharedClasses) {
+      if (new RegExp(`(?:^|[^A-Za-z0-9_-])${className}(?:$|[^A-Za-z0-9_-])`, "u").test(source)) {
+        failures.push(
+          `${display(path)} still depends on legacy shared class .${className}; use the owning primitive or overlay.`,
+        );
+      }
     }
   }
 }

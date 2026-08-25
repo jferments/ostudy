@@ -36,6 +36,7 @@ import {
 import { PracticeComplete } from "./practice/PracticeComplete";
 import { PracticeSetup, type PracticeWorkloadStatus } from "./practice/PracticeSetup";
 import { StudyGuideLibrarySection } from "./StudyGuideLibrarySection";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
 
 interface PracticeScreenProps {
   decks: DeckSummary[];
@@ -759,12 +760,12 @@ export function PracticeScreen({
           </p>
         </div>
       </header>
-      {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {selectedTagIds.size > 0 ? (
-        <div className="inline-alert info-alert">
+        <InlineNotice kind="info">
           This launch is scoped to {selectedTagIds.size} selected tag
           {selectedTagIds.size === 1 ? "" : "s"}.
-        </div>
+        </InlineNotice>
       ) : null}
       <PracticeSetup
         decks={activeDecks}

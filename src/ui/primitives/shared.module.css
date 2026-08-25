@@ -27,6 +27,7 @@
   .emptyState p { margin: 0; }
   .emptyState p { max-width: 620px; color: var(--ostudy-color-text-secondary); }
   .compact { min-height: 190px; box-shadow: none; }
+  .large { min-height: 330px; }
   .emptyIcon { color: var(--ostudy-color-text-accent); font-size: 2rem; }
   .emptyActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 
