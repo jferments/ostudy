@@ -173,6 +173,7 @@ describe("App shell", () => {
     resetTestEntityIds();
     vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue(null);
     document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("data-motion");
     document.documentElement.removeAttribute("data-animations-enabled");
     document.documentElement.removeAttribute("data-reduce-motion");
   });
@@ -190,8 +191,9 @@ describe("App shell", () => {
     expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
     expect(screen.getByText("Cardiology")).toBeTruthy();
     expect(document.documentElement.dataset.theme).toBe("console");
-    expect(document.documentElement.dataset.animationsEnabled).toBe("false");
-    expect(document.documentElement.dataset.reduceMotion).toBe("false");
+    expect(document.documentElement.dataset.motion).toBe("none");
+    expect(document.documentElement.dataset.animationsEnabled).toBeUndefined();
+    expect(document.documentElement.dataset.reduceMotion).toBeUndefined();
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
   });
 

@@ -21,9 +21,12 @@ import {
 } from "../ipc/settings";
 import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
-import { Button } from "../ui/primitives/Button";
-import { EmptyState } from "../ui/primitives/EmptyState";
-import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
+import { Icon } from "../ui/icons/Icon";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./AnalyticsScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface AnalyticsScreenProps {
   decks: DeckSummary[];
@@ -135,24 +138,27 @@ export function AnalyticsScreen({
   const tagOptions = analytics?.dimensionOptions.tags ?? [];
 
   return (
-    <div className="screen analytics-screen">
-      <header className="screen-header compact-screen-header">
+    <div className={ownedClassNames(ownedStyleMaps, "screen analytics-screen")}>
+      <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
         <div>
-          <span className="eyebrow">Learning evidence</span>
+          <span className={ownershipStyles.screenIcon} aria-hidden="true">
+            <Icon name="analytics" size={22} />
+          </span>
+          <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>Learning evidence</span>
           <h1>Analytics</h1>
           <p>
             Current inventory follows your present organization. Historical evidence follows card
             moves and current deck/tag names while retaining immutable review presentation details.
           </p>
         </div>
-        <Button
+        <button
           type="button"
-          variant="secondary"
+          className={ownedClassNames(ownedStyleMaps, "secondary-button")}
           disabled={isLoading}
           onClick={() => void load()}
         >
           {isLoading ? "Calculating…" : "Refresh"}
-        </Button>
+        </button>
       </header>
 
       <AnalyticsFilters
@@ -178,33 +184,33 @@ export function AnalyticsScreen({
         }}
       />
 
-      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
       {isLoading && analytics === null ? (
-        <InlineProgress>Calculating learning analytics…</InlineProgress>
+        <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Calculating learning analytics…</div>
       ) : null}
 
       {analytics ? (
         <>
           <section
-            className="analytics-panel progress-chart-panel"
+            className={ownedClassNames(ownedStyleMaps, "analytics-panel progress-chart-panel")}
             aria-labelledby="progress-heading"
           >
-            <div className="panel-heading-row analytics-chart-heading">
+            <div className={ownedClassNames(ownedStyleMaps, "panel-heading-row analytics-chart-heading")}>
               <div>
                 <h2 id="progress-heading">Learning progress</h2>
-                <p className="analytics-panel-note">
+                <p className={ownedClassNames(ownedStyleMaps, "analytics-panel-note")}>
                   Buckets use the local review dates captured when each answer was submitted.
                 </p>
               </div>
-              <div className="analytics-chart-actions">
-                <Button
+              <div className={ownedClassNames(ownedStyleMaps, "analytics-chart-actions")}>
+                <button
                   type="button"
-                  variant="text"
+                  className={ownedClassNames(ownedStyleMaps, "text-button")}
                   aria-expanded={showChartData}
                   onClick={() => setShowChartData((value) => !value)}
                 >
                   {showChartData ? "Hide chart data" : "View chart data"}
-                </Button>
+                </button>
               </div>
             </div>
             <ProgressChart
@@ -215,7 +221,7 @@ export function AnalyticsScreen({
             {showChartData ? <TimelineTable analytics={analytics} /> : null}
           </section>
 
-          <section className="metrics-grid analytics-metrics" aria-label="Learning summary">
+          <section className={ownedClassNames(ownedStyleMaps, "metrics-grid analytics-metrics")} aria-label="Learning summary">
             <MetricCard
               label="Cards practiced"
               value={analytics.history.cardsPracticed}
@@ -248,7 +254,7 @@ export function AnalyticsScreen({
             />
           </section>
 
-          <section className="analytics-workload-strip" aria-label="Today's workload">
+          <section className={ownedClassNames(ownedStyleMaps, "analytics-workload-strip")} aria-label="Today's workload">
             <div>
               <strong>Today</strong>
               <span>
@@ -261,21 +267,21 @@ export function AnalyticsScreen({
             <p>{workloadMessage(analytics)}</p>
           </section>
 
-          <section className="analytics-panel tag-insights-panel">
-            <div className="panel-heading-row">
+          <section className={ownedClassNames(ownedStyleMaps, "analytics-panel tag-insights-panel")}>
+            <div className={ownedClassNames(ownedStyleMaps, "panel-heading-row")}>
               <div>
                 <h2>Topic insights</h2>
-                <p className="analytics-panel-note">
+                <p className={ownedClassNames(ownedStyleMaps, "analytics-panel-note")}>
                   Current counts use current tags. Review evidence uses captured tag identity and
                   displays the current tag name after renames.
                 </p>
               </div>
             </div>
             {analytics.tagStats.length === 0 ? (
-              <p className="muted-copy">Add tags and complete reviews to see topic-level patterns.</p>
+              <p className={ownedClassNames(ownedStyleMaps, "muted-copy")}>Add tags and complete reviews to see topic-level patterns.</p>
             ) : (
-              <div className="analytics-table-wrap">
-                <table className="analytics-table topic-table">
+              <div className={ownedClassNames(ownedStyleMaps, "analytics-table-wrap")}>
+                <table className={ownedClassNames(ownedStyleMaps, "analytics-table topic-table")}>
                   <thead>
                     <tr>
                       <th>Topic</th>
@@ -318,15 +324,14 @@ export function AnalyticsScreen({
                           <StatusBadge status={tag.status} />
                         </td>
                         <td>
-                          <Button
+                          <button
                             type="button"
-                            variant="primary"
-                            size="small"
+                            className={ownedClassNames(ownedStyleMaps, "small-primary-button")}
                             disabled={tag.studyableDueCount === 0 || practicingTagId !== null}
                             onClick={() => practiceReadyTag(tag)}
                           >
                             {practicingTagId === tag.tagId ? "Starting…" : "Practice ready"}
-                          </Button>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -336,16 +341,16 @@ export function AnalyticsScreen({
             )}
           </section>
 
-          <div className="analytics-grid analytics-detail-grid">
-            <section className="analytics-panel">
-              <div className="panel-heading-row">
+          <div className={ownedClassNames(ownedStyleMaps, "analytics-grid analytics-detail-grid")}>
+            <section className={ownedClassNames(ownedStyleMaps, "analytics-panel")}>
+              <div className={ownedClassNames(ownedStyleMaps, "panel-heading-row")}>
                 <h2>Deck performance</h2>
               </div>
               {analytics.deckStats.length === 0 ? (
-                <p className="muted-copy">No current inventory or history in this scope.</p>
+                <p className={ownedClassNames(ownedStyleMaps, "muted-copy")}>No current inventory or history in this scope.</p>
               ) : (
-                <div className="analytics-table-wrap">
-                  <table className="analytics-table">
+                <div className={ownedClassNames(ownedStyleMaps, "analytics-table-wrap")}>
+                  <table className={ownedClassNames(ownedStyleMaps, "analytics-table")}>
                     <thead>
                       <tr>
                         <th>Deck</th>
@@ -387,18 +392,18 @@ export function AnalyticsScreen({
               )}
             </section>
 
-            <section className="analytics-panel">
-              <div className="panel-heading-row">
+            <section className={ownedClassNames(ownedStyleMaps, "analytics-panel")}>
+              <div className={ownedClassNames(ownedStyleMaps, "panel-heading-row")}>
                 <h2>Recent sessions</h2>
               </div>
               {analytics.recentSessions.length === 0 ? (
-                <p className="muted-copy">Complete a practice session to track session time.</p>
+                <p className={ownedClassNames(ownedStyleMaps, "muted-copy")}>Complete a practice session to track session time.</p>
               ) : (
-                <div className="analytics-session-list">
+                <div className={ownedClassNames(ownedStyleMaps, "analytics-session-list")}>
                   {analytics.recentSessions.map((session) => (
                     <article
                       key={session.id}
-                      className={session.highlighted ? "highlighted" : ""}
+                      className={ownedClassNames(ownedStyleMaps, session.highlighted ? "highlighted" : "")}
                     >
                       <div>
                         <strong>{session.deckNames.join(", ") || "Custom selection"}</strong>
@@ -420,24 +425,23 @@ export function AnalyticsScreen({
             </section>
           </div>
 
-          <section className="analytics-panel recent-review-panel">
-            <div className="panel-heading-row">
+          <section className={ownedClassNames(ownedStyleMaps, "analytics-panel recent-review-panel")}>
+            <div className={ownedClassNames(ownedStyleMaps, "panel-heading-row")}>
               <h2>Recent reviews</h2>
             </div>
             {analytics.recentReviews.length === 0 ? (
-              <EmptyState
-                compact
-                description="Complete a practice session to begin tracking review results."
-              />
+              <div className={ownedClassNames(ownedStyleMaps, "compact-empty-state")}>
+                <p>Complete a practice session to begin tracking review results.</p>
+              </div>
             ) : (
-              <div className="recent-review-list">
+              <div className={ownedClassNames(ownedStyleMaps, "recent-review-list")}>
                 {analytics.recentReviews.map((review) => (
-                  <article key={review.id} className="recent-review-row">
+                  <article key={review.id} className={ownedClassNames(ownedStyleMaps, "recent-review-row")}>
                     <span
-                      className={`review-result-dot confidence-${review.rating - 1}`}
+                      className={ownedClassNames(ownedStyleMaps, `review-result-dot confidence-${review.rating - 1}`)}
                       aria-hidden="true"
                     />
-                    <div className="recent-review-copy">
+                    <div className={ownedClassNames(ownedStyleMaps, "recent-review-copy")}>
                       <strong>{summarize(review.questionExcerpt)}</strong>
                       <span>
                         {review.deckName} · {outcomeLabel(review.outcome)}
@@ -447,7 +451,7 @@ export function AnalyticsScreen({
                       ) : null}
                       {review.tags.length > 0 ? <small>{review.tags.join(" · ")}</small> : null}
                     </div>
-                    <div className="recent-review-meta">
+                    <div className={ownedClassNames(ownedStyleMaps, "recent-review-meta")}>
                       <strong>{formatDuration(review.responseTimeMs)}</strong>
                       <span>{dateTimeFormatter.format(new Date(review.reviewedAt))}</span>
                       <small>Next: {formatDueDate(review.dueAfter)}</small>
@@ -462,11 +466,11 @@ export function AnalyticsScreen({
           </section>
 
           {analytics.attributionCoverage.legacyBackfilledReviewCount > 0 ? (
-            <InlineNotice kind="info">
+            <div className={ownedClassNames(ownedStyleMaps, "inline-alert info-alert")}>
               {analytics.attributionCoverage.legacyBackfilledReviewCount} older review
               {analytics.attributionCoverage.legacyBackfilledReviewCount === 1 ? " was" : "s were"}
               reconstructed from the card’s state during the one-time schema repair.
-            </InlineNotice>
+            </div>
           ) : null}
         </>
       ) : null}
@@ -481,7 +485,7 @@ interface MetricCardProps {
 }
 function MetricCard({ label, value, detail }: MetricCardProps) {
   return (
-    <article className="metric-card">
+    <article className={ownedClassNames(ownedStyleMaps, "metric-card")}>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{detail}</small>
@@ -491,8 +495,8 @@ function MetricCard({ label, value, detail }: MetricCardProps) {
 
 function TimelineTable({ analytics }: { analytics: Analytics }) {
   return (
-    <div className="analytics-table-wrap chart-data-table">
-      <table className="analytics-table">
+    <div className={ownedClassNames(ownedStyleMaps, "analytics-table-wrap chart-data-table")}>
+      <table className={ownedClassNames(ownedStyleMaps, "analytics-table")}>
         <caption>Data represented in the learning progress chart</caption>
         <thead>
           <tr>
@@ -511,7 +515,7 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
           {analytics.timeline.map((bucket) => (
             <tr
               key={`${bucket.startLocalDate}-${bucket.endLocalDate}`}
-              className={bucket.containsHighlightedSession ? "highlighted" : ""}
+              className={ownedClassNames(ownedStyleMaps, bucket.containsHighlightedSession ? "highlighted" : "")}
             >
               <td>{compactDateFormatter.format(new Date(bucket.startAt))}</td>
               <td>{bucket.cardsPracticed}</td>
@@ -531,11 +535,11 @@ function TimelineTable({ analytics }: { analytics: Analytics }) {
 }
 
 function Trend({ value }: { value: number | null }) {
-  if (value === null) return <span className="trend neutral">—</span>;
+  if (value === null) return <span className={ownedClassNames(ownedStyleMaps, "trend neutral")}>—</span>;
   const points = Math.round(value * 100);
   return (
     <span
-      className={points > 0 ? "trend positive" : points < 0 ? "trend negative" : "trend neutral"}
+      className={ownedClassNames(ownedStyleMaps, points > 0 ? "trend positive" : points < 0 ? "trend negative" : "trend neutral")}
     >
       {points > 0 ? "↑" : points < 0 ? "↓" : "→"} {Math.abs(points)} pt
     </span>
@@ -548,7 +552,7 @@ function StatusBadge({ status }: { status: TagAnalytics["status"] }) {
     on_track: "On track",
     strong: "Strong",
   };
-  return <span className={`analytics-status ${status}`}>{labels[status]}</span>;
+  return <span className={ownedClassNames(ownedStyleMaps, `analytics-status ${status}`)}>{labels[status]}</span>;
 }
 function workloadMessage(analytics: Analytics): string {
   if (analytics.dailyLimits.reviewsRemaining === 0) {

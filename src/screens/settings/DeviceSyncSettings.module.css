@@ -17,18 +17,18 @@
 }
 
 .identityMeta > span {
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.88rem;
   font-weight: 720;
 }
 
 .identityMeta code {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 9px;
   padding: 10px 12px;
-  background: var(--surface-strong);
-  color: var(--text);
+  background: var(--ostudy-color-surface-raised);
+  color: var(--ostudy-color-text-primary);
   font-size: 0.76rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -45,10 +45,10 @@
   align-content: start;
   gap: 14px;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 13px;
   padding: 16px;
-  background: var(--surface-strong);
+  background: var(--ostudy-color-surface-raised);
 }
 
 .pairingPanel h3,
@@ -60,7 +60,7 @@
 .pairingPanel > p,
 .emptyCopy {
   margin: 0;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.88rem;
   line-height: 1.5;
 }
@@ -76,10 +76,10 @@
   display: grid;
   justify-items: center;
   gap: 14px;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--ostudy-color-accent-base) 45%, var(--ostudy-color-border-subtle));
   border-radius: 12px;
   padding: 16px;
-  background: color-mix(in srgb, var(--accent-soft) 48%, var(--surface));
+  background: color-mix(in srgb, var(--ostudy-color-accent-soft) 48%, var(--ostudy-color-surface-base));
 }
 
 .qrFrame {
@@ -89,7 +89,7 @@
   place-items: center;
   border-radius: 12px;
   padding: 12px;
-  background: #ffffff;
+  background: var(--ostudy-color-neutral-0);
   box-shadow: var(--ostudy-shadow-level-2);
 }
 
@@ -97,7 +97,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--ostudy-color-neutral-0);
   object-fit: contain;
 }
 
@@ -109,13 +109,13 @@
 }
 
 .invitationDetails > strong {
-  color: var(--text);
+  color: var(--ostudy-color-text-primary);
 }
 
 .invitationDetails > span,
 .invitationDetails > code {
   overflow: hidden;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -128,7 +128,7 @@
 
 .scanHint {
   margin: 0;
-  color: var(--text-soft);
+  color: var(--ostudy-color-text-secondary);
   font-size: 0.82rem;
   line-height: 1.5;
 }
@@ -137,25 +137,25 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 10px;
   padding: 10px 12px;
-  background: var(--surface);
-  color: var(--text-soft);
+  background: var(--ostudy-color-surface-base);
+  color: var(--ostudy-color-text-secondary);
   font-size: 0.82rem;
   line-height: 1.45;
 }
 
 .scanStatus[data-state="scanning"],
 .scanStatus[data-state="receiving"] {
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 32%, var(--surface));
+  border-color: color-mix(in srgb, var(--ostudy-color-accent-base) 52%, var(--ostudy-color-border-subtle));
+  background: color-mix(in srgb, var(--ostudy-color-accent-soft) 32%, var(--ostudy-color-surface-base));
 }
 
 .scanStatus[data-state="detected"],
 .scanStatus[data-state="received"] {
-  border-color: color-mix(in srgb, var(--success) 58%, var(--border));
-  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+  border-color: color-mix(in srgb, var(--ostudy-color-status-success) 58%, var(--ostudy-color-border-subtle));
+  background: color-mix(in srgb, var(--ostudy-color-status-success) 8%, var(--ostudy-color-surface-base));
 }
 
 .scanStatusDot {
@@ -163,30 +163,30 @@
   width: 9px;
   height: 9px;
   border-radius: 999px;
-  background: var(--muted);
+  background: var(--ostudy-color-text-muted);
 }
 
 .scanStatus[data-state="scanning"] .scanStatusDot,
 .scanStatus[data-state="receiving"] .scanStatusDot {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: var(--ostudy-color-accent-base);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ostudy-color-accent-base) 18%, transparent);
 }
 
 .scanStatus[data-state="detected"] .scanStatusDot,
 .scanStatus[data-state="received"] .scanStatusDot {
-  background: var(--success);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 16%, transparent);
+  background: var(--ostudy-color-status-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ostudy-color-status-success) 16%, transparent);
 }
 
 .scanStatus[data-state="cancelled"] .scanStatusDot {
-  background: var(--muted);
+  background: var(--ostudy-color-text-muted);
 }
 
 .credentialToggle {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 12px;
   padding: 14px;
-  background: var(--surface-strong);
+  background: var(--ostudy-color-surface-raised);
 }
 
 .sessionStrip {
@@ -199,11 +199,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--ostudy-color-accent-base) 35%, var(--ostudy-color-border-subtle));
   border-radius: 999px;
   padding: 4px 6px 4px 10px;
-  background: var(--accent-soft);
-  color: var(--muted);
+  background: var(--ostudy-color-accent-soft);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.78rem;
 }
 
@@ -214,7 +214,7 @@
 }
 
 .sessionPill strong {
-  color: var(--text);
+  color: var(--ostudy-color-text-primary);
 }
 
 .sessionPill button {
@@ -241,10 +241,10 @@
   min-width: 28px;
   min-height: 28px;
   place-items: center;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 999px;
-  background: var(--surface-strong);
-  color: var(--muted);
+  background: var(--ostudy-color-surface-raised);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.76rem;
   font-weight: 780;
 }
@@ -258,10 +258,10 @@
 .peerList > article,
 .conflictList > article {
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 12px;
   padding: 14px;
-  background: var(--surface-strong);
+  background: var(--ostudy-color-surface-raised);
 }
 
 .peerList > article {
@@ -282,7 +282,7 @@
 .conflictHeading span,
 .conflictHeading small {
   overflow: hidden;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -315,17 +315,17 @@
   display: grid;
   min-width: 0;
   gap: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 10px;
   padding: 10px;
-  background: var(--surface);
+  background: var(--ostudy-color-surface-base);
 }
 
 .conflictVersions pre {
   max-height: 220px;
   margin: 0;
   overflow: auto;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.72rem;
   line-height: 1.42;
   white-space: pre-wrap;
@@ -334,7 +334,7 @@
 
 .conflictVersions p {
   margin: 0;
-  color: var(--danger);
+  color: var(--ostudy-color-status-danger);
   font-size: 0.82rem;
 }
 

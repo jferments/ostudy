@@ -17,6 +17,11 @@ import { scheduleActionNotice } from "./scheduleActionResult";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface ScheduleActionModalProps {
   cards: SelectionCard[];
@@ -135,7 +140,7 @@ export function ScheduleActionModal({
           all.
         </InlineNotice>
       ) : (
-        <div className="schedule-action-options">
+        <div className={ownedClassNames(ownedStyleMaps, "schedule-action-options")}>
           <label>
             <span>New schedule date</span>
             <select
@@ -167,7 +172,7 @@ export function ScheduleActionModal({
               />
             </label>
           ) : null}
-          <p className="muted-copy">
+          <p className={ownedClassNames(ownedStyleMaps, "muted-copy")}>
             Rust resolves the selected local calendar date to the first valid instant in the
             system time zone. Rescheduling does not record a successful review or change FSRS
             difficulty and stability.

@@ -91,11 +91,50 @@
   textarea {
     min-width: 0;
     max-width: 100%;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-small);
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  input,
+  textarea {
+    width: 100%;
+    padding: 10px 12px;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ostudy-color-text-muted);
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--ostudy-color-accent-base);
   }
 
   select {
-    min-height: var(--control-height);
+    min-height: var(--ostudy-size-control);
     padding-block: var(--ostudy-space-2);
     line-height: 1.35;
+  }
+
+  @media print {
+    body {
+      background: var(--ostudy-color-neutral-0) !important;
+    }
+
+    body > *:not(#root) {
+      display: none !important;
+    }
   }
 }

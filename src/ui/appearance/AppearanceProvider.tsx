@@ -71,10 +71,6 @@ export function AppearanceProvider({
     root.dataset.input = profile.coarsePointer ? "coarse" : "fine";
     root.dataset.hover = profile.hoverAvailable ? "available" : "unavailable";
 
-    // Compatibility attributes remain only while legacy selectors are migrated.
-    root.dataset.animationsEnabled = profile.motion === "none" ? "false" : "true";
-    root.dataset.reduceMotion = profile.motion === "reduced" ? "true" : "false";
-
     root.style.setProperty("--ui-scale", String(settings.uiScale / 100));
     root.style.setProperty("--card-base-size", `${settings.cardBaseSize}px`);
     root.style.setProperty("--ui-font-family", resolveFontFamily(settings.uiFont, settings.theme));

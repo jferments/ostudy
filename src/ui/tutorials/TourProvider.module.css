@@ -187,7 +187,7 @@
     }
     .skip,
     .help {
-      min-height: var(--touch-target-min);
+      min-height: var(--ostudy-size-touch-target);
       text-align: start;
     }
   }

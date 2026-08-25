@@ -15,10 +15,11 @@ import {
   type CardBrowserView,
 } from "./cards/CardBrowserWorkspace";
 import { useCardPracticeLauncher } from "./cards/CardPracticeContext";
-import { Button } from "../ui/primitives/Button";
-import { EmptyState } from "../ui/primitives/EmptyState";
-import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
-import { DialogActions } from "../ui/overlays/Dialog";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./DecksScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface DecksScreenProps {
   decks: DeckSummary[];
@@ -330,92 +331,91 @@ export function DecksScreen({
   const showingDeck = (view === "detail" || view === "editor") && selectedDeck !== null;
 
   return (
-    <div className={view === "editor" ? "deck-card-browser-editor-host" : "screen decks-screen"}>
+    <div className={ownedClassNames(ownedStyleMaps, view === "editor" ? "deck-card-browser-editor-host" : "screen decks-screen")}>
       {view === "library" ? (
         <>
-          <header className="screen-header compact-screen-header">
+          <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
             <div>
               <h1>Decks</h1>
             </div>
-            <div className="header-actions">
+            <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
               {onManageTemplates ? (
-                <Button
+                <button
                   type="button"
-                  variant="secondary"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                   onClick={() => void onManageTemplates()}
                 >
                   Manage templates
-                </Button>
+                </button>
               ) : null}
-              <Button
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={isTransferring}
                 onClick={() => void handleImport()}
               >
                 Import deck
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant="primary"
+                className={ownedClassNames(ownedStyleMaps, "primary-button")}
                 disabled={isTransferring}
                 onClick={() => setDeckDialog("create")}
               >
                 New deck
-              </Button>
+              </button>
             </div>
           </header>
 
-          {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-          {isLoadingDeck ? <InlineProgress>Opening deck…</InlineProgress> : null}
+          {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
+          {isLoadingDeck ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening deck…</div> : null}
 
           {activeDecks.length === 0 ? (
-            <EmptyState
-              large
-              title="Create your first deck"
-              icon="?"
-              actions={
-                <>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    disabled={isTransferring}
-                    onClick={() => setDeckDialog("create")}
-                  >
-                    Create deck
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={isTransferring}
-                    onClick={() => void handleImport()}
-                  >
-                    Import deck
-                  </Button>
-                </>
-              }
-            />
+            <section className={ownedClassNames(ownedStyleMaps, "empty-library-card")}>
+              <div className={ownedClassNames(ownedStyleMaps, "empty-icon")} aria-hidden="true">
+                ?
+              </div>
+              <h2>Create your first deck</h2>
+              <div className={ownedClassNames(ownedStyleMaps, "empty-actions")}>
+                <button
+                  type="button"
+                  className={ownedClassNames(ownedStyleMaps, "primary-button")}
+                  disabled={isTransferring}
+                  onClick={() => setDeckDialog("create")}
+                >
+                  Create deck
+                </button>
+                <button
+                  type="button"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                  disabled={isTransferring}
+                  onClick={() => void handleImport()}
+                >
+                  Import deck
+                </button>
+              </div>
+            </section>
           ) : (
-            <section className="deck-grid" aria-label="Deck library">
+            <section className={ownedClassNames(ownedStyleMaps, "deck-grid")} aria-label="Deck library">
               {activeDecks.map((deck) => {
                 const archived = deck.archivedAt !== null;
                 return (
-                  <article key={deck.id} className={archived ? "deck-card archived" : "deck-card"}>
+                  <article key={deck.id} className={ownedClassNames(ownedStyleMaps, "deck-card")}>
                     <button
                       type="button"
-                      className="deck-card-main"
+                      className={ownedClassNames(ownedStyleMaps, "deck-card-main")}
                       onClick={() => void openDeck(deck.id)}
                       disabled={archived}
                     >
-                      <span className="deck-card-mark" aria-hidden="true">
+                      <span className={ownedClassNames(ownedStyleMaps, "deck-card-mark")} aria-hidden="true">
                         ▤
                       </span>
-                      <span className="deck-card-copy">
+                      <span className={ownedClassNames(ownedStyleMaps, "deck-card-copy")}>
                         <strong>{deck.name}</strong>
                         {archived ? <span>Archived · cards suspended</span> : null}
                         {!archived && deck.description ? <span>{deck.description}</span> : null}
                       </span>
-                      <span className="deck-card-count">
+                      <span className={ownedClassNames(ownedStyleMaps, "deck-card-count")}>
                         <strong>{deck.generatedCardCount}</strong>
                         <small>
                           {deck.generatedCardCount === 1 ? "generated card" : "generated cards"}
@@ -425,7 +425,7 @@ export function DecksScreen({
                         ) : null}
                       </span>
                     </button>
-                    <div className="deck-card-actions">
+                    <div className={ownedClassNames(ownedStyleMaps, "deck-card-actions")}>
                       {!archived ? (
                         <button
                           type="button"
@@ -452,13 +452,13 @@ export function DecksScreen({
                       >
                         Export
                       </button>
-                      <Button
+                      <button
                         type="button"
-                        variant="dangerGhost"
+                        className={ownedClassNames(ownedStyleMaps, "danger-text")}
                         onClick={() => void handleDeleteDeck(deck)}
                       >
                         Delete
-                      </Button>
+                      </button>
                     </div>
                   </article>
                 );
@@ -467,10 +467,10 @@ export function DecksScreen({
           )}
 
           {archivedDecks.length > 0 ? (
-            <section className="archived-decks-section" aria-labelledby="archived-decks-heading">
+            <section className={ownedClassNames(ownedStyleMaps, "archived-decks-section")} aria-labelledby="archived-decks-heading">
               <button
                 type="button"
-                className="archived-decks-toggle"
+                className={ownedClassNames(ownedStyleMaps, "archived-decks-toggle")}
                 aria-expanded={showArchived}
                 onClick={() => setShowArchived((current) => !current)}
               >
@@ -481,23 +481,23 @@ export function DecksScreen({
                 <span aria-hidden="true">{showArchived ? "▴" : "▾"}</span>
               </button>
               {showArchived ? (
-                <div className="deck-grid archived-deck-grid">
+                <div className={ownedClassNames(ownedStyleMaps, "deck-grid archived-deck-grid")}>
                   {archivedDecks.map((deck) => (
-                    <article key={deck.id} className="deck-card archived">
-                      <div className="deck-card-main">
-                        <span className="deck-card-mark" aria-hidden="true">
+                    <article key={deck.id} className={ownedClassNames(ownedStyleMaps, "deck-card")}>
+                      <div className={ownedClassNames(ownedStyleMaps, "deck-card-main")}>
+                        <span className={ownedClassNames(ownedStyleMaps, "deck-card-mark")} aria-hidden="true">
                           ▤
                         </span>
-                        <span className="deck-card-copy">
+                        <span className={ownedClassNames(ownedStyleMaps, "deck-card-copy")}>
                           <strong>{deck.name}</strong>
                           <span>Archived · cards suspended</span>
                         </span>
-                        <span className="deck-card-count">
+                        <span className={ownedClassNames(ownedStyleMaps, "deck-card-count")}>
                           <strong>{deck.generatedCardCount}</strong>
                           <small>{deck.generatedCardCount === 1 ? "card" : "cards"}</small>
                         </span>
                       </div>
-                      <div className="deck-card-actions">
+                      <div className={ownedClassNames(ownedStyleMaps, "deck-card-actions")}>
                         <button type="button" onClick={() => void handleArchiveDeck(deck, false)}>
                           Unarchive
                         </button>
@@ -508,13 +508,13 @@ export function DecksScreen({
                         >
                           Export
                         </button>
-                        <Button
+                        <button
                           type="button"
-                          variant="dangerGhost"
+                          className={ownedClassNames(ownedStyleMaps, "danger-text")}
                           onClick={() => void handleDeleteDeck(deck)}
                         >
                           Delete
-                        </Button>
+                        </button>
                       </div>
                     </article>
                   ))}
@@ -528,68 +528,66 @@ export function DecksScreen({
       {showingDeck && selectedDeck ? (
         <>
           {view === "detail" ? (
-            <header className="screen-header deck-detail-header" key="deck-detail-header">
+            <header className={ownedClassNames(ownedStyleMaps, "screen-header deck-detail-header")} key="deck-detail-header">
               <div>
-                <Button type="button" variant="back" onClick={() => setView("library")}>
+                <button type="button" className={ownedClassNames(ownedStyleMaps, "back-button")} onClick={() => setView("library")}>
                   ← All decks
-                </Button>
-                <div className="deck-title-row">
+                </button>
+                <div className={ownedClassNames(ownedStyleMaps, "deck-title-row")}>
                   <div>
                     <h1>{selectedDeck.name}</h1>
                     {selectedDeck.description ? <p>{selectedDeck.description}</p> : null}
                   </div>
-                  <Button
+                  <button
                     type="button"
-                    className="deck-edit-button"
-                    variant="ghost"
-                    size="icon"
+                    className={ownedClassNames(ownedStyleMaps, "icon-button deck-edit-button")}
                     aria-label="Edit deck name and description"
                     title="Edit deck"
                     onClick={() => setDeckDialog("edit")}
                   >
                     ✎
-                  </Button>
+                  </button>
                 </div>
               </div>
-              <div className="header-actions wrap-actions">
-                <Button
+              <div className={ownedClassNames(ownedStyleMaps, "header-actions wrap-actions")}>
+                <button
                   type="button"
-                  variant="secondary"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                   onClick={() => void onPracticeDeck(selectedDeck.id, "detail")}
                   disabled={selectedDeck.generatedCardCount === 0}
                   title={practiceTitle(selectedDeck)}
                 >
                   Practice
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant="secondary"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                   disabled={isTransferring}
                   onClick={() => void handleExport(selectedDeck)}
                 >
                   Export
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant="secondary"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                   onClick={() => void handleArchiveDeck(selectedDeck, true)}
                 >
                   Archive
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant="dangerSecondary"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button danger-text")}
                   aria-label={`Delete ${selectedDeck.name}`}
                   onClick={() => void handleDeleteDeck(selectedDeck)}
                 >
                   Delete deck
-                </Button>
+                </button>
               </div>
             </header>
           ) : null}
 
           {view === "detail" && errorMessage ? (
-            <InlineNotice kind="error">{errorMessage}</InlineNotice>
+            <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div>
           ) : null}
 
           <CardBrowserWorkspace
@@ -664,7 +662,7 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
       busy={isSaving}
       dismissible={!isSaving}
     >
-      <form className="form-stack" onSubmit={(event) => void submit(event)}>
+      <form className={ownedClassNames(ownedStyleMaps, "form-stack")} onSubmit={(event) => void submit(event)}>
         <label>
           <span>Deck name</span>
           <input
@@ -689,24 +687,24 @@ function DeckFormModal({ mode, deck, onClose, onSave }: DeckFormModalProps) {
             placeholder="What this deck covers"
           />
         </label>
-        {errorMessage ? <p className="field-error">{errorMessage}</p> : null}
-        <DialogActions>
-          <Button
+        {errorMessage ? <p className={ownedClassNames(ownedStyleMaps, "field-error")}>{errorMessage}</p> : null}
+        <div className={ownedClassNames(ownedStyleMaps, "modal-actions")}>
+          <button
             type="button"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
             disabled={isSaving}
             onClick={onClose}
           >
             Cancel
-          </Button>
-          <Button
+          </button>
+          <button
             type="submit"
-            variant="primary"
+            className={ownedClassNames(ownedStyleMaps, "primary-button")}
             disabled={isSaving || name.trim() === ""}
           >
             {isSaving ? "Saving…" : mode === "create" ? "Create deck" : "Save changes"}
-          </Button>
-        </DialogActions>
+          </button>
+        </div>
       </form>
     </Modal>
   );

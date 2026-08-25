@@ -76,10 +76,9 @@ node "$SCRIPT_DIR/verify-documentation.mjs"
   exit 1
 }
 
-step "Behavior-test policy and repository script validation"
+step "Behavior-test policy and repository script syntax"
 node "$SCRIPT_DIR/verify-test-policy.mjs"
 bash "$SCRIPT_DIR/verify-script-syntax.sh"
-python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile
@@ -87,6 +86,10 @@ pnpm run fonts:install
 pnpm run verify:versions
 pnpm run verify:fonts
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
+
+step "Repository script unit tests and owned-class verification"
+python3 -m unittest discover -s tests/scripts -p 'test_*.py'
+node "$SCRIPT_DIR/verify-owned-class-usage.mjs"
 
 step "Frontend type checking"
 pnpm exec tsc -b --pretty false

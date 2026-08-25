@@ -51,7 +51,7 @@
   .stack[data-layers="2"]::before { opacity: .9; }
   .stack[data-layers="2"]::after { opacity: .68; }
 
-  .stack > :global(.practice-card-surface) {
+  .stack > .cardSurface {
     position: relative;
     z-index: 1;
     width: 100%;
@@ -70,8 +70,8 @@
   :root[data-motion="none"] .stack::before,
   :root[data-motion="none"] .stack::after { transition: none; }
 
-  :root[data-motion="reduced"] .stack > :global(.practice-card-surface),
-  :root[data-motion="none"] .stack > :global(.practice-card-surface) { animation: none; }
+  :root[data-motion="reduced"] .stack > .cardSurface,
+  :root[data-motion="none"] .stack > .cardSurface { animation: none; }
 
   @media (max-width: 760px) {
     .progressRow { gap: var(--ostudy-space-2); }

@@ -14,6 +14,11 @@ import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
 import { Panel } from "../../ui/primitives/Panel";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface BulkEntryModalProps {
   decks: DeckSummary[];
@@ -196,10 +201,10 @@ export function BulkEntryModal({
         if (!isSaving) onClose();
       }}
     >
-      <div className="bulk-entry-layout" aria-busy={isSaving}>
-        <div className="bulk-entry-controls">
+      <div className={ownedClassNames(ownedStyleMaps, "bulk-entry-layout")} aria-busy={isSaving}>
+        <div className={ownedClassNames(ownedStyleMaps, "bulk-entry-controls")}>
           {fixedDeck ? (
-            <div className="bulk-entry-destination">
+            <div className={ownedClassNames(ownedStyleMaps, "bulk-entry-destination")}>
               <span>Destination deck</span>
               <strong>{fixedDeck.name}</strong>
             </div>
@@ -226,8 +231,8 @@ export function BulkEntryModal({
           <p>Exact duplicate question-and-answer pairs are detected before anything is saved.</p>
         </div>
 
-        <div className="bulk-entry-table" role="table" aria-label="Bulk cards">
-          <div className="bulk-entry-header" role="row">
+        <div className={ownedClassNames(ownedStyleMaps, "bulk-entry-table")} role="table" aria-label="Bulk cards">
+          <div className={ownedClassNames(ownedStyleMaps, "bulk-entry-header")} role="row">
             <span role="columnheader">Question</span>
             <span role="columnheader">Answer</span>
             <span role="columnheader">Tags</span>
@@ -235,11 +240,9 @@ export function BulkEntryModal({
           </div>
           {rows.map((row, index) => (
             <div
-              className={
-                duplicateRowIds.has(row.id)
+              className={ownedClassNames(ownedStyleMaps, duplicateRowIds.has(row.id)
                   ? "bulk-entry-row duplicate-bulk-row"
-                  : "bulk-entry-row"
-              }
+                  : "bulk-entry-row")}
               role="row"
               key={row.id}
             >
@@ -291,7 +294,7 @@ export function BulkEntryModal({
                 ×
               </Button>
               {duplicateRowIds.has(row.id) ? (
-                <small className="duplicate-row-label">Exact duplicate</small>
+                <small className={ownedClassNames(ownedStyleMaps, "duplicate-row-label")}>Exact duplicate</small>
               ) : null}
             </div>
           ))}
@@ -299,7 +302,7 @@ export function BulkEntryModal({
 
         <Button
           type="button"
-          variant="text" className="bulk-add-rows"
+          variant="text" className={ownedClassNames(ownedStyleMaps, "bulk-add-rows")}
           disabled={isSaving || rows.length >= MAX_BULK_ROWS}
           onClick={() => addRows()}
         >
@@ -337,7 +340,7 @@ export function BulkEntryModal({
         ) : null}
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
-        <DialogActions className="bulk-entry-actions">
+        <DialogActions className={ownedClassNames(ownedStyleMaps, "bulk-entry-actions")}>
           <Button
             type="button"
             variant="dangerGhost"

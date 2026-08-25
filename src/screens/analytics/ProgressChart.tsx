@@ -17,6 +17,11 @@ import { Chart } from "react-chartjs-2";
 import type { AnalyticsRange, TimelineBucket } from "../../ipc/analytics";
 import { useAnimationsEnabled } from "../../ui/hooks/useAnimationsEnabled";
 import { buildDifficultyTimelineSeries } from "./difficultySeries";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "../AnalyticsScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 ChartJS.register(CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip, Legend);
 
@@ -102,7 +107,7 @@ export function ProgressChart({ buckets, range, reduceMotion = false }: Progress
   );
 
   return (
-    <div className="progress-chart-canvas">
+    <div className={ownedClassNames(ownedStyleMaps, "progress-chart-canvas")}>
       <Chart type="line" data={data} options={options} role="img" aria-label={buildAriaLabel(buckets)} />
     </div>
   );

@@ -8,7 +8,7 @@
   .toggle {
     display: flex;
     width: 100%;
-    min-height: var(--touch-target-min);
+    min-height: var(--ostudy-size-touch-target);
     align-items: center;
     justify-content: space-between;
     gap: var(--ostudy-space-3);

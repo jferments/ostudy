@@ -4,6 +4,11 @@ import type { ChangeEvent, KeyboardEvent } from "react";
 import {
   type TagSummary,
 } from "../ipc/cards";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./TagInput.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface TagInputProps {
   label?: string;
@@ -43,11 +48,11 @@ export function TagInput({
   }
 
   return (
-    <label className="tag-input-control">
+    <label className={ownedClassNames(ownedStyleMaps, "tag-input-control")}>
       <span>{label}</span>
-      <div className="tag-input-surface">
+      <div className={ownedClassNames(ownedStyleMaps, "tag-input-surface")}>
         {tags.map((tag) => (
-          <span key={tag.toLocaleLowerCase()} className="tag-chip">
+          <span key={tag.toLocaleLowerCase()} className={ownedClassNames(ownedStyleMaps, "tag-chip")}>
             {tag}
             <button
               type="button"

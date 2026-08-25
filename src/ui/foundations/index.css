@@ -1,4 +1,4 @@
-@layer reset, tokens, theme, base, legacy, features, components, patterns, utilities;
+@layer reset, tokens, theme, base, components, patterns, features, utilities;
 
 @import "./local-fonts.css" layer(tokens);
 @import "../tokens/generated/reference.css" layer(tokens);
@@ -10,16 +10,6 @@
 @import "./reset.css";
 @import "./document.css";
 @import "./platform.css";
-@import "../../styles/base/application.css" layer(legacy);
-@import "../../styles/features/practice.css" layer(features);
-@import "../../styles/features/cards.css" layer(features);
-@import "../../styles/features/authoring.css" layer(features);
-@import "../../styles/features/templates.css" layer(features);
-@import "../../styles/features/scheduling.css" layer(features);
-@import "../../styles/features/analytics.css" layer(features);
-@import "../../styles/features/assets.css" layer(features);
-@import "../../styles/features/ui-overhaul.css" layer(features);
-@import "../../styles/features/page-density.css" layer(features);
 @import "./utilities.css";
 
 @layer tokens {
@@ -37,7 +27,7 @@
     --radius-medium: var(--ostudy-radius-medium);
     --radius-large: var(--ostudy-radius-large);
     --on-accent: var(--ostudy-color-accent-on);
-    --on-danger: #ffffff;
+    --on-danger: var(--ostudy-color-status-danger-on);
     --confidence-wrong: var(--ostudy-color-confidence-0);
     --confidence-hard: var(--ostudy-color-confidence-1);
     --confidence-medium: var(--ostudy-color-confidence-2);
@@ -86,12 +76,5 @@
     --focus: var(--ostudy-shadow-focus);
     --radius: var(--ostudy-radius-medium);
     --radius-small: var(--ostudy-radius-small);
-  }
-
-  /* Temporary compatibility while Stage 5 replaces these legacy controls. */
-  .primary-button,
-  .small-primary-button,
-  .practice-reveal-button {
-    color: var(--on-accent);
   }
 }

@@ -19,6 +19,7 @@ const [
   syncPackage,
   syncMerge,
   logging,
+  referenceTokens,
 ] = await Promise.all([
   read("plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt"),
   read("src-tauri/src/device_sync_qr_commands.rs"),
@@ -33,8 +34,10 @@ const [
   read("src-tauri/src/device_sync/package.rs"),
   read("src-tauri/src/device_sync/merge.rs"),
   read("src-tauri/src/logging.rs"),
+  read("src/ui/tokens/source/reference.tokens.json"),
 ]);
 const failures = [];
+const referenceTokenData = JSON.parse(referenceTokens);
 
 expectContains(nativeScanner, "GmsBarcodeScanning.getClient(activity, options)", "Google Code Scanner client");
 expectContains(nativeScanner, ".setBarcodeFormats(Barcode.FORMAT_QR_CODE)", "QR-only native scan format");
@@ -75,7 +78,14 @@ expectContains(settingsUi, "Include API provider settings and saved credentials"
 expectContains(settingsUi, "app settings always stay local", "device-local app-settings explanation");
 expectContains(settingsUi, "entire white border visible", "host-side QR framing guidance");
 expectContains(settingsCss, "width: min(100%, 340px);", "large desktop pairing QR presentation");
-expectContains(settingsCss, "background: #ffffff;", "high-contrast QR quiet-zone background");
+expectContains(
+  settingsCss,
+  "background: var(--ostudy-color-neutral-0);",
+  "token-owned high-contrast QR quiet-zone background",
+);
+if (referenceTokenData?.color?.neutral?.["0"]?.$value !== "#ffffff") {
+  failures.push("Reference token color.neutral.0 must remain literal #ffffff for QR quiet-zone contrast.");
+}
 expectContains(settingsCss, '.scanStatus[data-state="receiving"]', "visible receiving-state treatment");
 expectContains(settingsCss, '.scanStatus[data-state="received"]', "visible completed-state treatment");
 expectContains(settingsCss, ".sessionPill", "active-session cancellation presentation");

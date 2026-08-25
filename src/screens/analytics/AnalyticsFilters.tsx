@@ -6,6 +6,11 @@ import type {
 import type { DeckSummary } from "../../ipc/decks";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { Button } from "../../ui/primitives/Button";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "../AnalyticsScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface AnalyticsFiltersProps {
   range: AnalyticsRange;
@@ -68,7 +73,7 @@ export function AnalyticsFilters({
     .filter((name): name is string => Boolean(name));
 
   return (
-    <section className="analytics-filter-panel" aria-label="Analytics filters">
+    <section className={ownedClassNames(ownedStyleMaps, "analytics-filter-panel")} aria-label="Analytics filters">
       <SegmentedControl
         label="Time range"
         value={range}
@@ -80,7 +85,7 @@ export function AnalyticsFilters({
       />
 
       {range === "custom" ? (
-        <div className="analytics-custom-range" aria-label="Custom analytics date range">
+        <div className={ownedClassNames(ownedStyleMaps, "analytics-custom-range")} aria-label="Custom analytics date range">
           <label>
             <span>Start date</span>
             <input
@@ -103,14 +108,14 @@ export function AnalyticsFilters({
         </div>
       ) : null}
 
-      <details className="analytics-scope-details">
+      <details className={ownedClassNames(ownedStyleMaps, "analytics-scope-details")}>
         <summary>
           Scope: {selectedDeckNames.length === 0 ? "All decks" : `${selectedDeckNames.length} deck${selectedDeckNames.length === 1 ? "" : "s"}`}
           {selectedTagNames.length > 0
             ? ` · ${selectedTagNames.length} tag${selectedTagNames.length === 1 ? "" : "s"}`
             : ""}
         </summary>
-        <div className="analytics-scope-grid">
+        <div className={ownedClassNames(ownedStyleMaps, "analytics-scope-grid")}>
           <FilterChecklist
             label="Decks"
             emptyLabel="No decks available"
@@ -153,7 +158,7 @@ export function AnalyticsFilters({
       </details>
 
       {selectedDeckNames.length > 0 || selectedTagNames.length > 0 || highlightedSessionId ? (
-        <div className="analytics-filter-chips" aria-label="Active analytics filters">
+        <div className={ownedClassNames(ownedStyleMaps, "analytics-filter-chips")} aria-label="Active analytics filters">
           {selectedDeckNames.map((name) => (
             <span key={`deck-${name}`}>Deck: {name}</span>
           ))}
@@ -192,7 +197,7 @@ function FilterChecklist({
   onChange,
 }: FilterChecklistProps) {
   return (
-    <fieldset className="analytics-filter-checklist">
+    <fieldset className={ownedClassNames(ownedStyleMaps, "analytics-filter-checklist")}>
       <legend>{label}</legend>
       {options.length === 0 ? (
         <p>{emptyLabel}</p>

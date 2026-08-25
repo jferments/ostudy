@@ -14,6 +14,11 @@ import {
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface BulkTagModalProps {
   cards: SelectionCard[];
@@ -84,7 +89,7 @@ export function BulkTagModal({
         if (!isSaving) onClose();
       }}
     >
-      <div className="bulk-tag-form" aria-busy={isSaving}>
+      <div className={ownedClassNames(ownedStyleMaps, "bulk-tag-form")} aria-busy={isSaving}>
         <TagInput
           tags={tags}
           suggestions={suggestions}
@@ -94,7 +99,7 @@ export function BulkTagModal({
             setErrorMessage(null);
           }}
         />
-        <p className="modal-help-text">
+        <p className={ownedClassNames(ownedStyleMaps, "modal-help-text")}>
           {adding
             ? "Existing tags are preserved. Only the tags listed here will be added."
             : "Only the tags listed here will be removed; all other tags are preserved."}

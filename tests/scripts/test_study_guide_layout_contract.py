@@ -25,8 +25,11 @@ class StudyGuideLayoutContractTests(unittest.TestCase):
             "--muted-text-color",
         ):
             self.assertNotIn(stale_token, css)
-        self.assertIn("background: var(--surface);\n  box-shadow:", css)
-        self.assertIn("background: var(--surface-soft);", css)
+        self.assertIn(
+            "background: var(--ostudy-color-surface-base);\n  box-shadow:",
+            css,
+        )
+        self.assertIn("background: var(--ostudy-color-surface-soft);", css)
         self.assertIn("font-weight: 650;", css)
         self.assertIn("text-decoration: underline;", css)
         self.assertIn(".contents a:focus-visible", css)

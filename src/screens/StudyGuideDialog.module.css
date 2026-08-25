@@ -1,11 +1,11 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: var(--ostudy-layer-dialog);
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgb(0 0 0 / 48%);
+  background: var(--ostudy-color-overlay-scrim);
 }
 
 .dialog {
@@ -14,24 +14,24 @@
   width: min(1180px, 100%);
   max-height: calc(100vh - 2rem);
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 1rem;
-  background: var(--surface);
-  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 28%);
+  background: var(--ostudy-color-surface-base);
+  box-shadow: var(--ostudy-shadow-level-4);
 }
 
 .header {
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: var(--ostudy-layer-sticky);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border-strong);
-  background: var(--surface);
-  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 12%);
+  border-bottom: 1px solid var(--ostudy-color-border-strong);
+  background: var(--ostudy-color-surface-base);
+  box-shadow: var(--ostudy-shadow-level-2);
 }
 
 .header h1,
@@ -43,7 +43,7 @@
 .eyebrow,
 .sourceLabel {
   margin: 0 0 0.25rem;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -71,8 +71,8 @@
 }
 
 .error {
-  border: 1px solid color-mix(in srgb, var(--danger) 48%, var(--border));
-  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--ostudy-color-status-danger) 48%, var(--ostudy-color-border-subtle));
+  background: color-mix(in srgb, var(--ostudy-color-status-danger) 12%, var(--ostudy-color-surface-base));
 }
 
 .empty {
@@ -99,9 +99,9 @@
   max-height: calc(100vh - 9rem);
   overflow: auto;
   padding: 1rem;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--ostudy-color-border-strong);
   border-radius: 0.75rem;
-  background: var(--surface-soft);
+  background: var(--ostudy-color-surface-soft);
 }
 
 .contents > strong {
@@ -111,25 +111,25 @@
 .contents a {
   padding: 0.42rem 0.5rem;
   border-radius: 0.45rem;
-  color: var(--text-soft);
+  color: var(--ostudy-color-text-secondary);
   font-weight: 650;
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--ostudy-color-accent-base) 38%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;
   transition:
-    background var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
+    background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+    color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
 }
 
 .contents a:hover {
-  background: var(--accent-soft);
-  color: var(--text);
-  text-decoration-color: var(--accent);
+  background: var(--ostudy-color-accent-soft);
+  color: var(--ostudy-color-text-primary);
+  text-decoration-color: var(--ostudy-color-accent-base);
 }
 
 .contents a:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ostudy-color-accent-base);
   outline-offset: 2px;
 }
 
@@ -143,9 +143,9 @@
 .section {
   scroll-margin-top: 7rem;
   padding: 1.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 0.9rem;
-  background: var(--surface);
+  background: var(--ostudy-color-surface-base);
 }
 
 .section + .section,
@@ -186,9 +186,9 @@
 .terms > div,
 .comparisons article {
   padding: 0.75rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 0.6rem;
-  background: var(--surface-soft);
+  background: var(--ostudy-color-surface-soft);
 }
 
 .terms dt {
@@ -214,7 +214,7 @@
   margin-top: 1rem;
   padding: 0.85rem 1rem;
   border-radius: 0.65rem;
-  background: var(--surface-soft);
+  background: var(--ostudy-color-surface-soft);
 }
 
 .personalNote {
@@ -222,21 +222,21 @@
 }
 
 .visualNote {
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--ostudy-color-border-subtle);
 }
 
 .conflict {
-  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--ostudy-color-status-warning) 50%, var(--ostudy-color-border-subtle));
 }
 
 .editor {
   position: sticky;
   bottom: 0;
-  z-index: 3;
+  z-index: var(--ostudy-layer-sticky);
   padding: 1rem 1.5rem;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: 0 -0.5rem 1.5rem rgb(0 0 0 / 10%);
+  border-top: 1px solid var(--ostudy-color-border-subtle);
+  background: var(--ostudy-color-surface-base);
+  box-shadow: var(--ostudy-shadow-level-2);
 }
 
 .editor label,
@@ -252,7 +252,7 @@
 
 .editor p {
   margin: 0.5rem 0;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.9rem;
 }
 
@@ -301,19 +301,11 @@
     margin: 16mm;
   }
 
-  :global(body) {
-    background: white !important;
-  }
-
-  :global(body > *:not(#root)) {
-    display: none !important;
-  }
-
   .backdrop {
     position: static;
     display: block;
     padding: 0;
-    background: white;
+    background: var(--ostudy-color-neutral-0);
   }
 
   .dialog {
@@ -323,15 +315,15 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: white;
-    color: black;
+    background: var(--ostudy-color-neutral-0);
+    color: var(--ostudy-color-neutral-950);
   }
 
   .header {
     position: static;
     padding: 0 0 1rem;
-    border-bottom: 1px solid #888;
-    background: white;
+    border-bottom: 1px solid var(--ostudy-color-neutral-400);
+    background: var(--ostudy-color-neutral-0);
     box-shadow: none;
   }
 
@@ -356,20 +348,20 @@
     border: 0;
     border-radius: 0;
     padding: 0;
-    background: white;
+    background: var(--ostudy-color-neutral-0);
   }
 
   .section + .section,
   .overview + .section {
     margin-top: 1.5rem;
     padding-top: 1rem;
-    border-top: 1px solid #aaa;
+    border-top: 1px solid var(--ostudy-color-neutral-300);
   }
 
   .terms > div,
   .comparisons article,
   .personalNote,
   .visualNote {
-    background: white;
+    background: var(--ostudy-color-neutral-0);
   }
 }

@@ -1,68 +1,80 @@
-# Frontend and CSS refactor checkpoint
+# Frontend and CSS ownership refactor checkpoint
 
-This document is the durable repository checkpoint for the restarted frontend and CSS ownership refactor tracked by pull request #75.
+This is the durable completion checkpoint for ADR 0048 after PR #75 and Stage 8 in PR #76.
 
-## Verified repository state
+## Repository lineage
 
-- Pull request: `#75` (`refactor(ui): complete explicit frontend and CSS ownership`)
-- Canonical work branch: `refactor/pr75-css-ui-restart`
-- Pull-request compatibility branch: `agent/frontend-css-ownership-refactor-restart`
-- Target branch: `main`
-- Exact pre-PR-#74 base: `f088c401235419535a9fd36e76badbc004509255`
-- PR #74 roadmap: `docs/development/frontend-css-refactor-roadmap.md`
-- Accidental `test-do-not-create` branch: absent when this checkpoint was established
-- Copilot assignment on PR #75: absent when this checkpoint was established
+- PR #75 (`refactor(ui): complete explicit frontend and CSS ownership`) was squash-merged to `main` as `b62206bfe79d2afd081cdc2420d5a89abfb17b36`.
+- Stage 8 is implemented on `agent/stage8-zero-legacy-css` in draft PR #76.
+- PR #76 starts exactly from the PR #75 squash merge; it does not reuse the old `scratch/pr75-stage8-materialize` payload branch.
+- The Stage 8 work does not change learner-data schema, IPC semantics, scheduling, document/study-guide semantics, analytics semantics, backup format, or persisted appearance settings.
 
-GitHub does not support replacing the head branch of an existing pull request. PR #75 was originally opened from `agent/frontend-css-ownership-refactor-restart`, so that ref remains attached to the pull request. The canonical branch requested for the restart is `refactor/pr75-css-ui-restart`. During this refactor, both refs must point to the same commit after every stage; a mismatch is a release-blocking error.
+## Bounded Stage 8 checkpoints
 
-## Ancestry invariant
+### Standalone desktop artifact boundary
 
-The refactor must remain a linear descendant of the exact state immediately before PR #74:
+Commit `717029868d96493af4ebe46a49abda4004f4549b` separates Cargo/Tauri's mutable debug output from the exact standalone executable used for native acceptance and manual launch.
+
+The accepted executable is staged under the configured Cargo target's `standalone/ostudy` path, hashed in `.ostudy-build-stamp`, and used by both native WebDriver smoke and `./run-app.sh`.
+
+### Feature-global stylesheet retirement
+
+Commit `9cf1937a8e19b6b5f09939c3624753840f996c60` is the qualified feature-retirement checkpoint. It removes the global feature stylesheets, `DecksScreen.stage12.css`, and `CardListing.css` in favor of explicit feature/shared module owners. Exact-head static and fast qualification passed at this checkpoint.
+
+### Zero-legacy topology
+
+Commit `2e642844e66059d216c07e4996a2c6c0015b4720` deletes the remaining `application.css`/`src/styles` tree, removes the `legacy` layer, normalizes the cascade, switches the style manifest to `zero`, requires zero temporary policy allowances, and strengthens completion assertions. Exact-head static and fast qualification passed at this checkpoint.
+
+### Compatibility-alias removal
+
+Commit `cffe1b6dd9a24f33ba034cc9be45e3945b5ab865` removes the temporary `data-animations-enabled` and `data-reduce-motion` DOM attributes. `data-motion` is the canonical motion presentation contract. Exact-head static and fast qualification passed at this checkpoint.
+
+## Final architecture contract
+
+The completed source architecture requires all of the following simultaneously:
 
 ```text
-f088c401235419535a9fd36e76badbc004509255
-└── PR #75 bounded stage commits
+src/main.tsx
+└── ./ui/foundations/index.css     only global TypeScript CSS import
 ```
 
-The first PR #75 commit, `0e65e79083ac4267d995d2da5afad137952e22be`, has `f088c401235419535a9fd36e76badbc004509255` as its sole parent. Before this checkpoint was added, comparison of the verified base with PR #75 head `403e37c3a7af8fbd04d85f0c63d75b67b77c2fdc` reported:
+```css
+@layer reset, tokens, theme, base, components, patterns, features, utilities;
+```
 
-- merge base: `f088c401235419535a9fd36e76badbc004509255`
-- ahead: 28 commits
-- behind: 0 commits
+- `src/styles/base` and `src/styles/features` do not exist.
+- Authored global CSS exists only in `src/ui/foundations/`.
+- Shared and feature presentation uses CSS Modules.
+- `scripts/style-ownership-baseline.json` uses `mode: "zero"`, `legacyFiles: {}`, and `policyAllowances: {}`.
+- The topology verifier rejects reintroduction of legacy/global feature ownership and raw authored visual debt.
+- The TypeScript AST verifier rejects raw/unowned production class semantics and validates semantic keys used by `ownedClassNames(...)` against imported module owners.
+- QR quiet-zone white is represented by generated reference token `color.neutral.0`, and the QR verifier pins that token source to `#ffffff`.
+- Motion/material/layout/platform behavior is expressed through canonical semantic datasets/tokens rather than retired compatibility aliases.
 
-No PR #74 implementation commit is an ancestor of PR #75.
+## Final qualification boundary
 
-## Source checkpoints
+The maintained source documents are completed **before** the expensive final qualification. Final evidence is recorded in PR #76 and its exact-head workflow results rather than by modifying this file afterward, because any post-test source edit would create a different unqualified SHA.
 
-Historical exact-source artifacts were produced for intermediate heads, including:
+Before PR #76 is merge-ready, its exact final head must pass:
 
-- `frontend-refactor-source-01c348843e8c9277ddde90da8fe53d2ec7c6f952`
-- `frontend-refactor-source-ddeeaf1a68c6d22310dff1ace29cc7cb3c90fdca`
+1. static qualification;
+2. fast qualification;
+3. authoritative Linux/Tauri full qualification, including startup and native WebDriver smoke;
+4. Android compile/package qualification;
+5. API-36 emulator smoke.
 
-The workflow `.github/workflows/frontend-refactor-source-checkpoint.yml` creates a short-lived exact-source artifact whenever this checkpoint document or the workflow itself changes. The artifact is a recovery mechanism, not a substitute for commits.
+The final staged standalone artifact must then be launched through `./run-app.sh` for the human acceptance pass.
 
-## Roadmap execution ledger
+The remaining human-required matrix covers:
 
-The exact roadmap is authoritative. This ledger records implementation and fresh validation separately so inherited code is not treated as qualified merely because it exists.
+- Light, Dark, Console, and Synthwave;
+- compact, medium, and wide representative widths;
+- 80%, 100%, and 140% interface scale;
+- full, reduced, and no-motion;
+- rich and simple materials;
+- keyboard navigation and focus restoration;
+- pointer/touch alternatives;
+- safe-area and IME behavior;
+- representative long-content/horizontal-overflow paths.
 
-| Stage | Scope | Implementation | Fresh focused validation |
-| --- | --- | --- | --- |
-| 0 | Inventory, characterization, and ratchet | inherited; checkpoint corrected here | pending |
-| 1 | Pure deck-library organization model | inherited | pending |
-| 2 | Deck-library controller | inherited | pending |
-| 3 | Unified reorder and deck-library view decomposition | inherited | pending |
-| 4 | Foundations and application shell | inherited | pending |
-| 5 | Shared controls, feedback, and overlays | inherited | pending |
-| 6 | Rich editor and rendered-content ownership | inherited | pending |
-| 7 | Feature-by-feature global CSS retirement | pending | pending |
-| 8 | Delete legacy CSS and normalize the cascade | pending | pending |
-
-A stage is complete only after its focused tests pass against the exact stage head. The final head additionally requires the repository’s full validation suite and exact-head CI evidence. Manual visual and assistive-technology checks remain explicitly recorded when they cannot be automated.
-
-## Commit discipline
-
-1. Make one bounded architectural stage or feature-family migration per commit.
-2. Run and record focused tests against that exact commit.
-3. Advance both branch refs to the same commit.
-4. Do not use temporary source-export, patch-applicator, or migration-runner files as implementation state.
-5. Run full validation only after all focused stage checks are green.
+The PR remains draft until automated qualification is green. Manual visual/accessibility acceptance remains explicitly human-required and is never inferred from automated success.

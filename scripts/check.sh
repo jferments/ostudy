@@ -18,7 +18,7 @@ export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 ostudy_parse_diagnostic_args "$@"
-if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
+if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0)); then
   printf 'Usage: ./scripts/check.sh [diagnostic options]\n' >&2
   ostudy_diagnostic_usage >&2
   exit 2
@@ -86,6 +86,8 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 step "Standalone Tauri build"
 pnpm tauri build --debug --no-bundle --ci -- --locked
 "$SCRIPT_DIR/verify-rust-dependencies.sh"
+[[ -x "$OSTUDY_CARGO_BINARY" ]]
+ostudy_stage_standalone_build
 [[ -x "$OSTUDY_BINARY" ]]
 ostudy_write_build_stamp "$(node -p "require('./package.json').version")"
 
@@ -104,4 +106,4 @@ ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
 ostudy_write_check_stamp full
 trap - ERR
 printf '\n\033[1;32mAll ostudy checks passed.\033[0m\n'
-printf 'The current standalone build is ready for ./run-app.sh.\n'
+printf 'The exact standalone artifact exercised by native smoke is ready for ./run-app.sh.\n'

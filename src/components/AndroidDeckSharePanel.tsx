@@ -6,6 +6,11 @@ import { prepareDeckExport, type DeckSummary } from "../ipc/decks";
 import { usePlatformCapabilities } from "../platform/PlatformProvider";
 import { shareExport } from "../platform/files";
 import { Button } from "../ui/primitives/Button";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./AndroidDeckSharePanel.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface AndroidDeckSharePanelProps {
   decks: DeckSummary[];
@@ -54,13 +59,13 @@ export function AndroidDeckSharePanel({ decks, showToast }: AndroidDeckSharePane
   }
 
   return (
-    <section className="deck-share-panel" aria-labelledby="android-deck-share-heading">
+    <section className={ownedClassNames(ownedStyleMaps, "deck-share-panel")} aria-labelledby="android-deck-share-heading">
       <div>
-        <span className="eyebrow">ANDROID SHARING</span>
+        <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>ANDROID SHARING</span>
         <h2 id="android-deck-share-heading">Share a deck</h2>
         <p>Send a portable .studydeck file through Android's system Sharesheet.</p>
       </div>
-      <div className="header-actions">
+      <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
         <label>
           <span className="sr-only">Deck to share</span>
           <select

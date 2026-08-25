@@ -65,8 +65,10 @@
     --ostudy-layer-toast: 1200;
     --ostudy-motion-duration-celebration: 900ms;
     --ostudy-motion-duration-fast: 140ms;
+    --ostudy-motion-duration-flip: 560ms;
     --ostudy-motion-duration-instant: 1ms;
     --ostudy-motion-duration-micro: 90ms;
+    --ostudy-motion-duration-skeleton: 1400ms;
     --ostudy-motion-duration-slow: 320ms;
     --ostudy-motion-duration-standard: 220ms;
     --ostudy-motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);

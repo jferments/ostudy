@@ -12,6 +12,11 @@ import {
 } from "./cloze";
 import { Button } from "../../ui/primitives/Button";
 import { Panel } from "../../ui/primitives/Panel";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "../CardEditorScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface ClozeEditorProps {
   source: string;
@@ -70,8 +75,8 @@ export function ClozeEditor({
   }
 
   return (
-    <section className="cloze-editor" aria-labelledby="cloze-editor-heading">
-      <div className="section-heading compact-section-heading">
+    <section className={ownedClassNames(ownedStyleMaps, "cloze-editor")} aria-labelledby="cloze-editor-heading">
+      <div className={ownedClassNames(ownedStyleMaps, "section-heading compact-section-heading")}>
         <div>
           <h2 id="cloze-editor-heading">Fill in the blank</h2>
           <p>
@@ -80,10 +85,10 @@ export function ClozeEditor({
             scheduled card.
           </p>
         </div>
-        <span className="count-badge">{countLabel}</span>
+        <span className={ownedClassNames(ownedStyleMaps, "count-badge")}>{countLabel}</span>
       </div>
 
-      <label className="cloze-source-field">
+      <label className={ownedClassNames(ownedStyleMaps, "cloze-source-field")}>
         <span>Complete statement</span>
         <textarea
           ref={textareaRef}
@@ -99,7 +104,7 @@ export function ClozeEditor({
         />
       </label>
 
-      <div className="cloze-toolbar">
+      <div className={ownedClassNames(ownedStyleMaps, "cloze-toolbar")}>
         <Button
           type="button"
           variant="secondary"
@@ -122,7 +127,7 @@ export function ClozeEditor({
       </div>
       {selectionError ? <FieldError>{selectionError}</FieldError> : null}
 
-      <fieldset className="cloze-mode-options" disabled={disabled}>
+      <fieldset className={ownedClassNames(ownedStyleMaps, "cloze-mode-options")} disabled={disabled}>
         <legend>Blank behavior</legend>
         <label>
           <input
@@ -154,9 +159,9 @@ export function ClozeEditor({
       </fieldset>
 
       <Panel as="div">
-        <div className="preview-panel-heading">
+        <div className={ownedClassNames(ownedStyleMaps, "preview-panel-heading")}>
           <div>
-            <span className="eyebrow">PREVIEW</span>
+            <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>PREVIEW</span>
             <h3>Card presentation</h3>
           </div>
           {mode === "one_at_a_time" && groups.length > 1 ? (
@@ -175,7 +180,7 @@ export function ClozeEditor({
             </label>
           ) : null}
         </div>
-        <div className="cloze-preview-sides">
+        <div className={ownedClassNames(ownedStyleMaps, "cloze-preview-sides")}>
           <div>
             <small>Question</small>
             <p>{preview.question || "The question preview appears here."}</p>

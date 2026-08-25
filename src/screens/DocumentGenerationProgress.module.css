@@ -3,9 +3,9 @@
   gap: 0.65rem;
   margin-top: 0.85rem;
   padding: 0.8rem 0.9rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 0.7rem;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  background: color-mix(in srgb, var(--ostudy-color-surface-base) 86%, transparent);
 }
 
 .heading {
@@ -18,7 +18,7 @@
 }
 
 .heading span:last-child {
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -27,18 +27,18 @@
   height: 0.45rem;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--border) 65%, transparent);
+  background: color-mix(in srgb, var(--ostudy-color-border-subtle) 65%, transparent);
 }
 
 .fill {
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
-  transition: width 220ms ease;
+  background: var(--ostudy-color-accent-base);
+  transition: width var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard);
 }
 
 .detail {
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -56,7 +56,7 @@
 
 .stats dt {
   margin-bottom: 0.1rem;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.68rem;
   font-weight: 650;
   letter-spacing: 0.045em;
@@ -70,7 +70,7 @@
 }
 
 .warning {
-  color: var(--danger);
+  color: var(--ostudy-color-status-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {

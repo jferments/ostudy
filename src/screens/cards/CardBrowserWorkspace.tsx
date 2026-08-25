@@ -29,9 +29,11 @@ import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 import { ScheduleActionModal } from "./ScheduleActionModal";
 import { scheduleActionNotice } from "./scheduleActionResult";
-import { Button } from "../../ui/primitives/Button";
-import { EmptyState } from "../../ui/primitives/EmptyState";
-import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 export type CardBrowserView = "list" | "editor";
 export type CardBrowserControls = "deck" | "search";
@@ -433,20 +435,20 @@ export function CardBrowserWorkspace({
     const deck = activeDecks.find((candidate) => candidate.id === editorDeckId);
     if (!deck) {
       return (
-        <div className="screen cards-screen">
-          <InlineNotice kind="error">
+        <div className={ownedClassNames(ownedStyleMaps, "screen cards-screen")}>
+          <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>
             The card’s active deck could not be found. Return to the card list and refresh.
-          </InlineNotice>
-          <Button
+          </div>
+          <button
             type="button"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
             onClick={() => {
               setEditingCard(null);
               setCreatingDeckId(null);
             }}
           >
             Back to cards
-          </Button>
+          </button>
         </div>
       );
     }
@@ -536,7 +538,7 @@ export function CardBrowserWorkspace({
           onTagIdsChange={setTagIds}
         />
       ) : (
-        <section className="deck-card-search" aria-label="Search this deck">
+        <section className={ownedClassNames(ownedStyleMaps, "deck-card-search")} aria-label="Search this deck">
           <label>
             <span>Search cards</span>
             <input
@@ -550,7 +552,7 @@ export function CardBrowserWorkspace({
       )}
 
       {selectedCards.size > 0 ? (
-        <section className="card-selection-bar" aria-live="polite">
+        <section className={ownedClassNames(ownedStyleMaps, "card-selection-bar")} aria-live="polite">
           <strong>{selectedCards.size} selected</strong>
           <select
             aria-label="Actions for selected cards"
@@ -573,29 +575,29 @@ export function CardBrowserWorkspace({
             <option value="reset">Reset schedules</option>
             <option value="delete">Delete cards</option>
           </select>
-          <Button type="button" variant="text" onClick={() => setSelectedCards(new Map())}>
+          <button type="button" className={ownedClassNames(ownedStyleMaps, "text-button")} onClick={() => setSelectedCards(new Map())}>
             Deselect all
-          </Button>
+          </button>
         </section>
       ) : null}
 
-      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-      {isOpeningCard ? <InlineProgress>Opening card…</InlineProgress> : null}
-      {isLoading ? <InlineProgress>Searching cards…</InlineProgress> : null}
+      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
+      {isOpeningCard ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening card…</div> : null}
+      {isLoading ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Searching cards…</div> : null}
 
-      <section className="card-library-panel shared-card-browser" aria-label="Card browser">
-        <div className="card-browser-heading">
+      <section className={ownedClassNames(ownedStyleMaps, "card-library-panel shared-card-browser")} aria-label="Card browser">
+        <div className={ownedClassNames(ownedStyleMaps, "card-browser-heading")}>
           <div>
             <h2>{fixedDeckId ? "Cards" : "Results"}</h2>
-            <span className="card-count-summary">
+            <span className={ownedClassNames(ownedStyleMaps, "card-count-summary")}>
               {page.totalCount} {page.totalCount === 1 ? "card" : "cards"}
             </span>
           </div>
           {controlMode === "deck" ? (
-            <div className="card-browser-actions">
-              <Button
+            <div className={ownedClassNames(ownedStyleMaps, "card-browser-actions")}>
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={!selectedDeck}
                 title={selectedDeck ? undefined : "This deck is unavailable for bulk card entry"}
                 onClick={() => {
@@ -603,73 +605,73 @@ export function CardBrowserWorkspace({
                 }}
               >
                 Bulk add
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant="primary"
+                className={ownedClassNames(ownedStyleMaps, "primary-button")}
                 disabled={!selectedDeck}
                 title={selectedDeck ? undefined : "This deck is unavailable for adding a card"}
                 onClick={beginCreateCard}
               >
                 Add flashcard
-              </Button>
+              </button>
             </div>
           ) : null}
         </div>
 
         {page.totalCount > 0 ? (
-          <div className="card-library-summary">
-            <div className="result-count">
+          <div className={ownedClassNames(ownedStyleMaps, "card-library-summary")}>
+            <div className={ownedClassNames(ownedStyleMaps, "result-count")}>
               <strong>
                 {page.cards.length} of {page.totalCount}
               </strong>
               <span> cards shown</span>
             </div>
-            <div className="selection-buttons" aria-label="Selection controls">
-              <Button type="button" variant="secondary" onClick={selectVisible}>
+            <div className={ownedClassNames(ownedStyleMaps, "selection-buttons")} aria-label="Selection controls">
+              <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={selectVisible}>
                 Select visible
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={isSelectingAll}
                 onClick={() => void selectAllMatching()}
               >
                 {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={selectedCards.size === 0}
                 onClick={() => setSelectedCards(new Map())}
               >
                 Deselect all
-              </Button>
+              </button>
             </div>
-            <Button
+            <button
               type="button"
-              variant="primary"
+              className={ownedClassNames(ownedStyleMaps, "primary-button")}
               disabled={selectedCards.size === 0}
               onClick={() => setPracticeCards(selected)}
             >
               Practice selected
-            </Button>
+            </button>
           </div>
         ) : null}
 
         {!isLoading && page.totalCount === 0 ? (
-          <EmptyState
-            title={fixedDeckId ? "This deck is empty" : "No matching cards"}
-            description={
-              fixedDeckId
+          <section className={ownedClassNames(ownedStyleMaps, "compact-empty-state large-empty-state")}>
+            <h2>{fixedDeckId ? "This deck is empty" : "No matching cards"}</h2>
+            <p>
+              {fixedDeckId
                 ? "Add a flashcard or use Bulk add to start studying this deck."
-                : "Try removing a filter or changing the search."
-            }
-          />
+                : "Try removing a filter or changing the search."}
+            </p>
+          </section>
         ) : null}
 
         {page.totalCount > 0 ? (
-          <div className="organized-card-list" role="table" aria-label="Matching cards">
+          <div className={ownedClassNames(ownedStyleMaps, "organized-card-list")} role="table" aria-label="Matching cards">
             {page.cards.map((card) => {
               const selectedRow = selectedCards.has(card.cardId);
               return (
@@ -686,15 +688,14 @@ export function CardBrowserWorkspace({
         ) : null}
 
         {page.cards.length < page.totalCount ? (
-          <Button
+          <button
             type="button"
-            className="load-more-cards"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button load-more-cards")}
             disabled={isLoadingMore}
             onClick={() => void loadCards(page.cards.length, true)}
           >
             {isLoadingMore ? "Loading…" : "Load more"}
-          </Button>
+          </button>
         ) : null}
       </section>
 
@@ -722,12 +723,12 @@ export function CardBrowserWorkspace({
   );
 
   if (!showPageHeader) {
-    return <div className="card-browser-workspace">{listContent}</div>;
+    return <div className={ownedClassNames(ownedStyleMaps, "card-browser-workspace")}>{listContent}</div>;
   }
 
   return (
-    <div className="screen cards-screen">
-      <header className="screen-header compact-screen-header">
+    <div className={ownedClassNames(ownedStyleMaps, "screen cards-screen")}>
+      <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
         <div>
           <h1>Search/Filter</h1>
           <p>
@@ -755,10 +756,10 @@ function CardBrowserListRow({
   const dueLabel = formatDue(card.dueAt);
   return (
     <article
-      className={selected ? "organized-card-row selected" : "organized-card-row"}
+      className={ownedClassNames(ownedStyleMaps, selected ? "organized-card-row selected" : "organized-card-row")}
       role="row"
     >
-      <label className="card-row-selector" onClick={(event) => event.stopPropagation()}>
+      <label className={ownedClassNames(ownedStyleMaps, "card-row-selector")} onClick={(event) => event.stopPropagation()}>
         <input
           type="checkbox"
           checked={selected}
@@ -766,49 +767,49 @@ function CardBrowserListRow({
           onChange={onToggleSelected}
         />
       </label>
-      <button type="button" className="organized-card-main" onClick={onOpen}>
-        <span className="organized-card-deck">
+      <button type="button" className={ownedClassNames(ownedStyleMaps, "organized-card-main")} onClick={onOpen}>
+        <span className={ownedClassNames(ownedStyleMaps, "organized-card-deck")}>
           {card.deckName}
-          <span className="card-type-badge">{card.cardLabel}</span>
+          <span className={ownedClassNames(ownedStyleMaps, "card-type-badge")}>{card.cardLabel}</span>
         </span>
-        <span className="organized-card-statuses">
-          {card.suspendedAt ? <span className="schedule-status-badge suspended">Suspended</span> : null}
+        <span className={ownedClassNames(ownedStyleMaps, "organized-card-statuses")}>
+          {card.suspendedAt ? <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge suspended")}>Suspended</span> : null}
           {card.buriedUntil && card.buriedUntil > Date.now() ? (
-            <span className="schedule-status-badge buried">Buried</span>
+            <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge buried")}>Buried</span>
           ) : null}
           {card.needsMorePractice ? (
-            <span className="schedule-status-badge needs-practice">Needs more practice</span>
+            <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge needs-practice")}>Needs more practice</span>
           ) : null}
         </span>
-        <span className="organized-card-sides card-listing-sides">
-          <span className="card-listing-line">
-            <span className="card-listing-label" aria-hidden="true">
+        <span className={ownedClassNames(ownedStyleMaps, "organized-card-sides card-listing-sides")}>
+          <span className={ownedClassNames(ownedStyleMaps, "card-listing-line")}>
+            <span className={ownedClassNames(ownedStyleMaps, "card-listing-label")} aria-hidden="true">
               Q:
             </span>
             <span className="sr-only">Question: </span>
             <strong>{summarize(card.frontText)}</strong>
           </span>
-          <span className="card-listing-line">
-            <span className="card-listing-label" aria-hidden="true">
+          <span className={ownedClassNames(ownedStyleMaps, "card-listing-line")}>
+            <span className={ownedClassNames(ownedStyleMaps, "card-listing-label")} aria-hidden="true">
               A:
             </span>
             <span className="sr-only">Answer: </span>
             <strong>{summarize(card.backText)}</strong>
           </span>
         </span>
-        <span className="organized-card-tags">
+        <span className={ownedClassNames(ownedStyleMaps, "organized-card-tags")}>
           {card.tags.length === 0 ? (
             <small>No tags</small>
           ) : (
             card.tags.map((tag) => (
-              <span className="tag-chip static" key={tag}>
+              <span className={ownedClassNames(ownedStyleMaps, "tag-chip static")} key={tag}>
                 {tag}
               </span>
             ))
           )}
         </span>
       </button>
-      <div className="organized-card-meta">
+      <div className={ownedClassNames(ownedStyleMaps, "organized-card-meta")}>
         {dueLabel ? <span>{dueLabel}</span> : null}
         <small>{formatLastStudied(card.lastReviewedAt)}</small>
       </div>

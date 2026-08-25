@@ -1,18 +1,18 @@
 # ADR 0048: Frontend state and style ownership
 
-- **Status:** Proposed for implementation
+- **Status:** Accepted
 - **Date:** 2026-08-25
-- **Base:** `main` at `f088c401235419535a9fd36e76badbc004509255`
-- **Implementation branch:** `agent/frontend-css-ownership-refactor`
+- **Original base:** `main` at `f088c401235419535a9fd36e76badbc004509255`
+- **Primary implementation:** PR #75, completed by Stage 8 in PR #76
 
 ## Context
 
-ostudy already has a semantic token system, appearance provider, layout modes, shared UI primitives, shared workspace patterns, CSS Modules, and cascade layers. The remaining frontend debt is concentrated in two places:
+ostudy already had semantic tokens, an appearance provider, layout modes, shared UI primitives, shared workspace patterns, CSS Modules, and cascade layers. The remaining frontend debt was concentrated in two areas:
 
-1. `DeckLibraryWorkspace.tsx` still combines route composition, remote state, optimistic concurrency, deck/folder use cases, HTML drag-and-drop, touch/pointer movement, keyboard movement, accessibility announcements, view components, sheets, and pure organization transforms.
-2. `src/styles/base/application.css` and the broad files under `src/styles/features/` still act as a second visual system beneath the modern modules. They duplicate generated themes, style application components globally, and require compatibility class names and cascade/specificity overrides.
+1. `DeckLibraryWorkspace.tsx` combined route composition, remote state, optimistic concurrency, deck/folder use cases, drag/touch/keyboard movement, accessibility announcements, views, and mutation policy.
+2. `src/styles/base/application.css`, the global feature stylesheets under `src/styles/features/`, `DecksScreen.stage12.css`, and `CardListing.css` formed a second global visual system beneath the module-based UI.
 
-This refactor completes the migration anticipated by ADR 0034. It changes ownership and topology while preserving the current interface, accessibility semantics, routes, IPC, domain behavior, themes, motion/material preferences, safe areas, Android IME behavior, and user settings.
+The refactor changes ownership and topology while preserving interface behavior, accessibility semantics, routes, IPC, domain behavior, themes, motion/material preferences, safe areas, Android IME behavior, and persisted settings.
 
 ## Decision
 
@@ -59,7 +59,13 @@ There is no generic miscellaneous application stylesheet.
 
 ### Global foundation
 
-`src/main.tsx` continues importing exactly one global entry point, `src/ui/foundations/index.css`. The final foundation is:
+`src/main.tsx` imports exactly one global entry point:
+
+```text
+src/ui/foundations/index.css
+```
+
+The authored global foundation is limited to:
 
 ```text
 src/ui/foundations/
@@ -71,7 +77,7 @@ src/ui/foundations/
 └── utilities.css
 ```
 
-Generated themes are the only theme authority. Temporary compatibility aliases may exist only during the implementation sequence and must be removed before completion.
+Generated token CSS remains generated source, not feature ownership. Shared and feature presentation uses CSS Modules.
 
 ### Final cascade
 
@@ -79,7 +85,7 @@ Generated themes are the only theme authority. Temporary compatibility aliases m
 @layer reset, tokens, theme, base, components, patterns, features, utilities;
 ```
 
-The legacy layer and global feature imports are deleted after their owners migrate.
+There is no `legacy` layer and no global feature stylesheet import.
 
 ### Responsive ownership
 
@@ -89,39 +95,52 @@ The legacy layer and global feature imports are deleted after their owners migra
 
 ### Rich content exception
 
-ProseMirror/Tiptap-generated descendants are styled through a wrapper-scoped rich-content CSS Module. A small number of `:global(.ProseMirror)` selectors are allowed only at that third-party boundary. Editor chrome and rendered educational prose have separate owners.
+ProseMirror/Tiptap-generated descendants are styled through a wrapper-scoped rich-content CSS Module. `:global(...)` is allowed only at a documented third-party markup boundary; editor chrome and rendered educational content remain separate owners.
 
 ### Enforcement
 
-Static policy dynamically scans authored CSS and rejects new global feature files, raw theme colors, arbitrary z-indexes/durations, direct artwork imports, feature theme branches, unexplained `!important`, and new compatibility aliases. A legacy-style ratchet permits legacy files only to shrink until the final zero-legacy assertion replaces it.
+`scripts/style-ownership-baseline.json` is in `zero` mode. `scripts/verify-style-ownership.mjs` requires:
+
+- no `src/styles/base` or `src/styles/features` CSS;
+- exactly one global TypeScript CSS import (`src/main.tsx` → `./ui/foundations/index.css`);
+- the exact final cascade layer order;
+- no authored global CSS outside the foundation;
+- no temporary style-policy allowances;
+- no raw colors, arbitrary numeric stacking values, or literal motion durations in authored CSS outside generated token sources.
+
+`scripts/verify-owned-class-usage.mjs` separately parses production TSX and verifies that semantic class keys resolve through explicit CSS Module owners; raw production class literals outside audited global utilities are rejected.
+
+The fixed white QR quiet zone is represented by generated reference token `color.neutral.0`, whose source value is mechanically required to remain `#ffffff` by the device-sync QR contract.
+
+### Standalone desktop qualification artifact
+
+Native WebDriver acceptance and `run-app.sh` execute the same staged standalone Tauri executable. Cargo's mutable `target/debug/ostudy` path is not an acceptance artifact. See `docs/development/standalone-desktop-artifact.md`.
 
 ## Non-goals
 
 - No visual redesign.
 - No new CSS framework, preprocessor, CSS-in-JS system, utility framework, Storybook requirement, or global state library.
-- No route, IPC, Rust, scheduling, card, document, study-guide, analytics, or settings semantic change.
-- No change to theme names, appearance preference fields, or user-facing information architecture.
+- No route, IPC, Rust, scheduling, card, document, study-guide, analytics, backup, or persisted-settings semantic change.
+- No change to theme names or user-facing information architecture.
 - No drag-only operation and no removal of keyboard/screen-reader alternatives.
-
-## Implementation stages
-
-The detailed, checked execution ledger lives in `docs/development/frontend-css-refactor-roadmap.md` and the PR body.
 
 ## Acceptance criteria
 
-- **AC-01:** Deck-library organization policy is pure, immutable, and exhaustively tested.
-- **AC-02:** Deck-library controller owns all IPC/controller mutations, revision recovery, optimistic state, toasts, and announcements.
-- **AC-03:** Keyboard, HTML drag, pointer/touch, and fallback controls share one move intent and one policy.
-- **AC-04:** Deck-library views are small, presentation-only modules with co-located styles and accessibility parity.
-- **AC-05:** Generated tokens are the only theme authority and shell/platform foundations have one owner.
-- **AC-06:** Shared controls, feedback, overlays, editor chrome, and rendered rich content no longer depend on global legacy selectors.
-- **AC-07:** Every global feature stylesheet and `application.css` is deleted; the legacy layer and compatibility aliases are gone.
-- **AC-08:** Static enforcement prevents legacy topology, raw visual values, hidden global ownership, and uncompiled style/test fixtures from returning.
-- **AC-09:** Existing frontend, native Linux/Tauri, Android package, API-36 emulator, accessibility, and IPC behavior remains compatible.
+- **AC-01:** Deck-library organization policy is pure, immutable, and tested.
+- **AC-02:** Deck-library controller owns IPC mutations, revision recovery, optimistic state, toasts, and announcements.
+- **AC-03:** Keyboard, HTML drag, pointer/touch, and fallback controls share one move intent and policy.
+- **AC-04:** Deck-library views are presentation-oriented modules with co-located styles and accessibility parity.
+- **AC-05:** Generated tokens are the theme authority and shell/platform foundations have one owner.
+- **AC-06:** Shared controls, feedback, overlays, editor chrome, and rendered rich content do not depend on global legacy selectors.
+- **AC-07:** Global feature stylesheets and `application.css` are deleted; the legacy layer and temporary compatibility attributes are gone.
+- **AC-08:** Static enforcement prevents legacy topology, hidden global ownership, raw visual values, and unowned production class semantics from returning.
+- **AC-09:** Existing frontend, native Linux/Tauri, Android package/API-36 emulator, accessibility, and IPC behavior remain compatible.
+
+Final automated and human acceptance evidence is recorded on PR #76 against its exact final head; changing this document after that run would create a new, unqualified head.
 
 ## Consequences
 
-- Feature changes become locally reviewable and do not depend on hidden import order.
-- All themes and material/motion modes continue sharing one semantic contract.
-- The migration is large but reviewable through bounded stages and a non-growth ratchet.
-- Some feature files gain explicit CSS imports and component boundaries; this is intentional ownership rather than duplicated presentation.
+- Feature changes are locally reviewable rather than depending on hidden global import order.
+- All themes and material/motion modes share one semantic contract.
+- Shared primitives/patterns own reusable behavior while feature modules own feature presentation.
+- Static checks make reintroduction of the retired global CSS topology a build failure.

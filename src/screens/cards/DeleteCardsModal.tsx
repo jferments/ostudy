@@ -13,6 +13,11 @@ import {
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface DeleteCardsModalProps {
   cards: SelectionCard[];
@@ -79,7 +84,7 @@ export function DeleteCardsModal({
         if (!isDeleting) onClose();
       }}
     >
-      <div className="delete-cards-form" aria-busy={isDeleting}>
+      <div className={ownedClassNames(ownedStyleMaps, "delete-cards-form")} aria-busy={isDeleting}>
         <InlineNotice kind="warning">
           This removes the selected cards from their decks. Their schedules, review
           history, tags, and images remain recoverable during the brief Undo window.

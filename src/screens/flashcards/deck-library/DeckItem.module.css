@@ -170,8 +170,8 @@
     }
 
     .delete {
-      min-width: var(--touch-target-min);
-      min-height: var(--touch-target-min);
+      min-width: var(--ostudy-size-touch-target);
+      min-height: var(--ostudy-size-touch-target);
     }
 
     .dragHandle {
@@ -198,11 +198,11 @@
 
   :global(:root[data-input-mode="coarse"]) .dragHandle,
   :global(:root[data-input-mode="coarse"]) .delete {
-    width: var(--touch-target-min);
-    min-width: var(--touch-target-min);
+    width: var(--ostudy-size-touch-target);
+    min-width: var(--ostudy-size-touch-target);
   }
 
   :global(:root[data-input-mode="coarse"]) .delete {
-    height: var(--touch-target-min);
+    height: var(--ostudy-size-touch-target);
   }
 }

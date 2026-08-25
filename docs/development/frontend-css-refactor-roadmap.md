@@ -1,105 +1,91 @@
 # Frontend and CSS ownership refactor roadmap
 
-This is the execution ledger for ADR 0048. Checkboxes are mirrored in PR #74 and updated after each exact-head qualification stage.
+This is the durable implementation ledger for ADR 0048. PR #75 completed the deck-library, foundation, shared-control, and rich-content work; PR #76 completes the remaining global CSS retirement and zero-legacy enforcement.
 
 ## Stage 0 — Inventory, characterization, and ratchet
 
-- [x] Add ADR 0048 and this execution ledger.
+- [x] Add ADR 0048 and the execution ledger.
 - [x] Inventory legacy selectors and map each group to one final owner.
-- [x] Add `verify-style-ownership.mjs` and Python fixtures.
-- [x] Expand UI policy discovery to all authored CSS.
-- [x] Add a legacy non-growth baseline.
-- [x] Add missing deck-library characterization tests.
-- [x] Establish current static and fast qualification baseline.
-
-Exact-head evidence: commit `e987c89835de6d11935b363205f6e808880b4670` passed the `Check` workflow after the ownership ratchet, dynamic CSS discovery, deck-library characterization, model, controller, reorder, and view checkpoints were pushed.
+- [x] Add style ownership verification and fixtures.
+- [x] Expand UI policy discovery to authored CSS.
+- [x] Establish a non-growth ratchet and deck-library characterization baseline.
 
 ## Stage 1 — Pure deck-library organization policy
 
 - [x] Add `deck-library/organizationModel.ts`.
 - [x] Extract ordering, lifecycle partitioning, move validation, and optimistic transformations.
 - [x] Guarantee immutable inputs and normalized sort orders.
-- [x] Add table-driven pure model tests.
-- [x] Route the existing workspace through the model without changing behavior.
+- [x] Add table-driven model tests and route existing behavior through the model.
 
 ## Stage 2 — Deck-library controller
 
 - [x] Add `useDeckLibraryController.ts`.
-- [x] Move organization load/reload and lifecycle-signature refresh.
-- [x] Move deck/folder mutations and synchronous mutation exclusion.
-- [x] Move optimistic state, stale-revision recovery, partial-refresh handling, delete/undo, sheets, collapse state, toasts, and announcements.
-- [x] Add controller tests independent of detailed presentation.
-- [x] Ensure only the controller imports deck-folder IPC and `DecksController`.
+- [x] Move organization load/reload, lifecycle refresh, deck/folder mutations, optimistic state, stale-revision recovery, delete/undo, sheets, toasts, and announcements into the controller boundary.
+- [x] Add controller tests independent of presentation.
 
 ## Stage 3 — Unified reorder adapter and view decomposition
 
 - [x] Define one `LibraryMoveIntent` for every input method.
-- [x] Add `useDeckLibraryReorder.ts` for keyboard, HTML drag, and pointer/touch translation.
-- [x] Extract `DeckLibraryView`, `FolderSection`, `DeckItem`, `ArchivedDecksSection`, and sheets.
-- [x] Split the deck-library CSS Module by meaningful visual owner.
-- [x] Remove direct DOM drag-state mutation outside the adapter.
-- [x] Add parity tests for all interaction modes and accessibility behavior.
-- [x] Reduce `DeckLibraryWorkspace.tsx` to route/detail composition.
+- [x] Route keyboard, HTML drag, pointer/touch, and fallback movement through the same policy.
+- [x] Extract deck-library view components and split their CSS Module ownership.
+- [x] Preserve accessibility and non-drag alternatives.
 
 ## Stage 4 — Foundations and application shell
 
-- [ ] Add `reset.css`, `document.css`, `platform.css`, and `utilities.css`.
-- [ ] Move root/document/platform rules without changing values.
-- [ ] Remove duplicated hard-coded theme definitions.
-- [ ] Make generated themes the only theme authority.
-- [ ] Remove legacy `.app-shell`, `.main-area`, `.sidebar`, and `.sidebar-nav` classes from JSX.
-- [ ] Remove shell-specific legacy responsive rules and `!important` workarounds.
-- [ ] Add module-owned application loading/fatal status UI.
-- [ ] Preserve layout modes, safe areas, Android IME behavior, forced colors, and motion preferences.
+- [x] Add `reset.css`, `document.css`, `platform.css`, and `utilities.css`.
+- [x] Move root/document/platform rules to explicit owners.
+- [x] Make generated semantic themes the appearance authority.
+- [x] Replace shell/navigation global classes with module ownership.
+- [x] Preserve layout modes, safe areas, Android IME behavior, forced colors, and motion preferences.
 
 ## Stage 5 — Shared controls, feedback, and overlays
 
-- [ ] Migrate legacy button classes to `Button`/shared icon-button contracts.
-- [ ] Migrate global alerts to `InlineNotice`.
-- [ ] Migrate global empty states and panels to shared primitives/patterns.
-- [ ] Move native control visuals to explicit shared control modules.
-- [ ] Remove legacy modal/backdrop styling after overlay audit.
-- [ ] Remove legacy toast styling.
-- [ ] Eliminate production JSX dependencies on global button/alert/modal classes.
+- [x] Move reusable buttons, notices, empty/loading states, panels, controls, dialogs, sheets, menus, and toasts to shared owners.
+- [x] Remove global modal/backdrop/toast ownership.
+- [x] Eliminate production dependencies on global shared-control classes.
 
 ## Stage 6 — Rich editor and rendered educational content
 
-- [ ] Add `RichTextEditor.module.css` and `RichContent.module.css`.
-- [ ] Move editor toolbar/chrome styling.
-- [ ] Move rendered prose, lists, tables, code, links, images, and indentation styling.
-- [ ] Scope ProseMirror global exceptions to the third-party wrapper.
-- [ ] Update card, template, guide, preview, and practice renderers.
-- [ ] Verify editor and renderer parity across all themes and scales.
+- [x] Add scoped `RichTextEditor.module.css` and `RichContent.module.css` ownership.
+- [x] Move editor chrome and rendered headings/prose/lists/tables/code/links/images/indentation.
+- [x] Scope the ProseMirror exception to the third-party wrapper.
+- [x] Route card, template, guide, preview, and practice rendering through the shared rich-content owner.
 
 ## Stage 7 — Feature-by-feature global CSS retirement
 
-- [ ] Cards/authoring/templates/scheduling migrated to feature modules and shared owners.
-- [ ] Practice migrated to setup/active/complete modules and shared primitives.
-- [ ] Analytics migrated to Metrics patterns and Analytics modules.
-- [ ] Settings/Appearance/Diagnostics migrated; obsolete global theme-preview rules removed.
-- [ ] Documents/assets migrated to existing feature modules.
-- [ ] Embedded CSS icons replaced with `Icon` components or semantic artwork.
-- [ ] Delete migrated global feature stylesheets as each slice reaches zero ownership.
+- [x] Cards/authoring/templates/scheduling migrated to feature modules and shared owners.
+- [x] Practice migrated to setup/active/complete modules and shared primitives.
+- [x] Analytics migrated to feature modules and Metrics patterns.
+- [x] Settings/Appearance/Diagnostics migrated to module/shared ownership.
+- [x] Documents/assets migrated to feature modules.
+- [x] CSS semantic icons replaced with owned icon/artwork components where applicable.
+- [x] Delete `DecksScreen.stage12.css`, `CardListing.css`, and every global feature stylesheet.
+
+Exact-head checkpoint: `9cf1937a8e19b6b5f09939c3624753840f996c60` passed static and fast qualification after the feature-global retirement and migration-test reconciliation.
 
 ## Stage 8 — Delete the legacy system and normalize the cascade
 
-- [ ] Delete `src/styles/base/application.css`.
-- [ ] Delete `ui-overhaul.css`, `page-density.css`, and all remaining global feature stylesheets.
-- [ ] Remove legacy imports and the `legacy` cascade layer.
-- [ ] Remove temporary compatibility aliases.
-- [ ] Normalize the final layer order.
-- [ ] Switch the ratchet to a zero-legacy assertion.
-- [ ] Update maintained UI architecture/development documentation.
-- [ ] Run final exact-head static, fast, authoritative Linux/Tauri, Android package, and API-36 emulator qualification.
-- [ ] Record manual visual/accessibility acceptance matrix as human-required evidence.
+- [x] Delete `src/styles/base/application.css` and the remaining `src/styles` tree.
+- [x] Remove the `legacy` layer and global feature imports.
+- [x] Normalize the final cascade to `reset, tokens, theme, base, components, patterns, features, utilities`.
+- [x] Switch style ownership from ratchet mode to a zero-legacy assertion.
+- [x] Require exactly one global TypeScript CSS import (`src/main.tsx` → `src/ui/foundations/index.css`).
+- [x] Require zero temporary style-policy allowances and no authored global CSS outside the foundation.
+- [x] Preserve QR quiet-zone contrast through generated reference token `color.neutral.0` pinned to `#ffffff`.
+- [x] Remove temporary `data-animations-enabled` and `data-reduce-motion` compatibility attributes; `data-motion` is canonical.
+- [x] Isolate the native-smoke/manual-launch standalone executable from mutable Cargo debug output.
+- [x] Update ADR/development documentation.
 
-## Compatibility checklist
+Exact-head implementation checkpoint: `cffe1b6dd9a24f33ba034cc9be45e3945b5ab865` passed static and fast qualification with zero legacy styles and compatibility attributes removed.
 
-- [ ] No Rust, migration, IPC, route, scheduling, document, study-guide, or backup schema change.
-- [ ] Light, Dark, Console, and Synthwave remain complete.
-- [ ] 80%, 100%, and 140% scale remain usable.
-- [ ] Full, reduced, and no-motion modes remain usable.
-- [ ] Rich and simple materials remain usable.
-- [ ] Keyboard, mouse, pointer/touch, and screen-reader alternatives remain available.
-- [ ] No document-level horizontal overflow at representative widths.
-- [ ] Android safe areas, IME displacement, compact navigation, and overlay-first Back remain correct.
+## Final merge gate
+
+Final qualification is recorded on PR #76 rather than by editing this ledger after the run, because any post-qualification source edit would create a new unqualified head. Before merge, PR #76 must show all of the following against its exact final SHA:
+
+- authoritative Linux/Tauri `check.sh`, including startup and native WebDriver smoke;
+- Android compile/package qualification;
+- API-36 emulator smoke;
+- the staged standalone artifact launches successfully via `./run-app.sh`;
+- the human visual/accessibility matrix is accepted for Light, Dark, Console, Synthwave; representative compact/medium/wide widths; 80/100/140% scale; full/reduced/no-motion; rich/simple materials; keyboard and pointer/touch alternatives; safe-area/IME behavior; and representative overflow/focus paths.
+
+The PR remains draft until the automated gate is green. The final human matrix is explicitly human-required and is not represented as an automated assertion.

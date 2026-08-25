@@ -14,6 +14,10 @@ import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+
+const ownedStyleMaps = sharedClassMaps;
+
 
 interface SettingsScreenProps {
   settings: AppSettings;
@@ -178,13 +182,13 @@ export function SettingsScreen({
     activeTab === "ai";
 
   return (
-    <div className="screen settings-screen" aria-busy={isSaving || aiController.mutating}>
+    <div className={ownedClassNames(ownedStyleMaps, "screen")} aria-busy={isSaving || aiController.mutating}>
       <PageHeader
         title="Settings"
         icon="settings"
         compact
         actions={
-          <div className="header-actions">
+          <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
             {canRestoreDefaults ? (
               <Button
                 type="button"

@@ -11,6 +11,11 @@ import { confidenceAverage, type ConfidenceCounts } from "./confidence";
 import styles from "./PracticeComplete.module.css";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./Practice.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface PracticeCompleteProps {
   ratedCount: number;
@@ -43,7 +48,7 @@ export function PracticeComplete({
   ];
 
   return (
-    <div className={`screen practice-screen ${styles.screen}`} data-testid="practice-complete">
+    <div className={ownedClassNames(ownedStyleMaps, `screen practice-screen ${styles.screen}`)} data-testid="practice-complete">
       <Surface level={3} material="solid" className={styles.hero}>
         <div className={styles.artworkWrap}>
           <Artwork slot="practice.complete" />

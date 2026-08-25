@@ -29,45 +29,13 @@ const legacyFiles = cssFiles.filter((path) => {
   return candidate.startsWith("src/styles/base/") || candidate.startsWith("src/styles/features/");
 });
 const globalCssImports = [];
-const forbiddenLegacySharedClasses = new Set([
-  "primary-button",
-  "secondary-button",
-  "small-primary-button",
-  "practice-reveal-button",
-  "text-button",
-  "back-button",
-  "icon-button",
-  "danger-button",
-  "danger-text-button",
-  "inline-alert",
-  "error-alert",
-  "info-alert",
-  "inline-progress",
-  "modal-backdrop",
-  "modal-card",
-  "modal-header",
-  "modal-actions",
-  "compact-empty-state",
-  "large-empty-state",
-  "empty-library-card",
-  "empty-actions",
-  "toast-action",
-]);
+const policyAllowances = baseline.policyAllowances ?? {};
 
 for (const path of sourceFiles) {
   const source = await readFile(path, "utf8");
   for (const match of source.matchAll(/import\s+(?:[^;]*?\s+from\s+)?["']([^"']+\.css)["']/gu)) {
     if (!match[1].endsWith(".module.css")) {
       globalCssImports.push({ path: display(path), specifier: match[1] });
-    }
-  }
-  if (!/\.test\.[cm]?[jt]sx?$/u.test(path)) {
-    for (const className of forbiddenLegacySharedClasses) {
-      if (new RegExp(`(?:^|[^A-Za-z0-9_-])${className}(?:$|[^A-Za-z0-9_-])`, "u").test(source)) {
-        failures.push(
-          `${display(path)} still depends on legacy shared class .${className}; use the owning primitive or overlay.`,
-        );
-      }
     }
   }
 }
@@ -111,19 +79,40 @@ if (baseline.mode === "ratchet") {
     }
   }
 } else {
+  const expectedImport = "src/main.tsx\u0000./ui/foundations/index.css";
+  const configuredImports = new Set(
+    (baseline.allowedGlobalCssImports ?? []).map(({ path, specifier }) => `${path}\u0000${specifier}`),
+  );
+  const actualImports = new Set(
+    globalCssImports.map(({ path, specifier }) => `${path}\u0000${specifier}`),
+  );
+
   if (legacyFiles.length > 0) {
     failures.push(
       `Zero-legacy mode forbids src/styles/base and src/styles/features CSS: ${legacyFiles.map(display).join(", ")}`,
     );
   }
-  const allowed = new Set(["src/main.tsx\u0000./ui/foundations/index.css"]);
-  for (const cssImport of globalCssImports) {
-    const key = `${cssImport.path}\u0000${cssImport.specifier}`;
-    if (!allowed.has(key)) {
-      failures.push(
-        `Zero-legacy mode permits only the foundation entry as a global TypeScript CSS import; found ${cssImport.path} -> ${cssImport.specifier}.`,
-      );
-    }
+  if (Object.keys(baseline.legacyFiles ?? {}).length !== 0) {
+    failures.push("Zero-legacy mode requires an empty legacyFiles baseline.");
+  }
+  if (configuredImports.size !== 1 || !configuredImports.has(expectedImport)) {
+    failures.push(
+      "Zero-legacy mode requires allowedGlobalCssImports to contain exactly src/main.tsx -> ./ui/foundations/index.css.",
+    );
+  }
+  if (actualImports.size !== 1 || !actualImports.has(expectedImport)) {
+    failures.push(
+      `Zero-legacy mode requires exactly one global TypeScript CSS import (src/main.tsx -> ./ui/foundations/index.css); found ${[...actualImports].join(", ") || "none"}.`,
+    );
+  }
+  if (Object.keys(policyAllowances).length !== 0) {
+    failures.push("Zero-legacy mode requires policyAllowances to be empty; migrate every temporary style-policy exception.");
+  }
+
+  const expectedLayerOrder =
+    "@layer reset, tokens, theme, base, components, patterns, features, utilities;";
+  if (!foundationSource.includes(expectedLayerOrder)) {
+    failures.push(`Zero-legacy foundation must declare the final cascade exactly: ${expectedLayerOrder}`);
   }
   if (/\blegacy\b/u.test(foundationSource)) {
     failures.push("Zero-legacy mode forbids a legacy cascade layer or legacy import in src/ui/foundations/index.css.");
@@ -131,12 +120,34 @@ if (baseline.mode === "ratchet") {
   if (/src\/styles\/(?:base|features)|\.\.\/\.\.\/styles\/(?:base|features)/u.test(foundationSource)) {
     failures.push("Zero-legacy mode forbids legacy stylesheet imports from src/ui/foundations/index.css.");
   }
+
+  const allowedGlobalCssFiles = new Set([
+    "src/ui/foundations/index.css",
+    "src/ui/foundations/local-fonts.css",
+    "src/ui/foundations/reset.css",
+    "src/ui/foundations/document.css",
+    "src/ui/foundations/platform.css",
+    "src/ui/foundations/utilities.css",
+  ]);
+  for (const path of cssFiles) {
+    const candidate = display(path);
+    if (candidate.endsWith(".module.css") || candidate.includes("/tokens/generated/")) continue;
+    if (!allowedGlobalCssFiles.has(candidate)) {
+      failures.push(
+        `Zero-legacy mode forbids authored global CSS outside the foundation: ${candidate}.`,
+      );
+    }
+  }
 }
+
+// Production className semantics are checked structurally by
+// verify-owned-class-usage.mjs after the pinned TypeScript package is installed.
+// Do not duplicate that check here with raw text matching: semantic keys passed
+// through ownedClassNames are CSS Module lookups, not global class dependencies.
 
 // CSS policy discovery is intentionally dynamic. During migration the baseline may
 // grandfather existing violations, but those allowances may only shrink and are
 // removed entirely before the zero-legacy checkpoint.
-const policyAllowances = baseline.policyAllowances ?? {};
 for (const path of cssFiles) {
   const candidate = display(path);
   if (candidate.includes("/tokens/generated/")) continue;

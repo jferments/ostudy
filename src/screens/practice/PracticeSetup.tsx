@@ -10,6 +10,11 @@ import {
 import { Button } from "../../ui/primitives/Button";
 import { EmptyState } from "../../ui/primitives/EmptyState";
 import { Panel } from "../../ui/primitives/Panel";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./Practice.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 export type PracticeWorkloadStatus = "idle" | "empty" | "loading" | "ready" | "error";
 
@@ -76,12 +81,12 @@ export function PracticeSetup({
   return (
     <>
       <Panel >
-        <div className="panel-heading-row">
+        <div className={ownedClassNames(ownedStyleMaps, "panel-heading-row")}>
           <div>
             <h2>Select decks to study</h2>
             <span>{selectedDeckIds.size} selected</span>
           </div>
-          <div className="inline-actions">
+          <div className={ownedClassNames(ownedStyleMaps, "inline-actions")}>
             <Button
               type="button"
               variant="text"
@@ -101,15 +106,15 @@ export function PracticeSetup({
           </div>
         </div>
 
-        <div className="practice-deck-list">
+        <div className={ownedClassNames(ownedStyleMaps, "practice-deck-list")}>
           {decksWithCards.map((deck) => {
             const checked = selectedDeckIds.has(deck.id);
             return (
               <label
                 key={deck.id}
-                className={["practice-deck-choice", checked ? "selected" : ""]
+                className={ownedClassNames(ownedStyleMaps, ["practice-deck-choice", checked ? "selected" : ""]
                   .filter(Boolean)
-                  .join(" ")}
+                  .join(" "))}
               >
                 <input
                   type="checkbox"
@@ -135,7 +140,7 @@ export function PracticeSetup({
         </div>
 
         {workloadReady && selectedDeckIds.size > 0 ? (
-          <div className="session-plan-copy">
+          <div className={ownedClassNames(ownedStyleMaps, "session-plan-copy")}>
             <strong>{scheduledCount} cards in the scheduled session</strong>
             <span>
               {workload.scheduledReviews} reviews · {workload.scheduledNew} new
@@ -153,8 +158,8 @@ export function PracticeSetup({
           </div>
         ) : null}
 
-        <div className="practice-setup-actions">
-          <label className="compact-shuffle-control">
+        <div className={ownedClassNames(ownedStyleMaps, "practice-setup-actions")}>
+          <label className={ownedClassNames(ownedStyleMaps, "compact-shuffle-control")}>
             <input
               type="checkbox"
               checked={shuffle}
@@ -162,14 +167,14 @@ export function PracticeSetup({
             />
             <span>Shuffle within priority groups</span>
           </label>
-          <div className="practice-due-inline">
+          <div className={ownedClassNames(ownedStyleMaps, "practice-due-inline")}>
             <strong>{workloadReady ? scheduledCount : "—"}</strong>
             <span>scheduled</span>
           </div>
           {workloadReady && scheduledCount > 0 ? (
             <Button
               type="button"
-              variant="primary" className="practice-start-button"
+              variant="primary" className={ownedClassNames(ownedStyleMaps, "practice-start-button")}
               disabled={selectedDeckIds.size === 0 || isStarting}
               onClick={() => onStart([...selectedDeckIds], shuffle, "scheduled")}
             >
@@ -178,14 +183,14 @@ export function PracticeSetup({
           ) : workloadReady && workload.extraAvailable > 0 && selectedDeckIds.size > 0 ? (
             <Button
               type="button"
-              variant="secondary" className="practice-start-button"
+              variant="secondary" className={ownedClassNames(ownedStyleMaps, "practice-start-button")}
               disabled={isStarting}
               onClick={() => onStart([...selectedDeckIds], shuffle, "extra")}
             >
               {isStarting ? "Starting…" : "Study this selection anyway"}
             </Button>
           ) : (
-            <Button type="button" variant="primary" className="practice-start-button" disabled>
+            <Button type="button" variant="primary" className={ownedClassNames(ownedStyleMaps, "practice-start-button")} disabled>
               Start scheduled practice
             </Button>
           )}
@@ -218,18 +223,18 @@ export function PracticeSetup({
         <WorkloadStatus status={workloadStatus} error={workloadError} />
       </Panel>
 
-      <section className="recent-practice-section" aria-labelledby="recent-practice-heading">
-        <div className="recent-practice-heading-row">
+      <section className={ownedClassNames(ownedStyleMaps, "recent-practice-section")} aria-labelledby="recent-practice-heading">
+        <div className={ownedClassNames(ownedStyleMaps, "recent-practice-heading-row")}>
           <h2 id="recent-practice-heading">Recently practiced</h2>
         </div>
         {recentDecks.length === 0 ? (
-          <p className="recent-practice-empty">
+          <p className={ownedClassNames(ownedStyleMaps, "recent-practice-empty")}>
             Complete a practice session and its confidence result will appear here.
           </p>
         ) : (
-          <div className="recent-practice-list">
+          <div className={ownedClassNames(ownedStyleMaps, "recent-practice-list")}>
             {recentDecks.map((deck) => (
-              <article key={deck.deckName} className="recent-practice-row">
+              <article key={deck.deckName} className={ownedClassNames(ownedStyleMaps, "recent-practice-row")}>
                 <div>
                   <strong>{deck.deckName}</strong>
                   <span>
@@ -237,7 +242,7 @@ export function PracticeSetup({
                     {reviewedDateFormatter.format(new Date(deck.lastReviewedAt))}
                   </span>
                 </div>
-                <div className="recent-confidence-copy">
+                <div className={ownedClassNames(ownedStyleMaps, "recent-confidence-copy")}>
                   <strong>{formatConfidence(deck.averageConfidence)}</strong>
                   <span>average confidence</span>
                 </div>
@@ -258,20 +263,20 @@ function WorkloadStatus({
   error: string | null;
 }) {
   if (status === "loading") {
-    return <span className="workload-loading">Updating…</span>;
+    return <span className={ownedClassNames(ownedStyleMaps, "workload-loading")}>Updating…</span>;
   }
   if (status === "empty") {
-    return <span className="workload-loading">Select at least one deck to plan a session.</span>;
+    return <span className={ownedClassNames(ownedStyleMaps, "workload-loading")}>Select at least one deck to plan a session.</span>;
   }
   if (status === "error") {
     return (
-      <span className="workload-loading">
+      <span className={ownedClassNames(ownedStyleMaps, "workload-loading")}>
         Workload unavailable{error ? `: ${error}` : "."}
       </span>
     );
   }
   if (status === "idle") {
-    return <span className="workload-loading">Preparing workload…</span>;
+    return <span className={ownedClassNames(ownedStyleMaps, "workload-loading")}>Preparing workload…</span>;
   }
   return null;
 }
