@@ -11,6 +11,9 @@ import {
 import {
   getErrorMessage,
 } from "../../ipc/common";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { DialogActions } from "../../ui/overlays/Dialog";
 
 interface BulkTagModalProps {
   cards: SelectionCard[];
@@ -97,26 +100,26 @@ export function BulkTagModal({
             : "Only the tags listed here will be removed; all other tags are preserved."}
         </p>
         {errorMessage ? (
-          <div className="inline-alert error-alert">{errorMessage}</div>
+          <InlineNotice kind="error">{errorMessage}</InlineNotice>
         ) : null}
-        <div className="modal-actions">
-          <button
+        <DialogActions>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isSaving}
             onClick={onClose}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={isSaving || tags.length === 0}
             onClick={() => void submit()}
           >
             {isSaving ? "Saving…" : adding ? "Add tags" : "Remove tags"}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </div>
     </Modal>
   );

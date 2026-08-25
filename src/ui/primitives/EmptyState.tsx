@@ -4,7 +4,7 @@ import styles from "./shared.module.css";
 
 interface EmptyStateProps {
   title: string;
-  description: string;
+  description?: string;
   icon?: ReactNode;
   actions?: ReactNode;
   compact?: boolean;
@@ -21,7 +21,7 @@ export function EmptyState({
     <section className={`${styles.emptyState} ${compact ? styles.compact : ""}`.trim()}>
       {icon ? <div className={styles.emptyIcon} aria-hidden="true">{icon}</div> : null}
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
       {actions ? <div className={styles.emptyActions}>{actions}</div> : null}
     </section>
   );

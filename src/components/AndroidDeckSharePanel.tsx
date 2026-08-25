@@ -5,6 +5,7 @@ import { createOperationId, getErrorMessage } from "../ipc/common";
 import { prepareDeckExport, type DeckSummary } from "../ipc/decks";
 import { usePlatformCapabilities } from "../platform/PlatformProvider";
 import { shareExport } from "../platform/files";
+import { Button } from "../ui/primitives/Button";
 
 interface AndroidDeckSharePanelProps {
   decks: DeckSummary[];
@@ -75,14 +76,14 @@ export function AndroidDeckSharePanel({ decks, showToast }: AndroidDeckSharePane
             ))}
           </select>
         </label>
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={!deckId || sharing}
           onClick={() => void shareSelectedDeck()}
         >
           {sharing ? "Preparing…" : "Share deck"}
-        </button>
+        </Button>
       </div>
     </section>
   );

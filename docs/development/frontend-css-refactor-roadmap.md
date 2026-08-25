@@ -10,34 +10,36 @@ This is the execution ledger for ADR 0048. Checkboxes are mirrored in PR #74 and
 - [x] Expand UI policy discovery to all authored CSS.
 - [x] Add a legacy non-growth baseline.
 - [x] Add missing deck-library characterization tests.
-- [ ] Establish current static and fast qualification baseline.
+- [x] Establish current static and fast qualification baseline.
+
+Exact-head evidence: commit `e987c89835de6d11935b363205f6e808880b4670` passed the `Check` workflow after the ownership ratchet, dynamic CSS discovery, deck-library characterization, model, controller, reorder, and view checkpoints were pushed.
 
 ## Stage 1 — Pure deck-library organization policy
 
-- [ ] Add `deck-library/organizationModel.ts`.
-- [ ] Extract ordering, lifecycle partitioning, move validation, and optimistic transformations.
-- [ ] Guarantee immutable inputs and normalized sort orders.
-- [ ] Add table-driven pure model tests.
-- [ ] Route the existing workspace through the model without changing markup.
+- [x] Add `deck-library/organizationModel.ts`.
+- [x] Extract ordering, lifecycle partitioning, move validation, and optimistic transformations.
+- [x] Guarantee immutable inputs and normalized sort orders.
+- [x] Add table-driven pure model tests.
+- [x] Route the existing workspace through the model without changing behavior.
 
 ## Stage 2 — Deck-library controller
 
-- [ ] Add `useDeckLibraryController.ts`.
-- [ ] Move organization load/reload and lifecycle-signature refresh.
-- [ ] Move deck/folder mutations and synchronous mutation exclusion.
-- [ ] Move optimistic state, stale-revision recovery, partial-refresh handling, delete/undo, sheets, collapse state, toasts, and announcements.
-- [ ] Add controller tests independent of detailed presentation.
-- [ ] Ensure only the controller imports deck-folder IPC and `DecksController`.
+- [x] Add `useDeckLibraryController.ts`.
+- [x] Move organization load/reload and lifecycle-signature refresh.
+- [x] Move deck/folder mutations and synchronous mutation exclusion.
+- [x] Move optimistic state, stale-revision recovery, partial-refresh handling, delete/undo, sheets, collapse state, toasts, and announcements.
+- [x] Add controller tests independent of detailed presentation.
+- [x] Ensure only the controller imports deck-folder IPC and `DecksController`.
 
 ## Stage 3 — Unified reorder adapter and view decomposition
 
-- [ ] Define one `LibraryMoveIntent` for every input method.
-- [ ] Add `useDeckLibraryReorder.ts` for keyboard, HTML drag, and pointer/touch translation.
-- [ ] Extract `DeckLibraryView`, `FolderSection`, `DeckItem`, `ArchivedDecksSection`, and sheets.
-- [ ] Split the deck-library CSS Module by meaningful visual owner.
-- [ ] Remove direct DOM drag-state mutation outside the adapter.
-- [ ] Add parity tests for all interaction modes and accessibility behavior.
-- [ ] Reduce `DeckLibraryWorkspace.tsx` to route/detail composition.
+- [x] Define one `LibraryMoveIntent` for every input method.
+- [x] Add `useDeckLibraryReorder.ts` for keyboard, HTML drag, and pointer/touch translation.
+- [x] Extract `DeckLibraryView`, `FolderSection`, `DeckItem`, `ArchivedDecksSection`, and sheets.
+- [x] Split the deck-library CSS Module by meaningful visual owner.
+- [x] Remove direct DOM drag-state mutation outside the adapter.
+- [x] Add parity tests for all interaction modes and accessibility behavior.
+- [x] Reduce `DeckLibraryWorkspace.tsx` to route/detail composition.
 
 ## Stage 4 — Foundations and application shell
 

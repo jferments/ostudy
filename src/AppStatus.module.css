@@ -1,0 +1,28 @@
+@layer components {
+  .status {
+    display: grid;
+    min-height: 100dvh;
+    place-content: center;
+    padding: var(--ostudy-space-8);
+    background: var(--ostudy-color-canvas);
+    color: var(--ostudy-color-text-primary);
+    text-align: center;
+  }
+
+  .mark {
+    display: grid;
+    width: 70px;
+    height: 70px;
+    place-items: center;
+    margin: 0 auto var(--ostudy-space-4);
+    border-radius: var(--ostudy-radius-large);
+    background: var(--ostudy-color-accent-soft);
+    color: var(--ostudy-color-text-accent);
+    font-size: 2rem;
+    font-weight: 850;
+  }
+
+  .status p {
+    color: var(--ostudy-color-text-secondary);
+  }
+}

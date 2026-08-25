@@ -3,7 +3,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 import styles from "./shared.module.css";
 
 interface PanelProps extends HTMLAttributes<HTMLElement> {
-  as?: "section" | "article" | "div";
+  as?: "section" | "article" | "div" | "aside";
   title?: string;
   description?: string;
   actions?: ReactNode;

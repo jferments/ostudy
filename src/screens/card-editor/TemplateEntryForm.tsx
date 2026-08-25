@@ -11,6 +11,7 @@ import {
   type TemplateCardPreview,
   type TemplateValueInput,
 } from "../../ipc/templates";
+import { Button } from "../../ui/primitives/Button";
 
 interface TemplateEntryFormProps {
   template: CardTemplate;
@@ -83,14 +84,14 @@ export function TemplateEntryForm({
       </div>
 
       <div className="template-preview-actions">
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={disabled}
           onClick={onPreview}
         >
           {isPreviewing ? "Building preview…" : "Preview generated cards"}
-        </button>
+        </Button>
       </div>
 
       {previews.length > 0 ? (

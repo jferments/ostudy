@@ -10,6 +10,9 @@ import {
 import {
   getErrorMessage,
 } from "../../ipc/common";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { DialogActions } from "../../ui/overlays/Dialog";
 
 interface DeleteCardsModalProps {
   cards: SelectionCard[];
@@ -77,33 +80,33 @@ export function DeleteCardsModal({
       }}
     >
       <div className="delete-cards-form" aria-busy={isDeleting}>
-        <div className="inline-alert delete-warning">
+        <InlineNotice kind="warning">
           This removes the selected cards from their decks. Their schedules, review
           history, tags, and images remain recoverable during the brief Undo window.
-        </div>
+        </InlineNotice>
         {errorMessage ? (
-          <div className="inline-alert error-alert">{errorMessage}</div>
+          <InlineNotice kind="error">{errorMessage}</InlineNotice>
         ) : null}
-        <div className="modal-actions">
-          <button
+        <DialogActions>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isDeleting}
             onClick={onClose}
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="danger-button"
+            variant="danger"
             disabled={isDeleting}
             onClick={() => void submit()}
           >
             {isDeleting
               ? "Deleting…"
               : `Delete ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </div>
     </Modal>
   );

@@ -15,6 +15,7 @@ import {
   OverlayContext,
 } from "./overlayContext";
 import styles from "./overlays.module.css";
+import { Button } from "../primitives/Button";
 
 interface PendingConfirmation extends ConfirmOptions {
   id: number;
@@ -128,21 +129,21 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
         >
           <div className={styles.confirmBody}>
             <div className={styles.actions}>
-              <button
+              <Button
                 type="button"
-                className="secondary-button"
+                variant="secondary"
                 data-autofocus="true"
                 onClick={() => settleConfirmation(pending.id, false)}
               >
                 {pending.cancelLabel ?? "Cancel"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className={pending.destructive ? "danger-button" : "primary-button"}
+                variant={pending.destructive ? "danger" : "primary"}
                 onClick={() => settleConfirmation(pending.id, true)}
               >
                 {pending.confirmLabel ?? "Continue"}
-              </button>
+              </Button>
             </div>
           </div>
         </Dialog>
