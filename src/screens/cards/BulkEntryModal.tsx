@@ -262,7 +262,7 @@ export function BulkEntryModal({
                   value={row.answer}
                   disabled={isSaving}
                   placeholder="Answer"
-                  onChange={(event: ChangeEvent<HTMlTextAreaElement>) =>
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
                     updateRow(row.id, { answer: event.currentTarget.value })
                   }
                 />

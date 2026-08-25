@@ -13,6 +13,9 @@ import {
 } from "../ipc/common";
 import { managedAssetUrl } from "../platform/assets";
 import { selectExternalImport } from "../platform/files";
+import { Button } from "../ui/primitives/Button";
+import contentStyles from "./RichContent.module.css";
+import styles from "./RichTextEditor.module.css";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink, normalizeExternalLink } from "./links";
 import { canonicalizeDocument, hydrateDocument } from "./richText";
@@ -56,7 +59,7 @@ export function RichTextEditor({
     editable: !disabled,
     editorProps: {
       attributes: {
-        class: "rich-editor-content",
+        class: contentStyles.content,
         "aria-label": label,
       },
     },
@@ -141,28 +144,28 @@ export function RichTextEditor({
 
   if (!editor) {
     return (
-      <section className="editor-field">
-        <div className="editor-field-heading">
+      <section className={styles.field}>
+        <div className={styles.heading}>
           <div>
             <h3>{label}</h3>
             {description ? <p>{description}</p> : null}
           </div>
         </div>
-        <div className="editor-loading">Loading editor…</div>
+        <div className={styles.loading} role="status">Loading editor…</div>
       </section>
     );
   }
 
   return (
-    <section className="editor-field">
-      <div className="editor-field-heading">
+    <section className={styles.field}>
+      <div className={styles.heading}>
         <div>
           <h3>{label}</h3>
           {description ? <p>{description}</p> : null}
         </div>
       </div>
 
-      <div className="rich-editor-shell">
+      <div className={styles.shell}>
         <EditorToolbar
           editor={editor}
           onAddImage={() => void addImage()}
@@ -172,7 +175,7 @@ export function RichTextEditor({
           disabled={disabled}
         />
         {linkOpen ? (
-          <form className="link-popover" onSubmit={saveLink}>
+          <form className={styles.linkPopover} onSubmit={saveLink}>
             <label>
               <span>Link address</span>
               <input
@@ -184,14 +187,14 @@ export function RichTextEditor({
                 placeholder="https://example.org"
               />
             </label>
-            <div>
-              <button type="button" className="text-button" disabled={disabled} onClick={() => setLinkOpen(false)}>
+            <div className={styles.linkActions}>
+              <Button type="button" variant="text" disabled={disabled} onClick={() => setLinkOpen(false)}>
                 Cancel
-              </button>
+              </Button>
               {editor.isActive("link") ? (
-                <button
+                <Button
                   type="button"
-                  className="text-button danger-text"
+                  variant="dangerGhost"
                   disabled={disabled}
                   onClick={() => {
                     editor.chain().focus().extendMarkRange("link").unsetLink().run();
@@ -200,19 +203,19 @@ export function RichTextEditor({
                   }}
                 >
                   Remove link
-                </button>
+                </Button>
               ) : null}
-              <button type="submit" className="small-primary-button" disabled={disabled}>
+              <Button type="submit" variant="primary" size="small" disabled={disabled}>
                 Apply
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
-        <div className="editor-surface" style={{ minHeight }}>
+        <div className={styles.surface} style={{ minHeight }}>
           <EditorContent editor={editor} />
         </div>
       </div>
-      {editorError ? <p className="field-error">{editorError}</p> : null}
+      {editorError ? <p className={styles.error}>{editorError}</p> : null}
     </section>
   );
 }
@@ -279,8 +282,8 @@ function EditorToolbar({
   }
 
   return (
-    <fieldset className="editor-toolbar" role="toolbar" aria-label="Text formatting" disabled={disabled}>
-      <div className="toolbar-group">
+    <fieldset className={styles.toolbar} role="toolbar" aria-label="Text formatting" disabled={disabled}>
+      <div className={styles.group}>
         <select
           aria-label="Paragraph style"
           value={blockType}
@@ -332,7 +335,7 @@ function EditorToolbar({
         </select>
       </div>
 
-      <div className="toolbar-group">
+      <div className={styles.group}>
         <ToolbarButton
           label="Bold"
           active={editor.isActive("bold")}
@@ -375,7 +378,7 @@ function EditorToolbar({
         </ToolbarButton>
       </div>
 
-      <div className="toolbar-group color-tools">
+      <div className={`${styles.group} ${styles.colorTools}`}>
         <label title="Text color">
           <span>A</span>
           <input
@@ -407,7 +410,7 @@ function EditorToolbar({
         </ToolbarButton>
       </div>
 
-      <div className="toolbar-group">
+      <div className={styles.group}>
         <ToolbarButton
           label="Bullet list"
           active={editor.isActive("bulletList")}
@@ -448,7 +451,7 @@ function EditorToolbar({
         </ToolbarButton>
       </div>
 
-      <div className="toolbar-group">
+      <div className={styles.group}>
         {(["left", "center", "right"] as const).map((alignment) => (
           <ToolbarButton
             key={alignment}
@@ -462,7 +465,7 @@ function EditorToolbar({
         ))}
       </div>
 
-      <div className="toolbar-group">
+      <div className={styles.group}>
         <ToolbarButton
           label="Add or edit link"
           active={editor.isActive("link")}
@@ -506,7 +509,7 @@ function EditorToolbar({
         </ToolbarButton>
       </div>
 
-      <div className="toolbar-group toolbar-history">
+      <div className={`${styles.group} ${styles.toolbarHistory}`}>
         <ToolbarButton
           label="Undo"
           onMouseDown={preserveSelection}
@@ -555,7 +558,7 @@ function ToolbarButton({
   return (
     <button
       type="button"
-      className={active ? "toolbar-button active" : "toolbar-button"}
+      className={`${styles.toolbarButton} ${active ? styles.toolbarButtonActive : ""}`.trim()}
       aria-label={label}
       title={label}
       aria-pressed={active}

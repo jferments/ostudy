@@ -14,42 +14,6 @@
   padding: 1rem;
 }
 
-.template-field-placeholder {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  border: 1px dashed currentColor;
-  border-radius: 0.45rem;
-  padding: 0.1rem 0.4rem;
-  font-family: var(--ui-font-family);
-  font-size: 0.86em;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  user-select: none;
-}
-
-.template-field-placeholder.block {
-  display: flex;
-  width: 100%;
-  min-height: 2.5rem;
-  margin-block: 0.5rem;
-  justify-content: center;
-  padding: 0.55rem 0.75rem;
-  border-style: dashed;
-}
-
-.template-field-placeholder.inline {
-  vertical-align: baseline;
-  margin-inline: 0.12rem;
-}
-
 .template-card-previews article > div {
   overflow: auto;
-}
-
-.template-card-previews .rich-text-view,
-.template-card-previews .rich-card-content {
-  min-width: 0;
 }

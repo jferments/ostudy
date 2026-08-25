@@ -12,7 +12,6 @@
   "legacyFiles": {
     "src/styles/base/application.css": {
       "selectors": [
-        "active",
         "active-practice-screen",
         "again",
         "analytics-grid",
@@ -37,7 +36,6 @@
         "card-row-divider",
         "card-row-main",
         "card-row-side",
-        "color-tools",
         "compact-empty-state",
         "compact-path-list",
         "compact-screen-header",
@@ -65,13 +63,7 @@
         "deck-title-row",
         "disabled",
         "easy",
-        "editor-field",
-        "editor-field-heading",
-        "editor-format-note",
-        "editor-loading",
         "editor-preview-panel",
-        "editor-surface",
-        "editor-toolbar",
         "embedded-fatal-screen",
         "empty-actions",
         "empty-icon",
@@ -95,7 +87,6 @@
         "is-revealed",
         "large-action-button",
         "large-empty-state",
-        "link-popover",
         "metric-card",
         "metric-grid",
         "metrics-grid",
@@ -151,9 +142,6 @@
         "review-button",
         "review-rating-panel",
         "review-result-dot",
-        "rich-card-content",
-        "rich-editor-content",
-        "rich-editor-shell",
         "right",
         "screen",
         "screen-header",
@@ -173,7 +161,6 @@
         "side-label",
         "small-primary-button",
         "status-dot",
-        "study-card-image",
         "switch-row",
         "text-button",
         "theme-console",
@@ -186,8 +173,6 @@
         "toast",
         "toast-error",
         "toast-success",
-        "toolbar-button",
-        "toolbar-group",
         "with-preview",
         "wrap-actions",
         "wrong"
@@ -434,14 +419,9 @@
     },
     "src/styles/features/templates.css": {
       "selectors": [
-        "block",
-        "inline",
-        "rich-card-content",
         "rich-template-rule-card",
         "rich-template-rule-list",
-        "rich-text-view",
         "template-card-previews",
-        "template-field-placeholder",
         "template-layout-editor",
         "template-rich-value-list"
       ]

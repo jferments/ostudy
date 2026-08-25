@@ -10,10 +10,10 @@ import {
   type RichDocument,
 } from "../ipc/common";
 import { openExternalUrl } from "../platform/externalLinks";
+import contentStyles from "./RichContent.module.css";
 import { createEditorExtensions } from "./extensions";
 import { isAllowedExternalLink } from "./links";
 import { hydrateDocument } from "./richText";
-import styles from "./RichContent.module.css";
 
 interface RichTextViewProps {
   document: RichDocument;
@@ -39,7 +39,7 @@ export function RichTextView({
     editable: false,
     editorProps: {
       attributes: {
-        class: styles.content,
+        class: contentStyles.content,
         tabindex: "0",
       },
     },
@@ -73,7 +73,7 @@ export function RichTextView({
   }
 
   return (
-    <div className={`${styles.view} ${className}`.trim()} onClick={handleClick}>
+    <div className={`${contentStyles.view} ${className}`.trim()} onClick={handleClick}>
       <EditorContent editor={editor} />
     </div>
   );
