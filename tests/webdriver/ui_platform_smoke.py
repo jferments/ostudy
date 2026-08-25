@@ -243,7 +243,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, settings)
-    webdriver.find_element(session_id, "css selector", "main .settings-screen", deadline)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Settings", deadline)
     wait_for_overlay_inactive(session_id, deadline, "compact Settings assertions")
     assert_no_horizontal_overflow(session_id, "compact Settings screen")
 
@@ -254,7 +254,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, flashcards)
-    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
+    webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
     assert_flashcards_tabs(session_id, deadline)
     assert_no_horizontal_overflow(session_id, "compact Flashcards workspace")
 
@@ -322,13 +322,13 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         "button[data-testid='nav-decks'][aria-current='page']",
         deadline,
     )
-    webdriver.find_element(session_id, "css selector", "main .flashcards-workspace", deadline)
+    webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
     assert_flashcards_tabs(session_id, deadline)
 
     navigation = execute(
         session_id,
         """
-        const sidebar = document.querySelector('aside.sidebar');
+        const sidebar = document.querySelector("nav[aria-label='Main navigation']")?.closest("aside");
         const labels = [...document.querySelectorAll("nav[aria-label='Main navigation'] button span:last-child")];
         return {
           sidebarWidth: sidebar instanceof HTMLElement ? sidebar.getBoundingClientRect().width : 0,
@@ -391,13 +391,13 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     webdriver.find_element(
         session_id,
         "xpath",
-        "//main//*[contains(@class, 'card-browser-actions')]//button[normalize-space(.)='Add flashcard']",
+        "//main//button[normalize-space(.)='Add flashcard']",
         deadline,
     )
     bulk_add = webdriver.find_element(
         session_id,
         "xpath",
-        "//main//*[contains(@class, 'card-browser-actions')]//button[normalize-space(.)='Bulk add']",
+        "//main//button[normalize-space(.)='Bulk add']",
         deadline,
     )
     webdriver.click(session_id, bulk_add)
@@ -411,10 +411,18 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     measurements = execute(
         session_id,
         """
-        const controls = document.querySelector('.bulk-entry-controls');
-        const destination = controls?.querySelector('.bulk-entry-destination');
-        const help = controls?.querySelector('p');
-        const select = controls?.querySelector('select');
+        const table = document.querySelector("[role='table'][aria-label='Bulk cards']");
+        const layout = table?.closest("[aria-busy]");
+        const destination = layout
+          ? [...layout.querySelectorAll("div")].find((candidate) => {
+              const span = candidate.querySelector(":scope > span");
+              const strong = candidate.querySelector(":scope > strong");
+              return span?.textContent?.trim() === "Destination deck" && strong;
+            })
+          : null;
+        const controls = destination?.parentElement;
+        const help = controls?.querySelector(":scope > p");
+        const select = controls?.querySelector(":scope > label select");
         if (!(controls instanceof HTMLElement) || !(destination instanceof HTMLElement) || !(help instanceof HTMLElement)) {
           return null;
         }

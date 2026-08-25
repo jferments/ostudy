@@ -27,8 +27,8 @@ TRANSIENT_CLICK_ERRORS = {"element click intercepted", "element not interactable
 RETRYABLE_FIND_ERRORS = {"no such element", "stale element reference"}
 RETRYABLE_PROFILE_ERRORS = {"no such window", "unknown error"}
 PRACTICE_COMPLETE_SELECTOR = "main [data-testid='practice-complete']"
-ANALYTICS_SCREEN_SELECTOR = "main .analytics-screen"
-CHART_DATA_SELECTOR = "main .chart-data-table"
+ANALYTICS_SCREEN_SELECTOR = "main section[aria-label='Learning summary']"
+CHART_DATA_SELECTOR = "main section[aria-labelledby='progress-heading'] table"
 
 
 class WebDriverProtocolError(RuntimeError):
@@ -506,7 +506,7 @@ def set_rich_editor_text(
     deadline: float,
 ) -> str:
     """Enter rich-editor text and verify the rendered editable text before saving."""
-    selector = ".rich-editor-content[contenteditable='true']"
+    selector = "main [contenteditable='true'][aria-label]"
     last_text: str | None = None
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -623,7 +623,7 @@ def verify_shell(session_id: str, deadline: float) -> None:
     find_element(
         session_id,
         "css selector",
-        "aside.sidebar [data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']",
+        "aside [data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']",
         deadline,
     )
 
@@ -691,7 +691,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     medium = find_element(
         session_id,
         "css selector",
-        "button.confidence-score-button[aria-keyshortcuts='2'][aria-label='2 Medium']",
+        "button[aria-keyshortcuts='2'][aria-label='2 Medium']",
         deadline,
     )
     click(session_id, medium)
@@ -701,8 +701,8 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     deadline = deadline_after(ANALYTICS_TIMEOUT_SECONDS)
     view_analytics = find_element(
         session_id,
-        "css selector",
-        f"{PRACTICE_COMPLETE_SELECTOR} .primary-button",
+        "xpath",
+        "//main//*[@data-testid='practice-complete']//button[normalize-space(.)='View analytics']",
         deadline,
     )
     click(session_id, view_analytics)
@@ -710,7 +710,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     find_element(
         session_id,
         "xpath",
-        "//section[contains(@class, 'recent-review-panel')]"
+        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
@@ -770,7 +770,7 @@ def verify_persistence_after_restart(
     find_element(
         session_id,
         "xpath",
-        "//section[contains(@class, 'recent-review-panel')]"
+        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )

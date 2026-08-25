@@ -26,7 +26,7 @@ def assert_medium_navigation(session_id: str, deadline: float) -> None:
     measurement = ui.execute(
         session_id,
         """
-        const sidebar = document.querySelector('aside.sidebar');
+        const sidebar = document.querySelector("nav[aria-label='Main navigation']")?.closest("aside");
         const labels = [...document.querySelectorAll("nav[aria-label='Main navigation'] button span:last-child")]
           .filter((label) => label instanceof HTMLElement);
         return {
@@ -90,7 +90,7 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     webdriver.find_element(
         session_id,
         "css selector",
-        "main .organized-card-list[aria-label='Matching cards']",
+        "main [role='table'][aria-label='Matching cards']",
         deadline,
     )
     return deck_name, question, answer
@@ -100,18 +100,29 @@ def listing_snapshot(session_id: str) -> dict[str, Any]:
     measurement = ui.execute(
         session_id,
         """
-        const sides = document.querySelector('main .organized-card-row .card-listing-sides');
-        if (!(sides instanceof HTMLElement)) return null;
-        const lines = [...sides.querySelectorAll(':scope > .card-listing-line')]
+        const row = document.querySelector("main [role='table'][aria-label='Matching cards'] [role='row']");
+        if (!(row instanceof HTMLElement)) return null;
+        const screenReaderLabels = [...row.querySelectorAll("span")]
+          .filter((span) => {
+            const text = (span.textContent || "").trim();
+            return text === "Question:" || text === "Answer:";
+          });
+        if (screenReaderLabels.length !== 2) return null;
+        const lines = screenReaderLabels
+          .map((label) => label.parentElement)
           .filter((line) => line instanceof HTMLElement);
-        if (lines.length !== 2) return null;
+        if (lines.length !== 2 || lines[0].parentElement !== lines[1].parentElement) return null;
+        const sides = lines[0].parentElement;
+        if (!(sides instanceof HTMLElement)) return null;
         const q = lines[0].getBoundingClientRect();
         const a = lines[1].getBoundingClientRect();
+        const visualLabel = (line) => [...line.children]
+          .find((child) => child.getAttribute?.("aria-hidden") === "true")?.textContent?.trim() || "";
         return {
-          sidesClass: sides.className,
+          structureSignature: `${sides.tagName}:${lines.map((line) => line.tagName).join(",")}`,
           lineCount: lines.length,
-          qLabel: (lines[0].querySelector('.card-listing-label')?.textContent || '').trim(),
-          aLabel: (lines[1].querySelector('.card-listing-label')?.textContent || '').trim(),
+          qLabel: visualLabel(lines[0]),
+          aLabel: visualLabel(lines[1]),
           question: (lines[0].querySelector('strong')?.textContent || '').trim(),
           answer: (lines[1].querySelector('strong')?.textContent || '').trim(),
           qTop: q.top,
@@ -211,12 +222,12 @@ def assert_search_browser(
     webdriver.find_element(
         session_id,
         "css selector",
-        "main .organized-card-list[aria-label='Matching cards']",
+        "main [role='table'][aria-label='Matching cards']",
         deadline,
     )
     measurement = listing_snapshot(session_id)
     assert_shared_listing(measurement, question, answer, "Search/Filter")
-    if measurement.get("sidesClass") != deck_measurement.get("sidesClass"):
+    if measurement.get("structureSignature") != deck_measurement.get("structureSignature"):
         raise AssertionError(
             "Deck and Search did not render the same shared card-listing DOM contract: "
             f"deck={deck_measurement!r}, search={measurement!r}"
