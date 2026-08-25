@@ -1,0 +1,75 @@
+name: Apply Stage 6 reconciliation
+
+'on':
+  push:
+    branches:
+      - agent/frontend-css-ownership-refactor-restart
+    paths:
+      - .github/workflows/apply-stage6-reconciliation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ostudy-unified
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Apply the reviewed Stage 6 patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base64 --decode .github/refactor-patches/stage6-reconcile.patch.gz.b64 \
+            | gzip --decompress > /tmp/stage6-reconcile.patch
+          echo "e3d08d31d68f643c1aa751f85cd97eeaf0615dc08def222a082363bcaec968d7  /tmp/stage6-reconcile.patch" \
+            | sha256sum --check --strict
+          git apply --check /tmp/stage6-reconcile.patch
+          git apply /tmp/stage6-reconcile.patch
+          rm .github/refactor-patches/stage6-reconcile.patch.gz.b64
+          git diff --check
+
+      - name: Verify scoped rich-content ownership
+        run: |
+          set -Eeuo pipefail
+          test "$(grep -Rho ':global(' src/editor/*.module.css | wc -l)" -eq 0
+          ! grep -R -E 'rich-editor-content|rich-card-content|rich-card-view|editor-field|editor-toolbar|toolbar-group|toolbar-button|color-tools|link-popover|study-card-image|template-field-placeholder|study-rich-editor|rich-editor-toolbar' \
+            src/editor src/styles/base/application.css src/styles/features/templates.css
+          node scripts/verify-style-ownership.mjs
+          node scripts/verify-ui-policy.mjs
+          node scripts/verify-button-contrast.mjs
+          python3 -m unittest tests.scripts.test_style_ownership
+
+      - name: Run exact-head fast qualification
+        env:
+          OSTUDY_FORCE_CHECK: '1'
+        run: bash scripts/check-fast.sh
+
+      - name: Commit the qualified Stage 6 checkpoint
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A \
+            .github/refactor-patches \
+            scripts/style-ownership-baseline.json \
+            src/editor \
+            src/styles/base/application.css \
+            src/styles/features/templates.css
+          git diff --cached --check
+          git commit -m "refactor(ui): complete scoped rich-content ownership"
+          git push origin HEAD:agent/frontend-css-ownership-refactor-restart
