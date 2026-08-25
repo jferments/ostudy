@@ -2,6 +2,10 @@
   .sidebar {
     position: relative;
     z-index: var(--ostudy-layer-sticky);
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+    flex-direction: column;
     gap: var(--ostudy-space-7);
     border-inline-end: 1px solid var(--ostudy-color-border-subtle);
     padding: max(28px, var(--safe-top)) 18px max(20px, var(--safe-bottom));
@@ -12,6 +16,8 @@
   }
 
   .sidebarNav {
+    display: flex;
+    flex-direction: column;
     gap: var(--ostudy-space-2);
   }
 
