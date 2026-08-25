@@ -1,10 +1,5 @@
-@layer reset, tokens, legacy, theme, base, features, components, patterns, utilities;
+@layer reset, tokens, theme, base, legacy, features, components, patterns, utilities;
 
-/*
- * Global style entry point. Legacy application and feature selectors remain in
- * their own layers while the semantic visual system overrides their variables
- * and new UI is implemented through scoped modules.
- */
 @import "./local-fonts.css" layer(tokens);
 @import "../tokens/generated/reference.css" layer(tokens);
 @import "../tokens/generated/component.css" layer(tokens);
@@ -12,6 +7,9 @@
 @import "../tokens/generated/theme-dark.css" layer(tokens);
 @import "../tokens/generated/theme-console.css" layer(tokens);
 @import "../tokens/generated/theme-synthwave.css" layer(tokens);
+@import "./reset.css";
+@import "./document.css";
+@import "./platform.css";
 @import "../../styles/base/application.css" layer(legacy);
 @import "../../styles/features/practice.css" layer(features);
 @import "../../styles/features/cards.css" layer(features);
@@ -22,6 +20,7 @@
 @import "../../styles/features/assets.css" layer(features);
 @import "../../styles/features/ui-overhaul.css" layer(features);
 @import "../../styles/features/page-density.css" layer(features);
+@import "./utilities.css";
 
 @layer tokens {
   :root {
@@ -59,15 +58,6 @@
     --layer-dialog: var(--ostudy-layer-dialog);
     --layer-toast: var(--ostudy-layer-toast);
     --layer-effects: var(--ostudy-layer-effects);
-    --android-safe-top: 0px;
-    --android-safe-right: 0px;
-    --android-safe-bottom: 0px;
-    --android-safe-left: 0px;
-    --android-ime-bottom: 0px;
-    --safe-top: max(env(safe-area-inset-top, 0px), var(--android-safe-top));
-    --safe-right: max(env(safe-area-inset-right, 0px), var(--android-safe-right));
-    --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--android-safe-bottom));
-    --safe-left: max(env(safe-area-inset-left, 0px), var(--android-safe-left));
   }
 }
 
@@ -96,151 +86,5 @@
     --focus: var(--ostudy-shadow-focus);
     --radius: var(--ostudy-radius-medium);
     --radius-small: var(--ostudy-radius-small);
-  }
-
-  :root[data-material="simple"] {
-    --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
-    --ostudy-material-blur-low: 0px;
-    --ostudy-material-blur-medium: 0px;
-    --ostudy-material-blur-high: 0px;
-    --ostudy-material-noise-opacity: 0;
-    --ostudy-material-chrome-saturation: 1;
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    :root {
-      --ostudy-color-surface-chrome: var(--ostudy-color-surface-raised);
-      --ostudy-material-blur-low: 0px;
-      --ostudy-material-blur-medium: 0px;
-      --ostudy-material-blur-high: 0px;
-      --ostudy-material-noise-opacity: 0;
-    }
-  }
-}
-
-@layer base {
-  html,
-  body,
-  #root {
-    min-height: 100%;
-  }
-
-  body {
-    min-height: 100dvh;
-  }
-
-  ::selection {
-    background: var(--ostudy-color-selection-background);
-    color: var(--ostudy-color-selection-foreground);
-  }
-
-  button,
-  input,
-  select,
-  textarea {
-    touch-action: manipulation;
-  }
-
-  input,
-  select,
-  textarea {
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  select {
-    min-height: var(--control-height);
-    padding-block: var(--ostudy-space-2);
-    line-height: 1.35;
-  }
-
-  :root[data-motion="none"] *,
-  :root[data-motion="none"] *::before,
-  :root[data-motion="none"] *::after {
-    scroll-behavior: auto !important;
-    transition-duration: var(--ostudy-motion-duration-instant) !important;
-    animation-duration: var(--ostudy-motion-duration-instant) !important;
-    animation-iteration-count: 1 !important;
-  }
-
-  :root[data-motion="reduced"] [data-motion-kind="spatial"],
-  :root[data-motion="reduced"] [data-motion-kind="spatial"]::before,
-  :root[data-motion="reduced"] [data-motion-kind="spatial"]::after {
-    transition-duration: var(--ostudy-motion-duration-instant) !important;
-    animation-duration: var(--ostudy-motion-duration-instant) !important;
-    animation-iteration-count: 1 !important;
-  }
-
-  @media (forced-colors: active) {
-    :root {
-      --ostudy-material-noise-opacity: 0;
-      --ostudy-material-blur-low: 0px;
-      --ostudy-material-blur-medium: 0px;
-      --ostudy-material-blur-high: 0px;
-    }
-  }
-
-  @media (max-width: 760px) {
-    :root {
-      --touch-target-min: 48px;
-    }
-
-    .app-shell {
-      padding-bottom: calc(var(--ostudy-navigation-compact-height) + var(--safe-bottom));
-    }
-
-    .main-area {
-      min-height: calc(100dvh - var(--ostudy-navigation-compact-height) - var(--safe-bottom));
-    }
-
-    :root[data-android-ime-visible="true"] .app-shell {
-      padding-bottom: var(--android-ime-bottom);
-    }
-
-    :root[data-android-ime-visible="true"] nav[aria-label="Main navigation"] {
-      visibility: hidden;
-      pointer-events: none;
-    }
-  }
-
-  @media (pointer: coarse) {
-    .icon-button,
-    .nav-button,
-    .text-button {
-      min-width: var(--touch-target-min);
-      min-height: var(--touch-target-min);
-    }
-  }
-}
-
-@layer features {
-  .bulk-entry-controls > label > select {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-  }
-}
-
-@layer utilities {
-  /*
-   * Legacy accent buttons predate semantic foreground tokens and hard-coded a
-   * white label. Dark/synthwave palettes can intentionally use a light accent,
-   * so the foreground must always follow the theme's audited on-accent token.
-   * The modern Button primitive already uses the same semantic contract.
-   */
-  .primary-button,
-  .small-primary-button,
-  .practice-reveal-button {
-    color: var(--on-accent);
-  }
-
-  .sr-only {
-    position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    overflow: hidden !important;
-    clip: rect(0, 0, 0, 0) !important;
-    white-space: nowrap !important;
-    clip-path: inset(50%) !important;
   }
 }

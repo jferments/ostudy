@@ -101,10 +101,10 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
   }
 
   return (
-    <aside className={`sidebar ${styles.sidebar}`}>
+    <aside className={styles.sidebar}>
       <BrandLockup compact={medium} />
       <nav
-        className={`sidebar-nav ${styles.sidebarNav}`}
+        className={styles.sidebarNav}
         aria-label="Main navigation"
         data-tour-anchor="app.navigation"
       >
