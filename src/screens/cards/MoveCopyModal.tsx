@@ -12,6 +12,10 @@ import {
 import {
   type DeckSummary,
 } from "../../ipc/decks";
+import { Button } from "../../ui/primitives/Button";
+import { EmptyState } from "../../ui/primitives/EmptyState";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { DialogActions } from "../../ui/overlays/Dialog";
 
 export interface TransferableCard {
   noteId: string;
@@ -101,15 +105,16 @@ export function MoveCopyModal({
       }}
     >
       {destinations.length === 0 ? (
-        <div className="compact-empty-state modal-empty-state">
-          <h3>Create or unarchive another deck first</h3>
-          <p>A destination deck must be active and different from every selected card’s deck.</p>
-          <div className="modal-actions">
-            <button type="button" className="primary-button" onClick={onClose}>
+        <EmptyState
+          compact
+          title="Create or unarchive another deck first"
+          description="A destination deck must be active and different from every selected card’s deck."
+          actions={
+            <Button type="button" variant="primary" onClick={onClose}>
               Close
-            </button>
-          </div>
-        </div>
+            </Button>
+          }
+        />
       ) : (
         <div className="move-copy-form" aria-busy={isSaving}>
           <fieldset className="transfer-mode-group">
@@ -173,20 +178,20 @@ export function MoveCopyModal({
             <span>Skip exact duplicates already in the destination</span>
           </label>
 
-          {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
+          {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
-          <div className="modal-actions">
-            <button
+          <DialogActions>
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={onClose}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="primary-button"
+              variant="primary"
               disabled={isSaving || targetDeckId === ""}
               onClick={() => void submit()}
             >
@@ -197,8 +202,8 @@ export function MoveCopyModal({
                 : `${mode === "move" ? "Move" : "Copy"} ${cards.length} ${
                     cards.length === 1 ? "card" : "cards"
                   }`}
-            </button>
-          </div>
+            </Button>
+          </DialogActions>
         </div>
       )}
     </Modal>

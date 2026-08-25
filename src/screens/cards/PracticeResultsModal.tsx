@@ -13,6 +13,9 @@ import {
   deleteDeck,
   type DeckSummary,
 } from "../../ipc/decks";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { DialogActions } from "../../ui/overlays/Dialog";
 
 interface PracticeResultsModalProps {
   cards: SelectionCard[];
@@ -110,14 +113,14 @@ export function PracticeResultsModal({
               permanent deck.
             </p>
           </div>
-          <button
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={isSaving}
             onClick={startTemporaryPractice}
           >
             Start practice
-          </button>
+          </Button>
         </section>
 
         <section className="practice-result-option saved-result-option">
@@ -140,27 +143,27 @@ export function PracticeResultsModal({
               }}
             />
           </label>
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isSaving || deckName.trim() === ""}
             onClick={() => void savePermanentDeck()}
           >
             {isSaving ? "Creating deck…" : "Save as new deck"}
-          </button>
+          </Button>
         </section>
 
-        {errorMessage ? <div className="inline-alert error-alert">{errorMessage}</div> : null}
-        <div className="modal-actions">
-          <button
+        {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+        <DialogActions>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={isSaving}
             onClick={onClose}
           >
             Close
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </div>
     </Modal>
   );
