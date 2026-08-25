@@ -1,40 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ShowToast } from "../../../components/Toast";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
-import * as folderIpc from "../../../ipc/deckFolders";
-import { useDeckLibraryController } from "./useDeckLibraryController";
+import {
+  useDeckLibraryController,
+  type DeckLibraryControllerDependencies,
+} from "./useDeckLibraryController";
 
-const createDeck = vi.fn();
-const deleteDeck = vi.fn();
-const undo = vi.fn();
-const invalidate = vi.fn();
-
-vi.mock("../../../controllers/decksController", () => ({
-  DecksController: class {
-    create = createDeck;
-    deleteDeck = deleteDeck;
-    undo = undo;
-    invalidate = invalidate;
-  },
-}));
-
-vi.mock("../../../ipc/deckFolders", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../../../ipc/deckFolders")>();
-  return {
-    ...original,
-    getDeckLibraryOrganization: vi.fn(),
-    createDeckFolder: vi.fn(),
-    updateDeckFolder: vi.fn(),
-    deleteDeckFolder: vi.fn(),
-    moveDeckFolder: vi.fn(),
-    moveDeckInLibrary: vi.fn(),
-  };
-});
-
-const deckA = deck("a", "Alpha");
-const deckB = deck("b", "Beta");
 const folder = {
   id: "f".repeat(32),
   name: "Nursing",
@@ -43,152 +17,249 @@ const folder = {
   updatedAt: 1,
   revision: 1,
 };
+const deckA = deck("a", "Pharmacology");
+const deckB = deck("b", "Anatomy");
+const organization: DeckLibraryOrganization = {
+  revision: 4,
+  folders: [folder],
+  placements: [
+    { deckId: deckA.id, folderId: folder.id, sortOrder: 1_000 },
+    { deckId: deckB.id, folderId: null, sortOrder: 1_000 },
+  ],
+};
 
-function organization(revision = 1): DeckLibraryOrganization {
+interface Harness {
+  dependencies: DeckLibraryControllerDependencies;
+  getOrganization: ReturnType<typeof vi.fn>;
+  createFolder: ReturnType<typeof vi.fn>;
+  updateFolder: ReturnType<typeof vi.fn>;
+  deleteFolder: ReturnType<typeof vi.fn>;
+  moveDeck: ReturnType<typeof vi.fn>;
+  moveFolder: ReturnType<typeof vi.fn>;
+  createDeck: ReturnType<typeof vi.fn>;
+  deleteDeck: ReturnType<typeof vi.fn>;
+  undo: ReturnType<typeof vi.fn>;
+  invalidate: ReturnType<typeof vi.fn>;
+  refreshDecks: ReturnType<typeof vi.fn>;
+  onOpenDeck: ReturnType<typeof vi.fn>;
+  showToast: ShowToast;
+  confirm: ReturnType<typeof vi.fn>;
+}
+
+function createHarness(): Harness {
+  const getOrganization = vi.fn().mockResolvedValue(organization);
+  const createFolder = vi.fn();
+  const updateFolder = vi.fn();
+  const deleteFolder = vi.fn();
+  const moveDeck = vi.fn();
+  const moveFolder = vi.fn();
+  const createDeck = vi.fn().mockResolvedValue(deck("c", "Created"));
+  const deleteDeck = vi.fn().mockResolvedValue({
+    undoToken: "u".repeat(32),
+    undoExpiresAt: 999,
+  });
+  const undo = vi.fn().mockResolvedValue({ restoredCount: 1 });
+  const invalidate = vi.fn();
+  const dependencies: DeckLibraryControllerDependencies = {
+    getOrganization,
+    createFolder,
+    updateFolder,
+    deleteFolder,
+    moveDeck,
+    moveFolder,
+    createDeckController: () => ({ create: createDeck, deleteDeck, undo, invalidate }),
+  };
   return {
-    revision,
-    folders: [folder],
-    placements: [
-      { deckId: deckA.id, folderId: folder.id, sortOrder: 1_000 },
-      { deckId: deckB.id, folderId: folder.id, sortOrder: 2_000 },
-    ],
+    dependencies,
+    getOrganization,
+    createFolder,
+    updateFolder,
+    deleteFolder,
+    moveDeck,
+    moveFolder,
+    createDeck,
+    deleteDeck,
+    undo,
+    invalidate,
+    refreshDecks: vi.fn().mockResolvedValue([deckA, deckB]),
+    onOpenDeck: vi.fn(),
+    showToast: vi.fn(),
+    confirm: vi.fn().mockResolvedValue(true),
   };
 }
 
+function renderController(harness: Harness, decks: DeckSummary[] = [deckA, deckB]) {
+  return renderHook(
+    ({ currentDecks }: { currentDecks: DeckSummary[] }) =>
+      useDeckLibraryController({
+        decks: currentDecks,
+        refreshDecks: harness.refreshDecks,
+        onOpenDeck: harness.onOpenDeck,
+        showToast: harness.showToast,
+        confirm: harness.confirm,
+        dependencies: harness.dependencies,
+      }),
+    { initialProps: { currentDecks: decks } },
+  );
+}
+
 describe("useDeckLibraryController", () => {
+  let harness: Harness;
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(organization());
+    harness = createHarness();
   });
 
-  it("loads organization state independently from the presentation tree", async () => {
-    const refreshDecks = vi.fn().mockResolvedValue([deckA, deckB]);
-    const { result, unmount } = renderHook(() =>
-      useDeckLibraryController({
-        decks: [deckA, deckB],
-        refreshDecks,
-        onOpenDeck: vi.fn(),
-        showToast: vi.fn(),
-      }),
-    );
+  it("owns initial organization loading and derives the library snapshot", async () => {
+    const { result, unmount } = renderController(harness);
 
+    expect(result.current.isLoading).toBe(true);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.organization).toEqual(organization());
-    expect(result.current.activeDecks).toEqual([deckA, deckB]);
+    expect(result.current.snapshot?.decksByFolder.get(folder.id)).toEqual([deckA]);
+    expect(result.current.snapshot?.unsortedDecks).toEqual([deckB]);
+
     unmount();
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(harness.invalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("applies a move optimistically and replaces it with the authoritative response", async () => {
-    let resolveMove: ((value: DeckLibraryOrganization) => void) | undefined;
-    vi.mocked(folderIpc.moveDeckInLibrary).mockReturnValue(
-      new Promise((resolve) => {
-        resolveMove = resolve;
-      }),
+  it("applies optimistic movement, commits the authoritative response, and announces it", async () => {
+    let resolveMove: ((value: DeckLibraryOrganization) => void) | null = null;
+    harness.moveDeck.mockImplementation(
+      () =>
+        new Promise<DeckLibraryOrganization>((resolve) => {
+          resolveMove = resolve;
+        }),
     );
-    const { result } = renderHook(() =>
-      useDeckLibraryController({
-        decks: [deckA, deckB],
-        refreshDecks: vi.fn().mockResolvedValue([deckA, deckB]),
-        onOpenDeck: vi.fn(),
-        showToast: vi.fn(),
-      }),
-    );
-    await waitFor(() => expect(result.current.organization?.revision).toBe(1));
+    const committed: DeckLibraryOrganization = {
+      ...organization,
+      revision: 5,
+      placements: [
+        { deckId: deckA.id, folderId: folder.id, sortOrder: 1_000 },
+        { deckId: deckB.id, folderId: folder.id, sortOrder: 2_000 },
+      ],
+    };
+    const { result } = renderController(harness);
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
 
-    let pending: Promise<void> | undefined;
+    let movement: Promise<void> | undefined;
     act(() => {
-      pending = result.current.move({
+      movement = result.current.move({
         kind: "deck",
-        deckId: deckA.id,
+        deckId: deckB.id,
         targetFolderId: folder.id,
         targetIndex: 1,
         source: "keyboard",
       });
     });
-    expect(result.current.organization?.revision).toBe(2);
-    expect(result.current.organization?.placements[0]?.sortOrder).toBe(2_000);
+    expect(result.current.isMutating).toBe(true);
+    expect(result.current.snapshot?.decksByFolder.get(folder.id)?.map((deck) => deck.id)).toEqual([
+      deckA.id,
+      deckB.id,
+    ]);
 
-    const authoritative = organization(2);
-    authoritative.placements = [
-      { deckId: deckB.id, folderId: folder.id, sortOrder: 1_000 },
-      { deckId: deckA.id, folderId: folder.id, sortOrder: 2_000 },
-    ];
-    resolveMove?.(authoritative);
-    await act(async () => pending);
-
-    expect(folderIpc.moveDeckInLibrary).toHaveBeenCalledWith({
-      deckId: deckA.id,
+    await act(async () => {
+      resolveMove?.(committed);
+      await movement;
+    });
+    expect(harness.moveDeck).toHaveBeenCalledWith({
+      deckId: deckB.id,
       targetFolderId: folder.id,
       targetIndex: 1,
-      expectedOrganizationRevision: 1,
+      expectedOrganizationRevision: 4,
     });
-    expect(result.current.organization).toEqual(authoritative);
-    expect(result.current.announcement).toContain("Moved Alpha");
+    expect(result.current.organization?.revision).toBe(5);
+    expect(result.current.announcement).toContain("Moved Anatomy to Nursing, position 2.");
+    expect(result.current.isMutating).toBe(false);
   });
 
-  it("reloads on a revision conflict and reports recovery instead of leaving optimistic state", async () => {
-    const latest = organization(4);
-    vi.mocked(folderIpc.moveDeckFolder).mockRejectedValue({
+  it("reloads after a stale revision and uses the refreshed revision for the next mutation", async () => {
+    const refreshed = { ...organization, revision: 5 };
+    harness.getOrganization
+      .mockResolvedValueOnce(organization)
+      .mockResolvedValueOnce(refreshed);
+    harness.moveDeck.mockRejectedValue({
       code: "library_organization_changed",
-      message: "stale revision",
+      message: "stale",
     });
-    vi.mocked(folderIpc.getDeckLibraryOrganization)
-      .mockResolvedValueOnce(organization())
-      .mockResolvedValueOnce(latest);
-    const showToast = vi.fn();
-    const { result } = renderHook(() =>
-      useDeckLibraryController({
-        decks: [deckA, deckB],
-        refreshDecks: vi.fn().mockResolvedValue([deckA, deckB]),
-        onOpenDeck: vi.fn(),
-        showToast,
-      }),
-    );
-    await waitFor(() => expect(result.current.organization?.revision).toBe(1));
+    harness.createFolder.mockResolvedValue({
+      ...refreshed,
+      revision: 6,
+      folders: [folder, { ...folder, id: "g".repeat(32), name: "Second" }],
+    });
+    const { result } = renderController(harness);
+    await waitFor(() => expect(result.current.organization?.revision).toBe(4));
 
     await act(async () => {
       await result.current.move({
-        kind: "folder",
-        folderId: folder.id,
-        targetIndex: 0,
-        source: "fallback",
-      });
-    });
-
-    expect(result.current.organization).toEqual(organization());
-    expect(folderIpc.moveDeckFolder).not.toHaveBeenCalled();
-
-    const secondFolder = { ...folder, id: "g".repeat(32), name: "Second", sortOrder: 2_000 };
-    const twoFolders = { ...organization(), folders: [folder, secondFolder] };
-    vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValueOnce(twoFolders);
-    // lifecycle changes exercise the same reload lane; the conflict path is covered with a non-noop below.
-    const { result: secondResult } = renderHook(() =>
-      useDeckLibraryController({
-        decks: [deckA, deckB],
-        refreshDecks: vi.fn().mockResolvedValue([deckA, deckB]),
-        onOpenDeck: vi.fn(),
-        showToast,
-      }),
-    );
-    await waitFor(() => expect(secondResult.current.organization?.folders).toHaveLength(2));
-    vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValueOnce({
-      ...twoFolders,
-      revision: 4,
-    });
-    await act(async () => {
-      await secondResult.current.move({
-        kind: "folder",
-        folderId: folder.id,
+        kind: "deck",
+        deckId: deckB.id,
+        targetFolderId: folder.id,
         targetIndex: 1,
-        source: "keyboard",
+        source: "pointer",
       });
     });
-    expect(secondResult.current.organization?.revision).toBe(4);
-    expect(showToast).toHaveBeenCalledWith(
+    expect(result.current.organization?.revision).toBe(5);
+    expect(harness.showToast).toHaveBeenCalledWith(
       "info",
       expect.stringContaining("latest organization is loaded"),
     );
+
+    act(() => result.current.openFolderCreator());
+    await act(async () => result.current.saveFolder("Second"));
+    expect(harness.createFolder).toHaveBeenCalledWith({
+      name: "Second",
+      expectedOrganizationRevision: 5,
+    });
+  });
+
+  it("owns folder sheet, collapse, archive, and rename presentation state", async () => {
+    const archived = { ...deck("z", "Archived"), archivedAt: 5 };
+    const { result } = renderController(harness, [deckA, deckB, archived]);
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    act(() => result.current.openFolderCreator());
+    expect(result.current.sheet).toEqual({ kind: "create-folder", name: "" });
+    act(() => result.current.openFolderRenamer(folder.id));
+    expect(result.current.sheet).toMatchObject({ kind: "rename-folder", name: "Nursing" });
+    act(() => result.current.toggleFolder(folder.id));
+    expect(result.current.collapsedFolderIds.has(folder.id)).toBe(true);
+    act(() => result.current.toggleArchived());
+    expect(result.current.showArchived).toBe(true);
+  });
+
+  it("confirms deck deletion, exposes undo, and refreshes both parent and organization", async () => {
+    harness.getOrganization
+      .mockResolvedValueOnce(organization)
+      .mockResolvedValue({
+        revision: 5,
+        folders: [folder],
+        placements: [{ deckId: deckB.id, folderId: null, sortOrder: 1_000 }],
+      });
+    const showToast = vi.mocked(harness.showToast);
+    const { result } = renderController(harness);
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => result.current.removeDeck(deckA.id));
+    expect(harness.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Delete “Pharmacology”?", destructive: true }),
+    );
+    expect(harness.deleteDeck).toHaveBeenCalledWith(deckA.id);
+    const action = showToast.mock.calls.find((call) => call[2]?.label === "Undo")?.[2];
+    expect(action).toBeDefined();
+
+    await act(async () => action?.run());
+    expect(harness.undo).toHaveBeenCalledWith("u".repeat(32));
+    expect(harness.refreshDecks).toHaveBeenCalled();
+    expect(harness.getOrganization.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("reloads organization when active/archive lifecycle changes", async () => {
+    const { result, rerender } = renderController(harness);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(harness.getOrganization).toHaveBeenCalledTimes(1);
+
+    rerender({ currentDecks: [{ ...deckA, archivedAt: 9 }, deckB] });
+    await waitFor(() => expect(harness.getOrganization).toHaveBeenCalledTimes(2));
   });
 });
 

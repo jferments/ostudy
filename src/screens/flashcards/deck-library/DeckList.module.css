@@ -1,0 +1,7 @@
+@layer components {
+  .list {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-2);
+  }
+}

@@ -3,128 +3,161 @@ import { describe, expect, it } from "vitest";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
 import {
-  applyOptimisticLibraryMove,
+  applyOptimisticMove,
+  createDeckLibrarySnapshot,
   deckLifecycleSignature,
-  isNoopLibraryMove,
   orderedDecksForFolder,
   partitionDecksByLifecycle,
-  placementIndex,
+  validateMoveIntent,
 } from "./organizationModel";
 
-const folderA = {
-  id: "f".repeat(32),
-  name: "Nursing",
-  sortOrder: 1_000,
-  createdAt: 1,
-  updatedAt: 1,
-  revision: 1,
+const folderA = folder("a", "Nursing", 2_000);
+const folderB = folder("b", "Clinical", 1_000);
+const activeA = deck("1", "Zulu");
+const activeB = deck("2", "Alpha");
+const activeC = deck("3", "Beta");
+const archived = { ...deck("4", "Archive"), archivedAt: 123 };
+const organization: DeckLibraryOrganization = {
+  revision: 7,
+  folders: [folderA, folderB],
+  placements: [
+    { deckId: activeA.id, folderId: folderA.id, sortOrder: 2_000 },
+    { deckId: activeB.id, folderId: folderA.id, sortOrder: 1_000 },
+    { deckId: activeC.id, folderId: null, sortOrder: 1_000 },
+    { deckId: archived.id, folderId: null, sortOrder: 2_000 },
+  ],
 };
-const folderB = { ...folderA, id: "g".repeat(32), name: "Clinical", sortOrder: 2_000 };
-const alpha = deck("a", "Alpha");
-const beta = deck("b", "Beta");
-const gamma = deck("c", "Gamma");
-const archived = { ...deck("d", "Archived"), archivedAt: 4 };
 
-function organization(): DeckLibraryOrganization {
-  return {
-    revision: 7,
-    folders: [folderA, folderB],
-    placements: [
-      { deckId: alpha.id, folderId: folderA.id, sortOrder: 2_000 },
-      { deckId: beta.id, folderId: folderA.id, sortOrder: 1_000 },
-      { deckId: gamma.id, folderId: null, sortOrder: 1_000 },
-      { deckId: archived.id, folderId: null, sortOrder: 2_000 },
-    ],
-  };
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const nested of Object.values(value as Record<string, unknown>)) deepFreeze(nested);
+  }
+  return value;
 }
 
 describe("deck-library organization model", () => {
-  it("partitions lifecycle state without mutating the input", () => {
-    const input = Object.freeze([alpha, archived]);
-    const result = partitionDecksByLifecycle(input);
+  it("partitions lifecycle state without mutating or reordering the input", () => {
+    const input = deepFreeze([activeA, archived, activeB]);
+    expect(partitionDecksByLifecycle(input)).toEqual({
+      active: [activeA, activeB],
+      archived: [archived],
+    });
+    expect(input).toEqual([activeA, archived, activeB]);
+  });
 
-    expect(result.activeDecks).toEqual([alpha]);
-    expect(result.archivedDecks).toEqual([archived]);
-    expect(input).toEqual([alpha, archived]);
-    expect(deckLifecycleSignature([archived, alpha])).toBe(
-      deckLifecycleSignature([alpha, archived]),
+  it("produces a stable lifecycle signature independent of input order", () => {
+    expect(deckLifecycleSignature([activeA, archived])).toBe(
+      deckLifecycleSignature([archived, activeA]),
     );
   });
 
-  it("orders decks by placement and then by stable name fallback", () => {
-    const model = organization();
-    const unplacedZulu = deck("z", "Zulu");
-    const unplacedAble = deck("y", "Able");
-    const placements = placementIndex(model);
-
-    expect(orderedDecksForFolder([alpha, beta, gamma], placements, folderA.id)).toEqual([
-      beta,
-      alpha,
+  it("orders folders and decks by normalized policy rather than backend array order", () => {
+    const snapshot = createDeckLibrarySnapshot(
+      [activeA, activeB, activeC, archived],
+      organization,
+    );
+    expect(snapshot.folders.map((folder) => folder.name)).toEqual(["Clinical", "Nursing"]);
+    expect(snapshot.decksByFolder.get(folderA.id)?.map((deck) => deck.name)).toEqual([
+      "Alpha",
+      "Zulu",
     ]);
-    expect(
-      orderedDecksForFolder([unplacedZulu, unplacedAble, gamma], placements, null),
-    ).toEqual([gamma, unplacedAble, unplacedZulu]);
+    expect(snapshot.unsortedDecks.map((deck) => deck.name)).toEqual(["Beta"]);
+    expect(snapshot.archivedDecks).toEqual([archived]);
   });
 
-  it("applies deck and folder moves immutably", () => {
-    const input = organization();
-    const snapshot = structuredClone(input);
-    const movedDeck = applyOptimisticLibraryMove(input, {
+  it.each([
+    {
+      name: "bounds a folder move",
+      intent: { kind: "folder", folderId: folderA.id, targetIndex: 99, source: "keyboard" } as const,
+      status: "noop",
+      targetIndex: 1,
+    },
+    {
+      name: "rejects an unknown folder",
+      intent: { kind: "folder", folderId: "missing", targetIndex: 0, source: "pointer" } as const,
+      status: "invalid",
+      targetIndex: undefined,
+    },
+    {
+      name: "bounds a deck move against the target group excluding the moved deck",
+      intent: {
+        kind: "deck",
+        deckId: activeC.id,
+        targetFolderId: folderA.id,
+        targetIndex: 99,
+        source: "html-drag",
+      } as const,
+      status: "valid",
+      targetIndex: 2,
+    },
+    {
+      name: "rejects archived deck movement",
+      intent: {
+        kind: "deck",
+        deckId: archived.id,
+        targetFolderId: null,
+        targetIndex: 0,
+        source: "fallback",
+      } as const,
+      status: "invalid",
+      targetIndex: undefined,
+    },
+  ])("$name", ({ intent, status, targetIndex }) => {
+    const result = validateMoveIntent(
+      createDeckLibrarySnapshot([activeA, activeB, activeC, archived], organization),
+      intent,
+    );
+    expect(result.status).toBe(status);
+    if (result.status !== "invalid") expect(result.intent.targetIndex).toBe(targetIndex);
+  });
+
+  it("applies an immutable cross-folder deck move and normalizes both groups", () => {
+    const frozen = deepFreeze(structuredClone(organization));
+    const result = applyOptimisticMove(frozen, {
       kind: "deck",
-      deckId: alpha.id,
+      deckId: activeA.id,
       targetFolderId: null,
       targetIndex: 0,
-      source: "html-drag",
+      source: "keyboard",
     });
-    const movedFolder = applyOptimisticLibraryMove(input, {
+
+    expect(result).not.toBe(frozen);
+    expect(result.revision).toBe(8);
+    expect(result.placements).toEqual([
+      { deckId: activeA.id, folderId: null, sortOrder: 1_000 },
+      { deckId: activeB.id, folderId: folderA.id, sortOrder: 1_000 },
+      { deckId: activeC.id, folderId: null, sortOrder: 2_000 },
+      { deckId: archived.id, folderId: null, sortOrder: 3_000 },
+    ]);
+    expect(frozen).toEqual(organization);
+  });
+
+  it("applies an immutable folder move and normalizes sort orders", () => {
+    const frozen = deepFreeze(structuredClone(organization));
+    const result = applyOptimisticMove(frozen, {
       kind: "folder",
       folderId: folderA.id,
-      targetIndex: 1,
+      targetIndex: 0,
       source: "pointer",
     });
 
-    expect(input).toEqual(snapshot);
-    expect(movedDeck.revision).toBe(8);
-    expect(movedDeck.placements.find((placement) => placement.deckId === alpha.id)).toMatchObject({
-      folderId: null,
-      sortOrder: 1_000,
-    });
-    expect(movedDeck.placements.find((placement) => placement.deckId === beta.id)).toMatchObject({
-      folderId: folderA.id,
-      sortOrder: 1_000,
-    });
-    expect(movedFolder.folders.map((folder) => folder.id)).toEqual([folderB.id, folderA.id]);
-    expect(movedFolder.folders.map((folder) => folder.sortOrder)).toEqual([1_000, 2_000]);
+    expect(result.folders.map((folder) => [folder.id, folder.sortOrder])).toEqual([
+      [folderA.id, 1_000],
+      [folderB.id, 2_000],
+    ]);
+    expect(result.placements).not.toBe(frozen.placements);
+    expect(frozen).toEqual(organization);
   });
 
-  it("recognizes bounded no-op moves before a mutation starts", () => {
-    const model = organization();
+  it("uses deterministic name and id tie-breakers for missing/equal placement orders", () => {
+    const placementByDeck = new Map([
+      [activeA.id, { folderId: null, sortOrder: 1_000 }],
+      [activeB.id, { folderId: null, sortOrder: 1_000 }],
+    ]);
     expect(
-      isNoopLibraryMove(model, [alpha, beta, gamma], {
-        kind: "folder",
-        folderId: folderA.id,
-        targetIndex: -20,
-        source: "fallback",
-      }),
-    ).toBe(true);
-    expect(
-      isNoopLibraryMove(model, [alpha, beta, gamma], {
-        kind: "deck",
-        deckId: beta.id,
-        targetFolderId: folderA.id,
-        targetIndex: 0,
-        source: "keyboard",
-      }),
-    ).toBe(true);
-    expect(
-      isNoopLibraryMove(model, [alpha, beta, gamma], {
-        kind: "deck",
-        deckId: beta.id,
-        targetFolderId: null,
-        targetIndex: 99,
-        source: "keyboard",
-      }),
-    ).toBe(false);
+      orderedDecksForFolder([activeA, activeB], placementByDeck, null).map((deck) => deck.name),
+    ).toEqual(["Alpha", "Zulu"]);
   });
 });
 
@@ -137,6 +170,17 @@ function deck(seed: string, name: string): DeckSummary {
     generatedCardCount: 1,
     studyableDueCount: 1,
     archivedAt: null,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 1,
+  };
+}
+
+function folder(seed: string, name: string, sortOrder: number) {
+  return {
+    id: seed.repeat(32),
+    name,
+    sortOrder,
     createdAt: 1,
     updatedAt: 1,
     revision: 1,

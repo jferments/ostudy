@@ -1,10 +1,5 @@
+import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckFolder } from "../../../ipc/deckFolders";
-
-export interface FolderDraft {
-  mode: "create" | "rename";
-  folder: DeckFolder | null;
-  name: string;
-}
 
 export type LibraryMoveSource = "keyboard" | "html-drag" | "pointer" | "fallback";
 
@@ -27,6 +22,12 @@ export type LibraryDragPayload =
   | { kind: "deck"; id: string }
   | { kind: "folder"; id: string };
 
-export const DECK_DRAG_MIME = "application/x-ostudy-deck-id";
-export const FOLDER_DRAG_MIME = "application/x-ostudy-folder-id";
-export const UNSORTED_DATA_VALUE = "__unsorted__";
+export type LibrarySheetState =
+  | { kind: "create-deck" }
+  | { kind: "create-folder"; name: string }
+  | { kind: "rename-folder"; folder: DeckFolder; name: string };
+
+export interface DeckLifecyclePartition {
+  active: DeckSummary[];
+  archived: DeckSummary[];
+}
