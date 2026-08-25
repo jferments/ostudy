@@ -7,6 +7,9 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 
+import "./RichTextEditor.module.css";
+import "./RichContent.module.css";
+
 export const TEMPLATE_FIELD_INLINE = "templateFieldInline";
 export const TEMPLATE_FIELD_BLOCK = "templateFieldBlock";
 
