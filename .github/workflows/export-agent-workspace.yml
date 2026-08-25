@@ -13,13 +13,16 @@ jobs:
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 30
     steps:
-      - name: Check out exact branch head
+      - name: Check out exact branch head with complete history
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.sha }}
           clean: true
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Expose pinned JavaScript toolchain
         run: |
@@ -29,6 +32,9 @@ jobs:
 
       - name: Install frozen JavaScript dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Create complete repository bundle
+        run: git bundle create "$RUNNER_TEMP/ostudy-repository-${GITHUB_SHA}.bundle" --all
 
       - name: Create bounded source archive
         run: |
@@ -50,6 +56,7 @@ jobs:
         with:
           name: ostudy-workspace-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/ostudy-repository-${{ github.sha }}.bundle
             ${{ runner.temp }}/ostudy-source-${{ github.sha }}.tar.gz
             ${{ runner.temp }}/ostudy-node-modules-${{ github.sha }}.tar.gz
           if-no-files-found: error
