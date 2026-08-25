@@ -16,6 +16,11 @@ import {
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface PracticeResultsModalProps {
   cards: SelectionCard[];
@@ -104,8 +109,8 @@ export function PracticeResultsModal({
         if (!isSaving) onClose();
       }}
     >
-      <div className="practice-results-form" aria-busy={isSaving}>
-        <section className="practice-result-option">
+      <div className={ownedClassNames(ownedStyleMaps, "practice-results-form")} aria-busy={isSaving}>
+        <section className={ownedClassNames(ownedStyleMaps, "practice-result-option")}>
           <div>
             <h3>Temporary practice set</h3>
             <p>
@@ -123,7 +128,7 @@ export function PracticeResultsModal({
           </Button>
         </section>
 
-        <section className="practice-result-option saved-result-option">
+        <section className={ownedClassNames(ownedStyleMaps, "practice-result-option saved-result-option")}>
           <div>
             <h3>Save as a permanent deck</h3>
             <p>

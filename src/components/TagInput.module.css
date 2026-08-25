@@ -1,0 +1,48 @@
+/* Explicit tagInput style ownership. Global selectors are intentionally absent. */
+@layer components {
+  /* Migrated from src/styles/features/cards.css. */
+  .tag-input-control {
+    display: grid;
+      min-width: 0;
+      gap: 7px;
+  }
+  .tag-input-control > span {
+    color: var(--ostudy-color-text-secondary);
+      font-size: 0.72rem;
+      font-weight: 760;
+  }
+  .tag-input-control {
+    border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: 12px;
+      padding: 14px;
+      background: var(--ostudy-color-surface-base);
+  }
+  .tag-input-control > small {
+    margin: 0;
+      color: var(--ostudy-color-text-muted);
+      font-size: 0.76rem;
+  }
+  .tag-input-surface {
+    display: flex;
+      min-height: 42px;
+      min-width: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid var(--ostudy-color-border-strong);
+      border-radius: 8px;
+      padding: 6px;
+      background: var(--ostudy-color-surface-soft);
+  }
+  .tag-input-surface:focus-within {
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+  .tag-input-surface input {
+    min-width: 120px;
+      flex: 1 1 160px;
+      border: 0;
+      padding: 5px;
+      background: transparent;
+      box-shadow: none;
+  }
+}

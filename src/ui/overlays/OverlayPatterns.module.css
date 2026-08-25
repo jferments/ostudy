@@ -1,0 +1,116 @@
+/* Explicit overlay style ownership. Global selectors are intentionally absent. */
+@layer components {
+  /* Migrated from src/styles/base/application.css. */
+  .modal-backdrop {
+    position: fixed;
+      z-index: var(--ostudy-layer-dialog);
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--ostudy-color-overlay-scrim);
+      backdrop-filter: blur(6px);
+  }
+  .modal-card {
+    width: min(100%, 660px);
+      max-height: min(88vh, 900px);
+      overflow: auto;
+      border: 1px solid var(--ostudy-color-border-strong);
+      border-radius: 16px;
+      background: var(--ostudy-color-surface-base);
+      box-shadow: var(--ostudy-shadow-level-4);
+  }
+  .modal-small {
+    max-width: 520px;
+  }
+  .modal-large {
+    max-width: 920px;
+  }
+  .modal-header {
+    display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      border-bottom: 1px solid var(--ostudy-color-border-subtle);
+      padding: 22px 24px;
+  }
+  .modal-header h2 {
+    margin-bottom: 4px;
+  }
+  .modal-header p {
+    margin-bottom: 0;
+      color: var(--ostudy-color-text-secondary);
+      font-size: 0.85rem;
+  }
+  .modal-actions {
+    display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 4px;
+  }
+
+  /* Migrated from src/styles/features/cards.css. */
+  .modal-backdrop {
+    padding: clamp(10px, 3vw, 24px);
+  }
+  .modal-card {
+    width: min(calc(100vw - 32px), 680px);
+      max-width: none;
+      overflow-x: hidden;
+  }
+  .modal-small {
+    width: min(calc(100vw - 32px), 520px);
+      max-width: none;
+  }
+  .modal-medium {
+    width: min(calc(100vw - 32px), 680px);
+      max-width: none;
+  }
+  .modal-large {
+    width: min(calc(100vw - 32px), 980px);
+      max-width: none;
+  }
+  .modal-help-text {
+    margin: 0;
+      color: var(--ostudy-color-text-muted);
+      font-size: 0.76rem;
+  }
+  .modal-empty-state {
+    min-height: 220px;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+  }
+  @media (max-width: 760px) {
+    .modal-header {
+      padding: 18px;
+    }
+  }
+  @media (max-width: 560px) {
+    .modal-actions {
+      align-items: stretch;
+          flex-direction: column;
+    }
+    .modal-actions button {
+      width: 100%;
+    }
+    .modal-card,
+    .modal-small,
+    .modal-medium,
+    .modal-large {
+      width: calc(100vw - 20px);
+          max-height: calc(100vh - 20px);
+    }
+  }
+
+  /* Migrated from src/styles/features/scheduling.css. */
+  .schedule-action-dialog .modal-card {
+    max-width: 32rem;
+  }
+
+  /* Migrated from src/styles/features/ui-overhaul.css. */
+  .modal-help-text {
+    overflow-wrap: anywhere;
+      word-break: normal;
+  }
+}

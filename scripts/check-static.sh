@@ -86,6 +86,7 @@ pnpm install --frozen-lockfile
 pnpm run fonts:install
 pnpm run verify:versions
 pnpm run verify:fonts
+node "$SCRIPT_DIR/verify-owned-class-usage.mjs"
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
 
 step "Frontend type checking"

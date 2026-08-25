@@ -20,7 +20,10 @@ import {
 } from "../ipc/studyGuides";
 import { Dialog } from "../ui/overlays/Dialog";
 import styles from "./StudyGuideDialog.module.css";
-import { Button } from "../ui/primitives/Button";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+
+const ownedStyleMaps = sharedClassMaps;
+
 
 interface StudyGuideDialogProps {
   documentId: string;
@@ -294,36 +297,36 @@ export function StudyGuideDialog({
             </label>
           ) : null}
           {guide ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isExporting || isGenerating || isSaving}
               onClick={() => void exportPdf()}
             >
               {isExporting ? "Exporting…" : "Export PDF"}
-            </Button>
+            </button>
           ) : null}
-          <Button type="button" variant="secondary" onClick={() => void openSource()}>
+          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={() => void openSource()}>
             Open source
-          </Button>
+          </button>
           {isGenerating ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isCanceling}
               onClick={() => void stopGeneration()}
             >
               {isCanceling ? "Stopping…" : "Stop generation"}
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
               type="button"
-              variant={guide ? "secondary" : "primary"}
+              className={ownedClassNames(ownedStyleMaps, guide ? "secondary-button" : "primary-button")}
               disabled={isSaving || isExporting}
               onClick={() => void generate()}
             >
               {guide ? "Regenerate" : "Create study guide"}
-            </Button>
+            </button>
           )}
         </div>
       </header>
@@ -371,18 +374,18 @@ export function StudyGuideDialog({
                 </aside>
               ) : null}
               <div className={styles.editorActions}>
-                <Button type="button" variant="secondary" onClick={beginGuideNote}>
+                <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={beginGuideNote}>
                   {guideNote ? "Edit guide note" : "Add guide note"}
-                </Button>
+                </button>
                 {guideNote ? (
-                  <Button
+                  <button
                     type="button"
-                    variant="secondary"
+                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                     disabled={isSaving}
                     onClick={() => void discardOverlay(guideNote, "Guide note removed.")}
                   >
                     Remove guide note
-                  </Button>
+                  </button>
                 ) : null}
               </div>
             </section>
@@ -425,22 +428,22 @@ export function StudyGuideDialog({
               : "Personal notes attach to the document or stable learning topic and remain available across guide regeneration. Clear the text and save to remove an existing note."}
           </p>
           <div className={styles.editorActions}>
-            <Button
+            <button
               type="button"
-              variant="primary"
+              className={ownedClassNames(ownedStyleMaps, "primary-button")}
               disabled={isSaving}
               onClick={() => void saveEditing()}
             >
               {isSaving ? "Saving…" : "Save"}
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isSaving}
               onClick={() => setEditing(null)}
             >
               Cancel
-            </Button>
+            </button>
           </div>
         </div>
       ) : null}
@@ -491,43 +494,43 @@ function StudyGuideSectionView({
           <h2>{section.title}</h2>
         </div>
         <div className={styles.sectionActions}>
-          <Button type="button" variant="secondary" onClick={onOpenSource}>
+          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onOpenSource}>
             Open source
-          </Button>
-          <Button type="button" variant="secondary" onClick={onEditNote}>
+          </button>
+          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onEditNote}>
             {note ? "Edit note" : "Add note"}
-          </Button>
+          </button>
           {note ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={actionsDisabled}
               onClick={() => onDiscardOverlay(note, "Topic note removed.")}
             >
               Remove note
-            </Button>
+            </button>
           ) : null}
-          <Button type="button" variant="secondary" onClick={onEditSection}>
+          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onEditSection}>
             {override ? "Edit override" : "Edit section"}
-          </Button>
+          </button>
           {override ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={actionsDisabled}
               onClick={() => onDiscardOverlay(override, "Section edit reset.")}
             >
               Reset section edit
-            </Button>
+            </button>
           ) : null}
-          <Button
+          <button
             type="button"
-            variant="primary"
+            className={ownedClassNames(ownedStyleMaps, "primary-button")}
             disabled={!projection || projection.cardCount === 0}
             onClick={onStudy}
           >
             Study linked cards{projection ? ` (${projection.cardCount})` : ""}
-          </Button>
+          </button>
         </div>
       </header>
 
@@ -552,14 +555,14 @@ function StudyGuideSectionView({
             a conflict.
           </p>
           <div className={styles.overrideText}>{renderPlainText(conflict.plainText)}</div>
-          <Button
+          <button
             type="button"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
             disabled={actionsDisabled}
             onClick={() => onDiscardOverlay(conflict, "Older section edit discarded.")}
           >
             Discard older edit
-          </Button>
+          </button>
         </aside>
       ) : null}
     </section>

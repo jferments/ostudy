@@ -16,6 +16,11 @@ import { Button } from "../../ui/primitives/Button";
 import { EmptyState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./CardBrowserWorkspace.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 export interface TransferableCard {
   noteId: string;
@@ -116,10 +121,10 @@ export function MoveCopyModal({
           }
         />
       ) : (
-        <div className="move-copy-form" aria-busy={isSaving}>
-          <fieldset className="transfer-mode-group">
+        <div className={ownedClassNames(ownedStyleMaps, "move-copy-form")} aria-busy={isSaving}>
+          <fieldset className={ownedClassNames(ownedStyleMaps, "transfer-mode-group")}>
             <legend>Action</legend>
-            <label className="transfer-mode-option">
+            <label className={ownedClassNames(ownedStyleMaps, "transfer-mode-option")}>
               <input
                 type="radio"
                 name="transfer-mode"
@@ -133,7 +138,7 @@ export function MoveCopyModal({
                 <small>Keep all review history and reattribute it to the destination deck.</small>
               </span>
             </label>
-            <label className="transfer-mode-option">
+            <label className={ownedClassNames(ownedStyleMaps, "transfer-mode-option")}>
               <input
                 type="radio"
                 name="transfer-mode"
@@ -149,7 +154,7 @@ export function MoveCopyModal({
             </label>
           </fieldset>
 
-          <label className="move-copy-destination">
+          <label className={ownedClassNames(ownedStyleMaps, "move-copy-destination")}>
             <span>Destination deck</span>
             <select
               value={targetDeckId}
@@ -166,7 +171,7 @@ export function MoveCopyModal({
             </select>
           </label>
 
-          <label className="compact-checkbox move-copy-duplicate-option">
+          <label className={ownedClassNames(ownedStyleMaps, "compact-checkbox move-copy-duplicate-option")}>
             <input
               type="checkbox"
               checked={skipDuplicates}

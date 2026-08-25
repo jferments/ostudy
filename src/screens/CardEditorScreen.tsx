@@ -44,8 +44,11 @@ import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
-import { Button } from "../ui/primitives/Button";
-import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./CardEditorScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 
 interface CardEditorDraftPayload extends Record<string, unknown> {
@@ -634,37 +637,37 @@ export function CardEditorScreen({
 
   return (
     <div
-      className="card-editor-screen"
+      className={ownedClassNames(ownedStyleMaps, "card-editor-screen")}
       aria-busy={isSaving || isLoadingTemplate}
     >
-      <header className="screen-header card-editor-header">
+      <header className={ownedClassNames(ownedStyleMaps, "screen-header card-editor-header")}>
         <div>
-          <Button
+          <button
             type="button"
-            variant="back"
+            className={ownedClassNames(ownedStyleMaps, "back-button")}
             disabled={isSaving}
             onClick={() => void cancel()}
           >
             ← {deck.name}
-          </Button>
+          </button>
           <h1>{title}</h1>
         </div>
-        <div className="header-actions">
+        <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
           {existing ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isSaving || dirty}
               title={dirty ? "Save or discard edits before moving this card" : undefined}
               onClick={openMoveCopy}
             >
               Move / copy
-            </Button>
+            </button>
           ) : null}
           {!selectedCustomTemplate && builtInCardType === "basic" ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isSaving}
               onClick={() => {
                 setPreviewOpen((value) => !value);
@@ -672,41 +675,41 @@ export function CardEditorScreen({
               }}
             >
               {previewOpen ? "Hide preview" : "Preview card"}
-            </Button>
+            </button>
           ) : null}
-          <Button
+          <button
             type="button"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
             disabled={isSaving}
             onClick={() => void cancel()}
           >
             Cancel
-          </Button>
+          </button>
           {!existing ? (
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={!canSave}
               onClick={() => void save(true, false)}
             >
               {selectedCustomTemplate ? "Generate + another" : "Save + another"}
-            </Button>
+            </button>
           ) : null}
-          <Button
+          <button
             type="button"
-            variant="primary"
+            className={ownedClassNames(ownedStyleMaps, "primary-button")}
             disabled={!canSave}
             onClick={() => void save(false, false)}
           >
             {isSaving ? (selectedCustomTemplate ? "Generating…" : "Saving…") : saveLabel}
-          </Button>
+          </button>
         </div>
       </header>
 
-      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
 
       {duplicateMatches.length > 0 ? (
-        <section className="duplicate-warning" aria-labelledby="duplicate-warning-title">
+        <section className={ownedClassNames(ownedStyleMaps, "duplicate-warning")} aria-labelledby="duplicate-warning-title">
           <div>
             <h2 id="duplicate-warning-title">This looks like an exact duplicate</h2>
             <p>
@@ -723,30 +726,30 @@ export function CardEditorScreen({
                 </article>
               ))}
           </div>
-          <div className="duplicate-warning-actions">
-            <Button
+          <div className={ownedClassNames(ownedStyleMaps, "duplicate-warning-actions")}>
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isSaving}
               onClick={() => setDuplicateMatches([])}
             >
               Keep editing
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="danger"
+              className={ownedClassNames(ownedStyleMaps, "danger-button")}
               disabled={isSaving}
               onClick={() => void save(false, true)}
             >
               Save duplicate anyway
-            </Button>
+            </button>
           </div>
         </section>
       ) : null}
 
-      <div className={previewOpen ? "card-editor-layout with-preview" : "card-editor-layout"}>
-        <div className="card-editor-fields">
-          <label className="card-template-control">
+      <div className={ownedClassNames(ownedStyleMaps, previewOpen ? "card-editor-layout with-preview" : "card-editor-layout")}>
+        <div className={ownedClassNames(ownedStyleMaps, "card-editor-fields")}>
+          <label className={ownedClassNames(ownedStyleMaps, "card-template-control")}>
             <span>Card template</span>
             <select
               aria-label="Card template"
@@ -778,7 +781,7 @@ export function CardEditorScreen({
             </small>
           </label>
 
-          <label className="card-deck-control">
+          <label className={ownedClassNames(ownedStyleMaps, "card-deck-control")}>
             <span>Deck</span>
             <select
               aria-label="Deck"
@@ -798,7 +801,7 @@ export function CardEditorScreen({
             <small>A card belongs to one active deck and can have any number of tags.</small>
           </label>
 
-          {isLoadingTemplate ? <InlineProgress>Loading template…</InlineProgress> : null}
+          {isLoadingTemplate ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Loading template…</div> : null}
           {selectedCustomTemplate ? (
             <TemplateEntryForm
               key={`${selectedCustomTemplate.id}-${editorGeneration}`}
@@ -861,7 +864,7 @@ export function CardEditorScreen({
                 }}
                 minHeight={220}
               />
-              <label className="switch-row reverse-card-option">
+              <label className={ownedClassNames(ownedStyleMaps, "switch-row reverse-card-option")}>
                 <span>
                   <strong>Create reverse card</strong>
                   <small>Study both directions with separate schedules and review histories.</small>
@@ -891,32 +894,31 @@ export function CardEditorScreen({
         </div>
 
         {previewOpen && builtInCardType === "basic" && !selectedCustomTemplate ? (
-          <aside className="editor-preview-panel">
-            <div className="preview-panel-heading">
+          <aside className={ownedClassNames(ownedStyleMaps, "editor-preview-panel")}>
+            <div className={ownedClassNames(ownedStyleMaps, "preview-panel-heading")}>
               <div>
-                <span className="eyebrow">LIVE PREVIEW</span>
+                <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>LIVE PREVIEW</span>
                 <h2>{previewAnswer ? "Answer" : "Question"}</h2>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="primary"
-                size="small"
+                className={ownedClassNames(ownedStyleMaps, "small-primary-button")}
                 disabled={isSaving}
                 onClick={() => setPreviewAnswer((value) => !value)}
               >
                 {previewAnswer ? "Show question" : "Reveal answer"}
-              </Button>
+              </button>
             </div>
             {tags.length > 0 ? (
-              <div className="preview-tag-list">
+              <div className={ownedClassNames(ownedStyleMaps, "preview-tag-list")}>
                 {tags.map((tag) => (
-                  <span className="tag-chip static" key={tag}>
+                  <span className={ownedClassNames(ownedStyleMaps, "tag-chip static")} key={tag}>
                     {tag}
                   </span>
                 ))}
               </div>
             ) : null}
-            <div className="flashcard-preview-surface">
+            <div className={ownedClassNames(ownedStyleMaps, "flashcard-preview-surface")}>
               <RichTextView
                 document={previewAnswer ? backDoc : frontDoc}
                 assets={assets}

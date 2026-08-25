@@ -29,6 +29,24 @@
     --ostudy-surface-pressed-scale: 0.975;
     --ostudy-surface-pressed-translate: 1px;
     --ostudy-surface-specular-opacity: 0.16;
+    --ostudy-theme-preview-console-canvas: #02150b;
+    --ostudy-theme-preview-console-card: #15e875;
+    --ostudy-theme-preview-console-chrome: #06361b;
+    --ostudy-theme-preview-dark-border: rgb(255 255 255 / 12%);
+    --ostudy-theme-preview-dark-canvas: #10151d;
+    --ostudy-theme-preview-dark-card: #e8eef5;
+    --ostudy-theme-preview-dark-header: #2d3b4d;
+    --ostudy-theme-preview-dark-sidebar: #1b2430;
+    --ostudy-theme-preview-light-border: #c9d1da;
+    --ostudy-theme-preview-light-canvas: #f5f7fa;
+    --ostudy-theme-preview-light-card: #ffffff;
+    --ostudy-theme-preview-light-card-shadow: 0 2px 8px rgb(17 24 39 / 10%);
+    --ostudy-theme-preview-light-header: #d7dee8;
+    --ostudy-theme-preview-light-sidebar: #e4e9ef;
+    --ostudy-theme-preview-synthwave-canvas: #130524;
+    --ostudy-theme-preview-synthwave-card: #e642c6;
+    --ostudy-theme-preview-synthwave-header: #5a1769;
+    --ostudy-theme-preview-synthwave-sidebar: #32104e;
     --ostudy-tooltip-delay: 360ms;
     --ostudy-tooltip-max-width: 320px;
   }

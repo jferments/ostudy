@@ -145,7 +145,7 @@
 
   .moreList button {
     display: flex;
-    min-height: var(--touch-target-min);
+    min-height: var(--ostudy-size-touch-target);
     align-items: center;
     gap: var(--ostudy-space-3);
     border: 1px solid var(--ostudy-color-border-subtle);

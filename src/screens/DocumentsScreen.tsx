@@ -24,7 +24,10 @@ import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import progressStyles from "./DocumentGenerationProgress.module.css";
 import styles from "./DocumentsScreen.module.css";
-import { Button } from "../ui/primitives/Button";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+
+const ownedStyleMaps = sharedClassMaps;
+
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
@@ -348,9 +351,9 @@ export function DocumentsScreen({
         icon="document"
         compact
         actions={
-          <Button
+          <button
             type="button"
-            variant="primary"
+            className={ownedClassNames(ownedStyleMaps, "primary-button")}
             disabled={
               isUploading ||
               busyDocumentId !== null ||
@@ -360,7 +363,7 @@ export function DocumentsScreen({
             onClick={() => void uploadDocument()}
           >
             {isUploading ? "Processing document…" : "Upload document"}
-          </Button>
+          </button>
         }
       />
 
@@ -483,81 +486,81 @@ export function DocumentsScreen({
                   ) : null}
                 </div>
                 <div className={styles.actions}>
-                  <Button
+                  <button
                     type="button"
-                    variant="secondary"
+                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                     disabled={busy}
                     onClick={() => void openSource(document)}
                   >
                     Open source
-                  </Button>
+                  </button>
                   {document.lifecycleState === "processing" ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="secondary"
+                      className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                       disabled={canceling}
                       onClick={() => void stopGeneration(document)}
                     >
                       {canceling ? "Stopping…" : "Stop generation"}
-                    </Button>
+                    </button>
                   ) : null}
                   {canGenerateGuide ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="primary"
+                      className={ownedClassNames(ownedStyleMaps, "primary-button")}
                       disabled={busy || isUploading}
                       onClick={() => void generateStudyGuide(document)}
                     >
                       {guideGenerating ? "Generating study guide…" : "Generate study guide"}
-                    </Button>
+                    </button>
                   ) : null}
                   {guideGenerating ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="secondary"
+                      className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                       disabled={cancelingGuide}
                       onClick={() => void stopStudyGuide(document)}
                     >
                       {cancelingGuide ? "Stopping…" : "Stop study guide"}
-                    </Button>
+                    </button>
                   ) : null}
                   {canRetry ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="primary"
+                      className={ownedClassNames(ownedStyleMaps, "primary-button")}
                       disabled={busy || isUploading}
                       onClick={() => void retry(document)}
                     >
                       {busyDocumentId === document.id ? "Retrying…" : "Retry generation"}
-                    </Button>
+                    </button>
                   ) : null}
                   {canGenerateMore ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="primary"
+                      className={ownedClassNames(ownedStyleMaps, "primary-button")}
                       disabled={busy || isUploading}
                       onClick={() => void generateMore(document)}
                     >
                       {busyDocumentId === document.id ? "Generating…" : "Generate more cards"}
-                    </Button>
+                    </button>
                   ) : null}
-                  <Button
+                  <button
                     type="button"
-                    variant="secondary"
+                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                     disabled={busy || document.lifecycleState === "processing"}
                     onClick={() => void toggleArchived(document)}
                   >
                     {document.archivedAt === null ? "Archive" : "Restore"}
-                  </Button>
+                  </button>
                   {document.lifecycleState !== "processing" ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="danger"
+                      className={ownedClassNames(ownedStyleMaps, "danger-button")}
                       disabled={busy || isUploading}
                       onClick={() => void deleteDocument(document)}
                     >
                       {deletingDocumentId === document.id ? "Deleting…" : "Delete document"}
-                    </Button>
+                    </button>
                   ) : null}
                 </div>
               </article>

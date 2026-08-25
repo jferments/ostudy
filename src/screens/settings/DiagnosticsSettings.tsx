@@ -12,6 +12,10 @@ import {
 import styles from "./Settings.module.css";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+
+const ownedStyleMaps = sharedClassMaps;
+
 
 type DiagnosticTarget =
   | "all"
@@ -172,7 +176,7 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
         <p className={styles.note}>
           Filter preview: <code>{proposedFilter}</code>
         </p>
-        <div className="header-actions">
+        <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
           <Button
             type="button"
             variant="primary"

@@ -11,15 +11,6 @@
 @import "./document.css";
 @import "./platform.css";
 @import "../../styles/base/application.css" layer(legacy);
-@import "../../styles/features/practice.css" layer(features);
-@import "../../styles/features/cards.css" layer(features);
-@import "../../styles/features/authoring.css" layer(features);
-@import "../../styles/features/templates.css" layer(features);
-@import "../../styles/features/scheduling.css" layer(features);
-@import "../../styles/features/analytics.css" layer(features);
-@import "../../styles/features/assets.css" layer(features);
-@import "../../styles/features/ui-overhaul.css" layer(features);
-@import "../../styles/features/page-density.css" layer(features);
 @import "./utilities.css";
 
 @layer tokens {

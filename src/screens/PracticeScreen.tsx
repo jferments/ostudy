@@ -23,6 +23,7 @@ import { type RescheduleIntent, type ScheduleAction } from "../ipc/scheduling";
 import { type AppSettings } from "../ipc/settings";
 import { saveUiCheckpoint, type PracticeCheckpoint } from "../ipc/uiCheckpoint";
 import { useExperience } from "../ui/feedback/ExperienceProvider";
+import { Icon } from "../ui/icons/Icon";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { ActivePractice } from "./practice/ActivePractice";
@@ -36,7 +37,11 @@ import {
 import { PracticeComplete } from "./practice/PracticeComplete";
 import { PracticeSetup, type PracticeWorkloadStatus } from "./practice/PracticeSetup";
 import { StudyGuideLibrarySection } from "./StudyGuideLibrarySection";
-import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./practice/Practice.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface PracticeScreenProps {
   decks: DeckSummary[];
@@ -750,9 +755,12 @@ export function PracticeScreen({
   }
 
   return (
-    <div className="screen practice-screen">
-      <header className="screen-header compact-screen-header">
+    <div className={ownedClassNames(ownedStyleMaps, "screen practice-screen")}>
+      <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
         <div>
+          <span className={ownershipStyles.screenIcon} aria-hidden="true">
+            <Icon name="brain" size={22} />
+          </span>
           <h1>Practice</h1>
           <p>
             Scheduled sessions protect ready reviews and daily workload limits. Extra study is
@@ -760,12 +768,12 @@ export function PracticeScreen({
           </p>
         </div>
       </header>
-      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
       {selectedTagIds.size > 0 ? (
-        <InlineNotice kind="info">
+        <div className={ownedClassNames(ownedStyleMaps, "inline-alert info-alert")}>
           This launch is scoped to {selectedTagIds.size} selected tag
           {selectedTagIds.size === 1 ? "" : "s"}.
-        </InlineNotice>
+        </div>
       ) : null}
       <PracticeSetup
         decks={activeDecks}

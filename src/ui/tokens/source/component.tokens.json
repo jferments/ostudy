@@ -1,48 +1,220 @@
 {
   "surface": {
-    "interactiveLift": { "$type": "dimension", "$value": "-1px" },
-    "pressedTranslate": { "$type": "dimension", "$value": "1px" },
-    "pressedScale": { "$type": "number", "$value": "0.975" },
-    "specularOpacity": { "$type": "number", "$value": "0.16" }
+    "interactiveLift": {
+      "$type": "dimension",
+      "$value": "-1px"
+    },
+    "pressedTranslate": {
+      "$type": "dimension",
+      "$value": "1px"
+    },
+    "pressedScale": {
+      "$type": "number",
+      "$value": "0.975"
+    },
+    "specularOpacity": {
+      "$type": "number",
+      "$value": "0.16"
+    }
   },
   "button": {
-    "height": { "$type": "dimension", "$value": "{size.control}" },
-    "radius": { "$type": "dimension", "$value": "{radius.small}" },
-    "pressScaleX": { "$type": "number", "$value": "0.982" },
-    "pressScaleY": { "$type": "number", "$value": "0.965" }
+    "height": {
+      "$type": "dimension",
+      "$value": "{size.control}"
+    },
+    "radius": {
+      "$type": "dimension",
+      "$value": "{radius.small}"
+    },
+    "pressScaleX": {
+      "$type": "number",
+      "$value": "0.982"
+    },
+    "pressScaleY": {
+      "$type": "number",
+      "$value": "0.965"
+    }
   },
   "navigation": {
-    "wideWidth": { "$type": "dimension", "$value": "248px" },
-    "mediumWidth": { "$type": "dimension", "$value": "176px" },
-    "compactHeight": { "$type": "dimension", "$value": "68px" },
-    "appBarHeight": { "$type": "dimension", "$value": "56px" }
+    "wideWidth": {
+      "$type": "dimension",
+      "$value": "248px"
+    },
+    "mediumWidth": {
+      "$type": "dimension",
+      "$value": "176px"
+    },
+    "compactHeight": {
+      "$type": "dimension",
+      "$value": "68px"
+    },
+    "appBarHeight": {
+      "$type": "dimension",
+      "$value": "56px"
+    }
   },
   "motion": {
-    "routeDistance": { "$type": "dimension", "$value": "16px" },
-    "tabDistance": { "$type": "dimension", "$value": "8px" },
-    "sheetDistance": { "$type": "dimension", "$value": "24px" },
-    "parallaxBackground": { "$type": "dimension", "$value": "3px" },
-    "parallaxMidground": { "$type": "dimension", "$value": "5px" }
+    "routeDistance": {
+      "$type": "dimension",
+      "$value": "16px"
+    },
+    "tabDistance": {
+      "$type": "dimension",
+      "$value": "8px"
+    },
+    "sheetDistance": {
+      "$type": "dimension",
+      "$value": "24px"
+    },
+    "parallaxBackground": {
+      "$type": "dimension",
+      "$value": "3px"
+    },
+    "parallaxMidground": {
+      "$type": "dimension",
+      "$value": "5px"
+    }
   },
   "practiceCard": {
-    "radius": { "$type": "dimension", "$value": "{radius.xlarge}" },
-    "stackOffsetX": { "$type": "dimension", "$value": "7px" },
-    "stackOffsetY": { "$type": "dimension", "$value": "9px" },
-    "stackRotation": { "$type": "number", "$value": "0.55" },
-    "progressHeight": { "$type": "dimension", "$value": "8px" }
+    "radius": {
+      "$type": "dimension",
+      "$value": "{radius.xlarge}"
+    },
+    "stackOffsetX": {
+      "$type": "dimension",
+      "$value": "7px"
+    },
+    "stackOffsetY": {
+      "$type": "dimension",
+      "$value": "9px"
+    },
+    "stackRotation": {
+      "$type": "number",
+      "$value": "0.55"
+    },
+    "progressHeight": {
+      "$type": "dimension",
+      "$value": "8px"
+    }
   },
   "tooltip": {
-    "maxWidth": { "$type": "dimension", "$value": "320px" },
-    "delay": { "$type": "duration", "$value": "360ms" }
+    "maxWidth": {
+      "$type": "dimension",
+      "$value": "320px"
+    },
+    "delay": {
+      "$type": "duration",
+      "$value": "360ms"
+    }
   },
   "artwork": {
-    "emptyMaxWidth": { "$type": "dimension", "$value": "280px" },
-    "completionMaxWidth": { "$type": "dimension", "$value": "340px" }
+    "emptyMaxWidth": {
+      "$type": "dimension",
+      "$value": "280px"
+    },
+    "completionMaxWidth": {
+      "$type": "dimension",
+      "$value": "340px"
+    }
   },
   "layout": {
-    "readingWidth": { "$type": "dimension", "$value": "{size.contentReading}" },
-    "workspaceWidth": { "$type": "dimension", "$value": "{size.contentWorkspace}" },
-    "wideWidth": { "$type": "dimension", "$value": "{size.contentWide}" },
-    "pageGutter": { "$type": "dimension", "$value": "clamp(18px, 4vw, 48px)" }
+    "readingWidth": {
+      "$type": "dimension",
+      "$value": "{size.contentReading}"
+    },
+    "workspaceWidth": {
+      "$type": "dimension",
+      "$value": "{size.contentWorkspace}"
+    },
+    "wideWidth": {
+      "$type": "dimension",
+      "$value": "{size.contentWide}"
+    },
+    "pageGutter": {
+      "$type": "dimension",
+      "$value": "clamp(18px, 4vw, 48px)"
+    }
+  },
+  "themePreview": {
+    "dark": {
+      "border": {
+        "$type": "color",
+        "$value": "rgb(255 255 255 / 12%)"
+      },
+      "canvas": {
+        "$type": "color",
+        "$value": "#10151d"
+      },
+      "sidebar": {
+        "$type": "color",
+        "$value": "#1b2430"
+      },
+      "header": {
+        "$type": "color",
+        "$value": "#2d3b4d"
+      },
+      "card": {
+        "$type": "color",
+        "$value": "#e8eef5"
+      }
+    },
+    "light": {
+      "border": {
+        "$type": "color",
+        "$value": "#c9d1da"
+      },
+      "canvas": {
+        "$type": "color",
+        "$value": "#f5f7fa"
+      },
+      "sidebar": {
+        "$type": "color",
+        "$value": "#e4e9ef"
+      },
+      "header": {
+        "$type": "color",
+        "$value": "#d7dee8"
+      },
+      "card": {
+        "$type": "color",
+        "$value": "#ffffff"
+      },
+      "cardShadow": {
+        "$type": "shadow",
+        "$value": "0 2px 8px rgb(17 24 39 / 10%)"
+      }
+    },
+    "console": {
+      "canvas": {
+        "$type": "color",
+        "$value": "#02150b"
+      },
+      "chrome": {
+        "$type": "color",
+        "$value": "#06361b"
+      },
+      "card": {
+        "$type": "color",
+        "$value": "#15e875"
+      }
+    },
+    "synthwave": {
+      "canvas": {
+        "$type": "color",
+        "$value": "#130524"
+      },
+      "sidebar": {
+        "$type": "color",
+        "$value": "#32104e"
+      },
+      "header": {
+        "$type": "color",
+        "$value": "#5a1769"
+      },
+      "card": {
+        "$type": "color",
+        "$value": "#e642c6"
+      }
+    }
   }
 }

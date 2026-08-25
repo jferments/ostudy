@@ -155,7 +155,7 @@
   }
 
   .deckSelect select {
-    min-height: var(--control-height);
+    min-height: var(--ostudy-size-control);
     padding-block: var(--ostudy-space-2);
     line-height: 1.35;
   }
@@ -192,7 +192,7 @@
 
   :global(:root[data-layout-mode="compact"]) .tab {
     min-width: 0;
-    min-height: var(--touch-target-min);
+    min-height: var(--ostudy-size-touch-target);
     border-bottom-color: var(--ostudy-color-border-subtle);
     border-radius: var(--ostudy-radius-medium);
     padding-inline: var(--ostudy-space-2);

@@ -1,10 +1,10 @@
 .card {
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 14px;
   padding: 16px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  background: var(--ostudy-color-surface-base);
+  box-shadow: var(--ostudy-shadow-level-4);
 }
 
 .card h2 {
@@ -15,7 +15,7 @@
 .field {
   display: grid;
   gap: 7px;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.88rem;
   font-weight: 720;
 }
@@ -28,27 +28,27 @@
 .reasoningField {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ostudy-color-border-subtle);
 }
 
 .note,
 .capabilityNote,
 .timeoutNote {
   margin: 12px 0 0;
-  color: var(--muted);
+  color: var(--ostudy-color-text-muted);
   font-size: 0.82rem;
   line-height: 1.45;
 }
 
 .capabilityNote {
   padding: 9px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--surface) 82%, var(--bg));
+  background: color-mix(in srgb, var(--ostudy-color-surface-base) 82%, var(--ostudy-color-canvas));
 }
 
 .timeoutNote {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ostudy-color-border-subtle);
   padding-top: 10px;
 }
 

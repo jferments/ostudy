@@ -43,7 +43,7 @@
     background: linear-gradient(100deg, transparent 20%, var(--ostudy-color-surface-highlight) 48%, transparent 76%);
     content: "";
     transform: translateX(-100%);
-    animation: skeleton-sweep 1.4s var(--ostudy-motion-ease-standard) infinite;
+    animation: skeleton-sweep var(--ostudy-motion-duration-skeleton) var(--ostudy-motion-ease-standard) infinite;
   }
 
   :root[data-motion="reduced"] .skeleton::after,

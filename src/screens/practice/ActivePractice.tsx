@@ -19,6 +19,11 @@ import type { ConfidenceScore } from "./confidence";
 import styles from "./ActivePractice.module.css";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "./Practice.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface ActivePracticeProps {
   session: PracticeSession;
@@ -120,7 +125,7 @@ export function ActivePractice({
 
   const cardSurface = animateFlip ? (
     <section
-      className="practice-card-surface practice-flip-card"
+      className={ownedClassNames(ownedStyleMaps, `${styles.cardSurface} practice-card-surface practice-flip-card`)}
       data-flipped={showingAnswer}
       role="button"
       tabIndex={0}
@@ -143,20 +148,20 @@ export function ActivePractice({
         activateAnimatedCard();
       }}
     >
-      <div className="practice-flip-inner">
-        <div className="practice-flip-face practice-flip-front" aria-hidden={showingAnswer}>
-          <span className="practice-side-label">Question</span>
+      <div className={ownedClassNames(ownedStyleMaps, "practice-flip-inner")}>
+        <div className={ownedClassNames(ownedStyleMaps, "practice-flip-face practice-flip-front")} aria-hidden={showingAnswer}>
+          <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Question</span>
           <RichTextView
             document={current.presentation.frontDoc}
             assets={current.presentation.assets}
             onLinkError={onLinkError}
           />
           {!showingAnswer ? (
-            <small className="practice-flip-hint">Click the card to flip it</small>
+            <small className={ownedClassNames(ownedStyleMaps, "practice-flip-hint")}>Click the card to flip it</small>
            ) : null}
         </div>
-        <div className="practice-flip-face practice-flip-back" aria-hidden={!showingAnswer}>
-          <span className="practice-side-label">Answer</span>
+        <div className={ownedClassNames(ownedStyleMaps, "practice-flip-face practice-flip-back")} aria-hidden={!showingAnswer}>
+          <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Answer</span>
           <RichTextView
             document={current.presentation.backDoc}
             assets={current.presentation.assets}
@@ -166,8 +171,8 @@ export function ActivePractice({
       </div>
     </section>
   ) : (
-    <section className="practice-card-surface">
-      <span className="practice-side-label">Question</span>
+    <section className={ownedClassNames(ownedStyleMaps, `${styles.cardSurface} practice-card-surface`)}>
+      <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Question</span>
       <RichTextView
         document={current.presentation.frontDoc}
         assets={current.presentation.assets}
@@ -175,8 +180,8 @@ export function ActivePractice({
       />
       {revealed ? (
         <>
-          <div className="practice-answer-divider" />
-          <span className="practice-side-label">Answer</span>
+          <div className={ownedClassNames(ownedStyleMaps, "practice-answer-divider")} />
+          <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Answer</span>
           <RichTextView
             document={current.presentation.backDoc}
             assets={current.presentation.assets}
@@ -188,10 +193,10 @@ export function ActivePractice({
   );
 
   return (
-    <div className="screen practice-screen active-practice-screen">
-      <header className="practice-session-header">
-        <div className="practice-session-title">
-          <span className="eyebrow">
+    <div className={ownedClassNames(ownedStyleMaps, "screen practice-screen active-practice-screen")}>
+      <header className={ownedClassNames(ownedStyleMaps, "practice-session-header")}>
+        <div className={ownedClassNames(ownedStyleMaps, "practice-session-title")}>
+          <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>
             {session.mode === "extra"
               ? "EXTRA PRACTICE"
               : session.mode === "custom"
@@ -199,23 +204,23 @@ export function ActivePractice({
                 : "PRACTICE"}
           </span>
           <h1>{current.deckName}</h1>
-          <div className="practice-session-meta">
+          <div className={ownedClassNames(ownedStyleMaps, "practice-session-meta")}>
             <span
-              className="practice-progress-chip"
+              className={ownedClassNames(ownedStyleMaps, "practice-progress-chip")}
               aria-label={`${position + 1} of ${session.cardCount} cards, ${ratedCount} studied, ${remainingCount} remaining`}
             >
               <strong>{ratedCount} studied</strong>
               <span>· {remainingCount} remaining</span>
             </span>
             {current.needsMorePractice ? (
-              <span className="schedule-status-badge needs-practice">Needs more practice</span>
+              <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge needs-practice")}>Needs more practice</span>
             ) : null}
           </div>
         </div>
-        <div className="practice-header-actions">
+        <div className={ownedClassNames(ownedStyleMaps, "practice-header-actions")}>
           <Button
             type="button"
-            variant="secondary" className="practice-header-button"
+            variant="secondary" className={ownedClassNames(ownedStyleMaps, "practice-header-button")}
             disabled={busy}
             onClick={onEdit}
           >
@@ -223,7 +228,7 @@ export function ActivePractice({
           </Button>
           <Menu
             label="Schedule"
-            className="practice-header-button"
+            className={ownedClassNames(ownedStyleMaps, "practice-header-button")}
             disabled={busy}
             items={[
               {
@@ -247,7 +252,7 @@ export function ActivePractice({
           />
           <button
             type="button"
-            className="practice-end-button practice-header-button"
+            className={ownedClassNames(ownedStyleMaps, "practice-end-button practice-header-button")}
             disabled={busy}
             onClick={onEnd}
           >
@@ -258,7 +263,7 @@ export function ActivePractice({
 
       <div className={styles.progressRow}>
         <Progress
-          className="practice-progress-track"
+          className={ownedClassNames(ownedStyleMaps, "practice-progress-track")}
           label="Practice session progress"
           value={ratedCount}
           max={session.cardCount}
@@ -280,7 +285,7 @@ export function ActivePractice({
       </div>
 
       {!revealed ? (
-        <div className="practice-primary-action">
+        <div className={ownedClassNames(ownedStyleMaps, "practice-primary-action")}>
           <Button
             type="button"
             variant="primary" size="large"
@@ -294,15 +299,15 @@ export function ActivePractice({
         <section
           ref={ratingPanelRef}
           tabIndex={-1}
-          className="review-rating-panel confidence-rating-panel"
+          className={ownedClassNames(ownedStyleMaps, "review-rating-panel confidence-rating-panel")}
           aria-labelledby="confidence-rating-heading"
           data-tour-anchor="practice.confidence"
         >
-          <div className="confidence-rating-heading">
+          <div className={ownedClassNames(ownedStyleMaps, "confidence-rating-heading")}>
             <h2 id="confidence-rating-heading">How difficult was that answer?</h2>
             <p>Choose the result that best matches your recall.</p>
           </div>
-          <div className="confidence-score-actions">
+          <div className={ownedClassNames(ownedStyleMaps, "confidence-score-actions")}>
             <ConfidenceButton
               score={0}
               label="Wrong"
@@ -348,16 +353,16 @@ function ConfidenceButton({
   return (
     <button
       type="button"
-      className={`confidence-score-button confidence-score-${score}`}
+      className={ownedClassNames(ownedStyleMaps, `confidence-score-button confidence-score-${score}`)}
       disabled={disabled}
       aria-label={`${score} ${label}`}
       aria-keyshortcuts={String(score)}
       onClick={onClick}
     >
-      <span className="confidence-score-number" aria-hidden="true">
+      <span className={ownedClassNames(ownedStyleMaps, "confidence-score-number")} aria-hidden="true">
         {score}
       </span>
-      <span className="confidence-score-copy">
+      <span className={ownedClassNames(ownedStyleMaps, "confidence-score-copy")}>
         <strong>{label}</strong>
       </span>
     </button>

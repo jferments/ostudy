@@ -5,6 +5,11 @@ import {
 import {
   type RichDocument,
 } from "../../ipc/common";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "../TemplatesScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface TemplateLayoutEditorProps {
   label: string;
@@ -26,7 +31,7 @@ export function TemplateLayoutEditor({
   onAssetImported,
 }: TemplateLayoutEditorProps) {
   return (
-    <section className="template-layout-editor">
+    <section className={ownedClassNames(ownedStyleMaps, "template-layout-editor")}>
       <RichTextEditor
         label={label}
         description={

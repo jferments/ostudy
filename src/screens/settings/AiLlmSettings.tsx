@@ -11,8 +11,10 @@ import type {
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import aiStyles from "./AiLlmSettings.module.css";
 import styles from "./Settings.module.css";
-import { Button } from "../../ui/primitives/Button";
-import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+
+const ownedStyleMaps = sharedClassMaps;
+
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
@@ -52,7 +54,7 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
   return (
     <div className={styles.aiLayout}>
       {controller.errorMessage ? (
-        <InlineNotice kind="error" className={styles.fullWidth}>{controller.errorMessage}</InlineNotice>
+        <div className={ownedClassNames(ownedStyleMaps, `${styles.fullWidth} inline-alert error-alert`)}>{controller.errorMessage}</div>
       ) : null}
 
       <div className={styles.aiSidebarStack}>
@@ -62,9 +64,9 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
             <h2>AI models</h2>
           </div>
           <div className={styles.addProviderGrid}>
-            <Button
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={controller.mutating || availableProviders.length === 0}
               onClick={() => {
                 const preferred =
@@ -74,9 +76,9 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
               }}
             >
               Add model
-            </Button>
+            </button>
           </div>
-          {controller.loading ? <InlineProgress>Loading AI models…</InlineProgress> : null}
+          {controller.loading ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Loading AI models…</div> : null}
           <div className={styles.profileList}>
             {controller.profiles.map((profile) => (
               <button
@@ -206,7 +208,7 @@ function ProfileSetup({
 
           {requiresCredential ? (
             <label
-              className={`${styles.stackedField} ${provider?.baseUrlEditable ? styles.fullWidth : ""}`}
+              className={ownedClassNames(ownedStyleMaps, `${styles.stackedField} ${provider?.baseUrlEditable ? styles.fullWidth : ""}`)}
             >
               <span>API key</span>
               <span className={aiStyles.credentialField}>
@@ -232,9 +234,9 @@ function ProfileSetup({
         </div>
 
         <div className={styles.actionRow}>
-          <Button
+          <button
             type="button"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
             disabled={!canConnect || (!connectionDirty && controller.modelsLoaded)}
             onClick={() => void controller.connectSetup()}
           >
@@ -243,16 +245,16 @@ function ProfileSetup({
               : controller.modelsLoaded && !connectionDirty
                 ? "Connected"
                 : "Connect and load models"}
-          </Button>
+          </button>
           {profile && !connectionDirty ? (
-            <Button
+            <button
               type="button"
-              variant="text"
+              className={ownedClassNames(ownedStyleMaps, "text-button")}
               disabled={controller.refreshingModels || controller.dirty}
               onClick={() => void controller.refreshModels()}
             >
               {controller.refreshingModels ? "Refreshing…" : "Refresh models"}
-            </Button>
+            </button>
           ) : null}
         </div>
       </section>
@@ -296,17 +298,17 @@ function ProfileSetup({
         </label>
 
         <div className={styles.actionRow}>
-          <Button
+          <button
             type="button"
-            variant="primary"
+            className={ownedClassNames(ownedStyleMaps, "primary-button")}
             disabled={!canSaveProfile}
             onClick={() => void controller.saveProfile()}
           >
             {controller.mutating ? "Saving…" : "Save profile"}
-          </Button>
-          <Button
+          </button>
+          <button
             type="button"
-            variant="secondary"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
             disabled={
               controller.testing ||
               controller.mutating ||
@@ -317,7 +319,7 @@ function ProfileSetup({
             onClick={() => void controller.testProfile()}
           >
             {controller.testing ? "Testing…" : "Test connection"}
-          </Button>
+          </button>
         </div>
 
         {controller.probeResult ? <ProbeSummary result={controller.probeResult} /> : null}
@@ -429,24 +431,24 @@ function ProfileSetup({
 
           <div className={styles.actionRow}>
             {profile && hasCredential ? (
-              <Button
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={controller.mutating}
                 onClick={() => void controller.clearCredential()}
               >
                 Remove saved API key
-              </Button>
+              </button>
             ) : null}
             {profile ? (
-              <Button
+              <button
                 type="button"
-                variant="danger"
+                className={ownedClassNames(ownedStyleMaps, "danger-button")}
                 disabled={controller.mutating}
                 onClick={onDelete}
               >
                 Delete profile
-              </Button>
+              </button>
             ) : null}
           </div>
         </div>

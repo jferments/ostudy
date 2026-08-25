@@ -1,0 +1,183 @@
+/* Explicit controls style ownership. Global selectors are intentionally absent. */
+@layer components {
+  /* Migrated from src/styles/base/application.css. */
+  .primary-button,
+  .secondary-button,
+  .small-primary-button,
+  .practice-reveal-button {
+    border-radius: 9px;
+      padding: 10px 16px;
+      font-weight: 760;
+      transition: transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+  .primary-button,
+  .small-primary-button,
+  .practice-reveal-button {
+    border: 1px solid color-mix(in srgb, var(--ostudy-color-accent-strong) 74%, white 8%);
+      background: var(--ostudy-color-accent-strong);
+      color: var(--ostudy-color-accent-on);
+  }
+  .primary-button:hover,
+  .small-primary-button:hover,
+  .practice-reveal-button:hover {
+    transform: translateY(-1px);
+      background: var(--ostudy-color-accent-base);
+  }
+  .secondary-button {
+    border: 1px solid var(--ostudy-color-border-strong);
+      background: var(--ostudy-color-surface-raised);
+      color: var(--ostudy-color-text-primary);
+  }
+  .secondary-button:hover {
+    border-color: var(--ostudy-color-accent-base);
+      background: var(--ostudy-color-surface-soft);
+  }
+  .small-primary-button {
+    padding: 7px 11px;
+      font-size: 0.82rem;
+  }
+  .text-button,
+  .back-button,
+  .icon-button {
+    border: 0;
+      background: transparent;
+      color: var(--ostudy-color-accent-base);
+  }
+  .text-button {
+    padding: 5px 7px;
+      font-weight: 700;
+  }
+  .text-button:hover,
+  .back-button:hover {
+    text-decoration: underline;
+  }
+  .back-button {
+    display: block;
+      margin: 0 0 20px;
+      padding: 0;
+      font-size: 0.86rem;
+      font-weight: 760;
+  }
+  .icon-button {
+    display: inline-grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 8px;
+      color: var(--ostudy-color-text-secondary);
+      font-size: 1.4rem;
+  }
+  .icon-button:hover {
+    background: var(--ostudy-color-surface-soft);
+      color: var(--ostudy-color-text-primary);
+  }
+  .danger-text {
+    color: var(--ostudy-color-status-danger) !important;
+  }
+  .full-width-button {
+    width: 100%;
+  }
+  .inline-alert,
+  .inline-progress {
+    margin: 0 0 22px;
+      border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: 10px;
+      padding: 12px 15px;
+      background: var(--ostudy-color-surface-raised);
+      color: var(--ostudy-color-text-secondary);
+  }
+  .error-alert {
+    border-color: color-mix(in srgb, var(--ostudy-color-status-danger) 55%, var(--ostudy-color-border-subtle));
+      background: color-mix(in srgb, var(--ostudy-color-status-danger) 10%, var(--ostudy-color-surface-base));
+      color: var(--ostudy-color-status-danger);
+  }
+  .info-alert {
+    border-color: color-mix(in srgb, var(--ostudy-color-accent-base) 45%, var(--ostudy-color-border-subtle));
+      background: var(--ostudy-color-accent-soft);
+      color: var(--ostudy-color-text-primary);
+  }
+  .field-error {
+    margin: 8px 0 0;
+      color: var(--ostudy-color-status-danger);
+      font-size: 0.84rem;
+  }
+  .form-stack label > span {
+    color: var(--ostudy-color-text-secondary);
+      font-size: 0.77rem;
+      font-weight: 750;
+  }
+  .form-stack {
+    display: grid;
+      gap: 18px;
+      padding: 24px;
+  }
+  .form-stack label {
+    display: grid;
+      gap: 7px;
+  }
+  .form-stack small {
+    color: var(--ostudy-color-text-muted);
+      font-weight: 500;
+  }
+  .switch-row {
+    display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border-top: 1px solid var(--ostudy-color-border-subtle);
+      padding: 15px 0;
+  }
+  .switch-row:first-of-type {
+    border-top: 0;
+  }
+  .switch-row span,
+  .switch-row strong,
+  .switch-row small {
+    display: block;
+  }
+  .switch-row small {
+    color: var(--ostudy-color-text-muted);
+      font-size: 0.75rem;
+  }
+  .switch-row input[type="checkbox"] {
+    width: 42px;
+      height: 23px;
+      flex: 0 0 auto;
+      accent-color: var(--ostudy-color-accent-strong);
+  }
+  .practice-reveal-button {
+    min-width: 210px;
+  }
+  @media (max-width: 760px) {
+    .practice-reveal-button {
+      width: 100%;
+    }
+  }
+  .full-width-button {
+    width: 100%;
+  }
+
+  /* Migrated from src/styles/features/cards.css. */
+  .danger-button {
+    border: 1px solid color-mix(in srgb, var(--ostudy-color-status-danger) 70%, var(--ostudy-color-border-subtle));
+      border-radius: 9px;
+      padding: 10px 16px;
+      background: color-mix(in srgb, var(--ostudy-color-status-danger) 16%, var(--ostudy-color-surface-raised));
+      color: var(--ostudy-color-status-danger);
+      font-weight: 760;
+  }
+  .danger-button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ostudy-color-status-danger) 24%, var(--ostudy-color-surface-raised));
+  }
+
+  /* Migrated from src/styles/features/scheduling.css. */
+  .danger-text {
+    color: var(--ostudy-color-status-danger) !important;
+  }
+
+  /* Migrated from src/styles/features/ui-overhaul.css. */
+  .inline-alert {
+    overflow-wrap: anywhere;
+      word-break: normal;
+  }
+}

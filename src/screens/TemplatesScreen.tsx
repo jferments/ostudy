@@ -19,9 +19,11 @@ import {
 } from "../ipc/templates";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
-import { Button } from "../ui/primitives/Button";
-import { EmptyState } from "../ui/primitives/EmptyState";
-import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import ownershipStyles from "./TemplatesScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface TemplatesScreenProps {
   onBack?: () => void | Promise<void>;
@@ -282,49 +284,49 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
 
   if (draft) {
     return (
-      <div className="screen templates-screen" aria-busy={isSaving || isOpeningAssetDraft}>
-        <header className="screen-header compact-screen-header">
+      <div className={ownedClassNames(ownedStyleMaps, "screen")} aria-busy={isSaving || isOpeningAssetDraft}>
+        <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
           <div>
-            <Button type="button" variant="back" onClick={() => void cancelEdit()}>
+            <button type="button" className={ownedClassNames(ownedStyleMaps, "back-button")} onClick={() => void cancelEdit()}>
               ← Templates
-            </Button>
+            </button>
             <h1>{draft.id ? "Edit card template" : "New card template"}</h1>
             <p>
               Define reusable rich fields and design the question and answer sides of every card
               this form generates.
             </p>
           </div>
-          <div className="header-actions">
-            <Button
+          <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
+            <button
               type="button"
-              variant="secondary"
+              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
               disabled={isSaving}
               onClick={() => void cancelEdit()}
             >
               Cancel
-            </Button>
-            <Button
+            </button>
+            <button
               type="button"
-              variant="primary"
+              className={ownedClassNames(ownedStyleMaps, "primary-button")}
               disabled={isSaving || isOpeningAssetDraft || !assetDraftId || !dirty}
               onClick={() => void saveTemplate()}
             >
               {isSaving ? "Saving…" : isOpeningAssetDraft ? "Preparing…" : "Save template"}
-            </Button>
+            </button>
           </div>
         </header>
 
-        {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+        {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
 
-        <div className="template-editor-layout">
-          <section className="template-editor-section">
-            <div className="section-heading compact-section-heading">
+        <div className={ownedClassNames(ownedStyleMaps, "template-editor-layout")}>
+          <section className={ownedClassNames(ownedStyleMaps, "template-editor-section")}>
+            <div className={ownedClassNames(ownedStyleMaps, "section-heading compact-section-heading")}>
               <div>
                 <h2>Template details</h2>
                 <p>Name this reusable entry form and optionally describe its purpose.</p>
               </div>
             </div>
-            <div className="template-details-grid">
+            <div className={ownedClassNames(ownedStyleMaps, "template-details-grid")}>
               <label>
                 <span>Name</span>
                 <input
@@ -359,15 +361,15 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
             </div>
           </section>
 
-          <section className="template-editor-section">
-            <div className="section-heading compact-section-heading">
+          <section className={ownedClassNames(ownedStyleMaps, "template-editor-section")}>
+            <div className={ownedClassNames(ownedStyleMaps, "section-heading compact-section-heading")}>
               <div>
                 <h2>Fields</h2>
                 <p>Each field becomes a full rich-text editor when this template is used.</p>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={isSaving || draft.fields.length >= 32}
                 onClick={() =>
                   setDraft((current) =>
@@ -381,12 +383,12 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 }
               >
                 Add field
-              </Button>
+              </button>
             </div>
-            <div className="template-definition-list">
+            <div className={ownedClassNames(ownedStyleMaps, "template-definition-list")}>
               {draft.fields.map((field, index) => (
-                <article key={field.key} className="template-definition-row">
-                  <span className="definition-number">{index + 1}</span>
+                <article key={field.key} className={ownedClassNames(ownedStyleMaps, "template-definition-row")}>
+                  <span className={ownedClassNames(ownedStyleMaps, "definition-number")}>{index + 1}</span>
                   <label>
                     <span>Field name</span>
                     <input
@@ -415,9 +417,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                       }
                     />
                   </label>
-                  <Button
+                  <button
                     type="button"
-                    variant="dangerGhost"
+                    className={ownedClassNames(ownedStyleMaps, "danger-text")}
                     disabled={isSaving || draft.fields.length === 1}
                     onClick={() =>
                       setDraft((current) =>
@@ -431,14 +433,14 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                     }
                   >
                     Remove
-                  </Button>
+                  </button>
                 </article>
               ))}
             </div>
           </section>
 
-          <section className="template-editor-section">
-            <div className="section-heading compact-section-heading">
+          <section className={ownedClassNames(ownedStyleMaps, "template-editor-section")}>
+            <div className={ownedClassNames(ownedStyleMaps, "section-heading compact-section-heading")}>
               <div>
                 <h2>Cards generated</h2>
                 <p>
@@ -447,9 +449,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                   images, headings, block quotes, code blocks, and multiple paragraphs to blocks.
                 </p>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="secondary"
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={isSaving || draft.rules.length >= 32}
                 onClick={() =>
                   setDraft((current) =>
@@ -463,14 +465,14 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 }
               >
                 Add card rule
-              </Button>
+              </button>
             </div>
 
-            <div className="template-rule-list rich-template-rule-list">
+            <div className={ownedClassNames(ownedStyleMaps, "template-rule-list rich-template-rule-list")}>
               {draft.rules.map((rule, index) => (
-                <article key={rule.key} className="template-rule-card rich-template-rule-card">
+                <article key={rule.key} className={ownedClassNames(ownedStyleMaps, "template-rule-card rich-template-rule-card")}>
                   <header>
-                    <span className="definition-number">{index + 1}</span>
+                    <span className={ownedClassNames(ownedStyleMaps, "definition-number")}>{index + 1}</span>
                     <label>
                       <span>Card name</span>
                       <input
@@ -483,9 +485,9 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                         }
                       />
                     </label>
-                    <Button
+                    <button
                       type="button"
-                      variant="dangerGhost"
+                      className={ownedClassNames(ownedStyleMaps, "danger-text")}
                       disabled={isSaving || draft.rules.length === 1}
                       onClick={() =>
                         setDraft((current) =>
@@ -499,7 +501,7 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                       }
                     >
                       Remove
-                    </Button>
+                    </button>
                   </header>
                   <TemplateLayoutEditor
                     label="Question layout"
@@ -529,73 +531,76 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
   }
 
   return (
-    <div className="screen templates-screen">
-      <header className="screen-header compact-screen-header">
+    <div className={ownedClassNames(ownedStyleMaps, "screen")}>
+      <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
         <div>
           {onBack ? (
-            <Button type="button" variant="back" onClick={() => void onBack()}>
+            <button type="button" className={ownedClassNames(ownedStyleMaps, "back-button")} onClick={() => void onBack()}>
               ← Decks
-            </Button>
+            </button>
           ) : null}
           <h1>Templates</h1>
           <p>Build reusable rich entry forms that generate permanent Basic cards.</p>
         </div>
-        <Button type="button" variant="primary" onClick={beginCreate}>
+        <button type="button" className={ownedClassNames(ownedStyleMaps, "primary-button")} onClick={beginCreate}>
           New template
-        </Button>
+        </button>
       </header>
 
-      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-      {isLoading ? <InlineProgress>Loading templates…</InlineProgress> : null}
-      {isOpening ? <InlineProgress>Opening template…</InlineProgress> : null}
+      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
+      {isLoading ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Loading templates…</div> : null}
+      {isOpening ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening template…</div> : null}
 
       {!isLoading && templates.length === 0 ? (
-        <EmptyState
-          title="Create a reusable card template"
-          description="Define the facts you enter once, then design one or more cards that use those fields as rich text, lists, or images."
-          icon="▧"
-          actions={
-            <Button type="button" variant="primary" onClick={beginCreate}>
-              Create template
-            </Button>
-          }
-        />
+        <section className={ownedClassNames(ownedStyleMaps, "compact-empty-state large-empty-state")}>
+          <div className={ownedClassNames(ownedStyleMaps, "empty-icon")} aria-hidden="true">
+            ▧
+          </div>
+          <h2>Create a reusable card template</h2>
+          <p>
+            Define the facts you enter once, then design one or more cards that use those fields as
+            rich text, lists, or images.
+          </p>
+          <button type="button" className={ownedClassNames(ownedStyleMaps, "primary-button")} onClick={beginCreate}>
+            Create template
+          </button>
+        </section>
       ) : null}
 
       {templates.length > 0 ? (
-        <section className="template-library-grid" aria-label="Card templates">
+        <section className={ownedClassNames(ownedStyleMaps, "template-library-grid")} aria-label="Card templates">
           {templates.map((template) => (
-            <article className="template-library-card" key={template.id}>
+            <article className={ownedClassNames(ownedStyleMaps, "template-library-card")} key={template.id}>
               <button
                 type="button"
-                className="template-library-main"
+                className={ownedClassNames(ownedStyleMaps, "template-library-main")}
                 disabled={isOpening}
                 onClick={() => void beginEdit(template)}
               >
-                <span className="template-library-mark" aria-hidden="true">
+                <span className={ownedClassNames(ownedStyleMaps, "template-library-mark")} aria-hidden="true">
                   ▧
                 </span>
                 <span>
                   <strong>{template.name}</strong>
                   {template.description ? <small>{template.description}</small> : null}
                 </span>
-                <span className="template-library-counts">
+                <span className={ownedClassNames(ownedStyleMaps, "template-library-counts")}>
                   <b>{template.fieldCount}</b> fields
                   <b>{template.generatedCardRuleCount}</b> cards
                   {template.imageCount > 0 ? <small>{template.imageCount} images</small> : null}
                 </span>
               </button>
-              <div className="template-library-actions">
+              <div className={ownedClassNames(ownedStyleMaps, "template-library-actions")}>
                 <button type="button" disabled={isOpening} onClick={() => void beginEdit(template)}>
                   Edit
                 </button>
-                <Button
+                <button
                   type="button"
-                  variant="dangerGhost"
+                  className={ownedClassNames(ownedStyleMaps, "danger-text")}
                   onClick={() => void removeTemplate(template)}
                 >
                   Delete
-                </Button>
+                </button>
               </div>
             </article>
           ))}

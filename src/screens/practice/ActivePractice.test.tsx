@@ -132,8 +132,8 @@ describe("ActivePractice", () => {
       previewSet: previews,
     });
 
-    const front = document.querySelector(".practice-flip-front");
-    const back = document.querySelector(".practice-flip-back");
+    const front = screen.getByText("Question").closest("[aria-hidden]");
+    const back = screen.getByText("Answer").closest("[aria-hidden]");
     expect(front?.getAttribute("aria-hidden")).toBe("true");
     expect(back?.getAttribute("aria-hidden")).toBe("false");
 

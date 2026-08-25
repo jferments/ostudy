@@ -12,6 +12,11 @@ import {
   type TemplateValueInput,
 } from "../../ipc/templates";
 import { Button } from "../../ui/primitives/Button";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import ownershipStyles from "../CardEditorScreen.module.css";
+
+const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+
 
 interface TemplateEntryFormProps {
   template: CardTemplate;
@@ -51,18 +56,18 @@ export function TemplateEntryForm({
   }
 
   return (
-    <section className="template-entry-form" aria-labelledby="template-entry-heading">
-      <div className="section-heading compact-section-heading">
+    <section className={ownedClassNames(ownedStyleMaps, "template-entry-form")} aria-labelledby="template-entry-heading">
+      <div className={ownedClassNames(ownedStyleMaps, "section-heading compact-section-heading")}>
         <div>
           <h2 id="template-entry-heading">{template.name}</h2>
           {template.description ? <p>{template.description}</p> : null}
         </div>
-        <span className="count-badge">
+        <span className={ownedClassNames(ownedStyleMaps, "count-badge")}>
           {template.rules.length} {template.rules.length === 1 ? "card" : "cards"}
         </span>
       </div>
 
-      <div className="template-rich-value-list">
+      <div className={ownedClassNames(ownedStyleMaps, "template-rich-value-list")}>
         {template.fields.map((field) => {
           const value = values.find((entry) => entry.fieldId === field.id);
           if (!value) return null;
@@ -83,7 +88,7 @@ export function TemplateEntryForm({
         })}
       </div>
 
-      <div className="template-preview-actions">
+      <div className={ownedClassNames(ownedStyleMaps, "template-preview-actions")}>
         <Button
           type="button"
           variant="secondary"
@@ -95,10 +100,10 @@ export function TemplateEntryForm({
       </div>
 
       {previews.length > 0 ? (
-        <div className="template-card-previews" aria-label="Generated card preview">
+        <div className={ownedClassNames(ownedStyleMaps, "template-card-previews")} aria-label="Generated card preview">
           {previews.map((preview) => (
             <article key={preview.ruleId}>
-              <span className="eyebrow">{preview.ruleName}</span>
+              <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>{preview.ruleName}</span>
               <div>
                 <small>Question</small>
                 <RichTextView

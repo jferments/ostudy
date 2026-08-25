@@ -196,11 +196,11 @@
 
   :global(:root[data-input-mode="coarse"]) .actions button,
   :global(:root[data-input-mode="coarse"]) .toggle {
-    min-height: var(--touch-target-min);
+    min-height: var(--ostudy-size-touch-target);
   }
 
   :global(:root[data-input-mode="coarse"]) .dragHandle {
-    width: var(--touch-target-min);
-    min-width: var(--touch-target-min);
+    width: var(--ostudy-size-touch-target);
+    min-width: var(--ostudy-size-touch-target);
   }
 }

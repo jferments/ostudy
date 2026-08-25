@@ -1,0 +1,188 @@
+/* Explicit templates style ownership. Global selectors are intentionally absent. */
+@layer features {
+  /* Migrated from src/styles/features/authoring.css. */
+  .template-details-grid label,
+  .template-definition-row label,
+  .template-rule-card label {
+    display: grid;
+      gap: 7px;
+  }
+  .template-details-grid label > span,
+  .template-definition-row label > span,
+  .template-rule-card label > span {
+    color: var(--ostudy-color-text-secondary);
+      font-size: 0.8rem;
+      font-weight: 750;
+  }
+  .template-editor-section {
+    border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: var(--ostudy-radius-medium);
+      background: var(--ostudy-color-surface-base);
+      box-shadow: var(--ostudy-shadow-level-2);
+  }
+  .template-editor-section {
+    padding: 20px;
+  }
+  .template-details-grid textarea,
+  .template-definition-row input,
+  .template-rule-card textarea,
+  .template-rule-card input {
+    width: 100%;
+  }
+  .template-library-grid {
+    display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 16px;
+  }
+  .template-library-card {
+    overflow: hidden;
+      border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: var(--ostudy-radius-medium);
+      background: var(--ostudy-color-surface-base);
+      box-shadow: var(--ostudy-shadow-level-2);
+  }
+  .template-library-main {
+    display: grid;
+      width: 100%;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      border: 0;
+      padding: 18px;
+      background: transparent;
+      color: var(--ostudy-color-text-primary);
+      text-align: left;
+  }
+  .template-library-main:hover {
+    background: var(--ostudy-color-surface-raised);
+  }
+  .template-library-mark {
+    display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border-radius: 11px;
+      background: var(--ostudy-color-accent-soft);
+      color: var(--ostudy-color-accent-base);
+      font-size: 1.25rem;
+  }
+  .template-library-main > span:nth-child(2) {
+    display: grid;
+      gap: 5px;
+      min-width: 0;
+  }
+  .template-library-main small {
+    overflow: hidden;
+      color: var(--ostudy-color-text-secondary);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+  }
+  .template-library-counts {
+    display: grid;
+      grid-template-columns: auto auto;
+      gap: 2px 7px;
+      color: var(--ostudy-color-text-muted);
+      font-size: 0.72rem;
+      text-align: right;
+  }
+  .template-library-counts b {
+    color: var(--ostudy-color-text-primary);
+  }
+  .template-library-actions {
+    display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      border-top: 1px solid var(--ostudy-color-border-subtle);
+      padding: 10px 14px;
+      background: var(--ostudy-color-surface-raised);
+  }
+  .template-library-actions button {
+    border: 0;
+      background: transparent;
+      color: var(--ostudy-color-text-secondary);
+  }
+  .template-editor-layout {
+    display: grid;
+      gap: 18px;
+  }
+  .template-details-grid {
+    display: grid;
+      grid-template-columns: minmax(220px, 0.45fr) minmax(0, 1fr);
+      gap: 16px;
+  }
+  .template-definition-list,
+  .template-rule-list {
+    display: grid;
+      gap: 12px;
+  }
+  .template-definition-row {
+    display: grid;
+      grid-template-columns: auto minmax(180px, 0.42fr) minmax(260px, 1fr) auto;
+      align-items: end;
+      gap: 12px;
+      border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: var(--ostudy-radius-small);
+      padding: 14px;
+      background: var(--ostudy-color-surface-raised);
+  }
+  .definition-number {
+    display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      align-self: center;
+      border-radius: 999px;
+      background: var(--ostudy-color-accent-soft);
+      color: var(--ostudy-color-accent-base);
+      font-size: 0.75rem;
+      font-weight: 800;
+  }
+  .template-rule-card {
+    border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: var(--ostudy-radius-small);
+      padding: 15px;
+      background: var(--ostudy-color-surface-raised);
+  }
+  .template-rule-card header {
+    display: grid;
+      grid-template-columns: auto minmax(200px, 0.45fr) auto;
+      align-items: end;
+      gap: 12px;
+      margin-bottom: 13px;
+  }
+  @media (max-width: 980px) {
+    .template-details-grid,
+    .template-definition-row,
+    .template-rule-card header {
+      grid-template-columns: 1fr;
+    }
+    .template-definition-row .definition-number,
+    .template-rule-card .definition-number {
+      justify-self: start;
+    }
+  }
+  @media (max-width: 720px) {
+    .template-library-grid {
+      grid-template-columns: 1fr;
+    }
+    .template-library-main {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    .template-library-counts {
+      grid-column: 1 / -1;
+          justify-self: start;
+          text-align: left;
+    }
+  }
+
+  /* Migrated from src/styles/features/templates.css. */
+  .rich-template-rule-list,
+  .rich-template-rule-card,
+  .template-layout-editor {
+    display: grid;
+      gap: 1rem;
+  }
+  .rich-template-rule-card {
+    padding: 1rem;
+  }
+}

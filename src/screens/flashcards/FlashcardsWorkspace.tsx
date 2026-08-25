@@ -10,7 +10,6 @@ import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
-import "../DecksScreen.stage12.css";
 import { TemplatesScreen } from "../TemplatesScreen";
 import { CardPracticeProvider } from "../cards/CardPracticeContext";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
@@ -96,7 +95,7 @@ export function FlashcardsWorkspace({
   }
 
   return (
-    <PageScaffold width="full" className={`flashcards-workspace ${styles.workspace}`}>
+    <PageScaffold width="full" className={styles.workspace}>
       <PageHeader title="Flashcards" icon="cards" compact />
 
       <div className={styles.tabScroller}>
