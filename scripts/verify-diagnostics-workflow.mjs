@@ -6,6 +6,10 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workflow = await readFile(join(root, ".github", "workflows", "check.yml"), "utf8");
+const unifiedRunnerWorkflow = await readFile(
+  join(root, ".github", "workflows", "unified-runner-qualification.yml"),
+  "utf8",
+);
 const checkStatic = await readFile(join(root, "scripts", "check-static.sh"), "utf8");
 const checkFast = await readFile(join(root, "scripts", "check-fast.sh"), "utf8");
 const checkFull = await readFile(join(root, "scripts", "check.sh"), "utf8");
@@ -58,11 +62,19 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
-const sourceAwareCancellation =
+const checkSourceAwareCancellation =
   "cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
-if (!workflow.includes(sourceAwareCancellation)) {
+if (!workflow.includes(checkSourceAwareCancellation)) {
   failures.push(
     "check.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
+  );
+}
+
+const unifiedSourceAwareCancellation =
+  "cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
+if (!unifiedRunnerWorkflow.includes(unifiedSourceAwareCancellation)) {
+  failures.push(
+    "unified-runner-qualification.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
   );
 }
 
@@ -135,5 +147,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, source synchronizations supersede obsolete qualification without metadata edits aborting exact-head work, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, source synchronizations supersede obsolete qualification without metadata edits aborting exact-head work in either qualification workflow, and summaries emit focused reproductions.",
 );
