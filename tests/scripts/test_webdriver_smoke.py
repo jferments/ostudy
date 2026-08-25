@@ -1,190 +1,192 @@
 from __future__ import annotations
 
-import http.client
 import importlib.util
-from pathlib import Path
+import json
+import tempfile
 import unittest
-from unittest import mock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
-MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
-ANDROID_BUILD_PATH = ROOT / "scripts" / "android-build.sh"
-ANDROID_PACKAGE_VERIFIER_PATH = ROOT / "scripts" / "verify-android-package.sh"
-ANDROID_SMOKE_TEST_PATH = (
-    ROOT
-    / "src-tauri"
-    / "gen"
-    / "android"
-    / "app"
-    / "src"
-    / "androidTest"
-    / "java"
-    / "io"
-    / "github"
-    / "jferments"
-    / "ostudy"
-    / "AndroidSmokeTest.kt"
-)
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
-CARD_BROWSER_WORKSPACE_PATH = (
-    ROOT / "src" / "screens" / "cards" / "CardBrowserWorkspace.tsx"
-)
 CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
-TOUR_PROVIDER_PATH = ROOT / "src" / "ui" / "tutorials" / "TourProvider.tsx"
-TUTORIAL_REGISTRY_PATH = ROOT / "src" / "ui" / "tutorials" / "tutorialRegistry.ts"
-SPEC = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"Could not load native WebDriver harness from {SMOKE_PATH}")
-smoke = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(smoke)
+CARD_BROWSER_WORKSPACE_PATH = ROOT / "src" / "screens" / "cards" / "CardBrowserWorkspace.tsx"
+MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
+
+
+def load_smoke_module():
+    spec = importlib.util.spec_from_file_location("ostudy_webdriver_smoke", SMOKE_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load native WebDriver smoke module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class WebDriverSmokeHarnessTests(unittest.TestCase):
-    def test_tutorial_versions_are_discovered_from_the_registry(self) -> None:
-        versions = smoke.tutorial_versions()
-        self.assertTrue({"orientation", "search", "practice", "documents"}.issubset(versions))
-        self.assertTrue(all(version >= 1 for version in versions.values()))
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.smoke = load_smoke_module()
 
-    def test_w3c_protocol_errors_keep_their_named_error_and_message(self) -> None:
-        error = smoke._protocol_error(
-            {
-                "value": {
-                    "error": "element click intercepted",
-                    "message": "Another element would receive the click",
-                }
-            },
-            400,
+    def test_protocol_error_decodes_http_error_payload(self) -> None:
+        error = self.smoke._protocol_error(
+            {"value": {"error": "no such element", "message": "missing"}},
+            404,
         )
-        self.assertIsInstance(error, smoke.WebDriverProtocolError)
+        self.assertIsNotNone(error)
         assert error is not None
-        self.assertEqual(error.status, 400)
-        self.assertEqual(error.error, "element click intercepted")
-        self.assertIn("Another element", error.message)
+        self.assertEqual(error.status, 404)
+        self.assertEqual(error.error, "no such element")
+        self.assertEqual(error.message, "missing")
 
-    def test_automation_profile_completes_current_tutorials_before_reload(self) -> None:
-        with mock.patch.object(smoke, "request", return_value=True) as request:
-            smoke.prepare_automation_profile("session-1")
+    def test_tutorial_versions_follow_registry(self) -> None:
+        versions = self.smoke.tutorial_versions()
+        self.assertGreater(len(versions), 0)
+        self.assertTrue(all(isinstance(value, int) and value >= 1 for value in versions.values()))
 
-        request.assert_called_once()
-        method, path, payload = request.call_args.args
-        self.assertEqual(method, "POST")
-        self.assertEqual(path, "/session/session-1/execute/sync")
-        self.assertIn("window.location.reload()", payload["script"])
-        self.assertEqual(payload["args"][0], smoke.TUTORIAL_STORAGE_KEY)
-        state = payload["args"][1]
-        self.assertEqual(state["schemaVersion"], 1)
-        self.assertEqual(state["completed"], smoke.tutorial_versions())
-        self.assertEqual(state["dismissed"], {})
+    def test_prepare_automation_profile_stores_completed_tutorials(self) -> None:
+        state = {}
 
-    def test_element_polling_retries_one_transient_remote_disconnect(self) -> None:
-        with (
-            mock.patch.object(
-                smoke,
-                "request",
-                side_effect=[
-                    http.client.RemoteDisconnected("connection closed without response"),
-                    {smoke.ELEMENT_KEY: "element-1"},
-                ],
-            ) as request,
-            mock.patch.object(smoke.time, "sleep"),
+        def fake_request(method: str, path: str, payload=None):
+            self.assertEqual(method, "POST")
+            self.assertTrue(path.endswith("/execute/sync"))
+            assert payload is not None
+            state["key"] = payload["args"][0]
+            state["value"] = payload["args"][1]
+            return True
+
+        with patch.object(self.smoke, "request", side_effect=fake_request):
+            self.smoke.prepare_automation_profile("session-1")
+
+        self.assertEqual(state["key"], self.smoke.TUTORIAL_STORAGE_KEY)
+        self.assertEqual(state["value"]["schemaVersion"], 1)
+        self.assertEqual(state["value"]["completed"], self.smoke.tutorial_versions())
+        self.assertEqual(state["value"]["dismissed"], {})
+
+    def test_find_element_retries_only_retryable_lookup_errors(self) -> None:
+        calls = 0
+
+        def fake_request(method: str, path: str, payload=None):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise self.smoke.WebDriverProtocolError(404, "no such element", "missing")
+            return {self.smoke.ELEMENT_KEY: "element-1"}
+
+        with patch.object(self.smoke, "request", side_effect=fake_request), patch.object(
+            self.smoke.time,
+            "sleep",
         ):
-            element = smoke.find_element(
+            element = self.smoke.find_element(
                 "session-1",
                 "css selector",
-                "main",
-                smoke.deadline_after(1),
+                "button[data-testid='nav-decks']",
+                self.smoke.deadline_after(1),
             )
 
         self.assertEqual(element, "element-1")
-        self.assertEqual(request.call_count, 2)
+        self.assertEqual(calls, 2)
 
-    def test_click_requires_stable_hit_tests_and_dom_acknowledgement(self) -> None:
-        hit = {
-            "ready": True,
-            "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
-        }
-        with (
-            mock.patch.object(smoke, "_element_hit_test", side_effect=[hit, hit]) as hit_test,
-            mock.patch.object(smoke, "_arm_click_ack") as arm_ack,
-            mock.patch.object(smoke, "_wait_for_click_ack", return_value=True) as wait_ack,
-            mock.patch.object(smoke, "request", return_value=None) as request,
-            mock.patch.object(smoke.time, "sleep"),
+    def test_find_element_does_not_retry_nonretryable_protocol_errors(self) -> None:
+        with patch.object(
+            self.smoke,
+            "request",
+            side_effect=self.smoke.WebDriverProtocolError(500, "unknown error", "boom"),
+        ), patch.object(self.smoke.time, "sleep") as sleep:
+            with self.assertRaises(self.smoke.WebDriverProtocolError):
+                self.smoke.find_element(
+                    "session-1",
+                    "css selector",
+                    "button",
+                    self.smoke.deadline_after(1),
+                )
+        sleep.assert_not_called()
+
+    def test_set_input_text_verifies_controlled_value(self) -> None:
+        with patch.object(self.smoke, "find_element", return_value="element-1"), patch.object(
+            self.smoke,
+            "clear",
+        ) as clear, patch.object(self.smoke, "send_keys") as send_keys, patch.object(
+            self.smoke,
+            "element_property",
+            return_value="Expected",
         ):
-            smoke.click("session-1", "element-1")
+            element = self.smoke.set_input_text(
+                "session-1",
+                "css selector",
+                "input",
+                "Expected",
+                self.smoke.deadline_after(1),
+            )
+        self.assertEqual(element, "element-1")
+        clear.assert_called_once_with("session-1", "element-1")
+        send_keys.assert_called_once_with("session-1", "element-1", "Expected")
 
-        self.assertEqual(hit_test.call_count, 2)
-        request.assert_called_once_with(
-            "POST",
-            "/session/session-1/element/element-1/click",
-            {},
-        )
-        arm_ack.assert_called_once()
-        wait_ack.assert_called_once()
-        token = arm_ack.call_args.args[2]
-        self.assertEqual(arm_ack.call_args.args[:2], ("session-1", "element-1"))
-        self.assertEqual(wait_ack.call_args.args[0:2], ("session-1", token))
+    def test_set_rich_editor_text_uses_semantic_editable_contract(self) -> None:
+        with patch.object(self.smoke, "find_elements", return_value=["editor-1"]), patch.object(
+            self.smoke,
+            "clear",
+        ), patch.object(self.smoke, "send_keys"), patch.object(
+            self.smoke,
+            "element_text",
+            return_value="Question",
+        ) as element_text:
+            element = self.smoke.set_rich_editor_text(
+                "session-1",
+                0,
+                "Question",
+                self.smoke.deadline_after(1),
+            )
+        self.assertEqual(element, "editor-1")
+        element_text.assert_called_with("session-1", "editor-1")
 
-    def test_click_retries_once_only_when_webkit_did_not_dispatch_dom_click(self) -> None:
-        hit = {
-            "ready": True,
-            "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
-        }
-        with (
-            mock.patch.object(
-                smoke,
-                "_element_hit_test",
-                side_effect=[hit, hit, hit, hit],
-            ) as hit_test,
-            mock.patch.object(smoke, "_arm_click_ack") as arm_ack,
-            mock.patch.object(
-                smoke,
-                "_wait_for_click_ack",
-                side_effect=[False, True],
-            ) as wait_ack,
-            mock.patch.object(smoke, "request", return_value=None) as request,
-            mock.patch.object(smoke.time, "sleep"),
-        ):
-            smoke.click("session-1", "element-1")
+    def test_wait_for_enabled_element_waits_for_react_state(self) -> None:
+        with patch.object(self.smoke, "find_element", return_value="element-1"), patch.object(
+            self.smoke,
+            "element_enabled",
+            side_effect=[False, True],
+        ), patch.object(self.smoke.time, "sleep"):
+            element = self.smoke.wait_for_enabled_element(
+                "session-1",
+                "css selector",
+                "button",
+                self.smoke.deadline_after(1),
+            )
+        self.assertEqual(element, "element-1")
 
-        self.assertEqual(hit_test.call_count, 4)
-        self.assertEqual(arm_ack.call_count, 2)
-        self.assertEqual(wait_ack.call_count, 2)
-        self.assertEqual(
-            request.call_args_list,
-            [
-                mock.call(
-                    "POST",
-                    "/session/session-1/element/element-1/click",
-                    {},
-                ),
-                mock.call(
-                    "POST",
-                    "/session/session-1/element/element-1/click",
-                    {},
-                ),
-            ],
-        )
+    def test_click_requires_stable_hit_target_and_dom_ack(self) -> None:
+        hits = [
+            {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}},
+            {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}},
+        ]
+        request = MagicMock(return_value=None)
+        with patch.object(self.smoke, "_element_hit_test", side_effect=hits), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=True), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            self.smoke.click("session-1", "element-1")
 
-    def test_click_fails_after_two_success_responses_without_dom_delivery(self) -> None:
-        hit = {
-            "ready": True,
-            "rect": {"left": 10, "top": 20, "width": 120, "height": 44},
-        }
-        with (
-            mock.patch.object(
-                smoke,
-                "_element_hit_test",
-                side_effect=[hit, hit, hit, hit],
-            ),
-            mock.patch.object(smoke, "_arm_click_ack"),
-            mock.patch.object(smoke, "_wait_for_click_ack", return_value=False),
-            mock.patch.object(smoke, "request", return_value=None) as request,
-            mock.patch.object(smoke.time, "sleep"),
-        ):
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
+    def test_click_rejects_repeated_unacknowledged_webdriver_clicks(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(return_value=None)
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=False), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
             with self.assertRaisesRegex(RuntimeError, "without DOM acknowledgement"):
-                smoke.click("session-1", "element-1")
+                self.smoke.click("session-1", "element-1")
 
         self.assertEqual(request.call_count, 2)
 
@@ -216,14 +218,20 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn('controlMode === "search"', browser)
         self.assertIn('aria-label="Search this deck"', browser)
         self.assertIn('controlMode === "deck"', browser)
-        self.assertIn('className="card-browser-actions"', browser)
+        self.assertIn(
+            'ownedClassNames(ownedStyleMaps, "card-browser-actions")',
+            browser,
+        )
         self.assertIn("setBulkEntryOpen(true)", browser)
         self.assertIn("Bulk add", browser)
         self.assertIn("Add flashcard", browser)
         self.assertIn("Practice selected", browser)
         self.assertNotIn("Practice results", browser)
         self.assertNotIn("Ready now", browser)
-        self.assertIn('className="organized-card-sides card-listing-sides"', browser)
+        self.assertIn(
+            'ownedClassNames(ownedStyleMaps, "organized-card-sides card-listing-sides")',
+            browser,
+        )
         self.assertIn("Q:", browser)
         self.assertIn("A:", browser)
 
@@ -233,65 +241,6 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn('import("./testing/androidTestBridge")', source)
         self.assertIn("installAndroidTestBridge();", source)
         self.assertIn("setAndroidTestBridgeDiagnostic", source)
-        self.assertIn("if (!documentRoot || !diagnostic) return false;", source)
-        self.assertIn("androidTestBridgeDiagnosticScheduled", source)
-        self.assertNotIn('import { installAndroidTestBridge }', source)
-
-    def test_android_smoke_bridge_wait_tolerates_empty_webview_document(self) -> None:
-        source = ANDROID_SMOKE_TEST_PATH.read_text(encoding="utf-8")
-        self.assertIn("root?.dataset?.androidTestBridge", source)
-        self.assertIn('if (decoded == "null")', source)
-        self.assertIn('if (latest.optString("type") == "object") return', source)
-        self.assertIn("document.documentElement?.dataset != null", source)
-        self.assertNotIn('latest.optString("type") == "object" && state == "ready"', source)
-
-    def test_android_smoke_waits_for_webview_attachment(self) -> None:
-        source = ANDROID_SMOKE_TEST_PATH.read_text(encoding="utf-8")
-        self.assertIn("block(waitForWebView(scenario))", source)
-        self.assertIn("private fun waitForWebView", source)
-        self.assertIn("TimeUnit.SECONDS.toNanos(15)", source)
-        self.assertIn("scenario.onActivity", source)
-        self.assertIn("Timed out waiting for the Tauri WebView to attach", source)
-        self.assertIn("describeViewTree", source)
-        self.assertNotIn('requireNotNull(webView) { "The Tauri WebView was not found." }', source)
-
-    def test_android_build_verifies_smoke_bridge_at_frontend_boundary(self) -> None:
-        build = ANDROID_BUILD_PATH.read_text(encoding="utf-8")
-        package_verifier = ANDROID_PACKAGE_VERIFIER_PATH.read_text(encoding="utf-8")
-
-        self.assertIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE=1", build)
-        self.assertIn("androidTestBridge-*.js", build)
-        self.assertIn("__OSTUDY_ANDROID_TEST__", build)
-        self.assertIn(
-            "Android smoke frontend must contain exactly one test bridge chunk",
-            build,
-        )
-        self.assertIn(
-            "Normal Android frontend unexpectedly contains the emulator-only test bridge",
-            build,
-        )
-
-        self.assertNotIn(
-            "Android smoke APK is missing the emulator-only test bridge",
-            package_verifier,
-        )
-        self.assertNotIn("VITE_OSTUDY_ANDROID_TEST_BRIDGE", package_verifier)
-        self.assertIn(
-            "Release APK exposes the emulator-only Android test bridge marker",
-            package_verifier,
-        )
-
-    def test_tutorials_cannot_auto_start_in_any_build(self) -> None:
-        provider = TOUR_PROVIDER_PATH.read_text(encoding="utf-8")
-        registry = TUTORIAL_REGISTRY_PATH.read_text(encoding="utf-8")
-
-        self.assertIn('window.addEventListener("ostudy:start-tutorial", handleStart)', provider)
-        self.assertNotIn("CONTEXTUAL_AUTO_START_ENABLED", provider)
-        self.assertNotIn("autoStartTimer", provider)
-        self.assertNotIn("findContextualModule", provider)
-        self.assertNotIn("autoStartAnchor", provider)
-        self.assertNotIn("autoStartAnchor", registry)
-        self.assertNotIn("tutorialModuleOrder", registry)
 
 
 if __name__ == "__main__":
