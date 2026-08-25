@@ -1,0 +1,141 @@
+name: Apply deterministic Stage 4 cleanup
+
+on:
+  push:
+    branches: [agent/frontend-css-ownership-refactor-restart]
+    paths:
+      - .github/workflows/apply-stage4-cleanup.yml
+
+concurrency:
+  group: apply-stage4-cleanup-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.event.head_commit.message == 'chore(ui): apply deterministic stage 4 cleanup' }}
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Remove duplicate foundation and shell ownership
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import json
+          import re
+
+          app_path = Path("src/styles/base/application.css")
+          baseline_path = Path("scripts/style-ownership-baseline.json")
+          text = app_path.read_text()
+
+          expected_before = "d51d574871a2df1b369b5c1d3960de7eb29da50035b9e6008ec03c4f074d7b70"
+          actual_before = hashlib.sha256(text.encode()).hexdigest()
+          if actual_before != expected_before:
+              raise SystemExit(
+                  f"application.css changed before the deterministic cleanup: {actual_before} != {expected_before}"
+              )
+
+          marker = ".brand-kicker,\n.eyebrow {"
+          if text.count(marker) != 1:
+              raise SystemExit("expected exactly one legacy brand/eyebrow ownership marker")
+          text = ".eyebrow {" + text.split(marker, 1)[1]
+
+          start = text.index("\n.brand-block strong {")
+          end = text.index("\n.screen {", start)
+          text = text[:start] + text[end:]
+
+          start = text.index("\n.app-loading,")
+          end = text.index("\n@media (max-width: 1180px)", start)
+          text = text[:start] + text[end:]
+
+          text, count = re.subn(
+              r"(@media \(max-width: 960px\) \{\n).*?(  \.practice-setup-grid,)",
+              r"\1\2",
+              text,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise SystemExit("failed to retire the legacy 960px shell override")
+
+          text, count = re.subn(
+              r"(@media \(max-width: 760px\) \{\n).*?(  \.screen,)",
+              r"\1\2",
+              text,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise SystemExit("failed to retire the legacy 760px shell override")
+
+          duplicate_brand = """
+          .brand-block {
+            min-height: auto;
+            padding-bottom: 1.5rem;
+          }
+
+          .brand-block strong {
+            font-size: 1.45rem;
+          }
+          """
+          if text.count(duplicate_brand) != 1:
+              raise SystemExit("expected exactly one duplicate compact brand rule")
+          text = text.replace(duplicate_brand, "", 1)
+
+          expected_after = "ed735a6d07a7a170ae1d716b22aef82cbb512b5f011a356ccf0f4f95245ff343"
+          actual_after = hashlib.sha256(text.encode()).hexdigest()
+          if actual_after != expected_after:
+              raise SystemExit(
+                  f"deterministic application.css result changed: {actual_after} != {expected_after}"
+              )
+          app_path.write_text(text)
+
+          baseline = json.loads(baseline_path.read_text())
+          style_root = Path("src/styles")
+          legacy_paths = sorted(style_root.glob("base/*.css")) + sorted(style_root.glob("features/*.css"))
+          for path in legacy_paths:
+              relative = path.as_posix()
+              source = path.read_text()
+              selectors = sorted(set(re.findall(r"\.([A-Za-z_][A-Za-z0-9_-]*)", source)))
+              baseline["legacyFiles"][relative]["selectors"] = selectors
+
+          baseline_text = json.dumps(baseline, indent=2) + "\n"
+          expected_baseline = "dc6fe079287008dc8db57d731a86830cc5be31a3a4630c0ba5c75eda3261e910"
+          actual_baseline = hashlib.sha256(baseline_text.encode()).hexdigest()
+          if actual_baseline != expected_baseline:
+              raise SystemExit(
+                  f"deterministic ownership baseline changed: {actual_baseline} != {expected_baseline}"
+              )
+          baseline_path.write_text(baseline_text)
+          PY
+
+      - name: Verify the Stage 4 checkpoint
+        run: |
+          node scripts/verify-style-ownership.mjs
+          node scripts/verify-ui-policy.mjs
+          node scripts/verify-button-contrast.mjs
+          python3 -m unittest tests.scripts.test_style_ownership
+          git diff --check
+
+      - name: Commit the verified cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/styles/base/application.css scripts/style-ownership-baseline.json
+          git commit -m "refactor(ui): retire duplicate foundation and shell styles"
+          git push origin HEAD:agent/frontend-css-ownership-refactor-restart
