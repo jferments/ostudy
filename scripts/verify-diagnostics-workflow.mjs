@@ -58,6 +58,14 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
+const sourceAwareCancellation =
+  "cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
+if (!workflow.includes(sourceAwareCancellation)) {
+  failures.push(
+    "check.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
+  );
+}
+
 if (/2>&1\s*\|\s*tee\s+"\$RUNNER_TEMP\/ostudy-(?:static|fast|full|android)/u.test(workflow)) {
   failures.push(
     "check.yml must retain full qualification logs in files instead of streaming them through tee",
@@ -127,5 +135,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, source synchronizations supersede obsolete qualification without metadata edits aborting exact-head work, and summaries emit focused reproductions.",
 );
