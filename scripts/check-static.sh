@@ -87,6 +87,7 @@ pnpm run fonts:install
 pnpm run verify:versions
 pnpm run verify:fonts
 node "$SCRIPT_DIR/verify-owned-class-usage.mjs"
+python3 -m unittest discover -s tests/scripts -p 'test_owned_class_usage.py'
 [[ "$(pnpm exec esbuild --version)" == "$ESBUILD_VERSION" ]]
 
 step "Frontend type checking"
