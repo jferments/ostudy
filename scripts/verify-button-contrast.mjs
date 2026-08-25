@@ -28,14 +28,14 @@ for (const theme of ["light", "dark", "console", "synthwave"]) {
   expectContains(source, "--ostudy-color-accent-on:", `${theme} on-accent token`);
 }
 
-// During the ratchet phase the remaining legacy controls must keep the same
-// contrast contract. Zero-legacy mode deliberately removes this branch.
+// During the ratchet phase the legacy controls still render, so a later theme
+// layer must override their historical hard-coded foreground. Stage 5 removes
+// these selectors; zero-legacy mode deliberately removes this assertion.
 if (baseline.mode === "ratchet" && baseline.legacyFiles?.["src/styles/base/application.css"]) {
-  const legacy = await read("src/styles/base/application.css");
-  expectContains(legacy, ".primary-button,", "legacy primary-button contrast override");
-  expectContains(legacy, ".small-primary-button,", "legacy small-primary-button contrast override");
-  expectContains(legacy, ".practice-reveal-button {", "legacy practice-reveal-button contrast override");
-  expectContains(legacy, "color: var(--on-accent);", "legacy semantic on-accent foreground");
+  expectContains(foundations, ".primary-button,", "transitional primary-button contrast override");
+  expectContains(foundations, ".small-primary-button,", "transitional small-primary-button contrast override");
+  expectContains(foundations, ".practice-reveal-button {", "transitional practice-reveal-button contrast override");
+  expectContains(foundations, "color: var(--on-accent);", "transitional semantic on-accent foreground");
 }
 
 if (failures.length > 0) {
