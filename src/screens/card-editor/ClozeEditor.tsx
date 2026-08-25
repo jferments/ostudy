@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { FieldError } from "../../ui/primitives/FormField";
 
 import {
   type ClozeMode,
@@ -9,6 +10,8 @@ import {
   removeAllClozeMarkers,
   renderClozePreview,
 } from "./cloze";
+import { Button } from "../../ui/primitives/Button";
+import { Panel } from "../../ui/primitives/Panel";
 
 interface ClozeEditorProps {
   source: string;
@@ -97,17 +100,17 @@ export function ClozeEditor({
       </label>
 
       <div className="cloze-toolbar">
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={disabled}
           onClick={markSelection}
         >
           Mark selection as blank
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="text-button"
+          variant="text"
           disabled={disabled || groups.length === 0}
           onClick={() => {
             setSelectionError(null);
@@ -115,9 +118,9 @@ export function ClozeEditor({
           }}
         >
           Remove all blank markers
-        </button>
+        </Button>
       </div>
-      {selectionError ? <p className="field-error">{selectionError}</p> : null}
+      {selectionError ? <FieldError>{selectionError}</FieldError> : null}
 
       <fieldset className="cloze-mode-options" disabled={disabled}>
         <legend>Blank behavior</legend>
@@ -150,7 +153,7 @@ export function ClozeEditor({
         </label>
       </fieldset>
 
-      <div className="cloze-preview-panel">
+      <Panel as="div">
         <div className="preview-panel-heading">
           <div>
             <span className="eyebrow">PREVIEW</span>
@@ -182,7 +185,7 @@ export function ClozeEditor({
             <p>{preview.answer}</p>
           </div>
         </div>
-      </div>
+      </Panel>
     </section>
   );
 }
