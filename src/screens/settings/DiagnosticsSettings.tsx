@@ -10,6 +10,8 @@ import {
   type DiagnosticLevel,
 } from "../../ipc/diagnostics";
 import styles from "./Settings.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
 
 type DiagnosticTarget =
   | "all"
@@ -110,7 +112,7 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
   return (
     <div className={styles.panelGrid} aria-busy={busy}>
       {errorMessage ? (
-        <div className={`${styles.fullWidth} inline-alert error-alert`}>{errorMessage}</div>
+        <InlineNotice kind="error" className={styles.fullWidth}>{errorMessage}</InlineNotice>
       ) : null}
 
       <section className={styles.settingsCard}>
@@ -171,22 +173,22 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
           Filter preview: <code>{proposedFilter}</code>
         </p>
         <div className="header-actions">
-          <button
+          <Button
             type="button"
-            className="primary-button"
+            variant="primary"
             disabled={busy}
             onClick={() => void applyTemporaryFilter()}
           >
             Enable temporary diagnostics
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={busy}
             onClick={() => void restoreNormalFilter()}
           >
             Restore normal diagnostics
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -209,14 +211,14 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
           <dt>Dropped queued events</dt>
           <dd>{configuration?.droppedEvents ?? 0}</dd>
         </dl>
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={busy || configuration === null}
           onClick={() => void flushNow()}
         >
           Flush diagnostic log
-        </button>
+        </Button>
       </section>
 
       <section className={styles.fullWidthCard}>

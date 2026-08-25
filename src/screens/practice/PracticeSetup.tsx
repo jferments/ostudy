@@ -7,6 +7,9 @@ import {
   resolvePracticeSetupDeckIds,
   savePracticeSetupDeckIds,
 } from "./practiceSetupScope";
+import { Button } from "../../ui/primitives/Button";
+import { EmptyState } from "../../ui/primitives/EmptyState";
+import { Panel } from "../../ui/primitives/Panel";
 
 export type PracticeWorkloadStatus = "idle" | "empty" | "loading" | "ready" | "error";
 
@@ -63,37 +66,37 @@ export function PracticeSetup({
 
   if (decksWithCards.length === 0) {
     return (
-      <section className="compact-empty-state large-empty-state">
-        <h2>No active flashcards yet</h2>
-        <p>Add a card to an active deck or unarchive a deck before starting a session.</p>
-      </section>
+      <EmptyState
+        title="No active flashcards yet"
+        description="Add a card to an active deck or unarchive a deck before starting a session."
+      />
     );
   }
 
   return (
     <>
-      <section className="practice-setup-panel">
+      <Panel >
         <div className="panel-heading-row">
           <div>
             <h2>Select decks to study</h2>
             <span>{selectedDeckIds.size} selected</span>
           </div>
           <div className="inline-actions">
-            <button
+            <Button
               type="button"
-              className="text-button"
+              variant="text"
               onClick={() => commitDeckSelection(new Set(decksWithCards.map((deck) => deck.id)))}
             >
               Select all
-            </button>
+            </Button>
             {selectedDeckIds.size > 0 ? (
-              <button
+              <Button
                 type="button"
-                className="text-button"
+                variant="text"
                 onClick={() => commitDeckSelection(new Set())}
               >
                 Clear
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -164,32 +167,32 @@ export function PracticeSetup({
             <span>scheduled</span>
           </div>
           {workloadReady && scheduledCount > 0 ? (
-            <button
+            <Button
               type="button"
-              className="primary-button practice-start-button"
+              variant="primary" className="practice-start-button"
               disabled={selectedDeckIds.size === 0 || isStarting}
               onClick={() => onStart([...selectedDeckIds], shuffle, "scheduled")}
             >
               {isStarting ? "Starting…" : "Start scheduled practice"}
-            </button>
+            </Button>
           ) : workloadReady && workload.extraAvailable > 0 && selectedDeckIds.size > 0 ? (
-            <button
+            <Button
               type="button"
-              className="secondary-button practice-start-button"
+              variant="secondary" className="practice-start-button"
               disabled={isStarting}
               onClick={() => onStart([...selectedDeckIds], shuffle, "extra")}
             >
               {isStarting ? "Starting…" : "Study this selection anyway"}
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="primary-button practice-start-button" disabled>
+            <Button type="button" variant="primary" className="practice-start-button" disabled>
               Start scheduled practice
-            </button>
+            </Button>
           )}
         </div>
-      </section>
+      </Panel>
 
-      <section className="practice-workload-panel" aria-label="Practice workload" aria-live="polite">
+      <Panel  aria-label="Practice workload" aria-live="polite">
         <div>
           <span>Today</span>
           <strong>{workloadReady ? workload.reviewsRemaining : "—"}</strong>
@@ -213,7 +216,7 @@ export function PracticeSetup({
           <small>need more practice</small>
         </div>
         <WorkloadStatus status={workloadStatus} error={workloadError} />
-      </section>
+      </Panel>
 
       <section className="recent-practice-section" aria-labelledby="recent-practice-heading">
         <div className="recent-practice-heading-row">
