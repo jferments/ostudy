@@ -41,6 +41,8 @@ jobs:
           git apply --check /tmp/stage6-reconcile.patch
           git apply /tmp/stage6-reconcile.patch
           rm .github/refactor-patches/stage6-reconcile.patch.gz.b64
+          test "$(grep -o 'HTMlTextAreaElement' src/screens/cards/BulkEntryModal.tsx | wc -l)" -eq 1
+          sed -i 's/HTMlTextAreaElement/HTMLTextAreaElement/' src/screens/cards/BulkEntryModal.tsx
           git diff --check
 
       - name: Verify scoped rich-content ownership
@@ -69,6 +71,7 @@ jobs:
             .github/refactor-patches \
             scripts/style-ownership-baseline.json \
             src/editor \
+            src/screens/cards/BulkEntryModal.tsx \
             src/styles/base/application.css \
             src/styles/features/templates.css
           git diff --cached --check
