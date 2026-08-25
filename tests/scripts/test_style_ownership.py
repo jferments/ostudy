@@ -6,6 +6,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VERIFIER = ROOT / "scripts" / "verify-style-ownership.mjs"
+FINAL_LAYER_ORDER = "@layer reset, tokens, theme, base, components, patterns, features, utilities;\n"
+FOUNDATION_IMPORT = {
+    "path": "src/main.tsx",
+    "specifier": "./ui/foundations/index.css",
+}
 
 
 class StyleOwnershipVerifierTests(unittest.TestCase):
@@ -27,11 +32,20 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
             json.dumps(baseline), encoding="utf-8"
         )
         (root / "src/ui/foundations/index.css").write_text(
-            "@layer reset, tokens, components;\n", encoding="utf-8"
+            FINAL_LAYER_ORDER, encoding="utf-8"
         )
         (root / "src/main.tsx").write_text(
             'import "./ui/foundations/index.css";\n', encoding="utf-8"
         )
+
+    def zero_baseline(self) -> dict:
+        return {
+            "schemaVersion": 1,
+            "mode": "zero",
+            "legacyFiles": {},
+            "allowedGlobalCssImports": [FOUNDATION_IMPORT],
+            "policyAllowances": {},
+        }
 
     def test_ratchet_rejects_new_legacy_selector(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -44,12 +58,7 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                     "legacyFiles": {
                         "src/styles/features/cards.css": {"selectors": ["known"]}
                     },
-                    "allowedGlobalCssImports": [
-                        {
-                            "path": "src/main.tsx",
-                            "specifier": "./ui/foundations/index.css",
-                        }
-                    ],
+                    "allowedGlobalCssImports": [FOUNDATION_IMPORT],
                     "policyAllowances": {},
                 },
             )
@@ -73,12 +82,7 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                     "legacyFiles": {
                         "src/styles/features/cards.css": {"selectors": ["known"]}
                     },
-                    "allowedGlobalCssImports": [
-                        {
-                            "path": "src/main.tsx",
-                            "specifier": "./ui/foundations/index.css",
-                        }
-                    ],
+                    "allowedGlobalCssImports": [FOUNDATION_IMPORT],
                     "policyAllowances": {},
                 },
             )
@@ -92,19 +96,10 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("introduced global CSS import", completed.stderr)
 
-    def test_zero_mode_requires_zero_legacy_and_only_foundation_global_import(self) -> None:
+    def test_zero_mode_accepts_only_final_foundation_and_module_styles(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            self.write_fixture(
-                root,
-                {
-                    "schemaVersion": 1,
-                    "mode": "zero",
-                    "legacyFiles": {},
-                    "allowedGlobalCssImports": [],
-                    "policyAllowances": {},
-                },
-            )
+            self.write_fixture(root, self.zero_baseline())
             module = root / "src/feature.module.css"
             module.write_text(
                 ".feature { color: var(--ostudy-color-text-primary); }\n",
@@ -115,6 +110,47 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_zero_mode_rejects_stale_baseline_allowances_and_global_css(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            baseline = self.zero_baseline()
+            baseline["policyAllowances"] = {
+                "src/feature.module.css": {
+                    "rawColors": 1,
+                    "numericZIndexes": 0,
+                    "arbitraryDurations": 0,
+                }
+            }
+            self.write_fixture(root, baseline)
+            (root / "src/feature.module.css").write_text(
+                ".feature { color: var(--ostudy-color-text-primary); }\n",
+                encoding="utf-8",
+            )
+            (root / "src/unowned.css").write_text(".unowned {}\n", encoding="utf-8")
+
+            completed = self.run_verifier(root)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("policyAllowances to be empty", completed.stderr)
+            self.assertIn("authored global CSS outside the foundation", completed.stderr)
+
+    def test_zero_mode_rejects_wrong_layer_order_or_missing_foundation_import(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            baseline = self.zero_baseline()
+            self.write_fixture(root, baseline)
+            (root / "src/ui/foundations/index.css").write_text(
+                "@layer reset, tokens, components, utilities;\n",
+                encoding="utf-8",
+            )
+            (root / "src/main.tsx").write_text("export {};\n", encoding="utf-8")
+
+            completed = self.run_verifier(root)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("requires exactly one global TypeScript CSS import", completed.stderr)
+            self.assertIn("final cascade exactly", completed.stderr)
+
     def test_topology_verifier_does_not_text_match_owned_semantic_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -124,12 +160,7 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                     "schemaVersion": 1,
                     "mode": "ratchet",
                     "legacyFiles": {},
-                    "allowedGlobalCssImports": [
-                        {
-                            "path": "src/main.tsx",
-                            "specifier": "./ui/foundations/index.css",
-                        }
-                    ],
+                    "allowedGlobalCssImports": [FOUNDATION_IMPORT],
                     "policyAllowances": {},
                 },
             )
@@ -144,16 +175,7 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
     def test_dynamic_css_policy_rejects_new_raw_color(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            self.write_fixture(
-                root,
-                {
-                    "schemaVersion": 1,
-                    "mode": "zero",
-                    "legacyFiles": {},
-                    "allowedGlobalCssImports": [],
-                    "policyAllowances": {},
-                },
-            )
+            self.write_fixture(root, self.zero_baseline())
             (root / "src/feature.module.css").write_text(
                 ".feature { color: #fff; }\n", encoding="utf-8"
             )

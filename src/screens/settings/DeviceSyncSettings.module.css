@@ -89,7 +89,7 @@
   place-items: center;
   border-radius: 12px;
   padding: 12px;
-  background: #ffffff;
+  background: var(--ostudy-color-neutral-0);
   box-shadow: var(--ostudy-shadow-level-2);
 }
 
@@ -97,7 +97,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--ostudy-color-neutral-0);
   object-fit: contain;
 }
 
