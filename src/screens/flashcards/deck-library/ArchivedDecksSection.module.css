@@ -1,0 +1,31 @@
+@layer components {
+  .root {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-3);
+  }
+
+  .toggle {
+    display: flex;
+    width: 100%;
+    min-height: var(--touch-target-min);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ostudy-space-3);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-medium);
+    padding: var(--ostudy-space-3) var(--ostudy-space-4);
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-primary);
+    text-align: start;
+  }
+
+  .toggle > span {
+    display: grid;
+    gap: 2px;
+  }
+
+  .toggle small {
+    color: var(--ostudy-color-text-muted);
+  }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,18 +34,18 @@ for (const path of requiredFiles) {
   }
 }
 
-const governedCss = [
-  "src/ui/feedback/experience.module.css",
-  "src/ui/tutorials/TourProvider.module.css",
-  "src/ui/help/Help.module.css",
-  "src/ui/patterns/Metrics.module.css",
-  "src/screens/flashcards/FlashcardsWorkspace.module.css",
-  "src/screens/flashcards/DeckLibraryWorkspace.module.css",
-  "src/screens/cards/CardFilters.module.css",
-  "src/screens/practice/ActivePractice.module.css",
-  "src/screens/practice/PracticeComplete.module.css",
-  "src/screens/DocumentsSection.module.css",
-];
+const styleBaseline = JSON.parse(
+  await readFile(join(root, "scripts/style-ownership-baseline.json"), "utf8"),
+);
+const policyAllowances = styleBaseline.policyAllowances ?? {};
+const governedCss = (await collectCss(join(root, "src")))
+  .map((path) => relative(root, path).replaceAll("\\", "/"))
+  .filter(
+    (path) =>
+      !path.includes("/tokens/generated/") &&
+      !path.startsWith("src/styles/base/") &&
+      !path.startsWith("src/styles/features/"),
+  );
 
 for (const path of governedCss) {
   const absolute = join(root, path);
@@ -53,28 +53,30 @@ for (const path of governedCss) {
   try {
     source = await readFile(absolute, "utf8");
   } catch {
-    failures.push(`Missing governed CSS module: ${path}`);
+    failures.push(`Missing discovered CSS file: ${path}`);
     continue;
   }
 
-  for (const match of source.matchAll(/z-index\s*:\s*(-?\d+)\s*;/gu)) {
-    const value = Number(match[1]);
-    if (Math.abs(value) > 1) {
+  const actual = {
+    numericZIndexes: [...source.matchAll(/z-index\s*:\s*(-?\d+)\s*;/gu)].filter(
+      (match) => Math.abs(Number(match[1])) > 1,
+    ).length,
+    rawColors: [
+      ...source.matchAll(/(?:^|[\s:,(])#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/gimu),
+    ].length,
+    arbitraryDurations: [...source.matchAll(/(?:animation|transition)[^;]*;/gu)].filter(
+      (match) => /\b\d+(?:\.\d+)?m?s\b/u.test(match[0]),
+    ).length,
+  };
+  const allowance = policyAllowances[path] ?? {
+    numericZIndexes: 0,
+    rawColors: 0,
+    arbitraryDurations: 0,
+  };
+  for (const key of ["numericZIndexes", "rawColors", "arbitraryDurations"]) {
+    if (actual[key] > (allowance[key] ?? 0)) {
       failures.push(
-        `${path} uses numeric z-index ${value}; use a generated layer token.`,
-      );
-    }
-  }
-
-  if (/(?:^|[\s:,(])#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/iu.test(source)) {
-    failures.push(`${path} contains a raw color literal; use semantic tokens.`);
-  }
-
-  const declarations = source.match(/(?:animation|transition)[^;]*;/gu) ?? [];
-  for (const declaration of declarations) {
-    if (/\b\d+(?:\.\d+)?m?s\b/u.test(declaration)) {
-      failures.push(
-        `${path} contains an arbitrary animation duration in: ${declaration.trim()}`,
+        `${path} has ${actual[key]} ${key}; migration baseline allows ${allowance[key] ?? 0}.`,
       );
     }
   }
@@ -104,3 +106,15 @@ if (failures.length > 0) {
 console.log(
   `OK   UI token generation, theme completeness, governed styles, layer usage, timing, and artwork metadata are valid (${relative(root, import.meta.filename)}).`,
 );
+
+async function collectCss(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (["node_modules", "dist", "target", "gen", "artifacts"].includes(entry.name)) continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...(await collectCss(path)));
+    else if (entry.isFile() && path.endsWith(".css")) files.push(path);
+  }
+  return files;
+}

@@ -1,0 +1,133 @@
+@layer components {
+  .root {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-5);
+    container-type: inline-size;
+    container-name: deck-library;
+  }
+
+  .toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .toolbarActions {
+    display: flex;
+    min-width: 0;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  .toolbarActions > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .library {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-7);
+  }
+
+  .folderArea,
+  .unsortedArea {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-3);
+  }
+
+  .sectionHeading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ostudy-space-3);
+  }
+
+  .sectionHeading h2,
+  .sectionHeading p {
+    margin: 0;
+  }
+
+  .sectionHeading h2 {
+    font-size: 1.05rem;
+  }
+
+  .sectionHeading p {
+    margin-top: 2px;
+    color: var(--ostudy-color-text-muted);
+    font-size: 0.78rem;
+  }
+
+  .sectionActions {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  .folderList {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-4);
+  }
+
+  .folderDropTail {
+    min-height: 12px;
+    border: 1px dashed transparent;
+    border-radius: var(--ostudy-radius-medium);
+  }
+
+  .folderDropTail[data-drag-over="folder"] {
+    min-height: 44px;
+    border-color: var(--ostudy-color-border-accent);
+    background: var(--ostudy-color-accent-soft);
+  }
+
+  .emptyFolderHint {
+    display: flex;
+    min-height: 68px;
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    padding: var(--ostudy-space-3);
+    color: var(--ostudy-color-text-muted);
+  }
+
+  .unsortedArea[data-drag-over="deck"] {
+    border-radius: var(--ostudy-radius-large);
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  @container deck-library (max-width: 620px) {
+    .toolbarActions {
+      width: 100%;
+      justify-content: stretch;
+    }
+
+    .toolbarActions > button {
+      flex: 1 1 auto;
+    }
+
+    .sectionHeading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .sectionActions {
+      width: 100%;
+      justify-content: stretch;
+    }
+
+    .sectionActions > button {
+      flex: 1 1 auto;
+    }
+  }
+}

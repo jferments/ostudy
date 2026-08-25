@@ -4,12 +4,12 @@ This is the execution ledger for ADR 0048. Checkboxes are mirrored in PR #74 and
 
 ## Stage 0 — Inventory, characterization, and ratchet
 
-- [ ] Add ADR 0048 and this execution ledger.
-- [ ] Inventory legacy selectors and map each group to one final owner.
-- [ ] Add `verify-style-ownership.mjs` and Python fixtures.
-- [ ] Expand UI policy discovery to all authored CSS.
-- [ ] Add a legacy non-growth baseline.
-- [ ] Add missing deck-library characterization tests.
+- [x] Add ADR 0048 and this execution ledger.
+- [x] Inventory legacy selectors and map each group to one final owner.
+- [x] Add `verify-style-ownership.mjs` and Python fixtures.
+- [x] Expand UI policy discovery to all authored CSS.
+- [x] Add a legacy non-growth baseline.
+- [x] Add missing deck-library characterization tests.
 - [ ] Establish current static and fast qualification baseline.
 
 ## Stage 1 — Pure deck-library organization policy
