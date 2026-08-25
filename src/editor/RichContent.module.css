@@ -1,0 +1,214 @@
+@layer components {
+  .view,
+  :global(.rich-card-view) {
+    min-width: 0;
+  }
+
+  .content,
+  :global(.rich-editor-content),
+  :global(.rich-card-content),
+  :global(.rich-text-view) {
+    min-height: inherit;
+    outline: none;
+    font-family: var(--card-font-family);
+    font-size: var(--card-base-size);
+    line-height: 1.58;
+    overflow-wrap: anywhere;
+  }
+
+  .content > :first-child,
+  :global(.rich-editor-content) > :first-child,
+  :global(.rich-card-content) > :first-child,
+  :global(.rich-text-view) > :first-child { margin-top: 0; }
+
+  .content > :last-child,
+  :global(.rich-editor-content) > :last-child,
+  :global(.rich-card-content) > :last-child,
+  :global(.rich-text-view) > :last-child { margin-bottom: 0; }
+
+  .content p,
+  :global(.rich-editor-content) p,
+  :global(.rich-card-content) p,
+  :global(.rich-text-view) p { margin: 0.55em 0; }
+
+  .content h1,
+  :global(.rich-editor-content) h1,
+  :global(.rich-card-content) h1,
+  :global(.rich-text-view) h1 {
+    margin: 0.7em 0 0.35em;
+    font-size: 2em;
+    line-height: 1.15;
+  }
+
+  .content h2,
+  :global(.rich-editor-content) h2,
+  :global(.rich-card-content) h2,
+  :global(.rich-text-view) h2 {
+    margin: 0.7em 0 0.35em;
+    font-size: 1.6em;
+    line-height: 1.2;
+  }
+
+  .content h3,
+  :global(.rich-editor-content) h3,
+  :global(.rich-card-content) h3,
+  :global(.rich-text-view) h3 {
+    margin: 0.7em 0 0.35em;
+    font-size: 1.3em;
+  }
+
+  .content h4,
+  :global(.rich-editor-content) h4,
+  :global(.rich-card-content) h4,
+  :global(.rich-text-view) h4 {
+    margin: 0.7em 0 0.35em;
+    font-size: 1.1em;
+  }
+
+  .content ul,
+  .content ol,
+  :global(.rich-editor-content) ul,
+  :global(.rich-editor-content) ol,
+  :global(.rich-card-content) ul,
+  :global(.rich-card-content) ol,
+  :global(.rich-text-view) ul,
+  :global(.rich-text-view) ol {
+    margin: 0.55em 0;
+    padding-left: 1.7em;
+  }
+
+  .content blockquote,
+  :global(.rich-editor-content) blockquote,
+  :global(.rich-card-content) blockquote,
+  :global(.rich-text-view) blockquote {
+    margin: 0.8em 0;
+    border-left: 3px solid var(--ostudy-color-accent-base);
+    padding: 0.15em 0 0.15em 1em;
+    color: var(--ostudy-color-text-secondary);
+  }
+
+  .content pre,
+  :global(.rich-editor-content) pre,
+  :global(.rich-card-content) pre,
+  :global(.rich-text-view) pre {
+    overflow: auto;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: 8px;
+    padding: 0.8em;
+    background: var(--ostudy-color-surface-raised);
+  }
+
+  .content code,
+  :global(.rich-editor-content) code,
+  :global(.rich-card-content) code,
+  :global(.rich-text-view) code {
+    border-radius: 4px;
+    padding: 0.12em 0.28em;
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-accent);
+  }
+
+  .content pre code,
+  :global(.rich-editor-content) pre code,
+  :global(.rich-card-content) pre code,
+  :global(.rich-text-view) pre code {
+    padding: 0;
+    background: transparent;
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .content a,
+  :global(.rich-editor-content) a,
+  :global(.rich-card-content) a,
+  :global(.rich-text-view) a {
+    color: var(--ostudy-color-text-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.14em;
+  }
+
+  .content hr,
+  :global(.rich-editor-content) hr,
+  :global(.rich-card-content) hr,
+  :global(.rich-text-view) hr {
+    margin: 1.2em 0;
+    border: 0;
+    border-top: 1px solid var(--ostudy-color-border-strong);
+  }
+
+  .content table,
+  :global(.rich-editor-content) table,
+  :global(.rich-card-content) table,
+  :global(.rich-text-view) table {
+    width: 100%;
+    overflow: hidden;
+    border-collapse: collapse;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-small);
+  }
+
+  .content th,
+  .content td,
+  :global(.rich-editor-content) th,
+  :global(.rich-editor-content) td,
+  :global(.rich-card-content) th,
+  :global(.rich-card-content) td,
+  :global(.rich-text-view) th,
+  :global(.rich-text-view) td {
+    border: 1px solid var(--ostudy-color-border-subtle);
+    padding: 0.45em 0.6em;
+    text-align: start;
+    vertical-align: top;
+  }
+
+  .content th,
+  :global(.rich-editor-content) th,
+  :global(.rich-card-content) th,
+  :global(.rich-text-view) th {
+    background: var(--ostudy-color-surface-raised);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .content [data-indent="1"],
+  :global(.rich-editor-content) [data-indent="1"],
+  :global(.rich-card-content) [data-indent="1"],
+  :global(.rich-text-view) [data-indent="1"] { margin-left: 2rem; }
+
+  .content [data-indent="2"],
+  :global(.rich-editor-content) [data-indent="2"],
+  :global(.rich-card-content) [data-indent="2"],
+  :global(.rich-text-view) [data-indent="2"] { margin-left: 4rem; }
+
+  .content [data-indent="3"],
+  :global(.rich-editor-content) [data-indent="3"],
+  :global(.rich-card-content) [data-indent="3"],
+  :global(.rich-text-view) [data-indent="3"] { margin-left: 6rem; }
+
+  .content [data-indent="4"],
+  :global(.rich-editor-content) [data-indent="4"],
+  :global(.rich-card-content) [data-indent="4"],
+  :global(.rich-text-view) [data-indent="4"] { margin-left: 8rem; }
+
+  .content [data-indent="5"],
+  :global(.rich-editor-content) [data-indent="5"],
+  :global(.rich-card-content) [data-indent="5"],
+  :global(.rich-text-view) [data-indent="5"] { margin-left: 10rem; }
+
+  .content [data-indent="6"],
+  :global(.rich-editor-content) [data-indent="6"],
+  :global(.rich-card-content) [data-indent="6"],
+  :global(.rich-text-view) [data-indent="6"] { margin-left: 12rem; }
+
+  .content img,
+  :global(.rich-editor-content) img,
+  :global(.rich-card-content) img,
+  :global(.rich-text-view) img {
+    display: block;
+    max-width: min(100%, 900px);
+    max-height: 70vh;
+    margin: 1em auto;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: 10px;
+    object-fit: contain;
+    background: var(--ostudy-color-surface-raised);
+  }
+}
