@@ -60,6 +60,7 @@ node "$SCRIPT_DIR/verify-ipc-contract.mjs"
 node "$SCRIPT_DIR/verify-repository-policy.mjs"
 node "$SCRIPT_DIR/verify-agent-workflow-policy.mjs"
 node "$SCRIPT_DIR/verify-platform-boundaries.mjs"
+node "$SCRIPT_DIR/verify-ai-infrastructure-boundaries.mjs"
 node "$SCRIPT_DIR/verify-document-ai-boundaries.mjs"
 node "$SCRIPT_DIR/verify-document-processing-boundaries.mjs"
 node "$SCRIPT_DIR/verify-external-file-streaming.mjs"
@@ -81,9 +82,6 @@ python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 
 step "Frozen JavaScript installation and dependency verification"
 pnpm install --frozen-lockfile
-# pnpm can legitimately decide that an unchanged installation needs no lifecycle
-# work. Font assets are gitignored runtime inputs, so provision them explicitly
-# before the installed-font contract instead of relying on postinstall side effects.
 pnpm run fonts:install
 pnpm run verify:versions
 pnpm run verify:fonts

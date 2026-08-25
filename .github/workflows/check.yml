@@ -23,7 +23,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A source synchronization should supersede qualification of the older tree,
+  # but metadata-only PR edits must not abort an exact-head run already in flight.
+  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
 
 permissions:
   contents: read

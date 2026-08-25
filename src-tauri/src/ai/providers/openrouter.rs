@@ -1,7 +1,5 @@
 use serde_json::{json, Value};
 
-use crate::ai::gateway::{error, AiGatewayError};
-
 use super::ProviderModelReasoning;
 
 pub(super) const MAX_MODEL_LIST_BYTES: usize = 4 * 1024 * 1024;
@@ -12,141 +10,29 @@ const HIGH_PRECISION_QUANTIZATIONS: [&str; 6] = ["int8", "fp8", "mxfp8", "fp16",
 const PREFERRED_MIN_P90_THROUGHPUT_TPS: u64 = 50;
 const PREFERRED_MAX_P90_LATENCY_SECONDS: u64 = 20;
 
-pub(super) fn text_probe_body(
-    model_id: &str,
-    messages: Value,
+pub(super) fn apply_request_policy(
+    body: &mut Value,
+    require_parameters: bool,
     require_zero_data_retention: bool,
-) -> Value {
-    json!({
-        "model": model_id,
-        "messages": messages,
-        "temperature": 0,
-        "max_tokens": 64,
-        "stream": false,
-        "provider": provider_preferences(true, require_zero_data_retention)
-    })
+) {
+    body["provider"] = provider_preferences(require_parameters, require_zero_data_retention);
 }
 
-pub(super) fn structured_probe_body(
-    model_id: &str,
-    echo: &str,
-    schema: Value,
+pub(super) fn apply_document_policy(
+    body: &mut Value,
+    reasoning_effort: &str,
     require_zero_data_retention: bool,
-) -> Value {
-    json!({
-        "model": model_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": "Return only the JSON object required by the response schema."
-            },
-            {
-                "role": "user",
-                "content": format!("Return ok=true and echo exactly {echo}.")
-            }
-        ],
-        "temperature": 0,
-        "max_tokens": 256,
-        "stream": false,
-        "provider": provider_preferences(true, require_zero_data_retention),
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "ostudy_connection_probe",
-                "strict": true,
-                "schema": strict_schema(&schema)
-            }
-        }
-    })
-}
-
-pub(super) fn document_schema_probe_body(
-    model_id: &str,
-    schema: &Value,
-    require_zero_data_retention: bool,
-) -> Value {
-    json!({
-        "model": model_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are validating a structured-output contract. Return only the JSON required by the schema."
-            },
-            {
-                "role": "user",
-                "content": concat!(
-                    "Return exactly two synthetic cards. First: type basic, front Probe question, ",
-                    "back Probe answer, tags containing probe. Second: type cloze, text The probe value is stable., ",
-                    "blanks containing stable, mode one_at_a_time, tags containing probe."
-                )
-            }
-        ],
-        "temperature": 0,
-        "max_tokens": 768,
-        "stream": false,
-        "reasoning": { "effort": "minimal" },
-        "provider": provider_preferences(true, require_zero_data_retention),
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "ostudy_document_contract_probe",
-                "strict": true,
-                "schema": strict_schema(schema)
-            }
-        }
-    })
-}
-
-/// Lower ostudy's richer validation schema to the portable strict subset used
-/// by OpenAI-style structured output implementations behind OpenRouter.
-///
-/// Local Rust validation remains authoritative for length/item/range bounds.
-/// The wire schema focuses on deterministic shape: unions use `anyOf`, constants
-/// become one-value enums, every object property is required, and additional
-/// properties are forbidden. This avoids routed providers silently degrading
-/// strict enforcement when handed keywords outside their supported subset.
-pub(super) fn strict_schema(value: &Value) -> Value {
-    match value {
-        Value::Array(values) => Value::Array(values.iter().map(strict_schema).collect()),
-        Value::Object(object) => {
-            if let Some(constant) = object.get("const") {
-                let value_type = match constant {
-                    Value::String(_) => "string",
-                    Value::Number(number) if number.is_i64() || number.is_u64() => "integer",
-                    Value::Number(_) => "number",
-                    Value::Bool(_) => "boolean",
-                    _ => "string",
-                };
-                return json!({
-                    "type": value_type,
-                    "enum": [constant.clone()]
-                });
-            }
-
-            let mut normalized = serde_json::Map::new();
-            for (key, child) in object {
-                match key.as_str() {
-                    "minLength" | "maxLength" | "minItems" | "maxItems" | "required" => {}
-                    "oneOf" => {
-                        normalized.insert("anyOf".to_string(), strict_schema(child));
-                    }
-                    _ => {
-                        normalized.insert(key.clone(), strict_schema(child));
-                    }
-                }
-            }
-            if let Some(properties) = normalized.get("properties").and_then(Value::as_object) {
-                let required = properties
-                    .keys()
-                    .cloned()
-                    .map(Value::String)
-                    .collect::<Vec<_>>();
-                normalized.insert("required".to_string(), Value::Array(required));
-                normalized.insert("additionalProperties".to_string(), Value::Bool(false));
-            }
-            Value::Object(normalized)
-        }
-        _ => value.clone(),
+) {
+    apply_request_policy(body, true, require_zero_data_retention);
+    body["plugins"] = json!([{
+        "id": "context-compression",
+        "enabled": false,
+    }]);
+    if reasoning_effort != "none" && reasoning_effort != "automatic" {
+        body["reasoning"] = json!({
+            "effort": reasoning_effort,
+            "exclude": true,
+        });
     }
 }
 
@@ -163,20 +49,6 @@ pub(super) fn model_structured_outputs_declared(item: &Value) -> Option<bool> {
     }))
 }
 
-/// OpenRouter defaults permit endpoints that may retain data and, unless an
-/// explicit sorting rule is supplied, primarily price-balance across otherwise
-/// eligible providers. That default is a poor fit for ostudy's document jobs:
-/// one document can issue many long structured completions, so a slow endpoint
-/// can multiply wall-clock time across every outline, generation, and curation
-/// batch.
-///
-/// ostudy therefore makes throughput the dominant routing objective for its
-/// OpenRouter profile traffic while retaining the existing privacy, parameter,
-/// precision, and fallback boundaries. The percentile preferences remain useful
-/// secondary signals, but `sort = throughput` ensures that a merely-cheaper slow
-/// endpoint does not stay ahead of a substantially faster eligible endpoint.
-/// Connection probes intentionally use the same provider policy so a successful
-/// probe exercises the route class used by later document work.
 pub(super) fn provider_preferences(
     require_parameters: bool,
     require_zero_data_retention: bool,
@@ -261,74 +133,14 @@ pub(super) fn model_reasoning(item: &Value) -> Option<ProviderModelReasoning> {
     })
 }
 
-pub(super) fn embedded_error(value: &Value) -> Option<AiGatewayError> {
-    let provider_error = value.get("error")?;
-    let code = provider_error.get("code");
-    let code_text = code
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .or_else(|| code.and_then(Value::as_i64).map(|value| value.to_string()))
-        .unwrap_or_else(|| "unknown".to_string());
-    let normalized = code_text.to_ascii_lowercase();
-    let (safe_code, message, retryable) = match normalized.as_str() {
-        "401" | "unauthorized" => (
-            "ai_authentication_failed",
-            "OpenRouter rejected the saved API key.",
-            false,
-        ),
-        "402" | "insufficient_credits" => (
-            "ai_insufficient_credits",
-            "The OpenRouter account does not have enough credits for this request.",
-            false,
-        ),
-        "429" | "rate_limit_exceeded" => (
-            "ai_rate_limited",
-            "OpenRouter rate-limited the request.",
-            true,
-        ),
-        "502" | "provider_error" | "server_error" => (
-            "ai_provider_unavailable",
-            "The model provider selected by OpenRouter failed during generation.",
-            true,
-        ),
-        "503" | "no_available_providers" => (
-            "ai_no_compatible_endpoint",
-            "OpenRouter could not find an available endpoint compatible with the request policy.",
-            true,
-        ),
-        "context_length_exceeded" => (
-            "ai_context_length_exceeded",
-            "The request exceeded the selected model endpoint's context window.",
-            false,
-        ),
-        "invalid_model" => (
-            "ai_model_unavailable",
-            "The selected OpenRouter model is no longer available to this API key.",
-            false,
-        ),
-        _ => (
-            "ai_provider_error",
-            "OpenRouter returned a provider error for the request.",
-            false,
-        ),
-    };
-    crate::logging::warn_target(
-        "ai.provider.openrouter",
-        "openrouter_embedded_error",
-        message,
-        json!({ "providerCode": code_text }),
-    );
-    Some(error(safe_code, message, retryable, None))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn structured_probe_requires_parameter_compatible_private_routing() {
-        let body =
-            structured_probe_body("openai/example", "echo", json!({ "type": "object" }), true);
+    fn request_policy_enforces_private_parameter_compatible_routing() {
+        let mut body = json!({});
+        apply_request_policy(&mut body, true, true);
         assert_eq!(
             body.pointer("/provider/require_parameters"),
             Some(&json!(true))
@@ -339,55 +151,20 @@ mod tests {
         );
         assert_eq!(body.pointer("/provider/zdr"), Some(&json!(true)));
         assert_eq!(body.pointer("/provider/sort"), Some(&json!("throughput")));
-        assert_eq!(
-            body.pointer("/response_format/type"),
-            Some(&json!("json_schema"))
-        );
-        assert!(body.get("debug").is_none());
-        assert!(body.get("plugins").is_none());
     }
 
     #[test]
-    fn strict_schema_uses_portable_union_and_required_properties() {
-        let schema = strict_schema(&json!({
-            "type": "object",
-            "properties": {
-                "cards": {
-                    "type": "array",
-                    "maxItems": 4,
-                    "items": {
-                        "oneOf": [{
-                            "type": "object",
-                            "properties": {
-                                "type": {"const": "basic"},
-                                "front": {"type": "string", "maxLength": 100},
-                                "tags": {"type": "array", "maxItems": 4}
-                            },
-                            "required": ["type", "front"]
-                        }]
-                    }
-                }
-            },
-            "required": ["cards"]
-        }));
-        assert!(schema.pointer("/properties/cards/items/oneOf").is_none());
-        assert!(schema.pointer("/properties/cards/items/anyOf").is_some());
-        assert!(schema.pointer("/properties/cards/maxItems").is_none());
-        let required = schema
-            .pointer("/properties/cards/items/anyOf/0/required")
-            .and_then(serde_json::Value::as_array)
-            .expect("strict object schema should require every declared property");
-        assert_eq!(required.len(), 3);
-        for property in ["front", "tags", "type"] {
-            assert!(
-                required.contains(&json!(property)),
-                "strict schema is missing required property {property}"
-            );
-        }
+    fn document_policy_disables_compression_and_excludes_returned_reasoning() {
+        let mut body = json!({});
+        apply_document_policy(&mut body, "low", false);
         assert_eq!(
-            schema.pointer("/properties/cards/items/anyOf/0/properties/type/enum"),
-            Some(&json!(["basic"]))
+            body.pointer("/plugins/0/id"),
+            Some(&json!("context-compression"))
         );
+        assert_eq!(body.pointer("/plugins/0/enabled"), Some(&json!(false)));
+        assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
+        assert_eq!(body.pointer("/reasoning/exclude"), Some(&json!(true)));
+        assert!(body.get("session_id").is_none());
     }
 
     #[test]
@@ -408,70 +185,29 @@ mod tests {
     }
 
     #[test]
-    fn provider_preferences_enforce_precision_and_prioritize_throughput() {
-        let ordinary = provider_preferences(true, false);
-        assert_eq!(ordinary.pointer("/data_collection"), Some(&json!("deny")));
-        assert_eq!(ordinary.pointer("/zdr"), Some(&json!(false)));
-        assert_eq!(ordinary.pointer("/sort"), Some(&json!("throughput")));
-
-        let strict = provider_preferences(true, true);
-        assert_eq!(strict.pointer("/data_collection"), Some(&json!("deny")));
-        assert_eq!(strict.pointer("/zdr"), Some(&json!(true)));
-        assert_eq!(strict.pointer("/require_parameters"), Some(&json!(true)));
-        assert_eq!(strict.pointer("/sort"), Some(&json!("throughput")));
-        assert_eq!(
-            strict.pointer("/preferred_min_throughput/p90"),
-            Some(&json!(50))
-        );
-        assert_eq!(
-            strict.pointer("/preferred_max_latency/p90"),
-            Some(&json!(20))
-        );
-        assert_eq!(
-            strict.pointer("/quantizations"),
-            Some(&json!(["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32"]))
-        );
-        let serialized = strict["quantizations"].to_string();
-        for rejected in ["int4", "fp4", "fp6", "unknown"] {
-            assert!(!serialized.contains(rejected));
-        }
-    }
-
-    #[test]
-    fn model_metadata_retains_context_and_reasoning_controls() {
-        let model = json!({
-            "context_length": 1_310_720,
-            "reasoning": {
-                "mandatory": false,
-                "default_enabled": true,
-                "supported_efforts": ["max", "high", "low"],
-                "default_effort": "high"
+    fn model_metadata_preserves_context_owner_and_reasoning() {
+        let item = json!({
+            "id":"deepseek/example",
+            "name":"DeepSeek Example",
+            "context_length":1_310_720,
+            "reasoning":{
+                "mandatory":false,
+                "default_enabled":true,
+                "supported_efforts":["max","high","low"],
+                "default_effort":"high"
             }
         });
-        assert_eq!(model_context_window_tokens(&model), Some(1_310_720));
-        let reasoning = model_reasoning(&model).expect("reasoning metadata should parse");
         assert_eq!(
-            reasoning.supported_efforts.unwrap(),
-            vec!["max", "high", "low"]
+            model_display_name(&item, "deepseek/example"),
+            "DeepSeek Example"
         );
+        assert_eq!(
+            model_owner(&item, "deepseek/example").as_deref(),
+            Some("deepseek")
+        );
+        assert_eq!(model_context_window_tokens(&item), Some(1_310_720));
+        let reasoning = model_reasoning(&item).expect("reasoning metadata should parse");
         assert_eq!(reasoning.default_effort.as_deref(), Some("high"));
-        assert_eq!(reasoning.default_enabled, Some(true));
         assert!(!reasoning.mandatory);
-    }
-
-    #[test]
-    fn non_reasoning_models_omit_reasoning_metadata() {
-        assert!(model_reasoning(&json!({ "context_length": 16_384 })).is_none());
-    }
-
-    #[test]
-    fn midstream_style_errors_receive_stable_safe_categories() {
-        let error_value = embedded_error(&json!({
-            "error": { "code": "server_error", "message": "upstream detail" }
-        }))
-        .expect("embedded error should parse");
-        assert_eq!(error_value.safe.code, "ai_provider_unavailable");
-        assert!(error_value.safe.retryable);
-        assert!(!error_value.safe.message.contains("upstream detail"));
     }
 }

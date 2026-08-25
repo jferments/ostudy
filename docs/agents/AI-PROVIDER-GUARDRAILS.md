@@ -11,8 +11,8 @@ They extend the general architecture, code, UI, and validation guardrails.
 - React, controllers, shared UI, and `src/platform/` must not use `fetch`,
   `XMLHttpRequest`, provider JavaScript SDKs, API credentials, TLS settings, or
   provider response parsing.
-- `reqwest` remains confined to `src-tauri/src/ai/gateway.rs`. Provider modules
-  describe routes and wire contracts; they do not create independent clients.
+- `reqwest` remains confined to `src-tauri/src/ai/gateway/`. Provider protocol
+  modules describe routes and wire contracts; they do not create independent clients.
 - Operating-system credential access remains confined to
   `src-tauri/src/ai/secrets.rs`.
 - Never add credential bytes, masked credentials, reversible encrypted secrets,
@@ -35,6 +35,28 @@ They extend the general architecture, code, UI, and validation guardrails.
 - Profile, endpoint, authentication, task-default, and credential mutations use
   the shared AI mutation lane, optimistic revisions, and operation IDs.
 - Never silently fall back from a local profile to a LAN or cloud profile.
+
+## Provider protocol family
+
+- The implemented llama.cpp, DeepSeek, and OpenRouter integrations share the
+  OpenAI-compatible protocol family under `src-tauri/src/ai/providers/`.
+- Shared model-list parsing, Chat Completions fields, response parsing, structured
+  output decoding, usage normalization, and representative document probing must
+  not be copied into per-provider modules.
+- `providers/dialect.rs` is the single dispatch seam for current provider wire
+  differences. Add custom code only for a demonstrated protocol difference.
+- `providers/llama_cpp.rs` owns local route normalization, `/props`, chat-template
+  controls, and llama.cpp structured-output compatibility.
+- `providers/deepseek.rs` owns DeepSeek thinking controls and the beta strict-tool
+  document contract.
+- `providers/openrouter.rs` owns router/privacy preferences, account-filtered
+  model metadata, and OpenRouter-specific document routing policy.
+- Document intelligence owns task semantics, source grounding, and output
+  validation; it must not branch on provider kind or construct provider wire
+  vocabulary.
+- Do not introduce an omnibus provider trait that simply mirrors every feature.
+  Add another protocol family only when a provider is genuinely not compatible
+  with the current shared protocol.
 
 ## Provider adapters
 
@@ -96,7 +118,9 @@ Every provider or task addition requires:
 - endpoint and redirect tests;
 - structured-output tests for malformed, truncated, semantically incorrect, and
   provider-refusal responses;
-- stale profile/model/credential-epoch tests;
+- stale profile/model/credential-epoch/**adapter-revision** tests;
+- a representative document-contract probe that exercises the same provider
+  dialect as real document generation;
 - typed IPC parity and repository-policy updates;
 - opt-in live-provider qualification separate from normal PR checks.
 

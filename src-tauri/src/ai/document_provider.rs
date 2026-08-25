@@ -7,7 +7,11 @@
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::{database::Database, error::CommandError};
+use crate::{
+    ai::probes::{load_capability_records, CapabilityStatus},
+    database::Database,
+    error::CommandError,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum StructuredOutputStrategy {
@@ -63,9 +67,6 @@ impl DocumentProviderCapabilities {
     }
 
     pub(crate) fn resolve_reasoning_effort(&self, requested: &str) -> String {
-        // llama.cpp and direct DeepSeek requests explicitly disable thinking in
-        // their provider adapters. OpenRouter is the only implemented document
-        // transport whose unified reasoning parameter needs model negotiation.
         if self.provider_kind != "openrouter" {
             return "none".to_string();
         }
@@ -117,9 +118,6 @@ impl DocumentProviderCapabilities {
         if reasoning.mandatory {
             lowest_supported()
         } else {
-            // A user asking for Low must never be silently upgraded to High just
-            // because a model exposes only high/xhigh. Disable optional reasoning
-            // rather than consuming most of the structured-output token budget.
             "none".to_string()
         }
     }
@@ -182,54 +180,34 @@ pub(crate) fn load_document_provider_capabilities(
     provider_kind: &str,
     model_id: &str,
 ) -> Result<DocumentProviderCapabilities, CommandError> {
-    database.with_connection(|connection| {
-        let mut result = DocumentProviderCapabilities::conservative(provider_kind, model_id);
-        let mut statement = connection
-            .prepare(
-                "SELECT capability_key, status, value_json
-                 FROM ai_provider_capabilities
-                 WHERE profile_id = ?1
-                 ORDER BY capability_key",
-            )
-            .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([profile_id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
-            .map_err(CommandError::database)?;
-        for row in rows {
-            let (key, status, value_json) = row.map_err(CommandError::database)?;
-            match key.as_str() {
-                "context_window_tokens" if status == "supported" => {
-                    result.context_window_tokens = parse_positive_usize(&value_json);
-                }
-                "image_input" => result.image_input = status == "supported",
-                "usage_reporting" => result.usage_reporting = status == "supported",
-                "reasoning_control" if status == "supported" => {
-                    result.reasoning =
-                        serde_json::from_str::<Option<DocumentReasoningCapabilities>>(&value_json)
-                            .ok()
-                            .flatten();
-                }
-                "json_schema_output" if status == "supported" => {
-                    result.structured_output = StructuredOutputStrategy::JsonSchema;
-                }
-                _ => {}
+    let mut result = DocumentProviderCapabilities::conservative(provider_kind, model_id);
+    for capability in load_capability_records(database, profile_id)? {
+        match capability.key.as_str() {
+            "context_window_tokens" if capability.status == CapabilityStatus::Supported => {
+                result.context_window_tokens =
+                    capability.value.as_ref().and_then(parse_positive_usize);
             }
+            "image_input" => {
+                result.image_input = capability.status == CapabilityStatus::Supported;
+            }
+            "usage_reporting" => {
+                result.usage_reporting = capability.status == CapabilityStatus::Supported;
+            }
+            "reasoning_control" if capability.status == CapabilityStatus::Supported => {
+                result.reasoning = capability.value.and_then(|value| {
+                    serde_json::from_value::<DocumentReasoningCapabilities>(value).ok()
+                });
+            }
+            "json_schema_output" if capability.status == CapabilityStatus::Supported => {
+                result.structured_output = StructuredOutputStrategy::JsonSchema;
+            }
+            _ => {}
         }
-
-        // DeepSeek document generation uses strict tool calling even though its
-        // generic probe describes JSON-object support. Provider wire details
-        // remain here rather than leaking into planners.
-        if provider_kind == "deepseek" {
-            result.structured_output = StructuredOutputStrategy::StrictTool;
-        }
-        Ok(result)
-    })
+    }
+    if provider_kind == "deepseek" {
+        result.structured_output = StructuredOutputStrategy::StrictTool;
+    }
+    Ok(result)
 }
 
 fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
@@ -240,8 +218,7 @@ fn structured_strategy(provider_kind: &str) -> StructuredOutputStrategy {
     }
 }
 
-fn parse_positive_usize(value_json: &str) -> Option<usize> {
-    let value = serde_json::from_str::<serde_json::Value>(value_json).ok()?;
+fn parse_positive_usize(value: &serde_json::Value) -> Option<usize> {
     let value = value.as_i64()?;
     if value <= 0 {
         return None;
@@ -320,27 +297,21 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_document_strategy_is_strict_tool_output() {
-        let capabilities = DocumentProviderCapabilities::conservative("deepseek", "model");
+    fn provider_structured_output_defaults_remain_stable() {
         assert_eq!(
-            capabilities.structured_output,
+            DocumentProviderCapabilities::conservative("deepseek", "model").structured_output,
             StructuredOutputStrategy::StrictTool
         );
-    }
-
-    #[test]
-    fn openrouter_document_strategy_is_strict_json_schema() {
-        let capabilities = DocumentProviderCapabilities::conservative("openrouter", "model");
         assert_eq!(
-            capabilities.structured_output,
+            DocumentProviderCapabilities::conservative("openrouter", "model").structured_output,
             StructuredOutputStrategy::JsonSchema
         );
     }
 
     #[test]
     fn context_capability_parser_rejects_nonpositive_values() {
-        assert_eq!(parse_positive_usize("8192"), Some(8192));
-        assert_eq!(parse_positive_usize("0"), None);
-        assert_eq!(parse_positive_usize("null"), None);
+        assert_eq!(parse_positive_usize(&serde_json::json!(8192)), Some(8192));
+        assert_eq!(parse_positive_usize(&serde_json::json!(0)), None);
+        assert_eq!(parse_positive_usize(&serde_json::Value::Null), None);
     }
 }

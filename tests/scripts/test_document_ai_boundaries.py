@@ -41,8 +41,9 @@ class DocumentAiBoundaryVerifierTests(unittest.TestCase):
                 [
                     "fn request_json() {}",
                     "fn record_document_usage() {}",
-                    "fn openrouter_document_body() { let _ = \"response_format\"; }",
-                    "fn deepseek_strict_schema() { let _ = \"tool_choice\"; }",
+                    "fn prepare_document_request() {}",
+                    "fn decode_document_output() {}",
+                    "fn post_document_json() {}",
                 ]
             )
             + "\n",
@@ -90,7 +91,18 @@ class DocumentAiBoundaryVerifierTests(unittest.TestCase):
         )
         result = self.run_verifier()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("belongs only in transport.rs", result.stderr)
+        self.assertIn("belongs in ai/providers/", result.stderr)
+
+    def test_rejects_provider_wire_vocabulary_in_document_transport(self) -> None:
+        transport = self.module_root / "transport.rs"
+        transport.write_text(
+            transport.read_text(encoding="utf-8")
+            + 'fn leak() { let _ = "beta/chat/completions"; }\n',
+            encoding="utf-8",
+        )
+        result = self.run_verifier()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("belongs in ai/providers/", result.stderr)
 
     def test_rejects_a_replacement_monolith(self) -> None:
         (self.module_root / "outline.rs").write_text(

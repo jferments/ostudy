@@ -8,7 +8,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Getting started](user-guide/getting-started.md) introduces the application, its main workspaces, and a practical first study session.
 - [AI providers](user-guide/ai-providers.md) explains local, LAN, and cloud model connections without exposing provider-specific implementation details.
-- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the cross-platform PDF workflow, local extraction/OCR boundary, provider privacy, retries, and current limitations.
+- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the managed-document workflow, native PDF extraction/OCR, Xberg-backed non-PDF ingestion, provider privacy, retries, and current limitations.
 - [Synchronize trusted devices](user-guide/device-sync.md) explains QR/LAN synchronization, conflict resolution, file fallback, settings, and optional credential transfer.
 - [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) explains personal backups, portable deck files, generated JSON imports, and system sharing.
 
@@ -30,7 +30,8 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 
 - [Architecture overview](architecture/overview.md) explains the frontend, native domain, persistence, and platform boundaries.
 - [Platform services](architecture/platform-services.md) defines the typed operating-system ports, opaque file flow, secure-store boundary, lifecycle/time/resource observations, and enforcement rules.
-- [AI and document processing](architecture/ai-and-document-processing.md) documents provider isolation and the PDF extraction, rendering, OCR, and generation pipeline.
+- [Native AI provider infrastructure](architecture/ai-infrastructure.md) defines gateway transport, provider-profile ownership, capability probing, credential isolation, and the typed read models consumed by document tasks.
+- [AI and document processing](architecture/ai-and-document-processing.md) documents provider isolation and the document extraction, rendering, OCR, and generation pipeline.
 - [Document AI architecture, routing, and concurrency](architecture/document-ai-routing.md) defines the format-neutral reasoning modules, provider-transport boundary, multimodal evidence, deterministic large-job orchestration, checkpoints, and routing policy.
 - [Device synchronization](architecture/device-sync.md) documents the trusted-device identity, encrypted LAN transport, common-base merge, conflicts, and asset/credential boundaries.
 - [Card format and data model](architecture/card-format-and-data-model.md) describes notes, scheduled presentations, rich content, templates, search, and interchange formats.
@@ -42,6 +43,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
 - [Git and pull-request workflow](development/workflow.md) defines direct-source publication, the PR acceptance ledger, exact-head review readiness, merge, release, and rollback.
 - [Testing and CI](development/testing-and-ci.md) defines validation tiers, read-only automatic qualification, machine-readable exact-head evidence, failure fingerprints, Android gates, and GitHub incident handling.
+- [AI infrastructure testing](development/ai-infrastructure-testing.md) gives focused gateway, profile, probe, provider-contract, static-boundary, frontend-compatibility, and manual acceptance commands.
 - [Automated-maintainer index](agents/README.md) is the operational entry point for agents and LLM maintenance tools.
 - [Agent execution state](agents/EXECUTION-STATE.md) defines the multidimensional task state, completion predicate, PR ledger, and resumption protocol.
 - [Agent failure triage](agents/FAILURE-TRIAGE.md) defines classification, focused reproduction, retry budgets, and stopping rules.

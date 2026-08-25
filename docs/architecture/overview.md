@@ -110,7 +110,7 @@ See [Card format and data model](card-format-and-data-model.md) for rich content
 
 ## Persistence and transactions
 
-SQLite stores structured domain state. Managed directories store controlled file bytes such as card images, retained source PDFs, and rendered document pages. SQLite records relative paths, ownership, size, MIME type, and integrity metadata rather than allowing arbitrary local paths in card or import content.
+SQLite stores structured domain state. Managed directories store controlled file bytes such as card images, retained source documents, and rendered document pages. SQLite records relative paths, ownership, size, MIME type, and integrity metadata rather than allowing arbitrary local paths in card or import content.
 
 Command or service orchestrators own logical transactions. Helpers accept a connection or transaction and do not commit secretly. Multi-card scheduling operations, generated imports, deck transfer, review submission, and generated-card persistence validate their complete logical unit before commit.
 
@@ -159,15 +159,15 @@ See [Backups, imports, and sharing](../user-guide/backups-imports-and-sharing.md
 
 ## AI and managed documents
 
-`src-tauri/src/ai/` owns provider metadata, credentials, endpoint policy, HTTP transport, provider adapters, capability evidence, and task execution. Source PDFs and their derived text, semantics, outline, renders, OCR results, and generation checkpoints belong to the managed document subsystem.
+`src-tauri/src/ai/` owns provider metadata, credentials, endpoint policy, HTTP transport, provider adapters, capability evidence, and task execution. Its gateway, profile, and probe packages have separate command, service, persistence, transport, and evidence owners; document tasks consume typed read models rather than duplicating AI-table SQL.
 
-Document processing is divided into narrow capabilities rather than one PDF-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. Candidate OCR pages receive an engine-diverse native-text rescue through PDFium before raster OCR is allowed, so a damaged font map in one parser cannot by itself trigger Tesseract. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
+Managed source documents and their derived text, semantics, outlines, renders, OCR results, and generation checkpoints belong to the document subsystem. Document processing is divided into narrow capabilities rather than one format-specific monolith. Parser, renderer, OCR, provider, and authoring types do not cross each other's boundaries. Candidate PDF OCR pages receive an engine-diverse native-text rescue through PDFium before raster OCR is allowed, so a damaged font map in one parser cannot by itself trigger Tesseract. A model receives bounded context and returns strict task data; native validation and the existing authoring transaction remain authoritative.
 
 Processing duration and provider-reported token usage are persisted as separate document metrics. Token usage is never estimated when a provider omits it; llama.cpp-compatible native timing envelopes are normalized at the provider boundary before the aggregate is stored.
 
 The settings UI exposes only provider adapters that the current build can actually create; future providers remain roadmap documentation until their adapter is implemented.
 
-See [AI and document processing](ai-and-document-processing.md) for provider isolation, extraction, PDFium rendering, OCR, resource planning, structured output, retries, cancellation, and document lifetime.
+See [Native AI infrastructure](ai-infrastructure.md) for provider transport, profiles, credentials, capability evidence, and enforcement. See [AI and document processing](ai-and-document-processing.md) for extraction, PDFium rendering, OCR, resource planning, structured output, retries, cancellation, and document lifetime.
 
 ## Untrusted content and security
 
