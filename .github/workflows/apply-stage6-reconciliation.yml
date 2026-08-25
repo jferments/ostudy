@@ -53,6 +53,7 @@ jobs:
           node scripts/verify-ui-policy.mjs
           node scripts/verify-button-contrast.mjs
           python3 -m unittest tests.scripts.test_style_ownership
+          OSTUDY_WORKTREE_BASELINE_REPORTED=1 python3 -m unittest tests.scripts.test_check_state
 
       - name: Run exact-head fast qualification
         env:
