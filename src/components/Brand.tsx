@@ -18,7 +18,6 @@ export function BrandLockup({ compact = false }: { compact?: boolean }) {
       <BrandMark />
       <span className={styles.copy}>
         <strong>ostudy</strong>
-        {!compact ? <small>Learn with intent</small> : null}
       </span>
     </div>
   );
