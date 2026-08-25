@@ -1,22 +1,22 @@
 name: Apply deterministic Stage 4 cleanup
 
-on:
+'on':
   push:
-    branches: [agent/frontend-css-ownership-refactor-restart]
+    branches:
+      - agent/frontend-css-ownership-refactor-restart
     paths:
       - .github/workflows/apply-stage4-cleanup.yml
-
-concurrency:
-  group: apply-stage4-cleanup-${{ github.ref }}
-  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: ${{ github.event.head_commit.message == 'chore(ui): apply deterministic stage 4 cleanup' }}
-    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - ostudy-unified
     timeout-minutes: 15
     steps:
       - name: Check out exact source head
