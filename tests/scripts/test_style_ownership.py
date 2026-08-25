@@ -26,8 +26,12 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
         (root / "scripts/style-ownership-baseline.json").write_text(
             json.dumps(baseline), encoding="utf-8"
         )
-        (root / "src/ui/foundations/index.css").write_text("@layer reset, tokens, components;\n", encoding="utf-8")
-        (root / "src/main.tsx").write_text('import "./ui/foundations/index.css";\n', encoding="utf-8")
+        (root / "src/ui/foundations/index.css").write_text(
+            "@layer reset, tokens, components;\n", encoding="utf-8"
+        )
+        (root / "src/main.tsx").write_text(
+            'import "./ui/foundations/index.css";\n', encoding="utf-8"
+        )
 
     def test_ratchet_rejects_new_legacy_selector(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -41,7 +45,10 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                         "src/styles/features/cards.css": {"selectors": ["known"]}
                     },
                     "allowedGlobalCssImports": [
-                        {"path": "src/main.tsx", "specifier": "./ui/foundations/index.css"}
+                        {
+                            "path": "src/main.tsx",
+                            "specifier": "./ui/foundations/index.css",
+                        }
                     ],
                     "policyAllowances": {},
                 },
@@ -67,12 +74,17 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                         "src/styles/features/cards.css": {"selectors": ["known"]}
                     },
                     "allowedGlobalCssImports": [
-                        {"path": "src/main.tsx", "specifier": "./ui/foundations/index.css"}
+                        {
+                            "path": "src/main.tsx",
+                            "specifier": "./ui/foundations/index.css",
+                        }
                     ],
                     "policyAllowances": {},
                 },
             )
-            (root / "src/feature.tsx").write_text('import "./feature.css";\n', encoding="utf-8")
+            (root / "src/feature.tsx").write_text(
+                'import "./feature.css";\n', encoding="utf-8"
+            )
             (root / "src/feature.css").write_text(".feature {}\n", encoding="utf-8")
 
             completed = self.run_verifier(root)
@@ -94,13 +106,16 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                 },
             )
             module = root / "src/feature.module.css"
-            module.write_text(".feature { color: var(--ostudy-color-text-primary); }\n", encoding="utf-8")
+            module.write_text(
+                ".feature { color: var(--ostudy-color-text-primary); }\n",
+                encoding="utf-8",
+            )
 
             completed = self.run_verifier(root)
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    def test_rejects_legacy_shared_control_dependency(self) -> None:
+    def test_topology_verifier_does_not_text_match_owned_semantic_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             self.write_fixture(
@@ -110,19 +125,21 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                     "mode": "ratchet",
                     "legacyFiles": {},
                     "allowedGlobalCssImports": [
-                        {"path": "src/main.tsx", "specifier": "./ui/foundations/index.css"}
+                        {
+                            "path": "src/main.tsx",
+                            "specifier": "./ui/foundations/index.css",
+                        }
                     ],
                     "policyAllowances": {},
                 },
             )
             (root / "src/feature.tsx").write_text(
-                '<button className="primary-button">Save</button>\n', encoding="utf-8"
+                'const key = "primary-button";\n', encoding="utf-8"
             )
 
             completed = self.run_verifier(root)
 
-            self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("legacy shared class .primary-button", completed.stderr)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_dynamic_css_policy_rejects_new_raw_color(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -137,7 +154,9 @@ class StyleOwnershipVerifierTests(unittest.TestCase):
                     "policyAllowances": {},
                 },
             )
-            (root / "src/feature.module.css").write_text(".feature { color: #fff; }\n", encoding="utf-8")
+            (root / "src/feature.module.css").write_text(
+                ".feature { color: #fff; }\n", encoding="utf-8"
+            )
 
             completed = self.run_verifier(root)
 
