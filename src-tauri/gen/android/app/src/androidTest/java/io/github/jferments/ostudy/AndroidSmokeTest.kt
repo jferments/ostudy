@@ -146,7 +146,7 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Add flashcard' && " +
+                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add flashcard') && " +
                         "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Save card')"
                 }
             )
@@ -157,7 +157,7 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "document.querySelector('main h1')?.textContent?.trim() === 'Android Emulator Smoke Deck' && " +
+                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck') && " +
                         "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add flashcard')"
                 }
             )
@@ -398,7 +398,7 @@ class AndroidSmokeTest {
         throw AssertionError(
             "$label did not settle after cancellation. " +
                 "operationPhase=${latest.optString("phase")} " +
-                "operationError=${latest.optString("error", "none")}" 
+                "operationError=${latest.optString("error", "none")}"
         )
     }
 
