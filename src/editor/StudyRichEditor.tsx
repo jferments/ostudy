@@ -7,13 +7,14 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo } from "react";
 
-import {
-  type Asset,
-} from "../ipc/assets";
+import { type Asset } from "../ipc/assets";
+import { InlineProgress } from "../ui/primitives/InlineNotice";
 import {
   type RichDocument,
 } from "../ipc/common";
 import { managedAssetUrl } from "../platform/assets";
+import editorStyles from "./RichTextEditor.module.css";
+import contentStyles from "./RichContent.module.css";
 
 const ManagedImage = Image.extend({
   addAttributes() {
@@ -59,6 +60,7 @@ export function StudyRichEditor({
     ],
     content: editorValue,
     editable: !disabled,
+    editorProps: { attributes: { class: contentStyles.content } },
     onUpdate({ editor: current }) {
       const canonical = canonicalDocument(current.getJSON());
       onChange(canonical, extractText(canonical));
@@ -76,7 +78,7 @@ export function StudyRichEditor({
     if (current !== incoming) editor.commands.setContent(editorValue, { emitUpdate: false });
   }, [editor, editorValue, value]);
 
-  if (!editor) return <div className="inline-progress">Opening editor…</div>;
+  if (!editor) return <InlineProgress>Opening editor…</InlineProgress>;
 
   async function addImage(): Promise<void> {
     if (!onRequestImage) return;
@@ -94,17 +96,17 @@ export function StudyRichEditor({
   }
 
   return (
-    <div className="study-rich-editor" aria-label={label}>
-      <div className="rich-editor-toolbar" role="toolbar" aria-label={`${label} formatting`}>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>• List</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>1. List</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}>Quote</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code</button>
-        <button type="button" disabled={disabled} aria-pressed={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>Heading</button>
-        {onRequestImage ? <button type="button" disabled={disabled} onClick={() => void addImage()}>Image</button> : null}
+    <div className={editorStyles.studyEditor} aria-label={label}>
+      <div className={editorStyles.studyToolbar} role="toolbar" aria-label={`${label} formatting`}>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><strong>B</strong></button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><em>I</em></button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}><u>U</u></button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>• List</button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>1. List</button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}>Quote</button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code</button>
+        <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} aria-pressed={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>Heading</button>
+        {onRequestImage ? <button className={editorStyles.studyToolbarButton} type="button" disabled={disabled} onClick={() => void addImage()}>Image</button> : null}
       </div>
       <EditorContent editor={editor} />
     </div>
