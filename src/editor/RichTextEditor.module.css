@@ -1,0 +1,287 @@
+@layer components {
+  .field,
+  :global(.editor-field) {
+    min-width: 0;
+  }
+
+  .heading,
+  :global(.editor-field-heading) {
+    display: flex;
+    min-height: 2.25rem;
+    align-items: end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 9px;
+  }
+
+  .heading > div,
+  :global(.editor-field-heading) > div {
+    width: 100%;
+  }
+
+  .heading h3,
+  :global(.editor-field-heading) h3 {
+    margin-bottom: 2px;
+    font-size: 1rem;
+  }
+
+  .heading p,
+  .formatNote,
+  :global(.editor-field-heading) p,
+  :global(.editor-format-note) {
+    display: none;
+    margin-bottom: 0;
+    color: var(--ostudy-color-text-muted);
+    font-size: 0.78rem;
+  }
+
+  .shell,
+  :global(.rich-editor-shell) {
+    position: relative;
+    overflow: visible;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: 12px;
+    background: var(--ostudy-color-surface-base);
+    box-shadow: var(--ostudy-shadow-level-2);
+  }
+
+  .toolbar,
+  :global(.editor-toolbar),
+  .studyToolbar,
+  :global(.rich-editor-toolbar) {
+    display: flex;
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    border-bottom: 1px solid var(--ostudy-color-border-subtle);
+    padding: 8px;
+    background: var(--ostudy-color-surface-raised);
+  }
+
+  .toolbarGroup,
+  :global(.toolbar-group) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+  }
+
+  .toolbarGroup + .toolbarGroup,
+  :global(.toolbar-group) + :global(.toolbar-group) {
+    border-left: 1px solid var(--ostudy-color-border-subtle);
+  }
+
+  .toolbarButton,
+  .studyToolbarButton,
+  :global(.toolbar-button),
+  :global(.rich-editor-toolbar) > button {
+    min-height: 30px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 7px;
+    background: transparent;
+    color: var(--ostudy-color-text-secondary);
+    font: inherit;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  .toolbarButton:hover,
+  .studyToolbarButton:hover,
+  :global(.toolbar-button):hover,
+  :global(.rich-editor-toolbar) > button:hover {
+    border-color: var(--ostudy-color-border-subtle);
+    background: var(--ostudy-color-surface-soft);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .toolbarButton.active,
+  .studyToolbarButton[aria-pressed="true"],
+  :global(.toolbar-button.active),
+  :global(.rich-editor-toolbar) > button[aria-pressed="true"] {
+    border-color: var(--ostudy-color-accent-base);
+    background: var(--ostudy-color-accent-soft);
+    color: var(--ostudy-color-text-accent);
+  }
+
+  .toolbar:disabled,
+  :global(.editor-toolbar):disabled {
+    opacity: 0.62;
+  }
+
+  .toolbar:disabled + .surface,
+  :global(.editor-toolbar):disabled + :global(.editor-surface) {
+    opacity: 0.78;
+  }
+
+  .toolbar select,
+  :global(.editor-toolbar) select {
+    max-width: 150px;
+    min-height: 30px;
+    border-color: var(--ostudy-color-border-subtle);
+    padding-top: 3px;
+    padding-bottom: 3px;
+    font-size: 0.72rem;
+  }
+
+  .colorTools label,
+  :global(.color-tools) label {
+    position: relative;
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--ostudy-color-text-secondary);
+  }
+
+  .colorTools label:hover,
+  :global(.color-tools) label:hover {
+    border-color: var(--ostudy-color-border-subtle);
+    background: var(--ostudy-color-surface-soft);
+  }
+
+  .colorTools input[type="color"],
+  :global(.color-tools) input[type="color"] {
+    position: absolute;
+    inset: auto 3px 2px;
+    width: 24px;
+    height: 5px;
+    border: 0;
+    padding: 0;
+    opacity: 0.9;
+  }
+
+  .linkPopover,
+  :global(.link-popover) {
+    position: absolute;
+    z-index: var(--ostudy-layer-popover);
+    top: 50px;
+    right: 12px;
+    width: min(390px, calc(100% - 24px));
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: 10px;
+    padding: 13px;
+    background: var(--ostudy-color-surface-raised);
+    box-shadow: var(--ostudy-shadow-level-4);
+  }
+
+  .linkPopover label,
+  :global(.link-popover) label {
+    display: grid;
+    gap: 5px;
+  }
+
+  .linkPopover label span,
+  :global(.link-popover) label span {
+    color: var(--ostudy-color-text-muted);
+    font-size: 0.72rem;
+    font-weight: 760;
+  }
+
+  .linkPopover > div,
+  :global(.link-popover) > div {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .surface,
+  :global(.editor-surface) {
+    min-height: 180px;
+    padding: 18px 20px;
+    background: var(--ostudy-color-surface-soft);
+  }
+
+  .loading,
+  :global(.editor-loading) {
+    min-height: 180px;
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: 12px;
+    padding: 20px;
+    background: var(--ostudy-color-surface-base);
+    color: var(--ostudy-color-text-muted);
+  }
+
+  .studyEditor,
+  :global(.study-rich-editor) {
+    overflow: hidden;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-medium);
+    background: var(--ostudy-color-surface-base);
+  }
+
+  .studyEditor :global(.ProseMirror),
+  :global(.study-rich-editor) :global(.ProseMirror) {
+    min-height: 8rem;
+    padding: 14px 16px;
+  }
+
+  .toolbarHistory,
+  :global(.toolbar-history) {
+    margin-inline-start: auto;
+  }
+
+  :global(.rich-editor-shell) :global(.small-primary-button) {
+    min-height: 34px;
+    border: 1px solid var(--ostudy-color-accent-strong);
+    border-radius: var(--ostudy-radius-small);
+    padding-inline: var(--ostudy-space-3);
+    background: var(--ostudy-color-accent-base);
+    color: var(--ostudy-color-accent-on);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 760;
+  }
+
+  :global(.rich-editor-shell) :global(.text-button) {
+    min-height: auto;
+    border: 0;
+    padding: 5px 7px;
+    background: transparent;
+    color: var(--ostudy-color-text-accent);
+    font: inherit;
+    font-weight: 700;
+  }
+
+  :global(.rich-editor-shell) :global(.text-button.danger-text) {
+    color: var(--ostudy-color-status-danger);
+  }
+
+  :global(.editor-field) :global(.field-error) {
+    margin: 8px 0 0;
+    color: var(--ostudy-color-status-danger);
+    font-size: 0.84rem;
+  }
+
+  @media (max-width: 760px) {
+    .toolbar,
+    :global(.editor-toolbar) {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .toolbarGroup,
+    :global(.toolbar-group) {
+      padding-inline: 0;
+    }
+
+    .toolbarGroup + .toolbarGroup,
+    :global(.toolbar-group) + :global(.toolbar-group) {
+      border-left: 0;
+      border-top: 1px solid var(--ostudy-color-border-subtle);
+      padding-top: 6px;
+    }
+
+    .toolbarHistory,
+    :global(.toolbar-history) {
+      margin-inline-start: 0;
+    }
+  }
+}
