@@ -145,7 +145,10 @@ class AndroidSmokeTest {
             waitUntil(
                 webView,
                 predicate = { it == "true" },
-                expression = { "Boolean(document.querySelector('.card-editor-screen'))" }
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Add flashcard' && " +
+                        "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Save card')"
+                }
             )
 
             waitForAndroidBackReady(webView)
@@ -154,8 +157,8 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "!document.querySelector('.card-editor-screen') && " +
-                        "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Android Emulator Smoke Deck' && " +
+                        "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add flashcard')"
                 }
             )
             waitForAndroidBackReady(webView)
@@ -395,7 +398,7 @@ class AndroidSmokeTest {
         throw AssertionError(
             "$label did not settle after cancellation. " +
                 "operationPhase=${latest.optString("phase")} " +
-                "operationError=${latest.optString("error", "none")}"
+                "operationError=${latest.optString("error", "none")}" 
         )
     }
 
