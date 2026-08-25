@@ -7,6 +7,7 @@ import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
 import {
   useDeckLibraryController,
   type DeckLibraryControllerDependencies,
+  type UseDeckLibraryControllerOptions,
 } from "./useDeckLibraryController";
 
 const folder = {
@@ -93,10 +94,11 @@ function renderController(harness: Harness, decks: DeckSummary[] = [deckA, deckB
     ({ currentDecks }: { currentDecks: DeckSummary[] }) =>
       useDeckLibraryController({
         decks: currentDecks,
-        refreshDecks: harness.refreshDecks,
-        onOpenDeck: harness.onOpenDeck,
+        refreshDecks:
+          harness.refreshDecks as UseDeckLibraryControllerOptions["refreshDecks"],
+        onOpenDeck: harness.onOpenDeck as UseDeckLibraryControllerOptions["onOpenDeck"],
         showToast: harness.showToast,
-        confirm: harness.confirm,
+        confirm: harness.confirm as UseDeckLibraryControllerOptions["confirm"],
         dependencies: harness.dependencies,
       }),
     { initialProps: { currentDecks: decks } },
