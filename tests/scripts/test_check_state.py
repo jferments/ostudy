@@ -20,8 +20,16 @@ class WorktreeMutationGuardTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(path), "add", "tracked.txt"], check=True)
         subprocess.run(["git", "-C", str(path), "commit", "-qm", "baseline"], check=True)
 
-    def run_guard(self, repo: Path, body: str) -> subprocess.CompletedProcess[str]:
+    def isolated_environment(self) -> dict[str, str]:
         environment = os.environ.copy()
+        # The outer qualification process exports this after reporting its own
+        # baseline. Every subprocess-backed unit test must exercise a fresh
+        # guard instance rather than inheriting that one-shot reporting state.
+        environment.pop("OSTUDY_WORKTREE_BASELINE_REPORTED", None)
+        return environment
+
+    def run_guard(self, repo: Path, body: str) -> subprocess.CompletedProcess[str]:
+        environment = self.isolated_environment()
         environment["OSTUDY_ROOT_DIR"] = str(repo)
         command = f"source {shlex.quote(str(CHECK_STATE))}; {body}"
         return subprocess.run(
@@ -41,7 +49,7 @@ class WorktreeMutationGuardTests(unittest.TestCase):
         path.chmod(0o755)
 
     def fingerprint(self, repo: Path, fake_bin: Path) -> str:
-        environment = os.environ.copy()
+        environment = self.isolated_environment()
         environment["OSTUDY_ROOT_DIR"] = str(repo)
         environment["PATH"] = f"{fake_bin}:/usr/bin:/bin"
         completed = subprocess.run(
