@@ -35,9 +35,9 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 
 - [x] Record ADR 0049 and this durable roadmap.
 - [x] [Inventory every affected route, controller, IPC command, database field, smoke path, and documentation page](ui-workflow-redesign-affected-surface-inventory.md).
-- [ ] Characterize current practice checkpoint restoration, direct card practice, deck practice, tag practice, and early-exit behavior.
-- [ ] Characterize current document archive/delete behavior and the existing preserved deck-citation path.
-- [ ] Characterize study-guide revision, overlay, export, and document-delete cascades before adding guide deletion.
+- [x] [Characterize current practice checkpoint restoration, direct card practice, deck practice, tag practice, and early-exit behavior](ui-workflow-redesign-current-behavior-characterization.md#ac-01-practice).
+- [x] [Characterize current document archive/delete behavior and the existing preserved deck-citation path](ui-workflow-redesign-current-behavior-characterization.md#ac-02-document-lifecycle).
+- [x] [Characterize study-guide revision, overlay, export, and document-delete cascades before adding guide deletion](ui-workflow-redesign-current-behavior-characterization.md#ac-03-study-guide-lifecycle).
 - [ ] Capture representative visual baselines for wide, medium, and compact layouts in all supported themes.
 - [ ] Add reproducible User Timing/React Profiler scenarios for navigation hover, document-list interaction, deck drag, deck selection, guide open, and active-practice progress.
 - [ ] Record initial interaction traces and define budgets for avoidable React commits, pointer-frame work, and visible hover/drag latency.
