@@ -1,0 +1,277 @@
+import json
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+VERIFIER = ROOT / "scripts" / "verify-route-smoke-contract.mjs"
+CONTRACT = ROOT / "scripts" / "route-smoke-contract.json"
+
+
+class RouteSmokeContractTests(unittest.TestCase):
+    def run_verifier(self, root: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["node", str(VERIFIER), "--root", str(root)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    def copy_fixture(self, root: Path) -> dict:
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        paths = set(contract["authoritativeSources"].values())
+
+        def add_smoke_paths(smoke: dict) -> None:
+            for evidence in smoke.get("evidence", []):
+                paths.add(evidence["path"])
+                if "entrypoint" in evidence:
+                    paths.add(evidence["entrypoint"])
+                for edge in evidence.get("executionChain", []):
+                    paths.add(edge["from"])
+                    paths.add(edge["to"])
+
+        for catalog in ("primaryDestinations", "flashcardsWorkspaces"):
+            for entry in contract[catalog]:
+                add_smoke_paths(entry["smoke"])
+        for workflow in contract["protectedWorkflows"]:
+            add_smoke_paths(workflow["smoke"])
+        paths.add("scripts/route-smoke-contract.json")
+        for relative_path in paths:
+            destination = root / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / relative_path, destination)
+        return contract
+
+    def write_contract(self, root: Path, contract: dict) -> None:
+        (root / "scripts/route-smoke-contract.json").write_text(
+            json.dumps(contract, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def reclassify_practice_as_internal(self, root: Path, contract: dict) -> None:
+        practice_section = next(
+            entry for entry in contract["applicationSections"] if entry["id"] == "practice"
+        )
+        practice_section["role"] = "internal-workflow"
+        contract["primaryDestinations"] = [
+            entry for entry in contract["primaryDestinations"] if entry["section"] != "practice"
+        ]
+        navigation = root / "src/components/NavigationSidebar.tsx"
+        source = navigation.read_text(encoding="utf-8")
+        practice_item = '  { section: "practice", icon: "practice", label: "Practice" },\n'
+        self.assertIn(practice_item, source)
+        navigation.write_text(source.replace(practice_item, "", 1), encoding="utf-8")
+        self.write_contract(root, contract)
+
+    def test_repository_contract_passes(self) -> None:
+        completed = self.run_verifier(ROOT)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("7 route-entry; 2 presence-only", completed.stdout)
+        self.assertIn("1 protected workflow", completed.stdout)
+
+    def test_future_practice_reclassification_retains_protected_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            self.reclassify_practice_as_internal(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("4 primary destinations", completed.stdout)
+            self.assertIn("1 protected workflow", completed.stdout)
+
+    def test_internal_practice_cannot_drop_protected_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            self.reclassify_practice_as_internal(fixture, contract)
+            contract["protectedWorkflows"] = []
+            self.write_contract(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "internal workflow practice is missing protected smoke coverage",
+                completed.stderr,
+            )
+
+    def test_rejects_future_undeclared_study_guides_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            controller = fixture / "src/controllers/useAppController.ts"
+            controller.write_text(
+                controller.read_text(encoding="utf-8").replace(
+                    '  | "documents"\n',
+                    '  | "documents"\n  | "study-guides"\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            navigation = fixture / "src/components/NavigationSidebar.tsx"
+            navigation.write_text(
+                navigation.read_text(encoding="utf-8").replace(
+                    '  { section: "documents", icon: "document", label: "Documents" },\n',
+                    '  { section: "documents", icon: "document", label: "Documents" },\n'
+                    '  { section: "study-guides", icon: "document", label: "Study Guides" },\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("study-guides", completed.stderr)
+            self.assertIn("drifted", completed.stderr)
+
+    def test_rejects_smoke_evidence_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            smoke = fixture / "tests/webdriver/ui_platform_smoke.py"
+            source = smoke.read_text(encoding="utf-8")
+            self.assertIn("webdriver.click(session_id, search)", source)
+            smoke.write_text(
+                source.replace(
+                    "webdriver.click(session_id, search)",
+                    "webdriver.click(session_id, changed_search)",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Flashcards workspace search", completed.stderr)
+            self.assertIn("missing required entry fragment", completed.stderr)
+
+    def test_rejects_native_smoke_entrypoint_runner_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            runner = fixture / "scripts/smoke-native.sh"
+            source = runner.read_text(encoding="utf-8")
+            invocation = (
+                'run_smoke "Native durable-library WebDriver smoke" \\\n'
+                '  "$ROOT_DIR/tests/webdriver/durable_library_smoke.py"\n'
+            )
+            self.assertIn(invocation, source)
+            runner.write_text(source.replace(invocation, "", 1), encoding="utf-8")
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "native smoke entrypoint tests/webdriver/durable_library_smoke.py "
+                "is not enumerated by scripts/smoke-native.sh",
+                completed.stderr,
+            )
+
+    def test_rejects_native_smoke_delegation_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            entrypoint = fixture / "tests/webdriver/durable_library_smoke.py"
+            source = entrypoint.read_text(encoding="utf-8")
+            self.assertIn("raise SystemExit(webdriver.main())", source)
+            entrypoint.write_text(
+                source.replace(
+                    "raise SystemExit(webdriver.main())",
+                    "raise SystemExit(webdriver.main_changed())",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("protected workflow active-practice execution chain", completed.stderr)
+            self.assertIn("missing required delegation fragment", completed.stderr)
+
+    def test_rejects_android_instrumentation_runner_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            runner = fixture / "scripts/android-emulator-smoke.sh"
+            source = runner.read_text(encoding="utf-8")
+            invocation = "  record_case c_documentsStubAndAndroidBackReturnToFlashcardsDecks || true\n"
+            self.assertIn(invocation, source)
+            runner.write_text(source.replace(invocation, "", 1), encoding="utf-8")
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "instrumentation case "
+                "AndroidSmokeTest#c_documentsStubAndAndroidBackReturnToFlashcardsDecks "
+                "is not scheduled by scripts/android-emulator-smoke.sh",
+                completed.stderr,
+            )
+
+    def test_rejects_rendered_app_destination_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            app = fixture / "src/App.tsx"
+            source = app.read_text(encoding="utf-8")
+            rendered_branch = '{controller.section === "practice" ? ('
+            self.assertIn(rendered_branch, source)
+            app.write_text(
+                source.replace(rendered_branch, "{false ? (", 1),
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("rendered App shell destinations drifted", completed.stderr)
+            self.assertIn("practice", completed.stderr)
+
+    def test_presence_evidence_cannot_be_reclassified_as_route_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            templates = next(
+                entry
+                for entry in contract["flashcardsWorkspaces"]
+                if entry["id"] == "templates"
+            )
+            templates["smoke"]["coverage"] = "route-entry"
+            self.write_contract(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("entryFragments", completed.stderr)
+            self.assertIn("must not use presenceFragments", completed.stderr)
+
+    def test_product_source_cannot_import_expected_inventory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            product_source = fixture / "src/routeDependency.ts"
+            product_source.write_text(
+                'import contract from "../scripts/route-smoke-contract.json";\n'
+                "export default contract;\n",
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("src/routeDependency.ts depends on", completed.stderr)
+            self.assertIn("application routing source must remain authoritative", completed.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

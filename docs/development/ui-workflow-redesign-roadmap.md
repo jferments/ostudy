@@ -41,7 +41,7 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [ ] Capture representative visual baselines for wide, medium, and compact layouts in all supported themes.
 - [ ] Add reproducible User Timing/React Profiler scenarios for navigation hover, document-list interaction, deck drag, deck selection, guide open, and active-practice progress.
 - [ ] Record initial interaction traces and define budgets for avoidable React commits, pointer-frame work, and visible hover/drag latency.
-- [ ] Add a route/smoke inventory assertion so removing Practice and adding Study Guides cannot silently reduce coverage.
+- [x] Add a route/smoke inventory assertion so removing Practice and adding Study Guides cannot silently reduce coverage.
 
 ## Stage 1 — Shared compact-action and metadata primitives
 
