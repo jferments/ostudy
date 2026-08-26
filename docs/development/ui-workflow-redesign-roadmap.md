@@ -34,7 +34,7 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 ## Stage 0 — Baseline, characterization, and contracts
 
 - [x] Record ADR 0049 and this durable roadmap.
-- [ ] Inventory every affected route, controller, IPC command, database field, smoke path, and documentation page.
+- [x] [Inventory every affected route, controller, IPC command, database field, smoke path, and documentation page](ui-workflow-redesign-affected-surface-inventory.md).
 - [ ] Characterize current practice checkpoint restoration, direct card practice, deck practice, tag practice, and early-exit behavior.
 - [ ] Characterize current document archive/delete behavior and the existing preserved deck-citation path.
 - [ ] Characterize study-guide revision, overlay, export, and document-delete cascades before adding guide deletion.
