@@ -360,6 +360,179 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 baseline.arm("session-1", "navigation-hover-v1", "element-1")
         execute.assert_called_once()
 
+    def test_study_guide_reset_accepts_an_applied_close_after_a_lost_response(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="close-1",
+        ) as find_element, mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=ConnectionResetError("lost close response"),
+        ) as click, mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value=True,
+        ) as execute_read_only, mock.patch.object(baseline, "wait_js") as wait_js:
+            baseline.reset_study_guide_dialog("session-1", 123.0)
+
+        find_element.assert_called_once()
+        click.assert_called_once_with("session-1", "close-1")
+        execute_read_only.assert_called_once_with(
+            "session-1",
+            "return Boolean(!document.querySelector('[role=dialog]'));",
+        )
+        wait_js.assert_called_once_with(
+            "session-1",
+            "!document.querySelector('[role=dialog]')",
+            123.0,
+        )
+
+    def test_study_guide_reset_re_resolves_and_retries_one_unapplied_close(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            side_effect=["close-1", "close-2"],
+        ) as find_element, mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=[ConnectionResetError("lost close response"), None],
+        ) as click, mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value=False,
+        ), mock.patch.object(baseline, "wait_js") as wait_js:
+            baseline.reset_study_guide_dialog("session-1", 123.0)
+
+        self.assertEqual(2, find_element.call_count)
+        self.assertEqual(
+            [
+                mock.call("session-1", "close-1"),
+                mock.call("session-1", "close-2"),
+            ],
+            click.call_args_list,
+        )
+        wait_js.assert_called_once()
+
+    def test_study_guide_reset_propagates_unresolved_and_repeated_disconnects(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="close-1",
+        ), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=ConnectionResetError("lost close response"),
+        ) as click, mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value=None,
+        ), mock.patch.object(baseline, "wait_js") as wait_js:
+            with self.assertRaisesRegex(
+                AssertionError,
+                "Invalid study-guide dialog reset postcondition",
+            ):
+                baseline.reset_study_guide_dialog("session-1", 123.0)
+        click.assert_called_once()
+        wait_js.assert_not_called()
+
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            side_effect=["close-1", "close-2"],
+        ), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=[
+                ConnectionResetError("lost close response"),
+                ConnectionResetError("lost retry response"),
+            ],
+        ) as click, mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value=False,
+        ), mock.patch.object(baseline, "wait_js") as wait_js:
+            with self.assertRaisesRegex(ConnectionResetError, "lost retry response"):
+                baseline.reset_study_guide_dialog("session-1", 123.0)
+        self.assertEqual(2, click.call_count)
+        wait_js.assert_not_called()
+
+    def test_study_guide_reset_propagates_non_transient_close_failures(self) -> None:
+        failure = baseline.webdriver.WebDriverProtocolError(
+            500,
+            "unknown error",
+            "browser assertion",
+        )
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="close-1",
+        ), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=failure,
+        ) as click, mock.patch.object(
+            baseline,
+            "execute_read_only",
+        ) as execute_read_only, mock.patch.object(baseline, "wait_js") as wait_js:
+            with self.assertRaises(baseline.webdriver.WebDriverProtocolError):
+                baseline.reset_study_guide_dialog("session-1", 123.0)
+
+        click.assert_called_once()
+        execute_read_only.assert_not_called()
+        wait_js.assert_not_called()
+
+    def test_study_guide_reset_requires_the_final_absent_postcondition(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="close-1",
+        ), mock.patch.object(baseline.webdriver, "click"), mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=AssertionError("dialog remained open"),
+        ) as wait_js:
+            with self.assertRaisesRegex(AssertionError, "dialog remained open"):
+                baseline.reset_study_guide_dialog("session-1", 123.0)
+
+        wait_js.assert_called_once_with(
+            "session-1",
+            "!document.querySelector('[role=dialog]')",
+            123.0,
+        )
+
+    def test_study_guide_reset_runs_only_after_the_sample_finishes(self) -> None:
+        events: list[str] = []
+        with mock.patch.object(baseline, "navigate"), mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="open-guide",
+        ), mock.patch.object(baseline, "arm"), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=lambda *_args: events.append("measured-click"),
+        ), mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=lambda *_args: events.append("ready"),
+        ), mock.patch.object(
+            baseline,
+            "finish",
+            side_effect=lambda _session: events.append("finish") or {"sample": True},
+        ), mock.patch.object(
+            baseline,
+            "reset_study_guide_dialog",
+            side_effect=lambda *_args: events.append("reset"),
+        ):
+            result = baseline.collect_scenario(
+                "session-1",
+                "study-guide-open-v1",
+                0,
+            )
+
+        self.assertEqual(["measured-click", "ready", "finish", "reset"], events)
+        self.assertEqual({"sample": True}, result)
+
     def test_pointer_and_click_actions_are_not_retried_after_disconnect(self) -> None:
         with mock.patch.object(baseline, "navigate"), mock.patch.object(
             baseline.webdriver,

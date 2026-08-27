@@ -527,6 +527,40 @@ def wait_js(session_id: str, expression: str, deadline: float) -> None:
     raise AssertionError(f"Timed out waiting for explicit ready condition: {expression}; last={last!r}")
 
 
+def reset_study_guide_dialog(session_id: str, deadline: float) -> None:
+    dialog_absent_expression = "!document.querySelector('[role=dialog]')"
+    close_selector = "[role='dialog'] button[aria-label='Close dialog']"
+    close = webdriver.find_element(
+        session_id,
+        "css selector",
+        close_selector,
+        deadline,
+    )
+    try:
+        webdriver.click(session_id, close)
+    except (OSError, urllib.error.URLError) as error:
+        if not is_transient_disconnect(error):
+            raise
+        dialog_absent = execute_read_only(
+            session_id,
+            f"return Boolean({dialog_absent_expression});",
+        )
+        if not isinstance(dialog_absent, bool):
+            raise AssertionError(
+                "Invalid study-guide dialog reset postcondition: "
+                f"{dialog_absent!r}"
+            )
+        if not dialog_absent:
+            close = webdriver.find_element(
+                session_id,
+                "css selector",
+                close_selector,
+                deadline,
+            )
+            webdriver.click(session_id, close)
+    wait_js(session_id, dialog_absent_expression, deadline)
+
+
 def navigate(session_id: str, section: str, heading: str) -> None:
     current_heading = execute_read_only(
         session_id,
@@ -604,9 +638,7 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         webdriver.click(session_id, target)
         wait_js(session_id, "!document.body.textContent.includes('Updating…')", deadline)
     elif scenario == "study-guide-open-v1":
-        close = webdriver.find_element(session_id, "css selector", "[role='dialog'] button[aria-label='Close dialog']", deadline)
-        webdriver.click(session_id, close)
-        wait_js(session_id, "!document.querySelector('[role=dialog]')", deadline)
+        reset_study_guide_dialog(session_id, deadline)
     return result
 
 
