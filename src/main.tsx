@@ -5,6 +5,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { installGlobalWebviewDiagnostics, queueFrontendDiagnostic } from "./ipc/diagnostics";
 import { PlatformProvider } from "./platform/PlatformProvider";
+import { installUiPerformanceBridge } from "./testing/uiPerformanceBridge";
 import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { HelpProvider } from "./ui/help/HelpProvider";
@@ -96,9 +97,7 @@ if (
   typeof __OSTUDY_UI_PERFORMANCE_CAPTURE__ !== "undefined" &&
   __OSTUDY_UI_PERFORMANCE_CAPTURE__
 ) {
-  void import("./testing/uiPerformanceBridge").then(({ installUiPerformanceBridge }) => {
-    installUiPerformanceBridge();
-  });
+  installUiPerformanceBridge();
 }
 
 createRoot(root).render(

@@ -27,8 +27,8 @@ Every scenario uses three warmups followed by twelve recorded samples. Readiness
 
 The explicit capture operation writes only this canonical evidence tree:
 
-- [`manifest.json`](../../tests/performance-baselines/ui-workflow-redesign-stage-0/manifest.json) records the exact harness source SHA, application binary hash, profiling identity, versions, 1440×900 CSS viewport, Light theme, 100% scale, full motion, rich materials, fine pointer, device-pixel ratio, and the 1920×1200×24 Xvfb display at 96 DPI.
-- [`budgets.json`](../../tests/performance-baselines/ui-workflow-redesign-stage-0/budgets.json) contains the derived budgets, formulas, source statistics, rounding rule, comparison operator, and rationale.
+- `tests/performance-baselines/ui-workflow-redesign-stage-0/manifest.json` records the exact harness source SHA, application binary hash, profiling identity, versions, 1440×900 CSS viewport, Light theme, 100% scale, full motion, rich materials, fine pointer, device-pixel ratio, and the 1920×1200×24 Xvfb display at 96 DPI.
+- `tests/performance-baselines/ui-workflow-redesign-stage-0/budgets.json` contains the derived budgets, formulas, source statistics, rounding rule, comparison operator, and rationale.
 - `measurements/<scenario-id>.json` contains twelve numeric samples for exactly one scenario. Each sample records interaction-to-visible and interaction-to-ready User Timing, React unique commit count and render duration, unexpected-boundary/avoidable commit count, and either available pointer-frame evidence or an explicit `notApplicable` state.
 
 Budgets are derived mechanically from the captured distribution:

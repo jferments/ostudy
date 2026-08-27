@@ -80,6 +80,7 @@ interface ActiveMeasurement {
   frameIntervals: number[];
   currentFrame: number;
   lastFrameTime: number;
+  visibleFramePending: boolean;
   overflowed: boolean;
   mutationObserver: MutationObserver;
   frameHandle: number;
@@ -118,12 +119,18 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
   performance.clearMeasures("ostudy-ui-interaction-to-ready");
 
   let measurement!: ActiveMeasurement;
-  const begin = (): void => {
-    if (measurement.startTime !== null) return;
-    measurement.startTime = performance.now();
-    performance.mark("ostudy-ui-interaction-start", { startTime: measurement.startTime });
+  const scheduleVisibleMark = (): void => {
+    if (
+      measurement.startTime === null ||
+      measurement.visibleTime !== null ||
+      measurement.visibleFramePending
+    ) {
+      return;
+    }
+    measurement.visibleFramePending = true;
     requestAnimationFrame(() => {
-      if (measurement.visibleTime !== null) return;
+      measurement.visibleFramePending = false;
+      if (active !== measurement || measurement.visibleTime !== null) return;
       const time = performance.now();
       measurement.visibleTime = time;
       performance.mark("ostudy-ui-visible", { startTime: time });
@@ -132,6 +139,12 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
         end: "ostudy-ui-visible",
       });
     });
+  };
+  const begin = (): void => {
+    if (measurement.startTime !== null) return;
+    measurement.startTime = performance.now();
+    performance.mark("ostudy-ui-interaction-start", { startTime: measurement.startTime });
+    scheduleVisibleMark();
   };
   const pointerStart = (): void => {
     begin();
@@ -156,17 +169,7 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
   beginEvents.forEach((eventName) => target.addEventListener(eventName, pointerEnd, false));
 
   const observer = new MutationObserver(() => {
-    if (measurement.startTime === null || measurement.visibleTime !== null) return;
-    requestAnimationFrame(() => {
-      if (measurement.visibleTime !== null) return;
-      const time = performance.now();
-      measurement.visibleTime = time;
-      performance.mark("ostudy-ui-visible", { startTime: time });
-      performance.measure("ostudy-ui-interaction-to-visible", {
-        start: "ostudy-ui-interaction-start",
-        end: "ostudy-ui-visible",
-      });
-    });
+    scheduleVisibleMark();
   });
   observer.observe(document.documentElement, {
     attributes: true,
@@ -194,6 +197,7 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
     frameIntervals: [],
     currentFrame: 0,
     lastFrameTime: 0,
+    visibleFramePending: false,
     overflowed: false,
     mutationObserver: observer,
     frameHandle: requestAnimationFrame(tick),
@@ -229,13 +233,20 @@ export const recordUiPerformanceCommit: ProfilerOnRenderCallback = (
   });
 };
 
-export function finishUiPerformanceMeasurement(): UiPerformanceSample {
+export async function finishUiPerformanceMeasurement(): Promise<UiPerformanceSample> {
   const measurement = active;
   if (!measurement || measurement.startTime === null) throw new Error("No interaction was observed.");
   if (measurement.overflowed) throw new Error("UI performance measurement exceeded its bounded capacity.");
-  const readyTime = performance.now();
+  if (measurement.visibleTime === null && measurement.visibleFramePending) {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+  if (active !== measurement) {
+    throw new Error("UI performance measurement changed while awaiting its visible response.");
+  }
+  if (measurement.overflowed) throw new Error("UI performance measurement exceeded its bounded capacity.");
   const visibleTime = measurement.visibleTime;
   if (visibleTime === null) throw new Error("No visible-response mutation was observed.");
+  const readyTime = performance.now();
   performance.mark("ostudy-ui-ready", { startTime: readyTime });
   performance.measure("ostudy-ui-interaction-to-ready", {
     start: "ostudy-ui-interaction-start",

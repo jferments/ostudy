@@ -11,7 +11,7 @@ export interface UiPerformanceBridge {
   readonly version: string;
   readonly profilingRenderer: true;
   arm(scenarioId: string, target: Element): void;
-  finish(): UiPerformanceSample;
+  finish(): Promise<UiPerformanceSample>;
   reset(): void;
 }
 

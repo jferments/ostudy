@@ -9,6 +9,7 @@ import {
 
 afterEach(() => {
   resetUiPerformanceMeasurement();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -21,15 +22,13 @@ describe("UI performance instrumentation", () => {
     ).toThrow(/DOM element/);
   });
 
-  it("records numeric User Timing, pointer frames, and bounded Profiler evidence", async () => {
+  it("finishes after a same-turn response frame without losing strict evidence", async () => {
     const target = document.createElement("button");
     document.body.append(target);
     armUiPerformanceMeasurement("navigation-hover-v1", target);
     target.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
     recordUiPerformanceCommit("navigation", "update", 1.25, 2, 10, performance.now());
-    target.dataset.active = "true";
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const result = finishUiPerformanceMeasurement();
+    const result = await finishUiPerformanceMeasurement();
     expect(result.scenarioId).toBe("navigation-hover-v1");
     expect(result.interactionToVisibleMs).toBeGreaterThanOrEqual(0);
     expect(result.interactionToReadyMs).toBeGreaterThanOrEqual(result.interactionToVisibleMs);
@@ -46,9 +45,8 @@ describe("UI performance instrumentation", () => {
     document.body.append(target);
     armUiPerformanceMeasurement("deck-selection-v1", target);
     target.dispatchEvent(new Event("change", { bubbles: true }));
-    target.checked = true;
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const result = finishUiPerformanceMeasurement();
+    target.setAttribute("checked", "");
+    const result = await finishUiPerformanceMeasurement();
     expect(result.pointer).toEqual({
       state: "notApplicable",
       eventCount: null,
@@ -59,9 +57,66 @@ describe("UI performance instrumentation", () => {
     target.remove();
   });
 
-  it("requires an observed interaction and visible frame", () => {
+  it("does not add a frame barrier after the visible mark already exists", async () => {
+    const target = document.createElement("button");
+    document.body.append(target);
+    armUiPerformanceMeasurement("study-guide-open-v1", target);
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    target.dataset.open = "true";
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame");
+
+    await finishUiPerformanceMeasurement();
+
+    expect(requestFrame).not.toHaveBeenCalled();
+    target.remove();
+  });
+
+  it("requires an observed interaction", async () => {
     const target = document.createElement("button");
     armUiPerformanceMeasurement("study-guide-open-v1", target);
-    expect(() => finishUiPerformanceMeasurement()).toThrow(/No interaction/);
+    await expect(finishUiPerformanceMeasurement()).rejects.toThrow(/No interaction/);
+  });
+
+  it("preserves the bounded-capacity failure", async () => {
+    const target = document.createElement("button");
+    armUiPerformanceMeasurement("navigation-hover-v1", target);
+    for (let index = 0; index < 2_049; index += 1) {
+      target.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+    }
+
+    await expect(finishUiPerformanceMeasurement()).rejects.toThrow(/bounded capacity/);
+  });
+
+  it("rejects a measurement replaced while its visible frame is pending", async () => {
+    const target = document.createElement("button");
+    document.body.append(target);
+    armUiPerformanceMeasurement("study-guide-open-v1", target);
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    target.dataset.open = "true";
+    const pending = finishUiPerformanceMeasurement();
+    resetUiPerformanceMeasurement();
+    await expect(pending).rejects.toThrow(/changed while awaiting/);
+    target.remove();
+  });
+
+  it("does not synthesize visibility when the scheduled response mark is missed", async () => {
+    const frameCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frameCallbacks.push(callback);
+      return frameCallbacks.length;
+    });
+    const target = document.createElement("button");
+    document.body.append(target);
+    armUiPerformanceMeasurement("study-guide-open-v1", target);
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    const pending = finishUiPerformanceMeasurement();
+    expect(frameCallbacks).toHaveLength(3);
+
+    frameCallbacks[2](performance.now());
+
+    await expect(pending).rejects.toThrow(/No visible-response mutation/);
+    target.remove();
   });
 });

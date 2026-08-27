@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "webdriver" / "ui_performance_baseline.py"
@@ -45,6 +46,27 @@ def sample(ordinal: int, scenario: str, *, offset: float = 0.0) -> dict:
             "frameCount": 1 if pointer else None,
             "maxFrameWorkMs": 0.3 + offset if pointer else None,
             "maxFrameIntervalMs": 16.667 if pointer else None,
+        },
+    }
+
+
+def browser_sample() -> dict:
+    return {
+        "interactionToVisibleMs": 4.0,
+        "interactionToReadyMs": 8.0,
+        "userTiming": {"startTimeMs": 10.0, "visibleTimeMs": 14.0, "readyTimeMs": 18.0},
+        "react": {
+            "commitCount": 1,
+            "totalRenderDurationMs": 0.5,
+            "avoidableCommitCount": 0,
+            "commits": [],
+        },
+        "pointer": {
+            "state": "available",
+            "eventCount": 1,
+            "frameCount": 1,
+            "maxFrameWorkMs": 0.3,
+            "maxFrameIntervalMs": 16.667,
         },
     }
 
@@ -202,6 +224,167 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual(first, roadmap.read_text(encoding="utf-8"))
         self.assertEqual(2, first.count("- [x]"))
         self.assertEqual(3, first.count("remains open"))
+
+    def test_capture_bootstrap_is_static_and_remains_compile_time_gated(self) -> None:
+        source = (baseline.ROOT_DIR / "src/main.tsx").read_text(encoding="utf-8")
+        self.assertIn(
+            'import { installUiPerformanceBridge } from "./testing/uiPerformanceBridge";',
+            source,
+        )
+        self.assertIn("__OSTUDY_UI_PERFORMANCE_CAPTURE__", source)
+        self.assertNotIn('import("./testing/uiPerformanceBridge")', source)
+
+    def test_finish_uses_one_async_webdriver_command_and_returns_the_sample(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "request",
+            return_value={"ok": True, "sample": browser_sample()},
+        ) as request:
+            result = baseline.finish("session-1")
+
+        request.assert_called_once()
+        method, path, payload = request.call_args.args
+        self.assertEqual("POST", method)
+        self.assertEqual("/session/session-1/execute/async", path)
+        self.assertIn("bridge.finish()", payload["script"])
+        self.assertEqual([], payload["args"])
+        self.assertEqual(4.0, result["interactionToVisible"]["valueMs"])
+
+    def test_finish_propagates_structured_browser_errors_without_retry(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "request",
+            return_value={
+                "ok": False,
+                "error": {"name": "Error", "message": "No visible-response mutation was observed."},
+            },
+        ) as request:
+            with self.assertRaisesRegex(
+                baseline.BrowserPerformanceError,
+                "No visible-response mutation was observed",
+            ) as raised:
+                baseline.finish("session-1")
+
+        self.assertEqual("Error", raised.exception.name)
+        request.assert_called_once()
+
+    def test_readiness_poll_recovers_one_connection_reset_only(self) -> None:
+        deadline = baseline.time.monotonic() + 1
+        with mock.patch.object(
+            baseline,
+            "execute",
+            side_effect=[ConnectionResetError("reset"), True],
+        ) as execute, mock.patch.object(baseline.time, "sleep"):
+            baseline.wait_js("session-1", "window.ready", deadline)
+        self.assertEqual(2, execute.call_count)
+
+        with mock.patch.object(
+            baseline,
+            "execute",
+            side_effect=baseline.urllib.error.URLError("non-transport failure"),
+        ) as execute, mock.patch.object(baseline.time, "sleep"):
+            with self.assertRaises(baseline.urllib.error.URLError):
+                baseline.wait_js("session-1", "window.ready", deadline)
+        execute.assert_called_once()
+
+        with mock.patch.object(
+            baseline,
+            "execute",
+            side_effect=[ConnectionResetError("reset"), ConnectionResetError("reset again")],
+        ) as execute, mock.patch.object(baseline.time, "sleep"):
+            with self.assertRaises(ConnectionResetError):
+                baseline.wait_js("session-1", "window.ready", deadline)
+        self.assertEqual(2, execute.call_count)
+
+    def test_mutating_bridge_commands_are_not_retried_after_disconnect(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "execute",
+            side_effect=ConnectionResetError("ambiguous arm delivery"),
+        ) as execute:
+            with self.assertRaises(ConnectionResetError):
+                baseline.arm("session-1", "navigation-hover-v1", "element-1")
+        execute.assert_called_once()
+
+        with mock.patch.object(
+            baseline.webdriver,
+            "request",
+            side_effect=ConnectionResetError("ambiguous finish delivery"),
+        ) as request:
+            with self.assertRaises(ConnectionResetError):
+                baseline.finish("session-1")
+        request.assert_called_once()
+
+    def test_navigation_reuses_the_current_route_without_an_extra_click(self) -> None:
+        with mock.patch.object(baseline, "execute", return_value="Flashcards"), mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+        ) as find_element, mock.patch.object(baseline.webdriver, "click") as click:
+            baseline.navigate("session-1", "decks", "Flashcards")
+
+        find_element.assert_not_called()
+        click.assert_not_called()
+
+    def test_hover_pointer_is_parked_deterministically_and_can_remain_held(self) -> None:
+        with mock.patch.object(baseline.webdriver, "request", return_value=None) as request:
+            baseline.park_mouse("session-1")
+
+        request.assert_called_once()
+        _, _, payload = request.call_args.args
+        move = payload["actions"][0]["actions"][0]
+        self.assertEqual("viewport", move["origin"])
+        self.assertEqual(baseline.VIEWPORT["width"] - 40, move["x"])
+        self.assertEqual(baseline.VIEWPORT["height"] - 40, move["y"])
+
+        with mock.patch.object(baseline.webdriver, "request", return_value=None) as request:
+            baseline.pointer_actions("session-1", "element-1", release=False)
+
+        request.assert_called_once()
+        self.assertEqual("POST", request.call_args.args[0])
+
+    def test_navigation_hover_parks_before_arm_and_finalizes_after_hover(self) -> None:
+        events: list[str] = []
+        with mock.patch.object(baseline, "navigate"), mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="analytics-element",
+        ), mock.patch.object(
+            baseline,
+            "park_mouse",
+            side_effect=lambda _session: events.append("park"),
+        ), mock.patch.object(
+            baseline,
+            "arm",
+            side_effect=lambda *_args: events.append("arm"),
+        ), mock.patch.object(
+            baseline,
+            "pointer_actions",
+            side_effect=lambda *_args, **_kwargs: events.append("pointer"),
+        ) as pointer_actions, mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=lambda *_args: events.append("hover-ready"),
+        ), mock.patch.object(
+            baseline,
+            "finish",
+            side_effect=lambda _session: events.append("finish") or {"sample": True},
+        ), mock.patch.object(
+            baseline,
+            "release_pointer_actions",
+            side_effect=lambda _session: events.append("release"),
+        ):
+            result = baseline.collect_scenario("session-1", "navigation-hover-v1", 0)
+
+        self.assertEqual(
+            ["park", "arm", "pointer", "hover-ready", "finish", "release"],
+            events,
+        )
+        pointer_actions.assert_called_once_with(
+            "session-1",
+            "analytics-element",
+            release=False,
+        )
+        self.assertEqual({"sample": True}, result)
 
 
 if __name__ == "__main__": unittest.main()

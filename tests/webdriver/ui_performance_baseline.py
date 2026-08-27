@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -16,6 +17,7 @@ import statistics
 import subprocess
 import tempfile
 import time
+import urllib.error
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -70,6 +72,15 @@ MEASUREMENT_SENSITIVE_PATHS = (
 
 class PerformanceBaselineError(ValueError):
     """Committed or candidate performance evidence violates the strict contract."""
+
+
+class BrowserPerformanceError(AssertionError):
+    """The capture bridge rejected asynchronous measurement finalization."""
+
+    def __init__(self, name: str, message: str) -> None:
+        self.name = name
+        self.message = message
+        super().__init__(f"Browser performance finish failed: {name}: {message}")
 
 
 def fail(message: str) -> NoReturn:
@@ -384,18 +395,87 @@ def arm(session_id: str, scenario: str, element_id: str) -> None:
 
 
 def finish(session_id: str) -> dict[str, Any]:
-    result = execute(session_id, "return window.__OSTUDY_UI_PERFORMANCE__.finish();")
-    if not isinstance(result, dict): raise AssertionError(f"Invalid performance sample: {result!r}")
+    result = webdriver.request(
+        "POST",
+        f"/session/{session_id}/execute/async",
+        {
+            "script": """
+              const done = arguments[arguments.length - 1];
+              const bridge = window.__OSTUDY_UI_PERFORMANCE__;
+              if (!bridge) {
+                done({ok: false, error: {name: 'BridgeUnavailableError', message: 'The UI performance bridge is unavailable.'}});
+                return;
+              }
+              Promise.resolve()
+                .then(() => bridge.finish())
+                .then(
+                  (sample) => done({ok: true, sample}),
+                  (error) => done({
+                    ok: false,
+                    error: {
+                      name: error instanceof Error ? error.name : typeof error,
+                      message: error instanceof Error ? error.message : String(error)
+                    }
+                  })
+                );
+            """,
+            "args": [],
+        },
+    )
+    if not isinstance(result, dict):
+        raise AssertionError(f"Invalid asynchronous performance result: {result!r}")
+    if result.get("ok") is not True:
+        error = result.get("error")
+        if not isinstance(error, dict):
+            raise AssertionError(f"Invalid asynchronous performance error: {result!r}")
+        name = error.get("name")
+        message = error.get("message")
+        if not isinstance(name, str) or not isinstance(message, str):
+            raise AssertionError(f"Invalid asynchronous performance error: {result!r}")
+        raise BrowserPerformanceError(name, message)
+    sample = result.get("sample")
+    if not isinstance(sample, dict): raise AssertionError(f"Invalid performance sample: {sample!r}")
     return {
-        "interactionToVisible": {"state": "available", "valueMs": result["interactionToVisibleMs"]},
-        "interactionToReady": {"state": "available", "valueMs": result["interactionToReadyMs"]},
-        "userTiming": result["userTiming"],
-        "react": {"state": "available", **result["react"]},
-        "pointer": result["pointer"],
+        "interactionToVisible": {"state": "available", "valueMs": sample["interactionToVisibleMs"]},
+        "interactionToReady": {"state": "available", "valueMs": sample["interactionToReadyMs"]},
+        "userTiming": sample["userTiming"],
+        "react": {"state": "available", **sample["react"]},
+        "pointer": sample["pointer"],
     }
 
 
-def pointer_actions(session_id: str, element_id: str, *, touch_drag: bool = False) -> None:
+def park_mouse(session_id: str) -> None:
+    webdriver.request(
+        "POST",
+        f"/session/{session_id}/actions",
+        {
+            "actions": [{
+                "type": "pointer",
+                "id": "stage0-mouse",
+                "parameters": {"pointerType": "mouse"},
+                "actions": [{
+                    "type": "pointerMove",
+                    "duration": 0,
+                    "origin": "viewport",
+                    "x": VIEWPORT["width"] - 40,
+                    "y": VIEWPORT["height"] - 40,
+                }],
+            }],
+        },
+    )
+
+
+def release_pointer_actions(session_id: str) -> None:
+    webdriver.request("DELETE", f"/session/{session_id}/actions")
+
+
+def pointer_actions(
+    session_id: str,
+    element_id: str,
+    *,
+    touch_drag: bool = False,
+    release: bool = True,
+) -> None:
     pointer_type = "touch" if touch_drag else "mouse"
     actions: list[dict[str, Any]] = [{"type": "pointerMove", "duration": 0, "origin": {webdriver.ELEMENT_KEY: element_id}, "x": 0, "y": 0}]
     if touch_drag:
@@ -406,19 +486,42 @@ def pointer_actions(session_id: str, element_id: str, *, touch_drag: bool = Fals
             {"type": "pointerCancel"},
         ])
     webdriver.request("POST", f"/session/{session_id}/actions", {"actions": [{"type": "pointer", "id": f"stage0-{pointer_type}", "parameters": {"pointerType": pointer_type}, "actions": actions}]})
-    webdriver.request("DELETE", f"/session/{session_id}/actions")
+    if release:
+        release_pointer_actions(session_id)
+
+
+def is_transient_read_disconnect(error: BaseException) -> bool:
+    if isinstance(error, (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError)):
+        return True
+    return isinstance(error, urllib.error.URLError) and isinstance(
+        error.reason,
+        (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError),
+    )
 
 
 def wait_js(session_id: str, expression: str, deadline: float) -> None:
     last: Any = None
+    disconnect_recoveries = 0
     while time.monotonic() < deadline:
-        last = execute(session_id, f"return Boolean({expression});")
+        try:
+            last = execute(session_id, f"return Boolean({expression});")
+        except (OSError, urllib.error.URLError) as error:
+            if not is_transient_read_disconnect(error) or disconnect_recoveries >= 1:
+                raise
+            disconnect_recoveries += 1
+            continue
         if last is True: return
         time.sleep(0.05)
     raise AssertionError(f"Timed out waiting for explicit ready condition: {expression}; last={last!r}")
 
 
 def navigate(session_id: str, section: str, heading: str) -> None:
+    current_heading = execute(
+        session_id,
+        "return document.querySelector('main h1')?.textContent?.trim() ?? null;",
+    )
+    if current_heading == heading:
+        return
     element = webdriver.find_element(session_id, "css selector", f"button[data-testid='nav-{section}']", webdriver.deadline_after(20))
     webdriver.click(session_id, element)
     webdriver.wait_for_main_heading(session_id, heading, webdriver.deadline_after(20))
@@ -444,7 +547,8 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
     if scenario == "navigation-hover-v1":
         navigate(session_id, "decks", "Flashcards")
         target = webdriver.find_element(session_id, "css selector", "button[data-testid='nav-analytics']", deadline)
-        arm(session_id, scenario, target); pointer_actions(session_id, target)
+        park_mouse(session_id)
+        arm(session_id, scenario, target); pointer_actions(session_id, target, release=False)
         wait_js(session_id, "document.querySelector(\"button[data-testid='nav-analytics']\").matches(':hover')", deadline)
     elif scenario == "document-list-interaction-v1":
         navigate(session_id, "documents", "Documents")
@@ -479,7 +583,9 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         wait_js(session_id, f"document.body.textContent.includes('{sample_index + 1} studied')", deadline)
     result = finish(session_id)
     # Reset non-durable interactions deterministically.
-    if scenario == "document-list-interaction-v1":
+    if scenario == "navigation-hover-v1":
+        release_pointer_actions(session_id)
+    elif scenario == "document-list-interaction-v1":
         webdriver.click(session_id, target)
         wait_js(session_id, "document.querySelectorAll('main article').length === 1", deadline)
     elif scenario == "deck-selection-v1":
