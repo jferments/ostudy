@@ -43,6 +43,7 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
 - [Git and pull-request workflow](development/workflow.md) defines direct-source publication, the PR acceptance ledger, exact-head review readiness, merge, release, and rollback.
 - [Testing and CI](development/testing-and-ci.md) defines validation tiers, read-only automatic qualification, machine-readable exact-head evidence, failure fingerprints, Android gates, and GitHub incident handling.
+- [UI workflow redesign performance baseline](development/ui-workflow-redesign-performance-baseline.md) defines the local-only Stage 0 timing/profiling scenarios, strict evidence contract, and distribution-derived budgets.
 - [AI infrastructure testing](development/ai-infrastructure-testing.md) gives focused gateway, profile, probe, provider-contract, static-boundary, frontend-compatibility, and manual acceptance commands.
 - [Automated-maintainer index](agents/README.md) is the operational entry point for agents and LLM maintenance tools.
 - [Agent execution state](agents/EXECUTION-STATE.md) defines the multidimensional task state, completion predicate, PR ledger, and resumption protocol.

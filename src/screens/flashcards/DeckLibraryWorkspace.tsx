@@ -5,6 +5,7 @@ import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import { PerformanceProfiler } from "../../testing/PerformanceProfiler";
 import { DecksScreen } from "../DecksScreen";
 import { DeckLibraryRoot } from "./deck-library/DeckLibraryRoot";
 import { useDeckLibraryController } from "./deck-library/useDeckLibraryController";
@@ -70,9 +71,11 @@ export function DeckLibraryWorkspace({
   }
 
   return (
-    <DeckLibraryRoot
-      controller={controller}
-      onPracticeDeck={(deckId) => onPracticeDeck(deckId, "library")}
-    />
+    <PerformanceProfiler id="deck-library">
+      <DeckLibraryRoot
+        controller={controller}
+        onPracticeDeck={(deckId) => onPracticeDeck(deckId, "library")}
+      />
+    </PerformanceProfiler>
   );
 }

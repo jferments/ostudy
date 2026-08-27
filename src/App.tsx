@@ -13,6 +13,7 @@ import { RouteTransition } from "./ui/motion/Motion";
 import { Button } from "./ui/primitives/Button";
 import { LoadingState } from "./ui/primitives/EmptyState";
 import { TourProvider } from "./ui/tutorials/TourProvider";
+import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import shellStyles from "./AppShell.module.css";
 import statusStyles from "./AppStatus.module.css";
 
@@ -73,7 +74,9 @@ function App() {
                   showToast={controller.showToast}
                 />
                 <MobileAppBar section={controller.section} />
-                <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
+                <PerformanceProfiler id="navigation">
+                  <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
+                </PerformanceProfiler>
 
                 <main className={shellStyles.main}>
                   <RouteTransition
@@ -102,11 +105,13 @@ function App() {
                           />
                         ) : null}
                         {controller.section === "documents" ? (
-                          <DocumentsSection
-                            refreshDecks={controller.refreshDecks}
-                            onPracticeCards={controller.practiceCards}
-                            showToast={controller.showToast}
-                          />
+                          <PerformanceProfiler id="documents">
+                            <DocumentsSection
+                              refreshDecks={controller.refreshDecks}
+                              onPracticeCards={controller.practiceCards}
+                              showToast={controller.showToast}
+                            />
+                          </PerformanceProfiler>
                         ) : null}
                         {controller.section === "practice" ? (
                           <PracticeScreen

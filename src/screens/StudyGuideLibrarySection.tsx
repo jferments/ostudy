@@ -10,6 +10,7 @@ import { Surface } from "../ui/primitives/Surface";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 import styles from "./StudyGuideLibrarySection.module.css";
 import { Button } from "../ui/primitives/Button";
+import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 
 interface StudyGuideLibrarySectionProps {
   showToast: ShowToast;
@@ -48,7 +49,8 @@ export function StudyGuideLibrarySection({
 
   return (
     <>
-      <Surface as="section" level={2} className={styles.section} aria-labelledby="study-guides-heading">
+      <PerformanceProfiler id="guide-library">
+        <Surface as="section" level={2} className={styles.section} aria-labelledby="study-guides-heading">
         <div className={styles.headingRow}>
           <div>
             <h2 id="study-guides-heading">Study guides</h2>
@@ -104,19 +106,22 @@ export function StudyGuideLibrarySection({
             ))}
           </div>
         )}
-      </Surface>
+        </Surface>
+      </PerformanceProfiler>
 
       {selected ? (
-        <StudyGuideDialog
-          documentId={selected.documentId}
-          documentTitle={selected.documentTitle}
-          showToast={showToast}
-          onPracticeCards={onPracticeCards}
-          onClose={() => {
-            setSelected(null);
-            void refresh().catch(() => undefined);
-          }}
-        />
+        <PerformanceProfiler id="guide-dialog">
+          <StudyGuideDialog
+            documentId={selected.documentId}
+            documentTitle={selected.documentTitle}
+            showToast={showToast}
+            onPracticeCards={onPracticeCards}
+            onClose={() => {
+              setSelected(null);
+              void refresh().catch(() => undefined);
+            }}
+          />
+        </PerformanceProfiler>
       ) : null}
     </>
   );

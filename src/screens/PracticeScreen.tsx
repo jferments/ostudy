@@ -39,6 +39,7 @@ import { PracticeSetup, type PracticeWorkloadStatus } from "./practice/PracticeS
 import { StudyGuideLibrarySection } from "./StudyGuideLibrarySection";
 import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 import ownershipStyles from "./practice/Practice.module.css";
+import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
 
@@ -731,7 +732,8 @@ export function PracticeScreen({
 
   if (session && current) {
     return (
-      <ActivePractice
+      <PerformanceProfiler id="active-practice">
+        <ActivePractice
         session={session}
         current={current}
         position={sessionWindowStart + position}
@@ -750,7 +752,8 @@ export function PracticeScreen({
         onScheduleAction={(action, intent) => void manageCurrent(action, intent)}
         onEnd={() => void endSession()}
         onLinkError={setErrorMessage}
-      />
+        />
+      </PerformanceProfiler>
     );
   }
 
@@ -775,24 +778,26 @@ export function PracticeScreen({
           {selectedTagIds.size === 1 ? "" : "s"}.
         </div>
       ) : null}
-      <PracticeSetup
-        decks={activeDecks}
-        selectedDeckIds={selectedDeckIds}
-        shuffle={shuffle}
-        isStarting={isStarting}
-        workloadStatus={workloadStatus}
-        workload={workload}
-        workloadError={workloadError}
-        recentDecks={recentDecks}
-        onSelectedDeckIdsChange={(next) => {
-          setSelectedDeckIds(next);
-          setSelectedTagIds(new Set());
-        }}
-        onShuffleChange={setShuffle}
-        onStart={(deckIds, requestedShuffle, mode) =>
-          void beginSession(deckIds, [...selectedTagIds], requestedShuffle, mode)
-        }
-      />
+      <PerformanceProfiler id="practice-setup">
+        <PracticeSetup
+          decks={activeDecks}
+          selectedDeckIds={selectedDeckIds}
+          shuffle={shuffle}
+          isStarting={isStarting}
+          workloadStatus={workloadStatus}
+          workload={workload}
+          workloadError={workloadError}
+          recentDecks={recentDecks}
+          onSelectedDeckIdsChange={(next) => {
+            setSelectedDeckIds(next);
+            setSelectedTagIds(new Set());
+          }}
+          onShuffleChange={setShuffle}
+          onStart={(deckIds, requestedShuffle, mode) =>
+            void beginSession(deckIds, [...selectedTagIds], requestedShuffle, mode)
+          }
+        />
+      </PerformanceProfiler>
       <StudyGuideLibrarySection
         showToast={showToast}
         onPracticeCards={(cardIds) => beginCardSession(cardIds, settings.practiceShuffle)}

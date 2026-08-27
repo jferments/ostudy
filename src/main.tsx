@@ -92,6 +92,15 @@ if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
     });
 }
 
+if (
+  typeof __OSTUDY_UI_PERFORMANCE_CAPTURE__ !== "undefined" &&
+  __OSTUDY_UI_PERFORMANCE_CAPTURE__
+) {
+  void import("./testing/uiPerformanceBridge").then(({ installUiPerformanceBridge }) => {
+    installUiPerformanceBridge();
+  });
+}
+
 createRoot(root).render(
   <StrictMode>
     <PlatformProvider>
