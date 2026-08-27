@@ -53,6 +53,11 @@ EXPECTED_BOUNDARIES = {
 }
 VIEWPORT = {"width": 1440, "height": 900}
 DISPLAY = {"width": 1920, "height": 1200, "depth": 24, "dpi": 96}
+PRACTICE_DECK_CHECKBOX_XPATH = (
+    "//main//h2[normalize-space(.)='Select decks to study']"
+    "/following::input[@type='checkbox'][1]"
+)
+PRACTICE_START_XPATH = "//main//button[normalize-space(.)='Start scheduled practice']"
 ROADMAP_PATH = ROOT_DIR / "docs/development/ui-workflow-redesign-roadmap.md"
 MEASUREMENT_KEYS = {
     "schemaVersion", "baselineId", "sourceSha", "instrumentationVersion",
@@ -527,6 +532,88 @@ def wait_js(session_id: str, expression: str, deadline: float) -> None:
     raise AssertionError(f"Timed out waiting for explicit ready condition: {expression}; last={last!r}")
 
 
+def practice_setup_condition(*, expected_checked: bool | None, require_start_ready: bool) -> str:
+    checked_condition = (
+        "true"
+        if expected_checked is None
+        else f"checkbox.checked === {'true' if expected_checked else 'false'}"
+    )
+    start_condition = "startEnabled" if require_start_ready else "true"
+    selected_condition = "selectedDeckCount > 0" if require_start_ready else "true"
+    return f"""(() => {{
+      const checkbox = document.evaluate(
+        \"{PRACTICE_DECK_CHECKBOX_XPATH}\",
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      ).singleNodeValue;
+      const start = document.evaluate(
+        \"{PRACTICE_START_XPATH}\",
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      ).singleNodeValue;
+      const deckList = checkbox?.parentElement?.parentElement;
+      const selectedDeckCount = deckList
+        ? Array.from(deckList.querySelectorAll(\"input[type='checkbox']\"))
+            .filter((candidate) => candidate instanceof HTMLInputElement && candidate.checked)
+            .length
+        : 0;
+      const workloadUpdating = Array.from(document.querySelectorAll('main span'))
+        .some((candidate) => candidate.textContent?.trim() === 'Updating…');
+      const startEnabled = start instanceof HTMLButtonElement && !start.disabled;
+      return checkbox instanceof HTMLInputElement
+        && {selected_condition}
+        && !workloadUpdating
+        && {checked_condition}
+        && {start_condition};
+    }})()"""
+
+
+def wait_for_practice_setup_ready(
+    session_id: str,
+    deadline: float,
+    *,
+    expected_checkbox_checked: bool | None = None,
+) -> None:
+    wait_js(
+        session_id,
+        practice_setup_condition(
+            expected_checked=expected_checkbox_checked,
+            require_start_ready=True,
+        ),
+        deadline,
+    )
+
+
+def wait_for_practice_selection(
+    session_id: str,
+    expected_checkbox_checked: bool,
+    deadline: float,
+) -> None:
+    wait_js(
+        session_id,
+        practice_setup_condition(
+            expected_checked=expected_checkbox_checked,
+            require_start_ready=False,
+        ),
+        deadline,
+    )
+
+
+def checkbox_checked(session_id: str, element_id: str) -> bool:
+    checked = execute_read_only(
+        session_id,
+        "return arguments[0] instanceof HTMLInputElement ? arguments[0].checked : null;",
+        [{webdriver.ELEMENT_KEY: element_id}],
+    )
+    if not isinstance(checked, bool):
+        raise AssertionError(f"Invalid practice deck checkbox state: {checked!r}")
+    return checked
+
+
 def reset_study_guide_dialog(session_id: str, deadline: float) -> None:
     dialog_absent_expression = "!document.querySelector('[role=dialog]')"
     close_selector = "[role='dialog'] button[aria-label='Close dialog']"
@@ -608,9 +695,11 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         wait_js(session_id, "document.querySelectorAll('[data-drag-over]').length === 0", deadline)
     elif scenario == "deck-selection-v1":
         navigate(session_id, "practice", "Practice")
-        target = webdriver.find_element(session_id, "xpath", "//main//h2[normalize-space(.)='Select decks to study']/following::input[@type='checkbox'][1]", deadline)
+        wait_for_practice_setup_ready(session_id, deadline)
+        target = webdriver.find_element(session_id, "xpath", PRACTICE_DECK_CHECKBOX_XPATH, deadline)
+        original_checked = checkbox_checked(session_id, target)
         arm(session_id, scenario, target); webdriver.click(session_id, target)
-        wait_js(session_id, "!document.body.textContent.includes('Updating…') && document.body.textContent.includes('selected')", deadline)
+        wait_for_practice_selection(session_id, not original_checked, deadline)
     elif scenario == "study-guide-open-v1":
         navigate(session_id, "practice", "Practice")
         target = webdriver.find_element(session_id, "xpath", "//main//button[normalize-space(.)='Open study guide']", deadline)
@@ -619,7 +708,8 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
     else:
         if sample_index == 0:
             navigate(session_id, "practice", "Practice")
-            start = webdriver.find_element(session_id, "xpath", "//main//button[normalize-space(.)='Start scheduled practice']", deadline)
+            wait_for_practice_setup_ready(session_id, deadline)
+            start = webdriver.find_element(session_id, "xpath", PRACTICE_START_XPATH, deadline)
             webdriver.click(session_id, start)
         wait_js(session_id, "document.body.textContent.includes('Show answer')", deadline)
         reveal = webdriver.find_element(session_id, "xpath", "//main//button[normalize-space(.)='Show answer']", deadline)
@@ -635,8 +725,18 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         webdriver.click(session_id, target)
         wait_js(session_id, "document.querySelectorAll('main article').length === 1", deadline)
     elif scenario == "deck-selection-v1":
-        webdriver.click(session_id, target)
-        wait_js(session_id, "!document.body.textContent.includes('Updating…')", deadline)
+        reset_target = webdriver.find_element(
+            session_id,
+            "xpath",
+            PRACTICE_DECK_CHECKBOX_XPATH,
+            deadline,
+        )
+        webdriver.click(session_id, reset_target)
+        wait_for_practice_setup_ready(
+            session_id,
+            deadline,
+            expected_checkbox_checked=original_checked,
+        )
     elif scenario == "study-guide-open-v1":
         reset_study_guide_dialog(session_id, deadline)
     return result

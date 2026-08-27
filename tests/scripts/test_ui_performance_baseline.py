@@ -533,6 +533,127 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual(["measured-click", "ready", "finish", "reset"], events)
         self.assertEqual({"sample": True}, result)
 
+    def test_deck_selection_waits_before_arm_and_restores_exact_original_state(self) -> None:
+        events: list[str] = []
+        with mock.patch.object(baseline, "navigate"), mock.patch.object(
+            baseline,
+            "wait_for_practice_setup_ready",
+            side_effect=lambda *_args, **kwargs: events.append(
+                "reset-ready"
+                if kwargs.get("expected_checkbox_checked") is True
+                else "initial-ready"
+            ),
+        ) as wait_ready, mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            side_effect=["measured-checkbox", "reset-checkbox"],
+        ), mock.patch.object(
+            baseline,
+            "checkbox_checked",
+            side_effect=lambda *_args: events.append("read-original") or True,
+        ), mock.patch.object(
+            baseline,
+            "arm",
+            side_effect=lambda *_args: events.append("arm"),
+        ), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=lambda _session, element: events.append(f"click:{element}"),
+        ), mock.patch.object(
+            baseline,
+            "wait_for_practice_selection",
+            side_effect=lambda *_args: events.append("changed-ready"),
+        ) as wait_selection, mock.patch.object(
+            baseline,
+            "finish",
+            side_effect=lambda _session: events.append("finish") or {"sample": True},
+        ):
+            result = baseline.collect_scenario("session-1", "deck-selection-v1", 0)
+
+        self.assertEqual(
+            [
+                "initial-ready",
+                "read-original",
+                "arm",
+                "click:measured-checkbox",
+                "changed-ready",
+                "finish",
+                "click:reset-checkbox",
+                "reset-ready",
+            ],
+            events,
+        )
+        wait_selection.assert_called_once_with("session-1", False, mock.ANY)
+        self.assertEqual(
+            True,
+            wait_ready.call_args_list[-1].kwargs["expected_checkbox_checked"],
+        )
+        self.assertEqual({"sample": True}, result)
+
+    def test_practice_readiness_requires_bounded_setup_state(self) -> None:
+        with mock.patch.object(baseline, "wait_js") as wait_js:
+            baseline.wait_for_practice_setup_ready(
+                "session-1",
+                123.0,
+                expected_checkbox_checked=False,
+            )
+
+        expression = wait_js.call_args.args[1]
+        self.assertIn("selectedDeckCount > 0", expression)
+        self.assertIn("!workloadUpdating", expression)
+        self.assertIn("checkbox.checked === false", expression)
+        self.assertIn("startEnabled", expression)
+        self.assertNotIn("document.body.textContent", expression)
+        wait_js.assert_called_once_with("session-1", expression, 123.0)
+
+    def test_active_practice_re_resolves_enabled_start_after_readiness(self) -> None:
+        events: list[str] = []
+
+        def find_element(_session: str, _strategy: str, selector: str, _deadline: float) -> str:
+            if selector == baseline.PRACTICE_START_XPATH:
+                events.append("resolve-start")
+                return "enabled-start"
+            if "Show answer" in selector:
+                return "reveal"
+            return "easy"
+
+        with mock.patch.object(baseline, "navigate"), mock.patch.object(
+            baseline,
+            "wait_for_practice_setup_ready",
+            side_effect=lambda *_args, **_kwargs: events.append("setup-ready"),
+        ), mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            side_effect=find_element,
+        ), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=lambda _session, element: events.append(f"click:{element}"),
+        ), mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=lambda *_args: events.append("scenario-ready"),
+        ), mock.patch.object(
+            baseline,
+            "arm",
+            side_effect=lambda *_args: events.append("arm"),
+        ), mock.patch.object(
+            baseline,
+            "finish",
+            side_effect=lambda _session: events.append("finish") or {"sample": True},
+        ):
+            result = baseline.collect_scenario(
+                "session-1",
+                "active-practice-progress-v1",
+                0,
+            )
+
+        self.assertEqual("setup-ready", events[0])
+        self.assertEqual("resolve-start", events[1])
+        self.assertEqual("click:enabled-start", events[2])
+        self.assertLess(events.index("arm"), events.index("click:easy"))
+        self.assertEqual({"sample": True}, result)
+
     def test_pointer_and_click_actions_are_not_retried_after_disconnect(self) -> None:
         with mock.patch.object(baseline, "navigate"), mock.patch.object(
             baseline.webdriver,
