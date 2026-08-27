@@ -70,7 +70,7 @@
     gap: var(--ostudy-space-3);
   }
 
-  @media (max-width: 560px) {
+  @media (max-width: 760px) {
     .dialog {
       align-items: end;
       padding: 0;
@@ -108,5 +108,15 @@
 
   @media (prefers-reduced-transparency: reduce) {
     .dialog::backdrop { backdrop-filter: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dialog,
+    .card { scroll-behavior: auto; }
+  }
+
+  @media (forced-colors: active) {
+    .card { border-color: CanvasText; }
+    .dialog::backdrop { background: Canvas; }
   }
 }

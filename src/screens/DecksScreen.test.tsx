@@ -173,9 +173,9 @@ describe("DecksScreen", () => {
     expect(screen.getByRole("button", { name: "Bulk add" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add flashcard" })).toBeTruthy();
 
-    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
-    expect((practiceSelected as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Practice selected" })).toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Do dogs have fur?" }));
+    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
     expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search cards" }), {
@@ -213,6 +213,26 @@ describe("DecksScreen", () => {
     const dialog = await screen.findByRole("dialog", { name: "Edit deck" });
     expect((within(dialog).getByRole("textbox", { name: /Deck name/u }) as HTMLInputElement).value)
       .toBe("Dog facts");
+  });
+
+  it("routes the shared archive icon through the existing revision-checked handler", async () => {
+    vi.mocked(decksIpc.setDeckArchived).mockResolvedValue({
+      ...deck,
+      archivedAt: Date.now(),
+      revision: 2,
+    });
+    renderDecks();
+    fireEvent.click(screen.getByText("Dog facts").closest("button") as HTMLButtonElement);
+    await screen.findByRole("heading", { name: "Dog facts" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive Dog facts" }));
+    await waitFor(() =>
+      expect(decksIpc.setDeckArchived).toHaveBeenCalledWith({
+        deckId: deck.id,
+        revision: deck.revision,
+        archived: true,
+      }),
+    );
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {

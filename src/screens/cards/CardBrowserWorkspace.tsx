@@ -29,6 +29,7 @@ import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 import { ScheduleActionModal } from "./ScheduleActionModal";
 import { scheduleActionNotice } from "./scheduleActionResult";
+import { SelectionToolbar } from "../../ui/patterns/SelectionToolbar";
 import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 import ownershipStyles from "./CardBrowserWorkspace.module.css";
 
@@ -552,33 +553,35 @@ export function CardBrowserWorkspace({
       )}
 
       {selectedCards.size > 0 ? (
-        <section className={ownedClassNames(ownedStyleMaps, "card-selection-bar")} aria-live="polite">
-          <strong>{selectedCards.size} selected</strong>
-          <select
-            aria-label="Actions for selected cards"
-            value=""
-            disabled={isApplyingSchedule}
-            onChange={(event) => {
-              const action = event.currentTarget.value as SelectionAction | "";
-              if (action !== "") chooseSelectionAction(action);
-            }}
-          >
-            <option value="">Actions…</option>
-            <option value="move_copy">Move / copy cards</option>
-            <option value="add_tags">Add tags</option>
-            <option value="remove_tags">Remove tags</option>
-            <option value="suspend">Suspend cards</option>
-            <option value="resume">Resume cards</option>
-            <option value="bury">Bury until tomorrow</option>
-            <option value="unbury">Unbury cards</option>
-            <option value="reschedule">Reschedule cards</option>
-            <option value="reset">Reset schedules</option>
-            <option value="delete">Delete cards</option>
-          </select>
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "text-button")} onClick={() => setSelectedCards(new Map())}>
-            Deselect all
-          </button>
-        </section>
+        <SelectionToolbar
+          selectedCount={selectedCards.size}
+          primaryAction={{
+            id: "practice-selected",
+            label: "Practice selected",
+            onSelect: () => setPracticeCards(selected),
+          }}
+          secondaryActions={[
+            ["move_copy", "Move / copy cards"],
+            ["add_tags", "Add tags"],
+            ["remove_tags", "Remove tags"],
+            ["suspend", "Suspend cards"],
+            ["resume", "Resume cards"],
+            ["bury", "Bury until tomorrow"],
+            ["unbury", "Unbury cards"],
+            ["reschedule", "Reschedule cards"],
+            ["reset", "Reset schedules"],
+            ["delete", "Delete cards"],
+          ].map(([id, label]) => ({
+            id,
+            label,
+            placement: "overflow-only" as const,
+            disabled: isApplyingSchedule,
+            destructive: id === "delete" || id === "reset",
+            onSelect: () => chooseSelectionAction(id as SelectionAction),
+          }))}
+          clearLabel="Deselect all"
+          onClearSelection={() => setSelectedCards(new Map())}
+        />
       ) : null}
 
       {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
@@ -639,23 +642,7 @@ export function CardBrowserWorkspace({
               >
                 {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
               </button>
-              <button
-                type="button"
-                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                disabled={selectedCards.size === 0}
-                onClick={() => setSelectedCards(new Map())}
-              >
-                Deselect all
-              </button>
             </div>
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "primary-button")}
-              disabled={selectedCards.size === 0}
-              onClick={() => setPracticeCards(selected)}
-            >
-              Practice selected
-            </button>
           </div>
         ) : null}
 

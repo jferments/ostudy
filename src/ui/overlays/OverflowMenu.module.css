@@ -1,0 +1,70 @@
+@layer components {
+  .root { position: relative; display: inline-flex; }
+  .trigger {
+    min-height: var(--ostudy-size-control);
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-small);
+    padding: 0 var(--ostudy-space-4);
+    background: var(--ostudy-color-surface-raised);
+    color: var(--ostudy-color-text-primary);
+    font: inherit;
+    font-weight: 720;
+  }
+  .trigger:hover:not(:disabled), .trigger[aria-expanded="true"] {
+    border-color: var(--ostudy-color-accent-base);
+    background: var(--ostudy-color-surface-soft);
+  }
+  .trigger:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
+  .menu {
+    position: absolute;
+    z-index: var(--ostudy-layer-popover);
+    top: calc(100% + var(--ostudy-space-2));
+    right: 0;
+    display: grid;
+    min-width: 240px;
+    gap: var(--ostudy-space-1);
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-medium);
+    padding: var(--ostudy-space-2);
+    background: var(--ostudy-color-surface-base);
+    box-shadow: var(--ostudy-shadow-level-4);
+  }
+  .menu button, .sheetList button {
+    min-height: var(--ostudy-size-touch-target);
+    border: 0;
+    border-radius: var(--ostudy-radius-small);
+    padding: var(--ostudy-space-3);
+    background: transparent;
+    color: var(--ostudy-color-text-primary);
+    font: inherit;
+    font-weight: 680;
+    text-align: left;
+  }
+  .menu button:hover:not(:disabled), .menu button:focus-visible,
+  .sheetList button:hover:not(:disabled), .sheetList button:focus-visible {
+    outline: none;
+    background: var(--ostudy-color-surface-raised);
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+  .menu button:disabled, .sheetList button:disabled { opacity: 0.55; }
+  .destructive { color: var(--ostudy-color-status-danger) !important; }
+  .separator {
+    height: 1px;
+    margin: var(--ostudy-space-1) 0;
+    background: var(--ostudy-color-border-subtle);
+  }
+  .sheetList {
+    display: grid;
+    gap: var(--ostudy-space-2);
+    padding: var(--ostudy-space-4) max(var(--ostudy-space-4), env(safe-area-inset-right)) max(var(--ostudy-space-4), env(safe-area-inset-bottom)) max(var(--ostudy-space-4), env(safe-area-inset-left));
+  }
+  .sheetList button {
+    border: 1px solid var(--ostudy-color-border-subtle);
+    background: var(--ostudy-color-surface-raised);
+  }
+  @media (forced-colors: active) {
+    .menu, .sheetList button, .trigger { border-color: ButtonText; }
+    .destructive { color: LinkText !important; }
+    .separator { background: ButtonText; }
+  }
+}

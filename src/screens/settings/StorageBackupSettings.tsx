@@ -7,8 +7,12 @@ import { getAppInfo, type AppInfo, type AppSettings } from "../../ipc/settings";
 import { publishExport, selectExternalImport, shareExport } from "../../platform/files";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import {
+  InfoButton,
+  MetadataItem,
+  MetadataList,
+} from "../../ui/overlays/MetadataDialog";
 import { DeviceSyncSettings } from "./DeviceSyncSettings";
-import { PathRow } from "./SettingsControls";
 import styles from "./Settings.module.css";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
@@ -167,28 +171,37 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
       <DeviceSyncSettings showToast={showToast} />
 
       <section className={styles.fullWidthCard}>
-        <h2>Storage</h2>
+        <div className={styles.storageHeading}>
+          <h2>Storage</h2>
+          {appInfo ? (
+            <InfoButton
+              label="View storage details"
+              title="Storage details"
+              description="Operational paths and local application version information."
+            >
+              <MetadataList>
+                <MetadataItem label="Application data" value={appInfo.dataDirectory} />
+                <MetadataItem label="Database" value={appInfo.databasePath} />
+                <MetadataItem label="Images" value={appInfo.imageDirectory} />
+                <MetadataItem
+                  label="Diagnostics"
+                  value={appInfo.diagnosticLogPath ?? "Available after restart"}
+                />
+                <MetadataItem label="Version" value={appInfo.appVersion} />
+                <MetadataItem label="Schema" value={String(appInfo.databaseSchemaVersion)} />
+              </MetadataList>
+            </InfoButton>
+          ) : null}
+        </div>
         <p className={styles.securityNote}>
           <strong>Local library</strong>
           <br />
           The active study library is stored on this device. Backup and device-sync controls are
           available above.
         </p>
-        {appInfo ? (
-          <dl className={styles.pathList}>
-            <PathRow label="Application data" value={appInfo.dataDirectory} />
-            <PathRow label="Database" value={appInfo.databasePath} />
-            <PathRow label="Images" value={appInfo.imageDirectory} />
-            <PathRow
-              label="Diagnostics"
-              value={appInfo.diagnosticLogPath ?? "Available after restart"}
-            />
-            <PathRow label="Version" value={appInfo.appVersion} />
-            <PathRow label="Schema" value={String(appInfo.databaseSchemaVersion)} />
-          </dl>
-        ) : errorMessage ? null : (
+        {!appInfo && !errorMessage ? (
           <InlineProgress>Reading storage paths…</InlineProgress>
-        )}
+        ) : null}
       </section>
     </div>
   );

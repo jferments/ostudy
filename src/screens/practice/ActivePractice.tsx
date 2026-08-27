@@ -12,7 +12,7 @@ import {
 } from "../../ipc/scheduling";
 import { useAppearance } from "../../ui/appearance/AppearanceProvider";
 import { useExperience } from "../../ui/feedback/ExperienceProvider";
-import { Menu } from "../../ui/overlays/Menu";
+import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
 import { Progress } from "../../ui/primitives/Progress";
 import type { ConfidenceScore } from "./confidence";
@@ -226,24 +226,28 @@ export function ActivePractice({
           >
             Edit card
           </Button>
-          <Menu
+          <OverflowMenu
             label="Schedule"
             className={ownedClassNames(ownedStyleMaps, "practice-header-button")}
             disabled={busy}
             items={[
               {
+                id: "bury",
                 label: "Bury until tomorrow",
                 onSelect: () => onScheduleAction("bury"),
               },
               {
+                id: "suspend",
                 label: "Suspend card",
                 onSelect: () => onScheduleAction("suspend"),
               },
               {
+                id: "reschedule-tomorrow",
                 label: "Reschedule for tomorrow",
                 onSelect: () => onScheduleAction("reschedule", { kind: "tomorrow" }),
               },
               {
+                id: "reset",
                 label: "Reset schedule",
                 destructive: true,
                 onSelect: () => onScheduleAction("reset"),

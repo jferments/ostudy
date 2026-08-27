@@ -162,7 +162,7 @@ function renderSettings(onDirtyChange = vi.fn(), showToast = vi.fn()) {
 }
 
 async function openAiTab(): Promise<void> {
-  await screen.findByText("/tmp/ostudy/data");
+  await waitFor(() => expect(settingsIpc.getAppInfo).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
 }
 

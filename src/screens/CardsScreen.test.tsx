@@ -152,6 +152,11 @@ function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck]) {
   return { ...view, showToast };
 }
 
+function chooseSelectedAction(label: string): void {
+  fireEvent.click(screen.getByRole("button", { name: "More selection actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: label }));
+}
+
 describe("CardsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -194,10 +199,7 @@ describe("CardsScreen", () => {
         name: "Select What reverses warfarin?",
       }),
     );
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Actions for selected cards" }),
-      { target: { value: "suspend" } },
-    );
+    chooseSelectedAction("Suspend cards");
     await waitFor(() =>
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
         mutationId: "f".repeat(32),
@@ -216,10 +218,7 @@ describe("CardsScreen", () => {
     const { showToast } = renderScreen();
 
     fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Actions for selected cards" }),
-      { target: { value: "suspend" } },
-    );
+    chooseSelectedAction("Suspend cards");
 
     await waitFor(() => {
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledOnce();
@@ -245,13 +244,9 @@ describe("CardsScreen", () => {
         name: "Select What reverses warfarin?",
       }),
     );
-    const actions = screen.getByRole("combobox", {
-      name: "Actions for selected cards",
-    });
-
-    fireEvent.change(actions, { target: { value: "suspend" } });
+    chooseSelectedAction("Suspend cards");
     expect(await screen.findByText(/safely retry the complete selection/u)).toBeTruthy();
-    fireEvent.change(actions, { target: { value: "suspend" } });
+    chooseSelectedAction("Suspend cards");
 
     await waitFor(() => {
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledTimes(2);
@@ -269,7 +264,7 @@ describe("CardsScreen", () => {
     });
     renderScreen();
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Vitamin K" }));
-    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(screen.getByText("1 item selected")).toBeTruthy();
     expect(
       (
         screen.getByRole("checkbox", {
@@ -299,14 +294,14 @@ describe("CardsScreen", () => {
     expect(screen.queryByRole("button", { name: "Practice results" })).toBeNull();
     expect(within(table).queryByText("Ready now")).toBeNull();
 
-    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
-    expect((practiceSelected as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Practice selected" })).toBeNull();
 
     fireEvent.click(
       screen.getByRole("checkbox", {
         name: "Select What reverses warfarin?",
       }),
     );
+    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
     expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(practiceSelected);

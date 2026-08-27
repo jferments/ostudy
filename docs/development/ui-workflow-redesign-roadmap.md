@@ -48,13 +48,13 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] Add an accessible `Tooltip` primitive for delayed pointer hover and immediate keyboard focus without affecting layout.
 - [x] Add `IconButton` with required accessible labels, familiar semantic icons, loading/disabled states, and compact/wide touch-target rules.
 - [x] Extend the icon vocabulary with information, calendar/schedule, study-guide/book, overflow, maximize/full-screen, restore, and any missing standard actions.
-- [ ] Add `ResponsiveActionGroup` so primary actions stay visible while lower-priority actions move into an overflow menu by layout mode.
-- [ ] Add an accessible `OverflowMenu` with roving focus, Escape dismissal, outside-click dismissal, destructive grouping, and compact-sheet presentation.
-- [ ] Add `SelectionToolbar` for multi-item count, primary bulk action, secondary bulk actions, and clear-selection behavior.
-- [ ] Add `MetadataDialog` / `InfoButton` for secondary operational details that should not remain permanently visible.
+- [x] Add `ResponsiveActionGroup` so primary actions stay visible while lower-priority actions move into an overflow menu by layout mode.
+- [x] Add an accessible `OverflowMenu` with roving focus, Escape dismissal, outside-click dismissal, destructive grouping, and compact-sheet presentation.
+- [x] Add `SelectionToolbar` for multi-item count, primary bulk action, secondary bulk actions, and clear-selection behavior.
+- [x] Add `MetadataDialog` / `InfoButton` for secondary operational details that should not remain permanently visible.
 - [x] Define an action-priority policy: primary text action, familiar icon action, contextual selection action, and overflow-only action.
-- [ ] Migrate representative delete, edit, archive, schedule, and information controls to prove the primitives before feature-wide adoption.
-- [ ] Add component tests for accessible names, tooltip focus behavior, keyboard navigation, touch targets, loading states, destructive styling, and all appearance modes.
+- [x] Migrate representative delete, edit, archive, schedule, and information controls to prove the primitives before feature-wide adoption.
+- [x] Add component tests for accessible names, tooltip focus behavior, keyboard navigation, touch targets, loading states, destructive styling, and all appearance modes.
 - [x] Keep all new styling within shared CSS Modules and semantic tokens; add ownership checks for the new primitives.
 
 ## Stage 2 — Navigation, branding, fonts, and desktop window behavior

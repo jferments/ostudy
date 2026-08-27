@@ -142,6 +142,8 @@ The common layer includes:
 - `SegmentedControl`;
 - tabs with roving keyboard focus;
 - `Dialog`, `Sheet`, `Menu`, and asynchronous confirmation;
+- `OverflowMenu`, `ResponsiveActionGroup`, `SelectionToolbar`, and
+  `MetadataDialog` / `InfoButton`;
 - interaction-safe, safe-area-aware toast feedback.
 
 Use a shared primitive when it owns the behavior being solved. Domain-specific rules remain in the feature. A reusable Button may know how to render loading and disabled state; it must not know how a card review commits.
@@ -156,6 +158,57 @@ Action density follows one shared priority contract. Responsive presentation may
 4. **Overflow-only action.** A low-frequency secondary action may move to overflow when space is constrained. Overflow never contains the sole ordinary primary path, preserves destructive grouping and labels, and uses the shared menu/sheet lifecycle for roving focus, Escape/outside dismissal, and focus restoration.
 
 All four priorities preserve native keyboard activation and coarse-pointer touch targets. A compact destructive icon uses the danger treatment and still opens the same explicit confirmation flow as its text equivalent; icon density never bypasses confirmation or mutation guards.
+
+### Responsive action placement
+
+`ResponsiveActionGroup` accepts stable, unique action IDs and one explicit
+placement for every action. It resolves placement from `LayoutModeProvider`;
+feature code does not reproduce the viewport breakpoints.
+
+| Placement | Wide | Medium | Compact |
+| --- | --- | --- | --- |
+| `always-visible` | direct | direct | direct |
+| `wide-and-medium` | direct | direct | overflow |
+| `wide-only` | direct | overflow | overflow |
+| `overflow-only` | overflow | overflow | overflow |
+
+Every group keeps its primary action `always-visible`. Direct familiar actions
+may use `IconButton`; primary and unfamiliar actions retain text. Placement
+never changes the action ID, label, disabled/loading guard, destructive status,
+or callback. Collapsed actions use the canonical `OverflowMenu`, and a group
+with no collapsed actions does not render an empty overflow trigger.
+
+`OverflowMenu` owns one interaction contract for direct consumers and the thin
+legacy `Menu` presentation:
+
+- enabled items use roving `tabindex`; Arrow Up/Down wrap, Home/End move to the
+  boundary, and Enter/Space activate the current item;
+- disabled items remain labelled native disabled buttons, are skipped by
+  roving focus, and cannot activate;
+- destructive items are moved to a final group separated from ordinary items;
+- Escape, platform Back, outside pointer dismissal, and compact backdrop
+  dismissal close only the top overlay and restore the trigger;
+- selection closes and restores the menu before invoking the feature callback,
+  so a callback that opens another overlay records the correct opener; and
+- wide/medium layouts use the anchored menu, while compact layout uses the
+  shared safe-area-aware `Sheet` lifecycle.
+
+`SelectionToolbar` exists only while a selection is active. It is a labelled
+region with a polite, atomic selected-item count, one always-direct primary bulk
+action, responsive secondary actions, and a separately named clear-selection
+`IconButton`. Compact presentation is sticky above safe areas and the virtual
+keyboard; all controls retain semantic coarse-pointer target sizes. Selection
+state and bulk-operation policy remain feature/controller concerns.
+
+`MetadataDialog` is a controlled composition over `Dialog`; `InfoButton` is the
+self-contained disclosure composition for an information icon and that dialog.
+Callers supply the title, optional description, and domain-neutral React
+content. `MetadataList` / `MetadataItem` provide semantic `dl` rows when useful.
+Wide and medium layouts use a centred dialog and compact layout uses a sheet.
+Labelling, initial focus, focus containment/restoration, Escape, backdrop,
+platform Back, reduced-motion, forced-colors, and safe-area behavior remain the
+shared overlay and CSS-Module contract. Operational reads stay in their owning
+controller or feature and are never initiated by shared UI.
 
 ## Semantic feedback
 

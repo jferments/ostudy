@@ -566,13 +566,12 @@ export function DecksScreen({
                 >
                   Export
                 </button>
-                <button
-                  type="button"
-                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                <IconButton
+                  icon="archive"
+                  label={`Archive ${selectedDeck.name}`}
+                  tooltip="Archive deck"
                   onClick={() => void handleArchiveDeck(selectedDeck, true)}
-                >
-                  Archive
-                </button>
+                />
                 <button
                   type="button"
                   className={ownedClassNames(ownedStyleMaps, "secondary-button danger-text")}

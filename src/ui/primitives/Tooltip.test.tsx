@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Dialog } from "../overlays/Dialog";
 import { OverlayProvider } from "../overlays/OverlayProvider";
@@ -20,6 +20,10 @@ function renderTooltip() {
 }
 
 describe("Tooltip", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.motion;
+  });
   it.each(["mouse", "pen"])(
     "opens after the pointer delay for a %s pointer",
     (pointerType) => {
@@ -101,5 +105,22 @@ describe("Tooltip", () => {
 
     fireEvent.keyDown(trigger, { key: "Escape" });
     expect(onClose).toHaveBeenCalledWith("escape");
+  });
+
+  it.each(["light", "dark", "console", "synthwave"])(
+    "preserves focus tooltip semantics in the %s theme",
+    (theme) => {
+      document.documentElement.dataset.theme = theme;
+      const trigger = renderTooltip();
+      fireEvent.focus(trigger);
+      expect(screen.getByRole("tooltip").textContent).toBe("Helpful context");
+    },
+  );
+
+  it.each(["reduced", "none"])("preserves content in %s-motion mode", (motion) => {
+    document.documentElement.dataset.motion = motion;
+    const trigger = renderTooltip();
+    fireEvent.focus(trigger);
+    expect(screen.getByRole("tooltip").textContent).toBe("Helpful context");
   });
 });

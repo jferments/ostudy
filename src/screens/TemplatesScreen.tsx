@@ -18,6 +18,7 @@ import {
   type CardTemplateSummary,
 } from "../ipc/templates";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
 import { TemplateLayoutEditor } from "./templates/TemplateLayoutEditor";
 import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 import ownershipStyles from "./TemplatesScreen.module.css";
@@ -591,16 +592,30 @@ export function TemplatesScreen({ onBack, onDirtyChange, showToast }: TemplatesS
                 </span>
               </button>
               <div className={ownedClassNames(ownedStyleMaps, "template-library-actions")}>
-                <button type="button" disabled={isOpening} onClick={() => void beginEdit(template)}>
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className={ownedClassNames(ownedStyleMaps, "danger-text")}
-                  onClick={() => void removeTemplate(template)}
-                >
-                  Delete
-                </button>
+                <ResponsiveActionGroup
+                  label={`Actions for ${template.name}`}
+                  actions={[
+                    {
+                      id: `edit-${template.id}`,
+                      label: `Edit ${template.name}`,
+                      icon: "edit",
+                      presentation: "icon",
+                      placement: "always-visible",
+                      disabled: isOpening,
+                      onSelect: () => void beginEdit(template),
+                    },
+                    {
+                      id: `delete-${template.id}`,
+                      label: `Delete ${template.name}`,
+                      icon: "delete",
+                      presentation: "icon",
+                      placement: "wide-only",
+                      destructive: true,
+                      onSelect: () => void removeTemplate(template),
+                    },
+                  ]}
+                  overflowLabel={`More actions for ${template.name}`}
+                />
               </div>
             </article>
           ))}

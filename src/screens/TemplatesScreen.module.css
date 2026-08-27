@@ -91,15 +91,9 @@
   .template-library-actions {
     display: flex;
       justify-content: flex-end;
-      gap: 12px;
       border-top: 1px solid var(--ostudy-color-border-subtle);
       padding: 10px 14px;
       background: var(--ostudy-color-surface-raised);
-  }
-  .template-library-actions button {
-    border: 0;
-      background: transparent;
-      color: var(--ostudy-color-text-secondary);
   }
   .template-editor-layout {
     display: grid;
