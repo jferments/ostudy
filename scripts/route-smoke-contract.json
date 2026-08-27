@@ -5,6 +5,7 @@
     "applicationSections": "src/controllers/useAppController.ts",
     "applicationShell": "src/App.tsx",
     "primaryNavigation": "src/components/NavigationSidebar.tsx",
+    "compactNavigation": "src/components/NavigationSidebar.tsx",
     "flashcardsRoutes": "src/navigation/flashcardsRoutes.ts",
     "flashcardsTabs": "src/screens/flashcards/FlashcardsWorkspace.tsx",
     "nativeSmokeRunner": "scripts/smoke-native.sh",
@@ -13,6 +14,10 @@
   "applicationSections": [
     {
       "id": "decks",
+      "role": "primary-destination"
+    },
+    {
+      "id": "study-guides",
       "role": "primary-destination"
     },
     {
@@ -31,7 +36,7 @@
     },
     {
       "id": "practice",
-      "role": "primary-destination"
+      "role": "internal-workflow"
     },
     {
       "id": "analytics",
@@ -66,6 +71,28 @@
       }
     },
     {
+      "section": "study-guides",
+      "label": "Study Guides",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "button[data-testid='nav-study-guides']",
+              "webdriver.click(session_id, study_guides)"
+            ],
+            "assertionFragments": [
+              "Study Guides",
+              "wide Study Guides destination"
+            ]
+          }
+        ]
+      }
+    },
+    {
       "section": "documents",
       "label": "Documents",
       "smoke": {
@@ -88,13 +115,6 @@
             ]
           }
         ]
-      }
-    },
-    {
-      "section": "practice",
-      "label": "Practice",
-      "smoke": {
-        "protectedWorkflow": "active-practice"
       }
     },
     {
@@ -142,6 +162,17 @@
       }
     }
   ],
+  "compactNavigation": {
+    "primary": [
+      "decks",
+      "study-guides",
+      "analytics"
+    ],
+    "more": [
+      "documents",
+      "settings"
+    ]
+  },
   "protectedWorkflows": [
     {
       "id": "active-practice",

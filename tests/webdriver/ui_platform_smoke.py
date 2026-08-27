@@ -207,17 +207,79 @@ def assert_flashcards_tabs(session_id: str, deadline: float) -> None:
         raise AssertionError("The removed Create Cards workspace is still visible")
 
 
+def assert_navigation_labels(
+    session_id: str,
+    expected: list[str],
+    label: str,
+) -> None:
+    labels = execute(
+        session_id,
+        """
+        return [...document.querySelectorAll("nav[aria-label='Main navigation'] button")]
+          .map((button) => (button.textContent || '').trim());
+        """,
+    )
+    if labels != expected:
+        raise AssertionError(f"Unexpected {label} navigation order: {labels!r}")
+
+
+def open_study_guides_and_return(
+    session_id: str,
+    deadline: float,
+    label: str,
+) -> None:
+    study_guides = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-study-guides']",
+        deadline,
+    )
+    webdriver.click(session_id, study_guides)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Study Guides",
+        deadline,
+    )
+    assert_no_horizontal_overflow(session_id, label)
+
+    flashcards = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    webdriver.click(session_id, flashcards)
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "main [role='tablist'][aria-label='Flashcards workspaces']",
+        deadline,
+    )
+
+
 def verify_compact_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 390, 700)
     wait_for_layout_mode(session_id, "compact", deadline)
+    assert_navigation_labels(
+        session_id,
+        ["Flashcards", "Study Guides", "Analytics", "More"],
+        "compact",
+    )
+    open_study_guides_and_return(
+        session_id,
+        deadline,
+        "compact Study Guides destination",
+    )
+    assert_no_horizontal_overflow(session_id, "compact navigation")
+
     more = webdriver.find_element(
         session_id,
         "css selector",
         "button[data-testid='nav-more']",
         deadline,
     )
-    assert_no_horizontal_overflow(session_id, "compact navigation")
-
     webdriver.click(session_id, more)
     webdriver.find_element(
         session_id,
@@ -225,16 +287,17 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         "//*[@role='dialog' and @aria-modal='true']//*[normalize-space(.)='More']",
         deadline,
     )
-    removed_destinations = execute(
+    more_destinations = execute(
         session_id,
         """
-        const labels = [...document.querySelectorAll('[role=dialog] button')]
+        return [...document.querySelectorAll("[role=dialog] button[data-testid^='nav-']")]
           .map((button) => (button.textContent || '').trim());
-        return labels.filter((label) => label.includes('Templates') || label.includes('Search')).length;
         """,
     )
-    if int(removed_destinations) != 0:
-        raise AssertionError("Compact More sheet exposed Flashcards workspaces as top-level destinations")
+    if more_destinations != ["Documents", "Settings"]:
+        raise AssertionError(
+            f"Compact More destinations were incomplete, duplicated, or out of order: {more_destinations!r}"
+        )
 
     settings = webdriver.find_element(
         session_id,
@@ -292,17 +355,15 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
-    webdriver.find_element(
+    assert_navigation_labels(
         session_id,
-        "css selector",
-        "button[data-testid='nav-settings']",
-        deadline,
+        ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"],
+        "wide",
     )
-    webdriver.find_element(
+    open_study_guides_and_return(
         session_id,
-        "css selector",
-        "button[data-testid='nav-decks']",
         deadline,
+        "wide Study Guides destination",
     )
     more_count = execute(
         session_id,
@@ -316,6 +377,16 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
 def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1000, 800)
     wait_for_layout_mode(session_id, "medium", deadline)
+    assert_navigation_labels(
+        session_id,
+        ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"],
+        "medium",
+    )
+    open_study_guides_and_return(
+        session_id,
+        deadline,
+        "medium Study Guides destination",
+    )
     webdriver.find_element(
         session_id,
         "css selector",

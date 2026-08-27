@@ -4,6 +4,7 @@ import styles from "./MobileAppBar.module.css";
 
 const TITLES: Record<AppSection, string> = {
   decks: "Flashcards",
+  "study-guides": "Study Guides",
   documents: "Documents",
   cards: "Search",
   templates: "Templates",

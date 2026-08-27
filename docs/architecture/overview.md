@@ -39,7 +39,7 @@ The direction is deliberate. Screens express user intent and render state. Contr
 
 ### Feature screens
 
-`src/screens/` contains product workspaces such as Decks, Search/Filter, Practice, Analytics, Templates, Documents, and Settings. Screens compose domain controllers and shared UI primitives; they do not execute SQL, calculate authoritative schedules, or contact an AI provider.
+`src/screens/` contains product workspaces such as Decks, Search/Filter, Study Guides, Analytics, Templates, Documents, and Settings. Study Guides is a visible feature route. Practice remains a separately rendered internal session workflow entered through typed contextual launch requests, so restoration, exit guards, completion, and return targets stay isolated from standing navigation. Screens compose domain controllers and shared UI primitives; they do not execute SQL, calculate authoritative schedules, or contact an AI provider.
 
 ### Controllers
 

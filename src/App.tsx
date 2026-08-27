@@ -25,6 +25,9 @@ const FlashcardsWorkspace = lazy(() =>
 const DocumentsSection = lazy(() =>
   import("./screens/DocumentsSection").then((module) => ({ default: module.DocumentsSection })),
 );
+const StudyGuidesRoute = lazy(() =>
+  import("./screens/StudyGuidesRoute").then((module) => ({ default: module.StudyGuidesRoute })),
+);
 const PracticeScreen = lazy(() =>
   import("./screens/PracticeScreen").then((module) => ({ default: module.PracticeScreen })),
 );
@@ -102,6 +105,12 @@ function App() {
                             onCardDirtyChange={controller.setHasUnsavedCard}
                             onTemplateDirtyChange={controller.setHasUnsavedTemplate}
                             showToast={controller.showToast}
+                          />
+                        ) : null}
+                        {controller.section === "study-guides" ? (
+                          <StudyGuidesRoute
+                            showToast={controller.showToast}
+                            onPracticeCards={controller.practiceCards}
                           />
                         ) : null}
                         {controller.section === "documents" ? (

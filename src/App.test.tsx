@@ -155,6 +155,20 @@ vi.mock("./screens/AnalyticsScreen", () => ({
 vi.mock("./screens/DocumentsSection", () => ({
   DocumentsSection: () => <h1>Documents mock</h1>,
 }));
+vi.mock("./screens/StudyGuidesRoute", () => ({
+  StudyGuidesRoute: ({
+    onPracticeCards,
+  }: {
+    onPracticeCards: (cardIds: string[]) => Promise<void>;
+  }) => (
+    <section>
+      <h1>Study Guides mock</h1>
+      <button type="button" onClick={() => void onPracticeCards(["topic-card"])}>
+        Practice topic cards mock
+      </button>
+    </section>
+  ),
+}));
 vi.mock("./screens/SettingsScreen", () => ({
   SettingsScreen: () => <h1>Settings mock</h1>,
 }));
@@ -270,6 +284,47 @@ describe("App shell", () => {
     );
   });
 
+  it("opens Study Guides directly without exposing a Practice destination", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(navigation).queryByRole("button", { name: "Practice" })).toBeNull();
+    fireEvent.click(within(navigation).getByRole("button", { name: "Study Guides" }));
+
+    expect(await screen.findByRole("heading", { name: "Study Guides mock" })).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Study Guides" }).getAttribute(
+        "aria-current",
+      ),
+    ).toBe("page");
+    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
+    expect(
+      vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.some(
+        ([input]) => String(input.section) === "study-guides",
+      ),
+    ).toBe(false);
+  });
+
+  it("returns topic-linked practice to Study Guides", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Study Guides" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Practice topic cards mock" }));
+
+    expect(await screen.findByRole("heading", { name: "Practice mock" })).toBeTruthy();
+    expect(screen.getByLabelText("Practice launch").textContent).toBe(
+      "|topic-card|true|scheduled|study-guides|",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "End early mock" }));
+    expect(await screen.findByRole("heading", { name: "Study Guides mock" })).toBeTruthy();
+  });
+
   it("returns an early-ended deck-detail practice session to that exact deck", async () => {
     const deck = makeDeck({ name: "Respiratory physiology" });
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
@@ -291,8 +346,7 @@ describe("App shell", () => {
 
     renderApp();
     await screen.findByRole("heading", { name: "Decks mock" });
-    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
-    fireEvent.click(within(navigation).getByRole("button", { name: "Practice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Practice deck mock" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open session analytics" }));
 
     expect(await screen.findByRole("heading", { name: "Analytics mock" })).toBeTruthy();

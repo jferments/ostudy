@@ -28,6 +28,7 @@ import { useRequestLane } from "./requestLane";
 
 export type AppSection =
   | "decks"
+  | "study-guides"
   | "documents"
   | "cards"
   | "templates"
@@ -202,7 +203,7 @@ export function useAppController() {
   }, [deckRefreshLane]);
 
   useEffect(() => {
-    if (isLoading || section === "practice") return;
+    if (isLoading || section === "practice" || section === "study-guides") return;
     const analytics =
       section === "analytics" && analyticsLaunch
         ? {
@@ -237,6 +238,7 @@ export function useAppController() {
     void listenToLifecycle((snapshot) => {
       if (
         section !== "practice" &&
+        section !== "study-guides" &&
         (snapshot.phase === "background" ||
           snapshot.phase === "suspending" ||
           snapshot.phase === "termination_requested")

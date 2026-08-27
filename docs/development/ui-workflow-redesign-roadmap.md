@@ -59,8 +59,8 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 
 ## Stage 2 — Navigation, branding, fonts, and desktop window behavior
 
-- [ ] Add a first-class `study-guides` application section immediately below Flashcards in wide, medium, and compact navigation.
-- [ ] Remove the top-level Practice navigation item and normalize compact-navigation primary/More groupings.
+- [x] Add a first-class `study-guides` application section immediately below Flashcards in wide, medium, and compact navigation. (Stage 2A)
+- [x] Remove the top-level Practice navigation item and normalize compact-navigation primary/More groupings. (Stage 2A)
 - [ ] Split the old Practice destination into an internal active-session state plus launch surfaces owned by Flashcards, Search, Study Guides, and Analytics.
 - [ ] Migrate saved UI checkpoints: resumable sessions reopen internally; setup-only Practice checkpoints return to Flashcards.
 - [ ] Preserve platform back behavior, active-session exit guards, lifecycle checkpoints, and return targets after the route change.
@@ -72,6 +72,12 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [ ] Add platform-adapter commands for native maximize/restore and full-screen where supported, with keyboard-accessible controls and no direct Tauri calls from shared UI.
 - [ ] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop.
 - [ ] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage.
+
+Stage 2A is limited to the navigation checkpoint above. It reuses the existing
+study-guide library behind a thin route and retains Practice as an internal
+rendered workflow. Active-session ownership, checkpoint migration, return and
+lifecycle behavior, branding, fonts, window controls, and viewport work remain
+pending in the unchecked items.
 
 ## Stage 3 — Deck selection and practice setup relocation
 

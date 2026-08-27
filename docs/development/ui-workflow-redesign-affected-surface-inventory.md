@@ -2,7 +2,7 @@
 
 This is the durable Stage 0 affected-surface map for [ADR 0049](../decisions/0049-learning-workflow-ui-simplification.md) and the [learning-workflow redesign roadmap](ui-workflow-redesign-roadmap.md). It records the ownership topology at commit `f92697fd7b5a61ddc4f67793d9bd9b84edcdc3c3`; later stages must update the owning contracts instead of rediscovering or bypassing them.
 
-This checkpoint changes no product behavior, schema, migration, transfer format, IPC command, smoke path, or ownership boundary. “Future” below identifies a roadmap consumer, not behavior that is already shipped. Current screen-owned IPC orchestration is recorded as current topology and does not imply that the controller ownership required by later stages already exists.
+The Stage 0 checkpoint changed no product behavior, schema, migration, transfer format, IPC command, smoke path, or ownership boundary. “Future” in the baseline tables identifies a roadmap consumer, not behavior that was already shipped at Stage 0. Current screen-owned IPC orchestration is recorded as topology and does not imply that the controller ownership required by later stages already exists.
 
 ## Reading the map
 
@@ -10,6 +10,29 @@ This checkpoint changes no product behavior, schema, migration, transfer format,
 - **Compatibility concern** identifies behavior or data that a later stage must preserve, migrate, or deliberately replace.
 - **Roadmap consumer** names the stage that must use the row when it changes the surface. Stage 13 owns final documentation, smoke, and exact-head qualification across all rows.
 - `scripts/route-smoke-contract.json` is the existing machine-readable expected inventory. It remains an assertion over application-owned routes and executable smoke evidence; it is not routing configuration.
+
+## Stage 2A navigation delta
+
+Stage 2A adds `study-guides` as a typed, lazy-rendered application section and
+visible destination immediately after Flashcards. Wide and medium navigation is
+now ordered Flashcards, Study Guides, Documents, Analytics, Settings. Compact
+navigation exposes Flashcards, Study Guides, Analytics, and More; More contains
+Documents and Settings. The route/smoke contract records this complete,
+ordered, disjoint partition and protects direct entry at each layout size.
+
+Practice remains an `AppSection`, an App render branch, and the owner of the
+existing setup, active-session, completion, checkpoint, exit-guard, and return
+behavior, but it is no longer in any visible navigation collection. Existing
+deck/card/topic actions remain its contextual entry points. The current guide
+library also remains composed inside Practice until Stage 8; the new route
+reuses it rather than introducing the pending route-owned guide controller.
+
+The native `ui-checkpoint-v1` section vocabulary is unchanged. Stage 2A excludes
+Study Guides from generic and lifecycle checkpoint writes, so reopening restores
+the last supported destination. Practice checkpoint migration and normalization,
+including resumable-versus-setup-only behavior, remain pending. The Stage 0
+tables below preserve the original affected-surface baseline; this delta is the
+maintained description of the implemented navigation checkpoint.
 
 ## Route and navigation topology
 

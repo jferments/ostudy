@@ -43,7 +43,7 @@ bounded source context is sent through the selected profile.
    independently.
 4. Watch progress or use the relevant stop action to cancel the active document
    task deliberately.
-5. Open **Practice → Study guides** to read a generated guide, annotate or edit it,
+5. Open **Study Guides** to read a generated guide, annotate or edit it,
    export it, or start topic-linked card practice. Open a generated deck to manage
    its cards like any other deck.
 
@@ -150,7 +150,7 @@ an essay. Mechanism explanations, terms, processes, comparisons,
 misconceptions, and visual explanations are included only when they add distinct
 learning value rather than repeating the source.
 
-Open generated guides from the **Study guides** section of **Practice**. Use the
+Open generated guides from the top-level **Study Guides** destination. Use the
 table of contents to move through a guide and **Open source** to open the managed
 original document.
 

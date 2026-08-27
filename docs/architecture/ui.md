@@ -129,6 +129,28 @@ Layout responds to available space and input capability rather than assuming tha
 
 The desktop Tauri window allows compact widths so responsive behavior can be exercised before mobile projects exist.
 
+### Application destinations
+
+Visible application destinations use one typed route catalog. Wide and medium
+navigation is ordered **Flashcards**, **Study Guides**, **Documents**,
+**Analytics**, and **Settings**. Practice is an internal rendered workflow
+entered through contextual study actions; it is not a standing navigation
+destination and therefore does not select an unrelated visible destination
+while a session is active.
+
+Compact navigation is a deterministic partition of the same visible catalog.
+**Flashcards**, **Study Guides**, and **Analytics** are direct destinations;
+**Documents** and **Settings** appear exactly once in **More**. The direct and
+More groups preserve their relative visible order, are disjoint, and together
+cover every visible destination. More is active only for one of its actual
+destinations. Shared overlay behavior owns the More sheet's focus, dismissal,
+and restoration semantics.
+
+The Study Guides route currently composes the existing guide library. Its
+route-owned controller/detail state and checkpoint support are later workspace
+work; until that contract is added, generic navigation and lifecycle checkpoint
+writes omit Study Guides rather than widening the native checkpoint format.
+
 ## Shared primitives
 
 The common layer includes:

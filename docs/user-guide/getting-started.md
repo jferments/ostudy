@@ -9,14 +9,14 @@ This guide follows a normal first-use path rather than the internal implementati
 The main navigation contains five areas:
 
 - **Flashcards** for decks, templates, Search, imports and exports, and card authoring;
+- **Study Guides** for generated document outlines, learner notes, exports, and topic-linked study;
 - **Documents** for retaining local source documents and generating flashcards from them;
-- **Practice** for scheduled and custom study sessions;
 - **Analytics** for current workload, practice history, and topic-level patterns;
 - **Settings** for storage, appearance, AI providers, and review scheduling.
 
 Inside **Flashcards**, the four workspaces are **Decks**, **Templates**, **Search**, and **Import/Export**. Open a deck to add or bulk-add cards to that deck. Card creation is intentionally deck-scoped rather than a separate global workspace.
 
-On a narrow mobile window, Flashcards, Practice, and Analytics remain directly available while Documents and Settings appear under **More**. Android Back closes the top overlay or nested editor before leaving the current area.
+On a narrow mobile window, Flashcards, Study Guides, and Analytics remain directly available while Documents and Settings appear under **More**. Practice opens from contextual study actions instead of appearing as a standing destination. Android Back closes the top overlay or nested editor before leaving the current area.
 
 Interactive tutorials never open automatically. New installations leave them off by default. If you want one, enable **Interactive tutorials** under **Settings → Appearance**, then start the related tutorial explicitly from Help. Tutorial completion/dismissal state is device-local presentation state; it is not learner history and is not included in library backups.
 
@@ -79,7 +79,7 @@ See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the exac
 
 ## 7. Run a practice session
 
-Open **Practice** when you want the normal scheduled workload. Practice restores your last manually chosen deck scope when those decks are still active and contain generated cards. If that saved scope is no longer usable, it selects all currently eligible active decks. This setup choice is device-local presentation state rather than learner history.
+Practice is an internal study workflow rather than a standing navigation destination. Start it from an existing contextual action such as **Practice** on a deck, **Practice selected** in Search, a topic-level Practice action, or **Study linked cards** in Study Guides. When the retained Practice setup view is open, it restores your last manually chosen deck scope when those decks are still eligible; that setup choice is device-local presentation state rather than learner history.
 
 The workload panel is authoritative for the current selection. While it is loading, unavailable, or has no selected scope, ostudy shows that state explicitly instead of displaying made-up zeroes. A real loaded workload of zero remains a real zero. The exact same deck/tag scope used to calculate the workload is passed to **Start scheduled practice**.
 
@@ -164,7 +164,7 @@ A useful first test of the application is:
 2. Reorder the folder and decks once with drag-and-drop and once with the keyboard handle shortcuts.
 3. Open one deck; add five Basic cards with **Add flashcard**, then add prepared Q/A pairs with **Bulk add**.
 4. Add two tags and find the cards through **Flashcards → Search** using a folder scope and one study-state filter.
-5. Open Practice and confirm the eligible decks are selected automatically, then change the scope once and start a session.
+5. Open one deck and choose **Practice** to start a contextual session.
 6. Inspect the completion summary and then open Analytics.
 7. Switch themes, enable reduced motion, and verify that the same workflow remains clear without card flips or particles.
 8. If you want guided help, enable Interactive tutorials and start one explicitly from Help; verify it does not relaunch on its own.

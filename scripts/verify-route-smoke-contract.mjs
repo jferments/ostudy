@@ -55,6 +55,28 @@ if (sources.primaryNavigation !== null) {
     parseNavigationItems(sources.primaryNavigation, "ITEMS", "section"),
   );
 }
+if (sources.compactNavigation !== null) {
+  const visibleDestinations = parseNavigationItems(
+    sources.compactNavigation,
+    "ITEMS",
+    "section",
+  ).map((entry) => entry.id);
+  const compactPrimary = parseStringArray(
+    sources.compactNavigation,
+    "COMPACT_PRIMARY_SECTIONS",
+  );
+  const compactPrimarySet = new Set(compactPrimary);
+  compareOrderedValues(
+    "compact primary destinations",
+    contract.compactNavigation.primary,
+    compactPrimary,
+  );
+  compareOrderedValues(
+    "compact More destinations",
+    contract.compactNavigation.more,
+    visibleDestinations.filter((section) => !compactPrimarySet.has(section)),
+  );
+}
 if (sources.flashcardsRoutes !== null) {
   compareOrderedValues(
     "Flashcards route workspaces",
@@ -122,6 +144,7 @@ function validateContractShape(value) {
     "applicationSections",
     "applicationShell",
     "primaryNavigation",
+    "compactNavigation",
     "flashcardsRoutes",
     "flashcardsTabs",
     "nativeSmokeRunner",
@@ -148,6 +171,9 @@ function validateContractShape(value) {
   }
   if (!Array.isArray(value.flashcardsWorkspaces)) {
     fail("flashcardsWorkspaces must be an array.");
+  }
+  if (!isRecord(value.compactNavigation)) {
+    fail("compactNavigation must be an object.");
   }
   if (failures.length > 0) return;
 
@@ -192,6 +218,7 @@ function validateContractShape(value) {
     value.primaryDestinations,
     value.protectedWorkflows,
   );
+  validateCompactNavigation(value.compactNavigation, value.primaryDestinations);
 
   const primarySet = new Set(primaryIds);
   const workspaceSet = new Set(workspaceIds);
@@ -203,6 +230,35 @@ function validateContractShape(value) {
         `application section ${entry.id} has invalid compatibility target ${JSON.stringify(entry.target)}.`,
       );
     }
+  }
+}
+
+function validateCompactNavigation(compactNavigation, primaryDestinations) {
+  const groups = ["primary", "more"];
+  for (const group of groups) {
+    if (
+      !Array.isArray(compactNavigation[group]) ||
+      compactNavigation[group].some((section) => !isIdentifier(section))
+    ) {
+      fail(`compactNavigation.${group} must be an array of destination identifiers.`);
+      return;
+    }
+    reportDuplicates(`compact ${group} destination`, compactNavigation[group]);
+  }
+
+  const visible = primaryDestinations.map((entry) => entry.section);
+  const compactPrimary = compactNavigation.primary;
+  const compactMore = compactNavigation.more;
+  reportDuplicates("compact destination", [...compactPrimary, ...compactMore]);
+  compareSets("compact navigation coverage", visible, [...compactPrimary, ...compactMore]);
+
+  for (const [label, group] of [
+    ["primary", compactPrimary],
+    ["More", compactMore],
+  ]) {
+    const groupSet = new Set(group);
+    const expectedOrder = visible.filter((section) => groupSet.has(section));
+    compareOrderedValues(`compact ${label} destination order`, expectedOrder, group);
   }
 }
 
@@ -733,6 +789,8 @@ function finish() {
       `${contract.primaryDestinations.length} primary destinations, and ` +
       `${contract.flashcardsWorkspaces.length} Flashcards workspaces ` +
       `(${routeEntryCount} route-entry; ${presenceCount} presence-only), with ` +
-      `${contract.protectedWorkflows.length} protected workflow.`,
+      `${contract.protectedWorkflows.length} protected workflow and ` +
+      `${contract.compactNavigation.primary.length} compact primary / ` +
+      `${contract.compactNavigation.more.length} More destinations.`,
   );
 }

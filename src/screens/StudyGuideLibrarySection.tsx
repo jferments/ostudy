@@ -15,11 +15,13 @@ import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 interface StudyGuideLibrarySectionProps {
   showToast: ShowToast;
   onPracticeCards: (cardIds: string[]) => Promise<void>;
+  heading?: string;
 }
 
 export function StudyGuideLibrarySection({
   showToast,
   onPracticeCards,
+  heading = "Study guides",
 }: StudyGuideLibrarySectionProps) {
   const [guides, setGuides] = useState<StudyGuideLibraryItem[]>([]);
   const [selected, setSelected] = useState<StudyGuideLibraryItem | null>(null);
@@ -53,7 +55,7 @@ export function StudyGuideLibrarySection({
         <Surface as="section" level={2} className={styles.section} aria-labelledby="study-guides-heading">
         <div className={styles.headingRow}>
           <div>
-            <h2 id="study-guides-heading">Study guides</h2>
+            <h2 id="study-guides-heading">{heading}</h2>
             <p>Open generated document outlines, add notes, or study the flashcards linked to a topic.</p>
           </div>
           <Button

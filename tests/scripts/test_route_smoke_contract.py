@@ -52,45 +52,29 @@ class RouteSmokeContractTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def reclassify_practice_as_internal(self, root: Path, contract: dict) -> None:
-        practice_section = next(
-            entry for entry in contract["applicationSections"] if entry["id"] == "practice"
-        )
-        practice_section["role"] = "internal-workflow"
-        contract["primaryDestinations"] = [
-            entry for entry in contract["primaryDestinations"] if entry["section"] != "practice"
-        ]
-        navigation = root / "src/components/NavigationSidebar.tsx"
-        source = navigation.read_text(encoding="utf-8")
-        practice_item = '  { section: "practice", icon: "practice", label: "Practice" },\n'
-        self.assertIn(practice_item, source)
-        navigation.write_text(source.replace(practice_item, "", 1), encoding="utf-8")
-        self.write_contract(root, contract)
-
     def test_repository_contract_passes(self) -> None:
         completed = self.run_verifier(ROOT)
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("7 route-entry; 2 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
+        self.assertIn("3 compact primary / 2 More destinations", completed.stdout)
 
-    def test_future_practice_reclassification_retains_protected_smoke(self) -> None:
+    def test_internal_practice_retains_protected_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
             contract = self.copy_fixture(fixture)
-            self.reclassify_practice_as_internal(fixture, contract)
 
             completed = self.run_verifier(fixture)
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("4 primary destinations", completed.stdout)
+            self.assertIn("5 primary destinations", completed.stdout)
             self.assertIn("1 protected workflow", completed.stdout)
 
     def test_internal_practice_cannot_drop_protected_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
             contract = self.copy_fixture(fixture)
-            self.reclassify_practice_as_internal(fixture, contract)
             contract["protectedWorkflows"] = []
             self.write_contract(fixture, contract)
 
@@ -102,35 +86,64 @@ class RouteSmokeContractTests(unittest.TestCase):
                 completed.stderr,
             )
 
-    def test_rejects_future_undeclared_study_guides_destination(self) -> None:
+    def test_rejects_missing_study_guides_destination(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
-            self.copy_fixture(fixture)
-            controller = fixture / "src/controllers/useAppController.ts"
-            controller.write_text(
-                controller.read_text(encoding="utf-8").replace(
-                    '  | "documents"\n',
-                    '  | "documents"\n  | "study-guides"\n',
-                    1,
-                ),
-                encoding="utf-8",
-            )
-            navigation = fixture / "src/components/NavigationSidebar.tsx"
-            navigation.write_text(
-                navigation.read_text(encoding="utf-8").replace(
-                    '  { section: "documents", icon: "document", label: "Documents" },\n',
-                    '  { section: "documents", icon: "document", label: "Documents" },\n'
-                    '  { section: "study-guides", icon: "document", label: "Study Guides" },\n',
-                    1,
-                ),
-                encoding="utf-8",
-            )
+            contract = self.copy_fixture(fixture)
+            contract["applicationSections"] = [
+                entry
+                for entry in contract["applicationSections"]
+                if entry["id"] != "study-guides"
+            ]
+            contract["primaryDestinations"] = [
+                entry
+                for entry in contract["primaryDestinations"]
+                if entry["section"] != "study-guides"
+            ]
+            contract["compactNavigation"]["primary"].remove("study-guides")
+            self.write_contract(fixture, contract)
 
             completed = self.run_verifier(fixture)
 
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("study-guides", completed.stderr)
             self.assertIn("drifted", completed.stderr)
+
+    def test_rejects_compact_destination_omission(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            contract["compactNavigation"]["more"].remove("settings")
+            self.write_contract(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("compact navigation coverage is missing: settings", completed.stderr)
+
+    def test_rejects_compact_destination_duplication(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            contract["compactNavigation"]["more"].insert(0, "analytics")
+            self.write_contract(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Duplicate compact destination: analytics", completed.stderr)
+
+    def test_rejects_compact_group_order_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            contract["compactNavigation"]["more"].reverse()
+            self.write_contract(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("compact More destination order drifted", completed.stderr)
 
     def test_rejects_smoke_evidence_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
