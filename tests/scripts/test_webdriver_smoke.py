@@ -156,6 +156,104 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             )
         self.assertEqual(element, "element-1")
 
+    def test_click_retries_transient_ack_arm_disconnect_once_before_one_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=[
+                self.smoke.http.client.RemoteDisconnected("lost arm response"),
+                True,
+                None,
+            ]
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_wait_for_click_ack",
+            return_value=True,
+        ), patch.object(self.smoke, "request", request), patch.object(
+            self.smoke.time,
+            "sleep",
+        ):
+            self.smoke.click("session-1", "element-1")
+
+        self.assertEqual(request.call_count, 3)
+        first_arm, second_arm, click = request.call_args_list
+        self.assertEqual(first_arm, second_arm)
+        self.assertEqual(first_arm.args[0:2], ("POST", "/session/session-1/execute/sync"))
+        self.assertEqual(first_arm.args[2]["args"][0], {self.smoke.ELEMENT_KEY: "element-1"})
+        self.assertEqual(first_arm.args[2]["args"][1], second_arm.args[2]["args"][1])
+        self.assertEqual(
+            click.args,
+            ("POST", "/session/session-1/element/element-1/click", {}),
+        )
+
+    def test_click_stops_after_second_transient_ack_arm_disconnect(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=[
+                self.smoke.http.client.RemoteDisconnected("lost first arm response"),
+                self.smoke.http.client.RemoteDisconnected("lost second arm response"),
+            ]
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(
+                self.smoke.http.client.RemoteDisconnected,
+                "lost second arm response",
+            ):
+                self.smoke.click("session-1", "element-1")
+
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0], request.call_args_list[1])
+        self.assertTrue(
+            all(call.args[1] == "/session/session-1/execute/sync" for call in request.call_args_list)
+        )
+
+    def test_click_does_not_retry_nontransient_ack_arm_transport_error(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(side_effect=OSError("arm failed"))
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(OSError, "arm failed"):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/session-1/execute/sync")
+
+    def test_click_does_not_retry_ack_arm_protocol_error(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        protocol_error = self.smoke.WebDriverProtocolError(500, "unknown error", "arm failed")
+        request = MagicMock(side_effect=protocol_error)
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaises(self.smoke.WebDriverProtocolError):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/session-1/execute/sync")
+
+    def test_click_rejects_false_ack_arm_result_before_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(return_value=False)
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "Could not arm DOM acknowledgement"):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/session-1/execute/sync")
+
     def test_click_requires_stable_hit_target_and_dom_ack(self) -> None:
         hits = [
             {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}},

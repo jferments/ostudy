@@ -335,24 +335,29 @@ def _hit_signature(hit: dict[str, Any]) -> tuple[float, float, float, float] | N
 
 def _arm_click_ack(session_id: str, element_id: str, token: str) -> None:
     """Install a one-shot capture listener that proves the DOM received the click."""
-    armed = request(
-        "POST",
-        f"/session/{session_id}/execute/sync",
-        {
-            "script": """
-                const element = arguments[0];
-                const token = arguments[1];
-                if (!(element instanceof Element)) return false;
-                element.addEventListener(
-                  'click',
-                  () => { window.__OSTUDY_WEBDRIVER_CLICK_ACK__ = token; },
-                  { once: true, capture: true }
-                );
-                return true;
-            """,
-            "args": [{ELEMENT_KEY: element_id}, token],
-        },
-    )
+    path = f"/session/{session_id}/execute/sync"
+    payload = {
+        "script": """
+            const element = arguments[0];
+            const token = arguments[1];
+            if (!(element instanceof Element)) return false;
+            element.addEventListener(
+              'click',
+              () => { window.__OSTUDY_WEBDRIVER_CLICK_ACK__ = token; },
+              { once: true, capture: true }
+            );
+            return true;
+        """,
+        "args": [{ELEMENT_KEY: element_id}, token],
+    }
+    try:
+        armed = request("POST", path, payload)
+    except (OSError, urllib.error.URLError) as error:
+        if not _is_transient_disconnect(error):
+            raise
+        # The measured click has not been sent, and duplicate listeners using the
+        # same token preserve the acknowledgement postcondition.
+        armed = request("POST", path, payload)
     if armed is not True:
         raise RuntimeError("Could not arm DOM acknowledgement for WebDriver click")
 
