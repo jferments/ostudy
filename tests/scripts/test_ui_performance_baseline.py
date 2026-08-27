@@ -665,6 +665,14 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 baseline.practice_setup_state("session-1")
         self.assertNotIn(secret, str(invalid.exception))
 
+    def test_practice_transition_observer_latches_bounded_selection_change(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn("sawSelectionChange: false", source)
+        self.assertIn("initialSelectedCount: selectedCount()", source)
+        self.assertIn("currentSelectedCount !== state.initialSelectedCount", source)
+        self.assertIn("?.sawSelectionChange === true", source)
+        self.assertIn("?.sawUpdating === true", source)
+
     def test_practice_state_timeout_reports_only_structured_diagnostics(self) -> None:
         stalled = practice_state(
             selected=1,

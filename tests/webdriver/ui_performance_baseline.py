@@ -584,7 +584,9 @@ def practice_setup_state(session_id: str) -> dict[str, Any]:
         workloadPhase,
         startFound: start instanceof HTMLButtonElement,
         startEnabled,
-        workloadTransitionObserved: window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.sawUpdating === true,
+        workloadTransitionObserved:
+          window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.sawUpdating === true
+          || window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.sawSelectionChange === true,
       }};
     """)
     if not isinstance(state, dict) or set(state) != PRACTICE_SETUP_STATE_KEYS:
@@ -641,11 +643,35 @@ def begin_practice_workload_observation(session_id: str) -> None:
     # Installing it before arm keeps setup work outside the measured interval.
     installed = retry_idempotent_transport_once(lambda: execute(session_id, """
       window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.observer?.disconnect();
-      const state = {sawUpdating: false, observer: null};
+      const target = document.evaluate(
+        "//main//h2[normalize-space(.)='Select decks to study']/following::input[@type='checkbox'][1]",
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      ).singleNodeValue;
+      const deckList = target?.parentElement?.parentElement;
+      const selectedCount = () => deckList
+        ? Array.from(deckList.querySelectorAll("input[type='checkbox']"))
+            .filter((candidate) => candidate instanceof HTMLInputElement && candidate.checked)
+            .length
+        : null;
+      const state = {
+        sawUpdating: false,
+        sawSelectionChange: false,
+        initialSelectedCount: selectedCount(),
+        observer: null,
+      };
       const observePhase = () => {
         if (Array.from(document.querySelectorAll('main span'))
           .some((candidate) => candidate.textContent?.trim() === 'Updating…')) {
           state.sawUpdating = true;
+        }
+        const currentSelectedCount = selectedCount();
+        if (state.initialSelectedCount !== null
+          && currentSelectedCount !== null
+          && currentSelectedCount !== state.initialSelectedCount) {
+          state.sawSelectionChange = true;
         }
       };
       state.observer = new MutationObserver(observePhase);
