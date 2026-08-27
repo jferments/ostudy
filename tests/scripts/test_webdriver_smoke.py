@@ -174,6 +174,44 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
         request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
 
+    def test_click_accepts_acknowledged_disconnect_without_replaying_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=self.smoke.http.client.RemoteDisconnected("lost click response")
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=True), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
+    def test_click_propagates_unacknowledged_disconnect_without_replay(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=self.smoke.http.client.RemoteDisconnected("lost click response")
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=False), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(
+                self.smoke.http.client.RemoteDisconnected,
+                "lost click response",
+            ):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
     def test_click_rejects_repeated_unacknowledged_webdriver_clicks(self) -> None:
         hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
         request = MagicMock(return_value=None)

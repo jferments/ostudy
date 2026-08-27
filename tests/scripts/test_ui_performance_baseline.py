@@ -234,6 +234,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn("__OSTUDY_UI_PERFORMANCE_CAPTURE__", source)
         self.assertNotIn('import("./testing/uiPerformanceBridge")', source)
 
+    def test_shared_webdriver_helper_is_measurement_sensitive(self) -> None:
+        self.assertIn("tests/webdriver/smoke.py", baseline.MEASUREMENT_SENSITIVE_PATHS)
+
     def test_finish_recovers_one_disconnect_and_returns_the_cached_sample(self) -> None:
         with mock.patch.object(
             baseline.webdriver,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import re
@@ -373,6 +374,15 @@ def _wait_for_click_ack(session_id: str, token: str, deadline: float) -> bool:
     return False
 
 
+def _is_transient_disconnect(error: BaseException) -> bool:
+    if isinstance(error, (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError)):
+        return True
+    return isinstance(error, urllib.error.URLError) and isinstance(
+        error.reason,
+        (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError),
+    )
+
+
 def click(session_id: str, element_id: str) -> None:
     """Click a stable target and require proof that WebKit dispatched the DOM event."""
     deadline = time.monotonic() + 5
@@ -410,6 +420,13 @@ def click(session_id: str, element_id: str) -> None:
         _arm_click_ack(session_id, element_id, token)
         try:
             request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+        except (OSError, urllib.error.URLError) as error:
+            if not _is_transient_disconnect(error):
+                raise
+            ack_deadline = min(deadline, time.monotonic() + 0.5)
+            if _wait_for_click_ack(session_id, token, ack_deadline):
+                return
+            raise
         except WebDriverProtocolError as error:
             if error.error not in TRANSIENT_CLICK_ERRORS:
                 raise

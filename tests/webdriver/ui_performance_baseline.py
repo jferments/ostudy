@@ -66,7 +66,8 @@ MEASUREMENT_SENSITIVE_PATHS = (
     "src/screens/StudyGuideLibrarySection.tsx",
     "src-tauri/src/library_backup/extended_tests.rs",
     "src-tauri/src/library_backup/performance_fixture_tests.rs",
-    "scripts/ui-performance-baselines.sh", "tests/webdriver/ui_performance_baseline.py",
+    "scripts/ui-performance-baselines.sh", "tests/webdriver/smoke.py",
+    "tests/webdriver/ui_performance_baseline.py",
 )
 
 
