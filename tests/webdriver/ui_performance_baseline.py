@@ -384,7 +384,7 @@ def execute(session_id: str, script: str, args: list[Any] | None = None) -> Any:
 
 
 def retry_idempotent_transport_once(operation: Callable[[], Any]) -> Any:
-    """Retry one read-only or browser-cached operation after a transient disconnect."""
+    """Retry one read-only, browser-cached, or reset-safe operation after a transient disconnect."""
     try:
         return operation()
     except (OSError, urllib.error.URLError) as error:
@@ -405,7 +405,9 @@ def run_version(command: list[str], fallback: str) -> str:
 
 
 def arm(session_id: str, scenario: str, element_id: str) -> None:
-    result = execute(session_id, "const b=window.__OSTUDY_UI_PERFORMANCE__; if(!b) return false; b.arm(arguments[1], arguments[0]); return b.version;", [{webdriver.ELEMENT_KEY: element_id}, scenario])
+    result = retry_idempotent_transport_once(
+        lambda: execute(session_id, "const b=window.__OSTUDY_UI_PERFORMANCE__; if(!b) return false; b.arm(arguments[1], arguments[0]); return b.version;", [{webdriver.ELEMENT_KEY: element_id}, scenario])
+    )
     if result != INSTRUMENTATION_VERSION: raise AssertionError(f"Performance bridge unavailable or stale: {result!r}")
 
 

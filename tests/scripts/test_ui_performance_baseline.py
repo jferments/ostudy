@@ -321,24 +321,78 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 baseline.finish("session-1")
         request.assert_called_once()
 
-    def test_mutating_bridge_commands_are_not_retried_after_disconnect(self) -> None:
+    def test_arm_recovers_one_disconnect_and_still_requires_the_bridge_version(self) -> None:
         with mock.patch.object(
             baseline,
             "execute",
-            side_effect=ConnectionResetError("ambiguous arm delivery"),
+            side_effect=[
+                ConnectionResetError("lost arm response"),
+                baseline.INSTRUMENTATION_VERSION,
+            ],
+        ) as execute:
+            baseline.arm("session-1", "navigation-hover-v1", "element-1")
+
+        self.assertEqual(2, execute.call_count)
+        self.assertEqual(execute.call_args_list[0], execute.call_args_list[1])
+
+        with mock.patch.object(
+            baseline,
+            "execute",
+            side_effect=[ConnectionResetError("lost arm response"), "stale-version"],
+        ) as execute:
+            with self.assertRaisesRegex(AssertionError, "Performance bridge unavailable or stale"):
+                baseline.arm("session-1", "navigation-hover-v1", "element-1")
+        self.assertEqual(2, execute.call_count)
+
+    def test_arm_retries_only_transient_disconnects_once(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "execute",
+            side_effect=[ConnectionResetError("reset"), ConnectionResetError("reset again")],
         ) as execute:
             with self.assertRaises(ConnectionResetError):
                 baseline.arm("session-1", "navigation-hover-v1", "element-1")
+        self.assertEqual(2, execute.call_count)
+
+        failure = baseline.webdriver.WebDriverProtocolError(500, "unknown error", "browser assertion")
+        with mock.patch.object(baseline, "execute", side_effect=failure) as execute:
+            with self.assertRaises(baseline.webdriver.WebDriverProtocolError):
+                baseline.arm("session-1", "navigation-hover-v1", "element-1")
         execute.assert_called_once()
 
-        with mock.patch.object(
+    def test_pointer_and_click_actions_are_not_retried_after_disconnect(self) -> None:
+        with mock.patch.object(baseline, "navigate"), mock.patch.object(
             baseline.webdriver,
-            "request",
-            side_effect=ConnectionResetError("ambiguous pointer delivery"),
-        ) as request:
+            "find_element",
+            return_value="document-toggle",
+        ), mock.patch.object(baseline, "arm"), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=ConnectionResetError("ambiguous click delivery"),
+        ) as click:
             with self.assertRaises(ConnectionResetError):
-                baseline.park_mouse("session-1")
-        request.assert_called_once()
+                baseline.collect_scenario("session-1", "document-list-interaction-v1", 0)
+        click.assert_called_once_with("session-1", "document-toggle")
+
+        with mock.patch.object(baseline, "navigate"), mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="analytics-element",
+        ), mock.patch.object(baseline, "park_mouse"), mock.patch.object(
+            baseline,
+            "arm",
+        ), mock.patch.object(
+            baseline,
+            "pointer_actions",
+            side_effect=ConnectionResetError("ambiguous pointer delivery"),
+        ) as pointer_actions:
+            with self.assertRaises(ConnectionResetError):
+                baseline.collect_scenario("session-1", "navigation-hover-v1", 0)
+        pointer_actions.assert_called_once_with(
+            "session-1",
+            "analytics-element",
+            release=False,
+        )
 
     def test_navigation_reuses_the_current_route_without_an_extra_click(self) -> None:
         with mock.patch.object(baseline, "execute_read_only", return_value="Flashcards") as read, mock.patch.object(
