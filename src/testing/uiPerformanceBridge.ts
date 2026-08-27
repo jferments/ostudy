@@ -23,11 +23,21 @@ declare global {
 
 export function installUiPerformanceBridge(): void {
   if (!UI_PERFORMANCE_CAPTURE_ENABLED) return;
+  let finalization: Promise<UiPerformanceSample> | null = null;
   window.__OSTUDY_UI_PERFORMANCE__ = Object.freeze({
     version: UI_PERFORMANCE_INSTRUMENTATION_VERSION,
     profilingRenderer: true as const,
-    arm: armUiPerformanceMeasurement,
-    finish: finishUiPerformanceMeasurement,
-    reset: resetUiPerformanceMeasurement,
+    arm(scenarioId: string, target: Element): void {
+      finalization = null;
+      armUiPerformanceMeasurement(scenarioId, target);
+    },
+    finish(): Promise<UiPerformanceSample> {
+      finalization ??= finishUiPerformanceMeasurement();
+      return finalization;
+    },
+    reset(): void {
+      finalization = null;
+      resetUiPerformanceMeasurement();
+    },
   });
 }

@@ -19,7 +19,7 @@ import tempfile
 import time
 import urllib.error
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, Callable, NoReturn
 
 import smoke as webdriver
 import ui_platform_smoke as ui
@@ -382,6 +382,20 @@ def execute(session_id: str, script: str, args: list[Any] | None = None) -> Any:
     return webdriver.request("POST", f"/session/{session_id}/execute/sync", {"script": script, "args": args or []})
 
 
+def retry_idempotent_transport_once(operation: Callable[[], Any]) -> Any:
+    """Retry one read-only or browser-cached operation after a transient disconnect."""
+    try:
+        return operation()
+    except (OSError, urllib.error.URLError) as error:
+        if not is_transient_disconnect(error):
+            raise
+    return operation()
+
+
+def execute_read_only(session_id: str, script: str, args: list[Any] | None = None) -> Any:
+    return retry_idempotent_transport_once(lambda: execute(session_id, script, args))
+
+
 def run_version(command: list[str], fallback: str) -> str:
     try:
         return subprocess.run(command, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.strip() or fallback
@@ -395,32 +409,34 @@ def arm(session_id: str, scenario: str, element_id: str) -> None:
 
 
 def finish(session_id: str) -> dict[str, Any]:
-    result = webdriver.request(
-        "POST",
-        f"/session/{session_id}/execute/async",
-        {
-            "script": """
-              const done = arguments[arguments.length - 1];
-              const bridge = window.__OSTUDY_UI_PERFORMANCE__;
-              if (!bridge) {
-                done({ok: false, error: {name: 'BridgeUnavailableError', message: 'The UI performance bridge is unavailable.'}});
-                return;
-              }
-              Promise.resolve()
-                .then(() => bridge.finish())
-                .then(
-                  (sample) => done({ok: true, sample}),
-                  (error) => done({
-                    ok: false,
-                    error: {
-                      name: error instanceof Error ? error.name : typeof error,
-                      message: error instanceof Error ? error.message : String(error)
-                    }
-                  })
-                );
-            """,
-            "args": [],
-        },
+    result = retry_idempotent_transport_once(
+        lambda: webdriver.request(
+            "POST",
+            f"/session/{session_id}/execute/async",
+            {
+                "script": """
+                  const done = arguments[arguments.length - 1];
+                  const bridge = window.__OSTUDY_UI_PERFORMANCE__;
+                  if (!bridge) {
+                    done({ok: false, error: {name: 'BridgeUnavailableError', message: 'The UI performance bridge is unavailable.'}});
+                    return;
+                  }
+                  Promise.resolve()
+                    .then(() => bridge.finish())
+                    .then(
+                      (sample) => done({ok: true, sample}),
+                      (error) => done({
+                        ok: false,
+                        error: {
+                          name: error instanceof Error ? error.name : typeof error,
+                          message: error instanceof Error ? error.message : String(error)
+                        }
+                      })
+                    );
+                """,
+                "args": [],
+            },
+        )
     )
     if not isinstance(result, dict):
         raise AssertionError(f"Invalid asynchronous performance result: {result!r}")
@@ -490,7 +506,7 @@ def pointer_actions(
         release_pointer_actions(session_id)
 
 
-def is_transient_read_disconnect(error: BaseException) -> bool:
+def is_transient_disconnect(error: BaseException) -> bool:
     if isinstance(error, (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError)):
         return True
     return isinstance(error, urllib.error.URLError) and isinstance(
@@ -501,22 +517,15 @@ def is_transient_read_disconnect(error: BaseException) -> bool:
 
 def wait_js(session_id: str, expression: str, deadline: float) -> None:
     last: Any = None
-    disconnect_recoveries = 0
     while time.monotonic() < deadline:
-        try:
-            last = execute(session_id, f"return Boolean({expression});")
-        except (OSError, urllib.error.URLError) as error:
-            if not is_transient_read_disconnect(error) or disconnect_recoveries >= 1:
-                raise
-            disconnect_recoveries += 1
-            continue
+        last = execute_read_only(session_id, f"return Boolean({expression});")
         if last is True: return
         time.sleep(0.05)
     raise AssertionError(f"Timed out waiting for explicit ready condition: {expression}; last={last!r}")
 
 
 def navigate(session_id: str, section: str, heading: str) -> None:
-    current_heading = execute(
+    current_heading = execute_read_only(
         session_id,
         "return document.querySelector('main h1')?.textContent?.trim() ?? null;",
     )
@@ -532,7 +541,7 @@ def achieve_reference_viewport(session_id: str) -> None:
     outer_height = VIEWPORT["height"]
     for _ in range(8):
         webdriver.request("POST", f"/session/{session_id}/window/rect", {"width": outer_width, "height": outer_height})
-        dimensions = execute(session_id, "return {width: window.innerWidth, height: window.innerHeight};")
+        dimensions = execute_read_only(session_id, "return {width: window.innerWidth, height: window.innerHeight};")
         if dimensions == VIEWPORT:
             ui.wait_for_layout_mode(session_id, "wide", webdriver.deadline_after(20))
             return
@@ -628,7 +637,7 @@ def capture(application: Path, baseline_dir: Path, source_sha: str) -> None:
         webdriver.verify_shell(session_id, webdriver.deadline_after())
         achieve_reference_viewport(session_id)
         wait_js(session_id, "window.__OSTUDY_UI_PERFORMANCE__?.profilingRenderer === true", webdriver.deadline_after(20))
-        resolved = execute(session_id, """
+        resolved = execute_read_only(session_id, """
           const root = document.documentElement;
           return {
             viewport: {width: window.innerWidth, height: window.innerHeight},

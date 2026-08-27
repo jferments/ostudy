@@ -234,16 +234,19 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn("__OSTUDY_UI_PERFORMANCE_CAPTURE__", source)
         self.assertNotIn('import("./testing/uiPerformanceBridge")', source)
 
-    def test_finish_uses_one_async_webdriver_command_and_returns_the_sample(self) -> None:
+    def test_finish_recovers_one_disconnect_and_returns_the_cached_sample(self) -> None:
         with mock.patch.object(
             baseline.webdriver,
             "request",
-            return_value={"ok": True, "sample": browser_sample()},
+            side_effect=[
+                ConnectionResetError("lost finalization response"),
+                {"ok": True, "sample": browser_sample()},
+            ],
         ) as request:
             result = baseline.finish("session-1")
 
-        request.assert_called_once()
-        method, path, payload = request.call_args.args
+        self.assertEqual(2, request.call_count)
+        method, path, payload = request.call_args_list[0].args
         self.assertEqual("POST", method)
         self.assertEqual("/session/session-1/execute/async", path)
         self.assertIn("bridge.finish()", payload["script"])
@@ -268,14 +271,13 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual("Error", raised.exception.name)
         request.assert_called_once()
 
-    def test_readiness_poll_recovers_one_connection_reset_only(self) -> None:
-        deadline = baseline.time.monotonic() + 1
+    def test_read_only_execution_recovers_one_connection_reset_only(self) -> None:
         with mock.patch.object(
             baseline,
             "execute",
             side_effect=[ConnectionResetError("reset"), True],
-        ) as execute, mock.patch.object(baseline.time, "sleep"):
-            baseline.wait_js("session-1", "window.ready", deadline)
+        ) as execute:
+            self.assertTrue(baseline.execute_read_only("session-1", "return window.ready"))
         self.assertEqual(2, execute.call_count)
 
         with mock.patch.object(
@@ -284,17 +286,37 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             side_effect=baseline.urllib.error.URLError("non-transport failure"),
         ) as execute, mock.patch.object(baseline.time, "sleep"):
             with self.assertRaises(baseline.urllib.error.URLError):
-                baseline.wait_js("session-1", "window.ready", deadline)
+                baseline.execute_read_only("session-1", "return window.ready")
         execute.assert_called_once()
 
         with mock.patch.object(
             baseline,
             "execute",
             side_effect=[ConnectionResetError("reset"), ConnectionResetError("reset again")],
-        ) as execute, mock.patch.object(baseline.time, "sleep"):
+        ) as execute:
             with self.assertRaises(ConnectionResetError):
-                baseline.wait_js("session-1", "window.ready", deadline)
+                baseline.execute_read_only("session-1", "return window.ready")
         self.assertEqual(2, execute.call_count)
+
+    def test_finish_retries_only_transient_disconnects_once(self) -> None:
+        with mock.patch.object(
+            baseline.webdriver,
+            "request",
+            side_effect=[ConnectionResetError("reset"), ConnectionResetError("reset again")],
+        ) as request:
+            with self.assertRaises(ConnectionResetError):
+                baseline.finish("session-1")
+        self.assertEqual(2, request.call_count)
+
+        failure = baseline.webdriver.WebDriverProtocolError(500, "unknown error", "browser assertion")
+        with mock.patch.object(
+            baseline.webdriver,
+            "request",
+            side_effect=failure,
+        ) as request:
+            with self.assertRaises(baseline.webdriver.WebDriverProtocolError):
+                baseline.finish("session-1")
+        request.assert_called_once()
 
     def test_mutating_bridge_commands_are_not_retried_after_disconnect(self) -> None:
         with mock.patch.object(
@@ -309,19 +331,20 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         with mock.patch.object(
             baseline.webdriver,
             "request",
-            side_effect=ConnectionResetError("ambiguous finish delivery"),
+            side_effect=ConnectionResetError("ambiguous pointer delivery"),
         ) as request:
             with self.assertRaises(ConnectionResetError):
-                baseline.finish("session-1")
+                baseline.park_mouse("session-1")
         request.assert_called_once()
 
     def test_navigation_reuses_the_current_route_without_an_extra_click(self) -> None:
-        with mock.patch.object(baseline, "execute", return_value="Flashcards"), mock.patch.object(
+        with mock.patch.object(baseline, "execute_read_only", return_value="Flashcards") as read, mock.patch.object(
             baseline.webdriver,
             "find_element",
         ) as find_element, mock.patch.object(baseline.webdriver, "click") as click:
             baseline.navigate("session-1", "decks", "Flashcards")
 
+        read.assert_called_once()
         find_element.assert_not_called()
         click.assert_not_called()
 

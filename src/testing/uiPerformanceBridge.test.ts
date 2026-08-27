@@ -14,11 +14,14 @@ describe("UI performance bridge production boundary", () => {
   });
 
   it("installs the asynchronous bridge in a capture-enabled build", async () => {
-    const finish = vi.fn(async () => ({ scenarioId: "navigation-hover-v1" }));
+    const sample = { scenarioId: "navigation-hover-v1" };
+    const arm = vi.fn();
+    const finish = vi.fn(async () => sample);
+    const reset = vi.fn();
     vi.doMock("./uiPerformanceInstrumentation", () => ({
-      armUiPerformanceMeasurement: vi.fn(),
+      armUiPerformanceMeasurement: arm,
       finishUiPerformanceMeasurement: finish,
-      resetUiPerformanceMeasurement: vi.fn(),
+      resetUiPerformanceMeasurement: reset,
       UI_PERFORMANCE_CAPTURE_ENABLED: true,
       UI_PERFORMANCE_INSTRUMENTATION_VERSION: "ui-performance-v1",
     }));
@@ -30,9 +33,25 @@ describe("UI performance bridge production boundary", () => {
       version: "ui-performance-v1",
       profilingRenderer: true,
     });
-    await expect(window.__OSTUDY_UI_PERFORMANCE__?.finish()).resolves.toEqual({
-      scenarioId: "navigation-hover-v1",
-    });
+    const bridge = window.__OSTUDY_UI_PERFORMANCE__;
+    if (!bridge) throw new Error("Expected the capture bridge to be installed.");
+    const first = bridge.finish();
+    const recovered = bridge.finish();
+    expect(recovered).toBe(first);
+    await expect(first).resolves.toBe(sample);
+    expect(bridge.finish()).toBe(first);
     expect(finish).toHaveBeenCalledOnce();
+
+    const target = document.createElement("button");
+    bridge.arm("navigation-hover-v1", target);
+    expect(arm).toHaveBeenCalledWith("navigation-hover-v1", target);
+    expect(bridge.finish()).not.toBe(first);
+    expect(finish).toHaveBeenCalledTimes(2);
+
+    const second = bridge.finish();
+    bridge.reset();
+    expect(reset).toHaveBeenCalledOnce();
+    expect(bridge.finish()).not.toBe(second);
+    expect(finish).toHaveBeenCalledTimes(3);
   });
 });
