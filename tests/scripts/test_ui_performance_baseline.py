@@ -71,6 +71,27 @@ def browser_sample() -> dict:
     }
 
 
+def practice_state(
+    *,
+    eligible: int = 2,
+    selected: int = 2,
+    checked: bool | None = True,
+    phase: str = "settled",
+    start_enabled: bool = True,
+    transition_observed: bool = False,
+) -> dict:
+    return {
+        "targetFound": checked is not None,
+        "eligibleDeckCount": eligible,
+        "selectedDeckCount": selected,
+        "targetChecked": checked,
+        "workloadPhase": phase,
+        "startFound": True,
+        "startEnabled": start_enabled,
+        "workloadTransitionObserved": transition_observed,
+    }
+
+
 def write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
@@ -533,17 +554,13 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual(["measured-click", "ready", "finish", "reset"], events)
         self.assertEqual({"sample": True}, result)
 
-    def test_deck_selection_waits_before_arm_and_restores_exact_original_state(self) -> None:
+    def test_deck_selection_canonicalizes_before_arm_and_restores_after_finish(self) -> None:
         events: list[str] = []
         with mock.patch.object(baseline, "navigate"), mock.patch.object(
             baseline,
-            "wait_for_practice_setup_ready",
-            side_effect=lambda *_args, **kwargs: events.append(
-                "reset-ready"
-                if kwargs.get("expected_checkbox_checked") is True
-                else "initial-ready"
-            ),
-        ) as wait_ready, mock.patch.object(
+            "canonicalize_practice_setup",
+            side_effect=lambda *_args: events.append("canonicalize"),
+        ), mock.patch.object(
             baseline.webdriver,
             "find_element",
             side_effect=["measured-checkbox", "reset-checkbox"],
@@ -551,6 +568,10 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             baseline,
             "checkbox_checked",
             side_effect=lambda *_args: events.append("read-original") or True,
+        ), mock.patch.object(
+            baseline,
+            "begin_practice_workload_observation",
+            side_effect=lambda *_args: events.append("observe"),
         ), mock.patch.object(
             baseline,
             "arm",
@@ -567,44 +588,191 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             baseline,
             "finish",
             side_effect=lambda _session: events.append("finish") or {"sample": True},
+        ), mock.patch.object(
+            baseline,
+            "end_practice_workload_observation",
+            side_effect=lambda *_args: events.append("stop-observing"),
         ):
             result = baseline.collect_scenario("session-1", "deck-selection-v1", 0)
 
         self.assertEqual(
             [
-                "initial-ready",
+                "canonicalize",
                 "read-original",
+                "observe",
                 "arm",
                 "click:measured-checkbox",
                 "changed-ready",
                 "finish",
+                "stop-observing",
+                "observe",
                 "click:reset-checkbox",
-                "reset-ready",
+                "changed-ready",
+                "stop-observing",
             ],
             events,
         )
-        wait_selection.assert_called_once_with("session-1", False, mock.ANY)
         self.assertEqual(
-            True,
-            wait_ready.call_args_list[-1].kwargs["expected_checkbox_checked"],
+            [mock.call("session-1", False, mock.ANY), mock.call("session-1", True, mock.ANY)],
+            wait_selection.call_args_list,
         )
         self.assertEqual({"sample": True}, result)
 
-    def test_practice_readiness_requires_bounded_setup_state(self) -> None:
-        with mock.patch.object(baseline, "wait_js") as wait_js:
-            baseline.wait_for_practice_setup_ready(
+    def test_practice_readiness_requires_canonical_settled_start_state(self) -> None:
+        expected = practice_state()
+        with mock.patch.object(
+            baseline,
+            "wait_for_practice_state",
+            return_value=expected,
+        ) as wait_state:
+            result = baseline.wait_for_practice_setup_ready(
                 "session-1",
                 123.0,
-                expected_checkbox_checked=False,
+                expected_checkbox_checked=True,
             )
 
-        expression = wait_js.call_args.args[1]
-        self.assertIn("selectedDeckCount > 0", expression)
-        self.assertIn("!workloadUpdating", expression)
-        self.assertIn("checkbox.checked === false", expression)
-        self.assertIn("startEnabled", expression)
-        self.assertNotIn("document.body.textContent", expression)
-        wait_js.assert_called_once_with("session-1", expression, 123.0)
+        self.assertIs(expected, result)
+        wait_state.assert_called_once_with(
+            "session-1",
+            123.0,
+            expected_checkbox_checked=True,
+            require_all_selected=True,
+            require_start_ready=True,
+        )
+
+    def test_practice_state_diagnostics_are_allowlisted_and_content_free(self) -> None:
+        expected = practice_state(transition_observed=True)
+        with mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value=expected,
+        ) as execute_read_only:
+            self.assertEqual(expected, baseline.practice_setup_state("session-1"))
+
+        script = execute_read_only.call_args.args[1]
+        self.assertEqual(baseline.PRACTICE_SETUP_STATE_KEYS, set(expected))
+        self.assertNotIn("document.body.textContent", script)
+        for forbidden in ("filename", "credential", "provider", "prompt", "response"):
+            self.assertNotIn(forbidden, script.lower())
+
+        secret = "private learner content"
+        with mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value={**expected, "rawText": secret},
+        ):
+            with self.assertRaises(AssertionError) as invalid:
+                baseline.practice_setup_state("session-1")
+        self.assertNotIn(secret, str(invalid.exception))
+
+    def test_practice_state_timeout_reports_only_structured_diagnostics(self) -> None:
+        stalled = practice_state(
+            selected=1,
+            checked=False,
+            phase="error",
+            start_enabled=False,
+        )
+        with mock.patch.object(
+            baseline,
+            "practice_setup_state",
+            return_value=stalled,
+        ), mock.patch.object(
+            baseline.time,
+            "monotonic",
+            side_effect=[0.0, 2.0],
+        ), mock.patch.object(baseline.time, "sleep"):
+            with self.assertRaises(AssertionError) as timeout:
+                baseline.wait_for_practice_state("session-1", 1.0)
+
+        message = str(timeout.exception)
+        self.assertIn("'workloadPhase': 'error'", message)
+        self.assertEqual(set(stalled), baseline.PRACTICE_SETUP_STATE_KEYS)
+
+    def test_selection_ready_requires_an_observed_workload_transition(self) -> None:
+        stale = practice_state(selected=1, checked=False)
+        reconciled = practice_state(
+            selected=1,
+            checked=False,
+            transition_observed=True,
+        )
+        with mock.patch.object(
+            baseline,
+            "practice_setup_state",
+            side_effect=[stale, reconciled],
+        ) as read_state, mock.patch.object(baseline.time, "sleep"):
+            result = baseline.wait_for_practice_selection("session-1", False, 10**20)
+
+        self.assertIs(reconciled, result)
+        self.assertEqual(2, read_state.call_count)
+
+    def test_canonical_setup_selects_all_once_outside_measurement(self) -> None:
+        events: list[str] = []
+        partial = practice_state(
+            selected=0,
+            checked=False,
+            phase="empty",
+            start_enabled=False,
+        )
+        with mock.patch.object(
+            baseline,
+            "wait_for_practice_state",
+            side_effect=lambda *_args, **_kwargs: events.append("discover") or partial,
+        ) as wait_state, mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            side_effect=lambda *_args: events.append("resolve-select-all") or "select-all",
+        ), mock.patch.object(
+            baseline,
+            "begin_practice_workload_observation",
+            side_effect=lambda *_args: events.append("observe"),
+        ), mock.patch.object(
+            baseline.webdriver,
+            "click",
+            side_effect=lambda *_args: events.append("click-select-all"),
+        ) as click, mock.patch.object(
+            baseline,
+            "wait_for_practice_selection",
+            side_effect=lambda *_args: events.append("settled"),
+        ) as wait_selection, mock.patch.object(
+            baseline,
+            "end_practice_workload_observation",
+            side_effect=lambda *_args: events.append("stop-observing"),
+        ):
+            baseline.canonicalize_practice_setup("session-1", 123.0)
+
+        self.assertEqual(
+            ["discover", "resolve-select-all", "observe", "click-select-all", "settled", "stop-observing"],
+            events,
+        )
+        wait_state.assert_called_once_with(
+            "session-1",
+            123.0,
+            require_workload_settled=False,
+        )
+        click.assert_called_once_with("session-1", "select-all")
+        wait_selection.assert_called_once_with("session-1", True, 123.0)
+
+    def test_canonical_setup_does_not_mutate_an_already_canonical_scope(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "wait_for_practice_state",
+            return_value=practice_state(),
+        ), mock.patch.object(
+            baseline,
+            "wait_for_practice_setup_ready",
+        ) as wait_ready, mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+        ) as find_element, mock.patch.object(baseline.webdriver, "click") as click:
+            baseline.canonicalize_practice_setup("session-1", 123.0)
+
+        wait_ready.assert_called_once_with(
+            "session-1",
+            123.0,
+            expected_checkbox_checked=True,
+        )
+        find_element.assert_not_called()
+        click.assert_not_called()
 
     def test_active_practice_re_resolves_enabled_start_after_readiness(self) -> None:
         events: list[str] = []
@@ -619,7 +787,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
 
         with mock.patch.object(baseline, "navigate"), mock.patch.object(
             baseline,
-            "wait_for_practice_setup_ready",
+            "canonicalize_practice_setup",
             side_effect=lambda *_args, **_kwargs: events.append("setup-ready"),
         ), mock.patch.object(
             baseline.webdriver,

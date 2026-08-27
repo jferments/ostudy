@@ -57,7 +57,16 @@ PRACTICE_DECK_CHECKBOX_XPATH = (
     "//main//h2[normalize-space(.)='Select decks to study']"
     "/following::input[@type='checkbox'][1]"
 )
+PRACTICE_SELECT_ALL_XPATH = (
+    "//main//h2[normalize-space(.)='Select decks to study']"
+    "/following::button[normalize-space(.)='Select all'][1]"
+)
 PRACTICE_START_XPATH = "//main//button[normalize-space(.)='Start scheduled practice']"
+PRACTICE_SETUP_STATE_KEYS = {
+    "targetFound", "eligibleDeckCount", "selectedDeckCount", "targetChecked",
+    "workloadPhase", "startFound", "startEnabled", "workloadTransitionObserved",
+}
+PRACTICE_WORKLOAD_PHASES = {"unavailable", "idle", "empty", "updating", "error", "settled"}
 ROADMAP_PATH = ROOT_DIR / "docs/development/ui-workflow-redesign-roadmap.md"
 MEASUREMENT_KEYS = {
     "schemaVersion", "baselineId", "sourceSha", "instrumentationVersion",
@@ -532,15 +541,10 @@ def wait_js(session_id: str, expression: str, deadline: float) -> None:
     raise AssertionError(f"Timed out waiting for explicit ready condition: {expression}; last={last!r}")
 
 
-def practice_setup_condition(*, expected_checked: bool | None, require_start_ready: bool) -> str:
-    checked_condition = (
-        "true"
-        if expected_checked is None
-        else f"checkbox.checked === {'true' if expected_checked else 'false'}"
-    )
-    start_condition = "startEnabled" if require_start_ready else "true"
-    selected_condition = "selectedDeckCount > 0" if require_start_ready else "true"
-    return f"""(() => {{
+def practice_setup_state(session_id: str) -> dict[str, Any]:
+    # Return an explicit allowlist rather than DOM text so timeout evidence cannot
+    # carry synthetic or learner-authored content into logs.
+    state = execute_read_only(session_id, f"""
       const checkbox = document.evaluate(
         \"{PRACTICE_DECK_CHECKBOX_XPATH}\",
         document,
@@ -561,15 +565,111 @@ def practice_setup_condition(*, expected_checked: bool | None, require_start_rea
             .filter((candidate) => candidate instanceof HTMLInputElement && candidate.checked)
             .length
         : 0;
-      const workloadUpdating = Array.from(document.querySelectorAll('main span'))
-        .some((candidate) => candidate.textContent?.trim() === 'Updating…');
+      const eligibleDeckCount = deckList
+        ? deckList.querySelectorAll(\"input[type='checkbox']\").length
+        : 0;
+      const statusSpans = Array.from(document.querySelectorAll('main span'));
+      let workloadPhase = 'settled';
+      if (!(checkbox instanceof HTMLInputElement)) workloadPhase = 'unavailable';
+      else if (statusSpans.some((candidate) => candidate.textContent?.trim() === 'Preparing workload…')) workloadPhase = 'idle';
+      else if (statusSpans.some((candidate) => candidate.textContent?.trim() === 'Select at least one deck to plan a session.')) workloadPhase = 'empty';
+      else if (statusSpans.some((candidate) => candidate.textContent?.trim() === 'Updating…')) workloadPhase = 'updating';
+      else if (statusSpans.some((candidate) => candidate.textContent?.trim().startsWith('Workload unavailable'))) workloadPhase = 'error';
       const startEnabled = start instanceof HTMLButtonElement && !start.disabled;
-      return checkbox instanceof HTMLInputElement
-        && {selected_condition}
-        && !workloadUpdating
-        && {checked_condition}
-        && {start_condition};
-    }})()"""
+      return {{
+        targetFound: checkbox instanceof HTMLInputElement,
+        eligibleDeckCount,
+        selectedDeckCount,
+        targetChecked: checkbox instanceof HTMLInputElement ? checkbox.checked : null,
+        workloadPhase,
+        startFound: start instanceof HTMLButtonElement,
+        startEnabled,
+        workloadTransitionObserved: window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.sawUpdating === true,
+      }};
+    """)
+    if not isinstance(state, dict) or set(state) != PRACTICE_SETUP_STATE_KEYS:
+        raise AssertionError("Invalid structured practice setup state.")
+    for key in ("targetFound", "startFound", "startEnabled", "workloadTransitionObserved"):
+        if not isinstance(state[key], bool):
+            raise AssertionError("Invalid structured practice setup state.")
+    for key in ("eligibleDeckCount", "selectedDeckCount"):
+        if isinstance(state[key], bool) or not isinstance(state[key], int) or not 0 <= state[key] <= 2_000:
+            raise AssertionError("Invalid structured practice setup state.")
+    if state["selectedDeckCount"] > state["eligibleDeckCount"]:
+        raise AssertionError("Invalid structured practice setup state.")
+    if state["targetChecked"] is not None and not isinstance(state["targetChecked"], bool):
+        raise AssertionError("Invalid structured practice setup state.")
+    if state["workloadPhase"] not in PRACTICE_WORKLOAD_PHASES:
+        raise AssertionError("Invalid structured practice setup state.")
+    return state
+
+
+def wait_for_practice_state(
+    session_id: str,
+    deadline: float,
+    *,
+    expected_checkbox_checked: bool | None = None,
+    require_all_selected: bool = False,
+    require_workload_settled: bool = True,
+    require_start_ready: bool = False,
+    require_workload_transition: bool = False,
+) -> dict[str, Any]:
+    last: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last = practice_setup_state(session_id)
+        expected_selection = (
+            last["eligibleDeckCount"]
+            if expected_checkbox_checked is not False
+            else last["eligibleDeckCount"] - 1
+        )
+        if (
+            last["targetFound"]
+            and last["eligibleDeckCount"] > 0
+            and (not require_workload_settled or last["workloadPhase"] == "settled")
+            and (expected_checkbox_checked is None or last["targetChecked"] is expected_checkbox_checked)
+            and (not require_all_selected or last["selectedDeckCount"] == expected_selection)
+            and (not require_start_ready or (last["startFound"] and last["startEnabled"]))
+            and (not require_workload_transition or last["workloadTransitionObserved"])
+        ):
+            return last
+        time.sleep(0.05)
+    raise AssertionError(f"Timed out waiting for structured practice setup state; last={last!r}")
+
+
+def begin_practice_workload_observation(session_id: str) -> None:
+    # The observer records only whether the enumerated loading phase occurred.
+    # Installing it before arm keeps setup work outside the measured interval.
+    installed = retry_idempotent_transport_once(lambda: execute(session_id, """
+      window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.observer?.disconnect();
+      const state = {sawUpdating: false, observer: null};
+      const observePhase = () => {
+        if (Array.from(document.querySelectorAll('main span'))
+          .some((candidate) => candidate.textContent?.trim() === 'Updating…')) {
+          state.sawUpdating = true;
+        }
+      };
+      state.observer = new MutationObserver(observePhase);
+      state.observer.observe(document.querySelector('main') ?? document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+      window.__OSTUDY_UI_PERFORMANCE_PRACTICE__ = state;
+      observePhase();
+      return true;
+    """))
+    if installed is not True:
+        raise AssertionError("Unable to install the bounded practice workload observer.")
+
+
+def end_practice_workload_observation(session_id: str) -> None:
+    removed = retry_idempotent_transport_once(lambda: execute(session_id, """
+      window.__OSTUDY_UI_PERFORMANCE_PRACTICE__?.observer?.disconnect();
+      delete window.__OSTUDY_UI_PERFORMANCE_PRACTICE__;
+      return true;
+    """))
+    if removed is not True:
+        raise AssertionError("Unable to remove the bounded practice workload observer.")
 
 
 def wait_for_practice_setup_ready(
@@ -577,14 +677,13 @@ def wait_for_practice_setup_ready(
     deadline: float,
     *,
     expected_checkbox_checked: bool | None = None,
-) -> None:
-    wait_js(
+) -> dict[str, Any]:
+    return wait_for_practice_state(
         session_id,
-        practice_setup_condition(
-            expected_checked=expected_checkbox_checked,
-            require_start_ready=True,
-        ),
         deadline,
+        expected_checkbox_checked=expected_checkbox_checked,
+        require_all_selected=True,
+        require_start_ready=True,
     )
 
 
@@ -592,15 +691,42 @@ def wait_for_practice_selection(
     session_id: str,
     expected_checkbox_checked: bool,
     deadline: float,
-) -> None:
-    wait_js(
+) -> dict[str, Any]:
+    return wait_for_practice_state(
         session_id,
-        practice_setup_condition(
-            expected_checked=expected_checkbox_checked,
-            require_start_ready=False,
-        ),
         deadline,
+        expected_checkbox_checked=expected_checkbox_checked,
+        require_all_selected=True,
+        require_start_ready=True,
+        require_workload_transition=True,
     )
+
+
+def canonicalize_practice_setup(session_id: str, deadline: float) -> None:
+    state = wait_for_practice_state(
+        session_id,
+        deadline,
+        require_workload_settled=False,
+    )
+    if state["selectedDeckCount"] != state["eligibleDeckCount"]:
+        select_all = webdriver.find_element(
+            session_id,
+            "xpath",
+            PRACTICE_SELECT_ALL_XPATH,
+            deadline,
+        )
+        begin_practice_workload_observation(session_id)
+        try:
+            webdriver.click(session_id, select_all)
+            wait_for_practice_selection(session_id, True, deadline)
+        finally:
+            end_practice_workload_observation(session_id)
+    else:
+        wait_for_practice_setup_ready(
+            session_id,
+            deadline,
+            expected_checkbox_checked=True,
+        )
 
 
 def checkbox_checked(session_id: str, element_id: str) -> bool:
@@ -695,11 +821,17 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         wait_js(session_id, "document.querySelectorAll('[data-drag-over]').length === 0", deadline)
     elif scenario == "deck-selection-v1":
         navigate(session_id, "practice", "Practice")
-        wait_for_practice_setup_ready(session_id, deadline)
+        canonicalize_practice_setup(session_id, deadline)
         target = webdriver.find_element(session_id, "xpath", PRACTICE_DECK_CHECKBOX_XPATH, deadline)
-        original_checked = checkbox_checked(session_id, target)
-        arm(session_id, scenario, target); webdriver.click(session_id, target)
-        wait_for_practice_selection(session_id, not original_checked, deadline)
+        if checkbox_checked(session_id, target) is not True:
+            raise AssertionError("Canonical practice target was not selected.")
+        begin_practice_workload_observation(session_id)
+        try:
+            arm(session_id, scenario, target); webdriver.click(session_id, target)
+            wait_for_practice_selection(session_id, False, deadline)
+            result = finish(session_id)
+        finally:
+            end_practice_workload_observation(session_id)
     elif scenario == "study-guide-open-v1":
         navigate(session_id, "practice", "Practice")
         target = webdriver.find_element(session_id, "xpath", "//main//button[normalize-space(.)='Open study guide']", deadline)
@@ -708,7 +840,7 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
     else:
         if sample_index == 0:
             navigate(session_id, "practice", "Practice")
-            wait_for_practice_setup_ready(session_id, deadline)
+            canonicalize_practice_setup(session_id, deadline)
             start = webdriver.find_element(session_id, "xpath", PRACTICE_START_XPATH, deadline)
             webdriver.click(session_id, start)
         wait_js(session_id, "document.body.textContent.includes('Show answer')", deadline)
@@ -717,7 +849,8 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         rate = webdriver.find_element(session_id, "xpath", "//main//button[contains(normalize-space(.),'Easy')]", deadline)
         arm(session_id, scenario, rate); webdriver.click(session_id, rate)
         wait_js(session_id, f"document.body.textContent.includes('{sample_index + 1} studied')", deadline)
-    result = finish(session_id)
+    if scenario != "deck-selection-v1":
+        result = finish(session_id)
     # Reset non-durable interactions deterministically.
     if scenario == "navigation-hover-v1":
         release_pointer_actions(session_id)
@@ -731,12 +864,12 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
             PRACTICE_DECK_CHECKBOX_XPATH,
             deadline,
         )
-        webdriver.click(session_id, reset_target)
-        wait_for_practice_setup_ready(
-            session_id,
-            deadline,
-            expected_checkbox_checked=original_checked,
-        )
+        begin_practice_workload_observation(session_id)
+        try:
+            webdriver.click(session_id, reset_target)
+            wait_for_practice_selection(session_id, True, deadline)
+        finally:
+            end_practice_workload_observation(session_id)
     elif scenario == "study-guide-open-v1":
         reset_study_guide_dialog(session_id, deadline)
     return result
