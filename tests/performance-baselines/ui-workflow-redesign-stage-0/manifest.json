@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "fixtureVersion": "ui-performance-fixture-v1",
+  "warmupCount": 3,
+  "sampleCount": 12,
+  "scenarioVersions": {
+    "navigation-hover-v1": "navigation-hover-v1",
+    "document-list-interaction-v1": "document-list-interaction-v1",
+    "deck-drag-v1": "deck-drag-v1",
+    "deck-selection-v1": "deck-selection-v1",
+    "study-guide-open-v1": "study-guide-open-v1",
+    "active-practice-progress-v1": "active-practice-progress-v1"
+  },
+  "captureEnvironment": {
+    "motion": "full",
+    "pointer": "fine",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "scalePercent": 100,
+    "materials": "rich",
+    "devicePixelRatio": 1,
+    "theme": "light",
+    "display": {
+      "width": 1920,
+      "height": 1200,
+      "depth": 24,
+      "dpi": 96
+    },
+    "applicationSha256": "ce18a9528119f0adda4b29d6b17e031cf737a08a1ae302989ed8cb1dc3563376",
+    "python": "3.12.3",
+    "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39",
+    "tauriDriver": "Error: unused arguments left: [\"--version\"]\nUSAGE: tauri-driver [FLAGS] [OPTIONS]\n\nFLAGS:\n  -h, --help              Prints help information\n\nOPTIONS:\n  --port NUMBER           Sets the tauri-driver intermediary port\n  --native-port NUMBER    Sets the port of the underlying WebDriver\n  --native-host HOST      Sets the host of the underlying WebDriver (Linux only)\n  --native-driver PATH    Sets the path to the native WebDriver binary",
+    "webkitWebDriver": "Usage: WebKitWebDriver options\n  -h,          --help             Prints this help message\n  -p <port>,   --port=<port>      Port number the driver will use\n               --host=<host>      Host IP the driver will use, or either 'local' or 'all' (default: 'local')\n  -t <ip:port> --target=<ip:port> Target IP and port\n               --replace-on-new-session  Replace the existing session on new session request",
+    "xvfb": "Unrecognized option: -version\nuse: X [:<display>] [option]\n-a #                   default pointer acceleration (factor)\n-ac                    disable access control restrictions\n-audit int             set audit trail level\n-auth file             select authorization file\n-br                    create root window with black background\n+bs                    enable any backing store support\n-bs                    disable any backing store support\n+byteswappedclients    Allow clients with endianess different to that of the server\n-byteswappedclients    Prohibit clients with endianess different to that of the server\n-c                     turns off key-click\nc #                    key-click volume (0-100)\n-cc int                default color visual class\n-nocursor              disable the cursor\n-core                  generate core dump on fatal error\n-displayfd fd          file descriptor to write display number to when ready to connect\n-dpi int               screen resolution in dots per inch\n-dpms                  disables VESA DPMS monitor control\n-deferglyphs [none|all|16] defer loading of [no|all|16-bit] glyphs\n-f #                   bell base (0-100)\n-fakescreenfps #       fake screen default fps (1-600)\n-fp string             default font path\n-help                  prints message with these options\n+iglx                  Allow creating indirect GLX contexts\n-iglx                  Prohibit creating indirect GLX contexts (default)\n-I                     ignore all remaining arguments\n-ld int                limit data space to N Kb\n-lf int                limit number of open files to N\n-ls int                limit stack space to N Kb\n-nolock                disable the locking mechanism\n-maxclients n          set maximum number of clients (power of two)\n-nolisten string       don't listen on protocol\n-listen string         listen on protocol\n-noreset               don't reset after last client exists\n-background [none]     create root window with no background\n-reset                 reset after last client exists\n-p #                   screen-saver pattern duration (minutes)\n-pn                    accept failure to listen on all ports\n-nopn                  reject failure to listen on all ports\n-r                     turns off auto-repeat\nr                      turns on auto-repeat \n-render [default|mono|gray|color] set render color alloc policy\n-retro                 start with classic stipple and cursor\n-s #                   screen-saver timeout (minutes)\n-seat string           seat to run on\n-t #                   default pointer threshold (pixels/t)\n-terminate [delay]     terminate at server reset (optional delay in sec)\n-tst                   disable testing extensions\nttyxx                  server started from init on /dev/ttyxx\nv                      video blanking for screen-saver\n-v                     screen-saver without video blanking\n-wr                    create root window with white background\n-maxbigreqsize         set maximal bigrequest size \n+xinerama              Enable XINERAMA extension\n-xinerama              Disable XINERAMA extension\n-dumbSched             Disable smart scheduling and threaded input, enable old behavior\n-schedInterval int     Set scheduler interval in msec\n-sigstop               Enable SIGSTOP based startup\n+extension name        Enable extension\n-extension name        Disable extension\n Only the following extensions can be run-time enabled/disabled:\n\tGeneric Event Extension\n\tMIT-SHM\n\tXTEST\n\tSECURITY\n\tXINERAMA\n\tXFIXES\n\tRENDER\n\tRANDR\n\tCOMPOSITE\n\tDAMAGE\n\tMIT-SCREEN-SAVER\n\tDOUBLE-BUFFER\n\tRECORD\n\tDPMS\n\tX-Resource\n\tXVideo\n\tXVideo-MotionCompensation\n\tSELinux\n\tGLX\n-query host-name       contact named host for XDMCP\n-broadcast             broadcast for XDMCP\n-multicast [addr [hops]] IPv6 multicast for XDMCP\n-indirect host-name    contact named host for indirect XDMCP\n-port port-num         UDP port number to send messages to\n-from local-address    specify the local address to connect from\n-once                  Terminate server after one session\n-class display-class   specify display class to send in manage\n-cookie xdm-auth-bits  specify the magic cookie for XDMCP\n-displayID display-id  manufacturer display ID for request\n[+-]accessx [ timeout [ timeout_mask [ feedback [ options_mask] ] ] ]\n                       enable/disable accessx key sequences\n-ardelay               set XKB autorepeat delay\n-arinterval            set XKB autorepeat interval\n-screen scrn WxHxD     set screen's width, height, depth\n-pixdepths list-of-int support given pixmap depths\n+/-render\t\t   turn on/off RENDER extension support(default on)\n-linebias n            adjust thin line pixelization\n-blackpixel n          pixel value for black\n-whitepixel n          pixel value for white\n-fbdir directory       put framebuffers in mmap'ed files in directory\n-shmem                 put framebuffers in shared memory\n(EE) \nFatal server error:\n(EE) Unrecognized option: -version\n(EE)",
+    "reactProfilingBuild": true
+  },
+  "measurements": [
+    {
+      "scenarioId": "navigation-hover-v1",
+      "path": "measurements/navigation-hover-v1.json",
+      "sha256": "9f40f52f8e2027200a3c22d350b69c229fae96322fec1b5d61833cfad705c538"
+    },
+    {
+      "scenarioId": "document-list-interaction-v1",
+      "path": "measurements/document-list-interaction-v1.json",
+      "sha256": "f7e776577a717cbafa0fe13562ea6da864e85015f61da62039a5fb3b2940f512"
+    },
+    {
+      "scenarioId": "deck-drag-v1",
+      "path": "measurements/deck-drag-v1.json",
+      "sha256": "02bf4621e158e76a46ab486d329a1ec11addedf219335e97017004a672354e9e"
+    },
+    {
+      "scenarioId": "deck-selection-v1",
+      "path": "measurements/deck-selection-v1.json",
+      "sha256": "49a96d27568aee45c8aadb9e8b8ad1734f0c17d60b1031fd4e47d7431c4592f8"
+    },
+    {
+      "scenarioId": "study-guide-open-v1",
+      "path": "measurements/study-guide-open-v1.json",
+      "sha256": "09f168107c02b5439f3a62f69bef1e011d6c2f140cfe24746d4f87472e5775a2"
+    },
+    {
+      "scenarioId": "active-practice-progress-v1",
+      "path": "measurements/active-practice-progress-v1.json",
+      "sha256": "d4c11ba9d8abf0b50406ab1fed1b793ca35e928f69ad353bad0bf024f4c71654"
+    }
+  ],
+  "budgets": {
+    "path": "budgets.json",
+    "sha256": "24f1aaa28aff463a79b812c0db69c840b14ca760cabee5e6224b4d99823823fd"
+  }
+}

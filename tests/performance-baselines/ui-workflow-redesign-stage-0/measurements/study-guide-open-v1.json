@@ -1,0 +1,1135 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "fixtureVersion": "ui-performance-fixture-v1",
+  "scenarioId": "study-guide-open-v1",
+  "scenarioVersion": "study-guide-open-v1",
+  "samples": [
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 46
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 69.00000000000364
+      },
+      "userTiming": {
+        "visibleTimeMs": 17906,
+        "startTimeMs": 17860,
+        "readyTimeMs": 17929.000000000004
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 2,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 17860,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 17860,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 17860,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 17860,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 17864,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 17865.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 17864,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 17865.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 17864,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 17865.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 17864,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 17865.000000000004,
+            "actualDurationMs": 1.000000000003638
+          },
+          {
+            "baseDurationMs": 0.999999999996362,
+            "startTimeMs": 17865.000000000004,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 17866,
+            "actualDurationMs": 0.999999999996362
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 17869,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 17869,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 1
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 149
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 149
+      },
+      "userTiming": {
+        "visibleTimeMs": 18308,
+        "startTimeMs": 18159,
+        "readyTimeMs": 18308
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18159,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 18159,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18159,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18159,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18164,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 18164,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18164,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 18164,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18164,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 18164,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18164,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18164,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18165,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18165,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18168,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18168,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 2
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 71
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 71
+      },
+      "userTiming": {
+        "visibleTimeMs": 18684,
+        "startTimeMs": 18613,
+        "readyTimeMs": 18684
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18613,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 18613,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18613,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18613,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18619,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 18620,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18619,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 18620,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18619,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 18620,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18619,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18620,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 18625,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 18625,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 3
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 57
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 57
+      },
+      "userTiming": {
+        "visibleTimeMs": 19119,
+        "startTimeMs": 19062,
+        "readyTimeMs": 19119
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19063,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 19063,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19063,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 19063,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19067,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 19067,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19067,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 19067,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19067,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 19067,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19067,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 19067,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 19068,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 19068,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 19071,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 19072,
+            "actualDurationMs": 1
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 4
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 14.000000000003638
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 65
+      },
+      "userTiming": {
+        "visibleTimeMs": 20051.000000000004,
+        "startTimeMs": 20037,
+        "readyTimeMs": 20102
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 3,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20038,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20038,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20038,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20038,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20042,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 20043,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20042,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 20043,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20042,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20043,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 20042,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20043,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 20048,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20049,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 20096,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20097,
+            "actualDurationMs": 1
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 5
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 37
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 38
+      },
+      "userTiming": {
+        "visibleTimeMs": 20389,
+        "startTimeMs": 20352,
+        "readyTimeMs": 20390
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20353,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20353,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20353,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20353,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20357,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 20357,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20357,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 20357,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20357,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20357,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20357,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20357,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20358,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20358,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20369,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20369,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 6
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 9.000000000003638
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 59
+      },
+      "userTiming": {
+        "visibleTimeMs": 20679.000000000004,
+        "startTimeMs": 20670,
+        "readyTimeMs": 20729
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20670,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20670,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20670,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20670,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20674,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 20675,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20674,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 20675,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20674,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20675,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 20674,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20675,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20675,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20675,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20678,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20678,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 7
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 59
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 88
+      },
+      "userTiming": {
+        "visibleTimeMs": 21037,
+        "startTimeMs": 20978,
+        "readyTimeMs": 21066
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20978,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20978,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20978,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20978,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20984,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 20984,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20984,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 20984,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20984,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 20984,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20984,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20984,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20985,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20986,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 20990.000000000004,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 20990.000000000004,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 8
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 100
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 100
+      },
+      "userTiming": {
+        "visibleTimeMs": 21396,
+        "startTimeMs": 21296,
+        "readyTimeMs": 21396
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21296,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 21297,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 21296,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21297,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21301.000000000004,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 21301.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21301.000000000004,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 21301.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21301.000000000004,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 21301.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21301.000000000004,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21301.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21305,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21305,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21313,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21313,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 9
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 102
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 102
+      },
+      "userTiming": {
+        "visibleTimeMs": 21755,
+        "startTimeMs": 21653,
+        "readyTimeMs": 21755
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 2,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21653,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 21654,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21653,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21654,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21659,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 21660,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 21659,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 21660,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21660,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 21660,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21660,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21660,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21660,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21660,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 21663,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 21663,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 10
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 10
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 59
+      },
+      "userTiming": {
+        "visibleTimeMs": 22675,
+        "startTimeMs": 22665,
+        "readyTimeMs": 22724
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1.000000000003638,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22665,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 22665,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22665,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22665,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22670,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 22670,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22670,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 22670,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22670,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 22670,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22670,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22670,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22671,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22671,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 22707,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22708.000000000004,
+            "actualDurationMs": 1.000000000003638
+          }
+        ],
+        "commitCount": 4
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 11
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 84
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 84
+      },
+      "userTiming": {
+        "visibleTimeMs": 23059,
+        "startTimeMs": 22975,
+        "readyTimeMs": 23059
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 1,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22975,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 22976,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22975,
+            "phase": "mount",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22976,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22980,
+            "phase": "update",
+            "boundaryId": "navigation",
+            "commitTimeMs": 22981,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22981,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 22981,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22981,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 22981,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22981,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22981,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 22985,
+            "phase": "update",
+            "boundaryId": "guide-dialog",
+            "commitTimeMs": 22985,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 12
+    }
+  ]
+}

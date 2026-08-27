@@ -39,8 +39,8 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] [Characterize current document archive/delete behavior and the existing preserved deck-citation path](ui-workflow-redesign-current-behavior-characterization.md#ac-02-document-lifecycle).
 - [x] [Characterize study-guide revision, overlay, export, and document-delete cascades before adding guide deletion](ui-workflow-redesign-current-behavior-characterization.md#ac-03-study-guide-lifecycle).
 - [x] [Capture representative visual baselines for wide, medium, and compact layouts in all supported themes](ui-workflow-redesign-visual-baseline.md).
-- [ ] Add reproducible User Timing/React Profiler scenarios for navigation hover, document-list interaction, deck drag, deck selection, guide open, and active-practice progress.
-- [ ] Record initial interaction traces and define budgets for avoidable React commits, pointer-frame work, and visible hover/drag latency.
+- [x] [Add reproducible User Timing/React Profiler scenarios for navigation hover, document-list interaction, deck drag, deck selection, guide open, and active-practice progress](ui-workflow-redesign-performance-baseline.md#scenario-contract).
+- [x] [Record initial interaction traces and define budgets for avoidable React commits, pointer-frame work, and visible hover/drag latency](ui-workflow-redesign-performance-baseline.md#evidence-and-budgets).
 - [x] Add a route/smoke inventory assertion so removing Practice and adding Study Guides cannot silently reduce coverage.
 
 ## Stage 1 — Shared compact-action and metadata primitives

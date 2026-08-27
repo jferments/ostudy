@@ -1,0 +1,371 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "fixtureVersion": "ui-performance-fixture-v1",
+  "scenarioId": "deck-drag-v1",
+  "scenarioVersion": "deck-drag-v1",
+  "samples": [
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 13
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 176
+      },
+      "userTiming": {
+        "visibleTimeMs": 9887,
+        "startTimeMs": 9874,
+        "readyTimeMs": 10050
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 35,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 1
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 4
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 171
+      },
+      "userTiming": {
+        "visibleTimeMs": 10069,
+        "startTimeMs": 10065,
+        "readyTimeMs": 10236
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 33,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 2
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 7
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 166.00000000000182
+      },
+      "userTiming": {
+        "visibleTimeMs": 10259,
+        "startTimeMs": 10252,
+        "readyTimeMs": 10418.000000000002
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 29,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 3
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 8
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 168
+      },
+      "userTiming": {
+        "visibleTimeMs": 10441,
+        "startTimeMs": 10433,
+        "readyTimeMs": 10601
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 30,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 4
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 8.000000000001819
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 171
+      },
+      "userTiming": {
+        "visibleTimeMs": 10623.000000000002,
+        "startTimeMs": 10615,
+        "readyTimeMs": 10786
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 33,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 5
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 167
+      },
+      "userTiming": {
+        "visibleTimeMs": 10817,
+        "startTimeMs": 10802,
+        "readyTimeMs": 10969
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 37.00000000000182,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 6
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 13
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 167
+      },
+      "userTiming": {
+        "visibleTimeMs": 10997,
+        "startTimeMs": 10984,
+        "readyTimeMs": 11151
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 26,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 7
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 9
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 169
+      },
+      "userTiming": {
+        "visibleTimeMs": 11175,
+        "startTimeMs": 11166,
+        "readyTimeMs": 11335
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 30,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 8
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 6
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 168
+      },
+      "userTiming": {
+        "visibleTimeMs": 11356,
+        "startTimeMs": 11350,
+        "readyTimeMs": 11518
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 32,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 9
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 3
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 167
+      },
+      "userTiming": {
+        "visibleTimeMs": 11535,
+        "startTimeMs": 11532,
+        "readyTimeMs": 11699
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 38,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 10
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 10
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 181
+      },
+      "userTiming": {
+        "visibleTimeMs": 11714,
+        "startTimeMs": 11704,
+        "readyTimeMs": 11885
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 39,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 11
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 16
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 168
+      },
+      "userTiming": {
+        "visibleTimeMs": 11916,
+        "startTimeMs": 11900,
+        "readyTimeMs": 12068
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [],
+        "commitCount": 0
+      },
+      "pointer": {
+        "eventCount": 3,
+        "maxFrameIntervalMs": 38,
+        "frameCount": 1,
+        "state": "available",
+        "maxFrameWorkMs": 0
+      },
+      "ordinal": 12
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "scenarioVersions": {
+    "navigation-hover-v1": "navigation-hover-v1",
+    "document-list-interaction-v1": "document-list-interaction-v1",
+    "deck-drag-v1": "deck-drag-v1",
+    "deck-selection-v1": "deck-selection-v1",
+    "study-guide-open-v1": "study-guide-open-v1",
+    "active-practice-progress-v1": "active-practice-progress-v1"
+  },
+  "rounding": "milliseconds-to-3-decimal-places",
+  "entries": [
+    {
+      "scenarioId": "navigation-hover-v1",
+      "metric": "avoidableReactCommitCount",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 0,
+      "formula": {
+        "kind": "observedMaximum",
+        "observedMaximum": 0,
+        "headroom": 0
+      },
+      "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0."
+    },
+    {
+      "scenarioId": "navigation-hover-v1",
+      "metric": "interactionToVisibleMs",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 41.0,
+      "formula": {
+        "kind": "observedMaximumPlusRefreshInterval",
+        "observedMaximum": 28.0,
+        "headroom": 13.0
+      },
+      "rationale": "Hover and drag visible feedback allow one measured refresh interval of capture noise."
+    },
+    {
+      "scenarioId": "navigation-hover-v1",
+      "metric": "maxPointerFrameWorkMs",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 0.0,
+      "formula": {
+        "kind": "observedMaximumPlusSampleStandardDeviation",
+        "observedMaximum": 0.0,
+        "headroom": 0.0
+      },
+      "rationale": "Pointer work allows one sample standard deviation above the observed maximum."
+    },
+    {
+      "scenarioId": "document-list-interaction-v1",
+      "metric": "avoidableReactCommitCount",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 0,
+      "formula": {
+        "kind": "observedMaximum",
+        "observedMaximum": 0,
+        "headroom": 0
+      },
+      "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0."
+    },
+    {
+      "scenarioId": "deck-drag-v1",
+      "metric": "avoidableReactCommitCount",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 0,
+      "formula": {
+        "kind": "observedMaximum",
+        "observedMaximum": 0,
+        "headroom": 0
+      },
+      "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0."
+    },
+    {
+      "scenarioId": "deck-drag-v1",
+      "metric": "interactionToVisibleMs",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 29.0,
+      "formula": {
+        "kind": "observedMaximumPlusRefreshInterval",
+        "observedMaximum": 16.0,
+        "headroom": 13.0
+      },
+      "rationale": "Hover and drag visible feedback allow one measured refresh interval of capture noise."
+    },
+    {
+      "scenarioId": "deck-drag-v1",
+      "metric": "maxPointerFrameWorkMs",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 0.0,
+      "formula": {
+        "kind": "observedMaximumPlusSampleStandardDeviation",
+        "observedMaximum": 0.0,
+        "headroom": 0.0
+      },
+      "rationale": "Pointer work allows one sample standard deviation above the observed maximum."
+    },
+    {
+      "scenarioId": "deck-selection-v1",
+      "metric": "avoidableReactCommitCount",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 3,
+      "formula": {
+        "kind": "observedMaximum",
+        "observedMaximum": 3,
+        "headroom": 0
+      },
+      "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0."
+    },
+    {
+      "scenarioId": "study-guide-open-v1",
+      "metric": "avoidableReactCommitCount",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 1,
+      "formula": {
+        "kind": "observedMaximum",
+        "observedMaximum": 1,
+        "headroom": 0
+      },
+      "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0."
+    },
+    {
+      "scenarioId": "active-practice-progress-v1",
+      "metric": "avoidableReactCommitCount",
+      "operator": "lessThanOrEqual",
+      "candidateStatistic": "maximum",
+      "budget": 0,
+      "formula": {
+        "kind": "observedMaximum",
+        "observedMaximum": 0,
+        "headroom": 0
+      },
+      "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0."
+    }
+  ]
+}
