@@ -1,5 +1,6 @@
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
+import { IconButton } from "../../../ui/icons/IconButton";
 import { Button } from "../../../ui/primitives/Button";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
 import styles from "./DeckItem.module.css";
@@ -86,16 +87,13 @@ export function DeckItem({
             Practice
           </Button>
         ) : null}
-        <button
-          type="button"
-          className={styles.delete}
-          aria-label={`Delete ${deck.name}`}
-          title={`Delete ${deck.name}`}
+        <IconButton
+          icon="delete"
+          label={`Delete ${deck.name}`}
+          tone="danger"
           disabled={disabled}
           onClick={onDelete}
-        >
-          <Icon name="delete" size={18} />
-        </button>
+        />
       </div>
       <VisuallyHidden>
         Deck {index + 1} of {count}.

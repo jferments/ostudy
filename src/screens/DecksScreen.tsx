@@ -9,6 +9,7 @@ import type { CreateDeckInput, DeckSummary } from "../ipc/decks";
 import type { AppSettings } from "../ipc/settings";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { publishExport, selectExternalImport } from "../platform/files";
+import { IconButton } from "../ui/icons/IconButton";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import {
   CardBrowserWorkspace,
@@ -538,15 +539,13 @@ export function DecksScreen({
                     <h1>{selectedDeck.name}</h1>
                     {selectedDeck.description ? <p>{selectedDeck.description}</p> : null}
                   </div>
-                  <button
-                    type="button"
-                    className={ownedClassNames(ownedStyleMaps, "icon-button deck-edit-button")}
-                    aria-label="Edit deck name and description"
-                    title="Edit deck"
+                  <IconButton
+                    icon="edit"
+                    label="Edit deck name and description"
+                    tooltip="Edit deck"
+                    className={ownershipStyles["deck-edit-button"]}
                     onClick={() => setDeckDialog("edit")}
-                  >
-                    ✎
-                  </button>
+                  />
                 </div>
               </div>
               <div className={ownedClassNames(ownedStyleMaps, "header-actions wrap-actions")}>

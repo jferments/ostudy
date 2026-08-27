@@ -1,37 +1,49 @@
-import type { SVGAttributes } from "react";
+import type { ReactNode, SVGAttributes } from "react";
 
-export type IconName =
-  | "archive"
-  | "analytics"
-  | "back"
-  | "brain"
-  | "cards"
-  | "check"
-  | "chevron-down"
-  | "chevron-right"
-  | "close"
-  | "copy"
-  | "delete"
-  | "document"
-  | "download"
-  | "edit"
-  | "export"
-  | "filter"
-  | "folder"
-  | "folder-open"
-  | "help"
-  | "import"
-  | "menu"
-  | "move"
-  | "plus"
-  | "practice"
-  | "search"
-  | "settings"
-  | "sort"
-  | "sparkles"
-  | "template"
-  | "upload"
-  | "warning";
+export const ICON_NAMES = [
+  "archive",
+  "analytics",
+  "back",
+  "book",
+  "brain",
+  "calendar",
+  "cards",
+  "check",
+  "chevron-down",
+  "chevron-right",
+  "close",
+  "copy",
+  "delete",
+  "document",
+  "download",
+  "edit",
+  "export",
+  "filter",
+  "folder",
+  "folder-open",
+  "full-screen",
+  "help",
+  "import",
+  "information",
+  "maximize",
+  "menu",
+  "move",
+  "overflow",
+  "plus",
+  "practice",
+  "restore",
+  "schedule",
+  "search",
+  "settings",
+  "sort",
+  "sparkles",
+  "study-guide",
+  "template",
+  "upload",
+  "warning",
+] as const;
+
+export type IconName = (typeof ICON_NAMES)[number];
 
 export interface IconProps extends SVGAttributes<SVGSVGElement> {
   name: IconName;
@@ -62,7 +74,7 @@ export function Icon({ name, size = 20, label, ...props }: IconProps) {
   );
 }
 
-function iconPath(name: IconName) {
+function iconPath(name: IconName): ReactNode {
   switch (name) {
     case "archive":
       return (
@@ -80,12 +92,29 @@ function iconPath(name: IconName) {
           <path d="M9 12h11" />
         </>
       );
+    case "book":
+    case "study-guide":
+      return (
+        <>
+          <path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23z" />
+          <path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5A3.5 3.5 0 0 1 20 23z" />
+        </>
+      );
     case "brain":
       return (
         <>
           <path d="M9.5 4.6A3.2 3.2 0 0 0 4 6.8a3.4 3.4 0 0 0-.2 5.7A3.5 3.5 0 0 0 7 18.2 3 3 0 0 0 12 20V6.2a3 3 0 0 0-2.5-1.6Z" />
           <path d="M14.5 4.6A3.2 3.2 0 0 1 20 6.8a3.4 3.4 0 0 1 .2 5.7 3.5 3.5 0 0 1-3.2 5.7A3 3 0 0 1 12 20V6.2a3 3 0 0 1 2.5-1.6Z" />
           <path d="M7.5 9.5c1.5 0 2.5 1 2.5 2.5M16.5 9.5c-1.5 0-2.5 1-2.5 2.5M8 15c1.2 0 2 .7 2 1.8M16 15c-1.2 0-2 .7-2 1.8" />
+        </>
+      );
+    case "calendar":
+    case "schedule":
+      return (
+        <>
+          <rect x="3" y="5" width="18" height="16" rx="2" />
+          <path d="M7 3v4M17 3v4M3 10h18" />
+          <path d="M8 14h3M8 17h3M14 14h2" />
         </>
       );
     case "cards":
@@ -151,6 +180,14 @@ function iconPath(name: IconName) {
           <path d="M3 7v12" />
         </>
       );
+    case "full-screen":
+    case "maximize":
+      return (
+        <>
+          <path d="M9 4H4v5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+          <path d="m4 9 5-5M15 4l5 5M20 15l-5 5M9 20l-5-5" />
+        </>
+      );
     case "help":
       return (
         <>
@@ -165,6 +202,13 @@ function iconPath(name: IconName) {
           <path d="M20 4h-7m7 0v7m0-7-9 9" />
         </>
       );
+    case "information":
+      return (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v6M12 7h.01" />
+        </>
+      );
     case "menu":
       return <path d="M4 7h16M4 12h16M4 17h16" />;
     case "move":
@@ -174,6 +218,14 @@ function iconPath(name: IconName) {
           <path d="m8 6 4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4" />
         </>
       );
+    case "overflow":
+      return (
+        <>
+          <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+          <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+        </>
+      );
     case "plus":
       return <path d="M12 5v14M5 12h14" />;
     case "practice":
@@ -181,6 +233,13 @@ function iconPath(name: IconName) {
         <>
           <path d="m8 5 11 7-11 7z" />
           <path d="M4 5v14" />
+        </>
+      );
+    case "restore":
+      return (
+        <>
+          <path d="M4 7v5h5" />
+          <path d="M5.5 16a8 8 0 1 0 .5-9l-2 5" />
         </>
       );
     case "search":
@@ -236,4 +295,7 @@ function iconPath(name: IconName) {
         </>
       );
   }
+
+  const unhandledIcon: never = name;
+  return unhandledIcon;
 }

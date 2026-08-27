@@ -1,0 +1,53 @@
+@layer components {
+  .root {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+  }
+
+  .tooltip {
+    position: absolute;
+    z-index: var(--ostudy-layer-popover);
+    inset-block-end: calc(100% + var(--ostudy-space-2));
+    inset-inline-start: 50%;
+    inline-size: max-content;
+    max-inline-size: min(
+      var(--ostudy-tooltip-max-width),
+      calc(100vw - var(--ostudy-space-8))
+    );
+    padding: var(--ostudy-space-1) var(--ostudy-space-2);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-small);
+    background: var(--ostudy-color-surface-overlay);
+    box-shadow: var(--ostudy-shadow-level-3);
+    color: var(--ostudy-color-text-primary);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: tooltip-enter var(--ostudy-motion-duration-fast)
+      var(--ostudy-motion-ease-standard) both;
+  }
+
+  @keyframes tooltip-enter {
+    from {
+      opacity: 0;
+      transform: translate(-50%, var(--ostudy-space-1));
+    }
+  }
+
+  :global(:root[data-motion="reduced"]) .tooltip,
+  :global(:root[data-motion="none"]) .tooltip {
+    animation: none;
+  }
+
+  @media (forced-colors: active) {
+    .tooltip {
+      border-color: CanvasText;
+      background: Canvas;
+      box-shadow: none;
+      color: CanvasText;
+      forced-color-adjust: auto;
+    }
+  }
+}

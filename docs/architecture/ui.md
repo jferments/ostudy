@@ -146,6 +146,17 @@ The common layer includes:
 
 Use a shared primitive when it owns the behavior being solved. Domain-specific rules remain in the feature. A reusable Button may know how to render loading and disabled state; it must not know how a card review commits.
 
+### Action priority
+
+Action density follows one shared priority contract. Responsive presentation may change an action's placement, but it must not change its meaning, accessible name, authorization, or domain callback.
+
+1. **Primary text action.** The ordinary next step for the current surface remains a visible text action. A compact layout or overflow menu must not hide the primary path or require menu exploration before a learner can continue.
+2. **Familiar icon action.** A standard, unambiguous action such as edit, delete, information, schedule, or full-screen may use `IconButton`. It requires a nonblank accessible label, visible keyboard focus, and a hover/focus tooltip; tooltip text is supplemental and never the only accessible name. Disabled controls keep a complete accessible label even though native disabled buttons cannot receive keyboard focus.
+3. **Contextual selection action.** A bulk action appears only while a selection is active. Its container identifies the selected count, keeps the valid primary bulk action direct, and provides an explicit keyboard- and touch-accessible way to clear the selection. Selection actions must not alter ordinary row activation or become the only path to a single-item operation.
+4. **Overflow-only action.** A low-frequency secondary action may move to overflow when space is constrained. Overflow never contains the sole ordinary primary path, preserves destructive grouping and labels, and uses the shared menu/sheet lifecycle for roving focus, Escape/outside dismissal, and focus restoration.
+
+All four priorities preserve native keyboard activation and coarse-pointer touch targets. A compact destructive icon uses the danger treatment and still opens the same explicit confirmation flow as its text equivalent; icon density never bypasses confirmation or mutation guards.
+
 ## Semantic feedback
 
 Controllers and screens emit semantic events such as:

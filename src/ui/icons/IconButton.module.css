@@ -1,0 +1,145 @@
+@layer components {
+  .button {
+    position: relative;
+    display: inline-grid;
+    width: var(--ostudy-size-control);
+    min-width: var(--ostudy-size-control);
+    height: var(--ostudy-size-control);
+    min-height: var(--ostudy-size-control);
+    flex: none;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--ostudy-radius-small);
+    padding: 0;
+    background: transparent;
+    color: var(--ostudy-color-text-accent);
+    cursor: pointer;
+    isolation: isolate;
+    transition:
+      transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-press),
+      background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      box-shadow var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+
+  .button:hover:not(:disabled) {
+    border-color: var(--ostudy-color-border-accent);
+    background: var(--ostudy-color-accent-soft);
+    transform: translateY(-1px);
+  }
+
+  .button:active:not(:disabled) {
+    transform: translateY(1px) scaleX(var(--ostudy-button-press-scale-x))
+      scaleY(var(--ostudy-button-press-scale-y));
+  }
+
+  .button:focus-visible {
+    outline: none;
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .danger {
+    color: var(--ostudy-color-status-danger);
+  }
+
+  .danger:hover:not(:disabled) {
+    border-color: var(--ostudy-color-status-danger);
+    background: var(--ostudy-color-status-danger-soft);
+  }
+
+  .icon {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+  }
+
+  .icon[data-loading="true"] {
+    visibility: hidden;
+  }
+
+  .spinner {
+    position: absolute;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+    border-radius: var(--ostudy-radius-pill);
+    animation: icon-button-spin var(--ostudy-motion-duration-slow) linear infinite;
+  }
+
+  .loadingFallback {
+    display: none;
+    position: absolute;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  @keyframes icon-button-spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
+  :global(:root[data-motion="reduced"]) .button,
+  :global(:root[data-motion="none"]) .button {
+    transform: none;
+    transition: none;
+  }
+
+  :global(:root[data-motion="reduced"]) .spinner,
+  :global(:root[data-motion="none"]) .spinner {
+    display: none;
+  }
+
+  :global(:root[data-motion="reduced"]) .loadingFallback,
+  :global(:root[data-motion="none"]) .loadingFallback {
+    display: block;
+  }
+
+  :global(:root[data-input-mode="coarse"]) .button {
+    width: var(--ostudy-size-touch-target);
+    min-width: var(--ostudy-size-touch-target);
+    height: var(--ostudy-size-touch-target);
+    min-height: var(--ostudy-size-touch-target);
+  }
+
+  @media (pointer: coarse) {
+    .button {
+      width: var(--ostudy-size-touch-target);
+      min-width: var(--ostudy-size-touch-target);
+      height: var(--ostudy-size-touch-target);
+      min-height: var(--ostudy-size-touch-target);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .button {
+      border-color: ButtonText;
+      background: ButtonFace;
+      color: ButtonText;
+      forced-color-adjust: auto;
+    }
+
+    .button:focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
+
+    .danger {
+      color: LinkText;
+    }
+
+    .spinner {
+      border-color: ButtonText;
+      border-block-start-color: transparent;
+    }
+  }
+}

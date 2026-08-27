@@ -198,6 +198,23 @@ describe("DecksScreen", () => {
     expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, "detail");
   });
 
+  it("opens the existing edit workflow from the shared icon action", async () => {
+    renderDecks();
+    fireEvent.click(screen.getByText("Dog facts").closest("button") as HTMLButtonElement);
+    await screen.findByRole("heading", { name: "Dog facts" });
+
+    const editButton = screen.getByRole("button", {
+      name: "Edit deck name and description",
+    });
+    fireEvent.focus(editButton);
+    expect(screen.getByRole("tooltip").textContent).toBe("Edit deck");
+    fireEvent.click(editButton);
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit deck" });
+    expect((within(dialog).getByRole("textbox", { name: /Deck name/u }) as HTMLInputElement).value)
+      .toBe("Dog facts");
+  });
+
   it("imports generated JSON through the ordinary Import deck button", async () => {
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
       id: "1".repeat(32),

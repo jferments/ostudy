@@ -193,7 +193,11 @@ describe("DeckLibraryWorkspace", () => {
     const refreshDecks = vi.fn(async () => [anatomy]);
     renderLibrary({ refreshDecks });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Delete Pharmacology" }));
+    const deleteButton = await screen.findByRole("button", { name: "Delete Pharmacology" });
+    expect(deleteButton.getAttribute("data-tone")).toBe("danger");
+    fireEvent.focus(deleteButton);
+    expect(screen.getByRole("tooltip").textContent).toBe("Delete Pharmacology");
+    fireEvent.click(deleteButton);
     const dialog = await screen.findByRole("alertdialog", { name: "Delete “Pharmacology”?" });
     expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete deck" }));

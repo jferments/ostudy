@@ -113,10 +113,7 @@
   }
   .deck-edit-button {
     flex: 0 0 auto;
-      width: 2.15rem;
-      height: 2.15rem;
       margin-top: 0.25rem;
-      font-size: 1.2rem;
   }
 
   /* Migrated from src/styles/features/ui-overhaul.css. */

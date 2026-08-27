@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { artworkManifest } from "../artwork/artworkManifest";
@@ -8,7 +8,10 @@ import { FilterSummary } from "./WorkspacePatterns";
 describe("UI infrastructure", () => {
   it("requires an accessible name for icon-only actions", () => {
     render(<IconButton icon="search" label="Search flashcards" />);
-    expect(screen.getByRole("button", { name: "Search flashcards" })).toBeTruthy();
+    const button = screen.getByRole("button", { name: "Search flashcards" });
+    expect(button.hasAttribute("title")).toBe(false);
+    fireEvent.focus(button);
+    expect(screen.getByRole("tooltip").textContent).toBe("Search flashcards");
   });
 
   it("registers semantic artwork slots independently from asset filenames", () => {
