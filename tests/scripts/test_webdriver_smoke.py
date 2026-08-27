@@ -174,6 +174,46 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
         request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
 
+    def test_click_recovers_read_only_hit_test_disconnect_without_replaying_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        hit_test = MagicMock(
+            side_effect=[
+                self.smoke.http.client.RemoteDisconnected("lost hit-test response"),
+                hit,
+                hit,
+            ]
+        )
+        request = MagicMock(return_value=None)
+        with patch.object(self.smoke, "_element_hit_test", hit_test), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=True), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            self.smoke.click("session-1", "element-1")
+
+        self.assertEqual(hit_test.call_count, 3)
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
+    def test_click_propagates_nontransient_hit_test_failure_before_click(self) -> None:
+        hit_test_error = OSError("hit-test failed")
+        request = MagicMock(return_value=None)
+        with patch.object(
+            self.smoke,
+            "_element_hit_test",
+            side_effect=hit_test_error,
+        ), patch.object(self.smoke, "request", request), patch.object(
+            self.smoke.time,
+            "sleep",
+        ) as sleep:
+            with self.assertRaisesRegex(OSError, "hit-test failed"):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_not_called()
+        sleep.assert_not_called()
+
     def test_click_accepts_acknowledged_disconnect_without_replaying_click(self) -> None:
         hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
         request = MagicMock(

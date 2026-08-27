@@ -393,7 +393,15 @@ def click(session_id: str, element_id: str) -> None:
     unacknowledged_clicks = 0
 
     while time.monotonic() < deadline:
-        hit = _element_hit_test(session_id, element_id)
+        try:
+            hit = _element_hit_test(session_id, element_id)
+        except (OSError, urllib.error.URLError) as error:
+            if not _is_transient_disconnect(error):
+                raise
+            stable_signature = None
+            stable_samples = 0
+            time.sleep(0.1)
+            continue
         last_hit = hit
         if hit.get("ready") is not True:
             stable_signature = None
