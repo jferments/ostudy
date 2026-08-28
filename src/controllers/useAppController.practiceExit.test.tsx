@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
+import { dispatchPlatformBack } from "../platform/backNavigation";
 import { makeDeck, makeSettings } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import {
@@ -32,7 +33,7 @@ vi.mock("../ipc/uiCheckpoint", async (importOriginal) => {
     getUiCheckpoint: vi.fn().mockResolvedValue(null),
     saveUiCheckpoint: vi.fn().mockImplementation(
       async (input: import("../ipc/uiCheckpoint").SaveUiCheckpointInput) => ({
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         updatedAt: 0,
         section: input.section,
         deckId: input.deckId ?? null,
@@ -99,7 +100,7 @@ describe("active practice navigation", () => {
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
     await enterPractice();
 
-    fireEvent.click(screen.getByRole("button", { name: "Go decks" }));
+    expect(dispatchPlatformBack()).toBe(true);
     const dialog = await screen.findByRole("alertdialog", {
       name: "Terminate this practice session?",
     });
@@ -118,7 +119,7 @@ describe("active practice navigation", () => {
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
     await enterPractice();
 
-    fireEvent.click(screen.getByRole("button", { name: "Go decks" }));
+    expect(dispatchPlatformBack()).toBe(true);
     await screen.findByRole("alertdialog", { name: "Terminate this practice session?" });
     fireEvent.click(screen.getByRole("button", { name: "Yes, terminate" }));
 

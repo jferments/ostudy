@@ -47,9 +47,6 @@ vi.mock("../ipc/practice", () => ({
 vi.mock("../ipc/scheduling", () => ({
   applyScheduleAction: vi.fn(),
 }));
-vi.mock("../ipc/uiCheckpoint", () => ({
-  saveUiCheckpoint: vi.fn().mockResolvedValue(undefined),
-}));
 
 const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
@@ -184,6 +181,7 @@ function renderPractice(overrides?: Partial<React.ComponentProps<typeof Practice
     settings,
     launchRequest: null,
     onLaunchConsumed: vi.fn(),
+    onCheckpointChange: vi.fn(),
     returnTarget: null,
     onClearReturnTarget: vi.fn(),
     onViewAnalytics: vi.fn(),
@@ -320,6 +318,29 @@ describe("PracticeScreen", () => {
     );
   });
 
+  it("reports the latest resumable cursor without writing a section checkpoint", async () => {
+    const onCheckpointChange = vi.fn();
+    renderPractice({ onCheckpointChange });
+    await screen.findByText("1 cards in the scheduled session");
+    fireEvent.click(screen.getByRole("button", { name: "Start scheduled practice" }));
+
+    await waitFor(() =>
+      expect(onCheckpointChange).toHaveBeenCalledWith({
+        sessionId: session.id,
+        position: 0,
+        revealed: false,
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Show answer" }));
+    await waitFor(() =>
+      expect(onCheckpointChange).toHaveBeenCalledWith({
+        sessionId: session.id,
+        position: 0,
+        revealed: true,
+      }),
+    );
+  });
+
   it("opens analytics for the completed session and its deck scope", async () => {
     const onViewAnalytics = vi.fn();
     renderPractice({ onViewAnalytics });
@@ -331,15 +352,19 @@ describe("PracticeScreen", () => {
 
   it("clears a contextual return target when completion returns to setup", async () => {
     const onClearReturnTarget = vi.fn();
+    const onCheckpointChange = vi.fn();
     renderPractice({
       returnTarget: { section: "analytics" },
       onClearReturnTarget,
+      onCheckpointChange,
     });
     await startAndReveal();
+    onCheckpointChange.mockClear();
     fireEvent.click(await screen.findByRole("button", { name: /1 Hard/u }));
     fireEvent.click(await screen.findByRole("button", { name: "Back to practice" }));
 
     expect(onClearReturnTarget).toHaveBeenCalledOnce();
+    expect(onCheckpointChange).toHaveBeenCalledWith(null);
     expect(await screen.findByRole("heading", { name: "Practice" })).toBeTruthy();
   });
 

@@ -155,10 +155,13 @@ cover every visible destination. More is active only for one of its actual
 destinations. Shared overlay behavior owns the More sheet's focus, dismissal,
 and restoration semantics.
 
-The Study Guides route currently composes the existing guide library. Its
-route-owned controller/detail state and checkpoint support are later workspace
-work; until that contract is added, generic navigation and lifecycle checkpoint
-writes omit Study Guides rather than widening the native checkpoint format.
+The Study Guides destination participates in the schema-v2 device-local UI
+checkpoint. The checkpoint restores the route itself; route-owned guide detail,
+reader, and deletion state remain later workspace work. Active Practice stores
+its latest cursor independently with a logical Study Guides, Analytics, or
+Flashcards return target. Restoration allocates new route/request identities,
+and lifecycle saves flush the same controller-owned snapshot used by ordinary
+navigation saves.
 
 ## Shared primitives
 

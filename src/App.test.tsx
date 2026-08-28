@@ -51,7 +51,7 @@ vi.mock("./ipc/uiCheckpoint", async (importOriginal) => {
     getUiCheckpoint: vi.fn().mockResolvedValue(null),
     saveUiCheckpoint: vi.fn().mockImplementation(
       async (input: import("./ipc/uiCheckpoint").SaveUiCheckpointInput) => ({
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         updatedAt: 0,
         section: input.section,
         flashcardsWorkspace: input.flashcardsWorkspace ?? null,
@@ -282,14 +282,14 @@ describe("App shell", () => {
     );
   });
 
-  it("normalizes a legacy Cards checkpoint into the Search workspace", async () => {
+  it("restores a canonical checkpoint normalized from legacy Cards into Search", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
     vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: 1,
-      section: "cards",
-      flashcardsWorkspace: null,
+      section: "decks",
+      flashcardsWorkspace: "search",
       deckId: null,
       editorDraftId: null,
       practice: null,
@@ -305,13 +305,22 @@ describe("App shell", () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
     vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
     vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
-      schemaVersion: 1,
+      schemaVersion: 2,
       updatedAt: 1,
-      section: "practice",
-      flashcardsWorkspace: null,
+      section: "decks",
+      flashcardsWorkspace: "decks",
       deckId: null,
       editorDraftId: null,
-      practice: { sessionId: "session-restore", position: 2, revealed: true },
+      practice: {
+        sessionId: "session-restore",
+        position: 2,
+        revealed: true,
+        returnTarget: {
+          section: "decks",
+          flashcardsWorkspace: "decks",
+          deckId: null,
+        },
+      },
       analytics: null,
     });
 
@@ -325,6 +334,26 @@ describe("App shell", () => {
         { current: "page" },
       ),
     ).toBeNull();
+  });
+
+  it("keeps a setup-only legacy-normalized Practice checkpoint in Flashcards", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+    vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
+      schemaVersion: 2,
+      updatedAt: 1,
+      section: "decks",
+      flashcardsWorkspace: "decks",
+      deckId: null,
+      editorDraftId: null,
+      practice: null,
+      analytics: null,
+    });
+
+    renderApp();
+
+    expect(await screen.findByRole("heading", { name: "Decks mock" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Practice mock" })).toBeNull();
   });
 
   it("launches one-step deck practice and captures the library return target", async () => {
@@ -372,9 +401,9 @@ describe("App shell", () => {
     await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
     expect(
       vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.some(
-        ([input]) => String(input.section) === "study-guides",
+        ([input]) => input.section === "study-guides",
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns topic-linked practice to Study Guides", async () => {

@@ -5,17 +5,25 @@ import type { FlashcardsWorkspaceName } from "../navigation/flashcardsRoutes";
 
 export type CheckpointSection =
   | "decks"
+  | "study-guides"
   | "documents"
-  | "cards"
-  | "templates"
-  | "practice"
   | "analytics"
   | "settings";
 
-export interface PracticeCheckpoint {
+export interface CheckpointReturnTarget {
+  section: CheckpointSection;
+  flashcardsWorkspace: FlashcardsWorkspaceName | null;
+  deckId: string | null;
+}
+
+export interface PracticeCursorCheckpoint {
   sessionId: string;
   position: number;
   revealed: boolean;
+}
+
+export interface PracticeCheckpoint extends PracticeCursorCheckpoint {
+  returnTarget: CheckpointReturnTarget;
 }
 
 export interface AnalyticsCheckpoint {
@@ -25,7 +33,7 @@ export interface AnalyticsCheckpoint {
 }
 
 export interface UiCheckpoint {
-  schemaVersion: 1;
+  schemaVersion: 2;
   updatedAt: number;
   section: CheckpointSection;
   flashcardsWorkspace: FlashcardsWorkspaceName | null;

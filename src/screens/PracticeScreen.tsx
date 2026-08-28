@@ -21,7 +21,10 @@ import {
 } from "../ipc/practice";
 import { type RescheduleIntent, type ScheduleAction } from "../ipc/scheduling";
 import { type AppSettings } from "../ipc/settings";
-import { saveUiCheckpoint, type PracticeCheckpoint } from "../ipc/uiCheckpoint";
+import {
+  type PracticeCheckpoint,
+  type PracticeCursorCheckpoint,
+} from "../ipc/uiCheckpoint";
 import { useExperience } from "../ui/feedback/ExperienceProvider";
 import { Icon } from "../ui/icons/Icon";
 import { useConfirm } from "../ui/overlays/overlayContext";
@@ -51,6 +54,7 @@ interface PracticeScreenProps {
   onLaunchConsumed: () => void;
   restoreCheckpoint?: PracticeCheckpoint | null;
   onRestoreConsumed?: () => void;
+  onCheckpointChange?: (checkpoint: PracticeCursorCheckpoint | null) => void;
   returnTarget: PracticeReturnTarget | null;
   onClearReturnTarget: () => void;
   onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
@@ -81,6 +85,7 @@ export function PracticeScreen({
   onLaunchConsumed,
   restoreCheckpoint = null,
   onRestoreConsumed = NOOP,
+  onCheckpointChange = NOOP,
   returnTarget,
   onClearReturnTarget,
   onViewAnalytics,
@@ -421,21 +426,26 @@ export function PracticeScreen({
   }, [controller, onRestoreConsumed, restoreCheckpoint]);
 
   useEffect(() => {
-    if (!session || completed) return;
-    const timer = window.setTimeout(() => {
-      void saveUiCheckpoint({
-        section: "practice",
-        practice: {
-          sessionId: session.id,
-          position: sessionWindowStart + position,
-          revealed,
-        },
-      }).catch((error: unknown) => {
-        console.error("Unable to save the practice restoration checkpoint:", getErrorMessage(error));
-      });
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [completed, position, revealed, session, sessionWindowStart]);
+    if (!session && (restoreCheckpoint || isStarting)) return;
+    if (!session || completed) {
+      onCheckpointChange(null);
+      return;
+    }
+    onCheckpointChange({
+      sessionId: session.id,
+      position: sessionWindowStart + position,
+      revealed,
+    });
+  }, [
+    completed,
+    isStarting,
+    onCheckpointChange,
+    position,
+    restoreCheckpoint,
+    revealed,
+    session,
+    sessionWindowStart,
+  ]);
 
   useEffect(() => {
     if (!session || !current || completed) return;
@@ -689,7 +699,6 @@ export function PracticeScreen({
     onClearReturnTarget();
     setSelectedTagIds(new Set());
     setErrorMessage(null);
-    void saveUiCheckpoint({ section: "practice" });
     void loadRecentPractice();
   }
 

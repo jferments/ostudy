@@ -43,6 +43,13 @@ if (sources.applicationWorkflows !== null) {
     parseApplicationWorkflows(sources.applicationWorkflows),
   );
 }
+if (sources.checkpointGateway !== null) {
+  compareOrderedValues(
+    "checkpoint destinations",
+    contract.checkpointDestinations,
+    parseCheckpointSections(sources.checkpointGateway),
+  );
+}
 if (sources.applicationShell !== null) {
   compareOrderedValues(
     "rendered App shell destinations",
@@ -156,6 +163,7 @@ function validateContractShape(value) {
     "applicationSections",
     "applicationWorkflows",
     "applicationShell",
+    "checkpointGateway",
     "primaryNavigation",
     "compactNavigation",
     "flashcardsRoutes",
@@ -178,6 +186,12 @@ function validateContractShape(value) {
   }
   if (!Array.isArray(value.applicationWorkflows)) {
     fail("applicationWorkflows must be an array.");
+  }
+  if (
+    !Array.isArray(value.checkpointDestinations) ||
+    value.checkpointDestinations.some((section) => !isIdentifier(section))
+  ) {
+    fail("checkpointDestinations must be an array of destination identifiers.");
   }
   if (!Array.isArray(value.primaryDestinations)) {
     fail("primaryDestinations must be an array.");
@@ -226,11 +240,17 @@ function validateContractShape(value) {
   reportDuplicates("Flashcards workspace", workspaceIds);
   const protectedWorkflowIds = value.protectedWorkflows.map((entry) => entry.id);
   reportDuplicates("protected workflow", protectedWorkflowIds);
+  reportDuplicates("checkpoint destination", value.checkpointDestinations);
 
   const declaredPrimaryIds = value.applicationSections
     .filter((entry) => entry.role === "primary-destination")
     .map((entry) => entry.id);
   compareSets("primary destination taxonomy", declaredPrimaryIds, primaryIds);
+  compareOrderedValues(
+    "checkpoint destination taxonomy",
+    primaryIds,
+    value.checkpointDestinations,
+  );
 
   validateProtectedWorkflowCoverage(
     value.applicationWorkflows,
@@ -623,6 +643,15 @@ function parseApplicationWorkflows(source) {
   return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
 }
 
+function parseCheckpointSections(source) {
+  const match = source.match(/export\s+type\s+CheckpointSection\s*=([\s\S]*?);/u);
+  if (!match) {
+    fail("Could not parse export type CheckpointSection from its authoritative source.");
+    return [];
+  }
+  return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
+}
+
 function parseRenderedAppSections(source) {
   const sections = [
     ...source.matchAll(
@@ -823,6 +852,7 @@ function finish() {
   console.log(
     `OK   Expected route/smoke inventory matches ${contract.applicationSections.length} application sections, ` +
       `${contract.applicationWorkflows.length} application workflow, ` +
+      `${contract.checkpointDestinations.length} checkpoint destinations, ` +
       `${contract.primaryDestinations.length} primary destinations, and ` +
       `${contract.flashcardsWorkspaces.length} Flashcards workspaces ` +
       `(${routeEntryCount} route-entry; ${presenceCount} presence-only), with ` +

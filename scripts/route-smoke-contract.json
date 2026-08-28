@@ -5,6 +5,7 @@
     "applicationSections": "src/controllers/useAppController.ts",
     "applicationWorkflows": "src/controllers/useAppController.ts",
     "applicationShell": "src/App.tsx",
+    "checkpointGateway": "src/ipc/uiCheckpoint.ts",
     "primaryNavigation": "src/components/NavigationSidebar.tsx",
     "compactNavigation": "src/components/NavigationSidebar.tsx",
     "flashcardsRoutes": "src/navigation/flashcardsRoutes.ts",
@@ -50,6 +51,13 @@
       "protectedWorkflow": "active-practice"
     }
   ],
+  "checkpointDestinations": [
+    "decks",
+    "study-guides",
+    "documents",
+    "analytics",
+    "settings"
+  ],
   "primaryDestinations": [
     {
       "section": "decks",
@@ -85,11 +93,31 @@
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
               "button[data-testid='nav-study-guides']",
-              "webdriver.click(session_id, study_guides)"
+              "webdriver.click(session_id, study_guides)",
+              "session_id = verify_study_guides_checkpoint_after_restart(application, session_id)"
             ],
             "assertionFragments": [
               "Study Guides",
-              "wide Study Guides destination"
+              "wide Study Guides destination",
+              "verify_study_guides_checkpoint_after_restart",
+              "Study Guides checkpoint restart"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "e_processRestartKeepsInterruptedPracticeSession"
+            },
+            "entryFragments": [
+              "fun e_processRestartKeepsInterruptedPracticeSession()",
+              "End session"
+            ],
+            "assertionFragments": [
+              "nav-study-guides",
+              "aria-current",
+              "Study Guides"
             ]
           }
         ]
@@ -205,6 +233,23 @@
             "assertionFragments": [
               "//button[normalize-space(.)='Show answer']",
               "PRACTICE_COMPLETE_SELECTOR"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "e_processRestartKeepsInterruptedPracticeSession"
+            },
+            "entryFragments": [
+              "fun e_processRestartKeepsInterruptedPracticeSession()",
+              "End session"
+            ],
+            "assertionFragments": [
+              "nav-study-guides",
+              "aria-current",
+              "Study Guides"
             ]
           }
         ]

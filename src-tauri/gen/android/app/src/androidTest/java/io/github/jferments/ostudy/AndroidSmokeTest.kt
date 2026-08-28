@@ -190,6 +190,14 @@ class AndroidSmokeTest {
                 "delete window.__OSTUDY_ANDROID_TEST__; window.location.reload(); true"
             )
             waitForBridge(webView)
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'End session') && " +
+                        "!document.querySelector('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')"
+                }
+            )
             val restored = evaluatePromise(
                 webView,
                 "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()"
@@ -204,6 +212,14 @@ class AndroidSmokeTest {
     fun e_processRestartKeepsInterruptedPracticeSession() {
         withApplication { webView ->
             waitForBridge(webView)
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'End session') && " +
+                        "!document.querySelector('nav[aria-label=\"Main navigation\"] button[aria-current=\"page\"]')"
+                }
+            )
             val restored = evaluatePromise(
                 webView,
                 "window.__OSTUDY_ANDROID_TEST__.restorationSnapshot()"
@@ -211,6 +227,18 @@ class AndroidSmokeTest {
             assertNotNull(restored.optString("sessionId").takeIf(String::isNotBlank))
             assertTrue(restored.getBoolean("revealed"))
             assertFalse(restored.getBoolean("completed"))
+            evaluateSync(
+                webView,
+                "Array.from(document.querySelectorAll('main button')).find(button => button.textContent?.trim() === 'End session')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Study Guides' && " +
+                        "document.querySelector('[data-testid=\"nav-study-guides\"]')?.getAttribute('aria-current') === 'page'"
+                }
+            )
         }
     }
 

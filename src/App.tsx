@@ -108,6 +108,7 @@ function App() {
                               controller.practiceWorkflow?.restoreCheckpoint ?? null
                             }
                             onRestoreConsumed={controller.consumePracticeRestore}
+                            onCheckpointChange={controller.reportPracticeCheckpoint}
                             returnTarget={controller.practiceWorkflow?.returnTarget ?? null}
                             onClearReturnTarget={controller.clearPracticeReturnTarget}
                             onViewAnalytics={controller.viewSessionAnalytics}

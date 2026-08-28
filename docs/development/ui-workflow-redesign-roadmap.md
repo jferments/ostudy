@@ -62,8 +62,8 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] Add a first-class `study-guides` application section immediately below Flashcards in wide, medium, and compact navigation. (Stage 2A)
 - [x] Remove the top-level Practice navigation item and normalize compact-navigation primary/More groupings. (Stage 2A)
 - [x] Split the old Practice destination into an internal active-session state plus launch surfaces owned by Flashcards, Search, Study Guides, and Analytics. (Stage 2B)
-- [ ] Migrate saved UI checkpoints: resumable sessions reopen internally; setup-only Practice checkpoints return to Flashcards.
-- [ ] Preserve platform back behavior, active-session exit guards, lifecycle checkpoints, and return targets after the route change.
+- [x] Migrate saved UI checkpoints: resumable sessions reopen internally; setup-only Practice checkpoints return to Flashcards. (Stage 2C)
+- [x] Preserve platform back behavior, active-session exit guards, lifecycle checkpoints, and return targets after the route change. (Stage 2C)
 - [ ] Replace the CSS-drawn brand mark with the supplied transparent raccoon mascot asset, with correctly generated desktop/mobile sizes and no baked background.
 - [ ] Remove the “Learn with intent” motto from the sidebar and any other product copy.
 - [ ] Make IBM Plex Sans the default UI and card family for new installs.
@@ -81,6 +81,15 @@ migration, platform Back/lifecycle semantics, and persisted return-target work
 remain Stage 2C items in the unchecked checkpoint/Back line items. Branding,
 fonts, window controls, viewport work, and the Stage 3 practice-setup relocation
 also remain pending.
+
+Stage 2C introduces the strict `ui-checkpoint-v2` representation while retaining
+and retiring released v1 files through a compatibility reader. All five visible
+destinations now save and restore; resumable Practice state carries a logical
+return target independently, lifecycle saves flush the latest in-memory cursor,
+platform Back retains the existing termination guard, and restored routes use
+new request identities. Stage 3 setup relocation and the remaining Stage 2
+branding, font, window, and viewport items are still pending; overall Stage 2 is
+not complete.
 
 ## Stage 3 — Deck selection and practice setup relocation
 

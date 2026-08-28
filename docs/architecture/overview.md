@@ -144,11 +144,14 @@ Released migrations and release fixtures are immutable evidence. Current code ad
 - session-card snapshots keep the practiced identity and cloze variant stable;
 - studyability is determined by archive, suspension, burial, and due rules before a timestamp is treated as ready.
 
-The device-local `ui-checkpoint-v1` compatibility representation still names
-Practice as a section and stores only resumable session identity/cursor state.
-The frontend projects a real saved session into its internal workflow at
-startup, but checkpoint-format, persisted return-target, lifecycle, and platform
-Back migration remain separate follow-up work.
+The device-local schema-v2 UI checkpoint stores a visible destination separately
+from an optional resumable Practice hint and logical return target. Rust reads
+released schema-v1 files, normalizes a real Practice session without losing its
+identity/cursor, and sends setup-only legacy Practice state to Flashcards. The
+frontend reconstructs restored routes with new transition/request identities;
+SQLite remains authoritative for session progress, reviews, and scheduling.
+The checkpoint is outside SQLite, backup, and synchronization. See
+[ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
 
 Local-calendar behavior is owned natively so “today,” “tomorrow,” and longer date windows respect time zones, daylight-saving transitions, leap days, and calendar semantics rather than fixed browser-duration arithmetic.
 

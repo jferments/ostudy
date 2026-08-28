@@ -154,11 +154,16 @@ async function beginInterruptedPractice(): Promise<AndroidPracticeRestoreSnapsho
   if (!card) throw new Error("The Android smoke deck did not produce a resumable card.");
   await markPracticeCardRevealed(session.id, card.presentation.cardId);
   await saveUiCheckpoint({
-    section: "practice",
+    section: "study-guides",
     practice: {
       sessionId: session.id,
       position: session.firstWindow.startPosition,
       revealed: true,
+      returnTarget: {
+        section: "study-guides",
+        flashcardsWorkspace: null,
+        deckId: null,
+      },
     },
   });
   return {

@@ -16,7 +16,7 @@ The main navigation contains five areas:
 
 Inside **Flashcards**, the four workspaces are **Decks**, **Templates**, **Search**, and **Import/Export**. Open a deck to add or bulk-add cards to that deck. Card creation is intentionally deck-scoped rather than a separate global workspace.
 
-On a narrow mobile window, Flashcards, Study Guides, and Analytics remain directly available while Documents and Settings appear under **More**. Practice opens from contextual study actions instead of appearing as a standing destination. Android Back closes the top overlay or nested editor before leaving the current area.
+On a narrow mobile window, Flashcards, Study Guides, and Analytics remain directly available while Documents and Settings appear under **More**. Practice opens from contextual study actions instead of appearing as a standing destination. Android Back closes the top overlay or nested editor before leaving the current area. During an active Practice session, Back asks before ending the session; cancel keeps the card and session in place, while confirmation saves the completed exit before returning to Flashcards.
 
 Interactive tutorials never open automatically. New installations leave them off by default. If you want one, enable **Interactive tutorials** under **Settings → Appearance**, then start the related tutorial explicitly from Help. Tutorial completion/dismissal state is device-local presentation state; it is not learner history and is not included in library backups.
 
@@ -85,6 +85,12 @@ While a session is active, the compact app bar identifies **Practice** but no
 primary destination is selected. Deck detail, Search, Study Guides, Documents,
 and Analytics launches retain their logical origin so ending early can return
 to the right context.
+
+If ostudy closes while a real session is resumable, reopening restores the
+internal Practice workflow and its logical return destination. An older saved
+Practice setup with no session opens Flashcards instead. This device-local
+checkpoint stores only navigation/session identity hints; the native practice
+session, submitted reviews, schedules, and review history remain authoritative.
 
 The workload panel is authoritative for the current selection. While it is loading, unavailable, or has no selected scope, ostudy shows that state explicitly instead of displaying made-up zeroes. A real loaded workload of zero remains a real zero. The exact same deck/tag scope used to calculate the workload is passed to **Start scheduled practice**.
 

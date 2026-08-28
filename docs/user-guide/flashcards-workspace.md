@@ -13,7 +13,7 @@ On compact mobile layouts the tabs form a two-by-two grid. They do not require h
 
 Selecting a workspace tab always opens that workspace's root. Selecting **Decks** while a deck is open therefore returns to the main deck listing. Selecting the primary **Flashcards** navigation destination has the same effect. Unsaved card or template changes still receive the normal discard confirmation before navigation proceeds.
 
-The active workspace and an explicitly open deck are stored in the local presentation checkpoint so ostudy can restore the destination after restart. Card content, review history, and credentials are not stored in that checkpoint. Older checkpoints that named the removed Create Cards workspace return safely to the Decks root.
+The active workspace and an explicitly open deck are stored in the local presentation checkpoint so ostudy can restore the destination after restart. Card content, review history, credentials, and runtime transition IDs are not stored in that checkpoint. Older checkpoints that named the removed Create Cards workspace return safely to the Decks root. A resumable Practice session can reopen over this logical Flashcards destination and returns with a newly created route transition; if a saved deck no longer exists, the session remains resumable and its destination falls back to the Decks root.
 
 ## Decks
 

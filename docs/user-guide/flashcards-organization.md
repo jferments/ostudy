@@ -7,7 +7,7 @@ The user-facing Flashcards area contains four independently mounted workspaces:
 - **Search** finds cards across decks and supports bulk management.
 - **Import/Export** groups deck transfer and complete-library backup tasks.
 
-Activating a workspace always opens its root, even when the same tab is already selected. Activating the primary Flashcards navigation destination opens the Decks library root. The active workspace and an explicitly open deck are stored in the device-local UI checkpoint so the app can restore a useful destination without putting card content or credentials into that checkpoint.
+Activating a workspace always opens its root, even when the same tab is already selected. Activating the primary Flashcards navigation destination opens the Decks library root. The active workspace and an explicitly open deck are stored in the device-local UI checkpoint so the app can restore a useful destination without putting card content, credentials, or runtime request identities into that checkpoint. When a resumable Practice session was launched from Search or deck detail, that logical destination is restored with a fresh route transition after the session ends.
 
 ## Deck folders
 

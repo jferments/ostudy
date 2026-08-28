@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": 1724800000000,
+  "section": "practice",
+  "flashcardsWorkspace": null,
+  "deckId": null,
+  "editorDraftId": null,
+  "practice": {
+    "sessionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "position": 4,
+    "revealed": true
+  },
+  "analytics": null
+}

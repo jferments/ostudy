@@ -35,6 +35,14 @@ def execute(session_id: str, script: str, args: list[Any] | None = None) -> Any:
     )
 
 
+def execute_async(session_id: str, script: str, args: list[Any] | None = None) -> Any:
+    return webdriver.request(
+        "POST",
+        f"/session/{session_id}/execute/async",
+        {"script": script, "args": args or []},
+    )
+
+
 def send_key(session_id: str, value: str) -> None:
     webdriver.request(
         "POST",
@@ -374,6 +382,63 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     assert_no_horizontal_overflow(session_id, "wide application shell")
 
 
+def verify_study_guides_checkpoint_after_restart(
+    application: Path,
+    session_id: str,
+) -> str:
+    study_guides = webdriver.find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-study-guides']",
+        webdriver.deadline_after(),
+    )
+    webdriver.click(session_id, study_guides)
+    webdriver.wait_for_element_text(
+        session_id,
+        "css selector",
+        "main h1",
+        "Study Guides",
+        webdriver.deadline_after(),
+    )
+    checkpoint: Any = None
+    deadline = webdriver.deadline_after()
+    while time.monotonic() < deadline:
+        checkpoint = execute_async(
+            session_id,
+            """
+            const done = arguments[arguments.length - 1];
+            window.__TAURI_INTERNALS__.invoke('get_ui_checkpoint')
+              .then((value) => done(value))
+              .catch((error) => done({ error: String(error) }));
+            """,
+        )
+        if isinstance(checkpoint, dict) and checkpoint.get("section") == "study-guides":
+            break
+        time.sleep(0.1)
+    else:
+        raise AssertionError(
+            f"Study Guides checkpoint was not durably saved before restart: {checkpoint!r}"
+        )
+    webdriver.delete_session(session_id)
+
+    restarted = webdriver.create_session(application)
+    webdriver.verify_shell(restarted, webdriver.deadline_after())
+    webdriver.wait_for_element_text(
+        restarted,
+        "css selector",
+        "main h1",
+        "Study Guides",
+        webdriver.deadline_after(),
+    )
+    webdriver.find_element(
+        restarted,
+        "css selector",
+        "button[data-testid='nav-study-guides'][aria-current='page']",
+        webdriver.deadline_after(),
+    )
+    return restarted
+
+
 def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1000, 800)
     wait_for_layout_mode(session_id, "medium", deadline)
@@ -557,12 +622,13 @@ def main() -> int:
         verify_compact_navigation(session_id, webdriver.deadline_after(45))
         verify_dialog_focus(session_id, webdriver.deadline_after())
         verify_wide_navigation(session_id, webdriver.deadline_after())
+        session_id = verify_study_guides_checkpoint_after_restart(application, session_id)
         verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
             "Native UI platform smoke passed: compact, labeled medium, and wide navigation; "
             "four-workspace Flashcards containment; deck-scoped authoring; no horizontal overflow; "
-            "dialog focus containment; Escape dismissal; and focus restoration."
+            "dialog focus containment; Study Guides checkpoint restart; Escape dismissal; and focus restoration."
         )
         return 0
     except Exception:

@@ -110,6 +110,19 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.assertIn("study-guides", completed.stderr)
             self.assertIn("drifted", completed.stderr)
 
+    def test_rejects_checkpoint_destination_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            contract = self.copy_fixture(fixture)
+            contract["checkpointDestinations"].remove("study-guides")
+            self.write_contract(fixture, contract)
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("checkpoint destination taxonomy drifted", completed.stderr)
+            self.assertIn("study-guides", completed.stderr)
+
     def test_rejects_compact_destination_omission(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)
@@ -166,6 +179,25 @@ class RouteSmokeContractTests(unittest.TestCase):
 
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("Flashcards workspace search", completed.stderr)
+            self.assertIn("missing required entry fragment", completed.stderr)
+
+    def test_rejects_removed_study_guides_restart_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            smoke = fixture / "tests/webdriver/ui_platform_smoke.py"
+            source = smoke.read_text(encoding="utf-8")
+            invocation = (
+                "session_id = verify_study_guides_checkpoint_after_restart("
+                "application, session_id)"
+            )
+            self.assertIn(invocation, source)
+            smoke.write_text(source.replace(invocation, "session_id = session_id", 1), encoding="utf-8")
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("primary destination study-guides", completed.stderr)
             self.assertIn("missing required entry fragment", completed.stderr)
 
     def test_rejects_native_smoke_entrypoint_runner_drift(self) -> None:
