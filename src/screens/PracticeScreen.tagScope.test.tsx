@@ -81,14 +81,15 @@ describe("PracticeScreen tag scope", () => {
         settings={makeSettings({ practiceShuffle: true })}
         launchRequest={{
           requestId: 1,
+          kind: "selected",
           deckIds: [],
           tagIds: [tagId],
-          cardIds: [],
           autoStart: true,
           mode: "scheduled",
-          returnTarget: { section: "analytics" },
         }}
         onLaunchConsumed={onLaunchConsumed}
+        returnTarget={{ section: "analytics" }}
+        onClearReturnTarget={vi.fn()}
         onViewAnalytics={vi.fn()}
         onEndEarly={vi.fn()}
         showToast={vi.fn()}

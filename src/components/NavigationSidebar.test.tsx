@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { NavigationSidebar } from "./NavigationSidebar";
@@ -32,13 +33,18 @@ function setViewport(width: number, coarsePointer = false): void {
 function renderNavigation(
   width: number,
   onNavigate = vi.fn(),
-  section: "decks" | "study-guides" | "documents" | "practice" | "analytics" | "settings" = "decks",
+  section: AppSection = "decks",
+  activeWorkflow: AppWorkflow | null = null,
 ) {
   setViewport(width);
   render(
     <LayoutModeProvider>
       <OverlayProvider>
-        <NavigationSidebar section={section} onNavigate={onNavigate} />
+        <NavigationSidebar
+          section={section}
+          activeWorkflow={activeWorkflow}
+          onNavigate={onNavigate}
+        />
       </OverlayProvider>
     </LayoutModeProvider>,
   );
@@ -158,7 +164,7 @@ describe("NavigationSidebar", () => {
   });
 
   it("does not select More for the internal Practice workflow", () => {
-    renderNavigation(390, vi.fn(), "practice");
+    renderNavigation(390, vi.fn(), "decks", "practice");
 
     expect(screen.getByRole("button", { name: "More" }).getAttribute("aria-current")).toBeNull();
     expect(screen.queryByRole("button", { name: "Practice" })).toBeNull();

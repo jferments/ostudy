@@ -64,6 +64,10 @@ The drag handle is identified by its grip icon, focus ring, pointer feedback, an
 
 Every active deck with generated cards has a **Practice** button. Starting from a deck is an explicit request to study that deck, so the session follows the deck-practice workload rules rather than merely opening its editor.
 
+Practice opens as an internal workflow, not another primary navigation
+destination. Ending early returns to the same logical Flashcards context: the
+Decks root for a library launch or the exact deck detail for a detail launch.
+
 ### Adding cards inside a deck
 
 Open a deck to add study material. The card-table heading contains:
@@ -95,6 +99,11 @@ The common controls stay visible:
 Open **All filters** for availability, scheduling status, last-studied date, individual decks, folders, and tags. Applied criteria appear as removable chips above the results.
 
 **Select visible** selects only the loaded rows. **Select all matching** resolves the complete filtered result set before a bulk action.
+
+Choose **Practice selected** to start an exact-card session for the selected
+results. Ending that contextual session early returns to the Search workspace
+with a fresh route transition rather than selecting a standing Practice
+destination.
 
 ## Import/Export
 

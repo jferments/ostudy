@@ -195,7 +195,7 @@ describe("DecksScreen", () => {
     const detailPractice = screen.getByRole("button", { name: "Practice" });
     expect(detailPractice.hasAttribute("disabled")).toBe(false);
     fireEvent.click(detailPractice);
-    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id, "detail");
+    expect(onPracticeDeck).toHaveBeenCalledWith(deck.id);
   });
 
   it("opens the existing edit workflow from the shared icon action", async () => {

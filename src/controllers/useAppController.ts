@@ -32,12 +32,13 @@ export type AppSection =
   | "documents"
   | "cards"
   | "templates"
-  | "practice"
   | "analytics"
   | "settings";
 
+export type AppWorkflow = "practice";
+
 export interface PracticeReturnTarget {
-  section: Exclude<AppSection, "practice">;
+  section: AppSection;
   deckId?: string;
   flashcardsWorkspace?: FlashcardsWorkspaceName;
 }
@@ -47,13 +48,39 @@ export interface DeckOpenRequest {
   deckId: string;
 }
 
-export interface PracticeLaunchRequest {
+interface PracticeSelectedLaunchRequest {
   requestId: number;
+  kind: "selected";
   deckIds: string[];
   tagIds: string[];
-  cardIds: string[];
   autoStart: boolean;
   mode: "scheduled" | "extra";
+}
+
+interface PracticeCardsLaunchRequest {
+  requestId: number;
+  kind: "cards";
+  cardIds: string[];
+  autoStart: boolean;
+}
+
+export type PracticeLaunchRequest =
+  | PracticeSelectedLaunchRequest
+  | PracticeCardsLaunchRequest;
+
+type PracticeLaunchInput =
+  | Omit<PracticeSelectedLaunchRequest, "requestId">
+  | Omit<PracticeCardsLaunchRequest, "requestId">;
+
+export type ContextualPracticeLaunchRequest =
+  | { kind: "deck"; deckId: string }
+  | { kind: "scope"; deckIds: string[]; tagIds: string[] }
+  | { kind: "cards"; cardIds: string[] };
+
+export interface PracticeWorkflowState {
+  kind: "practice";
+  launchRequest: PracticeLaunchRequest | null;
+  restoreCheckpoint: PracticeCheckpoint | null;
   returnTarget: PracticeReturnTarget | null;
 }
 
@@ -101,8 +128,7 @@ export function useAppController() {
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastSequence = useRef(1);
-  const [practiceLaunch, setPracticeLaunch] = useState<PracticeLaunchRequest | null>(null);
-  const [practiceRestore, setPracticeRestore] = useState<PracticeCheckpoint | null>(null);
+  const [practiceWorkflow, setPracticeWorkflow] = useState<PracticeWorkflowState | null>(null);
   const practiceRequestSequence = useRef(1);
   const [analyticsLaunch, setAnalyticsLaunch] = useState<AnalyticsLaunchRequest | null>(null);
   const analyticsRequestSequence = useRef(1);
@@ -137,8 +163,16 @@ export function useAppController() {
     return loaded;
   }, [deckRefreshLane]);
 
-  const consumePracticeLaunch = useCallback(() => setPracticeLaunch(null), []);
-  const consumePracticeRestore = useCallback(() => setPracticeRestore(null), []);
+  const consumePracticeLaunch = useCallback(() => {
+    setPracticeWorkflow((current) =>
+      current ? { ...current, launchRequest: null } : current,
+    );
+  }, []);
+  const consumePracticeRestore = useCallback(() => {
+    setPracticeWorkflow((current) =>
+      current ? { ...current, restoreCheckpoint: null } : current,
+    );
+  }, []);
   const consumeAnalyticsLaunch = useCallback(() => setAnalyticsLaunch(null), []);
 
   useEffect(() => {
@@ -158,11 +192,11 @@ export function useAppController() {
         setActiveSettings(normalizedSettings);
         setDecks(loadedDecks);
         if (restoredCheckpoint) {
-          const restored = normalizeDestination(restoredCheckpoint.section);
-          const restoredSection =
-            restored.section === "practice" && !restoredCheckpoint.practice
-              ? "decks"
-              : restored.section;
+          const restored =
+            restoredCheckpoint.section === "practice"
+              ? { section: "decks" as const }
+              : normalizeDestination(restoredCheckpoint.section);
+          const restoredSection = restored.section;
           const restoredWorkspace =
             restoredSection === "decks"
               ? normalizeFlashcardsWorkspace(
@@ -181,7 +215,14 @@ export function useAppController() {
             setFlashcardsRoute(createFlashcardsRootRoute(restoredWorkspace, requestId));
           }
           setSection(restoredSection);
-          if (restoredCheckpoint.practice) setPracticeRestore(restoredCheckpoint.practice);
+          if (restoredCheckpoint.section === "practice" && restoredCheckpoint.practice) {
+            setPracticeWorkflow({
+              kind: "practice",
+              launchRequest: null,
+              restoreCheckpoint: restoredCheckpoint.practice,
+              returnTarget: null,
+            });
+          }
           if (restoredCheckpoint.analytics) {
             setAnalyticsLaunch({
               requestId: analyticsRequestSequence.current,
@@ -203,7 +244,7 @@ export function useAppController() {
   }, [deckRefreshLane]);
 
   useEffect(() => {
-    if (isLoading || section === "practice" || section === "study-guides") return;
+    if (isLoading || practiceWorkflow || section === "study-guides") return;
     const analytics =
       section === "analytics" && analyticsLaunch
         ? {
@@ -228,6 +269,7 @@ export function useAppController() {
     flashcardsRoute,
     flashcardsWorkspace,
     isLoading,
+    practiceWorkflow,
     section,
   ]);
 
@@ -237,7 +279,7 @@ export function useAppController() {
     let unlisten: (() => void) | undefined;
     void listenToLifecycle((snapshot) => {
       if (
-        section !== "practice" &&
+        !practiceWorkflow &&
         section !== "study-guides" &&
         (snapshot.phase === "background" ||
           snapshot.phase === "suspending" ||
@@ -271,10 +313,10 @@ export function useAppController() {
       disposed = true;
       unlisten?.();
     };
-  }, [flashcardsRoute, flashcardsWorkspace, isLoading, section]);
+  }, [flashcardsRoute, flashcardsWorkspace, isLoading, practiceWorkflow, section]);
 
   useEffect(() => {
-    if (section === "decks") return;
+    if (section === "decks" && !practiceWorkflow) return;
     return registerPlatformBackHandler(() => {
       void navigate("decks");
       return true;
@@ -284,6 +326,7 @@ export function useAppController() {
     hasUnsavedSettings,
     hasUnsavedTemplate,
     savedSettings,
+    practiceWorkflow,
     section,
   ]);
 
@@ -347,8 +390,8 @@ export function useAppController() {
     return confirmDiscardSettings();
   }
 
-  async function confirmPracticeTermination(next: AppSection): Promise<boolean> {
-    if (section !== "practice" || next === "practice" || !hasActivePracticeSession()) {
+  async function confirmPracticeTermination(): Promise<boolean> {
+    if (!practiceWorkflow || !hasActivePracticeSession()) {
       return true;
     }
     const accepted = await confirm({
@@ -369,30 +412,77 @@ export function useAppController() {
     return terminated;
   }
 
-  function nextPracticeRequest(
-    deckIds: string[],
-    tagIds: string[],
-    cardIds: string[],
-    autoStart: boolean,
-    mode: "scheduled" | "extra",
+  function capturePracticeReturnTarget(): PracticeReturnTarget {
+    if (section !== "decks") return { section };
+    if (flashcardsRoute.view === "deck") {
+      return {
+        section: "decks",
+        deckId: flashcardsRoute.deckId,
+        flashcardsWorkspace: "decks",
+      };
+    }
+    return { section: "decks", flashcardsWorkspace: flashcardsRoute.workspace };
+  }
+
+  function openPracticeWorkflow(
+    launchRequest: PracticeLaunchInput,
     returnTarget: PracticeReturnTarget | null,
   ): void {
     const requestId = practiceRequestSequence.current;
     practiceRequestSequence.current += 1;
-    setPracticeLaunch({ requestId, deckIds, tagIds, cardIds, autoStart, mode, returnTarget });
+    setPracticeWorkflow({
+      kind: "practice",
+      launchRequest: { ...launchRequest, requestId },
+      restoreCheckpoint: null,
+      returnTarget,
+    });
+  }
+
+  async function launchPractice(request: ContextualPracticeLaunchRequest): Promise<void> {
+    if (request.kind === "cards" && request.cardIds.length === 0) return;
+    if (!(await canLeaveCurrentSection())) return;
+    const returnTarget = capturePracticeReturnTarget();
+    if (request.kind === "deck") {
+      openPracticeWorkflow(
+        {
+          kind: "selected",
+          deckIds: [request.deckId],
+          tagIds: [],
+          autoStart: true,
+          mode: "extra",
+        },
+        returnTarget,
+      );
+      return;
+    }
+    if (request.kind === "scope") {
+      openPracticeWorkflow(
+        {
+          kind: "selected",
+          deckIds: request.deckIds,
+          tagIds: request.tagIds,
+          autoStart: true,
+          mode: "scheduled",
+        },
+        returnTarget,
+      );
+      return;
+    }
+    openPracticeWorkflow(
+      { kind: "cards", cardIds: request.cardIds, autoStart: true },
+      returnTarget,
+    );
   }
 
   async function navigate(next: AppSection): Promise<void> {
     const destination = normalizeDestination(next);
+    const leavingPracticeWorkflow = practiceWorkflow !== null;
+    if (!(await confirmPracticeTermination())) return;
     const alreadyAtNonFlashcardsRoot =
       destination.section === section && destination.section !== "decks";
-    if (alreadyAtNonFlashcardsRoot && destination.section !== "practice") return;
-    if (!(await confirmPracticeTermination(destination.section))) return;
+    if (alreadyAtNonFlashcardsRoot && !leavingPracticeWorkflow) return;
     if (!(await canLeaveCurrentSection())) return;
-    if (destination.section === "practice") {
-      setPracticeRestore(null);
-      nextPracticeRequest([], [], [], false, "scheduled", null);
-    }
+    if (leavingPracticeWorkflow) setPracticeWorkflow(null);
     if (destination.section === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
@@ -437,55 +527,20 @@ export function useAppController() {
     );
   }
 
-  async function practiceDeck(
-    deckId: string,
-    origin: "library" | "detail" = "library",
-  ): Promise<void> {
-    if (!(await canLeaveCurrentSection())) return;
-    setPracticeRestore(null);
-    nextPracticeRequest(
-      [deckId],
-      [],
-      [],
-      true,
-      "extra",
-      origin === "detail"
-        ? { section: "decks", deckId, flashcardsWorkspace: "decks" }
-        : { section: "decks", flashcardsWorkspace: "decks" },
-    );
-    setSection("practice");
+  function practiceDeck(deckId: string): Promise<void> {
+    return launchPractice({ kind: "deck", deckId });
   }
 
-  async function practiceScope(deckIds: string[], tagIds: string[]): Promise<void> {
-    if (!(await canLeaveCurrentSection())) return;
-    const returnTarget: PracticeReturnTarget | null =
-      section === "practice"
-        ? null
-        : {
-            section,
-            ...(section === "decks" ? { flashcardsWorkspace } : {}),
-          };
-    setPracticeRestore(null);
-    nextPracticeRequest(deckIds, tagIds, [], true, "scheduled", returnTarget);
-    setSection("practice");
+  function practiceScope(deckIds: string[], tagIds: string[]): Promise<void> {
+    return launchPractice({ kind: "scope", deckIds, tagIds });
   }
 
-  async function practiceCards(cardIds: string[]): Promise<void> {
-    if (cardIds.length === 0 || !(await canLeaveCurrentSection())) return;
-    const returnTarget: PracticeReturnTarget | null =
-      section === "practice"
-        ? null
-        : {
-            section,
-            ...(section === "decks" ? { flashcardsWorkspace } : {}),
-          };
-    setPracticeRestore(null);
-    nextPracticeRequest([], [], cardIds, true, "scheduled", returnTarget);
-    setSection("practice");
+  function practiceCards(cardIds: string[]): Promise<void> {
+    return launchPractice({ kind: "cards", cardIds });
   }
 
   function returnFromPractice(target: PracticeReturnTarget): void {
-    setPracticeRestore(null);
+    setPracticeWorkflow(null);
     const destination = normalizeDestination(target.section);
     const workspace =
       target.flashcardsWorkspace ?? destination.flashcardsWorkspace ?? "decks";
@@ -503,7 +558,7 @@ export function useAppController() {
   }
 
   function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
-    setPracticeRestore(null);
+    setPracticeWorkflow(null);
     const requestId = analyticsRequestSequence.current;
     analyticsRequestSequence.current += 1;
     setAnalyticsLaunch({
@@ -516,6 +571,12 @@ export function useAppController() {
     setSection("analytics");
   }
 
+  function clearPracticeReturnTarget(): void {
+    setPracticeWorkflow((current) =>
+      current ? { ...current, returnTarget: null } : current,
+    );
+  }
+
   function saveSettingsLocally(settings: AppSettings): void {
     const normalized = normalizeSettings(settings);
     setSavedSettings(normalized);
@@ -526,6 +587,8 @@ export function useAppController() {
 
   return {
     section,
+    activeWorkflow: practiceWorkflow?.kind ?? null,
+    practiceWorkflow,
     flashcardsRoute,
     flashcardsWorkspace,
     decks,
@@ -535,8 +598,6 @@ export function useAppController() {
     fatalError,
     toast,
     setToast,
-    practiceLaunch,
-    practiceRestore,
     deckOpenRequest,
     analyticsLaunch,
     showToast,
@@ -551,7 +612,9 @@ export function useAppController() {
     practiceDeck,
     practiceScope,
     practiceCards,
+    launchPractice,
     returnFromPractice,
+    clearPracticeReturnTarget,
     viewSessionAnalytics,
     setHasUnsavedCard,
     setHasUnsavedTemplate,

@@ -41,6 +41,16 @@ The direction is deliberate. Screens express user intent and render state. Contr
 
 `src/screens/` contains product workspaces such as Decks, Search/Filter, Study Guides, Analytics, Templates, Documents, and Settings. Study Guides is a visible feature route. Practice remains a separately rendered internal session workflow entered through typed contextual launch requests, so restoration, exit guards, completion, and return targets stay isolated from standing navigation. Screens compose domain controllers and shared UI primitives; they do not execute SQL, calculate authoritative schedules, or contact an AI provider.
 
+Visible destination state and active Practice state are separate frontend
+contracts. The application controller captures a logical launch origin (a
+Flashcards workspace or deck detail, Study Guides, Documents, or Analytics),
+normalizes deck requests to extra practice and selected deck/tag scopes to
+scheduled practice, and passes exact card IDs to the custom-session path.
+`PracticeController.start` is the single discriminated frontend start boundary;
+it delegates to the existing typed native commands without merging or
+reimplementing native scheduling policy. Consuming an asynchronous launch
+payload does not clear the workflow container or unmount the active screen.
+
 ### Controllers
 
 `src/controllers/` owns workflow-level behavior that is too stateful for a presentational component:
@@ -133,6 +143,12 @@ Released migrations and release fixtures are immutable evidence. Current code ad
 - operation and submission IDs make ambiguous retries idempotent;
 - session-card snapshots keep the practiced identity and cloze variant stable;
 - studyability is determined by archive, suspension, burial, and due rules before a timestamp is treated as ready.
+
+The device-local `ui-checkpoint-v1` compatibility representation still names
+Practice as a section and stores only resumable session identity/cursor state.
+The frontend projects a real saved session into its internal workflow at
+startup, but checkpoint-format, persisted return-target, lifecycle, and platform
+Back migration remain separate follow-up work.
 
 Local-calendar behavior is owned natively so “today,” “tomorrow,” and longer date windows respect time zones, daylight-saving transitions, leap days, and calendar semantics rather than fixed browser-duration arithmetic.
 

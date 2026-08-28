@@ -36,13 +36,25 @@ if (sources.applicationSections !== null) {
     parseApplicationSections(sources.applicationSections),
   );
 }
+if (sources.applicationWorkflows !== null) {
+  compareOrderedValues(
+    "application workflows",
+    contract.applicationWorkflows.map((entry) => entry.id),
+    parseApplicationWorkflows(sources.applicationWorkflows),
+  );
+}
 if (sources.applicationShell !== null) {
   compareOrderedValues(
     "rendered App shell destinations",
     contract.applicationSections
-      .filter((entry) => ["primary-destination", "internal-workflow"].includes(entry.role))
+      .filter((entry) => entry.role === "primary-destination")
       .map((entry) => entry.id),
     parseRenderedAppSections(sources.applicationShell),
+  );
+  compareOrderedValues(
+    "rendered App shell workflows",
+    contract.applicationWorkflows.map((entry) => entry.id),
+    parseRenderedAppWorkflows(sources.applicationShell),
   );
 }
 if (sources.primaryNavigation !== null) {
@@ -142,6 +154,7 @@ function validateContractShape(value) {
 
   const sourceKeys = [
     "applicationSections",
+    "applicationWorkflows",
     "applicationShell",
     "primaryNavigation",
     "compactNavigation",
@@ -163,6 +176,9 @@ function validateContractShape(value) {
   if (!Array.isArray(value.applicationSections)) {
     fail("applicationSections must be an array.");
   }
+  if (!Array.isArray(value.applicationWorkflows)) {
+    fail("applicationWorkflows must be an array.");
+  }
   if (!Array.isArray(value.primaryDestinations)) {
     fail("primaryDestinations must be an array.");
   }
@@ -178,6 +194,7 @@ function validateContractShape(value) {
   if (failures.length > 0) return;
 
   validateApplicationSections(value.applicationSections);
+  validateApplicationWorkflows(value.applicationWorkflows);
   validateProtectedWorkflowCatalog(value.protectedWorkflows);
   const protectedWorkflows = new Map(
     value.protectedWorkflows
@@ -201,6 +218,8 @@ function validateContractShape(value) {
 
   const applicationIds = value.applicationSections.map((entry) => entry.id);
   reportDuplicates("application section", applicationIds);
+  const workflowIds = value.applicationWorkflows.map((entry) => entry.id);
+  reportDuplicates("application workflow", workflowIds);
   const primaryIds = value.primaryDestinations.map((entry) => entry.section);
   reportDuplicates("primary destination", primaryIds);
   const workspaceIds = value.flashcardsWorkspaces.map((entry) => entry.id);
@@ -214,8 +233,7 @@ function validateContractShape(value) {
   compareSets("primary destination taxonomy", declaredPrimaryIds, primaryIds);
 
   validateProtectedWorkflowCoverage(
-    value.applicationSections,
-    value.primaryDestinations,
+    value.applicationWorkflows,
     value.protectedWorkflows,
   );
   validateCompactNavigation(value.compactNavigation, value.primaryDestinations);
@@ -269,9 +287,9 @@ function validateApplicationSections(entries) {
       fail(`${label}.id must be a non-empty route identifier.`);
       continue;
     }
-    if (!["primary-destination", "compatibility-alias", "internal-workflow"].includes(entry.role)) {
+    if (!["primary-destination", "compatibility-alias"].includes(entry.role)) {
       fail(
-        `${label}.role must be primary-destination, compatibility-alias, or internal-workflow.`,
+        `${label}.role must be primary-destination or compatibility-alias.`,
       );
     }
     if (entry.role === "compatibility-alias" && !isIdentifier(entry.target, true)) {
@@ -283,6 +301,19 @@ function validateApplicationSections(entries) {
   }
 }
 
+function validateApplicationWorkflows(entries) {
+  for (const [index, entry] of entries.entries()) {
+    const label = `applicationWorkflows[${index}]`;
+    if (!isRecord(entry) || !isIdentifier(entry.id)) {
+      fail(`${label}.id must be a non-empty workflow identifier.`);
+      continue;
+    }
+    if (!isIdentifier(entry.protectedWorkflow)) {
+      fail(`${label}.protectedWorkflow must name its protected smoke workflow.`);
+    }
+  }
+}
+
 function validateProtectedWorkflowCatalog(entries) {
   for (const [index, entry] of entries.entries()) {
     const label = `protected workflow ${isRecord(entry) ? entry.id : index}`;
@@ -290,8 +321,8 @@ function validateProtectedWorkflowCatalog(entries) {
       fail(`protectedWorkflows[${index}].id must be a non-empty workflow identifier.`);
       continue;
     }
-    if (!isIdentifier(entry.section)) {
-      fail(`${label}.section must be a non-empty application section identifier.`);
+    if (!isIdentifier(entry.workflow)) {
+      fail(`${label}.workflow must be a non-empty application workflow identifier.`);
     }
     if (typeof entry.label !== "string" || entry.label.trim() === "") {
       fail(`${label} must have a non-empty label.`);
@@ -326,9 +357,9 @@ function validateDestinationCatalog(
         fail(
           `${label} references undeclared protected workflow ${JSON.stringify(entry.smoke.protectedWorkflow)}.`,
         );
-      } else if (workflow.section !== entry[idKey]) {
+      } else if (workflow.workflow !== entry[idKey]) {
         fail(
-          `${label} references protected workflow ${workflow.id} for section ${workflow.section}.`,
+          `${label} references protected workflow ${workflow.id} for workflow ${workflow.workflow}.`,
         );
       }
       continue;
@@ -337,46 +368,30 @@ function validateDestinationCatalog(
   }
 }
 
-function validateProtectedWorkflowCoverage(applicationSections, primaryDestinations, workflows) {
-  const applicationById = new Map(applicationSections.map((entry) => [entry.id, entry]));
-  const primaryBySection = new Map(
-    primaryDestinations.map((entry) => [entry.section, entry]),
+function validateProtectedWorkflowCoverage(applicationWorkflows, protectedWorkflows) {
+  const protectedById = new Map(
+    protectedWorkflows.map((workflow) => [workflow.id, workflow]),
   );
-  const workflowsBySection = new Map();
+  const applicationById = new Map(
+    applicationWorkflows.map((workflow) => [workflow.id, workflow]),
+  );
 
-  for (const workflow of workflows) {
-    const section = applicationById.get(workflow.section);
-    if (!section) {
-      fail(`protected workflow ${workflow.id} references unknown section ${workflow.section}.`);
-      continue;
-    }
-    if (!["primary-destination", "internal-workflow"].includes(section.role)) {
+  for (const applicationWorkflow of applicationWorkflows) {
+    const protectedWorkflow = protectedById.get(applicationWorkflow.protectedWorkflow);
+    if (!protectedWorkflow) {
+      fail(`internal workflow ${applicationWorkflow.id} is missing protected smoke coverage.`);
+    } else if (protectedWorkflow.workflow !== applicationWorkflow.id) {
       fail(
-        `protected workflow ${workflow.id} must reference a primary or internal workflow section; ${workflow.section} is ${section.role}.`,
+        `internal workflow ${applicationWorkflow.id} references protected workflow ${protectedWorkflow.id} for ${protectedWorkflow.workflow}.`,
       );
-    }
-    const existing = workflowsBySection.get(workflow.section) ?? [];
-    existing.push(workflow);
-    workflowsBySection.set(workflow.section, existing);
-
-    if (section.role === "primary-destination") {
-      const primary = primaryBySection.get(workflow.section);
-      if (
-        !primary ||
-        !isProtectedWorkflowReference(primary.smoke) ||
-        primary.smoke.protectedWorkflow !== workflow.id
-      ) {
-        fail(
-          `primary destination ${workflow.section} must reference protected workflow ${workflow.id}.`,
-        );
-      }
     }
   }
 
-  for (const section of applicationSections) {
-    if (section.role !== "internal-workflow") continue;
-    if (!workflowsBySection.has(section.id)) {
-      fail(`internal workflow ${section.id} is missing protected smoke coverage.`);
+  for (const protectedWorkflow of protectedWorkflows) {
+    if (!applicationById.has(protectedWorkflow.workflow)) {
+      fail(
+        `protected workflow ${protectedWorkflow.id} references unknown application workflow ${protectedWorkflow.workflow}.`,
+      );
     }
   }
 }
@@ -599,14 +614,35 @@ function parseApplicationSections(source) {
   return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
 }
 
+function parseApplicationWorkflows(source) {
+  const match = source.match(/export\s+type\s+AppWorkflow\s*=([\s\S]*?);/u);
+  if (!match) {
+    fail("Could not parse export type AppWorkflow from its authoritative source.");
+    return [];
+  }
+  return [...match[1].matchAll(/"([^"]+)"/gu)].map((entry) => entry[1]);
+}
+
 function parseRenderedAppSections(source) {
   const sections = [
-    ...source.matchAll(/\{controller\.section\s*===\s*"([^"]+)"\s*\?\s*\(/gu),
+    ...source.matchAll(
+      /(?:\{|:\s*)controller\.section\s*===\s*"([^"]+)"\s*\?\s*\(/gu,
+    ),
   ].map((entry) => entry[1]);
   if (sections.length === 0) {
     fail("Could not parse rendered destination branches from src/App.tsx.");
   }
   return sections;
+}
+
+function parseRenderedAppWorkflows(source) {
+  const workflows = [
+    ...source.matchAll(/\{controller\.activeWorkflow\s*===\s*"([^"]+)"\s*\?\s*\(/gu),
+  ].map((entry) => entry[1]);
+  if (workflows.length === 0) {
+    fail("Could not parse rendered workflow branches from src/App.tsx.");
+  }
+  return workflows;
 }
 
 function parseNativeSmokeEntrypoints(source) {
@@ -786,6 +822,7 @@ function finish() {
   const presenceCount = smokeEntries.length - routeEntryCount;
   console.log(
     `OK   Expected route/smoke inventory matches ${contract.applicationSections.length} application sections, ` +
+      `${contract.applicationWorkflows.length} application workflow, ` +
       `${contract.primaryDestinations.length} primary destinations, and ` +
       `${contract.flashcardsWorkspaces.length} Flashcards workspaces ` +
       `(${routeEntryCount} route-entry; ${presenceCount} presence-only), with ` +

@@ -23,7 +23,7 @@ interface FlashcardsWorkspaceProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  onPracticeDeck: (deckId: string) => void | Promise<void>;
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (deckId: string) => void;
   onReturnToLibrary: () => void;

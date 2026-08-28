@@ -47,6 +47,9 @@ vi.mock("../ipc/practice", () => ({
 vi.mock("../ipc/scheduling", () => ({
   applyScheduleAction: vi.fn(),
 }));
+vi.mock("../ipc/uiCheckpoint", () => ({
+  saveUiCheckpoint: vi.fn().mockResolvedValue(undefined),
+}));
 
 const deck: decksIpc.DeckSummary = {
   id: "a".repeat(32),
@@ -181,6 +184,8 @@ function renderPractice(overrides?: Partial<React.ComponentProps<typeof Practice
     settings,
     launchRequest: null,
     onLaunchConsumed: vi.fn(),
+    returnTarget: null,
+    onClearReturnTarget: vi.fn(),
     onViewAnalytics: vi.fn(),
     onEndEarly: vi.fn(),
     showToast: vi.fn(),
@@ -324,18 +329,30 @@ describe("PracticeScreen", () => {
     expect(onViewAnalytics).toHaveBeenCalledWith(session.id, [deck.id]);
   });
 
+  it("clears a contextual return target when completion returns to setup", async () => {
+    const onClearReturnTarget = vi.fn();
+    renderPractice({
+      returnTarget: { section: "analytics" },
+      onClearReturnTarget,
+    });
+    await startAndReveal();
+    fireEvent.click(await screen.findByRole("button", { name: /1 Hard/u }));
+    fireEvent.click(await screen.findByRole("button", { name: "Back to practice" }));
+
+    expect(onClearReturnTarget).toHaveBeenCalledOnce();
+    expect(await screen.findByRole("heading", { name: "Practice" })).toBeTruthy();
+  });
+
   it("starts filtered cards as a custom session", async () => {
     const onLaunchConsumed = vi.fn();
     renderPractice({
       launchRequest: {
         requestId: 8,
-        deckIds: [],
-        tagIds: [],
+        kind: "cards",
         cardIds: [card.cardId],
         autoStart: true,
-        mode: "scheduled",
-        returnTarget: { section: "cards" },
       },
+      returnTarget: { section: "cards" },
       onLaunchConsumed,
     });
     await waitFor(() => {
@@ -352,13 +369,13 @@ describe("PracticeScreen", () => {
     renderPractice({
       launchRequest: {
         requestId: 9,
+        kind: "selected",
         deckIds: [deck.id],
         tagIds: [],
-        cardIds: [],
         autoStart: true,
         mode: "extra",
-        returnTarget: { section: "decks", deckId: deck.id },
       },
+      returnTarget: { section: "decks", deckId: deck.id },
     });
     await waitFor(() =>
       expect(practiceIpc.startSelectedPractice).toHaveBeenCalledWith({
@@ -377,13 +394,13 @@ describe("PracticeScreen", () => {
     renderPractice({
       launchRequest: {
         requestId: 10,
+        kind: "selected",
         deckIds: [deck.id],
         tagIds: [],
-        cardIds: [],
         autoStart: true,
         mode: "extra",
-        returnTarget,
       },
+      returnTarget,
       onEndEarly,
     });
     fireEvent.click(await screen.findByRole("button", { name: "End session" }));

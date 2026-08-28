@@ -26,7 +26,7 @@ interface DecksScreenProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  onPracticeDeck: (deckId: string) => void | Promise<void>;
   openDeckRequest?: DeckOpenRequest | null;
   onOpenDeckRequestConsumed?: () => void;
   onManageTemplates?: () => void | Promise<void>;
@@ -430,7 +430,7 @@ export function DecksScreen({
                       {!archived ? (
                         <button
                           type="button"
-                          onClick={() => void onPracticeDeck(deck.id, "library")}
+                          onClick={() => void onPracticeDeck(deck.id)}
                           disabled={deck.generatedCardCount === 0}
                           title={practiceTitle(deck)}
                         >
@@ -552,7 +552,7 @@ export function DecksScreen({
                 <button
                   type="button"
                   className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                  onClick={() => void onPracticeDeck(selectedDeck.id, "detail")}
+                  onClick={() => void onPracticeDeck(selectedDeck.id)}
                   disabled={selectedDeck.generatedCardCount === 0}
                   title={practiceTitle(selectedDeck)}
                 >

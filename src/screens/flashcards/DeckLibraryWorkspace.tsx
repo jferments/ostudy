@@ -14,7 +14,7 @@ interface DeckLibraryWorkspaceProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  onPracticeDeck: (deckId: string) => void | Promise<void>;
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (deckId: string) => void;
   onReturnToLibrary: () => void;
@@ -74,7 +74,7 @@ export function DeckLibraryWorkspace({
     <PerformanceProfiler id="deck-library">
       <DeckLibraryRoot
         controller={controller}
-        onPracticeDeck={(deckId) => onPracticeDeck(deckId, "library")}
+        onPracticeDeck={onPracticeDeck}
       />
     </PerformanceProfiler>
   );

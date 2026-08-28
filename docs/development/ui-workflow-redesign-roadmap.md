@@ -61,7 +61,7 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 
 - [x] Add a first-class `study-guides` application section immediately below Flashcards in wide, medium, and compact navigation. (Stage 2A)
 - [x] Remove the top-level Practice navigation item and normalize compact-navigation primary/More groupings. (Stage 2A)
-- [ ] Split the old Practice destination into an internal active-session state plus launch surfaces owned by Flashcards, Search, Study Guides, and Analytics.
+- [x] Split the old Practice destination into an internal active-session state plus launch surfaces owned by Flashcards, Search, Study Guides, and Analytics. (Stage 2B)
 - [ ] Migrate saved UI checkpoints: resumable sessions reopen internally; setup-only Practice checkpoints return to Flashcards.
 - [ ] Preserve platform back behavior, active-session exit guards, lifecycle checkpoints, and return targets after the route change.
 - [ ] Replace the CSS-drawn brand mark with the supplied transparent raccoon mascot asset, with correctly generated desktop/mobile sizes and no baked background.
@@ -73,11 +73,14 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [ ] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop.
 - [ ] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage.
 
-Stage 2A is limited to the navigation checkpoint above. It reuses the existing
-study-guide library behind a thin route and retains Practice as an internal
-rendered workflow. Active-session ownership, checkpoint migration, return and
-lifecycle behavior, branding, fonts, window controls, and viewport work remain
-pending in the unchecked items.
+Stage 2B separates visible destination state from the in-memory Practice
+workflow, centralizes deck, exact-card, guide-topic, and Analytics launches, and
+keeps direct active-session rendering, exit guarding, and logical transient
+return targets explicit. It does not change `ui-checkpoint-v1`: checkpoint
+migration, platform Back/lifecycle semantics, and persisted return-target work
+remain Stage 2C items in the unchecked checkpoint/Back line items. Branding,
+fonts, window controls, viewport work, and the Stage 3 practice-setup relocation
+also remain pending.
 
 ## Stage 3 — Deck selection and practice setup relocation
 

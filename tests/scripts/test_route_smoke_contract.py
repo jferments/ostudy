@@ -56,6 +56,7 @@ class RouteSmokeContractTests(unittest.TestCase):
         completed = self.run_verifier(ROOT)
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("7 application sections, 1 application workflow", completed.stdout)
         self.assertIn("7 route-entry; 2 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
         self.assertIn("3 compact primary / 2 More destinations", completed.stdout)
@@ -237,7 +238,7 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.copy_fixture(fixture)
             app = fixture / "src/App.tsx"
             source = app.read_text(encoding="utf-8")
-            rendered_branch = '{controller.section === "practice" ? ('
+            rendered_branch = '{controller.activeWorkflow === "practice" ? ('
             self.assertIn(rendered_branch, source)
             app.write_text(
                 source.replace(rendered_branch, "{false ? (", 1),
@@ -247,7 +248,7 @@ class RouteSmokeContractTests(unittest.TestCase):
             completed = self.run_verifier(fixture)
 
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("rendered App shell destinations drifted", completed.stderr)
+            self.assertIn("rendered App shell workflows drifted", completed.stderr)
             self.assertIn("practice", completed.stderr)
 
     def test_presence_evidence_cannot_be_reclassified_as_route_entry(self) -> None:

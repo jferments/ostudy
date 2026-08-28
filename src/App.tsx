@@ -41,6 +41,8 @@ const SettingsScreen = lazy(() =>
 export type {
   AnalyticsLaunchRequest,
   AppSection,
+  AppWorkflow,
+  ContextualPracticeLaunchRequest,
   DeckOpenRequest,
   PracticeLaunchRequest,
   PracticeReturnTarget,
@@ -76,20 +78,43 @@ function App() {
                   refreshDecks={controller.refreshDecks}
                   showToast={controller.showToast}
                 />
-                <MobileAppBar section={controller.section} />
+                <MobileAppBar
+                  section={controller.section}
+                  activeWorkflow={controller.activeWorkflow}
+                />
                 <PerformanceProfiler id="navigation">
-                  <NavigationSidebar section={controller.section} onNavigate={controller.navigate} />
+                  <NavigationSidebar
+                    section={controller.section}
+                    activeWorkflow={controller.activeWorkflow}
+                    onNavigate={controller.navigate}
+                  />
                 </PerformanceProfiler>
 
                 <main className={shellStyles.main}>
                   <RouteTransition
-                    routeKey={controller.section}
+                    routeKey={controller.activeWorkflow ?? controller.section}
                     relation="sibling"
                     className={shellStyles.routeLayer}
                   >
                     <AppErrorBoundary>
                       <Suspense fallback={<LoadingState label="Opening section…" />}>
-                        {controller.section === "decks" ? (
+                        {controller.activeWorkflow === "practice" ? (
+                          <PracticeScreen
+                            decks={controller.decks}
+                            settings={controller.activeSettings}
+                            launchRequest={controller.practiceWorkflow?.launchRequest ?? null}
+                            onLaunchConsumed={controller.consumePracticeLaunch}
+                            restoreCheckpoint={
+                              controller.practiceWorkflow?.restoreCheckpoint ?? null
+                            }
+                            onRestoreConsumed={controller.consumePracticeRestore}
+                            returnTarget={controller.practiceWorkflow?.returnTarget ?? null}
+                            onClearReturnTarget={controller.clearPracticeReturnTarget}
+                            onViewAnalytics={controller.viewSessionAnalytics}
+                            onEndEarly={controller.returnFromPractice}
+                            showToast={controller.showToast}
+                          />
+                        ) : controller.section === "decks" ? (
                           <FlashcardsWorkspace
                             workspace={controller.flashcardsWorkspace}
                             navigationKey={controller.flashcardsRoute.requestId}
@@ -106,14 +131,12 @@ function App() {
                             onTemplateDirtyChange={controller.setHasUnsavedTemplate}
                             showToast={controller.showToast}
                           />
-                        ) : null}
-                        {controller.section === "study-guides" ? (
+                        ) : controller.section === "study-guides" ? (
                           <StudyGuidesRoute
                             showToast={controller.showToast}
                             onPracticeCards={controller.practiceCards}
                           />
-                        ) : null}
-                        {controller.section === "documents" ? (
+                        ) : controller.section === "documents" ? (
                           <PerformanceProfiler id="documents">
                             <DocumentsSection
                               refreshDecks={controller.refreshDecks}
@@ -121,21 +144,7 @@ function App() {
                               showToast={controller.showToast}
                             />
                           </PerformanceProfiler>
-                        ) : null}
-                        {controller.section === "practice" ? (
-                          <PracticeScreen
-                            decks={controller.decks}
-                            settings={controller.activeSettings}
-                            launchRequest={controller.practiceLaunch}
-                            onLaunchConsumed={controller.consumePracticeLaunch}
-                            restoreCheckpoint={controller.practiceRestore}
-                            onRestoreConsumed={controller.consumePracticeRestore}
-                            onViewAnalytics={controller.viewSessionAnalytics}
-                            onEndEarly={controller.returnFromPractice}
-                            showToast={controller.showToast}
-                          />
-                        ) : null}
-                        {controller.section === "analytics" ? (
+                        ) : controller.section === "analytics" ? (
                           <AnalyticsScreen
                             decks={controller.decks}
                             settings={controller.activeSettings}
@@ -144,8 +153,7 @@ function App() {
                             onPracticeScope={controller.practiceScope}
                             showToast={controller.showToast}
                           />
-                        ) : null}
-                        {controller.section === "settings" ? (
+                        ) : controller.section === "settings" ? (
                           <SettingsScreen
                             settings={controller.savedSettings}
                             onPreviewSettings={controller.setActiveSettings}

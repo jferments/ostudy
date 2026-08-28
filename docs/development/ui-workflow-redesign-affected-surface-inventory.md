@@ -34,21 +34,51 @@ including resumable-versus-setup-only behavior, remain pending. The Stage 0
 tables below preserve the original affected-surface baseline; this delta is the
 maintained description of the implemented navigation checkpoint.
 
+## Stage 2B active-session delta
+
+Stage 2B removes `practice` from `AppSection` and represents it with a separate
+typed `AppWorkflow`. The visible section remains the contextual launch origin,
+while `PracticeWorkflowState` owns the launch or restore payload and a logical
+transient return target. App renders the workflow directly, the shell labels it
+Practice, and no visible primary destination is selected while it is active.
+
+Deck, selected deck/tag scope, and exact-card requests converge in
+`useAppController`; scheduling-mode policy is normalized there before
+`PracticeScreen` dispatches the resulting discriminated request through the
+single `PracticeController.start` boundary. That dispatcher retains the two
+existing typed native gateways: selected scopes use
+`start_selected_practice`, while exact card IDs use `start_card_practice`.
+Rust scheduling, review, session, and database ownership are unchanged.
+
+`ui-checkpoint-v1`, its `section = "practice"` compatibility representation,
+startup restoration rules, lifecycle saves, and platform Back behavior are not
+migrated in Stage 2B. A real saved session is projected into the in-memory
+workflow; a setup-only Practice checkpoint continues to return to Flashcards.
+Stage 2C still owns format migration, persisted return-target migration, and
+the final Back/lifecycle normalization. Stage 3 still owns setup relocation,
+multi-deck selection, and removal of the retained setup/recent/guide
+composition.
+
 ## Route and navigation topology
 
-The application route vocabulary is owned by `AppSection` and normalization in `src/controllers/useAppController.ts`. Rendering is selected in `src/App.tsx`; primary navigation is declared in `src/components/NavigationSidebar.tsx`; compact titles are mirrored in `src/components/MobileAppBar.tsx`. These lists must change together with the route/smoke contract.
+Visible destination vocabulary is owned by `AppSection`; protected workflow
+vocabulary is owned separately by `AppWorkflow`. Normalization and transient
+workflow state live in `src/controllers/useAppController.ts`. Rendering is
+selected in `src/App.tsx`; primary navigation is declared in
+`src/components/NavigationSidebar.tsx`; compact titles are mirrored in
+`src/components/MobileAppBar.tsx`. These lists must change together with the
+route/smoke contract.
 
 | Surface | Current repository path and owner | Current authority and checkpoint behavior | Compatibility concern | Roadmap consumer |
 | --- | --- | --- | --- | --- |
 | Flashcards | `src/controllers/useAppController.ts`, `src/App.tsx`, `src/components/NavigationSidebar.tsx` | `section = "decks"` is a primary destination and owns the `FlashcardsRoute` state. | Remains the first primary destination and becomes the fallback for setup-only old Practice checkpoints. | Stages 2–5 |
 | Documents | `src/App.tsx`, `src/screens/DocumentsSection.tsx`, `src/screens/DocumentsScreen.tsx` | `section = "documents"` is a primary destination. | Route remains primary while archive semantics and action density change; document actions later route into Study Guides. | Stages 1, 2, 6–9 |
-| Practice | `src/controllers/useAppController.ts`, `src/App.tsx`, `src/screens/PracticeScreen.tsx` | `section = "practice"` is currently both a primary destination and the active-session container. `PracticeLaunchRequest`, `PracticeCheckpoint`, and `PracticeReturnTarget` carry internal launch/restore state. | Stage 2 removes only the standing navigation destination. A real resumable session must remain an internal application state; setup-only checkpoints normalize to Flashcards. Exit guards and return targets must survive. | Stages 2, 3, 5 |
+| Practice | `src/controllers/useAppController.ts`, `src/controllers/practiceController.ts`, `src/App.tsx`, `src/screens/PracticeScreen.tsx` | `AppWorkflow = "practice"` and `PracticeWorkflowState` own the internal launch/restore container and transient return target independently of the visible `section`. One discriminated controller start boundary retains the existing selected-scope and exact-card native gateways. | `ui-checkpoint-v1` still writes `section = "practice"`; Stage 2C must migrate that persisted representation and Back/lifecycle semantics without rewriting active-session ownership. Stage 3 relocates setup. | Stages 2, 3, 5 |
 | Analytics | `src/App.tsx`, `src/screens/AnalyticsScreen.tsx`, `src/controllers/analyticsController.ts` | `section = "analytics"` is a primary destination. `AnalyticsLaunchRequest` can carry range, deck/tag filters, and highlighted session. | Receives workload/recent-practice material and must launch Search with a typed tag-filter request without duplicating native analytics or scheduling rules. | Stage 5 |
 | Settings | `src/App.tsx`, `src/screens/SettingsScreen.tsx` | `section = "settings"` is a primary destination; the screen owns settings draft/preview/save state and composes the AI-profile controller. | Navigation order changes; font, window, and per-model reasoning work must preserve dirty-state guards and platform/security boundaries. | Stages 2, 9, 11 |
 | Cards alias | `src/controllers/useAppController.ts` (`AppSection`, `normalizeDestination`) | `"cards"` is a compatibility alias normalized to `decks/search`; it is not rendered as a primary destination. | Preserve callers/checkpoints until they are deliberately migrated; do not add a second Search route. | Stages 2, 3, 5 |
 | Templates alias | `src/controllers/useAppController.ts` (`AppSection`, `normalizeDestination`) | `"templates"` is a compatibility alias normalized to `decks/templates`; it is not rendered as a primary destination. | Preserve callers/checkpoints and unsaved-template guarding while navigation changes. | Stages 2, 10 |
-| Study Guides today | `src/screens/PracticeScreen.tsx`, `src/screens/StudyGuideLibrarySection.tsx`, `src/screens/StudyGuideDialog.tsx` | The library is composed inside the Practice setup destination and the selected guide opens in a dialog. There is no `study-guides` `AppSection`, lazy screen, checkpoint value, or navigation item. | Do not describe Study Guides as an existing route. Existing library, reader, overlay, topic-practice, regeneration, and export state must move without loss. | Stages 2, 8, 9 |
-| Study Guides future | Future application section consumed by `src/controllers/useAppController.ts`, `src/App.tsx`, `src/components/NavigationSidebar.tsx`, `src/components/MobileAppBar.tsx`, and `scripts/route-smoke-contract.json` | Not implemented at this checkpoint. ADR 0049 orders it immediately after Flashcards. | Add route/controller/checkpoint/back behavior and executable route smoke before removing the old Practice entry. | Stages 2, 8, 13 |
+| Study Guides | `src/screens/StudyGuidesRoute.tsx`, `src/screens/StudyGuideLibrarySection.tsx`, `src/screens/StudyGuideDialog.tsx` | `section = "study-guides"` is a visible destination. Topic-linked card IDs launch the internal Practice workflow and return to Study Guides. The retained guide library also remains composed in Practice setup until Stage 8. | Stage 8 still owns route-scoped library/reader/deletion architecture and removal of the legacy nested composition. Generic checkpoints omit Study Guides until that route contract is deliberately added. | Stages 2, 8, 9 |
 
 ### Flashcards nested routes
 
@@ -66,7 +96,7 @@ The application route vocabulary is owned by `AppSection` and normalization in `
 
 | Workflow | Current React/controller boundary | Authoritative state and mutation/read policy | Compatibility concern | Roadmap consumer |
 | --- | --- | --- | --- | --- |
-| Application navigation and checkpoints | `src/controllers/useAppController.ts`; shell in `src/App.tsx`; back adapter in `src/platform/backNavigation.ts` | Controller owns `section`, `FlashcardsRoute`, launch request IDs, return targets, dirty guards, checkpoint reads/writes, lifecycle saves, and top-level Back. `deckRefreshLane` prevents obsolete deck reads from replacing current state. | Practice becomes internal, Study Guides becomes primary, and old checkpoints need explicit normalization. Do not let stale reads overwrite route state or treat a failed checkpoint save as a failed durable study mutation. | Stage 2 |
+| Application navigation and checkpoints | `src/controllers/useAppController.ts`; shell in `src/App.tsx`; back adapter in `src/platform/backNavigation.ts` | Controller owns visible `section`, internal `practiceWorkflow`, `FlashcardsRoute`, launch request IDs, logical return targets, dirty guards, checkpoint reads/writes, lifecycle saves, and top-level Back. `deckRefreshLane` prevents obsolete deck reads from replacing current state. | Stage 2C must migrate the persisted Practice checkpoint/return and Back/lifecycle contracts. Do not let stale reads overwrite route state or treat a failed checkpoint save as a failed durable study mutation. | Stage 2 |
 | Deck library and movement | `src/screens/flashcards/DeckLibraryWorkspace.tsx`; current controller `src/screens/flashcards/deck-library/useDeckLibraryController.ts`; reorder adapter `useDeckLibraryReorder.ts`; pure policy `organizationModel.ts`; types in `types.ts` | Rust/SQLite own deck/folder organization and revisions. The controller owns loading, mutation busy state, sheets, collapsed folders, announcements, archive visibility, and reconciliation. Every pointer/keyboard/fallback move becomes `LibraryMoveIntent`; pointer preview is not durable. | Stage 3 must add selection as separate state from open row, folder state, and drag/reorder. Stage 4 must retain one intent/policy and optimistic organization revision checks. A committed move remains successful if refresh fails. | Stages 3, 4 |
 | Deck detail | `src/screens/DeckScreen.tsx`, `src/controllers/decksController.ts`, `src/controllers/cardsController.ts`, `src/controllers/cardEditorController.ts` | Controllers own latest-result lanes for domain reads; Rust owns deck/card mutations and revisions. | Header/action redesign must preserve direct practice, export, archive/delete, authoring, Back, and committed-versus-reconciled reporting. | Stages 3, 5, 6, 10 |
 | Search/card browser | `src/screens/cards/CardBrowserWorkspace.tsx`, `src/screens/cards/CardFilters.tsx`, `src/controllers/cardsController.ts` | Controller/Rust own bounded searches, list-matching selection resolution, card mutations, and independent request lanes; screen owns filter and selection presentation. `CardPresentation` remains the study/search transport. | Preserve card-ID practice and add a typed Analytics-to-Search tag launch without making React authoritative for query semantics. New rich nodes must render/search safely. | Stages 3, 5, 10 |

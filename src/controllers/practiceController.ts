@@ -30,6 +30,10 @@ import {
 } from "../ipc/scheduling";
 import { latestResult, RequestLane } from "./requestLane";
 
+export type PracticeStartRequest =
+  | ({ kind: "selected" } & StartPracticeInput)
+  | ({ kind: "cards" } & StartCardPracticeInput);
+
 export class PracticeController {
   readonly #workload = new RequestLane();
   readonly #window = new RequestLane();
@@ -51,12 +55,13 @@ export class PracticeController {
     return latestResult(this.#recent, getRecentPracticeReviews);
   }
 
-  startSelected(input: StartPracticeInput): Promise<PracticeSession> {
+  start(request: PracticeStartRequest): Promise<PracticeSession> {
+    if (request.kind === "cards") {
+      const { kind: _kind, ...input } = request;
+      return startCardPractice(input);
+    }
+    const { kind: _kind, ...input } = request;
     return startSelectedPractice(input);
-  }
-
-  startCards(input: StartCardPracticeInput): Promise<PracticeSession> {
-    return startCardPractice(input);
   }
 
   resume(sessionId: string): Promise<ResumedPracticeSession> {

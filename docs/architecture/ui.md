@@ -138,6 +138,15 @@ entered through contextual study actions; it is not a standing navigation
 destination and therefore does not select an unrelated visible destination
 while a session is active.
 
+The application controller keeps that workflow separate from the visible
+destination. It captures logical Flashcards root/Search/deck-detail or explicit
+Study Guides/Documents/Analytics return identity, reconstructs Flashcards routes
+with fresh transition request IDs, and runs the Practice exit guard before
+same-destination navigation short-circuits. The mobile app bar may label the
+active workflow **Practice**, while primary and More navigation remain
+unselected. Shared navigation components receive only typed shell state; they
+do not own launch or scheduling policy.
+
 Compact navigation is a deterministic partition of the same visible catalog.
 **Flashcards**, **Study Guides**, and **Analytics** are direct destinations;
 **Documents** and **Settings** appear exactly once in **More**. The direct and

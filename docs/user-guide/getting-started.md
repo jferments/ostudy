@@ -81,6 +81,11 @@ See [Backups, imports, and sharing](backups-imports-and-sharing.md) for the exac
 
 Practice is an internal study workflow rather than a standing navigation destination. Start it from an existing contextual action such as **Practice** on a deck, **Practice selected** in Search, a topic-level Practice action, or **Study linked cards** in Study Guides. When the retained Practice setup view is open, it restores your last manually chosen deck scope when those decks are still eligible; that setup choice is device-local presentation state rather than learner history.
 
+While a session is active, the compact app bar identifies **Practice** but no
+primary destination is selected. Deck detail, Search, Study Guides, Documents,
+and Analytics launches retain their logical origin so ending early can return
+to the right context.
+
 The workload panel is authoritative for the current selection. While it is loading, unavailable, or has no selected scope, ostudy shows that state explicitly instead of displaying made-up zeroes. A real loaded workload of zero remains a real zero. The exact same deck/tag scope used to calculate the workload is passed to **Start scheduled practice**.
 
 Change the deck checkboxes when you want a different scope. The workload statistics show the scheduled reviews, new cards, currently ready cards, and priority material for that scope. Scheduled practice applies your daily new-card and review limits and prioritizes cards according to the current schedule.

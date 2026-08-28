@@ -51,6 +51,8 @@ interface PracticeScreenProps {
   onLaunchConsumed: () => void;
   restoreCheckpoint?: PracticeCheckpoint | null;
   onRestoreConsumed?: () => void;
+  returnTarget: PracticeReturnTarget | null;
+  onClearReturnTarget: () => void;
   onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
   onEndEarly: (target: PracticeReturnTarget) => void;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
@@ -79,6 +81,8 @@ export function PracticeScreen({
   onLaunchConsumed,
   restoreCheckpoint = null,
   onRestoreConsumed = NOOP,
+  returnTarget,
+  onClearReturnTarget,
   onViewAnalytics,
   onEndEarly,
   showToast,
@@ -109,7 +113,6 @@ export function PracticeScreen({
   const [ratedCount, setRatedCount] = useState(0);
   const [confidenceCounts, setConfidenceCounts] = useState<ConfidenceCounts>([0, 0, 0, 0]);
   const [recentDecks, setRecentDecks] = useState<RecentDeckSummary[]>([]);
-  const [returnTarget, setReturnTarget] = useState<PracticeReturnTarget | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const startingRef = useRef(false);
@@ -207,7 +210,8 @@ export function PracticeScreen({
       setErrorMessage(null);
       try {
         initializeSession(
-          await controller.startSelected({
+          await controller.start({
+            kind: "selected",
             operationId,
             deckIds,
             tagIds,
@@ -239,7 +243,12 @@ export function PracticeScreen({
       setErrorMessage(null);
       try {
         initializeSession(
-          await controller.startCards({ operationId, cardIds, shuffle: requestedShuffle }),
+          await controller.start({
+            kind: "cards",
+            operationId,
+            cardIds,
+            shuffle: requestedShuffle,
+          }),
         );
       } catch (error: unknown) {
         setSession(null);
@@ -325,13 +334,12 @@ export function PracticeScreen({
     handledLaunchRequestRef.current = launchRequest.requestId;
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
-    setReturnTarget(launchRequest.returnTarget);
     setSession(null);
     setSessionCards([]);
     setSessionWindowStart(0);
     setCompleted(false);
     setErrorMessage(null);
-    if (launchRequest.cardIds.length > 0) {
+    if (launchRequest.kind === "cards") {
       setSelectedDeckIds(new Set());
       setSelectedTagIds(new Set());
       setTemporaryCardIds(launchRequest.cardIds);
@@ -371,7 +379,6 @@ export function PracticeScreen({
     onRestoreConsumed();
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
-    setReturnTarget(null);
     setErrorMessage(null);
     setIsStarting(true);
     void controller
@@ -679,7 +686,7 @@ export function PracticeScreen({
     setConfidenceCounts([0, 0, 0, 0]);
     setTemporaryCardIds([]);
     setEditingCard(null);
-    setReturnTarget(null);
+    onClearReturnTarget();
     setSelectedTagIds(new Set());
     setErrorMessage(null);
     void saveUiCheckpoint({ section: "practice" });

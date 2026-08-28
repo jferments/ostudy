@@ -3,6 +3,7 @@
   "contractRole": "expected-inventory-only",
   "authoritativeSources": {
     "applicationSections": "src/controllers/useAppController.ts",
+    "applicationWorkflows": "src/controllers/useAppController.ts",
     "applicationShell": "src/App.tsx",
     "primaryNavigation": "src/components/NavigationSidebar.tsx",
     "compactNavigation": "src/components/NavigationSidebar.tsx",
@@ -35,16 +36,18 @@
       "target": "decks/templates"
     },
     {
-      "id": "practice",
-      "role": "internal-workflow"
-    },
-    {
       "id": "analytics",
       "role": "primary-destination"
     },
     {
       "id": "settings",
       "role": "primary-destination"
+    }
+  ],
+  "applicationWorkflows": [
+    {
+      "id": "practice",
+      "protectedWorkflow": "active-practice"
     }
   ],
   "primaryDestinations": [
@@ -176,7 +179,7 @@
   "protectedWorkflows": [
     {
       "id": "active-practice",
-      "section": "practice",
+      "workflow": "practice",
       "label": "Active practice",
       "smoke": {
         "coverage": "route-entry",

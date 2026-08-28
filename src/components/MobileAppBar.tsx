@@ -1,4 +1,4 @@
-import type { AppSection } from "../controllers/useAppController";
+import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { BrandLockup } from "./Brand";
 import styles from "./MobileAppBar.module.css";
 
@@ -8,13 +8,18 @@ const TITLES: Record<AppSection, string> = {
   documents: "Documents",
   cards: "Search",
   templates: "Templates",
-  practice: "Practice",
   analytics: "Analytics",
   settings: "Settings",
 };
 
-export function MobileAppBar({ section }: { section: AppSection }) {
-  const title = section === "decks" ? null : TITLES[section];
+export function MobileAppBar({
+  section,
+  activeWorkflow,
+}: {
+  section: AppSection;
+  activeWorkflow: AppWorkflow | null;
+}) {
+  const title = activeWorkflow === "practice" ? "Practice" : section === "decks" ? null : TITLES[section];
   return (
     <header className={styles.bar} data-testid="mobile-app-bar">
       <BrandLockup compact />
