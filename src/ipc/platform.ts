@@ -21,6 +21,8 @@ export interface ServiceCapability {
 }
 
 export interface NativeServiceCapabilities {
+  windowMaximizeRestore: ServiceCapability;
+  windowFullScreen: ServiceCapability;
   externalFileImport: ServiceCapability;
   externalFileExport: ServiceCapability;
   secureSecrets: ServiceCapability;

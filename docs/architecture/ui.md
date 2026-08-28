@@ -68,6 +68,7 @@ Browser-native `beforeunload` remains an exception because a custom React overla
 - file open/save selection;
 - external URL opening;
 - platform Back dispatch;
+- native desktop maximize/restore and full-screen operations and state observation;
 - pointer, hover, and hardware capability detection;
 - optional local audio feedback;
 - optional haptic feedback.
@@ -75,6 +76,8 @@ Browser-native `beforeunload` remains an exception because a custom React overla
 Desktop file selection currently returns native filesystem paths. A future Android adapter may stage a content URI into application-owned cache and return an ostudy-owned reference without changing Decks, Settings, Documents, or import controllers.
 
 Provider networking and credential storage are native security boundaries, not frontend platform adapters. A feature cannot use the platform layer to bypass the typed AI task surface.
+
+The native capability snapshot independently reports maximize/restore and full-screen availability. Current desktop adapters expose both; Android and other mobile adapters report them unavailable and render no controls. `src/platform/windowControls.ts` alone imports Tauri's window module. `useWindowControlsController` serializes mutations, ignores obsolete state reads, and reconciles operating-system title-bar or full-screen changes from native resize events. The shell then renders one labelled button group in the wide/medium sidebar or compact app bar. It does not call the browser Fullscreen API, infer native state from viewport dimensions, or store replacement window geometry.
 
 ## Styling and themes
 
@@ -147,6 +150,8 @@ Layout responds to available space and input capability rather than assuming tha
 - dynamic viewport units so virtual keyboards and browser chrome do not cover actions.
 
 The desktop Tauri window allows compact widths so responsive behavior can be exercised before mobile projects exist.
+
+On supported desktop builds, compact width changes the placement of native window controls, not their policy. Maximizing or entering full screen changes the native window; full shell, route, dialog, and guide-workspace viewport consumption remains the separate Stage 2G layout responsibility.
 
 ### Application destinations
 

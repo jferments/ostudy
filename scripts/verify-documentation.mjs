@@ -35,6 +35,7 @@ const allowedRootEntries = new Set([
   "plugins",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
+  "public",
   "run-app.sh",
   "rust-toolchain.toml",
   "scripts",

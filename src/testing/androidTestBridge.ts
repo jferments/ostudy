@@ -35,6 +35,8 @@ interface AndroidSmokeSnapshot {
 
 interface AndroidPlatformHealthSnapshot {
   runtimeFamily: string;
+  windowMaximizeRestore: string;
+  windowFullScreen: string;
   nativePdfRender: string;
   ocr: string;
   qrScan: string;
@@ -111,6 +113,8 @@ async function platformHealth(): Promise<AndroidPlatformHealthSnapshot> {
   const snapshot = await getNativePlatformSnapshot();
   return {
     runtimeFamily: snapshot.runtimeFamily,
+    windowMaximizeRestore: snapshot.services.windowMaximizeRestore.state,
+    windowFullScreen: snapshot.services.windowFullScreen.state,
     nativePdfRender: snapshot.services.nativePdfRender.state,
     ocr: snapshot.services.ocr.state,
     qrScan: snapshot.services.qrScan.state,

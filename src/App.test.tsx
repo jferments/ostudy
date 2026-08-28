@@ -241,6 +241,7 @@ describe("App shell", () => {
     expect(document.documentElement.dataset.animationsEnabled).toBeUndefined();
     expect(document.documentElement.dataset.reduceMotion).toBeUndefined();
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
+    expect(screen.queryByRole("group", { name: "Window controls" })).toBeNull();
   });
 
   it("guards navigation with the shared unsaved-change dialog", async () => {

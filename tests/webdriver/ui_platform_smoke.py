@@ -17,6 +17,7 @@ import smoke as webdriver
 
 ESCAPE_KEY = "\ue00c"
 TAB_KEY = "\ue004"
+ENTER_KEY = "\ue007"
 
 
 def set_window_rect(session_id: str, width: int, height: int) -> None:
@@ -229,6 +230,88 @@ def assert_navigation_labels(
     )
     if labels != expected:
         raise AssertionError(f"Unexpected {label} navigation order: {labels!r}")
+
+
+def wait_for_window_control(
+    session_id: str,
+    label: str,
+    pressed: bool,
+    deadline: float,
+) -> str:
+    last: Any = None
+    while time.monotonic() < deadline:
+        last = execute(
+            session_id,
+            """
+            const expected = arguments[0];
+            const button = [...document.querySelectorAll("button[aria-label]")]
+              .find((candidate) => candidate.getAttribute("aria-label") === expected);
+            if (!(button instanceof HTMLButtonElement)) return null;
+            const style = getComputedStyle(button);
+            return {
+              disabled: button.disabled,
+              pressed: button.getAttribute("aria-pressed"),
+              visible: style.display !== "none" && style.visibility !== "hidden" &&
+                button.getBoundingClientRect().width > 0
+            };
+            """,
+            [label],
+        )
+        if (
+            isinstance(last, dict)
+            and last.get("disabled") is False
+            and last.get("visible") is True
+            and last.get("pressed") == ("true" if pressed else "false")
+        ):
+            return webdriver.find_element(
+                session_id,
+                "css selector",
+                f"button[aria-label={json.dumps(label)}]",
+                deadline,
+            )
+        time.sleep(0.05)
+    raise AssertionError(f"Window control {label!r} did not reach state {pressed}: {last!r}")
+
+
+def activate_window_control_with_keyboard(
+    session_id: str,
+    label: str,
+    pressed: bool,
+    deadline: float,
+) -> None:
+    element = wait_for_window_control(session_id, label, pressed, deadline)
+    focused = execute(
+        session_id,
+        "arguments[0].focus(); return document.activeElement === arguments[0];",
+        [{webdriver.ELEMENT_KEY: element}],
+    )
+    if focused is not True:
+        raise AssertionError(f"Window control {label!r} could not receive keyboard focus")
+    send_key(session_id, ENTER_KEY)
+
+
+def verify_native_window_controls(session_id: str, deadline: float) -> None:
+    activate_window_control_with_keyboard(
+        session_id, "Maximize window", False, deadline
+    )
+    wait_for_window_control(session_id, "Restore window", True, deadline)
+    activate_window_control_with_keyboard(
+        session_id, "Restore window", True, deadline
+    )
+    wait_for_window_control(session_id, "Maximize window", False, deadline)
+
+    activate_window_control_with_keyboard(
+        session_id, "Enter full screen", False, deadline
+    )
+    wait_for_window_control(session_id, "Exit full screen", True, deadline)
+    activate_window_control_with_keyboard(
+        session_id, "Exit full screen", True, deadline
+    )
+    wait_for_window_control(session_id, "Enter full screen", False, deadline)
+
+    set_window_rect(session_id, 1440, 900)
+    wait_for_layout_mode(session_id, "wide", deadline)
+    assert_no_horizontal_overflow(session_id, "restored native window controls")
 
 
 def open_study_guides_and_return(
@@ -622,13 +705,15 @@ def main() -> int:
         verify_compact_navigation(session_id, webdriver.deadline_after(45))
         verify_dialog_focus(session_id, webdriver.deadline_after())
         verify_wide_navigation(session_id, webdriver.deadline_after())
+        verify_native_window_controls(session_id, webdriver.deadline_after(45))
         session_id = verify_study_guides_checkpoint_after_restart(application, session_id)
         verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
             "Native UI platform smoke passed: compact, labeled medium, and wide navigation; "
             "four-workspace Flashcards containment; deck-scoped authoring; no horizontal overflow; "
-            "dialog focus containment; Study Guides checkpoint restart; Escape dismissal; and focus restoration."
+            "keyboard maximize/restore and full-screen entry/exit; dialog focus containment; "
+            "Study Guides checkpoint restart; Escape dismissal; and focus restoration."
         )
         return 0
     except Exception:

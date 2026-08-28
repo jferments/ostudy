@@ -5,7 +5,9 @@ import { IncomingShareCoordinator } from "./components/IncomingShareCoordinator"
 import { MobileAppBar } from "./components/MobileAppBar";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
+import { WindowControls } from "./components/WindowControls";
 import { useAppController } from "./controllers/useAppController";
+import { useWindowControlsController } from "./controllers/useWindowControlsController";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
 import { AmbientBackdrop } from "./ui/materials/AmbientBackdrop";
@@ -50,6 +52,9 @@ export type {
 
 function App() {
   const controller = useAppController();
+  const windowControlsController = useWindowControlsController({
+    onError: (message) => controller.showToast("error", message),
+  });
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
 
   return (
@@ -81,12 +86,24 @@ function App() {
                 <MobileAppBar
                   section={controller.section}
                   activeWorkflow={controller.activeWorkflow}
+                  windowControls={
+                    <WindowControls
+                      controller={windowControlsController}
+                      placement="app-bar"
+                    />
+                  }
                 />
                 <PerformanceProfiler id="navigation">
                   <NavigationSidebar
                     section={controller.section}
                     activeWorkflow={controller.activeWorkflow}
                     onNavigate={controller.navigate}
+                    windowControls={
+                      <WindowControls
+                        controller={windowControlsController}
+                        placement="sidebar"
+                      />
+                    }
                   />
                 </PerformanceProfiler>
 

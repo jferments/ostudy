@@ -29,6 +29,8 @@ Native adapters do not decide scheduling rules, import validity, deletion semant
 - **Clock** and **TimeZoneProvider** — provide operation-consistent time facts;
 - **ResourceProbe** — reports CPU, memory, thermal, battery, and foreground facts where available.
 
+The capability snapshot also reports native desktop maximize/restore and full-screen availability as independent service capabilities. The operations themselves are presentation-facing window-manager work, so the frontend implementation remains behind `src/platform/windowControls.ts` instead of becoming a Rust domain port. That adapter uses Tauri's current-window API, while a controller owns native-state reconciliation and mutation serialization. Android and conservative mobile adapters return explicit unavailable reasons; shared UI never substitutes browser full-screen or simulated dimensions.
+
 Viewport width, hover, pointer precision, safe areas, and reduced-motion preference remain WebView/media capabilities because they describe presentation rather than OS identity.
 
 ## External files

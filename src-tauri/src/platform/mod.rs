@@ -62,6 +62,8 @@ impl ServiceCapability {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeServiceCapabilities {
+    pub window_maximize_restore: ServiceCapability,
+    pub window_full_screen: ServiceCapability,
     pub external_file_import: ServiceCapability,
     pub external_file_export: ServiceCapability,
     pub secure_secrets: ServiceCapability,

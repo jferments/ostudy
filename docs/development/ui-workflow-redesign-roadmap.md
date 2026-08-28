@@ -69,8 +69,8 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] Make IBM Plex Sans the default UI and card family for new installs.
 - [x] Add a settings migration that maps the old `system` defaults to IBM Plex Sans without overriding a user-selected font.
 - [x] Reuse the existing local-font provisioning and fallback system; document packaging/licensing and test missing-font fallback.
-- [ ] Add platform-adapter commands for native maximize/restore and full-screen where supported, with keyboard-accessible controls and no direct Tauri calls from shared UI.
-- [ ] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop.
+- [x] Add platform-adapter commands for native maximize/restore and full-screen where supported, with keyboard-accessible controls and no direct Tauri calls from shared UI. (Stage 2F)
+- [ ] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop. (Stage 2G)
 - [ ] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage.
 
 Stage 2B separates visible destination state from the in-memory Practice
@@ -90,6 +90,15 @@ platform Back retains the existing termination guard, and restored routes use
 new request identities. Stage 3 setup relocation and the remaining Stage 2
 branding, font, window, and viewport items are still pending; overall Stage 2 is
 not complete.
+
+Stage 2F adds independently reported maximize/restore and full-screen desktop
+capabilities, least-authority main-window permissions, a Tauri-only platform
+adapter, controller-owned native state reconciliation, and action-accurate
+keyboard controls in the responsive shell chrome. Android, other mobile targets,
+and browser-only execution report no window controls and receive no simulated
+fallback. Stage 2G still owns full viewport consumption by the shell, routes,
+dialogs, and guide workspace. Branding and motto work also remain pending, so
+overall Stage 2 is not complete.
 
 ## Stage 3 — Deck selection and practice setup relocation
 

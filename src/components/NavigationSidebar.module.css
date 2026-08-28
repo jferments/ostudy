@@ -21,6 +21,12 @@
     gap: var(--ostudy-space-2);
   }
 
+  .windowControls {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-start: auto;
+  }
+
   .navButton {
     position: relative;
     display: flex;

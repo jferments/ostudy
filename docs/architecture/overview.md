@@ -74,7 +74,7 @@ The AI gateway exposed to React remains task-specific. There is no generic “se
 
 `src/ui/` provides accessibility and interaction primitives: overlays, confirmation, tabs, menus, buttons, fields, panels, notices, loading/empty states, semantic feedback, and design foundations. Shared UI cannot import IPC, feature controllers, or Tauri APIs.
 
-`src/platform/` isolates operating-system and WebView capabilities such as file selection, external links, platform Back, pointer/capability detection, audio, and haptics. This allows a future Android content-URI adapter or mobile feedback implementation to replace a platform service without rewriting the Decks or Settings workflow.
+`src/platform/` isolates operating-system and WebView capabilities such as file selection, external links, platform Back, native desktop maximize/restore and full-screen state, pointer/capability detection, audio, and haptics. The window-controls adapter is the only frontend owner of direct Tauri window access; a focused controller reconciles native resize events before shell components render the controls. This allows a future Android content-URI adapter or mobile feedback implementation to replace a platform service without rewriting the Decks or Settings workflow.
 
 See [UI architecture](ui.md) for overlay lifecycle, responsive layouts, accessibility, themes, and styling rules.
 

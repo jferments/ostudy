@@ -18,6 +18,6 @@
       backdrop-filter: blur(var(--ostudy-material-blur-medium)) saturate(var(--ostudy-material-chrome-saturation));
     }
     .title { overflow: hidden; color: var(--ostudy-color-text-primary); font-size: .92rem; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-    .spacer { min-width: 0; }
+    .windowControls { display: flex; min-width: 0; justify-content: flex-end; }
   }
 }

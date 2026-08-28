@@ -38,11 +38,17 @@ impl CapabilityProvider for MobileCapabilityProvider {
         let unavailable =
             || ServiceCapability::unavailable("native_mobile_adapter_not_initialized");
         PlatformCapabilitySnapshot {
-            schema_version: 1,
+            schema_version: 2,
             runtime_family: "mobile".to_string(),
             operating_system: std::env::consts::OS.to_string(),
             hardware_back_available: cfg!(target_os = "android"),
             services: NativeServiceCapabilities {
+                window_maximize_restore: ServiceCapability::unavailable(
+                    "native_mobile_window_controls_not_supported",
+                ),
+                window_full_screen: ServiceCapability::unavailable(
+                    "native_mobile_window_controls_not_supported",
+                ),
                 external_file_import: unavailable(),
                 external_file_export: unavailable(),
                 secure_secrets: unavailable(),

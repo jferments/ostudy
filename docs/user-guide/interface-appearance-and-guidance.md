@@ -16,6 +16,20 @@ Layout behavior never depends on a device name or user-agent string. Portrait an
 
 Compact visual spacing does not reduce interaction targets. Coarse-pointer drag handles, checkboxes, and destructive or primary actions retain touch-sized controls.
 
+## Desktop window controls
+
+Supported desktop builds provide native **Maximize window** / **Restore window**
+and **Enter full screen** / **Exit full screen** buttons. They appear at the
+bottom of the sidebar in wide and medium layouts and move into the app bar when
+the same desktop window becomes compact. The buttons can be reached and
+activated with the keyboard, and their names and pressed state follow the real
+native window state, including changes made through the operating system.
+
+Android, other mobile builds, and browser-only previews do not show these
+controls. ostudy does not imitate them by resizing browser content or invoking a
+browser-only full-screen mode. Full viewport use by every route and dialog is
+still planned separately; Stage 2F adds the native window operations only.
+
 ## Themes
 
 The built-in themes are **Light**, **Dark**, **Console**, and **Synthwave**. Every theme implements the same semantic roles for canvas, surfaces, text, borders, accent, status, focus, elevation, and materials. Feature screens do not select theme-specific colors or branch their behavior by theme name.

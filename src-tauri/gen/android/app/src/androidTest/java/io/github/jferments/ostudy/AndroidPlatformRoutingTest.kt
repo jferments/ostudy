@@ -30,6 +30,8 @@ class AndroidPlatformRoutingTest {
             "window.__OSTUDY_ANDROID_TEST__.platformHealth()"
         )
         assertEquals("mobile", health.getString("runtimeFamily"))
+        assertEquals("unavailable", health.getString("windowMaximizeRestore"))
+        assertEquals("unavailable", health.getString("windowFullScreen"))
         assertEquals("available", health.getString("nativePdfRender"))
         assertEquals("available", health.getString("ocr"))
         assertEquals("available", health.getString("qrScan"))

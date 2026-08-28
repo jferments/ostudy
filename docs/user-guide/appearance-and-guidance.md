@@ -15,6 +15,17 @@ bundled face works offline in an installed app. If it is unavailable, ostudy
 falls back to the device's sans-serif system stack rather than requesting a
 remote font.
 
+## Desktop window controls
+
+On supported desktop builds, ostudy exposes native maximize/restore and
+full-screen controls in the shell. Their labels change to **Restore window** and
+**Exit full screen** when those native states are active. The controls use
+ordinary keyboard-focusable buttons and move from the sidebar to the app bar at
+compact desktop widths. Mobile builds and browser-only previews omit them
+instead of simulating a desktop window or browser full-screen behavior. This
+does not yet change how every route, dialog, or guide consumes the expanded
+viewport.
+
 ## Motion and material effects
 
 Motion has three effective levels:
