@@ -1,12 +1,12 @@
 name: Orchestrator PR Ledger
 
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened, edited]
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
 
 concurrency:
-  group: orchestrator-pr-ledger-${{ github.event.pull_request.number }}
+  group: orchestrator-pr-ledger-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
   cancel-in-progress: true
 
 permissions:
@@ -15,22 +15,26 @@ permissions:
 
 jobs:
   project-checkpoints:
-    # This repository is currently owner-operated. Only same-repository PR events
-    # performed by the repository owner may turn commit trailers into PR-body
-    # mutations. The workflow never checks out or executes the PR head.
+    # Privileged metadata projection runs only *after* the ordinary read-only Check
+    # workflow has passed for a same-repository owner-operated PR. This workflow
+    # exists on the default branch, never checks out/executes the PR head, and
+    # treats the completed workflow_run metadata plus GitHub API reads as data only.
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor == github.repository_owner
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.actor.login == github.repository_owner &&
+      github.event.workflow_run.pull_requests[0].number != null
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 5
 
     env:
-      EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
-      - name: Check out trusted base automation only
+      - name: Check out trusted default-branch automation only
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.repository.default_branch }}
@@ -106,11 +110,15 @@ jobs:
           import fs from 'node:fs'
           const temp = process.env.RUNNER_TEMP
           const expected = process.env.EXPECTED_HEAD_SHA
+          const repository = process.env.GITHUB_REPOSITORY
           const originalBody = fs.readFileSync(`${temp}/orchestrator-ledger-body.md`, 'utf8')
           const current = JSON.parse(fs.readFileSync(`${temp}/orchestrator-ledger-pr-current.json`, 'utf8'))
           const result = JSON.parse(fs.readFileSync(`${temp}/orchestrator-ledger-result.json`, 'utf8'))
           if (current.head?.sha !== expected) {
             throw new Error(`PR head changed before PATCH: ${current.head?.sha} != ${expected}`)
+          }
+          if (current.head?.repo?.full_name !== repository) {
+            throw new Error('PR head repository changed before PATCH.')
           }
           if ((current.body ?? '') !== originalBody) {
             throw new Error('PR body changed after projection preflight; refusing to overwrite concurrent edits.')
@@ -130,4 +138,4 @@ jobs:
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
             > "$RUNNER_TEMP/orchestrator-ledger-update.json"
 
-          echo "Projected exact orchestrator checkpoint trailers into PR #$PR_NUMBER."
+          echo "Projected exact orchestrator checkpoint trailers into PR #$PR_NUMBER after successful read-only Check qualification."
