@@ -181,6 +181,28 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.assertIn("Flashcards workspace search", completed.stderr)
             self.assertIn("missing required entry fragment", completed.stderr)
 
+    def test_rejects_medium_navigation_catalog_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            self.copy_fixture(fixture)
+            smoke = fixture / "tests/webdriver/card_listing_followup_smoke.py"
+            source = smoke.read_text(encoding="utf-8")
+            expected = (
+                'EXPECTED_NAVIGATION = ["Flashcards", "Study Guides", "Documents", '
+                '"Analytics", "Settings"]'
+            )
+            self.assertIn(expected, source)
+            smoke.write_text(
+                source.replace(expected, expected.replace("Study Guides", "Practice"), 1),
+                encoding="utf-8",
+            )
+
+            completed = self.run_verifier(fixture)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("primary destination decks", completed.stderr)
+            self.assertIn("missing required entry fragment", completed.stderr)
+
     def test_rejects_removed_study_guides_restart_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)

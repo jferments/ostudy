@@ -18,6 +18,7 @@ import smoke as webdriver
 ESCAPE_KEY = "\ue00c"
 TAB_KEY = "\ue004"
 ENTER_KEY = "\ue007"
+EXPECTED_PLEX_FAMILY = "'IBM Plex Sans', var(--ostudy-font-family-system)"
 
 
 def set_window_rect(session_id: str, width: int, height: int) -> None:
@@ -388,6 +389,54 @@ def assert_navigation_labels(
         raise AssertionError(f"Unexpected {label} navigation order: {labels!r}")
 
 
+def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
+    measurement = execute(
+        session_id,
+        """
+        const visible = (element) => {
+          if (!(element instanceof HTMLElement)) return false;
+          const bounds = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return bounds.width > 0 && bounds.height > 0 &&
+            style.display !== 'none' && style.visibility !== 'hidden';
+        };
+        const lockups = [...document.querySelectorAll(
+          "[data-artwork-slot='brand.logo.sidebar'][aria-label='ostudy']"
+        )].filter(visible);
+        const mascots = lockups
+          .map((lockup) => lockup.querySelector("[data-artwork-slot='brand.logo.compact'] img"))
+          .filter(visible);
+        const root = document.documentElement;
+        return {
+          visibleLockups: lockups.length,
+          lockupText: lockups.map((lockup) => (lockup.textContent || '').trim()),
+          visibleMascots: mascots.length,
+          mascotLoaded: mascots.every((image) => image.complete && image.naturalWidth > 0),
+          mascotDimensions: mascots.map((image) => [image.naturalWidth, image.naturalHeight]),
+          mottoPresent: (document.body.innerText || '').includes('Learn with intent'),
+          uiFont: root.style.getPropertyValue('--ui-font-family').trim(),
+          cardFont: root.style.getPropertyValue('--card-font-family').trim(),
+        };
+        """,
+    )
+    if not isinstance(measurement, dict):
+        raise AssertionError(f"Could not inspect brand and typography in {label}: {measurement!r}")
+    if (
+        int(measurement.get("visibleLockups", 0)) != 1
+        or measurement.get("lockupText") != ["ostudy"]
+        or int(measurement.get("visibleMascots", 0)) != 1
+        or measurement.get("mascotLoaded") is not True
+        or measurement.get("mascotDimensions") != [[1254, 1254]]
+        or measurement.get("mottoPresent") is not False
+    ):
+        raise AssertionError(f"Brand lockup drifted in {label}: {measurement!r}")
+    if (
+        measurement.get("uiFont") != EXPECTED_PLEX_FAMILY
+        or measurement.get("cardFont") != EXPECTED_PLEX_FAMILY
+    ):
+        raise AssertionError(f"Fresh-profile IBM Plex defaults drifted in {label}: {measurement!r}")
+
+
 def wait_for_window_control(
     session_id: str,
     label: str,
@@ -447,32 +496,46 @@ def activate_window_control_with_keyboard(
 
 
 def verify_native_window_controls(session_id: str, deadline: float) -> None:
+    open_study_guides(session_id, deadline, "resized desktop viewport")
+    route_selector = "[aria-label='Study Guides']"
     activate_window_control_with_keyboard(
         session_id, "Maximize window", False, deadline
     )
     wait_for_window_control(session_id, "Restore window", True, deadline)
-    assert_viewport_consumption(session_id, "maximized desktop viewport")
+    assert_viewport_consumption(
+        session_id, "maximized desktop viewport", route_selector
+    )
     activate_window_control_with_keyboard(
         session_id, "Restore window", True, deadline
     )
     wait_for_window_control(session_id, "Maximize window", False, deadline)
+    assert_viewport_consumption(
+        session_id, "restored desktop viewport after maximize", route_selector
+    )
 
     activate_window_control_with_keyboard(
         session_id, "Enter full screen", False, deadline
     )
     wait_for_window_control(session_id, "Exit full screen", True, deadline)
-    assert_viewport_consumption(session_id, "full-screen desktop viewport")
+    assert_viewport_consumption(
+        session_id, "full-screen desktop viewport", route_selector
+    )
     activate_window_control_with_keyboard(
         session_id, "Exit full screen", True, deadline
     )
     wait_for_window_control(session_id, "Enter full screen", False, deadline)
+    assert_viewport_consumption(
+        session_id, "desktop viewport after exiting full screen", route_selector
+    )
 
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
-    assert_viewport_consumption(session_id, "restored native window controls")
+    assert_viewport_consumption(
+        session_id, "resized desktop viewport after native states", route_selector
+    )
 
 
-def open_study_guides_and_return(
+def open_study_guides(
     session_id: str,
     deadline: float,
     label: str,
@@ -493,6 +556,14 @@ def open_study_guides_and_return(
     )
     assert_viewport_consumption(session_id, label, "[aria-label='Study Guides']")
 
+
+def open_study_guides_and_return(
+    session_id: str,
+    deadline: float,
+    label: str,
+) -> None:
+    open_study_guides(session_id, deadline, label)
+
     flashcards = webdriver.find_element(
         session_id,
         "css selector",
@@ -511,6 +582,7 @@ def open_study_guides_and_return(
 def verify_compact_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 390, 700)
     wait_for_layout_mode(session_id, "compact", deadline)
+    assert_brand_and_fresh_font_defaults(session_id, "compact layout")
     assert_navigation_labels(
         session_id,
         ["Flashcards", "Study Guides", "Analytics", "More"],
@@ -605,6 +677,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
+    assert_brand_and_fresh_font_defaults(session_id, "wide layout")
     assert_navigation_labels(
         session_id,
         ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"],
@@ -684,6 +757,7 @@ def verify_study_guides_checkpoint_after_restart(
 def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     set_window_rect(session_id, 1000, 800)
     wait_for_layout_mode(session_id, "medium", deadline)
+    assert_brand_and_fresh_font_defaults(session_id, "medium layout")
     assert_navigation_labels(
         session_id,
         ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"],
@@ -869,9 +943,11 @@ def main() -> int:
         verify_medium_flashcards_layout(session_id, webdriver.deadline_after(45))
         verify_deck_scoped_authoring(session_id, webdriver.deadline_after(45))
         print(
-            "Native UI platform smoke passed: compact, labeled medium, and wide navigation; "
+            "Native UI platform smoke passed: compact, labeled medium, and wide navigation and branding; "
+            "fresh-profile IBM Plex interface/card defaults; "
             "four-workspace Flashcards containment; deck-scoped authoring; no horizontal overflow; "
-            "keyboard maximize/restore and full-screen entry/exit; dialog focus containment; "
+            "maintained-route viewport consumption through resize, maximize/restore, and full-screen entry/exit; "
+            "dialog focus containment; "
             "Study Guides checkpoint restart; Escape dismissal; and focus restoration."
         )
         return 0

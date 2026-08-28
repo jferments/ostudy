@@ -64,23 +64,23 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] Split the old Practice destination into an internal active-session state plus launch surfaces owned by Flashcards, Search, Study Guides, and Analytics. (Stage 2B)
 - [x] Migrate saved UI checkpoints: resumable sessions reopen internally; setup-only Practice checkpoints return to Flashcards. (Stage 2C)
 - [x] Preserve platform back behavior, active-session exit guards, lifecycle checkpoints, and return targets after the route change. (Stage 2C)
-- [ ] Replace the CSS-drawn brand mark with the supplied transparent raccoon mascot asset, with correctly generated desktop/mobile sizes and no baked background.
-- [ ] Remove the “Learn with intent” motto from the sidebar and any other product copy.
-- [x] Make IBM Plex Sans the default UI and card family for new installs.
-- [x] Add a settings migration that maps the old `system` defaults to IBM Plex Sans without overriding a user-selected font.
-- [x] Reuse the existing local-font provisioning and fallback system; document packaging/licensing and test missing-font fallback.
+- [x] Replace the CSS-drawn brand mark with the supplied transparent raccoon mascot asset, with correctly generated desktop/mobile sizes and no baked background. (Stage 2D)
+- [x] Remove the “Learn with intent” motto from the sidebar and any other product copy. (Stage 2D)
+- [x] Make IBM Plex Sans the default UI and card family for new installs. (Stage 2E)
+- [x] Add a settings migration that maps the old `system` defaults to IBM Plex Sans without overriding a user-selected font. (Stage 2E)
+- [x] Reuse the existing local-font provisioning and fallback system; document packaging/licensing and test missing-font fallback. (Stage 2E)
 - [x] Add platform-adapter commands for native maximize/restore and full-screen where supported, with keyboard-accessible controls and no direct Tauri calls from shared UI. (Stage 2F)
 - [x] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop. (Stage 2G)
-- [ ] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage.
+- [x] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage. (Stage 2H)
 
 Stage 2B separates visible destination state from the in-memory Practice
 workflow, centralizes deck, exact-card, guide-topic, and Analytics launches, and
 keeps direct active-session rendering, exit guarding, and logical transient
 return targets explicit. It does not change `ui-checkpoint-v1`: checkpoint
 migration, platform Back/lifecycle semantics, and persisted return-target work
-remain Stage 2C items in the unchecked checkpoint/Back line items. Branding,
-fonts, window controls, viewport work, and the Stage 3 practice-setup relocation
-also remain pending.
+were then-pending Stage 2C items. The bounded Stage 2C–2H deltas below complete
+the checkpoint, brand, font, window, and viewport work. Stage 3 still owns the
+practice-setup relocation.
 
 Stage 2C introduces the strict `ui-checkpoint-v2` representation while retaining
 and retiring released v1 files through a compatibility reader. All five visible
@@ -89,8 +89,16 @@ return target independently, lifecycle saves flush the latest in-memory cursor,
 platform Back retains the existing termination guard, and restored routes use
 new request identities. Stage 3 setup relocation and the remaining Stage 2
 branding, font, window, and viewport items were still pending at that checkpoint.
-The later stage notes below record their current state; overall Stage 2 is not
-complete.
+The later stage notes below record their completion and Stage 2H integrated
+evidence.
+
+Stage 2D replaces the drawn mark with the supplied
+`assets/images/racoon mascot (logo).png` source in both responsive brand
+lockups and removes the motto. The standard-library brand contract pins the
+1254×1254 RGBA source and SHA-256
+`64979ff390c2a13a19e8f346c0f610b74fe83e14faf12497e902ac8a76f35137`;
+component and native UI smoke retain the visible compact, medium, and wide
+lockups without substituting or regenerating the asset.
 
 Stage 2F adds independently reported maximize/restore and full-screen desktop
 capabilities, least-authority main-window permissions, a Tauri-only platform
@@ -98,8 +106,8 @@ adapter, controller-owned native state reconciliation, and action-accurate
 keyboard controls in the responsive shell chrome. Android, other mobile targets,
 and browser-only execution report no window controls and receive no simulated
 fallback. Stage 2F deliberately leaves full viewport consumption by the shell,
-routes, dialogs, and guide workspace to the Stage 2G delta below. Branding and
-motto work also remain pending, so overall Stage 2 is not complete.
+routes, dialogs, and guide workspace to the Stage 2G delta below. Stage 2D and
+Stage 2H subsequently close the then-pending brand and integrated-evidence work.
 
 Stage 2G makes the shell, main scroll owner, transition layer, maintained route
 roots, dialogs, and current Study Guide workspace consume the available dynamic
@@ -109,8 +117,25 @@ viewport workspace, and preserves compact safe-area/IME behavior through the
 shared dialog body-scroll contract. Native smoke measures these bounds only
 after Stage 2F controller state and viewport layout stabilize. Stage 8 still
 owns guide library/controller/deletion lifecycle, and Stage 9 still owns reader
-semantics and PDF design. Branding and motto work remain pending, so overall
-Stage 2 is not complete.
+semantics and PDF design.
+
+Stage 2H audits Stages 2A–2G as one executable feature checkpoint. The route
+contract pins the five-destination medium catalog and protected internal
+Practice workflow; durable native smoke proves contextual deck launch, no
+selected primary destination, exact early return, normal completion, restart,
+and analytics persistence. UI-platform smoke exercises compact, medium, and
+wide navigation and current Study Guides, visible mascot/motto and fresh IBM
+Plex variables, and maintained-route viewport bounds after resize, maximize,
+restore, full screen, and exit. Existing focused Rust, controller, appearance,
+window, and Android tests remain the evidence owners for v1/v2 checkpoint
+compatibility, lifecycle/Back/process restoration, explicit font choices and
+fallback, and unsupported mobile window capabilities.
+
+The checklist records that every Stage 2 item has executable evidence. A Stage
+2H checkpoint may be published only after changed, static, fast, focused native
+contracts, and the maintained native smoke are green on the exact final tree.
+Stage 3 deck selection, Stage 8 guide ownership/deletion, and Stage 9 reader/PDF
+design remain explicitly outside this checkpoint.
 
 ## Stage 3 — Deck selection and practice setup relocation
 

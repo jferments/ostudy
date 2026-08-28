@@ -64,8 +64,12 @@ class WindowControlsContractTest(unittest.TestCase):
         for contract in (
             "assert_viewport_consumption",
             "assert_dialog_viewport_bounds",
+            'route_selector = "[aria-label=\'Study Guides\']"',
+            '"resized desktop viewport"',
             '"maximized desktop viewport"',
+            '"restored desktop viewport after maximize"',
             '"full-screen desktop viewport"',
+            '"desktop viewport after exiting full screen"',
             '"[aria-label=\'Study Guides\']"',
             '"responsive create-deck dialog"',
         ):

@@ -658,6 +658,39 @@ def verify_shell(session_id: str, deadline: float) -> None:
     )
 
 
+def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
+    state = request(
+        "POST",
+        f"/session/{session_id}/execute/sync",
+        {
+            "script": """
+                const primary = [...document.querySelectorAll("nav[aria-label='Main navigation'] button")];
+                return {
+                  selectedPrimary: primary
+                    .filter((button) => button.getAttribute('aria-current') === 'page')
+                    .map((button) => (button.textContent || '').trim()),
+                  practiceDestinations: primary
+                    .filter((button) => button.dataset.testid === 'nav-practice').length,
+                  heading: (document.querySelector('main h1')?.textContent || '').trim(),
+                };
+            """,
+            "args": [],
+        },
+    )
+    if not isinstance(state, dict):
+        raise AssertionError(f"Could not inspect the internal Practice workflow: {state!r}")
+    if state.get("selectedPrimary") != []:
+        raise AssertionError(
+            f"Internal Practice selected a primary destination: {state!r}"
+        )
+    if int(state.get("practiceDestinations", -1)) != 0:
+        raise AssertionError(f"Practice returned to standing navigation: {state!r}")
+    if state.get("heading") != deck_name:
+        raise AssertionError(
+            f"Contextual Practice lost the launching deck identity: {state!r}"
+        )
+
+
 def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_name = "Native smoke deck"
     question = "What does the native smoke test persist?"
@@ -702,7 +735,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
 
-    progress("Completing one review")
+    progress("Verifying contextual Practice and exact deck return")
     deadline = deadline_after()
     practice_button = find_element(
         session_id,
@@ -717,6 +750,38 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         "//button[normalize-space(.)='Show answer']",
         deadline,
     )
+    assert_internal_practice_shell(session_id, deck_name)
+    click_text_button(session_id, "End session", deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks'][aria-current='page']",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "xpath",
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    progress("Completing one review after the early return")
+    deadline = deadline_after()
+    practice_button = find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Practice']",
+        deadline,
+    )
+    click(session_id, practice_button)
+    show_answer = find_element(
+        session_id,
+        "xpath",
+        "//button[normalize-space(.)='Show answer']",
+        deadline,
+    )
+    assert_internal_practice_shell(session_id, deck_name)
     click(session_id, show_answer)
     medium = find_element(
         session_id,

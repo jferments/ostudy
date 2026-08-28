@@ -50,15 +50,40 @@ This directly covers the state that fresh WebDriver homes cannot exercise. Separ
 
 Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
 
+The durable-library smoke owns the native persistence path and the integrated
+Practice return contract. It creates a deck/card, launches deck-context Practice
+as an internal workflow, requires every primary destination to remain
+unselected, ends early, verifies the exact deck detail is restored, then starts
+again and completes a review before checking Analytics and restart persistence.
+`card_listing_followup_smoke.py` separately pins the complete labeled medium
+navigation order while exercising shared Deck/Search listing and authoring.
+These scenarios use fresh isolated application data and do not change scheduler
+or database policy.
+
 The UI-platform smoke waits for the shared layout mode and two animation frames
 before measuring responsive geometry. At compact, medium, and wide sizes it
-asserts that the shell, main scroll owner, route-transition layer, and selected
-maintained route consume their allocated viewport without document-level
-horizontal overflow. It repeats shell/route measurements only after the native
-window controller exposes the expected pressed state for maximize and full
-screen. Dialog checks measure viewport containment and confirm that the shared
-dialog body remains the vertical scroll owner; they do not infer native state
-from dimensions alone.
+asserts the complete navigation, current Study Guides workspace, one loaded
+responsive mascot lockup, removed-motto absence, and fresh-profile IBM Plex
+interface/card variables. The shell, main scroll owner, route-transition layer,
+and selected maintained route must consume their allocated viewport without
+document-level horizontal overflow after explicit resize and separately after
+maximize, restore, full-screen, and exit-full-screen. Every native-state
+measurement waits until the window controller exposes the expected pressed
+state; dimensions are never used to infer maximize or full-screen state. Dialog
+checks measure viewport containment and confirm that the shared dialog body
+remains the vertical scroll owner.
+
+Stage 2 compatibility evidence remains split across its owning focused layers:
+the brand script contract pins the exact supplied PNG/import and removed motto;
+route/smoke verification binds the five visible destinations and internal
+Practice to executable runners; Rust tests own v1 compatibility and canonical
+v2 checkpoint files; controller/App tests own lifecycle snapshots, fresh return
+identities, contextual launches, and Back/exit guards; appearance/settings/font
+tests own explicit user choices and missing-font fallback; window contracts own
+desktop adapter authority plus truthful unavailable mobile capabilities; and
+Android instrumentation owns Back/process restoration. The native wrapper is
+the integrated Linux/Tauri smoke, not a replacement for those narrower
+contracts or for later Stage 8/9 Study Guide behavior.
 
 Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
 

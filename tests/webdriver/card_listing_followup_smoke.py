@@ -17,7 +17,7 @@ import ui_platform_smoke as ui
 
 MEDIUM_WIDTH = 928
 MEDIUM_HEIGHT = 900
-EXPECTED_NAVIGATION = ["Flashcards", "Documents", "Practice", "Analytics", "Settings"]
+EXPECTED_NAVIGATION = ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"]
 
 
 def assert_medium_navigation(session_id: str, deadline: float) -> None:

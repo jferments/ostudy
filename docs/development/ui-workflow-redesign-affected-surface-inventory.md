@@ -73,6 +73,22 @@ Platform Back still runs through overlay precedence and the active-session
 termination guard. Stage 8 still owns guide detail/controller/deletion state;
 Stage 3 still owns the retained Practice setup composition.
 
+## Stage 2D branding delta
+
+Stage 2D replaces the former drawn mark with the exact supplied
+`assets/images/racoon mascot (logo).png` source. `BrandMark` renders that
+transparent image inside the responsive compact, medium, and wide lockups;
+`BrandLockup` retains only the ostudy name and no longer renders “Learn with
+intent.” No replacement, derivative, generated size, or baked-background asset
+was added.
+
+`tests/scripts/test_brand_asset_contract.py` pins the source SHA-256
+`64979ff390c2a13a19e8f346c0f610b74fe83e14faf12497e902ac8a76f35137`,
+1254×1254 dimensions, 8-bit RGBA PNG contract, and exact `Brand.tsx` import. It
+also rejects the removed motto from production frontend sources. Component tests
+own semantic/decorative rendering details, while native UI smoke proves one
+loaded visible lockup at each responsive layout.
+
 ## Stage 2E typography delta
 
 Stage 2E makes the existing application-owned `plex` preset the shared initial
@@ -94,7 +110,8 @@ local `@font-face`, and system-family fallback. Production builds verify hashed
 local WOFF2 output, CSS references, offline behavior, and a packaged OFL 1.1
 notice. A pristine source build may need the one-time provisioning network;
 installed application use does not. Native Study Guide PDF typography and
-embedding remain Stage 9, and Stage 2 remains otherwise incomplete.
+embedding remain Stage 9; Stage 2H integrates the browser/interface evidence
+without entering that later PDF scope.
 
 ## Stage 2F native window-controls delta
 
@@ -111,7 +128,7 @@ serializes UI mutations, and surfaces failures without browser fallbacks. The
 shell renders one accessible group in the wide/medium sidebar or compact app
 bar. The native close guard remains unchanged. Stage 2F deliberately leaves
 shell, route, dialog, and guide-workspace full-viewport consumption to the
-Stage 2G delta below; overall Stage 2 remains incomplete.
+Stage 2G delta below.
 
 ## Stage 2G full-viewport delta
 
@@ -134,8 +151,34 @@ reader semantics and PDF design (Stage 9).
 and horizontal-overflow bounds at compact, medium, and wide sizes and while the
 Stage 2F native maximize/full-screen pressed states are active.
 `tests/scripts/test_window_controls_contract.py` makes those measurements part
-of the Stage 2F source contract. Overall Stage 2 remains incomplete because the
-branding, mascot, and motto items are still open.
+of the Stage 2F source contract.
+
+## Stage 2H integrated qualification delta
+
+Stage 2H treats navigation, internal Practice, checkpoints, branding,
+typography, native window controls, and viewport consumption as one executable
+feature set. `card_listing_followup_smoke.py` and the route/smoke contract pin
+the complete labeled medium navigation catalog. The durable native scenario
+proves a deck-detail launch becomes an internal Practice workflow with no
+selected primary destination, End session returns to that exact deck, and a
+subsequent session still completes and persists its analytics.
+
+`ui_platform_smoke.py` verifies the current Study Guides workspace at compact,
+medium, and wide sizes; one loaded raccoon lockup with no motto; fresh-profile
+IBM Plex interface/card variables; and the selected maintained route after
+resize, maximize, restore, full screen, and exit-full-screen. Measurements wait
+for controller-reported native pressed state and stable animation frames rather
+than inferring window state from dimensions.
+
+The integration deliberately reuses the existing Rust v1/v2 checkpoint
+fixtures, controller lifecycle/fresh-request/return-target tests, App launch and
+exit tests, AppearanceProvider/settings/font-package tests, window controller
+tests, Android Back/process-restoration smoke, and unavailable mobile capability
+assertions. It changes no scheduler, database, transfer, dependency, provider,
+or IPC contract. Stage 3 setup/selection, Stage 8 guide controller/deletion, and
+Stage 9 reader/PDF design remain later owners. A publishable Stage 2H checkpoint
+still requires changed, static, fast, focused native contracts, and maintained
+native smoke to pass on the exact final tree.
 
 ## Route and navigation topology
 
@@ -259,9 +302,9 @@ The public schema is append-only. `src-tauri/src/database.rs` registers migratio
 | `src/screens/StudyGuideLibrarySection.test.tsx`, `src/screens/StudyGuideDialog.test.tsx`; Rust guide/overlay/export/migration/backup tests | Current nested library, guide revision/regeneration, overlays/conflicts, topic practice, export, deletion cascade, and backup. | Stages 8, 9. |
 | Editor/card/template frontend tests plus native authoring, `studydeck`, and backup tests | Canonical rich docs, Tiptap behavior, draft recovery, templates, practice rendering, and transfer compatibility. | Stage 10. |
 | Settings/profile tests under `src/screens/SettingsScreen*.test.tsx`, `src/screens/settings/*test.tsx`, `src/controllers/aiProfilesController.test.tsx`; Rust settings/profile/probe/backup tests | Font choices/default compatibility, dirty/save behavior, model lists/capabilities, global reasoning, profiles/defaults, and credential markers. | Stages 2, 9, 11. |
-| `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates deck/card, accepts a review, verifies Practice/Analytics and restart/checkpoint persistence. | Stages 2, 3, 5, 10, 13. |
-| `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation, viewport-filling shell/routes, native maximize/full-screen geometry, dialog bounds/scroll ownership, Flashcards tabs/Search, overlay focus, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
-| `scripts/smoke-native.sh` → `tests/webdriver/card_listing_followup_smoke.py` | Deck and Search card-listing parity plus authoring. | Stages 3, 5, 10, 13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates deck/card, proves contextual internal Practice has no selected primary destination, early return restores the exact deck, a later session completes, and review/Analytics state survives restart. | Stages 2, 3, 5, 10, 13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation and mascot/font defaults, current Study Guides, viewport-filling shell/routes across resize and each native window transition, dialog bounds/scroll ownership, Flashcards tabs/Search, overlay focus, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/card_listing_followup_smoke.py` | Complete labeled medium navigation plus Deck and Search card-listing parity and authoring. | Stages 2, 3, 5, 10, 13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/deck_toolbar_layout_smoke.py` | Compact Flashcards tabs, deck toolbar containment, and horizontal-overflow bounds. | Stages 1–5, 12, 13. |
 | `scripts/smoke-startup-compatibility.sh` | Built-binary startup/adoption of the exact historical schema lineage while preserving deck/card/review/attribution data. | Every migration stage, especially 2, 6–11; final Stage 13. |
 | `scripts/android-test.sh` | Android Rust/Kotlin compile/package and instrumentation contract qualification. | Any Stage 2–12 Android-shared or generated-project impact; final Stage 13. |

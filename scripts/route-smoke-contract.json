@@ -77,6 +77,19 @@
               "main [role='tablist'][aria-label='Flashcards workspaces']",
               "assert_flashcards_tabs(session_id, deadline)"
             ]
+          },
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/card_listing_followup_smoke.py",
+            "entrypoint": "tests/webdriver/card_listing_followup_smoke.py",
+            "entryFragments": [
+              "EXPECTED_NAVIGATION = [\"Flashcards\", \"Study Guides\", \"Documents\", \"Analytics\", \"Settings\"]",
+              "assert_medium_navigation(session_id, deadline)"
+            ],
+            "assertionFragments": [
+              "measurement.get(\"labels\") != EXPECTED_NAVIGATION",
+              "Medium navigation did not expose complete labels"
+            ]
           }
         ]
       }
@@ -232,6 +245,9 @@
             ],
             "assertionFragments": [
               "//button[normalize-space(.)='Show answer']",
+              "assert_internal_practice_shell(session_id, deck_name)",
+              "click_text_button(session_id, \"End session\", deadline)",
+              "button[data-testid='nav-decks'][aria-current='page']",
               "PRACTICE_COMPLETE_SELECTOR"
             ]
           },
