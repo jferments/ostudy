@@ -20,7 +20,7 @@ export interface ArtworkDefinition {
 
 export const artworkManifest: Readonly<Record<ArtworkSlot, ArtworkDefinition>> = {
   "brand.logo.sidebar": { slot: "brand.logo.sidebar", aspectRatio: "5 / 2", decorative: false, fallbackLabel: "ostudy", category: "brand" },
-  "brand.logo.compact": { slot: "brand.logo.compact", aspectRatio: "1", decorative: false, fallbackLabel: "ostudy", category: "brand" },
+  "brand.logo.compact": { slot: "brand.logo.compact", aspectRatio: "1 / 1", decorative: false, fallbackLabel: "ostudy", category: "brand" },
   "empty.deck": { slot: "empty.deck", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Empty flashcard deck", category: "empty" },
   "empty.folder": { slot: "empty.folder", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "Empty folder", category: "empty" },
   "empty.search": { slot: "empty.search", aspectRatio: "4 / 3", decorative: true, fallbackLabel: "No matching flashcards", category: "empty" },

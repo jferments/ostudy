@@ -1,29 +1,29 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { BrandLockup } from "./Brand";
+import { BrandLockup, BrandMark } from "./Brand";
 
-function expectBrandIdentity(): void {
-  const lockup = screen.getByLabelText("ostudy");
-  expect(lockup.getAttribute("data-artwork-slot")).toBe("brand.logo.sidebar");
-  expect(within(lockup).getByText("ostudy")).toBeTruthy();
+afterEach(cleanup);
 
-  const mark = lockup.querySelector('[data-artwork-slot="brand.logo.compact"]');
-  expect(mark).toBeTruthy();
-  expect(mark?.getAttribute("aria-hidden")).toBe("true");
-  expect(within(lockup).queryByText("Learn with intent")).toBeNull();
-}
+describe("Brand", () => {
+  it("renders the supplied mascot image for the compact brand mark", () => {
+    const { container } = render(<BrandMark />);
+    const mark = container.querySelector('[data-artwork-slot="brand.logo.compact"]');
+    const image = mark?.querySelector("img");
 
-describe("BrandLockup", () => {
-  it("preserves the ostudy identity without the tagline", () => {
-    render(<BrandLockup />);
-
-    expectBrandIdentity();
+    expect(mark).not.toBeNull();
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("src")).toContain(encodeURI("racoon mascot (logo).png"));
+    expect(image?.getAttribute("alt")).toBe("");
+    expect(image?.getAttribute("draggable")).toBe("false");
   });
 
-  it("preserves the compact ostudy identity without the tagline", () => {
-    render(<BrandLockup compact />);
+  it("preserves the ostudy lockup and removed motto", () => {
+    const { container } = render(<BrandLockup compact />);
 
-    expectBrandIdentity();
+    expect(screen.getByLabelText("ostudy")).toBeTruthy();
+    expect(container.querySelector('[data-artwork-slot="brand.logo.sidebar"]')).not.toBeNull();
+    expect(container.textContent).toBe("ostudy");
+    expect(container.textContent).not.toContain("Learn with intent");
   });
 });

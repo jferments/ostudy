@@ -17,6 +17,7 @@ describe("UI infrastructure", () => {
   it("registers semantic artwork slots independently from asset filenames", () => {
     expect(artworkManifest["empty.deck"].decorative).toBe(true);
     expect(artworkManifest["brand.logo.compact"].decorative).toBe(false);
+    expect(artworkManifest["brand.logo.compact"].aspectRatio).toBe("1 / 1");
   });
 
   it("offers direct removal and clearing of active filters", () => {

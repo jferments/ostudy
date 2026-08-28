@@ -1,17 +1,47 @@
 @layer components {
-  .lockup { display: flex; min-width: 0; align-items: center; gap: var(--ostudy-space-3); color: var(--ostudy-color-text-primary); }
-  .mark { position: relative; display: grid; width: 48px; height: 48px; flex: none; place-items: center; filter: drop-shadow(0 8px 14px color-mix(in srgb, var(--ostudy-color-ambient-vignette) 30%, transparent)); }
-  .cardBack,
-  .cardFront { position: absolute; width: 36px; height: 29px; border: 1px solid var(--ostudy-color-border-strong); border-radius: 8px; }
-  .cardBack { background: var(--ostudy-color-accent-soft); transform: translate(5px, -4px) rotate(7deg); }
-  .cardFront { display: grid; place-items: center; background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-accent); font-size: 1.15rem; font-weight: 900; transform: translate(-3px, 3px) rotate(-3deg); }
-  .ears { position: absolute; inset-block-start: 1px; width: 28px; height: 12px; border-radius: 50% 50% 0 0; background: var(--ostudy-color-text-muted); clip-path: polygon(0 100%, 15% 0, 38% 100%, 62% 100%, 85% 0, 100% 100%); opacity: .85; }
-  .copy { display: grid; min-width: 0; }
-  .copy strong { font-size: 1.55rem; letter-spacing: -.045em; line-height: 1; }
-  .compact .mark { width: 34px; height: 34px; }
-  .compact .cardBack,
-  .compact .cardFront { width: 27px; height: 22px; border-radius: 6px; }
-  .compact .cardFront { font-size: .88rem; }
-  .compact .ears { inset-block-start: -1px; width: 21px; height: 9px; }
-  .compact .copy strong { font-size: 1rem; }
+  .lockup {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .mark {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    flex: none;
+    place-items: center;
+  }
+
+  .mascot {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    filter: drop-shadow(0 8px 14px color-mix(in srgb, var(--ostudy-color-ambient-vignette) 30%, transparent));
+  }
+
+  .copy {
+    display: grid;
+    min-width: 0;
+  }
+
+  .copy strong {
+    font-size: 1.55rem;
+    letter-spacing: -.045em;
+    line-height: 1;
+  }
+
+  .compact .mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .compact .copy strong {
+    font-size: 1rem;
+  }
 }
