@@ -26,6 +26,18 @@ Every layout mode preserves explicit text and border contrast rather than depend
 
 The interface font and default card font can be selected independently. Interface scale and card text size are also separate so navigation can remain compact while study material stays comfortable to read.
 
+New installations use **IBM Plex Sans** for both choices. An existing explicit
+font selection is preserved, including an explicit choice of the system font;
+only the untouched system defaults from older installations are updated to IBM
+Plex Sans. Choosing **Restore appearance defaults** returns both font choices
+to IBM Plex Sans without resetting review, backup, or AI settings.
+
+IBM Plex Sans is included in installed application packages and does not need a
+network connection while ostudy runs. If its local font file is missing or
+unreadable, ostudy uses the device's sans-serif system stack so the interface
+and cards remain usable. The exact fallback glyph metrics can vary by operating
+system.
+
 Installed custom font-family names are accepted as local preferences. Font files are not copied into the library or included in exports.
 
 ## Motion

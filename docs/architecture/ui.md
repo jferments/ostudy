@@ -100,6 +100,25 @@ Themes change token values, not feature selectors. Current themes are Light, Dar
 
 Shared UI does not use arbitrary numeric z-index values. Named layer tokens keep toasts, navigation, effects, menus, sheets, and dialogs in one reviewable ordering model.
 
+### Interface and card typography
+
+New installations use the application-owned `plex` preset for both interface
+and card typography. `AppearanceProvider` resolves the independently persisted
+`uiFont` and `cardFont` values into the semantic `--ui-font-family` and
+`--card-font-family` variables; interface and rich-card consumers use those
+variables rather than selecting a family directly.
+
+IBM Plex Sans is provisioned as a local WOFF2 asset and packaged with the
+frontend. Its family stack ends in the semantic system sans-serif stack, so a
+missing or unreadable face degrades deterministically without a runtime font
+request. A pristine source checkout needs the maintained provisioning command
+to download uncached font assets before its first build, while an installed
+package remains offline-capable. Explicit user-selected bundled, system,
+accessibility, or installed custom families remain authoritative.
+
+This browser/interface contract does not define Study Guide PDF typography or
+font embedding. The native print design remains owned by Stage 9.
+
 ## Responsive layout modes
 
 Layout responds to available space and input capability rather than assuming that an operating-system name determines the interface.

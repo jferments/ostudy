@@ -244,6 +244,27 @@ describe("SettingsScreen", () => {
     });
   });
 
+  it("restores Plex typography while leaving non-appearance settings unchanged", async () => {
+    const { onPreviewSettings } = renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: "Restore appearance defaults" }));
+
+    await waitFor(() => {
+      expect(onPreviewSettings).toHaveBeenLastCalledWith({
+        ...settings,
+        theme: "dark",
+        uiFont: "plex",
+        cardFont: "plex",
+        uiScale: 100,
+        cardBaseSize: 18,
+        motionPreference: "system",
+        materialPreference: "automatic",
+        decorativeArtwork: true,
+        celebrationsEnabled: true,
+        tutorialsEnabled: false,
+      });
+    });
+  });
+
   it("keeps review limits in the dedicated scheduling tab and leaves shuffle on Practice", async () => {
     const { onPreviewSettings } = renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Review/Scheduling" }));

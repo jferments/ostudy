@@ -23,6 +23,7 @@ import {
   type FlashcardsWorkspaceName,
 } from "../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
+import { DEFAULT_FONT_PRESET } from "../ui/appearance/appearanceTypes";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import {
   hasActivePracticeSession,
@@ -100,8 +101,8 @@ export interface AnalyticsLaunchRequest {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
-  uiFont: "system",
-  cardFont: "system",
+  uiFont: DEFAULT_FONT_PRESET,
+  cardFont: DEFAULT_FONT_PRESET,
   uiScale: 100,
   cardBaseSize: 18,
   motionPreference: "system",

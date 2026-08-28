@@ -8,6 +8,13 @@ The Appearance settings provide Light, Dark, Console, and Synthwave themes. Each
 
 Interface and flashcard typography are configured separately. Interface scale and default card text size also remain separate: increasing the interface scale does not rewrite card content, and changing the card default does not enlarge navigation or dialogs.
 
+IBM Plex Sans is the new-install default for both interface and flashcard text.
+Older untouched system defaults adopt it automatically, while any font that
+you explicitly selected—including the system family—remains unchanged. The
+bundled face works offline in an installed app. If it is unavailable, ostudy
+falls back to the device's sans-serif system stack rather than requesting a
+remote font.
+
 ## Motion and material effects
 
 Motion has three effective levels:

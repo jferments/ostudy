@@ -305,6 +305,16 @@ fn populate_complete_library(
                 [],
             )
             .map_err(CommandError::database)?;
+        connection
+            .execute_batch(
+                "UPDATE app_settings
+                 SET value_json = '\"custom:Reader Sans\"', updated_at = 41
+                 WHERE key = 'uiFont';
+                 UPDATE app_settings
+                 SET value_json = '\"serif\"', updated_at = 42
+                 WHERE key = 'cardFont';",
+            )
+            .map_err(CommandError::database)?;
         Ok((deck.id, asset_relative))
     })
 }
@@ -421,6 +431,22 @@ fn complete_backup_restore_replaces_the_library_with_every_history_source() {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(daily_new, "12");
+            let fonts: (String, String) = connection
+                .query_row(
+                    "SELECT
+                         (SELECT value_json FROM app_settings WHERE key = 'uiFont'),
+                         (SELECT value_json FROM app_settings WHERE key = 'cardFont')",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                fonts,
+                (
+                    "\"custom:Reader Sans\"".to_string(),
+                    "\"serif\"".to_string()
+                )
+            );
             Ok(())
         })
         .expect("restored state should match backup");

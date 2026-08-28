@@ -66,9 +66,9 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] Preserve platform back behavior, active-session exit guards, lifecycle checkpoints, and return targets after the route change. (Stage 2C)
 - [ ] Replace the CSS-drawn brand mark with the supplied transparent raccoon mascot asset, with correctly generated desktop/mobile sizes and no baked background.
 - [ ] Remove the “Learn with intent” motto from the sidebar and any other product copy.
-- [ ] Make IBM Plex Sans the default UI and card family for new installs.
-- [ ] Add a settings migration that maps the old `system` defaults to IBM Plex Sans without overriding a user-selected font.
-- [ ] Reuse the existing local-font provisioning and fallback system; document packaging/licensing and test missing-font fallback.
+- [x] Make IBM Plex Sans the default UI and card family for new installs.
+- [x] Add a settings migration that maps the old `system` defaults to IBM Plex Sans without overriding a user-selected font.
+- [x] Reuse the existing local-font provisioning and fallback system; document packaging/licensing and test missing-font fallback.
 - [ ] Add platform-adapter commands for native maximize/restore and full-screen where supported, with keyboard-accessible controls and no direct Tauri calls from shared UI.
 - [ ] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop.
 - [ ] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage.

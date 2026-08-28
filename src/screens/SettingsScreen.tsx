@@ -4,6 +4,7 @@ import type { ShowToast } from "../components/Toast";
 import { useAiProfilesController } from "../controllers/aiProfilesController";
 import { getErrorMessage } from "../ipc/common";
 import { saveSettings, type AppSettings } from "../ipc/settings";
+import { DEFAULT_FONT_PRESET } from "../ui/appearance/appearanceTypes";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
@@ -31,8 +32,8 @@ type SettingsTab = "storage" | "appearance" | "ai" | "review" | "diagnostics";
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
-  uiFont: "plex",
-  cardFont: "plex",
+  uiFont: DEFAULT_FONT_PRESET,
+  cardFont: DEFAULT_FONT_PRESET,
   uiScale: 100,
   cardBaseSize: 18,
   motionPreference: "system",

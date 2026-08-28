@@ -73,6 +73,29 @@ Platform Back still runs through overlay precedence and the active-session
 termination guard. Stage 8 still owns guide detail/controller/deletion state;
 Stage 3 still owns the retained Practice setup composition.
 
+## Stage 2E typography delta
+
+Stage 2E makes the existing application-owned `plex` preset the shared initial
+interface and card default. The foundation CSS, application controller, Restore
+appearance defaults action, and semantic appearance resolver now agree on IBM
+Plex Sans followed by the system sans-serif stack. UI and card choices remain
+independent, and rich card content continues to consume
+`--card-font-family`.
+
+The existing native compatibility read is now an explicit invariant: only a
+released `system` row with `updated_at = 0`, or an absent font row, resolves to
+`plex`. A real save writes a nonzero timestamp, so an explicit system, bundled,
+accessibility, serif, mono, or custom value is preserved independently for
+`uiFont` and `cardFont`. No released migration was edited and no durable schema
+or backup format changed.
+
+IBM Plex Sans continues through the maintained Google Fonts provisioning cache,
+local `@font-face`, and system-family fallback. Production builds verify hashed
+local WOFF2 output, CSS references, offline behavior, and a packaged OFL 1.1
+notice. A pristine source build may need the one-time provisioning network;
+installed application use does not. Native Study Guide PDF typography and
+embedding remain Stage 9, and Stage 2 remains otherwise incomplete.
+
 ## Route and navigation topology
 
 Visible destination vocabulary is owned by `AppSection`; protected workflow
