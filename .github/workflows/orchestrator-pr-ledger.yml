@@ -1,0 +1,141 @@
+name: Orchestrator PR Ledger
+
+on:
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
+
+concurrency:
+  group: orchestrator-pr-ledger-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  project-checkpoints:
+    # Privileged metadata projection runs only *after* the ordinary read-only Check
+    # workflow has passed for a same-repository owner-operated PR. This workflow
+    # exists on the default branch, never checks out/executes the PR head, and
+    # treats the completed workflow_run metadata plus GitHub API reads as data only.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.actor.login == github.repository_owner &&
+      github.event.workflow_run.pull_requests[0].number != null
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 5
+
+    env:
+      EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out trusted default-branch automation only
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Fetch exact PR and head-commit metadata
+        run: |
+          set -Eeuo pipefail
+          api_headers=(
+            -H "Authorization: Bearer $GITHUB_TOKEN"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          curl --fail-with-body --silent --show-error \
+            "${api_headers[@]}" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$EXPECTED_HEAD_SHA" \
+            -o "$RUNNER_TEMP/orchestrator-ledger-commit.json"
+          curl --fail-with-body --silent --show-error \
+            "${api_headers[@]}" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            -o "$RUNNER_TEMP/orchestrator-ledger-pr.json"
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const expected = process.env.EXPECTED_HEAD_SHA
+          const repository = process.env.GITHUB_REPOSITORY
+          const temp = process.env.RUNNER_TEMP
+          const commit = JSON.parse(fs.readFileSync(`${temp}/orchestrator-ledger-commit.json`, 'utf8'))
+          const pr = JSON.parse(fs.readFileSync(`${temp}/orchestrator-ledger-pr.json`, 'utf8'))
+          if (commit.sha !== expected) throw new Error(`Fetched commit SHA ${commit.sha} != ${expected}`)
+          if (pr.head?.sha !== expected) throw new Error(`Fetched PR head ${pr.head?.sha} != ${expected}`)
+          if (pr.head?.repo?.full_name !== repository) throw new Error('PR head repository changed during projection preflight.')
+          fs.writeFileSync(`${temp}/orchestrator-ledger-body.md`, pr.body ?? '', 'utf8')
+          fs.writeFileSync(`${temp}/orchestrator-ledger-message.txt`, commit.commit?.message ?? '', 'utf8')
+          NODE
+
+      - name: Project exact checklist trailers
+        run: |
+          set -Eeuo pipefail
+          node ./scripts/project-orchestrator-checklist.mjs \
+            --body-file "$RUNNER_TEMP/orchestrator-ledger-body.md" \
+            --commit-message-file "$RUNNER_TEMP/orchestrator-ledger-message.txt" \
+            --expected-head-sha "$EXPECTED_HEAD_SHA" \
+            --actual-head-sha "$EXPECTED_HEAD_SHA" \
+            --output "$RUNNER_TEMP/orchestrator-ledger-result.json"
+
+      - name: Revalidate prior state and update PR body
+        run: |
+          set -Eeuo pipefail
+          changed="$(node --input-type=module -e '
+            import fs from "node:fs";
+            const value = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/orchestrator-ledger-result.json", "utf8"));
+            process.stdout.write(value.changed ? "true" : "false");
+          ')"
+          if [[ "$changed" != "true" ]]; then
+            echo "No unchecked orchestrator checklist trailers require projection."
+            exit 0
+          fi
+
+          api_headers=(
+            -H "Authorization: Bearer $GITHUB_TOKEN"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          curl --fail-with-body --silent --show-error \
+            "${api_headers[@]}" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            -o "$RUNNER_TEMP/orchestrator-ledger-pr-current.json"
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const temp = process.env.RUNNER_TEMP
+          const expected = process.env.EXPECTED_HEAD_SHA
+          const repository = process.env.GITHUB_REPOSITORY
+          const originalBody = fs.readFileSync(`${temp}/orchestrator-ledger-body.md`, 'utf8')
+          const current = JSON.parse(fs.readFileSync(`${temp}/orchestrator-ledger-pr-current.json`, 'utf8'))
+          const result = JSON.parse(fs.readFileSync(`${temp}/orchestrator-ledger-result.json`, 'utf8'))
+          if (current.head?.sha !== expected) {
+            throw new Error(`PR head changed before PATCH: ${current.head?.sha} != ${expected}`)
+          }
+          if (current.head?.repo?.full_name !== repository) {
+            throw new Error('PR head repository changed before PATCH.')
+          }
+          if ((current.body ?? '') !== originalBody) {
+            throw new Error('PR body changed after projection preflight; refusing to overwrite concurrent edits.')
+          }
+          fs.writeFileSync(
+            `${temp}/orchestrator-ledger-patch.json`,
+            JSON.stringify({ body: result.body }),
+            'utf8',
+          )
+          NODE
+
+          curl --fail-with-body --silent --show-error \
+            -X PATCH \
+            "${api_headers[@]}" \
+            -H "Content-Type: application/json" \
+            --data-binary "@$RUNNER_TEMP/orchestrator-ledger-patch.json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            > "$RUNNER_TEMP/orchestrator-ledger-update.json"
+
+          echo "Projected exact orchestrator checkpoint trailers into PR #$PR_NUMBER after successful read-only Check qualification."
