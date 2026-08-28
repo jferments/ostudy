@@ -242,6 +242,11 @@ describe("App shell", () => {
     expect(document.documentElement.dataset.reduceMotion).toBeUndefined();
     expect(document.documentElement.style.getPropertyValue("--ui-scale")).toBe("1.1");
     expect(screen.queryByRole("group", { name: "Window controls" })).toBeNull();
+
+    const main = screen.getByRole("main");
+    expect(main.className).toContain("main");
+    expect(main.parentElement?.className).toContain("shell");
+    expect(main.firstElementChild?.className).toContain("routeLayer");
   });
 
   it("guards navigation with the shared unsaved-change dialog", async () => {

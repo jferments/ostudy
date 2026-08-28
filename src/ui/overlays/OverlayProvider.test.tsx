@@ -191,4 +191,33 @@ describe("OverlayProvider", () => {
     expect(dispatchPlatformBack()).toBe(true);
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("exposes the viewport workspace presentation without changing dialog lifecycle", async () => {
+    const onClose = vi.fn();
+    render(
+      <OverlayProvider>
+        <Dialog
+          title="Workspace dialog"
+          description="Uses the available viewport."
+          width="workspace"
+          presentation="fullscreen"
+          onClose={onClose}
+        >
+          <button type="button" data-autofocus="true">Workspace action</button>
+        </Dialog>
+      </OverlayProvider>,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Workspace dialog" });
+    expect(dialog.getAttribute("data-presentation")).toBe("fullscreen");
+    expect(dialog.firstElementChild?.className).toContain("workspace");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Workspace action" }),
+      ),
+    );
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledWith("escape");
+  });
 });

@@ -9,9 +9,8 @@
       text-transform: uppercase;
   }
   .screen {
-    width: min(1480px, 100%);
+    width: 100%;
       min-height: 100%;
-      margin: 0 auto;
       padding: 42px clamp(28px, 4vw, 68px) 70px;
   }
   .screen-header {

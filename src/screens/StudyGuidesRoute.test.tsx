@@ -30,8 +30,12 @@ describe("StudyGuidesRoute", () => {
     const showToast = vi.fn();
     const onPracticeCards = vi.fn().mockResolvedValue(undefined);
 
-    render(<StudyGuidesRoute showToast={showToast} onPracticeCards={onPracticeCards} />);
+    const { container } = render(
+      <StudyGuidesRoute showToast={showToast} onPracticeCards={onPracticeCards} />,
+    );
 
+    expect(container.firstElementChild?.getAttribute("aria-label")).toBe("Study Guides");
+    expect(container.firstElementChild?.className).toContain("full");
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1, name: "Study Guides" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Generated guides" })).toBeTruthy();

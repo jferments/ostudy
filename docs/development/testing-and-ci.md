@@ -50,6 +50,16 @@ This directly covers the state that fresh WebDriver homes cannot exercise. Separ
 
 Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
 
+The UI-platform smoke waits for the shared layout mode and two animation frames
+before measuring responsive geometry. At compact, medium, and wide sizes it
+asserts that the shell, main scroll owner, route-transition layer, and selected
+maintained route consume their allocated viewport without document-level
+horizontal overflow. It repeats shell/route measurements only after the native
+window controller exposes the expected pressed state for maximize and full
+screen. Dialog checks measure viewport containment and confirm that the shared
+dialog body remains the vertical scroll owner; they do not infer native state
+from dimensions alone.
+
 Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
 
 ### Worktree stability

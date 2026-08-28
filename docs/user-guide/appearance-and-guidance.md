@@ -23,8 +23,11 @@ full-screen controls in the shell. Their labels change to **Restore window** and
 ordinary keyboard-focusable buttons and move from the sidebar to the app bar at
 compact desktop widths. Mobile builds and browser-only previews omit them
 instead of simulating a desktop window or browser full-screen behavior. This
-does not yet change how every route, dialog, or guide consumes the expanded
-viewport.
+expands the shell and maintained routes into the resulting viewport. Dialogs
+remain bounded by the safe dynamic viewport; workspace dialogs such as the
+current Study Guide can fill it while preserving a narrower reading column.
+Compact guides use a full-screen presentation with content and sticky actions
+kept clear of safe areas and the on-screen keyboard.
 
 ## Motion and material effects
 

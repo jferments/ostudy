@@ -2,7 +2,7 @@
   .presence { min-width: 0; animation: presence-enter var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-enter) both; }
   .presence[data-state="exiting"] { pointer-events: none; animation: presence-exit var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-exit) both; }
 
-  .route { min-width: 0; animation-duration: var(--ostudy-motion-duration-slow); animation-timing-function: var(--ostudy-motion-ease-enter); animation-fill-mode: both; }
+  .route { width: 100%; min-width: 0; min-height: 100%; animation-duration: var(--ostudy-motion-duration-slow); animation-timing-function: var(--ostudy-motion-ease-enter); animation-fill-mode: both; }
   .route[data-direction="forward"][data-relation="hierarchy"] { animation-name: route-forward; }
   .route[data-direction="back"][data-relation="hierarchy"] { animation-name: route-back; }
   .route[data-relation="sibling"] { animation-name: route-sibling; animation-duration: var(--ostudy-motion-duration-standard); }

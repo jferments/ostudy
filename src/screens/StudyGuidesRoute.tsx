@@ -12,7 +12,7 @@ export function StudyGuidesRoute({
   onPracticeCards,
 }: StudyGuidesRouteProps) {
   return (
-    <PageScaffold width="wide" aria-label="Study Guides">
+    <PageScaffold width="full" aria-label="Study Guides">
       <PageHeader
         title="Study Guides"
         icon="study-guide"

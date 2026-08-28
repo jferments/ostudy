@@ -28,7 +28,15 @@ native window state, including changes made through the operating system.
 Android, other mobile builds, and browser-only previews do not show these
 controls. ostudy does not imitate them by resizing browser content or invoking a
 browser-only full-screen mode. Full viewport use by every route and dialog is
-still planned separately; Stage 2F adds the native window operations only.
+not simulated: after resize, maximize, or full screen, the shell and maintained
+workspaces expand to the available application viewport. Dialogs stay within
+the safe dynamic viewport, and workspace-style dialogs can use the full canvas
+while keeping their content independently scrollable.
+
+Study Guides use that workspace presentation while keeping the guide text at a
+comfortable reading width. On compact layouts the guide becomes full-screen,
+its contents and article stack vertically, and sticky editing actions remain
+above safe areas and the on-screen keyboard.
 
 ## Themes
 

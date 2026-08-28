@@ -2,8 +2,8 @@
   display: grid;
   gap: 1.25rem;
   padding: clamp(1rem, 3vw, 2rem);
-  width: min(100%, 1100px);
-  margin: 0 auto;
+  width: 100%;
+  min-height: 100%;
 }
 
 .header {

@@ -192,6 +192,162 @@ def assert_no_horizontal_overflow(session_id: str, label: str) -> None:
         )
 
 
+def wait_for_layout_stable(session_id: str) -> None:
+    deadline = webdriver.deadline_after()
+    previous: tuple[float, ...] | None = None
+    stable_samples = 0
+    while time.monotonic() < deadline:
+        snapshot = execute_async(
+            session_id,
+            """
+            const done = arguments[arguments.length - 1];
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              const main = document.querySelector("main");
+              const shell = main?.parentElement;
+              const route = main?.firstElementChild;
+              const measure = (element) => {
+                if (!(element instanceof HTMLElement)) return [0, 0];
+                const bounds = element.getBoundingClientRect();
+                return [bounds.width, bounds.height];
+              };
+              done([
+                document.documentElement.clientWidth,
+                document.documentElement.clientHeight,
+                ...measure(shell),
+                ...measure(main),
+                ...measure(route),
+              ]);
+            }));
+            """,
+        )
+        if not isinstance(snapshot, list) or len(snapshot) != 8:
+            raise AssertionError(f"Unexpected layout-stability snapshot: {snapshot!r}")
+        current = tuple(round(float(value), 2) for value in snapshot)
+        if current == previous:
+            stable_samples += 1
+            if stable_samples >= 2:
+                return
+        else:
+            stable_samples = 0
+            previous = current
+        time.sleep(0.05)
+    raise AssertionError(f"Viewport geometry did not stabilize: {previous!r}")
+
+
+def assert_viewport_consumption(
+    session_id: str,
+    label: str,
+    route_selector: str | None = None,
+) -> None:
+    wait_for_layout_stable(session_id)
+    measurements = execute(
+        session_id,
+        """
+        const routeSelector = arguments[0];
+        const main = document.querySelector("main");
+        const shell = main?.parentElement;
+        const routeLayer = main?.firstElementChild;
+        const route = routeSelector ? routeLayer?.querySelector(routeSelector) : null;
+        const rect = (element) => {
+          if (!(element instanceof HTMLElement)) return null;
+          const bounds = element.getBoundingClientRect();
+          return {
+            left: bounds.left,
+            top: bounds.top,
+            right: bounds.right,
+            bottom: bounds.bottom,
+            width: bounds.width,
+            height: bounds.height,
+          };
+        };
+        return {
+          viewportWidth: document.documentElement.clientWidth,
+          viewportHeight: document.documentElement.clientHeight,
+          shell: rect(shell),
+          main: rect(main),
+          routeLayer: rect(routeLayer),
+          route: rect(route),
+        };
+        """,
+        [route_selector],
+    )
+    if not isinstance(measurements, dict):
+        raise AssertionError(f"Unexpected viewport measurement for {label}: {measurements!r}")
+    shell = measurements.get("shell")
+    main = measurements.get("main")
+    route_layer = measurements.get("routeLayer")
+    if not all(isinstance(value, dict) for value in (shell, main, route_layer)):
+        raise AssertionError(f"Missing shell geometry for {label}: {measurements!r}")
+    viewport_width = float(measurements.get("viewportWidth", 0))
+    viewport_height = float(measurements.get("viewportHeight", 0))
+    tolerance = 2
+    if (
+        abs(float(shell["left"])) > tolerance
+        or abs(float(shell["top"])) > tolerance
+        or abs(float(shell["right"]) - viewport_width) > tolerance
+        or abs(float(shell["bottom"]) - viewport_height) > tolerance
+    ):
+        raise AssertionError(f"Application shell did not consume {label}: {measurements!r}")
+    if (
+        float(main["width"]) <= 0
+        or abs(float(main["right"]) - float(shell["right"])) > tolerance
+        or abs(float(main["bottom"]) - float(shell["bottom"])) > tolerance
+        or abs(float(route_layer["width"]) - float(main["width"])) > tolerance
+        or float(route_layer["height"]) + tolerance < float(main["height"])
+    ):
+        raise AssertionError(f"Main route layer did not consume {label}: {measurements!r}")
+    route = measurements.get("route")
+    if route_selector and (
+        not isinstance(route, dict)
+        or abs(float(route["width"]) - float(route_layer["width"])) > tolerance
+        or float(route["height"]) + tolerance < float(main["height"])
+    ):
+        raise AssertionError(f"Maintained route did not consume {label}: {measurements!r}")
+    assert_no_horizontal_overflow(session_id, label)
+
+
+def assert_dialog_viewport_bounds(session_id: str, label: str) -> None:
+    wait_for_layout_stable(session_id)
+    measurements = execute(
+        session_id,
+        """
+        const dialog = document.querySelector("dialog[open]");
+        const card = dialog?.querySelector(":scope > section");
+        const body = card?.querySelector(":scope > div:last-child");
+        if (!(dialog instanceof HTMLDialogElement) || !(card instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+          return null;
+        }
+        const d = dialog.getBoundingClientRect();
+        const c = card.getBoundingClientRect();
+        return {
+          viewportWidth: document.documentElement.clientWidth,
+          viewportHeight: document.documentElement.clientHeight,
+          dialog: { left: d.left, top: d.top, right: d.right, bottom: d.bottom },
+          card: { left: c.left, top: c.top, right: c.right, bottom: c.bottom },
+          bodyOverflowY: getComputedStyle(body).overflowY,
+        };
+        """,
+    )
+    if not isinstance(measurements, dict):
+        raise AssertionError(f"Could not measure {label}: {measurements!r}")
+    dialog = measurements["dialog"]
+    card = measurements["card"]
+    tolerance = 2
+    if (
+        abs(float(dialog["left"])) > tolerance
+        or abs(float(dialog["top"])) > tolerance
+        or abs(float(dialog["right"]) - float(measurements["viewportWidth"])) > tolerance
+        or abs(float(dialog["bottom"]) - float(measurements["viewportHeight"])) > tolerance
+        or float(card["left"]) < -tolerance
+        or float(card["top"]) < -tolerance
+        or float(card["right"]) > float(measurements["viewportWidth"]) + tolerance
+        or float(card["bottom"]) > float(measurements["viewportHeight"]) + tolerance
+        or measurements["bodyOverflowY"] not in ("auto", "scroll")
+    ):
+        raise AssertionError(f"Dialog escaped the viewport or lost its scroll owner in {label}: {measurements!r}")
+    assert_no_horizontal_overflow(session_id, label)
+
+
 def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
     return webdriver.find_element(
         session_id,
@@ -295,6 +451,7 @@ def verify_native_window_controls(session_id: str, deadline: float) -> None:
         session_id, "Maximize window", False, deadline
     )
     wait_for_window_control(session_id, "Restore window", True, deadline)
+    assert_viewport_consumption(session_id, "maximized desktop viewport")
     activate_window_control_with_keyboard(
         session_id, "Restore window", True, deadline
     )
@@ -304,6 +461,7 @@ def verify_native_window_controls(session_id: str, deadline: float) -> None:
         session_id, "Enter full screen", False, deadline
     )
     wait_for_window_control(session_id, "Exit full screen", True, deadline)
+    assert_viewport_consumption(session_id, "full-screen desktop viewport")
     activate_window_control_with_keyboard(
         session_id, "Exit full screen", True, deadline
     )
@@ -311,7 +469,7 @@ def verify_native_window_controls(session_id: str, deadline: float) -> None:
 
     set_window_rect(session_id, 1440, 900)
     wait_for_layout_mode(session_id, "wide", deadline)
-    assert_no_horizontal_overflow(session_id, "restored native window controls")
+    assert_viewport_consumption(session_id, "restored native window controls")
 
 
 def open_study_guides_and_return(
@@ -333,7 +491,7 @@ def open_study_guides_and_return(
         "Study Guides",
         deadline,
     )
-    assert_no_horizontal_overflow(session_id, label)
+    assert_viewport_consumption(session_id, label, "[aria-label='Study Guides']")
 
     flashcards = webdriver.find_element(
         session_id,
@@ -428,6 +586,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
         deadline,
     )
     wait_for_focus(session_id, name_input, deadline)
+    assert_dialog_viewport_bounds(session_id, "responsive create-deck dialog")
 
     send_key(session_id, TAB_KEY)
     inside_dialog = execute(

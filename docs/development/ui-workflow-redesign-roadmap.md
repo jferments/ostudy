@@ -70,7 +70,7 @@ The redesign should make ostudy feel quieter and faster without hiding ordinary 
 - [x] Add a settings migration that maps the old `system` defaults to IBM Plex Sans without overriding a user-selected font.
 - [x] Reuse the existing local-font provisioning and fallback system; document packaging/licensing and test missing-font fallback.
 - [x] Add platform-adapter commands for native maximize/restore and full-screen where supported, with keyboard-accessible controls and no direct Tauri calls from shared UI. (Stage 2F)
-- [ ] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop. (Stage 2G)
+- [x] Ensure the shell, routes, dialogs, and guide workspace consume the full resulting viewport on desktop. (Stage 2G)
 - [ ] Update navigation, brand, checkpoint, font, and desktop-window tests plus native/UI smoke coverage.
 
 Stage 2B separates visible destination state from the in-memory Practice
@@ -88,17 +88,29 @@ destinations now save and restore; resumable Practice state carries a logical
 return target independently, lifecycle saves flush the latest in-memory cursor,
 platform Back retains the existing termination guard, and restored routes use
 new request identities. Stage 3 setup relocation and the remaining Stage 2
-branding, font, window, and viewport items are still pending; overall Stage 2 is
-not complete.
+branding, font, window, and viewport items were still pending at that checkpoint.
+The later stage notes below record their current state; overall Stage 2 is not
+complete.
 
 Stage 2F adds independently reported maximize/restore and full-screen desktop
 capabilities, least-authority main-window permissions, a Tauri-only platform
 adapter, controller-owned native state reconciliation, and action-accurate
 keyboard controls in the responsive shell chrome. Android, other mobile targets,
 and browser-only execution report no window controls and receive no simulated
-fallback. Stage 2G still owns full viewport consumption by the shell, routes,
-dialogs, and guide workspace. Branding and motto work also remain pending, so
-overall Stage 2 is not complete.
+fallback. Stage 2F deliberately leaves full viewport consumption by the shell,
+routes, dialogs, and guide workspace to the Stage 2G delta below. Branding and
+motto work also remain pending, so overall Stage 2 is not complete.
+
+Stage 2G makes the shell, main scroll owner, transition layer, maintained route
+roots, dialogs, and current Study Guide workspace consume the available dynamic
+viewport after resize, maximize, and full-screen changes. It retains bounded
+heading/form/reading measures, gives the Study Guide a `52rem` article inside a
+viewport workspace, and preserves compact safe-area/IME behavior through the
+shared dialog body-scroll contract. Native smoke measures these bounds only
+after Stage 2F controller state and viewport layout stabilize. Stage 8 still
+owns guide library/controller/deletion lifecycle, and Stage 9 still owns reader
+semantics and PDF design. Branding and motto work remain pending, so overall
+Stage 2 is not complete.
 
 ## Stage 3 — Deck selection and practice setup relocation
 
@@ -198,7 +210,7 @@ overall Stage 2 is not complete.
 
 ## Stage 9 — Study-guide reader, semantic emphasis, and designed PDF export
 
-- [ ] Replace the small fixed dialog constraint with a responsive guide workspace that can occupy nearly the full desktop viewport.
+- [ ] Refine the Stage 2G viewport workspace into the designed guide reader without changing its responsive shell contract.
 - [ ] Keep readable line length inside a wide shell using a contents rail, flexible article column, and optional contextual/source rail rather than shrinking the entire window.
 - [ ] Use a full-screen/sheet layout on compact devices and preserve focus restoration, deep section links, and keyboard navigation.
 - [ ] Rework guide actions through the shared responsive action system.

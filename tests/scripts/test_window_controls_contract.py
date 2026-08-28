@@ -58,6 +58,19 @@ class WindowControlsContractTest(unittest.TestCase):
         self.assertNotIn("@tauri-apps", controller)
         self.assertNotIn("@tauri-apps", component)
 
+    def test_native_smoke_measures_shell_routes_and_dialogs_in_window_states(self) -> None:
+        smoke = self.read("tests/webdriver/ui_platform_smoke.py")
+
+        for contract in (
+            "assert_viewport_consumption",
+            "assert_dialog_viewport_bounds",
+            '"maximized desktop viewport"',
+            '"full-screen desktop viewport"',
+            '"[aria-label=\'Study Guides\']"',
+            '"responsive create-deck dialog"',
+        ):
+            self.assertIn(contract, smoke)
+
 
 if __name__ == "__main__":
     unittest.main()

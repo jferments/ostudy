@@ -12,10 +12,10 @@
     margin: 0;
     border: 0;
     padding:
-      max(var(--ostudy-space-4), env(safe-area-inset-top))
-      max(var(--ostudy-space-4), env(safe-area-inset-right))
-      max(var(--ostudy-space-4), env(safe-area-inset-bottom))
-      max(var(--ostudy-space-4), env(safe-area-inset-left));
+      max(var(--ostudy-space-4), var(--safe-top))
+      max(var(--ostudy-space-4), var(--safe-right))
+      max(var(--ostudy-space-4), var(--safe-bottom))
+      max(var(--ostudy-space-4), var(--safe-left));
     overflow: hidden;
     background: transparent;
     color: var(--ostudy-color-text-primary);
@@ -42,6 +42,12 @@
   .small { max-width: 520px; }
   .medium { max-width: 680px; }
   .large { max-width: 980px; }
+  .workspace {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+  }
 
   .header {
     display: flex;
@@ -85,7 +91,7 @@
       border-bottom: 0;
       border-left: 0;
       border-radius: var(--ostudy-radius-large) var(--ostudy-radius-large) 0 0;
-      padding-bottom: env(safe-area-inset-bottom);
+      padding-bottom: calc(var(--safe-bottom) + var(--android-ime-bottom));
     }
 
     .dialog[data-presentation="fullscreen"] {
@@ -98,7 +104,7 @@
       max-height: 100dvh;
       border: 0;
       border-radius: 0;
-      padding-bottom: env(safe-area-inset-bottom);
+      padding-block: var(--safe-top) calc(var(--safe-bottom) + var(--android-ime-bottom));
     }
 
     .header { padding: var(--ostudy-space-4); }

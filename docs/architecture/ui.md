@@ -57,6 +57,12 @@ A modal overlay:
 - refuses dismissal while a critical operation is busy or explicitly non-dismissible;
 - presents as a safe-area-aware sheet on compact screens when appropriate.
 
+The shared `Dialog` sizing contract includes a viewport workspace for workflows
+that need the available desktop canvas. Its card fills the safe dynamic
+viewport while the shared body remains the scroll owner. Small, medium, and
+large dialogs retain readable bounded measures; compact dialog/sheet/full-screen
+presentations retain safe-area and virtual-keyboard padding.
+
 Features use `Dialog`, `Sheet`, `Menu`, the compatibility `Modal` wrapper, or the asynchronous confirmation service. They do not hand-write backdrops, focus traps, `role="dialog"`, or ordinary `window.confirm()` calls.
 
 Browser-native `beforeunload` remains an exception because a custom React overlay cannot reliably finish while the WebView is closing. Long-running document close protection is also enforced natively, where application shutdown can actually be prevented.
@@ -151,7 +157,19 @@ Layout responds to available space and input capability rather than assuming tha
 
 The desktop Tauri window allows compact widths so responsive behavior can be exercised before mobile projects exist.
 
-On supported desktop builds, compact width changes the placement of native window controls, not their policy. Maximizing or entering full screen changes the native window; full shell, route, dialog, and guide-workspace viewport consumption remains the separate Stage 2G layout responsibility.
+On supported desktop builds, compact width changes the placement of native
+window controls, not their policy. Maximizing or entering full screen changes
+the native window, and the shell, main scroll owner, route-transition layer,
+and maintained route roots consume that resulting CSS viewport. Route content
+may still bound headings, forms, or reading columns where unlimited line length
+would reduce usability.
+
+The current Study Guide uses the shared viewport workspace. Its contents rail
+and article adapt to the workspace container rather than platform identity,
+while the article keeps a readable `52rem` maximum measure. Compact layouts use
+the full-screen overlay contract and keep sticky editing actions above safe-area
+and IME insets. Guide route/controller lifecycle and deletion remain Stage 8;
+reader semantics and native PDF design remain Stage 9.
 
 ### Application destinations
 
@@ -298,7 +316,7 @@ The effects layer is pointer-transparent, does not affect layout, uses named UI 
 
 ## Testing
 
-Component tests cover overlay stacking, initial focus, focus containment and restoration, Escape/Back precedence, menu dismissal, tab keyboard behavior, responsive navigation, toast interaction, and feature use of shared primitives.
+Component tests cover overlay stacking, initial focus, focus containment and restoration, Escape/Back precedence, menu dismissal, tab keyboard behavior, responsive navigation, viewport workspace presentation, toast interaction, and feature use of shared primitives. Native UI smoke measures shell, main, route, and dialog bounds after compact/medium/wide resize and while native maximize and full-screen states are active.
 
 Representative manual widths include:
 

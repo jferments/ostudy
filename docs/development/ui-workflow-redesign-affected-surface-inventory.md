@@ -109,9 +109,33 @@ unmaximize, and set-fullscreen mutation authority.
 window-manager changes on native resize events with a latest-read lane,
 serializes UI mutations, and surfaces failures without browser fallbacks. The
 shell renders one accessible group in the wide/medium sidebar or compact app
-bar. The native close guard remains unchanged. Stage 2G still owns shell, route,
-dialog, and guide-workspace full-viewport consumption; overall Stage 2 remains
-incomplete.
+bar. The native close guard remains unchanged. Stage 2F deliberately leaves
+shell, route, dialog, and guide-workspace full-viewport consumption to the
+Stage 2G delta below; overall Stage 2 remains incomplete.
+
+## Stage 2G full-viewport delta
+
+Stage 2G makes the application shell, main scroll owner, transition layer, and
+maintained route roots fill the CSS viewport allocated after resize, maximize,
+or full screen. Shared and feature page gutters remain, but obsolete route-level
+maximum widths no longer constrain Flashcards, Documents, Analytics, Settings,
+Practice, development stubs, or nested card editing. Headings, explanatory
+copy, forms, and rich reading content keep intentional local measures.
+
+The shared `Dialog` adds a viewport workspace size while retaining its existing
+focus, topmost dismissal, busy, forced-colors, reduced-motion, safe-area, and
+body-scroll lifecycle. The current Study Guide consumes that size, keeps its
+`52rem` article measure, collapses its contents/article layout by container
+width, and keeps compact sticky editing actions clear of safe-area and IME
+insets. This does not add guide route/controller/deletion state (Stage 8) or
+reader semantics and PDF design (Stage 9).
+
+`tests/webdriver/ui_platform_smoke.py` now measures shell, main, route, dialog,
+and horizontal-overflow bounds at compact, medium, and wide sizes and while the
+Stage 2F native maximize/full-screen pressed states are active.
+`tests/scripts/test_window_controls_contract.py` makes those measurements part
+of the Stage 2F source contract. Overall Stage 2 remains incomplete because the
+branding, mascot, and motto items are still open.
 
 ## Route and navigation topology
 
@@ -161,7 +185,7 @@ route/smoke contract.
 | Study-guide library and reader | `src/screens/StudyGuideLibrarySection.tsx`, `src/screens/StudyGuideDialog.tsx` | These components currently own list/selection, guide load/generate/cancel, overlays, topic projections/practice, and PDF preparation directly through typed IPC. SQLite/Rust own guide revisions, overlay revisions/conflicts, topic links, checkpoints, jobs, and export artifacts. | Stage 8 must introduce a route-owned controller without claiming it exists now; deletion needs optimistic revision and a precise cascade. Stage 9 must keep learner overlays and deterministic native PDF ownership. | Stages 8, 9, 12 |
 | Settings and AI profiles | `src/screens/SettingsScreen.tsx`, `src/screens/settings/DefaultAiModelSettings.tsx`, `AiLlmSettings.tsx`, `AppearanceSettings.tsx`, `src/controllers/aiProfilesController.ts` | Settings screen owns draft/preview/dirty/save; `app_settings` owns durable application preferences. AI controller owns independent list/detail/model lanes plus profile/default/credential/probe mutations. SQLite owns profile metadata/task defaults; native secure store owns credential bytes. | Fonts and reasoning migration must preserve explicit user choices, dirty state, capability validation, credentials, and task defaults. Per-profile reasoning does not exist yet. | Stages 2, 9, 11 |
 | Rich card/template editor | `src/screens/CardEditorScreen.tsx`, `src/screens/templates/TemplateLayoutEditor.tsx`, `src/screens/card-editor/TemplateEntryForm.tsx`, public editor modules under `src/editor/`, `src/controllers/cardEditorController.ts`, `templatesController.ts`, `useDurableDraft.ts` | `RichDocument` in `src/ipc/common.ts` is the transport. Rust validator and SQLite notes/templates/drafts are authoritative. `RichTextEditor.tsx`, `RichTextView.tsx`, and `StudyRichEditor.tsx` currently own Tiptap `useEditor`, extensions, selection, and toolbar commands directly. | Stage 10 must isolate Tiptap behind an editor-neutral adapter while preserving draft flush/commit, assets, validation taxonomy, schema version, renderers, practice/search, templates, and transfers. | Stage 10 |
-| Window and native close behavior | viewport/layout providers under `src/ui/layout/`; capability gateway `src/ipc/platform.ts`; native window adapter `src/platform/windowControls.ts`; controller `src/controllers/useWindowControlsController.ts`; native close guard in `src-tauri/src/lib.rs` with active task state in `src-tauri/src/task_cancellation.rs` | The native snapshot independently reports maximize/restore and full-screen availability. Desktop window operations and resize observation stay behind the platform adapter; the controller owns latest native state and serialized mutations. Native close protection still blocks shutdown during an active document task. | Android/mobile expose explicit unavailable capabilities and no browser fallback. Stage 2G must make layouts consume the resulting viewport without duplicating window policy. | Stages 2, 9, 12 |
+| Window and native close behavior | viewport/layout providers under `src/ui/layout/`; capability gateway `src/ipc/platform.ts`; native window adapter `src/platform/windowControls.ts`; controller `src/controllers/useWindowControlsController.ts`; native close guard in `src-tauri/src/lib.rs` with active task state in `src-tauri/src/task_cancellation.rs` | The native snapshot independently reports maximize/restore and full-screen availability. Desktop window operations and resize observation stay behind the platform adapter; the controller owns latest native state and serialized mutations. Native close protection still blocks shutdown during an active document task. | Android/mobile expose explicit unavailable capabilities and no browser fallback. Stage 2G layouts consume the resulting viewport without duplicating window policy. | Stages 2, 9, 12 |
 
 ## Typed IPC and Rust entrypoints
 
@@ -236,7 +260,7 @@ The public schema is append-only. `src-tauri/src/database.rs` registers migratio
 | Editor/card/template frontend tests plus native authoring, `studydeck`, and backup tests | Canonical rich docs, Tiptap behavior, draft recovery, templates, practice rendering, and transfer compatibility. | Stage 10. |
 | Settings/profile tests under `src/screens/SettingsScreen*.test.tsx`, `src/screens/settings/*test.tsx`, `src/controllers/aiProfilesController.test.tsx`; Rust settings/profile/probe/backup tests | Font choices/default compatibility, dirty/save behavior, model lists/capabilities, global reasoning, profiles/defaults, and credential markers. | Stages 2, 9, 11. |
 | `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates deck/card, accepts a review, verifies Practice/Analytics and restart/checkpoint persistence. | Stages 2, 3, 5, 10, 13. |
-| `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation, Flashcards tabs/Search, overlay focus, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation, viewport-filling shell/routes, native maximize/full-screen geometry, dialog bounds/scroll ownership, Flashcards tabs/Search, overlay focus, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/card_listing_followup_smoke.py` | Deck and Search card-listing parity plus authoring. | Stages 3, 5, 10, 13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/deck_toolbar_layout_smoke.py` | Compact Flashcards tabs, deck toolbar containment, and horizontal-overflow bounds. | Stages 1–5, 12, 13. |
 | `scripts/smoke-startup-compatibility.sh` | Built-binary startup/adoption of the exact historical schema lineage while preserving deck/card/review/attribution data. | Every migration stage, especially 2, 6–11; final Stage 13. |
@@ -244,7 +268,7 @@ The public schema is append-only. `src-tauri/src/database.rs` registers migratio
 | `scripts/android-emulator-smoke.sh`, `src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt` | Launch/test bridge; seeded library/practice/analytics; restart persistence; Documents route and Android Back; nested deck/editor Back; interrupted-practice Activity/process restoration; picker cancellation. | Stages 2, 3, 5, 6, 8, 10, 13. Add first-class Study Guides route and changed Practice entry coverage before deleting current assertions. |
 | `src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidPlatformRoutingTest.kt` | Rust platform snapshot reaches native document and QR routes. | Stages 2, 6, 9, 11, 13; preserve the typed platform boundary when window behavior changes. |
 
-The current route/smoke contract is a checkpoint, not complete future coverage. Later guide deletion/reader/export, rich editor nodes, document citation, AI reasoning, and maximize/full-screen behavior need focused tests in their owning stages and executable native/Android coverage where they become critical user flows.
+The current route/smoke contract is a checkpoint, not complete future coverage. Later guide deletion/reader/export, rich editor nodes, document citation, and AI reasoning need focused tests in their owning stages and executable native/Android coverage where they become critical user flows. Stage 2G covers viewport consumption during maximize/full-screen; later stages still own their feature-specific behavior within those states.
 
 ## Maintained documentation impact
 
