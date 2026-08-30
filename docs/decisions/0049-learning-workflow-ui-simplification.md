@@ -1,6 +1,6 @@
 # ADR 0049: Learning-workflow navigation, compact actions, and editor isolation
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-25
 - **Related:** ADR 0048, `docs/architecture/ui.md`, `docs/development/ui-workflow-redesign-roadmap.md`
 
