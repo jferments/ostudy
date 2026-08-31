@@ -75,6 +75,7 @@ export const DeckItem = memo(function DeckItem({
       <button
         type="button"
         className={styles.main}
+        data-library-drag-surface="true"
         aria-keyshortcuts={
           archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
         }

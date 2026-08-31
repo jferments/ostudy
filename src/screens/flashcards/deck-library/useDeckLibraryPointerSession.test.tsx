@@ -120,6 +120,37 @@ describe("useDeckLibraryPointerSession", () => {
     expect(harness.origin.releasePointerCapture).not.toHaveBeenCalled();
   });
 
+  it("suppresses the compatibility click after an activated cancellation", () => {
+    const harness = libraryHarness();
+    const clicked = vi.fn();
+    harness.origin.addEventListener("click", clicked);
+    const { result } = renderHook(() =>
+      useDeckLibraryPointerSession(
+        harness.ref,
+        snapshot,
+        false,
+        "stable",
+        vi.fn(),
+        vi.fn(),
+      ),
+    );
+
+    act(() => {
+      result.current.beginPointerSession(
+        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
+        { kind: "deck", id: deckB.id },
+        deckB.name,
+      );
+      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
+      window.dispatchEvent(pointerEvent("pointercancel", 60, 100));
+    });
+
+    harness.originArea.click();
+    expect(clicked).not.toHaveBeenCalled();
+    harness.originArea.click();
+    expect(clicked).toHaveBeenCalledTimes(1);
+  });
+
   it("lets unrelated clicks pass without consuming the pending origin compatibility click", () => {
     const harness = libraryHarness();
     const unrelated = document.createElement("button");

@@ -48,6 +48,7 @@ describe("DeckItem", () => {
       expect(openControl.getAttribute("aria-keyshortcuts")).toBe(
         "ArrowUp ArrowDown Home End ArrowLeft ArrowRight",
       );
+      expect(openControl.getAttribute("data-library-drag-surface")).toBe("true");
     },
   );
 

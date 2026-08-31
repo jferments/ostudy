@@ -25,6 +25,24 @@ describe("pointer drag session policy", () => {
     }
   });
 
+  it("allows the marked primary row control while preserving click semantics", () => {
+    const row = document.createElement("article");
+    const primary = document.createElement("button");
+    const copy = document.createElement("span");
+    primary.dataset.libraryDragSurface = "true";
+    primary.append(copy);
+    row.append(primary);
+    expect(
+      canStartPointerSession({
+        button: 0,
+        isPrimary: true,
+        pointerType: "mouse",
+        target: copy,
+        currentTarget: row,
+      }),
+    ).toBe(true);
+  });
+
   it.each(["button", "a", "input", "label", "textarea", "select"])(
     "rejects starts from %s controls",
     (tag) => {

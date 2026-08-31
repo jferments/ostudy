@@ -55,8 +55,19 @@ export function canStartPointerSession(input: PointerStartInput): boolean {
     return false;
   }
   if (input.currentTarget.dataset.archived === "true") return false;
-  if (!(input.target instanceof Element)) return false;
-  if (input.target.closest(INTERACTIVE_SELECTOR)) return false;
+  if (
+    !(input.target instanceof Element) ||
+    !input.currentTarget.contains(input.target)
+  ) {
+    return false;
+  }
+  const interactiveTarget = input.target.closest(INTERACTIVE_SELECTOR);
+  if (
+    interactiveTarget &&
+    interactiveTarget.getAttribute("data-library-drag-surface") !== "true"
+  ) {
+    return false;
+  }
   const selection = input.currentTarget.ownerDocument.getSelection?.();
   return !selection || selection.isCollapsed || selection.toString().trim().length === 0;
 }

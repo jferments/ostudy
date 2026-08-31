@@ -91,6 +91,7 @@ export const FolderSection = memo(function FolderSection({
         <button
           type="button"
           className={styles.toggle}
+          data-library-drag-surface="true"
           aria-expanded={!collapsed}
           aria-controls={contentId}
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}

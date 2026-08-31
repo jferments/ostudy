@@ -971,27 +971,50 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
         session_id,
         """
         const row = arguments[0];
-        if (!(row instanceof HTMLElement) || row.dataset.libraryRow !== 'deck') return null;
-        const rect = row.getBoundingClientRect();
+        const activationOffsetX = arguments[1];
+        if (
+          !(row instanceof HTMLElement) ||
+          row.dataset.libraryRow !== 'deck' ||
+          !Number.isInteger(activationOffsetX)
+        ) return null;
+        const surface = row.querySelector("[data-library-drag-surface='true']");
+        if (!(surface instanceof HTMLElement)) return null;
+        const rect = surface.getBoundingClientRect();
         const left = Math.max(0, Math.ceil(rect.left));
-        const right = Math.min(window.innerWidth - 1, Math.floor(rect.right));
+        const right = Math.min(
+          window.innerWidth - 1 - Math.abs(activationOffsetX),
+          Math.floor(rect.right) - Math.abs(activationOffsetX),
+        );
         const top = Math.max(0, Math.ceil(rect.top));
         const bottom = Math.min(window.innerHeight - 1, Math.floor(rect.bottom));
+        const canStartAt = (x, y) => {
+          const target = document.elementFromPoint(x, y);
+          return (
+            target instanceof Element &&
+            row.contains(target) &&
+            target.closest("[data-library-drag-surface='true']") === surface
+          );
+        };
         for (let y = top; y <= bottom; y += 1) {
           for (let x = left; x <= right; x += 1) {
-            if (document.elementFromPoint(x, y) === row) return {x, y};
+            if (canStartAt(x, y) && canStartAt(x + activationOffsetX, y)) {
+              return {x, y};
+            }
           }
         }
         return null;
         """,
-        [{webdriver.ELEMENT_KEY: element_id}],
+        [
+            {webdriver.ELEMENT_KEY: element_id},
+            CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
+        ],
     )
     if (
         not isinstance(point, dict)
         or set(point) != {"x", "y"}
         or not all(type(point[axis]) is int for axis in ("x", "y"))
     ):
-        raise AssertionError("Deck drag source has no verified noninteractive row point.")
+        raise AssertionError("Deck drag source has no verified primary drag surface point.")
     return {"x": point["x"], "y": point["y"]}
 
 
@@ -1251,6 +1274,10 @@ def install_native_pointer_probe(
         const observe = (event) => {
           const eventTarget = event.target;
           const targetElement = eventTarget instanceof Element ? eventTarget : null;
+          const targetWithinRow = eventTarget instanceof Node && row.contains(eventTarget);
+          const interactiveTarget = targetElement?.closest(interactiveSelector) ?? null;
+          const targetApprovedDragSurface =
+            interactiveTarget?.getAttribute("data-library-drag-surface") === "true";
           state.sequence += 1;
           state.events.push({
             sequence: state.sequence,
@@ -1267,8 +1294,11 @@ def install_native_pointer_probe(
             buttons: event.buttons,
             key: event.key,
             targetIsRow: eventTarget === row,
-            targetWithinRow: eventTarget instanceof Node && row.contains(eventTarget),
-            targetInteractive: Boolean(targetElement?.closest(interactiveSelector)),
+            targetWithinRow,
+            targetInteractive: Boolean(interactiveTarget),
+            targetApprovedDragSurface,
+            targetCanStartDrag:
+              targetWithinRow && (!interactiveTarget || targetApprovedDragSurface),
           });
           if (state.events.length > 64) state.events.shift();
         };
@@ -1335,6 +1365,7 @@ def wait_for_native_pointer_event(
     pointer_id: int | None = None,
     target_within_row: bool | None = None,
     target_interactive: bool | None = None,
+    target_can_start_drag: bool | None = None,
 ) -> dict[str, Any]:
     last: list[dict[str, Any]] = []
     while time.monotonic() < deadline:
@@ -1362,6 +1393,10 @@ def wait_for_native_pointer_event(
                 and (
                     target_interactive is None
                     or event.get("targetInteractive") is target_interactive
+                )
+                and (
+                    target_can_start_drag is None
+                    or event.get("targetCanStartDrag") is target_can_start_drag
                 )
             ):
                 return event
@@ -1439,8 +1474,7 @@ def calibrate_native_pointer(
                 and observed.get("clientY") == point["y"]
                 and observed.get("screenX") == requested["x"]
                 and observed.get("screenY") == requested["y"]
-                and observed.get("targetWithinRow") is True
-                and observed.get("targetInteractive") is False
+                and observed.get("targetCanStartDrag") is True
             ):
                 return requested
             corrected = {
@@ -1460,8 +1494,7 @@ def calibrate_native_pointer(
                 screen_y=corrected["y"],
                 buttons=0,
                 button=-1,
-                target_within_row=True,
-                target_interactive=False,
+                target_can_start_drag=True,
             )
             return corrected
         except (AssertionError, KeyError, TypeError, ValueError) as error:
@@ -1542,8 +1575,7 @@ def verify_trusted_native_drag_smoke(session_id: str) -> dict[str, Any]:
             client_y=point["y"],
             buttons=1,
             button=0,
-            target_within_row=True,
-            target_interactive=False,
+            target_can_start_drag=True,
         )
         pointer.move(
             root_anchor["x"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],

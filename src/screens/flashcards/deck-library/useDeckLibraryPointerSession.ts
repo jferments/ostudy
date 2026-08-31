@@ -190,7 +190,7 @@ export function useDeckLibraryPointerSession(
           candidate: candidate ? { ...candidate, announcement } : null,
         });
       }
-      if (session.active && commit) suppressActivatedDragClick(session.origin);
+      if (session.active) suppressActivatedDragClick(session.origin);
     },
     [clearHoverTimer, clearTarget, removeListeners, suppressActivatedDragClick],
   );

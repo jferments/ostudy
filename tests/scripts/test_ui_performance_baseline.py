@@ -861,8 +861,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         )
         self.assertEqual(3, wait_event.call_count)
         self.assertEqual(2, wait_key.call_count)
-        self.assertEqual(True, wait_event.call_args_list[0].kwargs["target_within_row"])
-        self.assertEqual(False, wait_event.call_args_list[0].kwargs["target_interactive"])
+        self.assertEqual(True, wait_event.call_args_list[0].kwargs["target_can_start_drag"])
         self.assertEqual(1, wait_event.call_args_list[0].kwargs["buttons"])
         self.assertEqual(0, wait_event.call_args_list[2].kwargs["buttons"])
         self.assertEqual(
@@ -945,7 +944,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn('event.get("pointerType") == "mouse"', wait_source)
         self.assertIn('event.get("targetWithinRow")', wait_source)
         self.assertIn('event.get("targetInteractive")', wait_source)
+        self.assertIn('event.get("targetCanStartDrag")', wait_source)
         self.assertIn("targetElement?.closest(interactiveSelector)", probe_source)
+        self.assertIn("targetApprovedDragSurface", probe_source)
         self.assertIn("XTestQueryExtension", adapter_source)
         self.assertIn("if self._button_down", adapter_source)
         self.assertIn("XTestFakeButtonEvent(self._display, 1, 0, 0)", adapter_source)
@@ -964,7 +965,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             "screenY": 30,
             "targetIsRow": True,
             "targetWithinRow": True,
-            "targetInteractive": False,
+            "targetInteractive": True,
+            "targetApprovedDragSurface": True,
+            "targetCanStartDrag": True,
         }
         with mock.patch.object(
             baseline,
@@ -1008,7 +1011,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                     "screenY": 30,
                     "targetIsRow": False,
                     "targetWithinRow": False,
-                    "targetInteractive": False,
+                    "targetInteractive": True,
+                    "targetApprovedDragSurface": False,
+                    "targetCanStartDrag": False,
                 },
                 {"sequence": 6},
             ],
