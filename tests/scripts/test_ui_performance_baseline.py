@@ -1102,7 +1102,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         )
         self.assertEqual({"sample": True}, result)
 
-    def test_candidate_drag_finalizes_active_preview_before_proving_cleanup(self) -> None:
+    def test_candidate_drag_waits_for_visible_frame_before_finalization_and_cleanup(self) -> None:
         events: list[str] = []
         with mock.patch.object(
             baseline,
@@ -1122,7 +1122,11 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             baseline,
             "wait_js",
             side_effect=lambda _session, expression, _deadline: events.append(
-                "preview-active" if expression.startswith("document") else "preview-clean"
+                "preview-active"
+                if expression.startswith("document.querySelector")
+                else "visible-frame"
+                if expression.startswith("performance.getEntriesByName")
+                else "preview-clean"
             ),
         ), mock.patch.object(
             baseline,
@@ -1147,6 +1151,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 "arm",
                 "pointermove:19,20",
                 "preview-active",
+                "visible-frame",
                 "finish",
                 "pointercancel:19,20",
                 "preview-clean",

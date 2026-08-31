@@ -1929,6 +1929,11 @@ def collect_candidate_drag_sample(
             activation_point["y"],
         )
         wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
+        wait_js(
+            session_id,
+            "performance.getEntriesByName('ostudy-ui-visible', 'mark').length === 1",
+            deadline,
+        )
         # Finalize while the activated preview is still mounted. WebKit can defer
         # requestAnimationFrame while synchronous WebDriver cleanup commands run;
         # cancelling first would therefore measure harness cleanup latency instead
