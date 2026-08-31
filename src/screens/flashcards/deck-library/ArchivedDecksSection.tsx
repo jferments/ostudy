@@ -13,6 +13,8 @@ interface ArchivedDecksSectionProps {
   onToggle(): void;
   onOpenDeck(deckId: string): void;
   onDeleteDeck(deckId: string): void;
+  selectedIds: ReadonlySet<string>;
+  onToggleDeckSelected(deck: DeckSummary): void;
 }
 
 export function ArchivedDecksSection({
@@ -23,6 +25,8 @@ export function ArchivedDecksSection({
   onToggle,
   onOpenDeck,
   onDeleteDeck,
+  selectedIds,
+  onToggleDeckSelected,
 }: ArchivedDecksSectionProps) {
   if (decks.length === 0) return null;
   return (
@@ -49,11 +53,13 @@ export function ArchivedDecksSection({
               index={index}
               count={decks.length}
               disabled={disabled}
+              selected={selectedIds.has(deck.id)}
               archived
               reorder={reorder}
               onOpen={() => onOpenDeck(deck.id)}
               onPractice={() => undefined}
               onDelete={() => onDeleteDeck(deck.id)}
+              onToggleSelected={() => onToggleDeckSelected(deck)}
             />
           ))}
         </div>

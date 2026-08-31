@@ -74,6 +74,8 @@ export function DeckLibraryView({
                 onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
                 onRename={() => controller.openFolderRenamer(folder.id)}
                 onDelete={() => void controller.removeFolder(folder.id)}
+                selectedIds={controller.selectedIds}
+                onToggleDeckSelected={controller.toggleDeckSelected}
               />
             ))}
             <div
@@ -136,6 +138,8 @@ export function DeckLibraryView({
         onToggle={controller.toggleArchived}
         onOpenDeck={controller.openDeck}
         onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
+        selectedIds={controller.selectedIds}
+        onToggleDeckSelected={controller.toggleDeckSelected}
       />
     </div>
   );
@@ -163,10 +167,12 @@ function UnsortedDeckItem({
       index={index}
       count={count}
       disabled={controller.isMutating}
+      selected={controller.selectedIds.has(deck.id)}
       reorder={reorder}
       onOpen={() => controller.openDeck(deck.id)}
       onPractice={() => void onPracticeDeck(deck.id)}
       onDelete={() => void controller.removeDeck(deck.id)}
+      onToggleSelected={() => controller.toggleDeckSelected(deck)}
     />
   );
 }

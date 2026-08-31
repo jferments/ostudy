@@ -4,6 +4,8 @@ import { Artwork } from "../../../ui/artwork/Artwork";
 import { Icon } from "../../../ui/icons/Icon";
 import { Surface } from "../../../ui/primitives/Surface";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
+import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
+import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { DeckItem } from "./DeckItem";
 import listStyles from "./DeckList.module.css";
 import styles from "./FolderSection.module.css";
@@ -23,6 +25,8 @@ interface FolderSectionProps {
   onDeleteDeck(deckId: string): void;
   onRename(): void;
   onDelete(): void;
+  selectedIds: ReadonlySet<string>;
+  onToggleDeckSelected(deck: DeckSummary): void;
 }
 
 export function FolderSection({
@@ -39,7 +43,10 @@ export function FolderSection({
   onDeleteDeck,
   onRename,
   onDelete,
+  selectedIds,
+  onToggleDeckSelected,
 }: FolderSectionProps) {
+  const { layoutMode } = useLayoutMode();
   const due = decks.reduce((sum, deck) => sum + deck.studyableDueCount, 0);
   const contentId = `deck-folder-${folder.id}`;
   return (
@@ -99,17 +106,35 @@ export function FolderSection({
           </span>
         </button>
         <div className={styles.actions}>
-          <button type="button" disabled={disabled} onClick={onRename}>
-            Rename
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            className={styles.danger}
-            onClick={onDelete}
-          >
-            Delete
-          </button>
+          {layoutMode === "compact" ? (
+            <OverflowMenu
+              label={`${folder.name} folder actions`}
+              disabled={disabled}
+              items={[
+                { id: "rename", label: `Rename ${folder.name} folder`, onSelect: onRename },
+                {
+                  id: "delete",
+                  label: `Delete ${folder.name} folder`,
+                  destructive: true,
+                  onSelect: onDelete,
+                },
+              ]}
+            />
+          ) : (
+            <>
+              <button type="button" disabled={disabled} onClick={onRename}>
+                Rename
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                className={styles.danger}
+                onClick={onDelete}
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       </header>
       {!collapsed ? (
@@ -128,10 +153,12 @@ export function FolderSection({
                 index={index}
                 count={decks.length}
                 disabled={disabled}
+                selected={selectedIds.has(deck.id)}
                 reorder={reorder}
                 onOpen={() => onOpenDeck(deck.id)}
                 onPractice={() => onPracticeDeck(deck.id)}
                 onDelete={() => onDeleteDeck(deck.id)}
+                onToggleSelected={() => onToggleDeckSelected(deck)}
               />
             ))}
           </div>

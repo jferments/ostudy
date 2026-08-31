@@ -3,6 +3,7 @@ import { Button } from "../../../ui/primitives/Button";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
+import { SelectionToolbar } from "../../../ui/patterns/SelectionToolbar";
 import { DeckLibrarySheets } from "./DeckLibrarySheets";
 import { DeckLibraryView } from "./DeckLibraryView";
 import styles from "./DeckLibraryView.module.css";
@@ -16,15 +17,102 @@ interface DeckLibraryRootProps {
 }
 
 export function DeckLibraryRoot({ controller, onPracticeDeck }: DeckLibraryRootProps) {
+  const guidance = selectionGuidance(controller);
+  const selectionUnavailable =
+    controller.selectionAnalysis.staleIds.length > 0 ||
+    controller.selectionAnalysis.missingIds.length > 0;
   return (
     <div className={styles.root} aria-busy={controller.isLoading || controller.isMutating}>
       <div className={styles.toolbar} aria-label="Deck library controls">
+        <div className={styles.selectionControls} role="group" aria-label="Deck selection controls">
+          <Button
+            size="small"
+            variant="secondary"
+            disabled={controller.visibleDeckCount === 0 || controller.isMutating}
+            onClick={controller.selectVisible}
+          >
+            Select visible
+          </Button>
+          <Button
+            size="small"
+            variant="secondary"
+            disabled={controller.currentScopeDeckCount === 0 || controller.isMutating}
+            onClick={controller.selectCurrentScope}
+          >
+            Select all in current scope ({controller.currentScopeDeckCount})
+          </Button>
+        </div>
         <div className={styles.toolbarActions}>
           <Button variant="primary" onClick={controller.openDeckCreator}>
             <Icon name="plus" size={18} /> New deck
           </Button>
         </div>
       </div>
+
+      <SelectionToolbar
+        selectedCount={controller.selectedIds.size}
+        label="Selected deck actions"
+        primaryAction={{
+          id: "practice",
+          label: "Practice",
+          disabled:
+            controller.selectionAnalysis.selectedIds.length !== 1 ||
+            controller.selectionAnalysis.activeIds.length !== 1 ||
+            controller.selectionAnalysis.generatedIds.length !== 1 ||
+            controller.selectionAnalysis.staleIds.length > 0 ||
+            controller.selectionAnalysis.missingIds.length > 0 ||
+            controller.isMutating,
+          onSelect: () => {
+            const deckId = controller.selectionAnalysis.activeIds[0];
+            if (deckId) void onPracticeDeck(deckId);
+          },
+        }}
+        secondaryActions={[
+          {
+            id: "move",
+            label: "Move selected",
+            placement: "wide-and-medium",
+            disabled:
+              controller.selectionAnalysis.activeIds.length === 0 ||
+              controller.selectionAnalysis.archivedIds.length > 0 ||
+              selectionUnavailable ||
+              controller.isMutating,
+            onSelect: controller.openSelectionMover,
+          },
+          ...(controller.selectionAnalysis.activeIds.length > 0
+            ? [{
+                id: "archive",
+                label: controller.selectionAnalysis.isMixedLifecycle
+                  ? "Archive active selected"
+                  : "Archive selected",
+                placement: "wide-only" as const,
+                disabled: selectionUnavailable || controller.isMutating,
+                onSelect: () => void controller.setSelectionArchived(true),
+              }]
+            : []),
+          ...(controller.selectionAnalysis.archivedIds.length > 0
+            ? [{
+                id: "restore",
+                label: controller.selectionAnalysis.isMixedLifecycle
+                  ? "Restore archived selected"
+                  : "Restore selected",
+                placement: "wide-only" as const,
+                disabled: selectionUnavailable || controller.isMutating,
+                onSelect: () => void controller.setSelectionArchived(false),
+              }]
+            : []),
+          {
+            id: "delete",
+            label: "Delete selected",
+            placement: "overflow-only",
+            destructive: true,
+            disabled: selectionUnavailable || controller.isMutating,
+            onSelect: () => void controller.deleteSelection(),
+          },
+        ]}
+        onClearSelection={controller.clearSelection}
+      />
+      {guidance ? <InlineNotice kind="info">{guidance}</InlineNotice> : null}
 
       <VisuallyHidden as="div" aria-live="polite">
         {controller.announcement}
@@ -43,12 +131,35 @@ export function DeckLibraryRoot({ controller, onPracticeDeck }: DeckLibraryRootP
       <DeckLibrarySheets
         sheet={controller.sheet}
         busy={controller.isMutating}
+        folders={controller.snapshot?.folders ?? []}
         onClose={controller.closeSheet}
         onCreateDeck={controller.createDeck}
         onSaveFolder={controller.saveFolder}
+        onMoveSelection={controller.moveSelection}
       />
     </div>
   );
+}
+
+function selectionGuidance(controller: DeckLibraryController): string | null {
+  const analysis = controller.selectionAnalysis;
+  if (analysis.selectedIds.length === 0) return null;
+  if (analysis.staleIds.length > 0) {
+    return "One or more selected decks changed after selection. Clear and reselect them before a bulk mutation.";
+  }
+  if (analysis.isMixedLifecycle) {
+    return "Active and archived decks are selected. Move and Practice require active decks; Archive and Restore affect only their valid lifecycle subset.";
+  }
+  if (analysis.archivedIds.length > 0) {
+    return "Archived decks cannot move or start Practice until they are restored.";
+  }
+  if (analysis.selectedIds.length > 1) {
+    return "Practice starts one selected deck at a time here. Multi-deck Practice setup is not available in this library yet.";
+  }
+  if (analysis.emptyIds.length > 0) {
+    return "This deck has no generated cards yet, so Practice is unavailable.";
+  }
+  return null;
 }
 
 function ReadyDeckLibrary({

@@ -25,7 +25,8 @@ export type LibraryDragPayload =
 export type LibrarySheetState =
   | { kind: "create-deck" }
   | { kind: "create-folder"; name: string }
-  | { kind: "rename-folder"; folder: DeckFolder; name: string };
+  | { kind: "rename-folder"; folder: DeckFolder; name: string }
+  | { kind: "move-selection" };
 
 export interface DeckLifecyclePartition {
   active: DeckSummary[];

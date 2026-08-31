@@ -20,36 +20,34 @@
     transform: translateY(-1px);
   }
 
+  .item[data-selected="true"] {
+    border-color: var(--ostudy-color-border-accent);
+    background: var(--ostudy-color-accent-soft);
+    box-shadow: var(--ostudy-shadow-focus);
+  }
+
   .item[data-drag-over="deck"] {
     border-color: var(--ostudy-color-border-accent);
     box-shadow: var(--ostudy-shadow-focus);
     transform: translateY(2px);
   }
 
-  .dragHandle {
+  .selection {
     display: grid;
     width: 38px;
-    flex: none;
     place-items: center;
     border-radius: var(--ostudy-radius-small);
-    color: var(--ostudy-color-text-muted);
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
   }
 
-  .dragHandle:hover {
+  .selection:hover {
     background: var(--ostudy-color-surface-soft);
-    color: var(--ostudy-color-text-primary);
   }
 
-  .dragHandle:active {
-    cursor: grabbing;
-  }
-
-  .dragHandle:focus-visible {
-    outline: none;
-    box-shadow: var(--ostudy-shadow-focus);
+  .selection input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--ostudy-color-accent-base);
   }
 
   .main {
@@ -103,21 +101,16 @@
     padding: var(--ostudy-space-2);
   }
 
-  .practice {
-    min-width: 92px;
-  }
-
   .item[data-archived="true"] {
-    grid-template-columns: minmax(0, 1fr) auto;
     opacity: 0.72;
   }
 
   .item[data-archived="true"] .main {
-    grid-column: 1;
+    grid-column: 2;
   }
 
   .item[data-archived="true"] .actions {
-    grid-column: 2;
+    grid-column: 3;
   }
 
   :global(:root[data-motion="reduced"]) .item,
@@ -138,11 +131,7 @@
       justify-content: stretch;
     }
 
-    .practice {
-      flex: 1 1 auto;
-    }
-
-    .dragHandle {
+    .selection {
       width: 34px;
     }
 
@@ -156,15 +145,19 @@
     }
 
     .item[data-archived="true"] {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: 34px minmax(0, 1fr);
+    }
+
+    .item[data-archived="true"] .main {
+      grid-column: 2;
     }
 
     .item[data-archived="true"] .actions {
-      grid-column: 1;
+      grid-column: 1 / -1;
     }
   }
 
-  :global(:root[data-input-mode="coarse"]) .dragHandle {
+  :global(:root[data-input-mode="coarse"]) .selection {
     width: var(--ostudy-size-touch-target);
     min-width: var(--ostudy-size-touch-target);
   }

@@ -29,6 +29,62 @@ import {
 } from "../ipc/generated-import";
 import { latestResult, RequestLane } from "./requestLane";
 
+export type SequentialDeckMutationPolicy = "continue-after-failure" | "stop-after-failure";
+
+export interface SequentialDeckMutationSuccess<T> {
+  deckId: string;
+  value: T;
+}
+
+export interface SequentialDeckMutationFailure {
+  deckId: string;
+  error: unknown;
+}
+
+export interface SequentialDeckMutationOutcome<T> {
+  policy: SequentialDeckMutationPolicy;
+  requestedIds: string[];
+  successful: SequentialDeckMutationSuccess<T>[];
+  failed: SequentialDeckMutationFailure[];
+  unattemptedIds: string[];
+}
+
+/**
+ * Deck mutations are deliberately sequential and explicitly non-atomic. Use
+ * continue-after-failure only when each deck has an independent revision and
+ * transaction. Organization moves share one advancing revision and therefore
+ * use stop-after-failure.
+ */
+export async function runSequentialDeckMutations<T>(
+  deckIds: readonly string[],
+  policy: SequentialDeckMutationPolicy,
+  mutate: (deckId: string) => Promise<T>,
+): Promise<SequentialDeckMutationOutcome<T>> {
+  const requestedIds = [...new Set(deckIds)];
+  const successful: SequentialDeckMutationSuccess<T>[] = [];
+  const failed: SequentialDeckMutationFailure[] = [];
+
+  for (let index = 0; index < requestedIds.length; index += 1) {
+    const deckId = requestedIds[index];
+    try {
+      successful.push({ deckId, value: await mutate(deckId) });
+    } catch (error: unknown) {
+      failed.push({ deckId, error });
+      if (policy === "stop-after-failure") {
+        return {
+          policy,
+          requestedIds,
+          successful,
+          failed,
+          unattemptedIds: requestedIds.slice(index + 1),
+        };
+      }
+    }
+  }
+
+  return { policy, requestedIds, successful, failed, unattemptedIds: [] };
+}
+
 export class DecksController {
   readonly #deck = new RequestLane();
   readonly #cards = new RequestLane();

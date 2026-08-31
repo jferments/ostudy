@@ -139,20 +139,31 @@ design remain explicitly outside this checkpoint.
 
 ## Stage 3 — Deck selection and practice setup relocation
 
-- [ ] Add pure deck-selection state and actions separate from hierarchy ordering, drag state, open-row state, and folder selection.
-- [ ] Replace decorative move affordances on deck rows with deck checkboxes and a clear selected state.
-- [ ] Keep ordinary row click/open behavior available without toggling selection accidentally.
-- [ ] Add Select visible, Select all in current scope, and Clear selection behavior with deterministic folder/filter semantics.
+- [x] Add pure deck-selection state and actions separate from hierarchy ordering, drag state, open-row state, and folder selection.
+- [x] Replace decorative move affordances on deck rows with deck checkboxes and a clear selected state.
+- [x] Keep ordinary row click/open behavior available without toggling selection accidentally.
+- [x] Add Select visible, Select all in current scope, and Clear selection behavior with deterministic folder/filter semantics.
 - [ ] Add a contextual toolbar with Practice selected as the primary action and Move, Archive, Delete, and other valid bulk operations as secondary actions.
-- [ ] Define mixed-state validation and confirmation behavior for archived, empty, generated, or stale-revision deck selections.
+- [x] Define mixed-state validation and confirmation behavior for archived, empty, generated, or stale-revision deck selections.
 - [ ] Extract the reusable practice-scope/workload logic from the old Practice setup screen into a controller/pure-model boundary.
 - [ ] Open practice setup as a responsive sheet/dialog from selected decks, with scheduled versus extra study, shuffle, due/new counts, and optional tag refinement.
-- [ ] Preserve direct single-deck practice as a one-step common action.
+- [x] Preserve direct single-deck practice as a one-step common action.
 - [ ] Preserve card-ID practice launched from Search, Documents, editor flows, and study-guide topics.
 - [ ] Preserve tag-based study through Search and Analytics without recreating a top-level setup dashboard.
 - [ ] Remove the old setup/recent/study-guide composition from `PracticeScreen` once all launch paths have replacements.
-- [ ] Put deck and folder actions into an accessible overflow menu on compact layouts while keeping Practice directly reachable.
+- [x] Put deck and folder actions into an accessible overflow menu on compact layouts while keeping Practice directly reachable.
 - [ ] Add controller, selection-model, route-launch, compact-menu, stale-revision, and UI smoke tests.
+
+Stage 3A selection evidence is focused in `selectionModel.test.ts` (ordering,
+collapse/scope reconciliation, lifecycle, missing, empty, generated, mixed, and
+stale members), `decksController.test.ts` (continue/stop partial-outcome
+policies), `useDeckLibraryController.test.tsx` (revision-safe archive/delete,
+undo preservation, scope reconciliation, partial completion, and committed
+success after refresh failure), and `DeckLibraryWorkspace.test.tsx` (checkbox
+and row semantics, visible/current-scope selection, confirmation, compact
+overflow, and direct single-deck Practice). The contextual multi-deck Practice
+setup, reusable workload boundary, route-launch/native smoke additions, and old
+Practice composition remain unchecked for the later Stage 3 delta.
 
 ## Stage 4 — Deck and folder drag/drop reliability and performance
 

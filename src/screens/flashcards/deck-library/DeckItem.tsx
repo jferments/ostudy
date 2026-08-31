@@ -1,7 +1,9 @@
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
 import { IconButton } from "../../../ui/icons/IconButton";
-import { Button } from "../../../ui/primitives/Button";
+import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
+import { ResponsiveActionGroup } from "../../../ui/patterns/ResponsiveActionGroup";
+import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
 import styles from "./DeckItem.module.css";
 import type { DeckLibraryReorderAdapter } from "./useDeckLibraryReorder";
@@ -14,10 +16,12 @@ interface DeckItemProps {
   count: number;
   disabled: boolean;
   archived?: boolean;
+  selected: boolean;
   reorder: DeckLibraryReorderAdapter;
   onOpen(): void;
   onPractice(): void;
   onDelete(): void;
+  onToggleSelected(): void;
 }
 
 export function DeckItem({
@@ -27,44 +31,34 @@ export function DeckItem({
   count,
   disabled,
   archived = false,
+  selected,
   reorder,
   onOpen,
   onPractice,
   onDelete,
+  onToggleSelected,
 }: DeckItemProps) {
+  const { layoutMode } = useLayoutMode();
   return (
     <article
       className={styles.item}
       data-archived={archived || undefined}
+      data-selected={selected || undefined}
       data-library-drop={archived ? undefined : "deck"}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
       data-target-index={index}
       onDragOver={archived ? undefined : (event) => event.preventDefault()}
       onDrop={archived ? undefined : (event) => reorder.dropDeck(event, folderId, index)}
     >
-      {!archived ? (
-        <span
-          className={styles.dragHandle}
-          draggable={!disabled}
-          role="button"
-          tabIndex={0}
-          aria-label={`Reorder ${deck.name}. Use Up and Down within this group or Left and Right between folders.`}
-          aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home End"
-          onDragStart={(event) => reorder.startDeckDrag(event, deck.id)}
-          onKeyDown={(event) =>
-            reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
-          }
-          onPointerDown={(event) =>
-            reorder.beginPointerDrag(event, { kind: "deck", id: deck.id })
-          }
-          onPointerMove={reorder.updatePointerDrag}
-          onPointerUp={reorder.finishPointerDrag}
-          onPointerCancel={reorder.cancelPointerDrag}
-          title="Drag to reorder or move this deck"
-        >
-          <Icon name="move" size={16} />
-        </span>
-      ) : null}
+      <label className={styles.selection}>
+        <input
+          type="checkbox"
+          aria-label={`Select ${deck.name}`}
+          checked={selected}
+          disabled={disabled}
+          onChange={onToggleSelected}
+        />
+      </label>
       <button type="button" className={styles.main} onClick={onOpen}>
         <span className={styles.mark}>
           <Icon name="cards" size={20} />
@@ -78,22 +72,52 @@ export function DeckItem({
       </button>
       <div className={styles.actions}>
         {!archived ? (
-          <Button
-            size="small"
-            className={styles.practice}
-            disabled={disabled || deck.generatedCardCount === 0}
-            onClick={onPractice}
-          >
-            Practice
-          </Button>
-        ) : null}
-        <IconButton
-          icon="delete"
-          label={`Delete ${deck.name}`}
-          tone="danger"
-          disabled={disabled}
-          onClick={onDelete}
-        />
+          <ResponsiveActionGroup
+            label={`${deck.name} actions`}
+            overflowLabel={`${deck.name} actions`}
+            actions={[
+              {
+                id: "practice",
+                label: "Practice",
+                placement: "always-visible",
+                variant: "primary",
+                disabled: disabled || deck.generatedCardCount === 0,
+                onSelect: onPractice,
+              },
+              {
+                id: "delete",
+                label: `Delete ${deck.name}`,
+                placement: "wide-and-medium",
+                presentation: "icon",
+                icon: "delete",
+                destructive: true,
+                disabled,
+                onSelect: onDelete,
+              },
+            ]}
+          />
+        ) : layoutMode === "compact" ? (
+          <OverflowMenu
+            label={`${deck.name} actions`}
+            disabled={disabled}
+            items={[
+              {
+                id: "delete",
+                label: `Delete ${deck.name}`,
+                destructive: true,
+                onSelect: onDelete,
+              },
+            ]}
+          />
+        ) : (
+          <IconButton
+            icon="delete"
+            label={`Delete ${deck.name}`}
+            tone="danger"
+            disabled={disabled}
+            onClick={onDelete}
+          />
+        )}
       </div>
       <VisuallyHidden>
         Deck {index + 1} of {count}.
