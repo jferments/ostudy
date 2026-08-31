@@ -258,6 +258,7 @@ def assert_viewport_consumption(
         const shell = main?.parentElement;
         const routeLayer = main?.firstElementChild;
         const route = routeSelector ? routeLayer?.querySelector(routeSelector) : null;
+        const shellStyle = shell instanceof HTMLElement ? getComputedStyle(shell) : null;
         const rect = (element) => {
           if (!(element instanceof HTMLElement)) return null;
           const bounds = element.getBoundingClientRect();
@@ -273,6 +274,8 @@ def assert_viewport_consumption(
         return {
           viewportWidth: document.documentElement.clientWidth,
           viewportHeight: document.documentElement.clientHeight,
+          shellPaddingTop: Number.parseFloat(shellStyle?.paddingTop || "0") || 0,
+          shellPaddingBottom: Number.parseFloat(shellStyle?.paddingBottom || "0") || 0,
           shell: rect(shell),
           main: rect(main),
           routeLayer: rect(routeLayer),
@@ -290,6 +293,8 @@ def assert_viewport_consumption(
         raise AssertionError(f"Missing shell geometry for {label}: {measurements!r}")
     viewport_width = float(measurements.get("viewportWidth", 0))
     viewport_height = float(measurements.get("viewportHeight", 0))
+    shell_padding_top = float(measurements.get("shellPaddingTop", 0))
+    shell_padding_bottom = float(measurements.get("shellPaddingBottom", 0))
     tolerance = 2
     if (
         abs(float(shell["left"])) > tolerance
@@ -301,7 +306,10 @@ def assert_viewport_consumption(
     if (
         float(main["width"]) <= 0
         or abs(float(main["right"]) - float(shell["right"])) > tolerance
-        or abs(float(main["bottom"]) - float(shell["bottom"])) > tolerance
+        or abs(float(main["top"]) - (float(shell["top"]) + shell_padding_top)) > tolerance
+        or abs(float(main["bottom"]) - (float(shell["bottom"]) - shell_padding_bottom)) > tolerance
+        or abs(float(route_layer["left"]) - float(main["left"])) > tolerance
+        or abs(float(route_layer["top"]) - float(main["top"])) > tolerance
         or abs(float(route_layer["width"]) - float(main["width"])) > tolerance
         or float(route_layer["height"]) + tolerance < float(main["height"])
     ):

@@ -389,6 +389,18 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 self.assertFalse(baseline.ui.is_expected_plex_family(invalid))
 
+    def test_route_layer_has_definite_height_and_smoke_accounts_for_shell_insets(self) -> None:
+        shell_css = (baseline.ROOT_DIR / "src/AppShell.module.css").read_text(
+            encoding="utf-8"
+        )
+        route_block = shell_css.split(".routeLayer {", 1)[1].split("}", 1)[0]
+        self.assertIn("height: 100%;", route_block)
+        viewport_assertion = inspect.getsource(baseline.ui.assert_viewport_consumption)
+        self.assertIn("shellPaddingTop", viewport_assertion)
+        self.assertIn("shellPaddingBottom", viewport_assertion)
+        self.assertIn("shell_padding_top", viewport_assertion)
+        self.assertIn("shell_padding_bottom", viewport_assertion)
+
     def test_drag_candidate_has_distinct_identity_and_only_three_drag_limits(self) -> None:
         candidate = Path(self.temp.name) / "candidate"
         make_drag_candidate(candidate, offset=100)
