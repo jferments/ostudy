@@ -161,6 +161,7 @@ if [[ "$CAPTURE_COMMAND" == "capture-candidate" ]]; then
     XDG_STATE_HOME="$CAPTURE_HOME/state" \
     XDG_RUNTIME_DIR="$CAPTURE_HOME/runtime" \
     GDK_BACKEND=x11 \
+    WEBKIT_DISABLE_COMPOSITING_MODE=1 \
     timeout --signal=INT 1200s python3 -u \
       "$ROOT_DIR/tests/webdriver/ui_performance_baseline.py" capture-candidate \
         --application "$APPLICATION" \

@@ -1095,6 +1095,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             'if [[ "$CAPTURE_COMMAND" == "capture-candidate" ]]',
         )[-1].split("else", 1)[0]
         self.assertIn("GDK_BACKEND=x11", candidate_section)
+        self.assertIn("WEBKIT_DISABLE_COMPOSITING_MODE=1", candidate_section)
         self.assertIn("-fakescreenfps 60", launcher)
 
     def test_candidate_driver_uses_only_the_large_library_native_selector(self) -> None:
