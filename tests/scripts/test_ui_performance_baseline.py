@@ -401,6 +401,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             "large-drag-row",
             "deck-drag-v1",
             mock.ANY,
+            pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+            pointer_type="mouse",
         )
         self.assertEqual({"sample": True}, result)
 
@@ -413,7 +415,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         ), mock.patch.object(
             baseline,
             "position_and_press_drag_pointer",
-            side_effect=lambda *_args: events.append("press"),
+            side_effect=lambda *_args, **_kwargs: events.append("press"),
         ), mock.patch.object(
             baseline,
             "arm",
@@ -421,7 +423,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         ), mock.patch.object(
             baseline,
             "activate_drag_pointer",
-            side_effect=lambda *_args: events.append("threshold-move"),
+            side_effect=lambda *_args, **_kwargs: events.append("threshold-move"),
         ), mock.patch.object(
             baseline,
             "wait_js",
@@ -431,7 +433,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         ), mock.patch.object(
             baseline,
             "cancel_drag_pointer",
-            side_effect=lambda *_args: events.append("cancel"),
+            side_effect=lambda *_args, **_kwargs: events.append("cancel"),
         ), mock.patch.object(
             baseline,
             "finish",
@@ -446,6 +448,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 "large-drag-row",
                 "deck-drag-v1",
                 123.0,
+                pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                pointer_type="mouse",
             )
 
         self.assertEqual(
@@ -498,6 +502,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                     "large-drag-row",
                     "deck-drag-v1",
                     123.0,
+                    pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                    pointer_type="mouse",
                 )
 
         cancel.assert_not_called()
@@ -517,22 +523,161 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn("document.elementFromPoint(x, y) === row", script)
         self.assertNotIn("closest(", script)
 
-    def test_split_drag_actions_reuse_one_persistent_touch_pointer(self) -> None:
+    def test_candidate_split_drag_actions_use_exact_persistent_fine_mouse_payloads(self) -> None:
         with mock.patch.object(baseline.webdriver, "request") as request:
-            baseline.position_and_press_drag_pointer("session-1", {"x": 10, "y": 20})
-            baseline.activate_drag_pointer("session-1")
-            baseline.cancel_drag_pointer("session-1")
+            baseline.position_and_press_drag_pointer(
+                "session-1",
+                {"x": 10, "y": 20},
+                pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                pointer_type="mouse",
+            )
+            baseline.activate_drag_pointer(
+                "session-1",
+                pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                pointer_type="mouse",
+            )
+            baseline.cancel_drag_pointer(
+                "session-1",
+                pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                pointer_type="mouse",
+            )
+            baseline.release_pointer_actions("session-1")
 
-        self.assertEqual(3, request.call_count)
-        for call in request.call_args_list:
-            self.assertEqual("stage0-touch", call.args[2]["actions"][0]["id"])
+        self.assertEqual(4, request.call_count)
         self.assertEqual(
-            [["pointerMove", "pointerDown"], ["pointerMove"], ["pointerMove", "pointerCancel"]],
             [
-                [action["type"] for action in call.args[2]["actions"][0]["actions"]]
-                for call in request.call_args_list
+                mock.call(
+                    "POST",
+                    "/session/session-1/actions",
+                    {
+                        "actions": [{
+                            "type": "pointer",
+                            "id": "stage4a-deck-drag-fine-mouse",
+                            "parameters": {"pointerType": "mouse"},
+                            "actions": [
+                                {
+                                    "type": "pointerMove",
+                                    "duration": 0,
+                                    "origin": "viewport",
+                                    "x": 10,
+                                    "y": 20,
+                                },
+                                {"type": "pointerDown", "button": 0},
+                            ],
+                        }],
+                    },
+                ),
+                mock.call(
+                    "POST",
+                    "/session/session-1/actions",
+                    {
+                        "actions": [{
+                            "type": "pointer",
+                            "id": "stage4a-deck-drag-fine-mouse",
+                            "parameters": {"pointerType": "mouse"},
+                            "actions": [{
+                                "type": "pointerMove",
+                                "duration": 80,
+                                "origin": "pointer",
+                                "x": 24,
+                                "y": 16,
+                            }],
+                        }],
+                    },
+                ),
+                mock.call(
+                    "POST",
+                    "/session/session-1/actions",
+                    {
+                        "actions": [{
+                            "type": "pointer",
+                            "id": "stage4a-deck-drag-fine-mouse",
+                            "parameters": {"pointerType": "mouse"},
+                            "actions": [
+                                {
+                                    "type": "pointerMove",
+                                    "duration": 80,
+                                    "origin": "viewport",
+                                    "x": 1400,
+                                    "y": 850,
+                                },
+                                {"type": "pointerCancel"},
+                            ],
+                        }],
+                    },
+                ),
+                mock.call("DELETE", "/session/session-1/actions"),
             ],
+            request.call_args_list,
         )
+        activation_move = request.call_args_list[1].args[2]["actions"][0]["actions"][0]
+        self.assertGreater(math.hypot(activation_move["x"], activation_move["y"]), 8)
+
+    def test_drag_sample_releases_actions_when_initial_press_delivery_fails(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "find_safe_drag_point",
+            return_value={"x": 10, "y": 20},
+        ), mock.patch.object(
+            baseline,
+            "position_and_press_drag_pointer",
+            side_effect=ConnectionResetError("ambiguous press delivery"),
+        ), mock.patch.object(baseline, "arm") as arm, mock.patch.object(
+            baseline,
+            "release_pointer_actions",
+        ) as release:
+            with self.assertRaisesRegex(ConnectionResetError, "ambiguous press delivery"):
+                baseline.collect_drag_sample(
+                    "session-1",
+                    "large-drag-row",
+                    "deck-drag-v1",
+                    123.0,
+                    pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                    pointer_type="mouse",
+                )
+
+        arm.assert_not_called()
+        release.assert_called_once_with("session-1")
+
+    def test_drag_sample_cannot_finish_when_cancelled_preview_does_not_clear(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "find_safe_drag_point",
+            return_value={"x": 10, "y": 20},
+        ), mock.patch.object(
+            baseline,
+            "position_and_press_drag_pointer",
+        ), mock.patch.object(baseline, "arm"), mock.patch.object(
+            baseline,
+            "activate_drag_pointer",
+        ), mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=[None, AssertionError("drag preview remained after cancellation")],
+        ), mock.patch.object(
+            baseline,
+            "cancel_drag_pointer",
+        ) as cancel, mock.patch.object(baseline, "finish") as finish, mock.patch.object(
+            baseline,
+            "release_pointer_actions",
+        ) as release:
+            with self.assertRaisesRegex(AssertionError, "drag preview remained"):
+                baseline.collect_drag_sample(
+                    "session-1",
+                    "large-drag-row",
+                    "deck-drag-v1",
+                    123.0,
+                    pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+                    pointer_type="mouse",
+                )
+
+        cancel.assert_called_once_with(
+            "session-1",
+            pointer_id=baseline.CANDIDATE_DRAG_POINTER_ID,
+            pointer_type="mouse",
+        )
+        finish.assert_not_called()
+        release.assert_called_once_with("session-1")
 
     def test_capture_updates_only_the_two_stage_zero_rows_and_is_idempotent(self) -> None:
         roadmap = Path(self.temp.name) / "roadmap.md"

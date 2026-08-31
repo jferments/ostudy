@@ -89,6 +89,10 @@ only the committed drag limits for avoidable React commits, visible feedback,
 and maximum pointer-frame work. It returns nonzero when any of those three
 limits fails.
 
+The fixed Linux/WebKitGTK candidate run measures the product's fine-pointer
+path with W3C mouse actions. Touch and pen behavior are covered separately by
+the product interaction tests rather than inferred from this performance run.
+
 Verification and comparison never rewrite evidence. Capture stages all JSON in a sibling temporary directory, strictly verifies it, replaces the canonical tree only after success, and then checks exactly the two open Stage 0D roadmap rows. The verifier rejects duplicate JSON keys and entries, missing/extra scenarios or files, non-finite/malformed values, applicability errors, stale ordinals/budgets/versions/source SHA, noncanonical paths, hash mismatches, and incompatible reference-runtime metadata.
 
 ## Limitations

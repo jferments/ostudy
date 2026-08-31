@@ -46,6 +46,8 @@ SCENARIOS = (
     "active-practice-progress-v1",
 )
 CANDIDATE_SCENARIOS = ("deck-drag-v1",)
+LEGACY_DRAG_POINTER_ID = "stage0-touch"
+CANDIDATE_DRAG_POINTER_ID = "stage4a-deck-drag-fine-mouse"
 POINTER_SCENARIOS = {"navigation-hover-v1", "deck-drag-v1"}
 BOUNDARIES = {"navigation", "documents", "deck-library", "practice-setup", "guide-library", "guide-dialog", "active-practice"}
 EXPECTED_BOUNDARIES = {
@@ -791,15 +793,21 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
     return {"x": point["x"], "y": point["y"]}
 
 
-def position_and_press_drag_pointer(session_id: str, point: dict[str, int]) -> None:
+def position_and_press_drag_pointer(
+    session_id: str,
+    point: dict[str, int],
+    *,
+    pointer_id: str,
+    pointer_type: str,
+) -> None:
     webdriver.request(
         "POST",
         f"/session/{session_id}/actions",
         {
             "actions": [{
                 "type": "pointer",
-                "id": "stage0-touch",
-                "parameters": {"pointerType": "touch"},
+                "id": pointer_id,
+                "parameters": {"pointerType": pointer_type},
                 "actions": [
                     {
                         "type": "pointerMove",
@@ -815,15 +823,20 @@ def position_and_press_drag_pointer(session_id: str, point: dict[str, int]) -> N
     )
 
 
-def activate_drag_pointer(session_id: str) -> None:
+def activate_drag_pointer(
+    session_id: str,
+    *,
+    pointer_id: str,
+    pointer_type: str,
+) -> None:
     webdriver.request(
         "POST",
         f"/session/{session_id}/actions",
         {
             "actions": [{
                 "type": "pointer",
-                "id": "stage0-touch",
-                "parameters": {"pointerType": "touch"},
+                "id": pointer_id,
+                "parameters": {"pointerType": pointer_type},
                 "actions": [{
                     "type": "pointerMove",
                     "duration": 80,
@@ -836,15 +849,20 @@ def activate_drag_pointer(session_id: str) -> None:
     )
 
 
-def cancel_drag_pointer(session_id: str) -> None:
+def cancel_drag_pointer(
+    session_id: str,
+    *,
+    pointer_id: str,
+    pointer_type: str,
+) -> None:
     webdriver.request(
         "POST",
         f"/session/{session_id}/actions",
         {
             "actions": [{
                 "type": "pointer",
-                "id": "stage0-touch",
-                "parameters": {"pointerType": "touch"},
+                "id": pointer_id,
+                "parameters": {"pointerType": pointer_type},
                 "actions": [
                     {
                         "type": "pointerMove",
@@ -865,14 +883,30 @@ def collect_drag_sample(
     target: str,
     scenario: str,
     deadline: float,
+    *,
+    pointer_id: str,
+    pointer_type: str,
 ) -> dict[str, Any]:
     point = find_safe_drag_point(session_id, target)
-    position_and_press_drag_pointer(session_id, point)
     try:
+        position_and_press_drag_pointer(
+            session_id,
+            point,
+            pointer_id=pointer_id,
+            pointer_type=pointer_type,
+        )
         arm(session_id, scenario, target)
-        activate_drag_pointer(session_id)
+        activate_drag_pointer(
+            session_id,
+            pointer_id=pointer_id,
+            pointer_type=pointer_type,
+        )
         wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
-        cancel_drag_pointer(session_id)
+        cancel_drag_pointer(
+            session_id,
+            pointer_id=pointer_id,
+            pointer_type=pointer_type,
+        )
         wait_js(session_id, "!document.querySelector('[data-drag-preview]')", deadline)
         return finish(session_id)
     finally:
@@ -1204,7 +1238,14 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
             "main [data-library-row='deck']",
             deadline,
         )
-        result = collect_drag_sample(session_id, target, scenario, deadline)
+        result = collect_drag_sample(
+            session_id,
+            target,
+            scenario,
+            deadline,
+            pointer_id=LEGACY_DRAG_POINTER_ID,
+            pointer_type="touch",
+        )
     elif scenario == "deck-selection-v1":
         navigate(session_id, "practice", "Practice")
         canonicalize_practice_setup(session_id, deadline)
@@ -1278,6 +1319,8 @@ def collect_candidate_drag_scenario(session_id: str) -> dict[str, Any]:
         target,
         CANDIDATE_SCENARIOS[0],
         deadline,
+        pointer_id=CANDIDATE_DRAG_POINTER_ID,
+        pointer_type="mouse",
     )
 
 
