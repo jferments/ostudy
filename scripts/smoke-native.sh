@@ -11,6 +11,15 @@ source "$SCRIPT_DIR/build-state.sh"
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
+# Native smoke is an X11/WebKit automation contract, not a GPU qualification.
+# The unified guest has no DRI3 device, and letting WebKit probe accelerated
+# compositing there can reset WebKitWebDriver mid-session. Pin deterministic
+# software rendering for every application/driver attempt.
+export GDK_BACKEND=x11
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export LIBGL_ALWAYS_SOFTWARE=1
+
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   printf 'Usage: ./scripts/smoke-native.sh [diagnostic options]\n' >&2

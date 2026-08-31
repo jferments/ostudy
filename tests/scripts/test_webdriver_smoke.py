@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
 UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
+NATIVE_SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
 PROGRESS_STYLES_PATH = ROOT / "src" / "ui" / "primitives" / "Progress.module.css"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
@@ -447,6 +448,22 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         )
         self.assertIn("Q:", browser)
         self.assertIn("A:", browser)
+
+    def test_native_smoke_pins_x11_software_rendering_before_driver_launch(self) -> None:
+        source = NATIVE_SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
+        launch = source.index("timeout --signal=INT 300s")
+
+        for assignment in (
+            "export GDK_BACKEND=x11",
+            "export WEBKIT_DISABLE_COMPOSITING_MODE=1",
+            "export WEBKIT_DISABLE_DMABUF_RENDERER=1",
+            "export LIBGL_ALWAYS_SOFTWARE=1",
+        ):
+            with self.subTest(assignment=assignment):
+                self.assertIn(assignment, source)
+                self.assertLess(source.index(assignment), launch)
+        self.assertIn("Native smoke is an X11/WebKit automation contract", source)
+        self.assertIn("can reset WebKitWebDriver mid-session", source)
 
     def test_deck_detail_smoke_retains_visual_geometry_contract(self) -> None:
         source = UI_PLATFORM_SMOKE_PATH.read_text(encoding="utf-8")
