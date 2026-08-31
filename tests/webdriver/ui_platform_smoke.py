@@ -1101,6 +1101,29 @@ def verify_deck_detail_header(
                     tooltip.style.display = tooltipDisplays[index];
                   });
                 }
+                const descendantOverflow = [...header.querySelectorAll('*')]
+                  .map((element) => {
+                    const bounds = element.getBoundingClientRect();
+                    const style = getComputedStyle(element);
+                    return {
+                      tag: element.tagName.toLowerCase(),
+                      className: element.className?.toString() || '',
+                      role: element.getAttribute('role'),
+                      ariaLabel: element.getAttribute('aria-label'),
+                      position: style.position,
+                      overflowX: style.overflowX,
+                      left: bounds.left,
+                      right: bounds.right,
+                      clientWidth: element.clientWidth,
+                      scrollWidth: element.scrollWidth,
+                      text: (element.textContent || '').trim().slice(0, 120),
+                    };
+                  })
+                  .filter((entry) =>
+                    entry.scrollWidth > entry.clientWidth + 1
+                    || entry.left < headerRect.left - 1
+                    || entry.right > headerRect.right + 1
+                  );
                 const above = (upper, lower) => upper.bottom <= lower.top + 1;
                 return {
                   mode: actions.dataset.layoutMode,
@@ -1119,6 +1142,7 @@ def verify_deck_detail_header(
                     && geometry.titleRow.width >= headerRect.width - 2,
                   geometry,
                   contained,
+                  descendantOverflow,
                   excludedOpenTooltipCount: openTooltips.length,
                   persistentHeaderScrollWidth,
                   persistentHeaderClientWidth,
