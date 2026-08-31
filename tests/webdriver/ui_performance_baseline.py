@@ -872,6 +872,30 @@ def arm(session_id: str, scenario: str, element_id: str) -> None:
     if result != INSTRUMENTATION_VERSION: raise AssertionError(f"Performance bridge unavailable or stale: {result!r}")
 
 
+def performance_sample_from_result(result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        raise AssertionError(f"Invalid asynchronous performance result: {result!r}")
+    if result.get("ok") is not True:
+        error = result.get("error")
+        if not isinstance(error, dict):
+            raise AssertionError(f"Invalid asynchronous performance error: {result!r}")
+        name = error.get("name")
+        message = error.get("message")
+        if not isinstance(name, str) or not isinstance(message, str):
+            raise AssertionError(f"Invalid asynchronous performance error: {result!r}")
+        raise BrowserPerformanceError(name, message)
+    sample = result.get("sample")
+    if not isinstance(sample, dict):
+        raise AssertionError(f"Invalid performance sample: {sample!r}")
+    return {
+        "interactionToVisible": {"state": "available", "valueMs": sample["interactionToVisibleMs"]},
+        "interactionToReady": {"state": "available", "valueMs": sample["interactionToReadyMs"]},
+        "userTiming": sample["userTiming"],
+        "react": {"state": "available", **sample["react"]},
+        "pointer": sample["pointer"],
+    }
+
+
 def finish(session_id: str) -> dict[str, Any]:
     result = retry_idempotent_transport_once(
         lambda: webdriver.request(
@@ -902,26 +926,7 @@ def finish(session_id: str) -> dict[str, Any]:
             },
         )
     )
-    if not isinstance(result, dict):
-        raise AssertionError(f"Invalid asynchronous performance result: {result!r}")
-    if result.get("ok") is not True:
-        error = result.get("error")
-        if not isinstance(error, dict):
-            raise AssertionError(f"Invalid asynchronous performance error: {result!r}")
-        name = error.get("name")
-        message = error.get("message")
-        if not isinstance(name, str) or not isinstance(message, str):
-            raise AssertionError(f"Invalid asynchronous performance error: {result!r}")
-        raise BrowserPerformanceError(name, message)
-    sample = result.get("sample")
-    if not isinstance(sample, dict): raise AssertionError(f"Invalid performance sample: {sample!r}")
-    return {
-        "interactionToVisible": {"state": "available", "valueMs": sample["interactionToVisibleMs"]},
-        "interactionToReady": {"state": "available", "valueMs": sample["interactionToReadyMs"]},
-        "userTiming": sample["userTiming"],
-        "react": {"state": "available", **sample["react"]},
-        "pointer": sample["pointer"],
-    }
+    return performance_sample_from_result(result)
 
 
 def park_mouse(session_id: str) -> None:
@@ -1646,14 +1651,12 @@ def run_trusted_native_drag_smoke(application: Path) -> dict[str, Any]:
             log_path.unlink(missing_ok=True)
 
 
-def dispatch_candidate_drag_pointer_event(
-    session_id: str,
-    target: str,
+def candidate_pointer_event_contract(
     anchor: dict[str, int],
     event_type: str,
     client_x: int,
     client_y: int,
-) -> None:
+) -> dict[str, Any]:
     event_buttons = {
         "pointerdown": {"button": 0, "buttons": 1},
         "pointermove": {"button": -1, "buttons": 1},
@@ -1668,7 +1671,7 @@ def dispatch_candidate_drag_pointer_event(
         or type(client_y) is not int
     ):
         raise AssertionError("Candidate pointer coordinates must be exact integers.")
-    expected = {
+    return {
         "type": event_type,
         "pointerId": CANDIDATE_DRAG_POINTER_ID,
         "pointerType": "mouse",
@@ -1682,6 +1685,32 @@ def dispatch_candidate_drag_pointer_event(
         "anchorX": anchor["x"],
         "anchorY": anchor["y"],
     }
+
+
+def validate_candidate_pointer_observation(
+    observed: Any,
+    expected: dict[str, Any],
+) -> None:
+    expected_observed = {
+        key: value for key, value in expected.items() if key not in {"anchorX", "anchorY"}
+    }
+    expected_observed.update({"targetObserved": True, "windowObserved": True})
+    if observed != expected_observed:
+        raise AssertionError(
+            "Candidate PointerEvent observed contract differs: "
+            f"expected {expected_observed!r}, received {observed!r}."
+        )
+
+
+def dispatch_candidate_drag_pointer_event(
+    session_id: str,
+    target: str,
+    anchor: dict[str, int],
+    event_type: str,
+    client_x: int,
+    client_y: int,
+) -> None:
+    expected = candidate_pointer_event_contract(anchor, event_type, client_x, client_y)
     try:
         observed = execute(
             session_id,
@@ -1713,17 +1742,10 @@ def dispatch_candidate_drag_pointer_event(
               composed: expected.composed,
             });
             const contract = {
-              type: event.type,
-              pointerId: event.pointerId,
-              pointerType: event.pointerType,
-              isPrimary: event.isPrimary,
-              clientX: event.clientX,
-              clientY: event.clientY,
-              button: event.button,
-              buttons: event.buttons,
-              bubbles: event.bubbles,
-              cancelable: event.cancelable,
-              composed: event.composed,
+              type: event.type, pointerId: event.pointerId, pointerType: event.pointerType,
+              isPrimary: event.isPrimary, clientX: event.clientX, clientY: event.clientY,
+              button: event.button, buttons: event.buttons, bubbles: event.bubbles,
+              cancelable: event.cancelable, composed: event.composed,
             };
             for (const field of Object.keys(contract)) {
               if (contract[field] !== expected[field]) {
@@ -1735,9 +1757,7 @@ def dispatch_candidate_drag_pointer_event(
             const observeTarget = (observedEvent) => {
               targetObserved = observedEvent === event && observedEvent.target === row;
             };
-            const observeWindow = (observedEvent) => {
-              windowObserved = observedEvent === event;
-            };
+            const observeWindow = (observedEvent) => { windowObserved = observedEvent === event; };
             row.addEventListener(expected.type, observeTarget, {once: true});
             window.addEventListener(expected.type, observeWindow, {capture: true, once: true});
             try {
@@ -1757,15 +1777,131 @@ def dispatch_candidate_drag_pointer_event(
         if error.error == "stale element reference":
             raise AssertionError("Candidate deck drag target is stale or wrong.") from error
         raise
-    expected_observed = {
-        key: value for key, value in expected.items() if key not in {"anchorX", "anchorY"}
-    }
-    expected_observed.update({"targetObserved": True, "windowObserved": True})
-    if observed != expected_observed:
-        raise AssertionError(
-            "Candidate PointerEvent observed contract differs: "
-            f"expected {expected_observed!r}, received {observed!r}."
+    validate_candidate_pointer_observation(observed, expected)
+
+
+def dispatch_candidate_drag_activation_and_finish(
+    session_id: str,
+    target: str,
+    anchor: dict[str, int],
+    client_x: int,
+    client_y: int,
+) -> dict[str, Any]:
+    expected = candidate_pointer_event_contract(
+        anchor, "pointermove", client_x, client_y
+    )
+    try:
+        result = webdriver.request(
+            "POST",
+            f"/session/{session_id}/execute/async",
+            {
+                "script": """
+                  const row = arguments[0];
+                  const expected = arguments[1];
+                  const done = arguments[arguments.length - 1];
+                  const errorResult = (error) => ({
+                    ok: false,
+                    error: {
+                      name: error instanceof Error ? error.name : typeof error,
+                      message: error instanceof Error ? error.message : String(error),
+                    },
+                  });
+                  try {
+                    if (typeof PointerEvent !== 'function') {
+                      throw new Error('Candidate PointerEvent is unavailable.');
+                    }
+                    if (
+                      !(row instanceof HTMLElement) ||
+                      !row.isConnected ||
+                      row.dataset.libraryRow !== 'deck' ||
+                      row.dataset.itemName !== 'Large library drag source' ||
+                      document.elementFromPoint(expected.anchorX, expected.anchorY) !== row
+                    ) {
+                      throw new Error('Candidate deck drag target is stale or wrong.');
+                    }
+                    const event = new PointerEvent(expected.type, {
+                      pointerId: expected.pointerId, pointerType: expected.pointerType,
+                      isPrimary: expected.isPrimary, clientX: expected.clientX,
+                      clientY: expected.clientY, button: expected.button,
+                      buttons: expected.buttons, bubbles: expected.bubbles,
+                      cancelable: expected.cancelable, composed: expected.composed,
+                    });
+                    const contract = {
+                      type: event.type, pointerId: event.pointerId,
+                      pointerType: event.pointerType, isPrimary: event.isPrimary,
+                      clientX: event.clientX, clientY: event.clientY,
+                      button: event.button, buttons: event.buttons,
+                      bubbles: event.bubbles, cancelable: event.cancelable,
+                      composed: event.composed,
+                    };
+                    for (const field of Object.keys(contract)) {
+                      if (contract[field] !== expected[field]) {
+                        throw new Error(`Candidate PointerEvent contract mismatch for ${field}.`);
+                      }
+                    }
+                    let targetObserved = false;
+                    let windowObserved = false;
+                    const observeTarget = (observedEvent) => {
+                      targetObserved = observedEvent === event && observedEvent.target === row;
+                    };
+                    const observeWindow = (observedEvent) => {
+                      windowObserved = observedEvent === event;
+                    };
+                    row.addEventListener(expected.type, observeTarget, {once: true});
+                    window.addEventListener(expected.type, observeWindow, {capture: true, once: true});
+                    try {
+                      row.dispatchEvent(event);
+                    } finally {
+                      row.removeEventListener(expected.type, observeTarget);
+                      window.removeEventListener(expected.type, observeWindow, true);
+                    }
+                    if (!targetObserved || !windowObserved) {
+                      throw new Error('Candidate PointerEvent was not observed at both target and window.');
+                    }
+                    const observed = {...contract, targetObserved, windowObserved};
+                    const bridge = window.__OSTUDY_UI_PERFORMANCE__;
+                    if (!bridge) {
+                      done({ok: false, error: {name: 'BridgeUnavailableError', message: 'The UI performance bridge is unavailable.'}});
+                      return;
+                    }
+                    let settled = false;
+                    const complete = (value) => {
+                      if (settled) return;
+                      settled = true;
+                      window.clearTimeout(timeout);
+                      done(value);
+                    };
+                    const timeout = window.setTimeout(() => complete({
+                      ok: false,
+                      error: {name: 'DragPreviewTimeoutError', message: 'The activated drag preview did not become visible.'},
+                    }), 5000);
+                    const awaitPreview = () => {
+                      if (document.querySelector('[data-drag-preview]')) {
+                        Promise.resolve()
+                          .then(() => bridge.finish())
+                          .then(
+                            (sample) => complete({ok: true, observed, sample}),
+                            (error) => complete(errorResult(error)),
+                          );
+                        return;
+                      }
+                      requestAnimationFrame(awaitPreview);
+                    };
+                    requestAnimationFrame(awaitPreview);
+                  } catch (error) {
+                    done(errorResult(error));
+                  }
+                """,
+                "args": [{webdriver.ELEMENT_KEY: target}, expected],
+            },
         )
+    except webdriver.WebDriverProtocolError as error:
+        if error.error == "stale element reference":
+            raise AssertionError("Candidate deck drag target is stale or wrong.") from error
+        raise
+    sample = performance_sample_from_result(result)
+    validate_candidate_pointer_observation(result.get("observed"), expected)
+    return sample
 
 
 def position_and_press_drag_pointer(
@@ -1920,25 +2056,17 @@ def collect_candidate_drag_sample(
         )
         pointer_down_delivered = True
         arm(session_id, scenario, target)
-        dispatch_candidate_drag_pointer_event(
+        # Keep activation, preview readiness, and timing finalization inside one
+        # bounded browser command. WebKit can idle its frame clock between
+        # automation commands even when the X11 surface itself is healthy.
+        sample = dispatch_candidate_drag_activation_and_finish(
             session_id,
             target,
             point,
-            "pointermove",
             activation_point["x"],
             activation_point["y"],
         )
         wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
-        wait_js(
-            session_id,
-            "performance.getEntriesByName('ostudy-ui-visible', 'mark').length === 1",
-            deadline,
-        )
-        # Finalize while the activated preview is still mounted. WebKit can defer
-        # requestAnimationFrame while synchronous WebDriver cleanup commands run;
-        # cancelling first would therefore measure harness cleanup latency instead
-        # of the interaction-to-visible frame.
-        sample = finish(session_id)
         cancel_attempted = True
         dispatch_candidate_drag_pointer_event(
             session_id,

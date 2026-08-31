@@ -1127,7 +1127,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         )
         self.assertEqual({"sample": True}, result)
 
-    def test_candidate_drag_waits_for_visible_frame_before_finalization_and_cleanup(self) -> None:
+    def test_candidate_drag_finalizes_activation_in_one_browser_command_before_cleanup(self) -> None:
         events: list[str] = []
         with mock.patch.object(
             baseline,
@@ -1141,6 +1141,12 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             ),
         ), mock.patch.object(
             baseline,
+            "dispatch_candidate_drag_activation_and_finish",
+            side_effect=lambda _session, _target, _anchor, x, y: events.append(
+                f"pointermove+finish:{x},{y}"
+            ) or {"sample": True},
+        ), mock.patch.object(
+            baseline,
             "arm",
             side_effect=lambda *_args: events.append("arm"),
         ), mock.patch.object(
@@ -1149,38 +1155,22 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             side_effect=lambda _session, expression, _deadline: events.append(
                 "preview-active"
                 if expression.startswith("document.querySelector")
-                else "visible-frame"
-                if expression.startswith("performance.getEntriesByName")
                 else "preview-clean"
             ),
-        ), mock.patch.object(
-            baseline,
-            "finish",
-            side_effect=lambda *_args: events.append("finish") or {"sample": True},
         ), mock.patch.object(
             baseline,
             "release_pointer_actions",
             side_effect=lambda *_args: events.append("release"),
         ):
             result = baseline.collect_candidate_drag_sample(
-                "session-1",
-                "large-drag-row",
-                "deck-drag-v1",
-                123.0,
+                "session-1", "large-drag-row", "deck-drag-v1", 123.0,
             )
 
         self.assertEqual(
             [
-                "safe-point",
-                "pointerdown:10,20",
-                "arm",
-                "pointermove:19,20",
-                "preview-active",
-                "visible-frame",
-                "finish",
-                "pointercancel:19,20",
-                "preview-clean",
-                "release",
+                "safe-point", "pointerdown:10,20", "arm",
+                "pointermove+finish:19,20", "preview-active",
+                "pointercancel:19,20", "preview-clean", "release",
             ],
             events,
         )
@@ -1193,42 +1183,34 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             8,
         )
 
-    def test_candidate_drag_cannot_finish_when_no_active_preview_is_observed(self) -> None:
+    def test_candidate_drag_rejects_a_preview_missing_after_async_finalization(self) -> None:
         dispatches: list[str] = []
         with mock.patch.object(
-            baseline,
-            "find_safe_drag_point",
-            return_value={"x": 10, "y": 20},
+            baseline, "find_safe_drag_point", return_value={"x": 10, "y": 20},
         ), mock.patch.object(
             baseline,
             "dispatch_candidate_drag_pointer_event",
-            side_effect=lambda _session, _target, _anchor, event_type, _x, _y: dispatches.append(
-                event_type
-            ),
+            side_effect=lambda _session, _target, _anchor, event_type, _x, _y: dispatches.append(event_type),
         ), mock.patch.object(baseline, "arm"), mock.patch.object(
-            baseline.webdriver,
-            "deadline_after",
-            return_value=456.0,
+            baseline,
+            "dispatch_candidate_drag_activation_and_finish",
+            return_value={"sample": True},
+        ) as activate, mock.patch.object(
+            baseline.webdriver, "deadline_after", return_value=456.0,
         ), mock.patch.object(
-            baseline,
-            "wait_js",
-            side_effect=[AssertionError("no active drag preview"), None],
+            baseline, "wait_js", side_effect=[AssertionError("no active drag preview"), None],
         ) as wait_js, mock.patch.object(
-            baseline,
-            "finish",
-        ) as finish, mock.patch.object(
-            baseline,
-            "release_pointer_actions",
+            baseline, "release_pointer_actions",
         ) as release:
             with self.assertRaisesRegex(AssertionError, "no active drag preview"):
                 baseline.collect_candidate_drag_sample(
-                    "session-1",
-                    "large-drag-row",
-                    "deck-drag-v1",
-                    123.0,
+                    "session-1", "large-drag-row", "deck-drag-v1", 123.0,
                 )
 
-        self.assertEqual(["pointerdown", "pointermove", "pointercancel"], dispatches)
+        self.assertEqual(["pointerdown", "pointercancel"], dispatches)
+        activate.assert_called_once_with(
+            "session-1", "large-drag-row", {"x": 10, "y": 20}, 19, 20,
+        )
         self.assertEqual(
             mock.call(
                 "session-1",
@@ -1237,8 +1219,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             ),
             wait_js.call_args_list[-1],
         )
-        finish.assert_not_called()
         release.assert_called_once_with("session-1")
+
 
     def test_drag_capture_rejects_a_row_without_a_safe_noninteractive_point(self) -> None:
         with mock.patch.object(
@@ -1311,6 +1293,63 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             self.assertIn("document.elementFromPoint(expected.anchorX, expected.anchorY) !== row", script)
             self.assertIn("row.dispatchEvent(event)", script)
             self.assertIn("!targetObserved || !windowObserved", script)
+
+    def test_candidate_async_activation_owns_dispatch_preview_and_finish(self) -> None:
+        expected = baseline.candidate_pointer_event_contract(
+            {"x": 10, "y": 20}, "pointermove", 19, 20,
+        )
+        observed = {
+            key: value for key, value in expected.items()
+            if key not in {"anchorX", "anchorY"}
+        } | {"targetObserved": True, "windowObserved": True}
+        raw_sample = {
+            "interactionToVisibleMs": 12,
+            "interactionToReadyMs": 13,
+            "userTiming": {"startTimeMs": 1, "visibleTimeMs": 13, "readyTimeMs": 14},
+            "react": {
+                "totalRenderDurationMs": 0, "avoidableCommitCount": 0,
+                "commits": [], "commitCount": 0,
+            },
+            "pointer": {
+                "state": "available", "eventCount": 1, "frameCount": 1,
+                "maxFrameWorkMs": 0, "maxFrameIntervalMs": 16,
+            },
+        }
+        with mock.patch.object(
+            baseline.webdriver, "request",
+            return_value={"ok": True, "observed": observed, "sample": raw_sample},
+        ) as request:
+            sample = baseline.dispatch_candidate_drag_activation_and_finish(
+                "session-1", "large-drag-row", {"x": 10, "y": 20}, 19, 20,
+            )
+
+        self.assertEqual(12, sample["interactionToVisible"]["valueMs"])
+        self.assertEqual("POST", request.call_args.args[0])
+        self.assertEqual("/session/session-1/execute/async", request.call_args.args[1])
+        payload = request.call_args.args[2]
+        self.assertEqual({baseline.webdriver.ELEMENT_KEY: "large-drag-row"}, payload["args"][0])
+        self.assertEqual(expected, payload["args"][1])
+        self.assertIn("row.dispatchEvent(event)", payload["script"])
+        self.assertIn("requestAnimationFrame(awaitPreview)", payload["script"])
+        self.assertIn("bridge.finish()", payload["script"])
+
+        with mock.patch.object(
+            baseline.webdriver, "request",
+            return_value={
+                "ok": False,
+                "error": {
+                    "name": "DragPreviewTimeoutError",
+                    "message": "The activated drag preview did not become visible.",
+                },
+            },
+        ):
+            with self.assertRaisesRegex(
+                baseline.BrowserPerformanceError, "DragPreviewTimeoutError",
+            ):
+                baseline.dispatch_candidate_drag_activation_and_finish(
+                    "session-1", "large-drag-row", {"x": 10, "y": 20}, 19, 20,
+                )
+
 
     def test_candidate_dom_pointer_dispatch_rejects_stale_and_mismatched_contracts(self) -> None:
         stale = baseline.webdriver.WebDriverProtocolError(
@@ -1391,9 +1430,13 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             side_effect=dispatch,
         ), mock.patch.object(baseline, "arm"), mock.patch.object(
             baseline,
+            "dispatch_candidate_drag_activation_and_finish",
+            return_value={"sample": True},
+        ) as activate, mock.patch.object(
+            baseline,
             "wait_js",
             side_effect=[None, None],
-        ), mock.patch.object(baseline, "finish") as finish, mock.patch.object(
+        ), mock.patch.object(
             baseline,
             "release_pointer_actions",
             side_effect=RuntimeError("release cleanup also failed"),
@@ -1406,8 +1449,10 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                     123.0,
                 )
 
-        self.assertEqual(["pointerdown", "pointermove", "pointercancel"], dispatches)
-        finish.assert_called_once_with("session-1")
+        self.assertEqual(["pointerdown", "pointercancel"], dispatches)
+        activate.assert_called_once_with(
+            "session-1", "large-drag-row", {"x": 10, "y": 20}, 19, 20,
+        )
         release.assert_called_once_with("session-1")
 
     def test_candidate_post_pointerdown_cleanup_preserves_the_primary_failure(self) -> None:
@@ -1436,8 +1481,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             side_effect=RuntimeError("cleanup preview check failed"),
         ), mock.patch.object(
             baseline,
-            "finish",
-        ) as finish, mock.patch.object(
+            "dispatch_candidate_drag_activation_and_finish",
+        ) as activate, mock.patch.object(
             baseline,
             "release_pointer_actions",
             side_effect=RuntimeError("cleanup release failed"),
@@ -1451,7 +1496,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 )
 
         self.assertEqual(["pointerdown", "pointercancel"], dispatches)
-        finish.assert_not_called()
+        activate.assert_not_called()
         release.assert_called_once_with("session-1")
 
     def test_capture_updates_only_the_two_stage_zero_rows_and_is_idempotent(self) -> None:

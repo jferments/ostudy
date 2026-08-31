@@ -141,11 +141,11 @@ therefore does not depend on WebKitWebDriver pointer-action translation: it
 dispatches pointerdown before arming, dispatches a same-target mouse pointermove
 strictly beyond the 8px activation threshold after arming, proves real preview
 appearance, finalizes the visible-frame timing while that preview remains mounted,
-and then proves cancellation cleanup. Before finalization, bounded polling waits for
-the instrumentation's explicit `ostudy-ui-visible` mark; an unsuccessful check
-yields to the browser before trying again, so synchronous WebDriver commands cannot
-starve the response frame. This ordering excludes WebDriver cleanup latency from
-the visible-response metric. This
+and then proves cancellation cleanup. Activation dispatch, preview readiness, and
+`bridge.finish()` execute inside one bounded asynchronous browser command, so
+WebKit can service the response frame without an idle transition between automation
+commands. This ordering excludes both cross-command scheduling and cleanup latency
+from the visible-response metric. This
 deterministic DOM-event performance path exercises the production React drag
 adapter, preview, cancellation, Profiler, User Timing, and pointer-frame
 instrumentation. Those samples do not themselves prove operating-system input
