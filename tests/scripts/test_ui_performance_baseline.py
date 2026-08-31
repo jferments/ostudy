@@ -20,6 +20,7 @@ assert SPEC and SPEC.loader
 baseline = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(baseline)
 SOURCE_SHA = "a" * 40
+TEST_PLATFORM = "Linux-6.8.0-137-generic-x86_64-with-glibc2.39"
 
 
 def digest(path: Path) -> str:
@@ -125,7 +126,7 @@ def make_tree(root: Path, *, offset: float = 0.0) -> None:
         "viewport": baseline.VIEWPORT, "theme": "light", "scalePercent": 100,
         "motion": "full", "materials": "rich", "pointer": "fine", "devicePixelRatio": 1,
         "display": baseline.DISPLAY, "applicationSha256": "b" * 64, "python": "3.12.0",
-        "platform": "codex-dev", "tauriDriver": "2.0", "webkitWebDriver": "2.48",
+        "platform": TEST_PLATFORM, "tauriDriver": "2.0", "webkitWebDriver": "2.48",
         "xvfb": "21.1", "reactProfilingBuild": True,
     }
     manifest = {
@@ -162,7 +163,7 @@ def make_drag_candidate(root: Path, *, offset: float = 0.0) -> None:
         "viewport": baseline.VIEWPORT, "theme": "light", "scalePercent": 100,
         "motion": "full", "materials": "rich", "pointer": "fine", "devicePixelRatio": 1,
         "display": baseline.DISPLAY, "applicationSha256": "b" * 64, "python": "3.12.0",
-        "platform": "codex-dev", "tauriDriver": "2.0", "webkitWebDriver": "2.48",
+        "platform": TEST_PLATFORM, "tauriDriver": "2.0", "webkitWebDriver": "2.48",
         "xvfb": "21.1", "reactProfilingBuild": True,
     }
     manifest = {
@@ -175,6 +176,7 @@ def make_drag_candidate(root: Path, *, offset: float = 0.0) -> None:
         "sampleCount": 12,
         "scenarioVersions": {scenario: scenario},
         "captureEnvironment": environment,
+        "trustedNativeInput": copy.deepcopy(baseline.TRUSTED_NATIVE_INPUT_ATTESTATION),
         "measurements": [{
             "scenarioId": scenario,
             "path": baseline.canonical_measurement_path(scenario),
@@ -280,7 +282,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         candidate = Path(self.temp.name) / "candidate"; make_tree(candidate, offset=100)
         failures = baseline.compare_baseline(candidate, self.root, expected_source_sha=SOURCE_SHA)
         self.assertTrue(any("interactionToVisibleMs" in failure for failure in failures))
-        manifest_path = candidate / "manifest.json"; value = json.loads(manifest_path.read_text()); value["captureEnvironment"]["platform"] = "different"; write_json(manifest_path, value)
+        manifest_path = candidate / "manifest.json"; value = json.loads(manifest_path.read_text()); value["captureEnvironment"]["platform"] = "Darwin-24.6.0-x86_64-with-glibc2.39"; write_json(manifest_path, value)
         with self.assertRaisesRegex(baseline.PerformanceBaselineError, "not comparable"):
             baseline.compare_baseline(candidate, self.root, expected_source_sha=SOURCE_SHA)
 
@@ -365,6 +367,209 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual(3, len(failures))
         self.assertTrue(all(failure.startswith("deck-drag-v1:") for failure in failures))
 
+    def test_drag_candidate_requires_exact_trusted_native_input_attestation(self) -> None:
+        candidate = Path(self.temp.name) / "candidate-attestation"
+        make_drag_candidate(candidate)
+        manifest_path = candidate / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["trustedNativeInput"]["trustedEscapeObserved"] = False
+        write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(
+            baseline.PerformanceBaselineError,
+            "trustedNativeInput",
+        ):
+            baseline.verify_drag_candidate(candidate, expected_source_sha=SOURCE_SHA)
+
+    def test_drag_candidate_rejects_boolean_numeric_identity_confusion(self) -> None:
+        mutations = {
+            "manifest schema bool": lambda manifest: manifest.update({"schemaVersion": True}),
+            "attestation schema bool": lambda manifest: manifest["trustedNativeInput"].update({
+                "schemaVersion": True,
+            }),
+            "attestation flag integer": lambda manifest: manifest["trustedNativeInput"].update({
+                "previewAppeared": 1,
+            }),
+            "attestation event nonstring": lambda manifest: manifest["trustedNativeInput"].update({
+                "trustedPointerEvents": ["pointerdown", "pointermove", 1],
+            }),
+            "application digest integer": lambda manifest: manifest["captureEnvironment"].update({
+                "applicationSha256": int("1" * 64),
+            }),
+            "profiling flag integer": lambda manifest: manifest["captureEnvironment"].update({
+                "reactProfilingBuild": 1,
+            }),
+        }
+        for index, (label, mutate) in enumerate(mutations.items()):
+            with self.subTest(label=label):
+                candidate = Path(self.temp.name) / f"typed-candidate-{index}"
+                make_drag_candidate(candidate)
+                manifest_path = candidate / "manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                mutate(manifest)
+                write_json(manifest_path, manifest)
+                with self.assertRaises(baseline.PerformanceBaselineError):
+                    baseline.verify_drag_candidate(
+                        candidate,
+                        expected_source_sha=SOURCE_SHA,
+                    )
+
+    def test_drag_candidate_rejects_symlinked_evidence_files_and_roots(self) -> None:
+        candidate = Path(self.temp.name) / "symlinked-measurement"
+        make_drag_candidate(candidate)
+        measurement = candidate / baseline.canonical_measurement_path("deck-drag-v1")
+        external = Path(self.temp.name) / "external-measurement.json"
+        measurement.replace(external)
+        measurement.symlink_to(external)
+        with self.assertRaisesRegex(
+            baseline.PerformanceBaselineError,
+            "regular non-symlink|contains a symlink",
+        ):
+            baseline.verify_drag_candidate(candidate, expected_source_sha=SOURCE_SHA)
+
+        candidate = Path(self.temp.name) / "symlinked-manifest"
+        make_drag_candidate(candidate)
+        manifest = candidate / "manifest.json"
+        external_manifest = Path(self.temp.name) / "external-manifest.json"
+        manifest.replace(external_manifest)
+        manifest.symlink_to(external_manifest)
+        with self.assertRaisesRegex(
+            baseline.PerformanceBaselineError,
+            "regular non-symlink",
+        ):
+            baseline.verify_drag_candidate(candidate, expected_source_sha=SOURCE_SHA)
+
+        candidate = Path(self.temp.name) / "real-candidate-root"
+        make_drag_candidate(candidate)
+        alias = Path(self.temp.name) / "candidate-root-alias"
+        alias.symlink_to(candidate, target_is_directory=True)
+        with self.assertRaisesRegex(baseline.PerformanceBaselineError, "root must not"):
+            baseline.verify_drag_candidate(alias, expected_source_sha=SOURCE_SHA)
+
+    def test_drag_candidate_accepts_kernel_and_python_patch_drift_without_rewriting_provenance(self) -> None:
+        candidate = Path(self.temp.name) / "compatible-candidate"
+        make_drag_candidate(candidate)
+        manifest_path = candidate / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["captureEnvironment"]["platform"] = (
+            "Linux-6.8.99-999-generic-x86_64-with-glibc2.39"
+        )
+        manifest["captureEnvironment"]["python"] = "3.12.99"
+        write_json(manifest_path, manifest)
+        raw_before = manifest_path.read_bytes()
+
+        self.assertEqual(
+            [],
+            baseline.compare_drag_candidate(
+                candidate,
+                self.root,
+                expected_candidate_source_sha=SOURCE_SHA,
+            ),
+        )
+        self.assertEqual(raw_before, manifest_path.read_bytes())
+        compared = json.loads(manifest_path.read_text(encoding="utf-8"))["captureEnvironment"]
+        self.assertEqual("Linux-6.8.99-999-generic-x86_64-with-glibc2.39", compared["platform"])
+        self.assertEqual("3.12.99", compared["python"])
+
+    def test_drag_candidate_rejects_every_normalized_and_exact_runtime_drift(self) -> None:
+        mutations = {
+            "os family": lambda environment: environment.update({
+                "platform": "Darwin-24.6.0-x86_64-with-glibc2.39",
+            }),
+            "architecture": lambda environment: environment.update({
+                "platform": "Linux-6.8.0-137-generic-aarch64-with-glibc2.39",
+            }),
+            "kernel ABI": lambda environment: environment.update({
+                "platform": "Linux-6.9.0-137-generic-x86_64-with-glibc2.39",
+            }),
+            "libc family": lambda environment: environment.update({
+                "platform": "Linux-6.8.0-137-generic-x86_64-with-musl2.39",
+            }),
+            "libc ABI": lambda environment: environment.update({
+                "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.40",
+            }),
+            "Python major/minor": lambda environment: environment.update({"python": "3.13.0"}),
+            "device pixel ratio": lambda environment: environment.update({"devicePixelRatio": 2}),
+            "Tauri driver": lambda environment: environment.update({"tauriDriver": "2.1"}),
+            "WebKit driver": lambda environment: environment.update({"webkitWebDriver": "2.49"}),
+            "Xvfb driver": lambda environment: environment.update({"xvfb": "22.0"}),
+            "display": lambda environment: environment["display"].update({"dpi": 120}),
+            "viewport": lambda environment: environment["viewport"].update({"width": 1280}),
+            "fixed UI metadata": lambda environment: environment.update({"theme": "dark"}),
+        }
+        for index, (label, mutate) in enumerate(mutations.items()):
+            with self.subTest(label=label):
+                candidate = Path(self.temp.name) / f"incompatible-candidate-{index}"
+                make_drag_candidate(candidate)
+                manifest_path = candidate / "manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                mutate(manifest["captureEnvironment"])
+                write_json(manifest_path, manifest)
+                with self.assertRaises(baseline.PerformanceBaselineError):
+                    baseline.compare_drag_candidate(
+                        candidate,
+                        self.root,
+                        expected_candidate_source_sha=SOURCE_SHA,
+                    )
+
+    def test_drag_candidate_rejects_malformed_platform_and_python_provenance(self) -> None:
+        mutations = {
+            "platform without kernel": lambda environment: environment.update({
+                "platform": "Linux-x86_64-with-glibc2.39",
+            }),
+            "nonnumeric kernel": lambda environment: environment.update({
+                "platform": "Linux-garbage-x86_64-with-glibc2.39",
+            }),
+            "trailing platform text": lambda environment: environment.update({
+                "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39junk",
+            }),
+            "architecture alias": lambda environment: environment.update({
+                "platform": "Linux-6.8.0-137-generic-amd64-with-glibc2.39",
+            }),
+            "leading-zero kernel": lambda environment: environment.update({
+                "platform": "Linux-06.8.0-137-generic-x86_64-with-glibc2.39",
+            }),
+            "platform control character": lambda environment: environment.update({
+                "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39\nignored",
+            }),
+            "short Python": lambda environment: environment.update({"python": "3.12"}),
+            "Python suffix": lambda environment: environment.update({"python": "3.12.0rc1"}),
+            "malformed Python suffix": lambda environment: environment.update({
+                "python": "3.12.0........",
+            }),
+            "leading-zero Python": lambda environment: environment.update({"python": "03.12.0"}),
+            "non-string Python": lambda environment: environment.update({"python": None}),
+        }
+        for index, (label, mutate) in enumerate(mutations.items()):
+            with self.subTest(label=label):
+                candidate = Path(self.temp.name) / f"malformed-candidate-{index}"
+                make_drag_candidate(candidate)
+                manifest_path = candidate / "manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                mutate(manifest["captureEnvironment"])
+                write_json(manifest_path, manifest)
+                with self.assertRaises(baseline.PerformanceBaselineError):
+                    baseline.compare_drag_candidate(
+                        candidate,
+                        self.root,
+                        expected_candidate_source_sha=SOURCE_SHA,
+                    )
+
+    def test_comparison_rejects_identically_malformed_runtime_metadata(self) -> None:
+        candidate = Path(self.temp.name) / "identically-malformed-candidate"
+        make_drag_candidate(candidate)
+        malformed = "Linux-x86_64-with-glibc2.39"
+        for root in (self.root, candidate):
+            manifest_path = root / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["captureEnvironment"]["platform"] = malformed
+            write_json(manifest_path, manifest)
+        with self.assertRaises(baseline.PerformanceBaselineError):
+            baseline.compare_drag_candidate(
+                candidate,
+                self.root,
+                expected_candidate_source_sha=SOURCE_SHA,
+            )
+
     def test_candidate_driver_is_drag_only_without_navigation_or_other_workflows(self) -> None:
         source = inspect.getsource(baseline.collect_candidate_drag_scenario)
         self.assertNotIn("navigate(", source)
@@ -373,6 +578,297 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertNotIn("study-guide", source)
         self.assertNotIn("active-practice", source)
         self.assertIn("LARGE_LIBRARY_DRAG_XPATH", source)
+
+    def test_trusted_native_drag_smoke_crosses_webkit_and_always_cleans_up(self) -> None:
+        pointer = mock.Mock()
+        pointer.close = mock.Mock()
+        observed = [
+            {"sequence": 11, "pointerId": 7},
+            {"sequence": 12, "pointerId": 7},
+            {"sequence": 15, "pointerId": 7},
+        ]
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="large-drag-row",
+        ) as find_element, mock.patch.object(
+            baseline,
+            "find_safe_drag_point",
+            return_value={"x": 20, "y": 30},
+        ), mock.patch.object(
+            baseline,
+            "native_library_structure",
+            side_effect=[
+                [{"kind": "deck", "geometryKey": "deck:source", "itemId": "source",
+                  "itemIndex": "0", "name": "Large library drag source",
+                  "folderId": "__unsorted__", "folderIndex": "", "collapsed": ""}],
+                [{"kind": "deck", "geometryKey": "deck:source", "itemId": "source",
+                  "itemIndex": "0", "name": "Large library drag source",
+                  "folderId": "__unsorted__", "folderIndex": "", "collapsed": ""}],
+            ],
+        ), mock.patch.object(
+            baseline,
+            "install_native_pointer_probe",
+            return_value={
+                "screenX": 0,
+                "screenY": 0,
+                "outerWidth": 1400,
+                "outerHeight": 900,
+                "innerWidth": 1400,
+                "innerHeight": 900,
+            },
+        ), mock.patch.object(
+            baseline,
+            "NativeX11Pointer",
+            return_value=pointer,
+        ), mock.patch.object(
+            baseline,
+            "calibrate_native_pointer",
+            return_value={"x": 120, "y": 230},
+        ), mock.patch.object(
+            baseline,
+            "native_pointer_sequence",
+            return_value=10,
+        ), mock.patch.object(
+            baseline,
+            "wait_for_native_pointer_event",
+            side_effect=observed,
+        ) as wait_event, mock.patch.object(
+            baseline,
+            "wait_for_native_key_event",
+            side_effect=[{"sequence": 13}, {"sequence": 14}],
+        ) as wait_key, mock.patch.object(
+            baseline,
+            "wait_js",
+        ) as wait_js, mock.patch.object(
+            baseline,
+            "remove_native_pointer_probe",
+        ) as remove_probe:
+            attestation = baseline.verify_trusted_native_drag_smoke("session-1")
+
+        self.assertEqual(
+            [
+                mock.call.set_primary_button(True),
+                mock.call.move(129, 230),
+                mock.call.set_escape_key(True),
+                mock.call.set_escape_key(False),
+                mock.call.set_primary_button(False),
+                mock.call.close(),
+            ],
+            pointer.mock_calls,
+        )
+        self.assertEqual(3, wait_event.call_count)
+        self.assertEqual(2, wait_key.call_count)
+        self.assertEqual(True, wait_event.call_args_list[0].kwargs["target_is_row"])
+        self.assertEqual(1, wait_event.call_args_list[0].kwargs["buttons"])
+        self.assertEqual(0, wait_event.call_args_list[2].kwargs["buttons"])
+        self.assertEqual(
+            [
+                mock.call(
+                    "session-1",
+                    "document.querySelector('[data-drag-preview]')",
+                    mock.ANY,
+                ),
+                mock.call(
+                    "session-1",
+                    "!document.querySelector('[data-drag-preview]')",
+                    mock.ANY,
+                ),
+                mock.call(
+                    "session-1",
+                    "!document.querySelector('[data-drag-preview]')",
+                    mock.ANY,
+                ),
+            ],
+            wait_js.call_args_list,
+        )
+        self.assertEqual(2, find_element.call_count)
+        remove_probe.assert_called_once_with("session-1")
+        self.assertEqual(baseline.TRUSTED_NATIVE_INPUT_ATTESTATION, attestation)
+
+    def test_trusted_native_drag_smoke_releases_button_and_probe_after_failure(self) -> None:
+        pointer = mock.Mock()
+        with mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="large-drag-row",
+        ), mock.patch.object(
+            baseline,
+            "find_safe_drag_point",
+            return_value={"x": 20, "y": 30},
+        ), mock.patch.object(
+            baseline,
+            "native_library_structure",
+            return_value=[{
+                "kind": "deck", "geometryKey": "deck:source", "itemId": "source",
+                "itemIndex": "0", "name": "Large library drag source",
+                "folderId": "__unsorted__", "folderIndex": "", "collapsed": "",
+            }],
+        ), mock.patch.object(
+            baseline,
+            "install_native_pointer_probe",
+            return_value={
+                "screenX": 0,
+                "screenY": 0,
+                "outerWidth": 1400,
+                "outerHeight": 900,
+                "innerWidth": 1400,
+                "innerHeight": 900,
+            },
+        ), mock.patch.object(
+            baseline,
+            "NativeX11Pointer",
+            return_value=pointer,
+        ), mock.patch.object(
+            baseline,
+            "calibrate_native_pointer",
+            side_effect=AssertionError("no trusted input"),
+        ), mock.patch.object(
+            baseline,
+            "remove_native_pointer_probe",
+        ) as remove_probe:
+            with self.assertRaisesRegex(AssertionError, "no trusted input"):
+                baseline.verify_trusted_native_drag_smoke("session-1")
+
+        pointer.close.assert_called_once_with()
+        remove_probe.assert_called_once_with("session-1")
+
+    def test_native_pointer_probe_and_adapter_are_fail_closed(self) -> None:
+        probe_source = inspect.getsource(baseline.install_native_pointer_probe)
+        wait_source = inspect.getsource(baseline.wait_for_native_pointer_event)
+        adapter_source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn("event.isTrusted", probe_source)
+        self.assertIn('event.get("isTrusted") is True', wait_source)
+        self.assertIn('event.get("pointerType") == "mouse"', wait_source)
+        self.assertIn("XTestQueryExtension", adapter_source)
+        self.assertIn("if self._button_down", adapter_source)
+        self.assertIn("XTestFakeButtonEvent(self._display, 1, 0, 0)", adapter_source)
+
+    def test_native_pointer_calibration_accepts_an_exact_first_motion(self) -> None:
+        pointer = mock.Mock()
+        geometry = {
+            "screenX": 0, "screenY": 0, "outerWidth": 1400, "outerHeight": 900,
+            "innerWidth": 1400, "innerHeight": 900,
+        }
+        exact = {
+            "sequence": 5,
+            "clientX": 20,
+            "clientY": 30,
+            "screenX": 20,
+            "screenY": 30,
+            "targetIsRow": True,
+        }
+        with mock.patch.object(
+            baseline,
+            "native_pointer_sequence",
+            return_value=4,
+        ), mock.patch.object(
+            baseline,
+            "wait_for_native_pointer_event",
+            return_value=exact,
+        ) as wait_event:
+            calibrated = baseline.calibrate_native_pointer(
+                "session-1",
+                pointer,
+                {"x": 20, "y": 30},
+                geometry,
+            )
+
+        self.assertEqual({"x": 20, "y": 30}, calibrated)
+        pointer.move.assert_called_once_with(20, 30)
+        wait_event.assert_called_once()
+
+    def test_native_pointer_calibration_corrects_a_measured_viewport_offset(self) -> None:
+        pointer = mock.Mock()
+        geometry = {
+            "screenX": 0, "screenY": 0, "outerWidth": 1400, "outerHeight": 900,
+            "innerWidth": 1400, "innerHeight": 900,
+        }
+        with mock.patch.object(
+            baseline,
+            "native_pointer_sequence",
+            return_value=4,
+        ), mock.patch.object(
+            baseline,
+            "wait_for_native_pointer_event",
+            side_effect=[
+                {
+                    "sequence": 5,
+                    "clientX": 10,
+                    "clientY": 25,
+                    "screenX": 20,
+                    "screenY": 30,
+                    "targetIsRow": False,
+                },
+                {"sequence": 6},
+            ],
+        ) as wait_event:
+            calibrated = baseline.calibrate_native_pointer(
+                "session-1",
+                pointer,
+                {"x": 20, "y": 30},
+                geometry,
+            )
+
+        self.assertEqual({"x": 30, "y": 35}, calibrated)
+        self.assertEqual([mock.call(20, 30), mock.call(30, 35)], pointer.move.call_args_list)
+        self.assertEqual(2, wait_event.call_count)
+        self.assertEqual(30, wait_event.call_args_list[1].kwargs["screen_x"])
+        self.assertEqual(35, wait_event.call_args_list[1].kwargs["screen_y"])
+
+    def test_native_pointer_cleanup_attempts_button_release_after_escape_failure(self) -> None:
+        pointer = object.__new__(baseline.NativeX11Pointer)
+        pointer._display = 1
+        pointer._escape_down = True
+        pointer._button_down = True
+        pointer._root = 1
+        pointer._x11 = mock.Mock()
+        pointer._x11.XKeysymToKeycode.return_value = 9
+        pointer._xtst = mock.Mock()
+        pointer._xtst.XTestFakeKeyEvent.return_value = 0
+        pointer._xtst.XTestFakeButtonEvent.return_value = 1
+        with mock.patch.object(
+            pointer,
+            "_query_pointer",
+            return_value={"x": 0, "y": 0, "mask": 0},
+        ):
+            with self.assertRaisesRegex(AssertionError, "cleanup Escape key-up"):
+                pointer.close()
+
+        pointer._xtst.XTestFakeButtonEvent.assert_called_once_with(1, 1, 0, 0)
+        pointer._x11.XCloseDisplay.assert_called_once_with(1)
+        self.assertIsNone(pointer._display)
+
+    def test_native_pointer_constructor_rejects_multiple_screens_without_partial_cleanup(self) -> None:
+        x11 = mock.Mock()
+        xtst = mock.Mock()
+        x11.XOpenDisplay.return_value = 1
+        x11.XScreenCount.return_value = 2
+        xtst.XTestQueryExtension.return_value = 1
+        environment = {
+            "OSTUDY_PERFORMANCE_IN_XVFB": "1",
+            "GDK_BACKEND": "x11",
+            "DISPLAY": ":99",
+        }
+        with mock.patch.dict(baseline.os.environ, environment, clear=True), mock.patch.object(
+            baseline.ctypes,
+            "CDLL",
+            side_effect=[x11, xtst],
+        ):
+            with self.assertRaisesRegex(AssertionError, "one X11 screen"):
+                baseline.NativeX11Pointer()
+
+        x11.XCloseDisplay.assert_called_once_with(1)
+        x11.XQueryPointer.assert_not_called()
+
+    def test_candidate_launcher_pins_x11_backend_for_trusted_input(self) -> None:
+        launcher = (
+            baseline.ROOT_DIR / "scripts/ui-performance-baselines.sh"
+        ).read_text(encoding="utf-8")
+        candidate_section = launcher.split(
+            'if [[ "$CAPTURE_COMMAND" == "capture-candidate" ]]',
+        )[-1].split("else", 1)[0]
+        self.assertIn("GDK_BACKEND=x11", candidate_section)
 
     def test_candidate_driver_uses_only_the_large_library_native_selector(self) -> None:
         with mock.patch.object(

@@ -15,6 +15,7 @@ import platform
 import re
 import shutil
 import signal
+import stat
 import statistics
 import subprocess
 import tempfile
@@ -49,6 +50,31 @@ CANDIDATE_SCENARIOS = ("deck-drag-v1",)
 LEGACY_DRAG_POINTER_ID = "stage0-touch"
 CANDIDATE_DRAG_POINTER_ID = 4_004
 CANDIDATE_DRAG_ACTIVATION_OFFSET = {"x": 9, "y": 0}
+TRUSTED_NATIVE_INPUT_ATTESTATION = {
+    "schemaVersion": 1,
+    "method": "x11-xtest-v1",
+    "trustedPointerEvents": ["pointerdown", "pointermove", "pointerup"],
+    "trustedEscapeObserved": True,
+    "previewAppeared": True,
+    "previewCleared": True,
+    "libraryStructureUnchanged": True,
+}
+PLATFORM_PATTERN = re.compile(
+    r"\A(?P<os>Linux)-"
+    r"(?P<kernel_major>0|[1-9][0-9]*)\."
+    r"(?P<kernel_minor>0|[1-9][0-9]*)\."
+    r"(?P<kernel_patch>0|[1-9][0-9]*)"
+    r"(?P<kernel_suffix>(?:-[A-Za-z0-9][A-Za-z0-9._+~]*)*)-"
+    r"(?P<architecture>x86_64|aarch64)-with-"
+    r"(?P<libc_family>glibc)"
+    r"(?P<libc_major>0|[1-9][0-9]*)\."
+    r"(?P<libc_minor>0|[1-9][0-9]*)\Z",
+    re.ASCII,
+)
+PYTHON_PATTERN = re.compile(
+    r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z",
+    re.ASCII,
+)
 POINTER_SCENARIOS = {"navigation-hover-v1", "deck-drag-v1"}
 BOUNDARIES = {"navigation", "documents", "deck-library", "practice-setup", "guide-library", "guide-dialog", "active-practice"}
 EXPECTED_BOUNDARIES = {
@@ -135,10 +161,9 @@ def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load_json(path: Path) -> dict[str, Any]:
+    require_regular_file(path, "performance evidence file")
     try:
         value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys)
-    except FileNotFoundError:
-        fail(f"Missing performance evidence file: {path}")
     except json.JSONDecodeError as error:
         fail(f"Malformed JSON in {path}: {error}")
     if not isinstance(value, dict):
@@ -152,6 +177,47 @@ def exact_keys(value: dict[str, Any], expected: set[str], label: str) -> None:
         fail(f"{label} keys differ; missing={sorted(expected-actual)!r}, extra={sorted(actual-expected)!r}.")
 
 
+def strict_json_equal(actual: Any, expected: Any) -> bool:
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return set(actual) == set(expected) and all(
+            strict_json_equal(actual[key], value) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            strict_json_equal(actual_value, expected_value)
+            for actual_value, expected_value in zip(actual, expected, strict=True)
+        )
+    return actual == expected
+
+
+def require_regular_file(path: Path, label: str) -> None:
+    try:
+        mode = path.stat(follow_symlinks=False).st_mode
+    except FileNotFoundError:
+        fail(f"Missing {label}: {path}")
+    if path.is_symlink() or not stat.S_ISREG(mode):
+        fail(f"{label} must be a regular non-symlink file: {path}")
+
+
+def evidence_file_set(root: Path, label: str) -> set[str]:
+    if root.is_symlink() or not root.is_dir():
+        fail(f"{label} root must be a real directory.")
+    files: set[str] = set()
+    for path in root.rglob("*"):
+        relative = str(path.relative_to(root))
+        if path.is_symlink():
+            fail(f"{label} contains a symlink: {relative}.")
+        mode = path.stat(follow_symlinks=False).st_mode
+        if stat.S_ISDIR(mode):
+            continue
+        if not stat.S_ISREG(mode):
+            fail(f"{label} contains a non-regular entry: {relative}.")
+        files.add(relative)
+    return files
+
+
 def finite(value: Any, label: str, *, integer: bool = False) -> float | int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         fail(f"{label} must be numeric.")
@@ -161,6 +227,7 @@ def finite(value: Any, label: str, *, integer: bool = False) -> float | int:
 
 
 def sha256_file(path: Path) -> str:
+    require_regular_file(path, "file to hash")
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -223,7 +290,7 @@ def verify_sample(sample: Any, scenario: str, ordinal: int) -> None:
     if not isinstance(sample, dict):
         fail(f"{scenario} sample {ordinal} must be an object.")
     exact_keys(sample, {"ordinal", "interactionToVisible", "interactionToReady", "userTiming", "react", "pointer"}, f"{scenario} sample {ordinal}")
-    if sample["ordinal"] != ordinal:
+    if type(sample["ordinal"]) is not int or sample["ordinal"] != ordinal:
         fail(f"{scenario} has stale or duplicate sample ordinal {sample['ordinal']!r}; expected {ordinal}.")
     for metric in ("interactionToVisible", "interactionToReady"):
         value = sample[metric]
@@ -299,7 +366,8 @@ def verify_measurement(
         "fixtureVersion": fixture_version, "scenarioId": scenario, "scenarioVersion": scenario,
     }
     for key, value in expected.items():
-        if measurement[key] != value: fail(f"{path.name}.{key} drifted: expected {value!r}, received {measurement[key]!r}.")
+        if not strict_json_equal(measurement[key], value):
+            fail(f"{path.name}.{key} drifted: expected {value!r}, received {measurement[key]!r}.")
     samples = measurement["samples"]
     if not isinstance(samples, list) or len(samples) != SAMPLE_COUNT:
         fail(f"{scenario} must contain exactly {SAMPLE_COUNT} recorded samples.")
@@ -346,6 +414,8 @@ def expected_budget_entries(measurements: dict[str, dict[str, Any]]) -> list[dic
 
 
 def verify_baseline(baseline_dir: Path = BASELINE_DIR, *, expected_source_sha: str | None = None) -> dict[str, Any]:
+    if baseline_dir.is_symlink():
+        fail("Baseline root must not be a symlink.")
     baseline_dir = baseline_dir.resolve()
     manifest = load_json(baseline_dir / "manifest.json")
     exact_keys(manifest, {"schemaVersion", "baselineId", "sourceSha", "instrumentationVersion", "fixtureVersion", "warmupCount", "sampleCount", "scenarioVersions", "captureEnvironment", "measurements", "budgets"}, "manifest")
@@ -363,18 +433,40 @@ def verify_baseline(baseline_dir: Path = BASELINE_DIR, *, expected_source_sha: s
         "warmupCount": WARMUP_COUNT, "sampleCount": SAMPLE_COUNT,
     }
     for key, value in expected_identity.items():
-        if manifest[key] != value: fail(f"manifest.{key} drifted: expected {value!r}, received {manifest[key]!r}.")
-    if manifest["scenarioVersions"] != {scenario: scenario for scenario in SCENARIOS}:
+        if not strict_json_equal(manifest[key], value):
+            fail(f"manifest.{key} drifted: expected {value!r}, received {manifest[key]!r}.")
+    if not strict_json_equal(
+        manifest["scenarioVersions"],
+        {scenario: scenario for scenario in SCENARIOS},
+    ):
         fail("Manifest scenario versions are missing, duplicated, or stale.")
     environment = manifest["captureEnvironment"]
     if not isinstance(environment, dict): fail("captureEnvironment must be an object.")
     exact_keys(environment, {"viewport", "theme", "scalePercent", "motion", "materials", "pointer", "devicePixelRatio", "display", "applicationSha256", "python", "platform", "tauriDriver", "webkitWebDriver", "xvfb", "reactProfilingBuild"}, "captureEnvironment")
-    if environment["viewport"] != VIEWPORT or environment["display"] != DISPLAY:
+    if not strict_json_equal(environment["viewport"], VIEWPORT) or not strict_json_equal(
+        environment["display"],
+        DISPLAY,
+    ):
         fail("Capture viewport/display metadata drifted from the reference contract.")
-    if {key: environment[key] for key in ("theme", "scalePercent", "motion", "materials", "pointer", "reactProfilingBuild")} != {"theme": "light", "scalePercent": 100, "motion": "full", "materials": "rich", "pointer": "fine", "reactProfilingBuild": True}:
+    if not strict_json_equal(
+        {
+            key: environment[key]
+            for key in (
+                "theme", "scalePercent", "motion", "materials",
+                "pointer", "reactProfilingBuild",
+            )
+        },
+        {
+            "theme": "light", "scalePercent": 100, "motion": "full",
+            "materials": "rich", "pointer": "fine", "reactProfilingBuild": True,
+        },
+    ):
         fail("Capture runtime metadata drifted from the fixed reference contract.")
     finite(environment["devicePixelRatio"], "captureEnvironment.devicePixelRatio")
-    if re.fullmatch(r"[0-9a-f]{64}", str(environment["applicationSha256"])) is None:
+    if not isinstance(environment["applicationSha256"], str) or re.fullmatch(
+        r"[0-9a-f]{64}",
+        environment["applicationSha256"],
+    ) is None:
         fail("captureEnvironment.applicationSha256 must be a SHA-256 digest.")
     entries = manifest["measurements"]
     if not isinstance(entries, list) or len(entries) != len(SCENARIOS): fail("Manifest must reference exactly six measurements.")
@@ -402,13 +494,29 @@ def verify_baseline(baseline_dir: Path = BASELINE_DIR, *, expected_source_sha: s
     if sha256_file(budgets_path) != budgets_ref["sha256"]: fail("Budget hash mismatch.")
     budgets = load_json(budgets_path)
     exact_keys(budgets, {"schemaVersion", "baselineId", "sourceSha", "instrumentationVersion", "scenarioVersions", "rounding", "entries"}, "budgets")
-    if budgets["schemaVersion"] != SCHEMA_VERSION or budgets["baselineId"] != BASELINE_ID or budgets["sourceSha"] != source_sha or budgets["instrumentationVersion"] != INSTRUMENTATION_VERSION:
+    if not all(
+        strict_json_equal(budgets[key], value)
+        for key, value in {
+            "schemaVersion": SCHEMA_VERSION,
+            "baselineId": BASELINE_ID,
+            "sourceSha": source_sha,
+            "instrumentationVersion": INSTRUMENTATION_VERSION,
+        }.items()
+    ):
         fail("Budget identity is stale.")
-    if budgets["scenarioVersions"] != manifest["scenarioVersions"] or budgets["rounding"] != "milliseconds-to-3-decimal-places": fail("Budget scenario or rounding contract drifted.")
+    if not strict_json_equal(
+        budgets["scenarioVersions"],
+        manifest["scenarioVersions"],
+    ) or not strict_json_equal(
+        budgets["rounding"],
+        "milliseconds-to-3-decimal-places",
+    ):
+        fail("Budget scenario or rounding contract drifted.")
     expected_entries = expected_budget_entries(measurements)
-    if budgets["entries"] != expected_entries: fail("Budgets are stale or were not derived exactly from the baseline distribution.")
+    if not strict_json_equal(budgets["entries"], expected_entries):
+        fail("Budgets are stale or were not derived exactly from the baseline distribution.")
     expected_files = {"manifest.json", "budgets.json", *(canonical_measurement_path(s) for s in SCENARIOS)}
-    actual_files = {str(path.relative_to(baseline_dir)) for path in baseline_dir.rglob("*") if path.is_file()}
+    actual_files = evidence_file_set(baseline_dir, "Baseline evidence")
     if actual_files != expected_files: fail(f"Baseline file set differs; missing={sorted(expected_files-actual_files)!r}, extra={sorted(actual_files-expected_files)!r}.")
     return {"manifest": manifest, "measurements": measurements, "budgets": budgets}
 
@@ -419,11 +527,36 @@ def verify_reference(baseline_dir: Path = BASELINE_DIR) -> dict[str, Any]:
     return verify_baseline(baseline_dir, expected_source_sha=manifest.get("sourceSha"))
 
 
+def verify_trusted_native_input_attestation(value: Any) -> None:
+    if not isinstance(value, dict):
+        fail("Candidate trusted native input attestation must be an object.")
+    exact_keys(value, set(TRUSTED_NATIVE_INPUT_ATTESTATION), "trustedNativeInput")
+    if type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1:
+        fail("trustedNativeInput.schemaVersion must be integer 1.")
+    if type(value["method"]) is not str or value["method"] != "x11-xtest-v1":
+        fail("trustedNativeInput.method is invalid.")
+    events = value["trustedPointerEvents"]
+    if (
+        not isinstance(events, list)
+        or any(type(event) is not str for event in events)
+        or events != ["pointerdown", "pointermove", "pointerup"]
+    ):
+        fail("trustedNativeInput.trustedPointerEvents is invalid.")
+    for key in (
+        "trustedEscapeObserved", "previewAppeared",
+        "previewCleared", "libraryStructureUnchanged",
+    ):
+        if type(value[key]) is not bool or value[key] is not True:
+            fail(f"trustedNativeInput.{key} must be boolean true.")
+
+
 def verify_drag_candidate(
     candidate_dir: Path,
     *,
     expected_source_sha: str | None = None,
 ) -> dict[str, Any]:
+    if candidate_dir.is_symlink():
+        fail("Candidate root must not be a symlink.")
     candidate_dir = candidate_dir.resolve()
     manifest = load_json(candidate_dir / "manifest.json")
     exact_keys(
@@ -431,7 +564,7 @@ def verify_drag_candidate(
         {
             "schemaVersion", "baselineId", "sourceSha", "instrumentationVersion",
             "fixtureVersion", "warmupCount", "sampleCount", "scenarioVersions",
-            "captureEnvironment", "measurements",
+            "captureEnvironment", "measurements", "trustedNativeInput",
         },
         "candidate manifest",
     )
@@ -457,14 +590,15 @@ def verify_drag_candidate(
         "sampleCount": SAMPLE_COUNT,
     }
     for key, value in expected_identity.items():
-        if manifest[key] != value:
+        if not strict_json_equal(manifest[key], value):
             fail(
                 f"candidate manifest.{key} drifted: "
                 f"expected {value!r}, received {manifest[key]!r}."
             )
     scenario_versions = {scenario: scenario for scenario in CANDIDATE_SCENARIOS}
-    if manifest["scenarioVersions"] != scenario_versions:
+    if not strict_json_equal(manifest["scenarioVersions"], scenario_versions):
         fail("Candidate must contain only the deck-drag-v1 scenario identity.")
+    verify_trusted_native_input_attestation(manifest["trustedNativeInput"])
 
     environment = manifest["captureEnvironment"]
     if not isinstance(environment, dict):
@@ -478,18 +612,30 @@ def verify_drag_candidate(
         },
         "candidate captureEnvironment",
     )
-    if environment["viewport"] != VIEWPORT or environment["display"] != DISPLAY:
+    if not strict_json_equal(environment["viewport"], VIEWPORT) or not strict_json_equal(
+        environment["display"],
+        DISPLAY,
+    ):
         fail("Candidate viewport/display metadata drifted from the reference contract.")
-    if {
-        key: environment[key]
-        for key in ("theme", "scalePercent", "motion", "materials", "pointer", "reactProfilingBuild")
-    } != {
-        "theme": "light", "scalePercent": 100, "motion": "full",
-        "materials": "rich", "pointer": "fine", "reactProfilingBuild": True,
-    }:
+    if not strict_json_equal(
+        {
+            key: environment[key]
+            for key in (
+                "theme", "scalePercent", "motion", "materials",
+                "pointer", "reactProfilingBuild",
+            )
+        },
+        {
+            "theme": "light", "scalePercent": 100, "motion": "full",
+            "materials": "rich", "pointer": "fine", "reactProfilingBuild": True,
+        },
+    ):
         fail("Candidate runtime metadata drifted from the fixed reference contract.")
     finite(environment["devicePixelRatio"], "candidate captureEnvironment.devicePixelRatio")
-    if re.fullmatch(r"[0-9a-f]{64}", str(environment["applicationSha256"])) is None:
+    if not isinstance(environment["applicationSha256"], str) or re.fullmatch(
+        r"[0-9a-f]{64}",
+        environment["applicationSha256"],
+    ) is None:
         fail("candidate captureEnvironment.applicationSha256 must be a SHA-256 digest.")
 
     entries = manifest["measurements"]
@@ -514,11 +660,7 @@ def verify_drag_candidate(
         fixture_version=CANDIDATE_FIXTURE_VERSION,
     )
     expected_files = {"manifest.json", expected_path}
-    actual_files = {
-        str(path.relative_to(candidate_dir))
-        for path in candidate_dir.rglob("*")
-        if path.is_file()
-    }
+    actual_files = evidence_file_set(candidate_dir, "Candidate evidence")
     if actual_files != expected_files:
         fail(
             "Candidate file set differs; "
@@ -535,6 +677,69 @@ def metric_values(measurement: dict[str, Any], metric: str) -> list[float]:
     fail(f"Unknown budget metric {metric!r}.")
 
 
+def normalized_platform_identity(value: Any) -> dict[str, str | int]:
+    """Parse the one supported Linux platform form into stable ABI fields."""
+    if not isinstance(value, str):
+        fail("captureEnvironment.platform must be a raw platform string.")
+    match = PLATFORM_PATTERN.fullmatch(value)
+    if match is None:
+        fail(f"captureEnvironment.platform is not a canonical supported Linux identity: {value!r}.")
+    return {
+        "osFamily": match.group("os").lower(),
+        "kernelMajor": int(match.group("kernel_major")),
+        "kernelMinor": int(match.group("kernel_minor")),
+        "architecture": match.group("architecture"),
+        "libcFamily": match.group("libc_family"),
+        "libcMajor": int(match.group("libc_major")),
+        "libcMinor": int(match.group("libc_minor")),
+    }
+
+
+def normalized_python_identity(value: Any) -> tuple[int, int]:
+    """Normalize platform.python_version() to its compatibility major/minor pair."""
+    if not isinstance(value, str):
+        fail("captureEnvironment.python must be a raw Python version string.")
+    match = PYTHON_PATTERN.fullmatch(value)
+    if match is None:
+        fail(f"captureEnvironment.python has no normalized major/minor identity: {value!r}.")
+    return int(match.group(1)), int(match.group(2))
+
+
+def assert_compatible_capture_environments(
+    baseline_environment: dict[str, Any],
+    candidate_environment: dict[str, Any],
+) -> None:
+    exact_keys_to_compare = (
+        "viewport", "theme", "scalePercent", "motion", "materials", "pointer",
+        "devicePixelRatio", "display", "tauriDriver", "webkitWebDriver", "xvfb",
+        "reactProfilingBuild",
+    )
+    for key in exact_keys_to_compare:
+        if candidate_environment[key] != baseline_environment[key]:
+            fail(f"Candidate runtime metadata is not comparable: {key} differs.")
+
+    try:
+        baseline_platform = normalized_platform_identity(baseline_environment["platform"])
+        candidate_platform = normalized_platform_identity(candidate_environment["platform"])
+    except PerformanceBaselineError as error:
+        fail(f"Candidate runtime metadata is not comparable: {error}")
+    for key in (
+        "osFamily", "kernelMajor", "kernelMinor", "architecture",
+        "libcFamily", "libcMajor", "libcMinor",
+    ):
+        if candidate_platform[key] != baseline_platform[key]:
+            fail(f"Candidate runtime metadata is not comparable: normalized platform {key} differs.")
+    try:
+        python_compatible = (
+            normalized_python_identity(candidate_environment["python"])
+            == normalized_python_identity(baseline_environment["python"])
+        )
+    except PerformanceBaselineError as error:
+        fail(f"Candidate runtime metadata is not comparable: {error}")
+    if not python_compatible:
+        fail("Candidate runtime metadata is not comparable: Python major/minor differs.")
+
+
 def compare_baseline(candidate_dir: Path, baseline_dir: Path = BASELINE_DIR, *, expected_source_sha: str | None = None) -> list[str]:
     if expected_source_sha is not None:
         baseline = verify_baseline(baseline_dir, expected_source_sha=expected_source_sha)
@@ -543,11 +748,9 @@ def compare_baseline(candidate_dir: Path, baseline_dir: Path = BASELINE_DIR, *, 
         baseline_manifest = load_json(baseline_dir / "manifest.json")
         baseline = verify_baseline(baseline_dir, expected_source_sha=baseline_manifest.get("sourceSha"))
         candidate = verify_baseline(candidate_dir)
-    compatible_keys = ("viewport", "theme", "scalePercent", "motion", "materials", "pointer", "display", "python", "platform", "tauriDriver", "webkitWebDriver", "xvfb", "reactProfilingBuild")
     base_env = baseline["manifest"]["captureEnvironment"]
     candidate_env = candidate["manifest"]["captureEnvironment"]
-    for key in compatible_keys:
-        if candidate_env[key] != base_env[key]: fail(f"Candidate runtime metadata is not comparable: {key} differs.")
+    assert_compatible_capture_environments(base_env, candidate_env)
     failures: list[str] = []
     for entry in baseline["budgets"]["entries"]:
         value = max(metric_values(candidate["measurements"][entry["scenarioId"]], entry["metric"]))
@@ -567,16 +770,9 @@ def compare_drag_candidate(
         candidate_dir,
         expected_source_sha=expected_candidate_source_sha,
     )
-    compatible_keys = (
-        "viewport", "theme", "scalePercent", "motion", "materials", "pointer",
-        "display", "python", "platform", "tauriDriver", "webkitWebDriver", "xvfb",
-        "reactProfilingBuild",
-    )
     base_env = baseline["manifest"]["captureEnvironment"]
     candidate_env = candidate["manifest"]["captureEnvironment"]
-    for key in compatible_keys:
-        if candidate_env[key] != base_env[key]:
-            fail(f"Candidate runtime metadata is not comparable: {key} differs.")
+    assert_compatible_capture_environments(base_env, candidate_env)
     drag_budgets = [
         entry
         for entry in baseline["budgets"]["entries"]
@@ -792,6 +988,662 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
     ):
         raise AssertionError("Deck drag source has no verified noninteractive row point.")
     return {"x": point["x"], "y": point["y"]}
+
+
+class NativeX11Pointer:
+    """Small fail-closed XTEST adapter for the isolated Xvfb qualification display."""
+
+    def __init__(self) -> None:
+        if os.environ.get("OSTUDY_PERFORMANCE_IN_XVFB") != "1":
+            raise AssertionError("Trusted native pointer qualification requires isolated Xvfb.")
+        if os.environ.get("GDK_BACKEND") != "x11":
+            raise AssertionError("Trusted native pointer qualification requires GDK_BACKEND=x11.")
+        display_name = os.environ.get("DISPLAY")
+        if not display_name:
+            raise AssertionError("Trusted native pointer qualification requires DISPLAY.")
+        try:
+            self._x11 = ctypes.CDLL("libX11.so.6")
+            self._xtst = ctypes.CDLL("libXtst.so.6")
+        except OSError as error:
+            raise AssertionError("Trusted native pointer qualification requires X11 and XTEST.") from error
+
+        self._x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        self._x11.XOpenDisplay.restype = ctypes.c_void_p
+        self._x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        self._x11.XCloseDisplay.restype = ctypes.c_int
+        self._x11.XDefaultScreen.argtypes = [ctypes.c_void_p]
+        self._x11.XDefaultScreen.restype = ctypes.c_int
+        self._x11.XScreenCount.argtypes = [ctypes.c_void_p]
+        self._x11.XScreenCount.restype = ctypes.c_int
+        self._x11.XRootWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self._x11.XRootWindow.restype = ctypes.c_ulong
+        self._x11.XDisplayWidth.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self._x11.XDisplayWidth.restype = ctypes.c_int
+        self._x11.XDisplayHeight.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self._x11.XDisplayHeight.restype = ctypes.c_int
+        self._x11.XQueryPointer.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_uint),
+        ]
+        self._x11.XQueryPointer.restype = ctypes.c_int
+        self._x11.XKeysymToKeycode.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        self._x11.XKeysymToKeycode.restype = ctypes.c_ubyte
+        self._x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self._x11.XSync.restype = ctypes.c_int
+        self._xtst.XTestQueryExtension.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        self._xtst.XTestQueryExtension.restype = ctypes.c_int
+        self._xtst.XTestFakeMotionEvent.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_ulong,
+        ]
+        self._xtst.XTestFakeMotionEvent.restype = ctypes.c_int
+        self._xtst.XTestFakeButtonEvent.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint,
+            ctypes.c_int,
+            ctypes.c_ulong,
+        ]
+        self._xtst.XTestFakeButtonEvent.restype = ctypes.c_int
+        self._xtst.XTestFakeKeyEvent.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint,
+            ctypes.c_int,
+            ctypes.c_ulong,
+        ]
+        self._xtst.XTestFakeKeyEvent.restype = ctypes.c_int
+
+        self._display = self._x11.XOpenDisplay(display_name.encode("utf-8"))
+        self._button_down = False
+        self._escape_down = False
+        if not self._display:
+            raise AssertionError(f"Could not open isolated X11 display {display_name!r}.")
+        event_base = ctypes.c_int()
+        error_base = ctypes.c_int()
+        major = ctypes.c_int()
+        minor = ctypes.c_int()
+        if self._xtst.XTestQueryExtension(
+            self._display,
+            ctypes.byref(event_base),
+            ctypes.byref(error_base),
+            ctypes.byref(major),
+            ctypes.byref(minor),
+        ) != 1:
+            self._x11.XCloseDisplay(self._display)
+            self._display = None
+            raise AssertionError("The isolated X11 display does not expose XTEST.")
+        if self._x11.XScreenCount(self._display) != 1:
+            self._x11.XCloseDisplay(self._display)
+            self._display = None
+            raise AssertionError("Trusted native pointer qualification requires one X11 screen.")
+        self._screen = self._x11.XDefaultScreen(self._display)
+        self._root = self._x11.XRootWindow(self._display, self._screen)
+        self._width = self._x11.XDisplayWidth(self._display, self._screen)
+        self._height = self._x11.XDisplayHeight(self._display, self._screen)
+        if self._root == 0 or self._width <= 0 or self._height <= 0:
+            self._x11.XCloseDisplay(self._display)
+            self._display = None
+            raise AssertionError("Trusted native pointer qualification found invalid X11 geometry.")
+
+    def _sync(self) -> None:
+        if not self._display:
+            raise AssertionError("Native X11 pointer is closed.")
+        self._x11.XSync(self._display, 0)
+
+    def _query_pointer(self) -> dict[str, int]:
+        if not self._display:
+            raise AssertionError("Native X11 pointer is closed.")
+        root_return = ctypes.c_ulong()
+        child_return = ctypes.c_ulong()
+        root_x = ctypes.c_int()
+        root_y = ctypes.c_int()
+        window_x = ctypes.c_int()
+        window_y = ctypes.c_int()
+        mask = ctypes.c_uint()
+        if self._x11.XQueryPointer(
+            self._display,
+            self._root,
+            ctypes.byref(root_return),
+            ctypes.byref(child_return),
+            ctypes.byref(root_x),
+            ctypes.byref(root_y),
+            ctypes.byref(window_x),
+            ctypes.byref(window_y),
+            ctypes.byref(mask),
+        ) != 1:
+            raise AssertionError("X11 could not verify the injected pointer state.")
+        return {"x": root_x.value, "y": root_y.value, "mask": mask.value}
+
+    def move(self, root_x: int, root_y: int) -> None:
+        if type(root_x) is not int or type(root_y) is not int:
+            raise AssertionError("Native pointer root coordinates must be exact integers.")
+        if self._xtst.XTestFakeMotionEvent(self._display, -1, root_x, root_y, 0) != 1:
+            raise AssertionError("XTEST rejected native pointer motion.")
+        self._sync()
+        observed = self._query_pointer()
+        if observed["x"] != root_x or observed["y"] != root_y:
+            raise AssertionError(
+                f"XTEST pointer motion was clamped: requested=({root_x}, {root_y}), "
+                f"observed=({observed['x']}, {observed['y']})."
+            )
+
+    def set_primary_button(self, pressed: bool) -> None:
+        if type(pressed) is not bool:
+            raise AssertionError("Native pointer button state must be boolean.")
+        if self._xtst.XTestFakeButtonEvent(self._display, 1, int(pressed), 0) != 1:
+            raise AssertionError("XTEST rejected native primary-button input.")
+        if pressed:
+            self._button_down = True
+        self._sync()
+        button_mask_set = bool(self._query_pointer()["mask"] & (1 << 8))
+        if button_mask_set is not pressed:
+            raise AssertionError("X11 primary-button mask did not match injected state.")
+        self._button_down = pressed
+
+    def set_escape_key(self, pressed: bool) -> None:
+        if type(pressed) is not bool:
+            raise AssertionError("Native Escape key state must be boolean.")
+        keycode = int(self._x11.XKeysymToKeycode(self._display, 0xFF1B))
+        if keycode == 0:
+            raise AssertionError("X11 could not resolve the Escape keysym.")
+        if self._xtst.XTestFakeKeyEvent(self._display, keycode, int(pressed), 0) != 1:
+            raise AssertionError("XTEST rejected native Escape-key input.")
+        self._escape_down = pressed
+        self._sync()
+
+    def close(self) -> None:
+        if not self._display:
+            return
+        cleanup_error: BaseException | None = None
+        if self._escape_down:
+            try:
+                if self._xtst.XTestFakeKeyEvent(
+                    self._display,
+                    int(self._x11.XKeysymToKeycode(self._display, 0xFF1B)),
+                    0,
+                    0,
+                ) != 1:
+                    raise AssertionError("XTEST rejected cleanup Escape key-up.")
+                self._escape_down = False
+            except BaseException as error:
+                cleanup_error = error
+        if self._button_down:
+            try:
+                if self._xtst.XTestFakeButtonEvent(self._display, 1, 0, 0) != 1:
+                    raise AssertionError("XTEST rejected cleanup primary-button release.")
+                self._button_down = False
+            except BaseException as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+        try:
+            self._x11.XSync(self._display, 0)
+        except BaseException as error:
+            if cleanup_error is None:
+                cleanup_error = error
+        try:
+            if self._query_pointer()["mask"] & (1 << 8):
+                raise AssertionError("X11 primary button remained pressed during cleanup.")
+        except BaseException as error:
+            if cleanup_error is None:
+                cleanup_error = error
+        try:
+            self._x11.XCloseDisplay(self._display)
+        except BaseException as error:
+            if cleanup_error is None:
+                cleanup_error = error
+        finally:
+            self._display = None
+        if cleanup_error is not None:
+            raise cleanup_error
+
+    def __enter__(self) -> "NativeX11Pointer":
+        return self
+
+    def __exit__(self, _error_type: Any, _error: Any, _traceback: Any) -> None:
+        self.close()
+
+
+def install_native_pointer_probe(
+    session_id: str,
+    target: str,
+) -> dict[str, int]:
+    geometry = execute(
+        session_id,
+        """
+        const row = arguments[0];
+        if (
+          !(row instanceof HTMLElement) ||
+          !row.isConnected ||
+          row.dataset.libraryRow !== 'deck' ||
+          row.dataset.itemName !== 'Large library drag source'
+        ) {
+          throw new Error('Trusted native drag target is stale or wrong.');
+        }
+        const key = '__OSTUDY_NATIVE_POINTER_PROBE__';
+        window[key]?.dispose?.();
+        const state = {sequence: 0, events: [], row};
+        const observe = (event) => {
+          state.sequence += 1;
+          state.events.push({
+            sequence: state.sequence,
+            type: event.type,
+            isTrusted: event.isTrusted,
+            pointerId: event.pointerId,
+            pointerType: event.pointerType,
+            isPrimary: event.isPrimary,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+            button: event.button,
+            buttons: event.buttons,
+            key: event.key,
+            targetIsRow: event.target === row,
+          });
+          if (state.events.length > 64) state.events.shift();
+        };
+        for (const type of ['pointermove', 'pointerdown', 'pointerup', 'keydown', 'keyup']) {
+          window.addEventListener(type, observe, true);
+        }
+        state.dispose = () => {
+          for (const type of ['pointermove', 'pointerdown', 'pointerup', 'keydown', 'keyup']) {
+            window.removeEventListener(type, observe, true);
+          }
+          if (window[key] === state) delete window[key];
+        };
+        window[key] = state;
+        return {
+          screenX: Math.round(window.screenX),
+          screenY: Math.round(window.screenY),
+          outerWidth: Math.round(window.outerWidth),
+          outerHeight: Math.round(window.outerHeight),
+          innerWidth: Math.round(window.innerWidth),
+          innerHeight: Math.round(window.innerHeight),
+        };
+        """,
+        [{webdriver.ELEMENT_KEY: target}],
+    )
+    expected_keys = {
+        "screenX", "screenY", "outerWidth", "outerHeight", "innerWidth", "innerHeight",
+    }
+    if (
+        not isinstance(geometry, dict)
+        or set(geometry) != expected_keys
+        or not all(type(geometry[key]) is int for key in expected_keys)
+        or geometry["innerWidth"] <= 0
+        or geometry["innerHeight"] <= 0
+    ):
+        raise AssertionError(f"Trusted native pointer geometry is invalid: {geometry!r}.")
+    return {key: geometry[key] for key in expected_keys}
+
+
+def native_pointer_events(session_id: str) -> list[dict[str, Any]]:
+    events = execute_read_only(
+        session_id,
+        """
+        const state = window.__OSTUDY_NATIVE_POINTER_PROBE__;
+        return state ? state.events.map((event) => ({...event})) : null;
+        """,
+    )
+    if not isinstance(events, list) or not all(isinstance(event, dict) for event in events):
+        raise AssertionError("Trusted native pointer probe is unavailable.")
+    return events
+
+
+def wait_for_native_pointer_event(
+    session_id: str,
+    *,
+    after_sequence: int,
+    event_type: str,
+    deadline: float,
+    client_x: int | None = None,
+    client_y: int | None = None,
+    screen_x: int | None = None,
+    screen_y: int | None = None,
+    buttons: int | None = None,
+    button: int | None = None,
+    pointer_id: int | None = None,
+    target_is_row: bool | None = None,
+) -> dict[str, Any]:
+    last: list[dict[str, Any]] = []
+    while time.monotonic() < deadline:
+        last = native_pointer_events(session_id)
+        for event in last:
+            if (
+                event.get("sequence", 0) > after_sequence
+                and event.get("type") == event_type
+                and event.get("isTrusted") is True
+                and event.get("pointerType") == "mouse"
+                and event.get("isPrimary") is True
+                and type(event.get("pointerId")) is int
+                and event.get("pointerId") > 0
+                and (client_x is None or event.get("clientX") == client_x)
+                and (client_y is None or event.get("clientY") == client_y)
+                and (screen_x is None or event.get("screenX") == screen_x)
+                and (screen_y is None or event.get("screenY") == screen_y)
+                and (buttons is None or event.get("buttons") == buttons)
+                and (button is None or event.get("button") == button)
+                and (pointer_id is None or event.get("pointerId") == pointer_id)
+                and (target_is_row is None or event.get("targetIsRow") is target_is_row)
+            ):
+                return event
+        time.sleep(0.02)
+    raise AssertionError(
+        "Timed out waiting for trusted native pointer event "
+        f"{event_type!r}; last={last[-4:]!r}."
+    )
+
+
+def wait_for_native_key_event(
+    session_id: str,
+    *,
+    after_sequence: int,
+    event_type: str,
+    deadline: float,
+) -> dict[str, Any]:
+    last: list[dict[str, Any]] = []
+    while time.monotonic() < deadline:
+        last = native_pointer_events(session_id)
+        for event in last:
+            if (
+                event.get("sequence", 0) > after_sequence
+                and event.get("type") == event_type
+                and event.get("isTrusted") is True
+                and event.get("key") == "Escape"
+            ):
+                return event
+        time.sleep(0.02)
+    raise AssertionError(
+        "Timed out waiting for trusted native Escape event "
+        f"{event_type!r}; last={last[-4:]!r}."
+    )
+
+
+def native_pointer_sequence(session_id: str) -> int:
+    events = native_pointer_events(session_id)
+    return max((int(event.get("sequence", 0)) for event in events), default=0)
+
+
+def calibrate_native_pointer(
+    session_id: str,
+    pointer: NativeX11Pointer,
+    point: dict[str, int],
+    geometry: dict[str, int],
+) -> dict[str, int]:
+    horizontal_inset = max(0, geometry["outerWidth"] - geometry["innerWidth"]) // 2
+    vertical_inset = max(0, geometry["outerHeight"] - geometry["innerHeight"])
+    origins = (
+        {
+            "x": geometry["screenX"] + horizontal_inset,
+            "y": geometry["screenY"] + vertical_inset,
+        },
+        {"x": geometry["screenX"], "y": geometry["screenY"]},
+    )
+    last_error: BaseException | None = None
+    for origin in origins:
+        try:
+            sequence = native_pointer_sequence(session_id)
+            requested = {
+                "x": origin["x"] + point["x"],
+                "y": origin["y"] + point["y"],
+            }
+            pointer.move(requested["x"], requested["y"])
+            observed = wait_for_native_pointer_event(
+                session_id,
+                after_sequence=sequence,
+                event_type="pointermove",
+                deadline=webdriver.deadline_after(2),
+                buttons=0,
+                button=-1,
+            )
+            if (
+                observed.get("clientX") == point["x"]
+                and observed.get("clientY") == point["y"]
+                and observed.get("screenX") == requested["x"]
+                and observed.get("screenY") == requested["y"]
+                and observed.get("targetIsRow") is True
+            ):
+                return requested
+            corrected = {
+                "x": requested["x"] + point["x"] - int(observed["clientX"]),
+                "y": requested["y"] + point["y"] - int(observed["clientY"]),
+            }
+            sequence = int(observed["sequence"])
+            pointer.move(corrected["x"], corrected["y"])
+            wait_for_native_pointer_event(
+                session_id,
+                after_sequence=sequence,
+                event_type="pointermove",
+                deadline=webdriver.deadline_after(2),
+                client_x=point["x"],
+                client_y=point["y"],
+                screen_x=corrected["x"],
+                screen_y=corrected["y"],
+                buttons=0,
+                button=-1,
+                target_is_row=True,
+            )
+            return corrected
+        except (AssertionError, KeyError, TypeError, ValueError) as error:
+            last_error = error
+    raise AssertionError("Could not calibrate trusted X11 pointer to the WebKit viewport.") from last_error
+
+
+def remove_native_pointer_probe(session_id: str) -> None:
+    execute(
+        session_id,
+        """
+        window.__OSTUDY_NATIVE_POINTER_PROBE__?.dispose?.();
+        return true;
+        """,
+    )
+
+
+def native_library_structure(session_id: str) -> list[dict[str, str]]:
+    structure = execute_read_only(
+        session_id,
+        """
+        return Array.from(document.querySelectorAll("main [data-library-row]")).map((row) => ({
+          kind: row instanceof HTMLElement ? row.dataset.libraryRow ?? '' : '',
+          geometryKey: row instanceof HTMLElement ? row.dataset.geometryKey ?? '' : '',
+          itemId: row instanceof HTMLElement ? row.dataset.itemId ?? '' : '',
+          itemIndex: row instanceof HTMLElement ? row.dataset.itemIndex ?? '' : '',
+          name: row instanceof HTMLElement ? row.dataset.itemName ?? '' : '',
+          folderId: row instanceof HTMLElement ? row.dataset.folderId ?? '' : '',
+          folderIndex: row instanceof HTMLElement ? row.dataset.folderIndex ?? '' : '',
+          collapsed: row instanceof HTMLElement ? row.dataset.collapsed ?? '' : '',
+        }));
+        """,
+    )
+    if (
+        not isinstance(structure, list)
+        or not all(
+            isinstance(row, dict)
+            and set(row) == {
+                "kind", "geometryKey", "itemId", "itemIndex",
+                "name", "folderId", "folderIndex", "collapsed",
+            }
+            and all(isinstance(value, str) for value in row.values())
+            and all(row[key] for key in ("kind", "geometryKey", "itemId", "name", "folderId"))
+            for row in structure
+        )
+        or sum(row["name"] == "Large library drag source" for row in structure) != 1
+    ):
+        raise AssertionError("Trusted native drag could not establish the synthetic library structure.")
+    return structure
+
+
+def verify_trusted_native_drag_smoke(session_id: str) -> dict[str, Any]:
+    """Prove that X11 input crosses WebKit into the real React drag adapter."""
+    deadline = webdriver.deadline_after(30)
+    target = webdriver.find_element(session_id, "xpath", LARGE_LIBRARY_DRAG_XPATH, deadline)
+    point = find_safe_drag_point(session_id, target)
+    activation = {
+        "x": point["x"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
+        "y": point["y"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["y"],
+    }
+    if math.hypot(activation["x"] - point["x"], activation["y"] - point["y"]) <= 8:
+        raise AssertionError("Trusted native pointermove must cross the 8px activation threshold.")
+    structure_before = native_library_structure(session_id)
+    geometry = install_native_pointer_probe(session_id, target)
+    pointer: NativeX11Pointer | None = None
+    primary_error: BaseException | None = None
+    try:
+        pointer = NativeX11Pointer()
+        root_anchor = calibrate_native_pointer(session_id, pointer, point, geometry)
+        sequence = native_pointer_sequence(session_id)
+        pointer.set_primary_button(True)
+        down = wait_for_native_pointer_event(
+            session_id,
+            after_sequence=sequence,
+            event_type="pointerdown",
+            deadline=deadline,
+            client_x=point["x"],
+            client_y=point["y"],
+            buttons=1,
+            button=0,
+            target_is_row=True,
+        )
+        pointer.move(
+            root_anchor["x"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
+            root_anchor["y"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["y"],
+        )
+        moved = wait_for_native_pointer_event(
+            session_id,
+            after_sequence=int(down["sequence"]),
+            event_type="pointermove",
+            deadline=deadline,
+            client_x=activation["x"],
+            client_y=activation["y"],
+            screen_x=root_anchor["x"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
+            screen_y=root_anchor["y"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["y"],
+            buttons=1,
+            button=-1,
+            pointer_id=int(down["pointerId"]),
+        )
+        wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
+        pointer.set_escape_key(True)
+        escape_down = wait_for_native_key_event(
+            session_id,
+            after_sequence=int(moved["sequence"]),
+            event_type="keydown",
+            deadline=deadline,
+        )
+        wait_js(session_id, "!document.querySelector('[data-drag-preview]')", deadline)
+        pointer.set_escape_key(False)
+        escape_up = wait_for_native_key_event(
+            session_id,
+            after_sequence=int(escape_down["sequence"]),
+            event_type="keyup",
+            deadline=deadline,
+        )
+        pointer.set_primary_button(False)
+        wait_for_native_pointer_event(
+            session_id,
+            after_sequence=int(escape_up["sequence"]),
+            event_type="pointerup",
+            deadline=deadline,
+            client_x=activation["x"],
+            client_y=activation["y"],
+            buttons=0,
+            button=0,
+            pointer_id=int(down["pointerId"]),
+        )
+        wait_js(session_id, "!document.querySelector('[data-drag-preview]')", deadline)
+        webdriver.find_element(session_id, "xpath", LARGE_LIBRARY_DRAG_XPATH, deadline)
+        if native_library_structure(session_id) != structure_before:
+            raise AssertionError("Trusted native drag changed the synthetic library structure.")
+        return {
+            key: list(value) if isinstance(value, list) else value
+            for key, value in TRUSTED_NATIVE_INPUT_ATTESTATION.items()
+        }
+    except BaseException as error:
+        primary_error = error
+        raise
+    finally:
+        cleanup_error: BaseException | None = None
+        if pointer is not None:
+            try:
+                pointer.close()
+            except BaseException as error:
+                cleanup_error = error
+        try:
+            remove_native_pointer_probe(session_id)
+        except BaseException as error:
+            if cleanup_error is None:
+                cleanup_error = error
+        if primary_error is None and cleanup_error is not None:
+            raise cleanup_error
+
+
+def run_trusted_native_drag_smoke(application: Path) -> dict[str, Any]:
+    """Run trusted input in a disposable driver/app process before timed samples."""
+    session_id: str | None = None
+    driver: subprocess.Popen[str] | None = None
+    with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as driver_log:
+        log_path = Path(driver_log.name)
+        try:
+            driver = subprocess.Popen(
+                ["tauri-driver"],
+                stdout=driver_log,
+                stderr=subprocess.STDOUT,
+                text=True,
+                start_new_session=True,
+            )
+            webdriver.wait_for_driver(webdriver.deadline_after(20))
+            session_id = webdriver.create_session(application.resolve())
+            webdriver.verify_shell(session_id, webdriver.deadline_after())
+            achieve_reference_viewport(session_id)
+            heading = execute_read_only(
+                session_id,
+                "return document.querySelector('main h1')?.textContent?.trim() ?? null;",
+            )
+            if heading != "Flashcards":
+                raise AssertionError(
+                    f"Trusted native drag must start on Flashcards: {heading!r}."
+                )
+            return verify_trusted_native_drag_smoke(session_id)
+        except BaseException:
+            try:
+                print(log_path.read_text(encoding="utf-8"))
+            except OSError:
+                pass
+            raise
+        finally:
+            if session_id:
+                try:
+                    webdriver.delete_session(session_id)
+                except BaseException:
+                    pass
+            if driver is not None and driver.poll() is None:
+                try:
+                    os.killpg(driver.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    driver.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(driver.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    driver.wait(timeout=5)
+            log_path.unlink(missing_ok=True)
 
 
 def dispatch_candidate_drag_pointer_event(
@@ -1569,9 +2421,16 @@ def capture(
     (staging / "measurements").mkdir()
     session_id: str | None = None
     driver: subprocess.Popen[str] | None = None
+    trusted_native_input: dict[str, Any] | None = None
     log = tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False)
     log_path = Path(log.name)
     try:
+        if candidate:
+            print(
+                "[ui-performance] Verifying trusted X11/WebKit mouse drag in a disposable session",
+                flush=True,
+            )
+            trusted_native_input = run_trusted_native_drag_smoke(application)
         driver = subprocess.Popen(["tauri-driver"], stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
         webdriver.wait_for_driver(webdriver.deadline_after(20))
         session_id = webdriver.create_session(application.resolve())
@@ -1616,6 +2475,10 @@ def capture(
         environment = {**resolved, "display": DISPLAY, "applicationSha256": sha256_file(application), "python": platform.python_version(), "platform": platform.platform(), "tauriDriver": run_version(["tauri-driver", "--version"], "unavailable"), "webkitWebDriver": run_version(["WebKitWebDriver", "--version"], "unavailable"), "xvfb": run_version(["Xvfb", "-version"], "unavailable"), "reactProfilingBuild": True}
         refs = [{"scenarioId": s, "path": canonical_measurement_path(s), "sha256": sha256_file(staging / canonical_measurement_path(s))} for s in scenarios]
         manifest = {"schemaVersion": SCHEMA_VERSION, "baselineId": evidence_id, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "fixtureVersion": fixture_version, "warmupCount": WARMUP_COUNT, "sampleCount": SAMPLE_COUNT, "scenarioVersions": {s: s for s in scenarios}, "captureEnvironment": environment, "measurements": refs}
+        if candidate:
+            if trusted_native_input != TRUSTED_NATIVE_INPUT_ATTESTATION:
+                fail("Trusted native input smoke did not produce the exact attestation.")
+            manifest["trustedNativeInput"] = trusted_native_input
         if not candidate:
             budgets = {"schemaVersion": SCHEMA_VERSION, "baselineId": BASELINE_ID, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "scenarioVersions": {s: s for s in SCENARIOS}, "rounding": "milliseconds-to-3-decimal-places", "entries": expected_budget_entries(measurements)}
             budgets_path = staging / "budgets.json"

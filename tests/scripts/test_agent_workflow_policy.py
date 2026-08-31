@@ -197,6 +197,44 @@ jobs:
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("task-specific applicator", completed.stderr)
 
+    def test_check_workflow_cannot_omit_native_performance_after_linux_full(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+        linux_offset = workflow.index("id: linux_full")
+        performance_offset = workflow.index("id: ui_performance")
+        android_offset = workflow.index("id: android_compile")
+        self.assertLess(linux_offset, performance_offset)
+        self.assertLess(performance_offset, android_offset)
+
+        performance_step = workflow[performance_offset:android_offset]
+        self.assertIn(
+            "if: success() && steps.linux_full.outcome == 'success' && "
+            "(steps.gate.outputs.gate == 'linux-full' || "
+            "steps.gate.outputs.gate == 'all-full')",
+            performance_step,
+        )
+        self.assertIn("bash ./scripts/run-ci-captured.sh", performance_step)
+        self.assertIn("$RUNNER_TEMP/ostudy-ui-performance-check.log", performance_step)
+        self.assertIn("bash ./scripts/check-ui-performance-candidate.sh", performance_step)
+        self.assertIn(
+            "$RUNNER_TEMP/ostudy-ui-performance-candidate-$QUALIFIED_SHA",
+            performance_step,
+        )
+        self.assertIn("ostudy-ui-performance-check-tail.log", performance_step)
+
+        evidence = workflow[workflow.index("id: qualification_evidence"):]
+        self.assertIn("UI_PERFORMANCE_STATUS: ${{ steps.ui_performance.outcome }}", evidence)
+        self.assertIn('--step "ui-performance=${UI_PERFORMANCE_STATUS:-skipped}"', evidence)
+        self.assertGreaterEqual(evidence.count("ostudy-ui-performance-check.log"), 3)
+        self.assertIn(
+            "ostudy-ui-performance-candidate-${{ env.QUALIFIED_SHA }}/manifest.json",
+            evidence,
+        )
+        self.assertIn(
+            "ostudy-ui-performance-candidate-${{ env.QUALIFIED_SHA }}/measurements/deck-drag-v1.json",
+            evidence,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
+

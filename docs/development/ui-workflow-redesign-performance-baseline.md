@@ -4,7 +4,7 @@ This document defines the measurement and evidence contract for the two Stage 0D
 
 ## Privacy and build boundary
 
-Performance collection is available only when `OSTUDY_UI_PERFORMANCE_CAPTURE=1` builds a separate Tauri artifact with the installed `react-dom/profiling` renderer. Ordinary builds use `react-dom/client`, do not install `window.__OSTUDY_UI_PERFORMANCE__`, and do not collect measurements. The capture bridge accepts only enumerated scenario IDs, DOM element handles, profiler boundary IDs, and bounded numeric timing/count data. It does not serialize the DOM or retain card text, document text, filenames, prompts, provider responses, credentials, identifiers, screenshots, or raw browser traces. Nothing is transmitted over the network.
+Performance collection is available only when `OSTUDY_UI_PERFORMANCE_CAPTURE=1` builds a separate Tauri artifact with the installed `react-dom/profiling` renderer. Ordinary builds use `react-dom/client`, do not install `window.__OSTUDY_UI_PERFORMANCE__`, and do not collect measurements. The capture bridge accepts only enumerated scenario IDs, DOM element handles, profiler boundary IDs, and bounded numeric timing/count data. It does not serialize the DOM or retain card text, document text, filenames, prompts, provider responses, credentials, identifiers, screenshots, or raw browser traces. The capture bridge performs no network I/O. In Actions, the workflow uploads only the explicitly bounded synthetic manifest, deck-drag measurement, and captured log artifacts described below.
 
 The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
 
@@ -89,21 +89,73 @@ only the committed drag limits for avoidable React commits, visible feedback,
 and maximum pointer-frame work. It returns nonzero when any of those three
 limits fails.
 
-The Stage 4A candidate timing path dispatches deterministic, standards-shaped
+The host-side CI wrapper is:
+
+```bash
+./scripts/check-ui-performance-candidate.sh /absolute/new/output-directory
+```
+
+It runs `capture-candidate` and then `compare-candidate` in that order, rejects
+an existing destination instead of overwriting it, propagates either failure,
+and retains installed evidence when comparison fails. The authoritative `Check`
+workflow runs this wrapper only after successful Linux full qualification for
+`linux-full` and `all-full`, using a runner-temporary directory named for the
+exact `QUALIFIED_SHA`. Its machine-readable result includes the performance-step
+outcome, and its bounded artifacts retain the log tail, raw manifest, and drag
+measurement; a failure artifact also retains the complete capture/comparison
+log. Native capture for a new source head must come from that CI step—an older
+user-run candidate cannot qualify a changed head.
+
+Comparison retains the raw `platform.platform()` and Python version strings as
+provenance. Its fail-closed parser accepts only the supported canonical Linux
+shape. Compatibility requires the same kernel major/minor ABI while allowing
+kernel patch/package drift, and it allows only Python patch drift. It also
+requires exact OS family, architecture, libc family plus major/minor ABI,
+Python major/minor, device-pixel ratio, viewport/display, fixed UI metadata,
+captured driver-command output, profiling identity, source and application
+hashes, scenario/sample structure, and budget contracts.
+
+Before timed samples, Stage 4A starts a separate disposable driver/application
+session, opens the isolated Xvfb display through XTEST,
+calibrates X-root coordinates against a browser-observed trusted event, injects
+native motion/button-down/threshold-crossing motion/Escape/button-up, and requires
+WebKit to report `isTrusted` mouse Pointer Events with the expected target,
+coordinates, primary-pointer continuity, and button state. The real product
+preview must appear and clear on trusted Escape without a drop, the exact
+synthetic organization structure must remain unchanged, and cleanup
+unconditionally releases button 1. This is the automated Linux
+mouse-input smoke. Its process is stopped before the measurement driver and
+application start, and its exact attestation is required in the candidate
+manifest, so native-state residue cannot enter the three warmups or twelve
+timed samples.
+
+The Stage 4A candidate timing path then dispatches deterministic, standards-shaped
 DOM `PointerEvent` objects at the verified noninteractive deck-row point. The
-pinned Linux/WebKitGTK driver built and launched the candidate successfully but
+tested Linux/WebKitGTK driver/runtime built and launched the candidate successfully but
 did not translate either W3C touch actions or distinct W3C fine-mouse actions
 into the React Pointer Events consumed by the new adapter. Candidate timing
 therefore does not depend on WebKitWebDriver pointer-action translation: it
 dispatches pointerdown before arming, dispatches a same-target mouse pointermove
 strictly beyond the 8px activation threshold after arming, proves real preview
 appearance and cancellation cleanup, and only then finishes the sample. This
-deterministic performance path does not qualify touch or pen behavior, nor does
-it replace manual qualification with trusted physical input; those remain
-separate product and manual acceptance boundaries.
+deterministic DOM-event performance path exercises the production React drag
+adapter, preview, cancellation, Profiler, User Timing, and pointer-frame
+instrumentation. Those samples do not themselves prove operating-system input
+translation; the preceding trusted XTEST smoke covers the supported Linux mouse
+path. Physical touch/pen behavior and subjective interaction feel remain manual
+acceptance boundaries.
 
 Verification and comparison never rewrite evidence. Capture stages all JSON in a sibling temporary directory, strictly verifies it, replaces the canonical tree only after success, and then checks exactly the two open Stage 0D roadmap rows. The verifier rejects duplicate JSON keys and entries, missing/extra scenarios or files, non-finite/malformed values, applicability errors, stale ordinals/budgets/versions/source SHA, noncanonical paths, hash mismatches, and incompatible reference-runtime metadata.
 
 ## Limitations
 
-The committed distribution describes only the pinned codex-dev Linux/WebKit/Xvfb reference environment. Measurements from other runtimes are descriptive and are rejected for automatic budget comparison. The evidence does not establish human-perceived smoothness, physical-device behavior, Stage 4 drag improvements, or Stage 12 final performance acceptance.
+The committed distribution was captured on the pinned codex-dev
+Linux/WebKit/Xvfb reference environment. Exact-head Actions applies its three
+drag maxima as absolute SLOs on the separately maintained `ostudy-unified`
+runner profile after guest preflight; this is not represented as a same-host
+statistical comparison. The current manifest verifies runtime ABI, display,
+viewport, UI, profiling, source, application, and captured driver-command
+identities, but does not encode hardware identity. Results from other machines
+are therefore diagnostic rather than merge evidence. The automated evidence
+does not establish human-perceived smoothness, physical touch/pen behavior, or
+Stage 12 final performance acceptance.

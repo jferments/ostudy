@@ -13,13 +13,17 @@ const options = parseArguments(process.argv.slice(2));
 const logs = await readLogs(options.logFiles);
 const contexts = await readContexts(options.diagnosticRoots);
 const allText = logs.map(({ text }) => text).join("\n");
-const failure = options.status === "success" ? null : buildFailure(logs, contexts, allText);
+const compositionFailure = qualificationCompositionFailure(options);
+const effectiveStatus = compositionFailure ? "failure" : options.status;
+const failure = effectiveStatus === "success"
+  ? null
+  : buildFailure(logs, contexts, allText, compositionFailure);
 const result = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   headSha: process.env.QUALIFIED_SHA ?? process.env.GITHUB_SHA ?? "unknown",
   gate: options.gate,
-  status: options.status,
+  status: effectiveStatus,
   runner: process.env.RUNNER_NAME ?? "unknown",
   workflow: {
     name: process.env.GITHUB_WORKFLOW ?? "unknown",
@@ -53,6 +57,29 @@ OSTUDY_KEEP_FAILURE_ARTIFACTS=1 \\
 OSTUDY_LOG=${shellQuote(failure.logFilter)} \\
 ${failure.reproduction}`);
   console.log("```");
+}
+if (compositionFailure) process.exitCode = 1;
+
+function qualificationCompositionFailure(parsed) {
+  if (parsed.status !== "success") return null;
+  const failedStep = parsed.steps.find(
+    ({ status }) => status === "failure" || status === "cancelled",
+  );
+  if (failedStep) {
+    return {
+      boundary: failedStep.name,
+      summary: `Qualification reported success while ${failedStep.name} was ${failedStep.status}.`,
+    };
+  }
+  if (parsed.gate !== "linux-full" && parsed.gate !== "all-full") return null;
+  const performanceSteps = parsed.steps.filter(({ name }) => name === "ui-performance");
+  if (performanceSteps.length !== 1 || performanceSteps[0].status !== "success") {
+    return {
+      boundary: "ui-performance",
+      summary: "Linux full qualification cannot succeed without one successful UI performance and trusted-mouse step.",
+    };
+  }
+  return null;
 }
 
 function parseArguments(argumentsList) {
@@ -151,15 +178,18 @@ function parseContext(text) {
   );
 }
 
-function buildFailure(logs, contexts, allText) {
+function buildFailure(logs, contexts, allText, compositionFailure = null) {
   const detected = findFailure(logs, contexts);
   const failedTests = [
     ...uniqueMatches(allText, VITEST_FAILED_FILE, 1),
     ...uniqueMatches(allText, RUST_FAILED_TEST, 1),
     ...uniqueMatches(allText, PYTHON_FAILED_TEST, 1),
   ].slice(0, 20);
-  const reproduction = focusedReproduction(detected.boundary, allText, contexts);
-  const signatureParts = [normalizeSignature(detected.boundary), ...failedTests.map(normalizeSignature)];
+  const boundary = compositionFailure?.boundary ?? detected.boundary;
+  const summary = compositionFailure?.summary
+    ?? (detected.line || "Qualification failed without a recognized wrapper boundary.");
+  const reproduction = focusedReproduction(boundary, allText, contexts);
+  const signatureParts = [normalizeSignature(boundary), ...failedTests.map(normalizeSignature)];
   if (signatureParts.length === 1) {
     const errorLine = firstErrorLine(allText);
     if (errorLine) signatureParts.push(normalizeSignature(errorLine));
@@ -167,8 +197,8 @@ function buildFailure(logs, contexts, allText) {
   const fingerprint = `qf-${createHash("sha256").update(signatureParts.join("|")).digest("hex").slice(0, 16)}`;
   return {
     fingerprint,
-    boundary: detected.boundary,
-    summary: detected.line || "Qualification failed without a recognized wrapper boundary.",
+    boundary,
+    summary,
     classificationHint: classifyFailure(allText),
     failedTests,
     reproduction: reproduction.command,
@@ -242,6 +272,7 @@ function focusedReproduction(boundary, text, contexts) {
     [/pdf extraction/u, "cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib pdf_ -- --nocapture"],
     [/frontend production build/u, "pnpm run build"],
     [/standalone tauri/u, "pnpm tauri build --debug --no-bundle --ci -- --locked"],
+    [/ui[- ]performance/u, "./scripts/check-ui-performance-candidate.sh /absolute/new/output-directory"],
     [/webdriver/u, "./scripts/smoke-native.sh"],
     [/android.*smoke/u, "./scripts/android-emulator-smoke.sh"],
     [/android/u, "./scripts/android-test.sh"],

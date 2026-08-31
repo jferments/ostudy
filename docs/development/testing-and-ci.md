@@ -34,7 +34,32 @@ Use the repository tiers in increasing order:
 
 `check-fast.sh` adds the complete frontend test suite, locked Rust compilation, warning-free Rust linting, and high-return document/platform contracts.
 
-`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
+`check.sh` is the authoritative Linux/shared core suite. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests. The exact-head Actions `linux-full` job is the composed merge gate because it additionally requires the deterministic UI performance qualification described below.
+
+For `linux-full` and `all-full`, the `Check` workflow follows a successful
+`check.sh` run with `check-ui-performance-candidate.sh`. This host-side gate
+requires a new absolute runner-temporary output directory, captures the Stage 4
+large-library deck-drag candidate with the real profiling Tauri build, and then
+compares it with the immutable Stage 0 drag budgets. Before collecting those
+deterministic samples, a separate disposable driver/application session injects
+a real X11 mouse drag through XTEST and
+requires WebKit to report trusted mouse Pointer Events at the calibrated deck
+row, show the production drag preview, clear it on trusted Escape while the
+button remains held, and then observe native button release.
+That process is stopped before the measurement process begins, and the
+candidate manifest must contain the exact trusted-input attestation.
+It does not run in `fast`,
+`static`, `preflight`, or `android-full`. The candidate capture itself requires
+the exact clean checked-out `QUALIFIED_SHA`; a green Linux-full result therefore
+cannot be composed without deterministic performance evidence and the trusted
+Linux mouse-input smoke for that head.
+
+The repeatable performance samples measure deterministic DOM `PointerEvent` dispatch through
+the production React drag adapter, preview, cancellation, Profiler, User Timing,
+and pointer-frame instrumentation. The preceding XTEST smoke separately
+qualifies X11-to-WebKit trusted mouse translation without contaminating those
+timings. Physical touch/pen behavior and subjective drag feel remain manual
+acceptance boundaries.
 
 The adoption smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The adoption smoke instead creates a real on-disk database with the exact final development lineage: all 26 immutable migration identities/checksums, all 3 repair identities/checksums, the terminal v26 schema, the historical SQLite `user_version = 0` marker, and representative deck/card/review/analytics rows. The old migration runner never assigned `PRAGMA user_version`; the immutable ledgers are therefore the authoritative version record. A separate unit test also accepts an explicitly stamped `user_version = 26` copy when every other exact-lineage check matches. The smoke launches the exact built binary and requires ostudy to:
 
@@ -140,6 +165,9 @@ check-static.sh
    → fast qualification (reusing the static stamp)
    → built-binary final-v26 data-preserving adoption smoke
    → native WebDriver persistence/UI smoke
+→ check-ui-performance-candidate.sh
+   → capture-candidate at the exact clean QUALIFIED_SHA
+   → compare-candidate against immutable Stage 0 drag budgets
 → android-test.sh
 → android-emulator-smoke.sh
 ```
@@ -230,6 +258,13 @@ The built-binary adoption smoke also uses isolated XDG state, but deliberately s
 The Actions summary parses application JSONL and structured Android Logcat records, showing the final warning/error timeline next to the ordinary test/compiler excerpt. Vitest failures are narrowed to the identified test file; Rust failures are narrowed to the exact failed test when possible.
 
 Small structured diagnostic captures are uploaded with 7-day retention even when they contain only a recovered transient failure. Full failure wrapper logs, Gradle reports, emulator Logcat, screenshot, and UI hierarchy evidence use 14-day retention. A clean run with no capture does not produce a diagnostic artifact.
+
+Deterministic UI performance and trusted-mouse qualification records its step outcome in
+`ostudy-qualification-result.json`. The bounded diagnostic artifact retains the
+final 32 KiB log tail and, when capture installed them, the candidate manifest
+and `deck-drag-v1` measurement. A failed run additionally uploads the full
+captured wrapper log; candidate evidence is never overwritten or removed merely
+because comparison failed.
 
 Diagnostics must not contain the SQLite learner library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts/responses, credentials, Keystore plaintext, or Authorization headers.
 
