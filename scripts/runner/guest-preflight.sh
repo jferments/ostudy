@@ -139,7 +139,7 @@ check_exact_version() {
 # setup to xauth, so checking only for xvfb-run is not sufficient on a clean VM.
 for command_name in \
   git curl jq node npm pnpm python3 rustup rustc cargo rustfmt cargo-clippy \
-  pkg-config sqlite3 sha256sum tar xvfb-run xauth WebKitWebDriver tauri-driver \
+  pkg-config sqlite3 sha256sum tar xvfb-run xauth openbox xprop WebKitWebDriver tauri-driver \
   java javac; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is missing: $command_name"
 done

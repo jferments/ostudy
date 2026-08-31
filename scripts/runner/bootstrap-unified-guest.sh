@@ -85,6 +85,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   libxkbcommon0 \
   libxrandr2 \
   libxtst6 \
+  openbox \
   openjdk-${ANDROID_JDK_MAJOR}-jdk-headless \
   patchelf \
   pkg-config \
@@ -101,6 +102,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   webkit2gtk-driver \
   wget \
   xauth \
+  x11-utils \
   xdg-utils \
   xvfb \
   xz-utils \

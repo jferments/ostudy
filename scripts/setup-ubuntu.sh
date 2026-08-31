@@ -26,6 +26,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libssl-dev \
   libwebkit2gtk-4.1-dev \
   libxdo-dev \
+  openbox \
   pkg-config \
   python3 \
   sqlite3 \
@@ -34,6 +35,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   webkit2gtk-driver \
   wget \
   xauth \
+  x11-utils \
   xvfb \
   xz-utils
 

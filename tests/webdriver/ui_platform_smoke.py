@@ -77,6 +77,118 @@ def send_key(session_id: str, value: str) -> None:
         pass
 
 
+def send_element_key(session_id: str, element_id: str, value: str) -> None:
+    """Send a key to one resolved element without introducing a pointer click."""
+    webdriver.request(
+        "POST",
+        f"/session/{session_id}/element/{element_id}/value",
+        {"text": value, "value": [value]},
+    )
+
+
+def arm_window_control_keyboard_probe(
+    session_id: str,
+    element_id: str,
+    token: str,
+) -> None:
+    armed = execute(
+        session_id,
+        """
+        const button = arguments[0];
+        const token = arguments[1];
+        if (!(button instanceof HTMLButtonElement)) return null;
+        window.__ostudyWindowControlProbeCleanup?.();
+        const state = {
+          token,
+          initialLabel: button.getAttribute("aria-label"),
+          keydown: null,
+          keyup: null,
+          click: null
+        };
+        const recordKey = (field, event) => {
+          if (event.target !== button || event.key !== "Enter") return;
+          state[field] = {
+            trusted: event.isTrusted,
+            key: event.key,
+            label: button.getAttribute("aria-label")
+          };
+        };
+        const recordClick = (event) => {
+          if (event.target !== button) return;
+          state.click = {
+            trusted: event.isTrusted,
+            detail: event.detail,
+            label: button.getAttribute("aria-label")
+          };
+        };
+        const onKeyDown = (event) => recordKey("keydown", event);
+        const onKeyUp = (event) => recordKey("keyup", event);
+        document.addEventListener("keydown", onKeyDown, true);
+        document.addEventListener("keyup", onKeyUp, true);
+        document.addEventListener("click", recordClick, true);
+        window.__ostudyWindowControlProbe = state;
+        window.__ostudyWindowControlProbeCleanup = () => {
+          document.removeEventListener("keydown", onKeyDown, true);
+          document.removeEventListener("keyup", onKeyUp, true);
+          document.removeEventListener("click", recordClick, true);
+        };
+        return token;
+        """,
+        [{webdriver.ELEMENT_KEY: element_id}, token],
+    )
+    if armed != token:
+        raise AssertionError(f"Could not arm native keyboard probe {token!r}: {armed!r}")
+
+
+def read_window_control_keyboard_probe(session_id: str, token: str) -> Any:
+    return execute(
+        session_id,
+        """
+        const state = window.__ostudyWindowControlProbe;
+        if (!state || state.token !== arguments[0]) return null;
+        return JSON.parse(JSON.stringify(state));
+        """,
+        [token],
+    )
+
+
+def wait_for_window_control_keyboard_probe(
+    session_id: str,
+    token: str,
+    deadline: float,
+) -> dict[str, Any]:
+    probe_deadline = min(deadline, time.monotonic() + 5)
+    last: Any = None
+    while time.monotonic() < probe_deadline:
+        last = read_window_control_keyboard_probe(session_id, token)
+        if isinstance(last, dict):
+            keydown = last.get("keydown")
+            keyup = last.get("keyup")
+            click = last.get("click")
+            if (
+                isinstance(keydown, dict)
+                and keydown.get("trusted") is True
+                and keydown.get("key") == "Enter"
+                and isinstance(keyup, dict)
+                and keyup.get("trusted") is True
+                and keyup.get("key") == "Enter"
+                and isinstance(click, dict)
+                and click.get("trusted") is True
+                and type(click.get("detail")) is int
+                and click.get("detail") == 0
+            ):
+                execute(
+                    session_id,
+                    "window.__ostudyWindowControlProbeCleanup?.(); return true;",
+                )
+                return last
+        time.sleep(0.05)
+    raise AssertionError(
+        "Native window-control keyboard activation did not produce trusted "
+        f"Enter keydown/keyup and keyboard click events: {last!r}"
+    )
+
+
 def wait_for_absent(
     session_id: str,
     using: str,
@@ -466,15 +578,26 @@ def wait_for_window_control(
             session_id,
             """
             const expected = arguments[0];
-            const button = [...document.querySelectorAll("button[aria-label]")]
-              .find((candidate) => candidate.getAttribute("aria-label") === expected);
-            if (!(button instanceof HTMLButtonElement)) return null;
-            const style = getComputedStyle(button);
+            const controls = [...document.querySelectorAll(
+              "[role='group'][aria-label='Window controls'] button[aria-label]"
+            )].map((button) => {
+              const style = getComputedStyle(button);
+              return {
+                label: button.getAttribute("aria-label"),
+                disabled: button.disabled,
+                pressed: button.getAttribute("aria-pressed"),
+                visible: style.display !== "none" && style.visibility !== "hidden" &&
+                  button.getBoundingClientRect().width > 0
+              };
+            });
+            const button = controls.find((candidate) => candidate.label === expected);
             return {
-              disabled: button.disabled,
-              pressed: button.getAttribute("aria-pressed"),
-              visible: style.display !== "none" && style.visibility !== "hidden" &&
-                button.getBoundingClientRect().width > 0
+              disabled: button?.disabled ?? null,
+              pressed: button?.pressed ?? null,
+              visible: button?.visible ?? false,
+              controls,
+              activeLabel: document.activeElement?.getAttribute("aria-label") ?? null,
+              layoutMode: document.documentElement.dataset.layoutMode ?? null
             };
             """,
             [label],
@@ -500,8 +623,9 @@ def activate_window_control_with_keyboard(
     label: str,
     pressed: bool,
     deadline: float,
-) -> None:
+) -> dict[str, Any]:
     element = wait_for_window_control(session_id, label, pressed, deadline)
+    initial_window_rect = webdriver.request("GET", f"/session/{session_id}/window/rect")
     focused = execute(
         session_id,
         "arguments[0].focus(); return document.activeElement === arguments[0];",
@@ -509,38 +633,77 @@ def activate_window_control_with_keyboard(
     )
     if focused is not True:
         raise AssertionError(f"Window control {label!r} could not receive keyboard focus")
-    send_key(session_id, ENTER_KEY)
+    # WebKitDriver intermittently drops global W3C key-action sequences even
+    # when the DOM focus assertion above succeeds. Address the already-resolved
+    # button directly through Element Send Keys so this remains a real native
+    # keyboard activation without relying on WebKitDriver's global focus bridge.
+    token = f"window-control-{time.monotonic_ns()}"
+    arm_window_control_keyboard_probe(session_id, element, token)
+    send_element_key(session_id, element, ENTER_KEY)
+    probe = wait_for_window_control_keyboard_probe(session_id, token, deadline)
+    probe["initialWindowRect"] = initial_window_rect
+    return probe
+
+
+def wait_for_window_control_transition(
+    session_id: str,
+    label: str,
+    pressed: bool,
+    keyboard_probe: dict[str, Any],
+    deadline: float,
+) -> str:
+    try:
+        return wait_for_window_control(session_id, label, pressed, deadline)
+    except Exception as error:
+        try:
+            final_window_rect: Any = webdriver.request(
+                "GET", f"/session/{session_id}/window/rect"
+            )
+        except Exception as rect_error:
+            final_window_rect = {"error": repr(rect_error)}
+        raise AssertionError(
+            f"{error}; trustedKeyboardProbe={keyboard_probe!r}; "
+            f"finalWindowRect={final_window_rect!r}"
+        ) from error
 
 
 def verify_native_window_controls(session_id: str, deadline: float) -> None:
     open_study_guides(session_id, deadline, "resized desktop viewport")
     route_selector = "[aria-label='Study Guides']"
-    activate_window_control_with_keyboard(
+    keyboard_probe = activate_window_control_with_keyboard(
         session_id, "Maximize window", False, deadline
     )
-    wait_for_window_control(session_id, "Restore window", True, deadline)
+    wait_for_window_control_transition(
+        session_id, "Restore window", True, keyboard_probe, deadline
+    )
     assert_viewport_consumption(
         session_id, "maximized desktop viewport", route_selector
     )
-    activate_window_control_with_keyboard(
+    keyboard_probe = activate_window_control_with_keyboard(
         session_id, "Restore window", True, deadline
     )
-    wait_for_window_control(session_id, "Maximize window", False, deadline)
+    wait_for_window_control_transition(
+        session_id, "Maximize window", False, keyboard_probe, deadline
+    )
     assert_viewport_consumption(
         session_id, "restored desktop viewport after maximize", route_selector
     )
 
-    activate_window_control_with_keyboard(
+    keyboard_probe = activate_window_control_with_keyboard(
         session_id, "Enter full screen", False, deadline
     )
-    wait_for_window_control(session_id, "Exit full screen", True, deadline)
+    wait_for_window_control_transition(
+        session_id, "Exit full screen", True, keyboard_probe, deadline
+    )
     assert_viewport_consumption(
         session_id, "full-screen desktop viewport", route_selector
     )
-    activate_window_control_with_keyboard(
+    keyboard_probe = activate_window_control_with_keyboard(
         session_id, "Exit full screen", True, deadline
     )
-    wait_for_window_control(session_id, "Enter full screen", False, deadline)
+    wait_for_window_control_transition(
+        session_id, "Enter full screen", False, keyboard_probe, deadline
+    )
     assert_viewport_consumption(
         session_id, "desktop viewport after exiting full screen", route_selector
     )

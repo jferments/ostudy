@@ -401,6 +401,154 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn("shell_padding_top", viewport_assertion)
         self.assertIn("shell_padding_bottom", viewport_assertion)
 
+    def test_element_key_uses_the_targeted_webdriver_endpoint_without_a_click(self) -> None:
+        with mock.patch.object(baseline.ui.webdriver, "request") as request:
+            baseline.ui.send_element_key("session-id", "window-control-id", "\ue007")
+
+        request.assert_called_once_with(
+            "POST",
+            "/session/session-id/element/window-control-id/value",
+            {"text": "\ue007", "value": ["\ue007"]},
+        )
+
+    def test_native_window_keyboard_activation_targets_the_resolved_element(self) -> None:
+        probe = {
+            "token": "probe",
+            "keydown": {"trusted": True, "key": "Enter"},
+            "keyup": {"trusted": True, "key": "Enter"},
+            "click": {"trusted": True, "detail": 0},
+        }
+        with mock.patch.object(
+            baseline.ui,
+            "wait_for_window_control",
+            return_value="window-control-id",
+        ), mock.patch.object(
+            baseline.ui,
+            "execute",
+            return_value=True,
+        ) as execute, mock.patch.object(
+            baseline.ui,
+            "send_element_key",
+        ) as send_element_key, mock.patch.object(
+            baseline.ui,
+            "arm_window_control_keyboard_probe",
+        ) as arm_probe, mock.patch.object(
+            baseline.ui,
+            "wait_for_window_control_keyboard_probe",
+            return_value=probe,
+        ) as wait_probe, mock.patch.object(
+            baseline.ui,
+            "send_key",
+        ) as send_global_key, mock.patch.object(
+            baseline.ui.webdriver,
+            "request",
+            return_value={"width": 1440, "height": 900},
+        ) as request:
+            result = baseline.ui.activate_window_control_with_keyboard(
+                "session-id",
+                "Maximize window",
+                False,
+                123.0,
+            )
+
+        execute.assert_called_once_with(
+            "session-id",
+            "arguments[0].focus(); return document.activeElement === arguments[0];",
+            [{baseline.ui.webdriver.ELEMENT_KEY: "window-control-id"}],
+        )
+        request.assert_called_once_with("GET", "/session/session-id/window/rect")
+        arm_probe.assert_called_once()
+        send_element_key.assert_called_once_with(
+            "session-id", "window-control-id", baseline.ui.ENTER_KEY
+        )
+        wait_probe.assert_called_once()
+        send_global_key.assert_not_called()
+        self.assertEqual({"width": 1440, "height": 900}, result["initialWindowRect"])
+
+    def test_native_keyboard_probe_requires_trusted_enter_and_keyboard_click(self) -> None:
+        complete = {
+            "token": "probe",
+            "keydown": {"trusted": True, "key": "Enter"},
+            "keyup": {"trusted": True, "key": "Enter"},
+            "click": {"trusted": True, "detail": 0},
+        }
+        with mock.patch.object(
+            baseline.ui,
+            "read_window_control_keyboard_probe",
+            side_effect=[
+                {**complete, "click": {"trusted": False, "detail": 0}},
+                complete,
+            ],
+        ) as read_probe, mock.patch.object(
+            baseline.ui,
+            "execute",
+            return_value=True,
+        ) as execute, mock.patch.object(baseline.ui.time, "sleep"):
+            result = baseline.ui.wait_for_window_control_keyboard_probe(
+                "session-id", "probe", baseline.ui.time.monotonic() + 5
+            )
+
+        self.assertEqual(complete, result)
+        self.assertEqual(2, read_probe.call_count)
+        execute.assert_called_once_with(
+            "session-id",
+            "window.__ostudyWindowControlProbeCleanup?.(); return true;",
+        )
+
+    def test_native_keyboard_probe_rejects_boolean_click_detail(self) -> None:
+        invalid = {
+            "token": "probe",
+            "keydown": {"trusted": True, "key": "Enter"},
+            "keyup": {"trusted": True, "key": "Enter"},
+            "click": {"trusted": True, "detail": False},
+        }
+        with mock.patch.object(
+            baseline.ui,
+            "read_window_control_keyboard_probe",
+            return_value=invalid,
+        ), mock.patch.object(
+            baseline.ui.time,
+            "monotonic",
+            side_effect=[0.0, 0.0, 0.1],
+        ), mock.patch.object(baseline.ui.time, "sleep"):
+            with self.assertRaisesRegex(AssertionError, "trusted Enter"):
+                baseline.ui.wait_for_window_control_keyboard_probe(
+                    "session-id", "probe", 0.05
+                )
+
+    def test_native_smoke_declares_and_verifies_an_ewmh_window_manager(self) -> None:
+        setup = (baseline.ROOT_DIR / "scripts/setup-ubuntu.sh").read_text(
+            encoding="utf-8"
+        )
+        bootstrap = (
+            baseline.ROOT_DIR / "scripts/runner/bootstrap-unified-guest.sh"
+        ).read_text(encoding="utf-8")
+        preflight = (
+            baseline.ROOT_DIR / "scripts/runner/guest-preflight.sh"
+        ).read_text(encoding="utf-8")
+        doctor = (baseline.ROOT_DIR / "scripts/doctor.sh").read_text(
+            encoding="utf-8"
+        )
+        smoke = (baseline.ROOT_DIR / "scripts/smoke-native.sh").read_text(
+            encoding="utf-8"
+        )
+
+        for provisioning in (setup, bootstrap):
+            self.assertIn("openbox", provisioning)
+            self.assertIn("x11-utils", provisioning)
+        for verification in (preflight, doctor):
+            self.assertIn("openbox", verification)
+            self.assertIn("xprop", verification)
+        self.assertIn("command -v openbox", smoke)
+        self.assertIn("command -v xprop", smoke)
+        self.assertIn(
+            'exec env OSTUDY_IN_XVFB=1 xvfb-run -a "$0" "$@"',
+            smoke,
+        )
+        self.assertIn("openbox --sm-disable", smoke)
+        self.assertIn("_NET_SUPPORTING_WM_CHECK", smoke)
+        self.assertIn("window_manager_ready", smoke)
+
     def test_drag_candidate_has_distinct_identity_and_only_three_drag_limits(self) -> None:
         candidate = Path(self.temp.name) / "candidate"
         make_drag_candidate(candidate, offset=100)

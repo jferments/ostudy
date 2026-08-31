@@ -11,7 +11,7 @@ Use an Ubuntu or Debian system with:
 - enough disk space for Node.js, Rust, Cargo build output, and application dependencies;
 - a graphical session capable of running a WebKitGTK application.
 
-The setup script installs the WebKitGTK, AppIndicator, SVG, OpenSSL, X11/WebDriver, SQLite, Python, and ordinary build packages used by ostudy. It installs the exact Node.js, pnpm, Rust, rustfmt, Clippy, and `tauri-driver` versions recorded in `versions.env`.
+The setup script installs the WebKitGTK, AppIndicator, SVG, OpenSSL, X11/WebDriver, Openbox, `x11-utils`, SQLite, Python, and ordinary build packages used by ostudy. It installs the exact Node.js, pnpm, Rust, rustfmt, Clippy, and `tauri-driver` versions recorded in `versions.env`.
 
 ## One-time setup
 

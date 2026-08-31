@@ -31,12 +31,16 @@ interface UseWindowControlsControllerOptions {
   nativeSnapshot?: NativePlatformSnapshot | null;
   adapter?: WindowControlsAdapter;
   onError?: (message: string) => void;
+  confirmationAttempts?: number;
+  confirmationDelayMs?: number;
 }
 
 const INITIAL_STATE: NativeWindowControlState = {
   maximized: false,
   fullScreen: false,
 };
+const DEFAULT_CONFIRMATION_ATTEMPTS = 40;
+const DEFAULT_CONFIRMATION_DELAY_MS = 50;
 
 export function useWindowControlsController(
   options: UseWindowControlsControllerOptions = {},
@@ -47,6 +51,10 @@ export function useWindowControlsController(
       ? platformCapabilities.native
       : options.nativeSnapshot;
   const adapter = options.adapter ?? nativeWindowControls;
+  const confirmationAttempts =
+    Math.max(1, options.confirmationAttempts ?? DEFAULT_CONFIRMATION_ATTEMPTS);
+  const confirmationDelayMs =
+    Math.max(0, options.confirmationDelayMs ?? DEFAULT_CONFIRMATION_DELAY_MS);
   const maximizeRestoreAvailable =
     nativeSnapshot?.services.windowMaximizeRestore.state === "available";
   const fullScreenAvailable =
@@ -58,34 +66,107 @@ export function useWindowControlsController(
   const readLane = useRequestLane();
   const pendingRef = useRef(false);
   const supportedRef = useRef(supported);
+  const maximizeRestoreAvailableRef = useRef(maximizeRestoreAvailable);
+  const fullScreenAvailableRef = useRef(fullScreenAvailable);
+  const mutationEpochRef = useRef(0);
   const mountedRef = useRef(true);
   const onErrorRef = useRef(options.onError);
   supportedRef.current = supported;
+  maximizeRestoreAvailableRef.current = maximizeRestoreAvailable;
+  fullScreenAvailableRef.current = fullScreenAvailable;
   onErrorRef.current = options.onError;
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      mutationEpochRef.current += 1;
+      pendingRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    mutationEpochRef.current += 1;
+    pendingRef.current = false;
+    setPendingAction(null);
+    return () => {
+      mutationEpochRef.current += 1;
+      pendingRef.current = false;
+    };
+  }, [adapter, fullScreenAvailable, maximizeRestoreAvailable]);
 
   const reportError = useCallback((prefix: string, error: unknown) => {
     onErrorRef.current?.(`${prefix}: ${getErrorMessage(error)}`);
   }, []);
 
   const reconcile = useCallback(async (): Promise<void> => {
-    if (!supportedRef.current) return;
+    if (!supportedRef.current || pendingRef.current) return;
     try {
       const next = await latestResult(readLane, () => adapter.readState());
-      if (next && mountedRef.current && supportedRef.current) {
+      if (
+        next &&
+        mountedRef.current &&
+        supportedRef.current &&
+        !pendingRef.current
+      ) {
         setState(next);
         setReady(true);
       }
     } catch (error: unknown) {
-      reportError("Window state could not be refreshed", error);
+      if (
+        mountedRef.current &&
+        supportedRef.current &&
+        !pendingRef.current
+      ) {
+        reportError("Window state could not be refreshed", error);
+      }
     }
   }, [adapter, readLane, reportError]);
+
+  const confirmMutationState = useCallback(
+    async (
+      mutationToken: number,
+      actionAvailable: () => boolean,
+      matchesExpectedState: (next: NativeWindowControlState) => boolean,
+    ): Promise<boolean> => {
+      const mutationIsCurrent = () =>
+        mountedRef.current &&
+        supportedRef.current &&
+        actionAvailable() &&
+        mutationEpochRef.current === mutationToken;
+      let last: NativeWindowControlState | null = null;
+      for (let attempt = 0; attempt < confirmationAttempts; attempt += 1) {
+        if (!mutationIsCurrent()) return false;
+        last = await adapter.readState();
+        if (!mutationIsCurrent()) return false;
+        if (matchesExpectedState(last)) {
+          // Discard every resize read that began before this authoritative
+          // post-mutation state. Later resize events remain free to reconcile.
+          readLane.invalidate();
+          setState(last);
+          setReady(true);
+          return true;
+        }
+        if (
+          attempt + 1 < confirmationAttempts &&
+          confirmationDelayMs > 0
+        ) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, confirmationDelayMs);
+          });
+          if (!mutationIsCurrent()) return false;
+        } else if (attempt + 1 < confirmationAttempts) {
+          await Promise.resolve();
+          if (!mutationIsCurrent()) return false;
+        }
+      }
+      throw new Error(
+        `native window state did not reach the requested value after ${confirmationAttempts} reads; ` +
+          `last=${JSON.stringify(last)}`,
+      );
+    },
+    [adapter, confirmationAttempts, confirmationDelayMs, readLane],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -129,33 +210,66 @@ export function useWindowControlsController(
     async (
       action: WindowControlAction,
       operation: () => Promise<void>,
+      actionAvailable: () => boolean,
+      matchesExpectedState: (next: NativeWindowControlState) => boolean,
       failureMessage: string,
     ): Promise<void> => {
-      if (pendingRef.current || !supportedRef.current) return;
+      if (
+        pendingRef.current ||
+        !mountedRef.current ||
+        !supportedRef.current ||
+        !actionAvailable()
+      ) {
+        return;
+      }
+      const mutationToken = mutationEpochRef.current + 1;
+      mutationEpochRef.current = mutationToken;
       pendingRef.current = true;
       setPendingAction(action);
+      readLane.invalidate();
+      const mutationIsCurrent = () =>
+        mountedRef.current &&
+        supportedRef.current &&
+        actionAvailable() &&
+        mutationEpochRef.current === mutationToken;
       try {
-        try {
-          await operation();
-        } catch (error: unknown) {
-          reportError(failureMessage, error);
-          return;
-        }
-        await reconcile();
+        await operation();
+        if (!mutationIsCurrent()) return;
+        await confirmMutationState(
+          mutationToken,
+          actionAvailable,
+          matchesExpectedState,
+        );
+      } catch (error: unknown) {
+        if (mutationIsCurrent()) reportError(failureMessage, error);
       } finally {
-        pendingRef.current = false;
-        if (mountedRef.current) setPendingAction(null);
+        if (mutationEpochRef.current === mutationToken) {
+          pendingRef.current = false;
+          if (mountedRef.current) setPendingAction(null);
+        }
       }
     },
-    [reconcile, reportError],
+    [confirmMutationState, readLane, reportError],
   );
 
   const toggleMaximized = useCallback(async (): Promise<void> => {
     if (!maximizeRestoreAvailable) return;
     if (state.maximized) {
-      await runMutation("restore", () => adapter.restore(), "Window could not be restored");
+      await runMutation(
+        "restore",
+        () => adapter.restore(),
+        () => maximizeRestoreAvailableRef.current,
+        (next) => !next.maximized,
+        "Window could not be restored",
+      );
     } else {
-      await runMutation("maximize", () => adapter.maximize(), "Window could not be maximized");
+      await runMutation(
+        "maximize",
+        () => adapter.maximize(),
+        () => maximizeRestoreAvailableRef.current,
+        (next) => next.maximized,
+        "Window could not be maximized",
+      );
     }
   }, [adapter, maximizeRestoreAvailable, runMutation, state.maximized]);
 
@@ -165,6 +279,8 @@ export function useWindowControlsController(
     await runMutation(
       enabled ? "enter-full-screen" : "exit-full-screen",
       () => adapter.setFullScreen(enabled),
+      () => fullScreenAvailableRef.current,
+      (next) => next.fullScreen === enabled,
       enabled ? "Full screen could not be entered" : "Full screen could not be exited",
     );
   }, [adapter, fullScreenAvailable, runMutation, state.fullScreen]);
