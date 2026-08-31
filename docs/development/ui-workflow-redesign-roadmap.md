@@ -180,13 +180,15 @@ without entering the versioned checkpoint or durable settings.
 - [x] Separate transient drag-preview state from persisted organization state and avoid reloads or IPC during pointer movement.
 - [x] Throttle pointer/layout work to animation frames and cache row/folder geometry for a drag session.
 - [x] Memoize deck/folder row rendering and prevent drag hover from committing the entire library tree.
-- [ ] Add large-library drag traces, interaction tests for anywhere-to-anywhere movement, and regressions for invalid descendants and stale revisions.
-- [ ] Meet the recorded pointer-frame and visible-feedback budgets before considering the stage complete.
+- [x] Add large-library drag traces, interaction tests for anywhere-to-anywhere movement, and regressions for invalid descendants and stale revisions.
+- [x] Meet the recorded pointer-frame and visible-feedback budgets before considering the stage complete.
 
-Stage 4A implements rows 1–11 with focused model, session, component, layout,
-and deterministic render coverage. Candidate capture, large-library trace
-evidence, budget closure, rows 12–13, and overall Stage 4 completion remain
-pending and must be evaluated on a later clean committed candidate head.
+Stage 4 is complete. Rows 1–11 are covered by focused model, session,
+component, layout, and deterministic render tests. Rows 12–13 are enforced by
+the 120-deck candidate fixture, anywhere-to-anywhere and invalid-target/stale-
+revision regressions, a disposable trusted X11/XTEST mouse smoke, and the
+three-warmup/twelve-sample drag comparison against the recorded budgets. The
+exact-head `all-full` gate must pass this evidence contract before merge.
 
 ## Stage 5 — Deck detail, active-practice progress, and analytics navigation
 

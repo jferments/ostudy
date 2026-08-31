@@ -26,6 +26,28 @@ use crate::{
 
 const FIXTURE_TIME: i64 = 1_700_000_000_000;
 
+fn performance_fixture_app_data(scenario: &str) -> (PathBuf, bool) {
+    if let Some(path) = std::env::var_os("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA") {
+        let path = PathBuf::from(path);
+        assert!(path.starts_with(std::env::temp_dir()));
+        return (path, false);
+    }
+
+    let path = std::env::temp_dir().join(format!(
+        "ostudy-ui-performance-{scenario}-{}-{}",
+        std::process::id(),
+        crate::util::unix_time_millis().expect("fixture clock")
+    ));
+    assert!(!path.exists(), "isolated fixture path must be new");
+    (path, true)
+}
+
+fn cleanup_performance_fixture_app_data(path: &PathBuf, cleanup: bool) {
+    if cleanup {
+        fs::remove_dir_all(path).expect("remove isolated performance fixture state");
+    }
+}
+
 fn rich_doc(text: &str) -> serde_json::Value {
     json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":text}]}]})
 }
@@ -183,13 +205,9 @@ fn insert_document(
 }
 
 #[test]
-#[ignore = "fixture generator requires OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA"]
 pub fn writes_stage_0_ui_performance_pending_restore() {
-    let app_data = std::env::var_os("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA")
-        .map(PathBuf::from)
-        .expect("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA must name isolated temporary state");
-    assert!(app_data.starts_with(std::env::temp_dir()));
-    let paths = AppPaths::new(app_data).expect("isolated fixture paths");
+    let (app_data, cleanup) = performance_fixture_app_data("stage-0");
+    let paths = AppPaths::new(app_data.clone()).expect("isolated fixture paths");
     let database = Database::open(paths.database_path()).expect("fixture database");
 
     let (primary_deck, secondary_deck) = database
@@ -338,16 +356,14 @@ pub fn writes_stage_0_ui_performance_pending_restore() {
         })
         .expect("fixture counts");
     assert_eq!(counts, (2, 2, 16, 1));
+    drop(database);
+    cleanup_performance_fixture_app_data(&app_data, cleanup);
 }
 
 #[test]
-#[ignore = "fixture generator requires OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA"]
 pub fn writes_stage_4a_large_library_drag_pending_restore() {
-    let app_data = std::env::var_os("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA")
-        .map(PathBuf::from)
-        .expect("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA must name isolated temporary state");
-    assert!(app_data.starts_with(std::env::temp_dir()));
-    let paths = AppPaths::new(app_data).expect("isolated fixture paths");
+    let (app_data, cleanup) = performance_fixture_app_data("stage-4a");
+    let paths = AppPaths::new(app_data.clone()).expect("isolated fixture paths");
     let database = Database::open(paths.database_path()).expect("fixture database");
 
     database
@@ -418,4 +434,6 @@ pub fn writes_stage_4a_large_library_drag_pending_restore() {
         })
         .expect("large-library fixture count");
     assert_eq!(deck_count, 120);
+    drop(database);
+    cleanup_performance_fixture_app_data(&app_data, cleanup);
 }

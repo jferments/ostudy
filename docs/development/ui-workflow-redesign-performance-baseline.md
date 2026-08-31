@@ -145,7 +145,7 @@ translation; the preceding trusted XTEST smoke covers the supported Linux mouse
 path. Physical touch/pen behavior and subjective interaction feel remain manual
 acceptance boundaries.
 
-Verification and comparison never rewrite evidence. Capture stages all JSON in a sibling temporary directory, strictly verifies it, replaces the canonical tree only after success, and then checks exactly the two open Stage 0D roadmap rows. The verifier rejects duplicate JSON keys and entries, missing/extra scenarios or files, non-finite/malformed values, applicability errors, stale ordinals/budgets/versions/source SHA, noncanonical paths, hash mismatches, and incompatible reference-runtime metadata.
+Verification and comparison never rewrite evidence. Capture stages all JSON in a sibling temporary directory, strictly verifies it, replaces the canonical tree only after success, and then checks exactly the two remaining Stage 4 roadmap rows. The verifier rejects duplicate JSON keys and entries, missing/extra scenarios or files, non-finite/malformed values, applicability errors, stale ordinals/budgets/versions/source SHA, noncanonical paths, hash mismatches, and incompatible reference-runtime metadata.
 
 ## Limitations
 

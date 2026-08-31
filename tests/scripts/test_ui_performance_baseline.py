@@ -353,22 +353,20 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         source = (baseline.ROOT_DIR / "src-tauri/src/library_backup/performance_fixture_tests.rs").read_text()
         self.assertIn("for index in 0..120", source)
 
-    def test_performance_fixture_generators_are_explicitly_ignored_by_normal_rust_suites(self) -> None:
+    def test_performance_fixture_generators_are_safe_in_normal_rust_suites(self) -> None:
         source = (
             baseline.ROOT_DIR
             / "src-tauri/src/library_backup/performance_fixture_tests.rs"
         ).read_text(encoding="utf-8")
-        self.assertEqual(
-            2,
-            source.count(
-                '#[ignore = "fixture generator requires '
-                'OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA"]'
-            ),
-        )
+        self.assertNotIn("#[ignore", source)
+        self.assertIn('performance_fixture_app_data("stage-0")', source)
+        self.assertIn('performance_fixture_app_data("stage-4a")', source)
+        self.assertIn("cleanup_performance_fixture_app_data", source)
         launcher = (
             baseline.ROOT_DIR / "scripts/ui-performance-baselines.sh"
         ).read_text(encoding="utf-8")
-        self.assertIn("-- --exact --ignored", launcher)
+        self.assertIn("-- --exact", launcher)
+        self.assertNotIn("--ignored", launcher)
 
     def test_drag_candidate_has_distinct_identity_and_only_three_drag_limits(self) -> None:
         candidate = Path(self.temp.name) / "candidate"
