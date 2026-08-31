@@ -18,7 +18,16 @@ import smoke as webdriver
 ESCAPE_KEY = "\ue00c"
 TAB_KEY = "\ue004"
 ENTER_KEY = "\ue007"
-EXPECTED_PLEX_FAMILY = "'IBM Plex Sans', var(--ostudy-font-family-system)"
+EXPECTED_PLEX_FAMILY_SERIALIZATIONS = frozenset(
+    {
+        "'IBM Plex Sans', var(--ostudy-font-family-system)",
+        '"IBM Plex Sans", var(--ostudy-font-family-system)',
+    }
+)
+
+
+def is_expected_plex_family(value: Any) -> bool:
+    return isinstance(value, str) and value in EXPECTED_PLEX_FAMILY_SERIALIZATIONS
 
 
 def set_window_rect(session_id: str, width: int, height: int) -> None:
@@ -431,8 +440,8 @@ def assert_brand_and_fresh_font_defaults(session_id: str, label: str) -> None:
     ):
         raise AssertionError(f"Brand lockup drifted in {label}: {measurement!r}")
     if (
-        measurement.get("uiFont") != EXPECTED_PLEX_FAMILY
-        or measurement.get("cardFont") != EXPECTED_PLEX_FAMILY
+        not is_expected_plex_family(measurement.get("uiFont"))
+        or not is_expected_plex_family(measurement.get("cardFont"))
     ):
         raise AssertionError(f"Fresh-profile IBM Plex defaults drifted in {label}: {measurement!r}")
 

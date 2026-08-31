@@ -368,6 +368,27 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn("-- --exact", launcher)
         self.assertNotIn("--ignored", launcher)
 
+    def test_fresh_font_smoke_accepts_only_equivalent_cssom_quote_serializations(self) -> None:
+        self.assertTrue(
+            baseline.ui.is_expected_plex_family(
+                "'IBM Plex Sans', var(--ostudy-font-family-system)"
+            )
+        )
+        self.assertTrue(
+            baseline.ui.is_expected_plex_family(
+                '"IBM Plex Sans", var(--ostudy-font-family-system)'
+            )
+        )
+        for invalid in (
+            None,
+            "IBM Plex Sans, var(--ostudy-font-family-system)",
+            "var(--ostudy-font-family-system), 'IBM Plex Sans'",
+            "'IBM Plex Sans'",
+            "'IBM Plex Sans', sans-serif",
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(baseline.ui.is_expected_plex_family(invalid))
+
     def test_drag_candidate_has_distinct_identity_and_only_three_drag_limits(self) -> None:
         candidate = Path(self.temp.name) / "candidate"
         make_drag_candidate(candidate, offset=100)
