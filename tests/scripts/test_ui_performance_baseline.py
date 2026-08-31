@@ -1236,18 +1236,23 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         release.assert_called_once_with("session-1")
 
 
-    def test_drag_capture_rejects_a_row_without_a_safe_noninteractive_point(self) -> None:
+    def test_drag_capture_rejects_a_row_without_an_approved_primary_surface(self) -> None:
         with mock.patch.object(
             baseline,
             "execute_read_only",
             return_value=None,
         ) as execute_read_only:
-            with self.assertRaisesRegex(AssertionError, "no verified noninteractive row point"):
+            with self.assertRaisesRegex(AssertionError, "no verified primary drag surface point"):
                 baseline.find_safe_drag_point("session-1", "covered-row")
 
         script = execute_read_only.call_args.args[1]
-        self.assertIn("document.elementFromPoint(x, y) === row", script)
-        self.assertNotIn("closest(", script)
+        self.assertIn("[data-library-drag-surface='true']", script)
+        self.assertIn("target.closest", script)
+        self.assertIn("canStartAt(x + activationOffsetX, y)", script)
+        self.assertEqual(
+            baseline.CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
+            execute_read_only.call_args.args[2][1],
+        )
 
     def test_candidate_dom_pointer_dispatch_uses_exact_contract_payload(self) -> None:
         def observe(_session: str, _script: str, args: list[dict]) -> dict:
