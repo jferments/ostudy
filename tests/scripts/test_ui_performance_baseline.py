@@ -569,6 +569,41 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual(3, len(failures))
         self.assertTrue(all(failure.startswith("deck-drag-v1:") for failure in failures))
 
+    def test_drag_candidate_uses_one_millisecond_webkit_timer_floor_only_for_pointer_work(self) -> None:
+        reference = Path(self.temp.name) / "zero-pointer-reference"
+        candidate = Path(self.temp.name) / "timer-floor-candidate"
+        make_tree(reference, offset=-0.3)
+        make_drag_candidate(candidate)
+
+        self.assertEqual(
+            [],
+            baseline.compare_drag_candidate(
+                candidate,
+                reference,
+                expected_candidate_source_sha=SOURCE_SHA,
+            ),
+        )
+
+        scenario = baseline.CANDIDATE_SCENARIOS[0]
+        measurement_path = candidate / baseline.canonical_measurement_path(scenario)
+        measurement = json.loads(measurement_path.read_text(encoding="utf-8"))
+        for candidate_sample in measurement["samples"]:
+            candidate_sample["pointer"]["maxFrameWorkMs"] = 1.001
+        write_json(measurement_path, measurement)
+        manifest_path = candidate / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["measurements"][0]["sha256"] = digest(measurement_path)
+        write_json(manifest_path, manifest)
+
+        failures = baseline.compare_drag_candidate(
+            candidate,
+            reference,
+            expected_candidate_source_sha=SOURCE_SHA,
+        )
+        self.assertEqual(1, len(failures))
+        self.assertIn("maxPointerFrameWorkMs", failures[0])
+        self.assertIn("timer floor 1.000", failures[0])
+
     def test_drag_candidate_requires_exact_trusted_native_input_attestation(self) -> None:
         candidate = Path(self.temp.name) / "candidate-attestation"
         make_drag_candidate(candidate)
@@ -1098,6 +1133,15 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         with mock.patch.object(baseline.webdriver, "request", return_value=throttled):
             with self.assertRaisesRegex(AssertionError, "frame clock is throttled"):
                 baseline.verify_rendering_frame_clock("session-1")
+            diagnostic = baseline.verify_rendering_frame_clock(
+                "session-1",
+                enforce_cadence=False,
+            )
+        self.assertEqual(200.0, diagnostic["medianIntervalMs"])
+        self.assertIn(
+            "enforce_cadence=not candidate",
+            inspect.getsource(baseline.capture),
+        )
 
 
     def test_candidate_launcher_pins_x11_backend_for_trusted_input(self) -> None:
@@ -1309,7 +1353,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             )
             self.assertIn("typeof PointerEvent !== 'function'", script)
             self.assertIn("Candidate deck drag target is stale or wrong", script)
-            self.assertIn("document.elementFromPoint(expected.anchorX, expected.anchorY) !== row", script)
+            self.assertIn("[data-library-drag-surface='true']", script)
+            self.assertIn(".closest(", script)
             self.assertIn("row.dispatchEvent(event)", script)
             self.assertIn("!targetObserved || !windowObserved", script)
 
@@ -1336,7 +1381,17 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         }
         with mock.patch.object(
             baseline.webdriver, "request",
-            return_value={"ok": True, "observed": observed, "sample": raw_sample},
+            return_value={
+                "ok": True,
+                "observed": observed,
+                "sample": raw_sample,
+                "visibleBoundary": {
+                    "kind": baseline.CANDIDATE_VISIBLE_BOUNDARY,
+                    "latencyMs": 12,
+                    "width": 160,
+                    "height": 40,
+                },
+            },
         ) as request:
             sample = baseline.dispatch_candidate_drag_activation_and_finish(
                 "session-1", "large-drag-row", {"x": 10, "y": 20}, 19, 20,
@@ -1349,7 +1404,11 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertEqual({baseline.webdriver.ELEMENT_KEY: "large-drag-row"}, payload["args"][0])
         self.assertEqual(expected, payload["args"][1])
         self.assertIn("row.dispatchEvent(event)", payload["script"])
-        self.assertIn("requestAnimationFrame(awaitPreview)", payload["script"])
+        self.assertIn("new MutationObserver(checkReadyBoundary)", payload["script"])
+        self.assertIn("getComputedStyle(preview)", payload["script"])
+        self.assertIn("preview.getBoundingClientRect()", payload["script"])
+        self.assertNotIn("requestAnimationFrame(awaitPreview)", payload["script"])
+        self.assertIn("visibleBoundary", payload["script"])
         self.assertIn("bridge.finish()", payload["script"])
 
         with mock.patch.object(
@@ -1357,13 +1416,13 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             return_value={
                 "ok": False,
                 "error": {
-                    "name": "DragPreviewTimeoutError",
-                    "message": "The activated drag preview did not become visible.",
+                    "name": "DragPreviewReadyTimeoutError",
+                    "message": "The activated drag preview did not become laid out and visibly styled.",
                 },
             },
         ):
             with self.assertRaisesRegex(
-                baseline.BrowserPerformanceError, "DragPreviewTimeoutError",
+                baseline.BrowserPerformanceError, "DragPreviewReadyTimeoutError",
             ):
                 baseline.dispatch_candidate_drag_activation_and_finish(
                     "session-1", "large-drag-row", {"x": 10, "y": 20}, 19, 20,

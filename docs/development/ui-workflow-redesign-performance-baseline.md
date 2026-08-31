@@ -6,7 +6,7 @@ This document defines the measurement and evidence contract for the two Stage 0D
 
 Performance collection is available only when `OSTUDY_UI_PERFORMANCE_CAPTURE=1` builds a separate Tauri artifact with the installed `react-dom/profiling` renderer. Ordinary builds use `react-dom/client`, do not install `window.__OSTUDY_UI_PERFORMANCE__`, and do not collect measurements. The capture bridge accepts only enumerated scenario IDs, DOM element handles, profiler boundary IDs, and bounded numeric timing/count data. It does not serialize the DOM or retain card text, document text, filenames, prompts, provider responses, credentials, identifiers, screenshots, or raw browser traces. The capture bridge performs no network I/O. In Actions, the workflow uploads only the explicitly bounded synthetic manifest, deck-drag measurement, and captured log artifacts described below.
 
-The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. On its private Xvfb display, the launcher pins X.Org's fake vblank clock to 60 Hz, starts an isolated Openbox process, verifies the EWMH window-manager selection, and runs candidate WebKitGTK with its documented software-compositing mode because Xvfb exposes no DRI3 device; capture fails closed instead of timing a throttled, unmanaged, or unusable accelerated surface. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
+The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. On its private Xvfb display, the launcher pins X.Org's fake vblank clock to 60 Hz, starts an isolated Openbox process, verifies the EWMH window-manager selection, and runs candidate WebKitGTK with its documented software-compositing mode because Xvfb exposes no DRI3 device. Candidate capture records WebKit's headless frame cadence as diagnostic provenance but does not mistake that virtual paint clock for product latency; visibility, focus, trusted input, and deterministic preview readiness remain fail-closed. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
 
 ## Scenario contract
 
@@ -115,9 +115,11 @@ Python major/minor, device-pixel ratio, viewport/display, fixed UI metadata,
 captured driver-command output, profiling identity, source and application
 hashes, scenario/sample structure, and budget contracts.
 
-Before timed samples, Stage 4A verifies that the timing session is visible and
-samples seven consecutive animation-frame intervals; a median above 50 ms fails as
-a throttled rendering surface before any product measurement is accepted. It then
+Before timed samples, Stage 4A requires a visible, non-hidden WebKit document and
+samples seven consecutive animation-frame intervals as diagnostics. The immutable
+Stage 0 capture still rejects a median above 50 ms, but Stage 4A does not use the
+Xvfb/WebKit software-compositor frame cadence as its latency clock because repeated
+runner evidence showed 55–640 ms virtual-frame gaps while React committed in 0–1 ms. It then
 starts a separate disposable driver/application session, opens the isolated Xvfb
 display through XTEST,
 calibrates X-root coordinates against a browser-observed trusted event, injects
@@ -134,22 +136,20 @@ manifest, so native-state residue cannot enter the three warmups or twelve
 timed samples.
 
 The Stage 4A candidate timing path then dispatches deterministic, standards-shaped
-DOM `PointerEvent` objects at the verified noninteractive deck-row point. The
-tested Linux/WebKitGTK driver/runtime built and launched the candidate successfully but
-did not translate either W3C touch actions or distinct W3C fine-mouse actions
-into the React Pointer Events consumed by the new adapter. Candidate timing
-therefore does not depend on WebKitWebDriver pointer-action translation: it
-dispatches pointerdown from the marked primary deck surface before arming, dispatches a same-target mouse pointermove
-strictly beyond the 8px activation threshold after arming, proves real preview
-appearance, finalizes the visible-frame timing while that preview remains mounted,
-and then proves cancellation cleanup. Activation dispatch, preview readiness, and
-`bridge.finish()` execute inside one bounded asynchronous browser command, so
-WebKit can service the response frame without an idle transition between automation
-commands. This ordering excludes both cross-command scheduling and cleanup latency
-from the visible-response metric. This
-deterministic DOM-event performance path exercises the production React drag
-adapter, preview, cancellation, Profiler, User Timing, and pointer-frame
-instrumentation. Those samples do not themselves prove operating-system input
+DOM `PointerEvent` objects at the marked primary deck surface. The tested
+Linux/WebKitGTK driver/runtime did not translate W3C touch or fine-mouse actions
+into the React Pointer Events consumed by the adapter, so deterministic timing
+does not depend on that translation. After a same-target mouse pointermove crosses
+the 8px threshold, one bounded asynchronous browser command requires the real
+preview to exist, have nonzero layout bounds, and resolve to visible computed
+styles. That style/layout-ready timestamp replaces only the candidate's
+`interactionToVisible` value; React commit, pointer work, and readiness evidence
+still come from the production profiling bridge while the preview remains mounted.
+The 29 ms reference limit therefore acts as a conservative next-frame readiness
+deadline without trusting Xvfb's virtual paint cadence. Cancellation cleanup is
+then proved separately. This deterministic path exercises the production React
+drag adapter, preview, cancellation, Profiler, User Timing, layout, computed style,
+and pointer-frame instrumentation. Those samples do not themselves prove operating-system input
 translation; the preceding trusted XTEST smoke covers the supported Linux mouse
 path. Physical touch/pen behavior and subjective interaction feel remain manual
 acceptance boundaries.
@@ -161,8 +161,10 @@ Verification and comparison never rewrite evidence. Capture stages all JSON in a
 The committed distribution was captured on the pinned codex-dev
 Linux/WebKit/Xvfb/EWMH reference environment. Exact-head Actions applies its three
 drag maxima as absolute SLOs on the separately maintained `ostudy-unified`
-runner profile after guest preflight; this is not represented as a same-host
-statistical comparison. The current manifest verifies runtime ABI, display,
+runner profile after guest preflight. For Stage 4A, the visible metric is the
+laid-out, visibly styled preview-readiness boundary described above, and the
+zero-millisecond reference pointer-work budget has an explicit 1 ms WebKit timer
+quantization floor; neither rule changes the immutable Stage 0 evidence. The current manifest verifies runtime ABI, display,
 viewport, UI, profiling, source, application, and captured driver-command
 identities, but does not encode hardware identity. Results from other machines
 are therefore diagnostic rather than merge evidence. The automated evidence
