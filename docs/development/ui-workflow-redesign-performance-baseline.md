@@ -89,9 +89,18 @@ only the committed drag limits for avoidable React commits, visible feedback,
 and maximum pointer-frame work. It returns nonzero when any of those three
 limits fails.
 
-The fixed Linux/WebKitGTK candidate run measures the product's fine-pointer
-path with W3C mouse actions. Touch and pen behavior are covered separately by
-the product interaction tests rather than inferred from this performance run.
+The Stage 4A candidate timing path dispatches deterministic, standards-shaped
+DOM `PointerEvent` objects at the verified noninteractive deck-row point. The
+pinned Linux/WebKitGTK driver built and launched the candidate successfully but
+did not translate either W3C touch actions or distinct W3C fine-mouse actions
+into the React Pointer Events consumed by the new adapter. Candidate timing
+therefore does not depend on WebKitWebDriver pointer-action translation: it
+dispatches pointerdown before arming, dispatches a same-target mouse pointermove
+strictly beyond the 8px activation threshold after arming, proves real preview
+appearance and cancellation cleanup, and only then finishes the sample. This
+deterministic performance path does not qualify touch or pen behavior, nor does
+it replace manual qualification with trusted physical input; those remain
+separate product and manual acceptance boundaries.
 
 Verification and comparison never rewrite evidence. Capture stages all JSON in a sibling temporary directory, strictly verifies it, replaces the canonical tree only after success, and then checks exactly the two open Stage 0D roadmap rows. The verifier rejects duplicate JSON keys and entries, missing/extra scenarios or files, non-finite/malformed values, applicability errors, stale ordinals/budgets/versions/source SHA, noncanonical paths, hash mismatches, and incompatible reference-runtime metadata.
 

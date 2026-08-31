@@ -84,6 +84,42 @@ describe("useDeckLibraryPointerSession", () => {
     },
   );
 
+  it("keeps an activated window-listener drag cancellable when pointer capture throws", () => {
+    const harness = libraryHarness();
+    const onMove = vi.fn();
+    harness.origin.setPointerCapture.mockImplementation(() => {
+      throw new DOMException("Synthetic pointer is not active", "NotFoundError");
+    });
+    harness.origin.hasPointerCapture.mockReturnValue(false);
+    const { result } = renderHook(() =>
+      useDeckLibraryPointerSession(
+        harness.ref,
+        snapshot,
+        false,
+        "stable",
+        onMove,
+        vi.fn(),
+      ),
+    );
+
+    act(() => {
+      result.current.beginPointerSession(
+        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
+        { kind: "deck", id: deckB.id },
+        deckB.name,
+      );
+      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
+    });
+    expect(harness.origin.setPointerCapture).toHaveBeenCalledWith(9);
+    expect(result.current.feedback.active).toBe(true);
+
+    act(() => window.dispatchEvent(pointerEvent("pointercancel", 60, 100)));
+
+    expect(result.current.feedback.active).toBe(false);
+    expect(onMove).not.toHaveBeenCalled();
+    expect(harness.origin.releasePointerCapture).not.toHaveBeenCalled();
+  });
+
   it("lets unrelated clicks pass without consuming the pending origin compatibility click", () => {
     const harness = libraryHarness();
     const unrelated = document.createElement("button");

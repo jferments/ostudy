@@ -305,7 +305,13 @@ export function useDeckLibraryPointerSession(
         return;
       }
       session.active = true;
-      session.origin.setPointerCapture?.(session.pointerId);
+      try {
+        // Window listeners already own the active session. Pointer capture improves
+        // native delivery but synthetic pointers are not always capture-eligible.
+        session.origin.setPointerCapture?.(session.pointerId);
+      } catch {
+        // Keep activation, feedback, movement, and cancellation on the window path.
+      }
       setFeedback({ active: true, sourceName: session.sourceName, candidate: null });
     }
     event.preventDefault();

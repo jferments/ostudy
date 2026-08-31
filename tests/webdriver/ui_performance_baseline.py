@@ -47,7 +47,8 @@ SCENARIOS = (
 )
 CANDIDATE_SCENARIOS = ("deck-drag-v1",)
 LEGACY_DRAG_POINTER_ID = "stage0-touch"
-CANDIDATE_DRAG_POINTER_ID = "stage4a-deck-drag-fine-mouse"
+CANDIDATE_DRAG_POINTER_ID = 4_004
+CANDIDATE_DRAG_ACTIVATION_OFFSET = {"x": 9, "y": 0}
 POINTER_SCENARIOS = {"navigation-hover-v1", "deck-drag-v1"}
 BOUNDARIES = {"navigation", "documents", "deck-library", "practice-setup", "guide-library", "guide-dialog", "active-practice"}
 EXPECTED_BOUNDARIES = {
@@ -793,6 +794,128 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
     return {"x": point["x"], "y": point["y"]}
 
 
+def dispatch_candidate_drag_pointer_event(
+    session_id: str,
+    target: str,
+    anchor: dict[str, int],
+    event_type: str,
+    client_x: int,
+    client_y: int,
+) -> None:
+    event_buttons = {
+        "pointerdown": {"button": 0, "buttons": 1},
+        "pointermove": {"button": -1, "buttons": 1},
+        "pointercancel": {"button": -1, "buttons": 0},
+    }
+    if event_type not in event_buttons:
+        raise AssertionError(f"Unsupported candidate pointer event type: {event_type!r}")
+    if (
+        set(anchor) != {"x", "y"}
+        or not all(type(anchor[axis]) is int for axis in ("x", "y"))
+        or type(client_x) is not int
+        or type(client_y) is not int
+    ):
+        raise AssertionError("Candidate pointer coordinates must be exact integers.")
+    expected = {
+        "type": event_type,
+        "pointerId": CANDIDATE_DRAG_POINTER_ID,
+        "pointerType": "mouse",
+        "isPrimary": True,
+        "clientX": client_x,
+        "clientY": client_y,
+        **event_buttons[event_type],
+        "bubbles": True,
+        "cancelable": True,
+        "composed": True,
+        "anchorX": anchor["x"],
+        "anchorY": anchor["y"],
+    }
+    try:
+        observed = execute(
+            session_id,
+            """
+            const row = arguments[0];
+            const expected = arguments[1];
+            if (typeof PointerEvent !== 'function') {
+              throw new Error('Candidate PointerEvent is unavailable.');
+            }
+            if (
+              !(row instanceof HTMLElement) ||
+              !row.isConnected ||
+              row.dataset.libraryRow !== 'deck' ||
+              row.dataset.itemName !== 'Large library drag source' ||
+              document.elementFromPoint(expected.anchorX, expected.anchorY) !== row
+            ) {
+              throw new Error('Candidate deck drag target is stale or wrong.');
+            }
+            const event = new PointerEvent(expected.type, {
+              pointerId: expected.pointerId,
+              pointerType: expected.pointerType,
+              isPrimary: expected.isPrimary,
+              clientX: expected.clientX,
+              clientY: expected.clientY,
+              button: expected.button,
+              buttons: expected.buttons,
+              bubbles: expected.bubbles,
+              cancelable: expected.cancelable,
+              composed: expected.composed,
+            });
+            const contract = {
+              type: event.type,
+              pointerId: event.pointerId,
+              pointerType: event.pointerType,
+              isPrimary: event.isPrimary,
+              clientX: event.clientX,
+              clientY: event.clientY,
+              button: event.button,
+              buttons: event.buttons,
+              bubbles: event.bubbles,
+              cancelable: event.cancelable,
+              composed: event.composed,
+            };
+            for (const field of Object.keys(contract)) {
+              if (contract[field] !== expected[field]) {
+                throw new Error(`Candidate PointerEvent contract mismatch for ${field}.`);
+              }
+            }
+            let targetObserved = false;
+            let windowObserved = false;
+            const observeTarget = (observedEvent) => {
+              targetObserved = observedEvent === event && observedEvent.target === row;
+            };
+            const observeWindow = (observedEvent) => {
+              windowObserved = observedEvent === event;
+            };
+            row.addEventListener(expected.type, observeTarget, {once: true});
+            window.addEventListener(expected.type, observeWindow, {capture: true, once: true});
+            try {
+              row.dispatchEvent(event);
+            } finally {
+              row.removeEventListener(expected.type, observeTarget);
+              window.removeEventListener(expected.type, observeWindow, true);
+            }
+            if (!targetObserved || !windowObserved) {
+              throw new Error('Candidate PointerEvent was not observed at both target and window.');
+            }
+            return {...contract, targetObserved, windowObserved};
+            """,
+            [{webdriver.ELEMENT_KEY: target}, expected],
+        )
+    except webdriver.WebDriverProtocolError as error:
+        if error.error == "stale element reference":
+            raise AssertionError("Candidate deck drag target is stale or wrong.") from error
+        raise
+    expected_observed = {
+        key: value for key, value in expected.items() if key not in {"anchorX", "anchorY"}
+    }
+    expected_observed.update({"targetObserved": True, "windowObserved": True})
+    if observed != expected_observed:
+        raise AssertionError(
+            "Candidate PointerEvent observed contract differs: "
+            f"expected {expected_observed!r}, received {observed!r}."
+        )
+
+
 def position_and_press_drag_pointer(
     session_id: str,
     point: dict[str, int],
@@ -911,6 +1034,96 @@ def collect_drag_sample(
         return finish(session_id)
     finally:
         release_pointer_actions(session_id)
+
+
+def collect_candidate_drag_sample(
+    session_id: str,
+    target: str,
+    scenario: str,
+    deadline: float,
+) -> dict[str, Any]:
+    point: dict[str, int] | None = None
+    activation_point: dict[str, int] | None = None
+    pointer_down_delivered = False
+    cancel_attempted = False
+    primary_error: BaseException | None = None
+    try:
+        point = find_safe_drag_point(session_id, target)
+        activation_point = {
+            "x": point["x"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
+            "y": point["y"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["y"],
+        }
+        if math.hypot(
+            activation_point["x"] - point["x"],
+            activation_point["y"] - point["y"],
+        ) <= 8:
+            raise AssertionError("Candidate pointermove must be strictly beyond the 8px threshold.")
+        dispatch_candidate_drag_pointer_event(
+            session_id,
+            target,
+            point,
+            "pointerdown",
+            point["x"],
+            point["y"],
+        )
+        pointer_down_delivered = True
+        arm(session_id, scenario, target)
+        dispatch_candidate_drag_pointer_event(
+            session_id,
+            target,
+            point,
+            "pointermove",
+            activation_point["x"],
+            activation_point["y"],
+        )
+        wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
+        cancel_attempted = True
+        dispatch_candidate_drag_pointer_event(
+            session_id,
+            target,
+            point,
+            "pointercancel",
+            activation_point["x"],
+            activation_point["y"],
+        )
+        wait_js(session_id, "!document.querySelector('[data-drag-preview]')", deadline)
+        return finish(session_id)
+    except BaseException as error:
+        primary_error = error
+        if (
+            pointer_down_delivered
+            and not cancel_attempted
+            and point is not None
+            and activation_point is not None
+        ):
+            cancel_attempted = True
+            try:
+                dispatch_candidate_drag_pointer_event(
+                    session_id,
+                    target,
+                    point,
+                    "pointercancel",
+                    activation_point["x"],
+                    activation_point["y"],
+                )
+            except BaseException:
+                pass
+        if pointer_down_delivered:
+            try:
+                wait_js(
+                    session_id,
+                    "!document.querySelector('[data-drag-preview]')",
+                    webdriver.deadline_after(5),
+                )
+            except BaseException:
+                pass
+        raise
+    finally:
+        try:
+            release_pointer_actions(session_id)
+        except BaseException:
+            if primary_error is None:
+                raise
 
 
 def is_transient_disconnect(error: BaseException) -> bool:
@@ -1314,13 +1527,11 @@ def collect_candidate_drag_scenario(session_id: str) -> dict[str, Any]:
             f"Stage 4A drag candidate must start on Flashcards without navigation: {heading!r}"
         )
     target = webdriver.find_element(session_id, "xpath", LARGE_LIBRARY_DRAG_XPATH, deadline)
-    return collect_drag_sample(
+    return collect_candidate_drag_sample(
         session_id,
         target,
         CANDIDATE_SCENARIOS[0],
         deadline,
-        pointer_id=CANDIDATE_DRAG_POINTER_ID,
-        pointer_type="mouse",
     )
 
 
