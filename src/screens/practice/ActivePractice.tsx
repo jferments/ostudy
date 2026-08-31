@@ -74,7 +74,13 @@ export function ActivePractice({
   const appearance = useAppearance();
   const experience = useExperience();
   const animateFlip = flipAnimationEnabled?? appearance.motion === "full";
-  const remainingCount = Math.max(0, session.cardCount - ratedCount);
+  const cardCount = Math.max(0, session.cardCount);
+  const studiedCount = Math.min(Math.max(0, ratedCount), cardCount);
+  const remainingCount = Math.max(0, cardCount - studiedCount);
+  const percentComplete = cardCount > 0 ? Math.round((studiedCount / cardCount) * 100) : 0;
+  const currentPosition = cardCount > 0
+    ? Math.min(Math.max(1, position + 1), cardCount)
+    : 0;
   const stackLayers = remainingCount > 3 ? 2 : remainingCount > 1 ? 1 : 0;
 
   useEffect(() => {
@@ -204,18 +210,6 @@ export function ActivePractice({
                 : "PRACTICE"}
           </span>
           <h1>{current.deckName}</h1>
-          <div className={ownedClassNames(ownedStyleMaps, "practice-session-meta")}>
-            <span
-              className={ownedClassNames(ownedStyleMaps, "practice-progress-chip")}
-              aria-label={`${position + 1} of ${session.cardCount} cards, ${ratedCount} studied, ${remainingCount} remaining`}
-            >
-              <strong>{ratedCount} studied</strong>
-              <span>· {remainingCount} remaining</span>
-            </span>
-            {current.needsMorePractice ? (
-              <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge needs-practice")}>Needs more practice</span>
-            ) : null}
-          </div>
         </div>
         <div className={ownedClassNames(ownedStyleMaps, "practice-header-actions")}>
           <Button
@@ -265,17 +259,18 @@ export function ActivePractice({
         </div>
       </header>
 
-      <div className={styles.progressRow}>
-        <Progress
-          className={ownedClassNames(ownedStyleMaps, "practice-progress-track")}
-          label="Practice session progress"
-          value={ratedCount}
-          max={session.cardCount}
-        />
-        <span aria-hidden="true">
-          {Math.round((ratedCount / Math.max(1, session.cardCount)) * 100)}%
-        </span>
-      </div>
+      <Progress
+        className={ownedClassNames(ownedStyleMaps, "practice-progress-track")}
+        label="Practice session progress"
+        value={studiedCount}
+        max={cardCount}
+        variant="inline-content"
+        inlineContent={{
+          start: `${studiedCount} studied · ${remainingCount} remaining`,
+          end: `${percentComplete}%`,
+        }}
+        valueText={`Card ${currentPosition} of ${cardCount}, ${studiedCount} studied, ${remainingCount} remaining, ${percentComplete}% complete`}
+      />
 
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 

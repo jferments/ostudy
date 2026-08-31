@@ -19,7 +19,14 @@ function setLayout(mode: "wide" | "medium" | "compact") {
 }
 
 const actions: ResponsiveAction[] = [
-  { id: "primary", label: "Continue", placement: "always-visible", variant: "primary", onSelect: vi.fn() },
+  {
+    id: "primary",
+    label: "Continue",
+    description: "Complete the current step before continuing.",
+    placement: "always-visible",
+    variant: "primary",
+    onSelect: vi.fn(),
+  },
   { id: "edit", label: "Edit", placement: "wide-and-medium", icon: "edit", presentation: "icon", onSelect: vi.fn() },
   { id: "export", label: "Export", placement: "wide-only", onSelect: vi.fn() },
   { id: "delete", label: "Delete", placement: "overflow-only", destructive: true, onSelect: vi.fn() },
@@ -31,6 +38,20 @@ function renderGroup(mode: "wide" | "medium" | "compact") {
 }
 
 describe("ResponsiveActionGroup", () => {
+  it("adds supplemental hover and accessible descriptions without changing the label", () => {
+    renderGroup("compact");
+    const primary = screen.getByRole("button", { name: "Continue" });
+    expect(primary.getAttribute("title")).toBe(
+      "Complete the current step before continuing.",
+    );
+    const descriptionId = primary.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId as string)?.textContent).toBe(
+      "Complete the current step before continuing.",
+    );
+    expect(primary.textContent).toBe("Continue");
+  });
+
   it.each([
     ["wide", ["Continue", "Edit", "Export"], ["Delete"]],
     ["medium", ["Continue", "Edit"], ["Export", "Delete"]],

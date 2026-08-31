@@ -71,6 +71,23 @@ Practice opens as an internal workflow, not another primary navigation
 destination. Ending early returns to the same logical Flashcards context: the
 Decks root for a library launch or the exact deck detail for a detail launch.
 
+While a session is active, its thicker progress track contains both
+**studied · remaining** at the start and the rounded completion percentage at
+the end. Assistive technology receives the current-card position, studied and
+remaining counts, and percentage as one complete progress value. Cards that
+need more practice still affect scheduling and later summaries, but the active
+header does not add a separate weak-card badge.
+
+### Open deck header and actions
+
+An open deck presents one vertical header flow: **All decks**, the full-width
+deck title and edit control, the description, then deck actions. **Practice** is
+always the visible primary action. **Export** remains visible on wide and
+tablet/medium layouts, while **Archive** remains visible only on wide layouts.
+On compact layouts, **More actions** contains Export, Archive, and Delete;
+Delete is always in More actions and still requires explicit confirmation with
+the existing Undo window after deletion.
+
 ### Adding cards inside a deck
 
 Open a deck to add study material. The card-table heading contains:

@@ -190,18 +190,25 @@ pending and must be evaluated on a later clean committed candidate head.
 
 ## Stage 5 — Deck detail, active-practice progress, and analytics navigation
 
-- [ ] Rebuild the deck-detail header as one vertical flow: breadcrumb, full-width title, description, then actions.
-- [ ] Reduce the deck title scale slightly and remove the narrow left-column compression visible on wide desktop layouts.
-- [ ] Use `ResponsiveActionGroup` for Practice, Export, Archive, Delete, and mobile overflow behavior.
-- [ ] Remove remaining non-functional move icons from deck detail and card/deck presentation.
-- [ ] Extend the shared Progress primitive with an accessible inline-content variant.
-- [ ] Put “studied · remaining” inside a thicker active-practice progress track with contrast that remains readable over filled and unfilled regions.
-- [ ] Vertically center the percentage with the progress track and provide equivalent `aria-valuetext`.
-- [ ] Remove the “Needs more practice” chip from the active practice header while retaining scheduling outcomes and analytics data.
+- [x] Rebuild the deck-detail header as one vertical flow: breadcrumb, full-width title, description, then actions.
+- [x] Reduce the deck title scale slightly and remove the narrow left-column compression visible on wide desktop layouts.
+- [x] Use `ResponsiveActionGroup` for Practice, Export, Archive, Delete, and mobile overflow behavior.
+- [x] Remove remaining non-functional move icons from deck detail and card/deck presentation.
+- [x] Extend the shared Progress primitive with an accessible inline-content variant.
+- [x] Put “studied · remaining” inside a thicker active-practice progress track with contrast that remains readable over filled and unfilled regions.
+- [x] Vertically center the percentage with the progress track and provide equivalent `aria-valuetext`.
+- [x] Remove the “Needs more practice” chip from the active practice header while retaining scheduling outcomes and analytics data.
 - [ ] Make tag names in Analytics → Recently practiced interactive controls.
 - [ ] Add a typed navigation request that opens Flashcards → Search with the selected tag filter already applied.
 - [ ] Move useful due-topic, workload, and recent-practice summaries from the removed Practice setup destination into Analytics without duplicating scheduling calculations.
 - [ ] Add deck-header, progress, analytics-to-search, keyboard, responsive, and UI smoke tests.
+
+Stage 5A completes rows 1–8 with focused deck-header, shared Progress,
+active-Practice, maintained native-smoke, and responsive UI-platform-smoke
+evidence. The move-affordance audit found no Stage-5-owned decorative move
+imagery; all remaining move controls are functional alternatives owned by Stage
+4. Analytics/Search navigation, workload/recent summaries, and the combined row
+12 evidence remain Stage 5B, so rows 9–12 stay unchecked.
 
 ## Stage 6 — Document lifecycle simplification, compact cards, and durable citations
 

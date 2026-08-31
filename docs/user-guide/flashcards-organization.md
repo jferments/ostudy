@@ -67,7 +67,16 @@ A folder scope expands to its current active deck identifiers. It does not creat
 
 Review history and scheduling belong to generated cards, not folders. Moving a deck between folders has no effect on its cards. Moving a card between decks transfers that card and its review evidence according to the existing card-ownership rules; the folder containing either deck does not become an analytics owner.
 
-The practice screen presents a decorative card stack based on cards remaining in the session. Only the current card is exposed to assistive technology. Submitted reviews are durable before the completion screen appears, and the completion summary reports cards studied, average confidence, remembered percentage, difficult answers, and the fully labeled confidence distribution.
+The practice screen presents a decorative card stack based on cards remaining
+in the session. Only the current card is exposed to assistive technology. A
+thicker progress track displays the studied/remaining counts and rounded
+percentage inside the track; its single accessible progressbar value also names
+the current-card position. The active header does not duplicate that progress
+or show a weak-card badge. Submitted reviews are durable before the completion
+screen appears, and weak-card outcomes remain available to scheduling, Search,
+completion, and Analytics. The completion summary reports cards studied,
+average confidence, remembered percentage, difficult answers, and the fully
+labeled confidence distribution.
 
 ## Backup and restoration
 

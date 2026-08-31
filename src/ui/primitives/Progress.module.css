@@ -1,15 +1,75 @@
 @layer components {
   .root { display: grid; min-width: 0; gap: var(--ostudy-space-2); }
   .text { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--ostudy-space-3); color: var(--ostudy-color-text-secondary); font-size: 0.82rem; }
-  .track { width: 100%; overflow: hidden; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-progress-track); }
+  .track { position: relative; width: 100%; overflow: hidden; border-radius: var(--ostudy-radius-pill); background: var(--ostudy-color-progress-track); }
   .small { height: 4px; }
   .medium { height: 7px; }
   .large { height: 10px; }
-  .track span { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--progress-color, var(--ostudy-color-progress-fill)); transform: scaleX(var(--progress-value)); transform-origin: left; transition: transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard); }
-  .accent { --progress-color: var(--ostudy-color-progress-fill); }
-  .success { --progress-color: var(--ostudy-color-status-success); }
-  .warning { --progress-color: var(--ostudy-color-status-warning); }
-  .danger { --progress-color: var(--ostudy-color-status-danger); }
-  :root[data-motion="reduced"] .track span,
-  :root[data-motion="none"] .track span { transition-duration: var(--ostudy-motion-duration-instant); }
+  .fill { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--progress-color, var(--ostudy-color-progress-fill)); transform: scaleX(var(--progress-value)); transform-origin: left; transition: transform var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard); }
+  .accent {
+    --progress-color: var(--ostudy-color-progress-fill);
+    --progress-filled-content-color: var(--ostudy-color-accent-on);
+  }
+  .success {
+    --progress-color: var(--ostudy-color-status-success);
+    --progress-filled-content-color: var(--ostudy-color-text-inverse);
+  }
+  .warning {
+    --progress-color: var(--ostudy-color-status-warning);
+    --progress-filled-content-color: var(--ostudy-color-neutral-950);
+  }
+  .danger {
+    --progress-color: var(--ostudy-color-status-danger);
+    --progress-filled-content-color: var(--ostudy-color-status-danger-on);
+  }
+  .inlineTrack {
+    min-height: 2.25rem;
+    box-shadow: inset 0 0 0 1px var(--ostudy-color-border-subtle);
+    font-size: .78rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 760;
+    line-height: 1;
+  }
+  .inlineContentLayer {
+    position: absolute;
+    inset: 0;
+    z-index: var(--ostudy-layer-focus);
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    padding-inline: var(--ostudy-space-3);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .inlineContentLayer > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .inlineContentUnfilled { color: var(--ostudy-color-text-primary); }
+  .inlineContentFilled {
+    color: var(--progress-filled-content-color);
+    clip-path: inset(0 calc(100% - var(--progress-percent)) 0 0);
+    transition: clip-path var(--ostudy-motion-duration-standard) var(--ostudy-motion-ease-standard);
+  }
+  :root[data-motion="reduced"] .fill,
+  :root[data-motion="none"] .fill,
+  :root[data-motion="reduced"] .inlineContentFilled,
+  :root[data-motion="none"] .inlineContentFilled {
+    transition-duration: var(--ostudy-motion-duration-instant);
+  }
+
+  @media (forced-colors: active) {
+    .track {
+      border: 1px solid CanvasText;
+      background: Canvas;
+      box-shadow: none;
+      forced-color-adjust: none;
+    }
+    .fill { background: Highlight; }
+    .inlineContentUnfilled { color: CanvasText; }
+    .inlineContentFilled { color: HighlightText; }
+  }
 }

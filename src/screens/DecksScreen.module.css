@@ -99,21 +99,51 @@
     }
   }
   .deck-title-row {
+    display: grid;
+      width: 100%;
+      min-width: 0;
+      gap: var(--ostudy-space-2);
+  }
+  .deck-title-line {
     display: flex;
+      min-width: 0;
       align-items: flex-start;
-      gap: 0.7rem;
-      margin-top: 1.2rem;
+      gap: var(--ostudy-space-3);
   }
   .deck-title-row h1 {
     margin: 0;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: clamp(1.8rem, 3vw, 2.7rem);
+      line-height: 1.08;
+      letter-spacing: -.045em;
   }
   .deck-title-row p {
-    margin: 0.45rem 0 0;
+    max-width: 60rem;
+      margin: 0;
       color: var(--ostudy-color-text-muted);
+      overflow-wrap: anywhere;
   }
   .deck-edit-button {
     flex: 0 0 auto;
       margin-top: 0.25rem;
+  }
+  .deck-detail-header {
+    display: flex;
+      width: 100%;
+      min-width: 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--ostudy-space-4);
+  }
+  .deck-detail-header > .back-button {
+    align-self: flex-start;
+      margin: 0;
+  }
+  .deck-detail-actions {
+    width: 100%;
+      max-width: 100%;
+      justify-content: flex-start;
   }
 
   /* Migrated from src/styles/features/ui-overhaul.css. */
@@ -150,27 +180,10 @@
   .archived-deck-grid {
     margin-top: 0;
   }
-  @media (max-width: 760px) {
-    .deck-detail-header .header-actions {
-      width: 100%;
-    }
-  }
-
   /* Migrated from src/screens/DecksScreen.stage12.css. */
   .decks-screen {
     container-type: inline-size;
         container-name: deck-detail;
-  }
-  @container deck-detail (max-width: 920px) {
-    .deck-detail-header {
-      display: grid;
-            grid-template-columns: minmax(0, 1fr);
-            gap: var(--ostudy-space-3);
-    }
-    .deck-detail-header .header-actions {
-      justify-content: flex-start;
-            margin-top: 0;
-    }
   }
 
   /* Migrated from src/screens/cards/CardListing.css. */

@@ -672,6 +672,12 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
                   practiceDestinations: primary
                     .filter((button) => button.dataset.testid === 'nav-practice').length,
                   heading: (document.querySelector('main h1')?.textContent || '').trim(),
+                  progressValueText: document.querySelector(
+                    "main [role='progressbar'][aria-label='Practice session progress']",
+                  )?.getAttribute('aria-valuetext') || '',
+                  formerHeaderProgressCount: document.querySelectorAll(
+                    "main header [aria-label*=' studied, '][aria-label*=' remaining']",
+                  ).length,
                 };
             """,
             "args": [],
@@ -688,6 +694,16 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
     if state.get("heading") != deck_name:
         raise AssertionError(
             f"Contextual Practice lost the launching deck identity: {state!r}"
+        )
+    if state.get("progressValueText") != (
+        "Card 1 of 1, 0 studied, 1 remaining, 0% complete"
+    ):
+        raise AssertionError(
+            f"Active Practice progress lost its accessible value text: {state!r}"
+        )
+    if int(state.get("formerHeaderProgressCount", -1)) != 0:
+        raise AssertionError(
+            f"Active Practice retained its former header progress chip: {state!r}"
         )
 
 
@@ -1034,8 +1050,9 @@ def main() -> int:
         verify_persistence_after_restart(session_id, deck_name, question)
 
         print(
-            "Native smoke test passed: created a deck and card, accepted a review, "
-            "restarted ostudy, and verified durable content and analytics."
+            "Native smoke test passed: created a deck and card, verified accessible "
+            "inline Practice progress, accepted a review, restarted ostudy, and verified "
+            "durable content and analytics."
         )
         return 0
     except Exception:

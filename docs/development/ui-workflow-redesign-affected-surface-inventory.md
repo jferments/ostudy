@@ -180,6 +180,35 @@ Stage 9 reader/PDF design remain later owners. A publishable Stage 2H checkpoint
 still requires changed, static, fast, focused native contracts, and maintained
 native smoke to pass on the exact final tree.
 
+## Stage 5A deck-detail and active-Practice delta
+
+Stage 5A rebuilds the deck-detail header in `src/screens/DecksScreen.tsx` as one
+ordered vertical flow: Back, title/edit action, description, then the shared
+`ResponsiveActionGroup`. Practice remains directly visible and primary in every
+layout; Export is direct at wide/medium, Archive is direct only at wide, and
+Delete remains destructive overflow. Existing controller callbacks retain
+Practice launch, export busy state, revision-checked archive, explicit delete
+confirmation and Undo, edit, Back, and card-browser ownership.
+
+The shared `Progress` primitive now has a backward-compatible opt-in inline
+content variant and explicit accessible value text. Active Practice derives its
+studied, remaining, position, and rounded percentage from `ratedCount` and the
+native session card count, renders the studied/remaining and percentage content
+inside the thicker track, and removes the former header progress and weak-card
+chips. `needsMorePractice` remains present in native/frontend card contracts and
+continues to feed scheduling, Search, completion, and Analytics outside this
+presentation-only change.
+
+The move-affordance audit at exact base
+`05734a31d0305821e7ae4e315846a1d25130184c` covered `DecksScreen`,
+`CardBrowserWorkspace`, `DeckItem`, and `FolderSection`. No decorative move
+imagery exists in the Stage-5-owned presentation. `FolderSection`'s move icon is
+the labelled keyboard reorder control; `DeckItem` retains its keyboard
+shortcuts, hidden Earlier/Later controls, full-row pointer drag, and the
+selected-deck Move sheet path. No Stage-4-owned deck-library source was changed.
+Analytics tag navigation, Search filter requests, workload/recent summaries,
+and their smoke coverage remain Stage 5B.
+
 ## Route and navigation topology
 
 Visible destination vocabulary is owned by `AppSection`; protected workflow
@@ -219,7 +248,7 @@ route/smoke contract.
 | --- | --- | --- | --- | --- |
 | Application navigation and checkpoints | `src/controllers/useAppController.ts`; shell in `src/App.tsx`; back adapter in `src/platform/backNavigation.ts` | Controller owns visible `section`, internal `practiceWorkflow`, `FlashcardsRoute`, fresh launch/request IDs, logical return targets, dirty guards, canonical v2 snapshots, lifecycle saves, and top-level Back. `deckRefreshLane` prevents obsolete deck reads from replacing current state. | Checkpoint reconciliation is presentation-only; do not let stale reads overwrite route state or treat a failed checkpoint save as a failed durable study mutation. | Stage 2 |
 | Deck library and movement | `src/screens/flashcards/DeckLibraryWorkspace.tsx`; current controller `src/screens/flashcards/deck-library/useDeckLibraryController.ts`; reorder adapter `useDeckLibraryReorder.ts`; pure policy `organizationModel.ts`; types in `types.ts` | Rust/SQLite own deck/folder organization and revisions. The controller owns loading, mutation busy state, sheets, collapsed folders, announcements, archive visibility, and reconciliation. Every pointer/keyboard/fallback move becomes `LibraryMoveIntent`; pointer preview is not durable. | Stage 3 must add selection as separate state from open row, folder state, and drag/reorder. Stage 4 must retain one intent/policy and optimistic organization revision checks. A committed move remains successful if refresh fails. | Stages 3, 4 |
-| Deck detail | `src/screens/DeckScreen.tsx`, `src/controllers/decksController.ts`, `src/controllers/cardsController.ts`, `src/controllers/cardEditorController.ts` | Controllers own latest-result lanes for domain reads; Rust owns deck/card mutations and revisions. | Header/action redesign must preserve direct practice, export, archive/delete, authoring, Back, and committed-versus-reconciled reporting. | Stages 3, 5, 6, 10 |
+| Deck detail | `src/screens/DecksScreen.tsx`, `src/controllers/decksController.ts`, `src/screens/cards/CardBrowserWorkspace.tsx`, `src/controllers/cardsController.ts`, `src/controllers/cardEditorController.ts` | The screen composes the vertical header and shared responsive actions; controllers own latest-result lanes for domain reads; Rust owns deck/card mutations and revisions. | Preserve direct Practice, export busy state, revision-checked archive, explicit delete confirmation/Undo, edit, Back, authoring, and committed-versus-reconciled reporting. | Stages 3, 5, 6, 10 |
 | Search/card browser | `src/screens/cards/CardBrowserWorkspace.tsx`, `src/screens/cards/CardFilters.tsx`, `src/controllers/cardsController.ts` | Controller/Rust own bounded searches, list-matching selection resolution, card mutations, and independent request lanes; screen owns filter and selection presentation. `CardPresentation` remains the study/search transport. | Preserve card-ID practice and add a typed Analytics-to-Search tag launch without making React authoritative for query semantics. New rich nodes must render/search safely. | Stages 3, 5, 10 |
 | Analytics launches | `src/screens/AnalyticsScreen.tsx`, `src/controllers/analyticsController.ts`, launch state in `useAppController.ts` | SQLite/Rust projections are authoritative; the controller applies latest-read semantics. App controller owns launch range/deck/tag/highlight intent and the session-to-analytics transition. | Tag controls must route to Search; moved workload summaries must not reproduce schedule calculations in React. | Stage 5 |
 | Practice setup and session | `src/screens/PracticeScreen.tsx`, `src/screens/practice/PracticeSetup.tsx`, `ActivePractice.tsx`, `PracticeComplete.tsx`, pure scope helper `practiceSetupScope.ts`, `src/controllers/practiceController.ts` | React owns presentation/session cursor and pending UI flags. Rust/SQLite own workload, selected/card sessions, snapshots, reveal previews, transactional reviews, completion, and resume. Controller uses independent latest-read lanes for workload/recent/window/card detail; mutations are not stale-canceled. | Extract setup/workload launch behavior before removing the destination. Preserve scheduled/extra/card scopes, operation/submission identity, restart/resume, window paging, edit refresh, completion analytics, and return targets. | Stages 2, 3, 5, 10 |
@@ -296,14 +325,14 @@ The public schema is append-only. `src-tauri/src/database.rs` registers migratio
 | --- | --- | --- |
 | `scripts/route-smoke-contract.json`, `scripts/verify-route-smoke-contract.mjs`, `tests/scripts/test_route_smoke_contract.py` | Machine-readable parity among `AppSection`, rendered shell, primary navigation, Flashcards workspaces, and executable native/Android smoke evidence. The current expected inventory is five primary destinations, two aliases, four Flashcards workspaces, and protected active Practice. | Stage 2 must change Practice/Study Guides atomically with executable evidence; Stage 13 verifies the final manifest. |
 | `src/App.test.tsx`, `src/components/NavigationSidebar.test.tsx`, `src/screens/flashcards/FlashcardsWorkspace.backNavigation.test.tsx`, `src/controllers/useAppController.practiceExit.test.tsx` | Frontend shell rendering, navigation, nested workspace Back, and active-practice exit behavior. | Stages 2, 3, 8. |
-| `src/screens/PracticeScreen.test.tsx`, `src/screens/PracticeScreen.tagScope.test.tsx`, `src/screens/practice/ActivePractice.test.tsx`, `src/screens/practice/PracticeComplete.test.tsx`, `src/controllers/practiceController.ts`, `src/controllers/useAppController.practiceExit.test.tsx` | Practice setup/card/tag scopes, active review, completion, restoration, and exit characterization. | Stages 2, 3, 5, 10. |
+| `src/screens/PracticeScreen.test.tsx`, `src/screens/PracticeScreen.tagScope.test.tsx`, `src/screens/practice/ActivePractice.test.tsx`, `src/ui/primitives/Progress.test.tsx`, `src/screens/practice/PracticeComplete.test.tsx`, `src/controllers/practiceController.ts`, `src/controllers/useAppController.practiceExit.test.tsx` | Practice setup/card/tag scopes, accessible inline active progress, active review without the weak-card header badge, completion, restoration, and exit characterization. | Stages 2, 3, 5, 10. |
 | `src/screens/flashcards/DeckLibraryWorkspace.test.tsx`, `src/screens/flashcards/deck-library/useDeckLibraryController.test.tsx`, `src/screens/flashcards/deck-library/useDeckLibraryReorder.test.tsx`, `src/screens/flashcards/deck-library/organizationModel.test.ts` | Deck/folder actions, revision/reconciliation, and shared move-intent inputs. | Stages 3, 4, 5. |
 | `src/screens/DocumentsScreen.test.tsx`, `src/screens/DocumentsScreen.ocrFailure.test.tsx`, `src/screens/DocumentsProgress.test.tsx` | Current archive/delete/generate/cancel/poll/progress and OCR presentation behavior. | Stages 6, 7, 8, 12. |
 | `src/screens/StudyGuideLibrarySection.test.tsx`, `src/screens/StudyGuideDialog.test.tsx`; Rust guide/overlay/export/migration/backup tests | Current nested library, guide revision/regeneration, overlays/conflicts, topic practice, export, deletion cascade, and backup. | Stages 8, 9. |
 | Editor/card/template frontend tests plus native authoring, `studydeck`, and backup tests | Canonical rich docs, Tiptap behavior, draft recovery, templates, practice rendering, and transfer compatibility. | Stage 10. |
 | Settings/profile tests under `src/screens/SettingsScreen*.test.tsx`, `src/screens/settings/*test.tsx`, `src/controllers/aiProfilesController.test.tsx`; Rust settings/profile/probe/backup tests | Font choices/default compatibility, dirty/save behavior, model lists/capabilities, global reasoning, profiles/defaults, and credential markers. | Stages 2, 9, 11. |
-| `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates deck/card, proves contextual internal Practice has no selected primary destination, early return restores the exact deck, a later session completes, and review/Analytics state survives restart. | Stages 2, 3, 5, 10, 13. |
-| `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation and mascot/font defaults, current Study Guides, viewport-filling shell/routes across resize and each native window transition, dialog bounds/scroll ownership, Flashcards tabs/Search, overlay focus, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates deck/card, proves contextual internal Practice has no selected primary destination, requires complete inline-progress accessible value text with no former header chip, restores the exact deck after early exit, then completes a later session and preserves review/Analytics state across restart. | Stages 2, 3, 5, 10, 13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation and mascot/font defaults, current Study Guides, viewport-filling shell/routes across resize and each native window transition, dialog bounds/scroll ownership, Flashcards tabs/Search, overlay focus, vertical deck-detail header order/action placement/overflow containment, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/card_listing_followup_smoke.py` | Complete labeled medium navigation plus Deck and Search card-listing parity and authoring. | Stages 2, 3, 5, 10, 13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/deck_toolbar_layout_smoke.py` | Compact Flashcards tabs, deck toolbar containment, and horizontal-overflow bounds. | Stages 1–5, 12, 13. |
 | `scripts/smoke-startup-compatibility.sh` | Built-binary startup/adoption of the exact historical schema lineage while preserving deck/card/review/attribution data. | Every migration stage, especially 2, 6–11; final Stage 13. |

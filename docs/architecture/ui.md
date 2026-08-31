@@ -254,6 +254,13 @@ never changes the action ID, label, disabled/loading guard, destructive status,
 or callback. Collapsed actions use the canonical `OverflowMenu`, and a group
 with no collapsed actions does not render an empty overflow trigger.
 
+Deck detail applies this contract after its Back control, full-width title, and
+description. Practice is the always-visible primary action, Export is direct at
+wide and medium widths, Archive is direct only at wide width, and Delete is
+always destructive overflow. The header remains one vertical semantic flow;
+layout mode changes action placement without compressing the heading into a
+second column or creating feature-owned breakpoint logic.
+
 `OverflowMenu` owns one interaction contract for direct consumers and the thin
 legacy `Menu` presentation:
 
@@ -285,6 +292,14 @@ Labelling, initial focus, focus containment/restoration, Escape, backdrop,
 platform Back, reduced-motion, forced-colors, and safe-area behavior remain the
 shared overlay and CSS-Module contract. Operational reads stay in their owning
 controller or feature and are never initiated by shared UI.
+
+`Progress` retains its standard thin-track rendering and optional text above the
+track. Its opt-in inline-content variant uses a thicker track with start/end
+content rendered in separate clipped filled and unfilled visual layers. Those
+layers are `aria-hidden`; the progressbar remains the sole accessible value
+owner through `aria-valuemin`, `aria-valuemax`, `aria-valuenow`, and an explicit
+equivalent `aria-valuetext`. Clamping, semantic tones, reduced/no-motion, and
+forced-colors behavior are shared rather than reimplemented by Practice.
 
 ## Semantic feedback
 

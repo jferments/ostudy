@@ -1,3 +1,5 @@
+import { Fragment, useId } from "react";
+
 import { IconButton } from "../icons/IconButton";
 import type { IconName } from "../icons/Icon";
 import { useLayoutMode, type LayoutMode } from "../layout/LayoutModeProvider";
@@ -22,6 +24,7 @@ export interface ResponsiveAction {
   icon?: IconName;
   presentation?: "text" | "icon";
   variant?: ButtonProps["variant"];
+  description?: string;
 }
 
 export interface ResponsiveActionGroupProps {
@@ -38,6 +41,7 @@ export function ResponsiveActionGroup({
   overflowLabel = "More actions",
 }: ResponsiveActionGroupProps) {
   const { layoutMode } = useLayoutMode();
+  const descriptionIdPrefix = `responsive-action-${useId().replaceAll(":", "")}`;
   const ids = new Set(actions.map((action) => action.id));
   if (ids.size !== actions.length || actions.some((action) => action.id.trim() === "")) {
     throw new Error("ResponsiveActionGroup requires unique, nonblank action IDs.");
@@ -56,31 +60,46 @@ export function ResponsiveActionGroup({
       aria-label={label}
       data-layout-mode={layoutMode}
     >
-      {direct.map((action) =>
-        action.presentation === "icon" && action.icon ? (
-          <IconButton
-            key={action.id}
-            icon={action.icon}
-            label={action.label}
-            tone={action.destructive ? "danger" : "neutral"}
-            disabled={action.disabled}
-            loading={action.loading}
-            onClick={action.onSelect}
-          />
-        ) : (
-          <Button
-            key={action.id}
-            variant={
-              action.variant ?? (action.destructive ? "dangerSecondary" : "secondary")
-            }
-            disabled={action.disabled}
-            loading={action.loading}
-            onClick={action.onSelect}
-          >
-            {action.label}
-          </Button>
-        ),
-      )}
+      {direct.map((action, index) => {
+        const description = action.description?.trim() || undefined;
+        const descriptionId = description
+          ? `${descriptionIdPrefix}-${index}`
+          : undefined;
+        return (
+          <Fragment key={action.id}>
+            {description ? (
+              <span id={descriptionId} className="sr-only">
+                {description}
+              </span>
+            ) : null}
+            {action.presentation === "icon" && action.icon ? (
+              <IconButton
+                icon={action.icon}
+                label={action.label}
+                tooltip={description}
+                tone={action.destructive ? "danger" : "neutral"}
+                disabled={action.disabled}
+                loading={action.loading}
+                aria-describedby={descriptionId}
+                onClick={action.onSelect}
+              />
+            ) : (
+              <Button
+                variant={
+                  action.variant ?? (action.destructive ? "dangerSecondary" : "secondary")
+                }
+                disabled={action.disabled}
+                loading={action.loading}
+                title={description}
+                aria-describedby={descriptionId}
+                onClick={action.onSelect}
+              >
+                {action.label}
+              </Button>
+            )}
+          </Fragment>
+        );
+      })}
       {overflow.length > 0 ? (
         <OverflowMenu
           label={overflowLabel}

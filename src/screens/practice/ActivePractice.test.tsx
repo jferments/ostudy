@@ -220,18 +220,35 @@ describe("ActivePractice", () => {
     const progress = screen.getByRole("progressbar", { name: "Practice session progress" });
     expect(progress.getAttribute("aria-valuenow")).toBe("0");
     expect(progress.getAttribute("aria-valuemax")).toBe("1");
+    expect(progress.getAttribute("aria-valuetext")).toBe(
+      "Card 1 of 1, 0 studied, 1 remaining, 0% complete",
+    );
+    expect(screen.getAllByText("0 studied · 1 remaining")).toHaveLength(2);
+    expect(screen.getAllByText("0%")).toHaveLength(2);
   });
 
-  it("renders the authoritative session mode, deck, and weak-card signal", () => {
+  it("renders authoritative session context without a weak-card header badge", () => {
     renderActive({ session: { ...makeSession(), mode: "extra" } });
 
     expect(screen.getByText("EXTRA PRACTICE")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Cardiology" })).toBeTruthy();
-    expect(screen.getByText("Needs more practice")).toBeTruthy();
-    expect(screen.getByLabelText("1 of 1 cards, 0 studied, 1 remaining")).toBeTruthy();
+    expect(screen.queryByText("Needs more practice")).toBeNull();
+    expect(screen.queryByLabelText("1 of 1 cards, 0 studied, 1 remaining")).toBeNull();
     expect(screen.getByRole("button", { name: "Schedule" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "End session" }).className).toContain(
       "practice-end-button",
     );
+  });
+
+  it("handles an empty session count without division or count drift", () => {
+    renderActive({ session: { ...makeSession(), cardCount: 0 }, ratedCount: 3 });
+
+    const progress = screen.getByRole("progressbar", { name: "Practice session progress" });
+    expect(progress.getAttribute("aria-valuenow")).toBe("0");
+    expect(progress.getAttribute("aria-valuemax")).toBe("0");
+    expect(progress.getAttribute("aria-valuetext")).toBe(
+      "Card 0 of 0, 0 studied, 0 remaining, 0% complete",
+    );
+    expect(screen.getAllByText("0 studied · 0 remaining")).toHaveLength(2);
   });
 });

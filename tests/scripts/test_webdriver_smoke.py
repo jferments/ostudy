@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
+UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
+PROGRESS_STYLES_PATH = ROOT / "src" / "ui" / "primitives" / "Progress.module.css"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
 CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
@@ -373,6 +375,32 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
 
+    def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:
+        state = {
+            "selectedPrimary": [],
+            "practiceDestinations": 0,
+            "heading": "Cardiology",
+            "progressValueText": (
+                "Card 1 of 1, 0 studied, 1 remaining, 0% complete"
+            ),
+            "formerHeaderProgressCount": 0,
+        }
+        with patch.object(self.smoke, "request", return_value=state):
+            self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
+
+        for key, invalid_value in (
+            ("progressValueText", "0 of 1"),
+            ("formerHeaderProgressCount", 1),
+        ):
+            invalid = {**state, key: invalid_value}
+            with self.subTest(key=key), patch.object(
+                self.smoke,
+                "request",
+                return_value=invalid,
+            ):
+                with self.assertRaises(AssertionError):
+                    self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
+
     def test_deck_and_search_delegate_to_one_card_browser(self) -> None:
         decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
         search = CARDS_SCREEN_PATH.read_text(encoding="utf-8")
@@ -410,6 +438,47 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         )
         self.assertIn("Q:", browser)
         self.assertIn("A:", browser)
+
+    def test_deck_detail_smoke_retains_visual_geometry_contract(self) -> None:
+        source = UI_PLATFORM_SMOKE_PATH.read_text(encoding="utf-8")
+
+        for rectangle in (
+            "header: rect(header)",
+            "back: rect(back)",
+            "titleRow: rect(titleRow)",
+            "heading: rect(heading)",
+            "description: rect(description)",
+            "actions: rect(actions)",
+        ):
+            with self.subTest(rectangle=rectangle):
+                self.assertIn(rectangle, source)
+        self.assertIn("upper.bottom <= lower.top + 1", source)
+        self.assertIn("above(geometry.back, geometry.titleRow)", source)
+        self.assertIn("above(geometry.heading, geometry.description)", source)
+        self.assertIn("above(geometry.description, geometry.actions)", source)
+        self.assertIn("Math.abs(geometry.titleRow.left - headerRect.left) <= 1", source)
+        self.assertIn("Math.abs(geometry.titleRow.right - headerRect.right) <= 1", source)
+        self.assertIn("geometry.titleRow.width >= headerRect.width - 2", source)
+        self.assertIn('snapshot.get("visuallyOrdered") is True', source)
+        self.assertIn('snapshot.get("titleRowFullWidth") is True', source)
+
+    def test_progress_filled_content_retains_all_four_tone_colors(self) -> None:
+        source = PROGRESS_STYLES_PATH.read_text(encoding="utf-8")
+        expected_colors = {
+            "accent": "--progress-filled-content-color: var(--ostudy-color-accent-on)",
+            "success": "--progress-filled-content-color: var(--ostudy-color-text-inverse)",
+            "warning": "--progress-filled-content-color: var(--ostudy-color-neutral-950)",
+            "danger": "--progress-filled-content-color: var(--ostudy-color-status-danger-on)",
+        }
+
+        for tone, color in expected_colors.items():
+            with self.subTest(tone=tone):
+                start = source.index(f".{tone} {{")
+                end = source.index("}", start)
+                self.assertIn(color, source[start:end])
+        warning_start = source.index(".warning {")
+        warning_end = source.index("}", warning_start)
+        self.assertNotIn("--ostudy-color-accent-on", source[warning_start:warning_end])
 
     def test_android_smoke_entry_point_installs_test_bridge_only_when_requested(self) -> None:
         source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")

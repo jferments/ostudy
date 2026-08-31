@@ -814,8 +814,174 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     webdriver.click(session_id, decks)
 
 
+def verify_deck_detail_header(
+    session_id: str,
+    deck_name: str,
+    deck_description: str,
+) -> None:
+    placements = (
+        (
+            "wide",
+            1440,
+            900,
+            ["Practice", "Export", f"Archive {deck_name}", "More actions"],
+            [f"Delete {deck_name}"],
+        ),
+        (
+            "medium",
+            1000,
+            800,
+            ["Practice", "Export", "More actions"],
+            [f"Archive {deck_name}", f"Delete {deck_name}"],
+        ),
+        (
+            "compact",
+            390,
+            700,
+            ["Practice", "More actions"],
+            ["Export", f"Archive {deck_name}", f"Delete {deck_name}"],
+        ),
+    )
+
+    for mode, width, height, expected_direct, expected_overflow in placements:
+        mode_deadline = webdriver.deadline_after()
+        set_window_rect(session_id, width, height)
+        snapshot = None
+        while time.monotonic() < mode_deadline:
+            snapshot = execute(
+                session_id,
+                """
+                const deckName = arguments[0];
+                const deckDescription = arguments[1];
+                const heading = [...document.querySelectorAll('main h1')]
+                  .find((candidate) => candidate.textContent?.trim() === deckName);
+                const header = heading?.closest('header');
+                const back = header
+                  ? [...header.querySelectorAll('button')]
+                    .find((button) => button.textContent?.trim() === '← All decks')
+                  : null;
+                const description = header
+                  ? [...header.querySelectorAll('p')]
+                    .find((candidate) => candidate.textContent?.trim() === deckDescription)
+                  : null;
+                const actions = header?.querySelector('[role="group"]');
+                const titleLine = heading?.parentElement;
+                const titleRow = titleLine?.parentElement;
+                if (!(heading instanceof HTMLElement)
+                    || !(header instanceof HTMLElement)
+                    || !(back instanceof HTMLElement)
+                    || !(description instanceof HTMLElement)
+                    || !(actions instanceof HTMLElement)
+                    || !(titleRow instanceof HTMLElement)) return null;
+                const directButtons = [...actions.children].flatMap((child) => {
+                  if (child instanceof HTMLButtonElement) return [child];
+                  const trigger = child.querySelector('button');
+                  return trigger instanceof HTMLButtonElement ? [trigger] : [];
+                });
+                const labels = directButtons.map((button) =>
+                  (button.getAttribute('aria-label') || button.textContent || '').trim()
+                );
+                const rect = (element) => {
+                  const bounds = element.getBoundingClientRect();
+                  return {
+                    left: bounds.left,
+                    top: bounds.top,
+                    right: bounds.right,
+                    bottom: bounds.bottom,
+                    width: bounds.width,
+                    height: bounds.height,
+                  };
+                };
+                const geometry = {
+                  header: rect(header),
+                  back: rect(back),
+                  titleRow: rect(titleRow),
+                  heading: rect(heading),
+                  description: rect(description),
+                  actions: rect(actions),
+                };
+                const headerRect = geometry.header;
+                const contained = [back, heading, description, actions].every((element) => {
+                  const bounds = element.getBoundingClientRect();
+                  return bounds.left >= headerRect.left - 1
+                    && bounds.right <= headerRect.right + 1;
+                });
+                const above = (upper, lower) => upper.bottom <= lower.top + 1;
+                return {
+                  mode: actions.dataset.layoutMode,
+                  labels,
+                  ordered:
+                    Boolean(back.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING)
+                    && Boolean(heading.compareDocumentPosition(description) & Node.DOCUMENT_POSITION_FOLLOWING)
+                    && Boolean(description.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING),
+                  visuallyOrdered:
+                    above(geometry.back, geometry.titleRow)
+                    && above(geometry.heading, geometry.description)
+                    && above(geometry.description, geometry.actions),
+                  titleRowFullWidth:
+                    Math.abs(geometry.titleRow.left - headerRect.left) <= 1
+                    && Math.abs(geometry.titleRow.right - headerRect.right) <= 1
+                    && geometry.titleRow.width >= headerRect.width - 2,
+                  geometry,
+                  contained,
+                  noHeaderOverflow: header.scrollWidth <= header.clientWidth,
+                  noDocumentOverflow:
+                    document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+                };
+                """,
+                [deck_name, deck_description],
+            )
+            if (
+                isinstance(snapshot, dict)
+                and snapshot.get("mode") == mode
+                and snapshot.get("labels") == expected_direct
+                and snapshot.get("ordered") is True
+                and snapshot.get("visuallyOrdered") is True
+                and snapshot.get("titleRowFullWidth") is True
+                and snapshot.get("contained") is True
+                and snapshot.get("noHeaderOverflow") is True
+                and snapshot.get("noDocumentOverflow") is True
+            ):
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError(
+                f"Deck detail header failed {mode} visual order, width, placement, or containment: {snapshot!r}"
+            )
+
+        more_actions = webdriver.find_element(
+            session_id,
+            "css selector",
+            "main header button[aria-label='More actions']",
+            mode_deadline,
+        )
+        webdriver.click(session_id, more_actions)
+        overflow_items = execute(
+            session_id,
+            """
+            return [...document.querySelectorAll(
+              '[role="menu"][aria-label="More actions"] [role="menuitem"]'
+            )].map((item) => (item.textContent || '').trim());
+            """,
+        )
+        if overflow_items != expected_overflow:
+            raise AssertionError(
+                f"Deck detail {mode} overflow actions were incorrect: {overflow_items!r}"
+            )
+        send_key(session_id, ESCAPE_KEY)
+        wait_for_absent(
+            session_id,
+            "css selector",
+            '[role="menu"][aria-label="More actions"]',
+            mode_deadline,
+        )
+
+
 def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     deck_name = "Cardiology pharmacology respiratory physiology comprehensive review collection"
+    deck_description = (
+        "A comprehensive deck description that verifies the detail header remains in one flow."
+    )
     new_deck = webdriver.find_element(
         session_id,
         "xpath",
@@ -830,6 +996,13 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
         deck_name,
         deadline,
     )
+    webdriver.set_input_text(
+        session_id,
+        "css selector",
+        "dialog textarea",
+        deck_description,
+        deadline,
+    )
     create = webdriver.find_element(
         session_id,
         "xpath",
@@ -839,6 +1012,8 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     webdriver.click(session_id, create)
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
     wait_for_overlay_inactive(session_id, deadline, "new deck detail assertions")
+    verify_deck_detail_header(session_id, deck_name, deck_description)
+    set_window_rect(session_id, 1000, 800)
 
     webdriver.find_element(
         session_id,
@@ -945,7 +1120,8 @@ def main() -> int:
         print(
             "Native UI platform smoke passed: compact, labeled medium, and wide navigation and branding; "
             "fresh-profile IBM Plex interface/card defaults; "
-            "four-workspace Flashcards containment; deck-scoped authoring; no horizontal overflow; "
+            "four-workspace Flashcards containment; vertical responsive deck-detail actions; "
+            "deck-scoped authoring; no horizontal overflow; "
             "maintained-route viewport consumption through resize, maximize/restore, and full-screen entry/exit; "
             "dialog focus containment; "
             "Study Guides checkpoint restart; Escape dismissal; and focus restoration."
