@@ -7,10 +7,17 @@ export const flashcardsWorkspaceNames = [
 
 export type FlashcardsWorkspaceName = (typeof flashcardsWorkspaceNames)[number];
 
+/** Process-local selection restoration. This is intentionally not checkpoint data. */
+export interface TransientDeckSelectionEntry {
+  id: string;
+  revision: number;
+}
+
 export interface FlashcardsRootRoute {
   requestId: number;
   workspace: FlashcardsWorkspaceName;
   view: "root";
+  restoreDeckSelection?: TransientDeckSelectionEntry[];
 }
 
 export interface FlashcardsDeckRoute {
@@ -35,8 +42,11 @@ export function normalizeFlashcardsWorkspace(
 export function createFlashcardsRootRoute(
   workspace: FlashcardsWorkspaceName,
   requestId: number,
+  restoreDeckSelection?: TransientDeckSelectionEntry[],
 ): FlashcardsRootRoute {
-  return { requestId, workspace, view: "root" };
+  return restoreDeckSelection && restoreDeckSelection.length > 0
+    ? { requestId, workspace, view: "root", restoreDeckSelection }
+    : { requestId, workspace, view: "root" };
 }
 
 export function createFlashcardsDeckRoute(

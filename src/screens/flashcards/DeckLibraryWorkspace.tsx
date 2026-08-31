@@ -4,6 +4,8 @@ import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
+import type { SelectedPracticeRequest } from "../../ipc/practice";
+import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { PerformanceProfiler } from "../../testing/PerformanceProfiler";
 import { DecksScreen } from "../DecksScreen";
@@ -15,6 +17,11 @@ interface DeckLibraryWorkspaceProps {
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string) => void | Promise<void>;
+  onPracticeSelected: (
+    request: SelectedPracticeRequest,
+    originSelection: readonly TransientDeckSelectionEntry[],
+  ) => void | Promise<void>;
+  restoredSelection?: readonly TransientDeckSelectionEntry[];
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (deckId: string) => void;
   onReturnToLibrary: () => void;
@@ -28,6 +35,8 @@ export function DeckLibraryWorkspace({
   settings,
   refreshDecks,
   onPracticeDeck,
+  onPracticeSelected,
+  restoredSelection = [],
   openDeckRequest,
   onOpenDeck,
   onReturnToLibrary,
@@ -43,6 +52,7 @@ export function DeckLibraryWorkspace({
     onOpenDeck,
     showToast,
     confirm,
+    restoredSelection,
   });
 
   if (openDeckRequest) {
@@ -75,6 +85,17 @@ export function DeckLibraryWorkspace({
       <DeckLibraryRoot
         controller={controller}
         onPracticeDeck={onPracticeDeck}
+        decks={decks}
+        practiceShuffle={settings.practiceShuffle}
+        onPracticeSelected={(request) =>
+          onPracticeSelected(
+            request,
+            controller.selectionAnalysis.decks.map((deck) => ({
+              id: deck.id,
+              revision: deck.revision,
+            })),
+          )
+        }
       />
     </PerformanceProfiler>
   );

@@ -5,6 +5,8 @@ import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import * as folderIpc from "../../ipc/deckFolders";
 import type { AppSettings } from "../../ipc/settings";
+import type { SelectedPracticeRequest } from "../../ipc/practice";
+import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
@@ -103,6 +105,10 @@ interface RenderOptions {
   onOpenDeck?: (deckId: string) => void;
   onReturnToLibrary?: () => void;
   onPracticeDeck?: (deckId: string) => void;
+  onPracticeSelected?: (
+    request: SelectedPracticeRequest,
+    selection: readonly TransientDeckSelectionEntry[],
+  ) => void;
   layout?: "wide" | "compact";
 }
 
@@ -114,6 +120,7 @@ function renderLibrary({
   onOpenDeck = vi.fn(),
   onReturnToLibrary = vi.fn(),
   onPracticeDeck = vi.fn(),
+  onPracticeSelected = vi.fn(),
   layout = "wide",
 }: RenderOptions = {}) {
   setLayout(layout);
@@ -125,6 +132,7 @@ function renderLibrary({
         settings={settings}
         refreshDecks={refreshDecks}
         onPracticeDeck={onPracticeDeck}
+        onPracticeSelected={onPracticeSelected}
         openDeckRequest={openDeckRequest}
         onOpenDeck={onOpenDeck}
         onReturnToLibrary={onReturnToLibrary}
@@ -292,7 +300,7 @@ describe("DeckLibraryWorkspace", () => {
     ).toBe(true);
   });
 
-  it("keeps direct single-deck Practice reachable and rejects empty or multi-deck selection", async () => {
+  it("keeps direct row Practice one-step and enables setup for valid multi-deck selection", async () => {
     const onPracticeDeck = vi.fn();
     const empty = deck("e", "Empty", 0, 0);
     renderLibrary({ decks: [pharmacology, empty], onPracticeDeck });
@@ -313,7 +321,9 @@ describe("DeckLibraryWorkspace", () => {
     ).getByRole("button", { name: "Practice" });
     expect(selectionPractice?.hasAttribute("disabled")).toBe(false);
     fireEvent.click(selectionPractice as HTMLButtonElement);
-    expect(onPracticeDeck).toHaveBeenCalledWith(pharmacology.id);
+    expect(await screen.findByRole("heading", { name: "Practice selected decks" })).toBeTruthy();
+    expect(onPracticeDeck).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Empty" }));
     expect(
@@ -646,6 +656,7 @@ function renderSelectionRoot(overrides: Partial<DeckSelectionAnalysis>) {
     selectCurrentScope: vi.fn(),
     clearSelection: vi.fn(),
     openSelectionMover: vi.fn(),
+    openPracticeSetup: vi.fn(),
     moveSelection: vi.fn(),
     setSelectionArchived: vi.fn(),
     deleteSelection: vi.fn(),
@@ -660,7 +671,13 @@ function renderSelectionRoot(overrides: Partial<DeckSelectionAnalysis>) {
   render(
     <LayoutModeProvider>
       <OverlayProvider>
-        <DeckLibraryRoot controller={controller} onPracticeDeck={vi.fn()} />
+        <DeckLibraryRoot
+          controller={controller}
+          onPracticeDeck={vi.fn()}
+          decks={[pharmacology]}
+          practiceShuffle
+          onPracticeSelected={vi.fn()}
+        />
       </OverlayProvider>
     </LayoutModeProvider>,
   );

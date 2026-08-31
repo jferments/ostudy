@@ -72,6 +72,26 @@ class RouteSmokeContractTests(unittest.TestCase):
             self.assertIn("5 primary destinations", completed.stdout)
             self.assertIn("1 protected workflow", completed.stdout)
 
+    def test_selected_setup_and_direct_row_practice_are_in_the_smoke_inventory(self) -> None:
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        practice = next(
+            workflow
+            for workflow in contract["protectedWorkflows"]
+            if workflow["id"] == "active-practice"
+        )
+        native = next(
+            evidence
+            for evidence in practice["smoke"]["evidence"]
+            if evidence["path"] == "tests/webdriver/smoke.py"
+        )
+
+        self.assertIn(
+            "Opening and dismissing selected-deck Practice setup",
+            native["entryFragments"],
+        )
+        self.assertIn("click(session_id, row_practice_button)", native["entryFragments"])
+        self.assertIn("Practice selected decks", native["assertionFragments"])
+
     def test_internal_practice_cannot_drop_protected_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Path(temporary)

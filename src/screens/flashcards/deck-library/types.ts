@@ -26,7 +26,8 @@ export type LibrarySheetState =
   | { kind: "create-deck" }
   | { kind: "create-folder"; name: string }
   | { kind: "rename-folder"; folder: DeckFolder; name: string }
-  | { kind: "move-selection" };
+  | { kind: "move-selection" }
+  | { kind: "practice-setup"; scope: import("./practiceSetupModel").PracticeDeckScope };
 
 export interface DeckLifecyclePartition {
   active: DeckSummary[];

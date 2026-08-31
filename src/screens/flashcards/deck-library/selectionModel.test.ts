@@ -9,6 +9,7 @@ import {
   emptyDeckSelection,
   reconcileDeckSelection,
   removeDecksFromSelection,
+  restoreDeckSelection,
   toggleDeckSelection,
 } from "./selectionModel";
 
@@ -75,6 +76,20 @@ describe("deck selection model", () => {
     expect(analysis.generatedIds).toEqual([activeA.id, archived.id]);
     expect(analysis.missingIds).toEqual([missing.id]);
     expect(analysis.staleIds).toEqual([activeA.id]);
+  });
+
+  it("restores only current active non-empty in-process return entries", () => {
+    const revised = { ...activeA, revision: 2 };
+    const restored = restoreDeckSelection(
+      [
+        { id: revised.id, revision: 2 },
+        { id: activeB.id, revision: activeB.revision },
+        { id: archived.id, revision: archived.revision },
+        { id: "missing", revision: 1 },
+      ],
+      [revised, activeB, archived],
+    );
+    expect([...deckSelectionIds(restored)]).toEqual([revised.id]);
   });
 });
 

@@ -240,10 +240,19 @@
               }
             ],
             "entryFragments": [
+              "Opening and dismissing selected-deck Practice setup",
+              "f\"//input[@aria-label={json.dumps(f'Select {deck_name}')}]\"",
+              "click_text_button(session_id, \"Practice\", deadline)",
+              "row_practice_button = find_element(",
+              "click(session_id, row_practice_button)",
               "//main//button[normalize-space(.)='Practice']",
               "click(session_id, practice_button)"
             ],
             "assertionFragments": [
+              "Practice selected decks",
+              "dialog button[aria-label='Close dialog']",
+              "Verifying one-step row Practice returns to the library",
+              "Verifying deck-detail Practice returns to that exact deck",
               "//button[normalize-space(.)='Show answer']",
               "assert_internal_practice_shell(session_id, deck_name)",
               "click_text_button(session_id, \"End session\", deadline)",

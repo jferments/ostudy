@@ -1,8 +1,6 @@
-import { getRecentPracticeReviews, type RecentReview } from "../ipc/analytics";
 import {
   completePracticeSession,
   getPracticeCardWindow,
-  getPracticeWorkload,
   markPracticeCardRevealed,
   markPracticeCardViewed,
   refreshPracticeAfterCardEdit,
@@ -14,7 +12,6 @@ import {
   type PracticeCardWindowInput,
   type PracticeEditRefresh,
   type PracticeSession,
-  type PracticeWorkloadOverview,
   type RefreshPracticeAfterCardEditInput,
   type ResumedPracticeSession,
   type ReviewPreviewSet,
@@ -35,13 +32,7 @@ export type PracticeStartRequest =
   | ({ kind: "cards" } & StartCardPracticeInput);
 
 export class PracticeController {
-  readonly #workload = new RequestLane();
   readonly #window = new RequestLane();
-  readonly #recent = new RequestLane();
-
-  workload(deckIds: string[], tagIds: string[]): Promise<PracticeWorkloadOverview | undefined> {
-    return latestResult(this.#workload, () => getPracticeWorkload(deckIds, tagIds));
-  }
 
   window(input: PracticeCardWindowInput): Promise<PracticeCardWindow | undefined> {
     return latestResult(this.#window, () => getPracticeCardWindow(input));
@@ -49,10 +40,6 @@ export class PracticeController {
 
   refreshAfterEdit(input: RefreshPracticeAfterCardEditInput): Promise<PracticeEditRefresh> {
     return refreshPracticeAfterCardEdit(input);
-  }
-
-  recentReviews(): Promise<RecentReview[] | undefined> {
-    return latestResult(this.#recent, getRecentPracticeReviews);
   }
 
   start(request: PracticeStartRequest): Promise<PracticeSession> {
@@ -88,17 +75,11 @@ export class PracticeController {
     return completePracticeSession(sessionId);
   }
 
-  invalidateWorkload(): void {
-    this.#workload.invalidate();
-  }
-
   invalidateWindow(): void {
     this.#window.invalidate();
   }
 
   invalidate(): void {
-    this.#workload.invalidate();
     this.#window.invalidate();
-    this.#recent.invalidate();
   }
 }

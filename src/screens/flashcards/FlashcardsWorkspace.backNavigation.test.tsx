@@ -61,6 +61,7 @@ function renderWorkspace({
       settings={settings}
       refreshDecks={async () => []}
       onPracticeDeck={vi.fn()}
+      onPracticeSelected={vi.fn()}
       onPracticeCards={vi.fn()}
       openDeckRequest={null}
       onOpenDeck={vi.fn()}

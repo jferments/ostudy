@@ -143,27 +143,29 @@ design remain explicitly outside this checkpoint.
 - [x] Replace decorative move affordances on deck rows with deck checkboxes and a clear selected state.
 - [x] Keep ordinary row click/open behavior available without toggling selection accidentally.
 - [x] Add Select visible, Select all in current scope, and Clear selection behavior with deterministic folder/filter semantics.
-- [ ] Add a contextual toolbar with Practice selected as the primary action and Move, Archive, Delete, and other valid bulk operations as secondary actions.
+- [x] Add a contextual toolbar with Practice selected as the primary action and Move, Archive, Delete, and other valid bulk operations as secondary actions.
 - [x] Define mixed-state validation and confirmation behavior for archived, empty, generated, or stale-revision deck selections.
-- [ ] Extract the reusable practice-scope/workload logic from the old Practice setup screen into a controller/pure-model boundary.
-- [ ] Open practice setup as a responsive sheet/dialog from selected decks, with scheduled versus extra study, shuffle, due/new counts, and optional tag refinement.
+- [x] Extract the reusable practice-scope/workload logic from the old Practice setup screen into a controller/pure-model boundary.
+- [x] Open practice setup as a responsive sheet/dialog from selected decks, with scheduled versus extra study, shuffle, due/new counts, and optional tag refinement.
 - [x] Preserve direct single-deck practice as a one-step common action.
-- [ ] Preserve card-ID practice launched from Search, Documents, editor flows, and study-guide topics.
-- [ ] Preserve tag-based study through Search and Analytics without recreating a top-level setup dashboard.
-- [ ] Remove the old setup/recent/study-guide composition from `PracticeScreen` once all launch paths have replacements.
+- [x] Preserve card-ID practice launched from Search, Documents, editor flows, and study-guide topics.
+- [x] Preserve tag-based study through Search and Analytics without recreating a top-level setup dashboard.
+- [x] Remove the old setup/recent/study-guide composition from `PracticeScreen` once all launch paths have replacements.
 - [x] Put deck and folder actions into an accessible overflow menu on compact layouts while keeping Practice directly reachable.
-- [ ] Add controller, selection-model, route-launch, compact-menu, stale-revision, and UI smoke tests.
+- [x] Add controller, selection-model, route-launch, compact-menu, stale-revision, and UI smoke tests.
 
-Stage 3A selection evidence is focused in `selectionModel.test.ts` (ordering,
-collapse/scope reconciliation, lifecycle, missing, empty, generated, mixed, and
-stale members), `decksController.test.ts` (continue/stop partial-outcome
-policies), `useDeckLibraryController.test.tsx` (revision-safe archive/delete,
-undo preservation, scope reconciliation, partial completion, and committed
-success after refresh failure), and `DeckLibraryWorkspace.test.tsx` (checkbox
-and row semantics, visible/current-scope selection, confirmation, compact
-overflow, and direct single-deck Practice). The contextual multi-deck Practice
-setup, reusable workload boundary, route-launch/native smoke additions, and old
-Practice composition remain unchecked for the later Stage 3 delta.
+Stage 3A selection evidence remains focused in `selectionModel.test.ts`,
+`decksController.test.ts`, `useDeckLibraryController.test.tsx`, and
+`DeckLibraryWorkspace.test.tsx`.
+
+Stage 3B evidence adds pure setup-model and latest-read controller tests,
+responsive selected-scope Sheet tests, exact route-launch/checkpoint/return and
+completion tests, and maintained native smoke inventory for setup dismissal and
+one-step row Practice. `PracticeScreen` now owns only launch/restore recovery,
+active session, editing, completion, and checkpoint cursor behavior; the
+standing setup, recent-practice, and duplicate Study Guide composition are gone.
+Selected deck return state remains process-local and is revision-reconciled
+without entering the versioned checkpoint or durable settings.
 
 ## Stage 4 — Deck and folder drag/drop reliability and performance
 

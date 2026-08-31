@@ -127,9 +127,9 @@ function App() {
                             onRestoreConsumed={controller.consumePracticeRestore}
                             onCheckpointChange={controller.reportPracticeCheckpoint}
                             returnTarget={controller.practiceWorkflow?.returnTarget ?? null}
-                            onClearReturnTarget={controller.clearPracticeReturnTarget}
                             onViewAnalytics={controller.viewSessionAnalytics}
                             onEndEarly={controller.returnFromPractice}
+                            onChooseDecks={controller.choosePracticeDecks}
                             showToast={controller.showToast}
                           />
                         ) : controller.section === "decks" ? (
@@ -141,6 +141,12 @@ function App() {
                             settings={controller.activeSettings}
                             refreshDecks={controller.refreshDecks}
                             onPracticeDeck={controller.practiceDeck}
+                            onPracticeSelected={controller.practiceSelected}
+                            restoredSelection={
+                              controller.flashcardsRoute.view === "root"
+                                ? controller.flashcardsRoute.restoreDeckSelection
+                                : undefined
+                            }
                             onPracticeCards={controller.practiceCards}
                             openDeckRequest={controller.deckOpenRequest}
                             onOpenDeck={controller.openFlashcardsDeck}

@@ -10,14 +10,27 @@ import styles from "./DeckLibraryView.module.css";
 import type { DeckLibrarySnapshot } from "./organizationModel";
 import type { DeckLibraryController } from "./useDeckLibraryController";
 import { useDeckLibraryReorder } from "./useDeckLibraryReorder";
+import type { DeckSummary } from "../../../ipc/decks";
+import type { SelectedPracticeRequest } from "../../../ipc/practice";
+import { practiceSelectionValidation } from "./practiceSetupModel";
 
 interface DeckLibraryRootProps {
   controller: DeckLibraryController;
   onPracticeDeck(deckId: string): void | Promise<void>;
+  decks: readonly DeckSummary[];
+  practiceShuffle: boolean;
+  onPracticeSelected(request: SelectedPracticeRequest): void | Promise<void>;
 }
 
-export function DeckLibraryRoot({ controller, onPracticeDeck }: DeckLibraryRootProps) {
+export function DeckLibraryRoot({
+  controller,
+  onPracticeDeck,
+  decks,
+  practiceShuffle,
+  onPracticeSelected,
+}: DeckLibraryRootProps) {
   const guidance = selectionGuidance(controller);
+  const practiceValidation = practiceSelectionValidation(controller.selectionAnalysis);
   const selectionUnavailable =
     controller.selectionAnalysis.staleIds.length > 0 ||
     controller.selectionAnalysis.missingIds.length > 0;
@@ -56,16 +69,9 @@ export function DeckLibraryRoot({ controller, onPracticeDeck }: DeckLibraryRootP
           id: "practice",
           label: "Practice",
           disabled:
-            controller.selectionAnalysis.selectedIds.length !== 1 ||
-            controller.selectionAnalysis.activeIds.length !== 1 ||
-            controller.selectionAnalysis.generatedIds.length !== 1 ||
-            controller.selectionAnalysis.staleIds.length > 0 ||
-            controller.selectionAnalysis.missingIds.length > 0 ||
+            !practiceValidation.valid ||
             controller.isMutating,
-          onSelect: () => {
-            const deckId = controller.selectionAnalysis.activeIds[0];
-            if (deckId) void onPracticeDeck(deckId);
-          },
+          onSelect: controller.openPracticeSetup,
         }}
         secondaryActions={[
           {
@@ -132,10 +138,13 @@ export function DeckLibraryRoot({ controller, onPracticeDeck }: DeckLibraryRootP
         sheet={controller.sheet}
         busy={controller.isMutating}
         folders={controller.snapshot?.folders ?? []}
+        decks={decks}
+        practiceShuffle={practiceShuffle}
         onClose={controller.closeSheet}
         onCreateDeck={controller.createDeck}
         onSaveFolder={controller.saveFolder}
         onMoveSelection={controller.moveSelection}
+        onStartPractice={onPracticeSelected}
       />
     </div>
   );
@@ -153,9 +162,6 @@ function selectionGuidance(controller: DeckLibraryController): string | null {
   if (analysis.archivedIds.length > 0) {
     return "Archived decks cannot move or start Practice until they are restored.";
   }
-  if (analysis.selectedIds.length > 1) {
-    return "Practice starts one selected deck at a time here. Multi-deck Practice setup is not available in this library yet.";
-  }
   if (analysis.emptyIds.length > 0) {
     return "This deck has no generated cards yet, so Practice is unavailable.";
   }
@@ -166,7 +172,9 @@ function ReadyDeckLibrary({
   controller,
   snapshot,
   onPracticeDeck,
-}: DeckLibraryRootProps & { snapshot: DeckLibrarySnapshot }) {
+}: Pick<DeckLibraryRootProps, "controller" | "onPracticeDeck"> & {
+  snapshot: DeckLibrarySnapshot;
+}) {
   const reorder = useDeckLibraryReorder(snapshot, controller.isMutating, controller.move);
   return (
     <DeckLibraryView

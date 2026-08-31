@@ -73,11 +73,35 @@ function Harness() {
       <output aria-label="analytics request">
         {controller.analyticsLaunch?.requestId ?? "none"}
       </output>
+      <output aria-label="restored selection">
+        {controller.flashcardsRoute.view === "root"
+          ? controller.flashcardsRoute.restoreDeckSelection?.map((entry) => entry.id).join(",") ?? "none"
+          : "none"}
+      </output>
       <button type="button" onClick={() => void controller.navigate("study-guides")}>
         Open Study Guides
       </button>
       <button type="button" onClick={() => void controller.practiceDeck("launch-deck")}>
         Open Practice
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void controller.practiceSelected(
+            {
+              deckIds: ["d".repeat(32), "e".repeat(32)],
+              tagIds: ["t".repeat(32)],
+              shuffle: false,
+              mode: "extra",
+            },
+            [
+              { id: "d".repeat(32), revision: 1 },
+              { id: "e".repeat(32), revision: 1 },
+            ],
+          )
+        }
+      >
+        Open selected Practice
       </button>
       <button
         type="button"
@@ -171,6 +195,30 @@ describe("application checkpoint lifecycle", () => {
     expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalledOnce();
   });
 
+  it("keeps selected-deck return state in memory, out of the checkpoint, and reconciles it on return", async () => {
+    const current = makeDeck({ id: "d".repeat(32), revision: 1, generatedCardCount: 2 });
+    const removed = makeDeck({ id: "e".repeat(32), revision: 1, generatedCardCount: 2 });
+    vi.mocked(decksIpc.listDecks)
+      .mockResolvedValueOnce([current, removed])
+      .mockResolvedValueOnce([current]);
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    fireEvent.click(screen.getByRole("button", { name: "Open selected Practice" }));
+    await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+    fireEvent.click(screen.getByRole("button", { name: "Report cursor" }));
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+    lifecycle("background");
+    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
+    const saved = vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.at(-1)?.[0];
+    expect(JSON.stringify(saved)).not.toContain("restoreDeckSelection");
+    expect(JSON.stringify(saved)).not.toContain("e".repeat(32));
+
+    fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("restored selection").textContent).toBe(current.id),
+    );
+  });
+
   it("restores Study Guides behind a resumable session and returns there", async () => {
     vi.mocked(checkpointIpc.getUiCheckpoint).mockResolvedValue({
       schemaVersion: 2,
@@ -257,7 +305,9 @@ describe("application checkpoint lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
 
-    expect(screen.getByLabelText("route view").textContent).toBe(deck.id);
+    await waitFor(() =>
+      expect(screen.getByLabelText("route view").textContent).toBe(deck.id),
+    );
     expect(screen.getByLabelText("route request").textContent).not.toBe(restoredRequest);
   });
 
@@ -287,7 +337,9 @@ describe("application checkpoint lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "End Practice" }));
 
-    expect(screen.getByLabelText("route view").textContent).toBe("search");
+    await waitFor(() =>
+      expect(screen.getByLabelText("route view").textContent).toBe("search"),
+    );
     expect(screen.getByLabelText("route request").textContent).not.toBe(restoredRequest);
   });
 

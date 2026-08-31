@@ -3,27 +3,36 @@ import { useState, type FormEvent } from "react";
 import { Sheet } from "../../../ui/overlays/Dialog";
 import { Button } from "../../../ui/primitives/Button";
 import type { DeckFolder } from "../../../ipc/deckFolders";
+import type { DeckSummary } from "../../../ipc/decks";
+import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import styles from "./DeckLibrarySheets.module.css";
+import { PracticeSetupSheet } from "./PracticeSetupSheet";
 import type { LibrarySheetState } from "./types";
 
 interface DeckLibrarySheetsProps {
   sheet: LibrarySheetState | null;
   busy: boolean;
   folders: readonly DeckFolder[];
+  decks: readonly DeckSummary[];
+  practiceShuffle: boolean;
   onClose(): void;
   onCreateDeck(name: string, description: string): Promise<void>;
   onSaveFolder(name: string): Promise<void>;
   onMoveSelection(targetFolderId: string | null): Promise<void>;
+  onStartPractice(request: SelectedPracticeRequest): void | Promise<void>;
 }
 
 export function DeckLibrarySheets({
   sheet,
   busy,
   folders,
+  decks,
+  practiceShuffle,
   onClose,
   onCreateDeck,
   onSaveFolder,
   onMoveSelection,
+  onStartPractice,
 }: DeckLibrarySheetsProps) {
   if (!sheet) return null;
   if (sheet.kind === "create-deck") {
@@ -36,6 +45,17 @@ export function DeckLibrarySheets({
         busy={busy}
         onClose={onClose}
         onMove={onMoveSelection}
+      />
+    );
+  }
+  if (sheet.kind === "practice-setup") {
+    return (
+      <PracticeSetupSheet
+        scope={sheet.scope}
+        currentDecks={decks}
+        initialShuffle={practiceShuffle}
+        onClose={onClose}
+        onStart={onStartPractice}
       />
     );
   }
@@ -173,7 +193,10 @@ function FolderSheet({
   onClose,
   onSave,
 }: {
-  sheet: Exclude<LibrarySheetState, { kind: "create-deck" } | { kind: "move-selection" }>;
+  sheet: Exclude<
+    LibrarySheetState,
+    { kind: "create-deck" } | { kind: "move-selection" } | { kind: "practice-setup" }
+  >;
   busy: boolean;
   onClose(): void;
   onSave(name: string): Promise<void>;

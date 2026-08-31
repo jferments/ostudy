@@ -29,6 +29,7 @@ import {
   type UpdateDeckFolderInput,
 } from "../../../ipc/deckFolders";
 import type { ConfirmOptions } from "../../../ui/overlays/overlayContext";
+import type { TransientDeckSelectionEntry } from "../../../navigation/flashcardsRoutes";
 import {
   applyOptimisticMove,
   createDeckLibrarySnapshot,
@@ -44,10 +45,15 @@ import {
   emptyDeckSelection,
   reconcileDeckSelection,
   removeDecksFromSelection,
+  restoreDeckSelection,
   toggleDeckSelection,
   type DeckSelectionAnalysis,
   type DeckSelectionState,
 } from "./selectionModel";
+import {
+  practiceSelectionValidation,
+  snapshotPracticeDeckScope,
+} from "./practiceSetupModel";
 import type { LibraryMoveIntent, LibrarySheetState } from "./types";
 
 interface DeckMutationController {
@@ -91,6 +97,7 @@ export interface UseDeckLibraryControllerOptions {
   onOpenDeck: (deckId: string) => void;
   showToast: ShowToast;
   confirm: (options: ConfirmOptions) => Promise<boolean>;
+  restoredSelection?: readonly TransientDeckSelectionEntry[];
   dependencies?: DeckLibraryControllerDependencies;
 }
 
@@ -123,6 +130,7 @@ export interface DeckLibraryController {
   selectVisible(): void;
   selectCurrentScope(): void;
   clearSelection(): void;
+  openPracticeSetup(): void;
   openSelectionMover(): void;
   moveSelection(targetFolderId: string | null): Promise<void>;
   setSelectionArchived(archived: boolean): Promise<void>;
@@ -141,6 +149,7 @@ export function useDeckLibraryController({
   onOpenDeck,
   showToast,
   confirm,
+  restoredSelection = [],
   dependencies = defaultDependencies,
 }: UseDeckLibraryControllerOptions): DeckLibraryController {
   const [organization, setOrganization] = useState<DeckLibraryOrganization | null>(null);
@@ -151,7 +160,11 @@ export function useDeckLibraryController({
   const [sheet, setSheet] = useState<LibrarySheetState | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(new Set());
-  const [selection, setSelection] = useState<DeckSelectionState>(emptyDeckSelection);
+  const [selection, setSelection] = useState<DeckSelectionState>(() =>
+    restoredSelection.length > 0
+      ? restoreDeckSelection(restoredSelection, decks)
+      : emptyDeckSelection(),
+  );
   const organizationRef = useRef<DeckLibraryOrganization | null>(null);
   const mutationRef = useRef(false);
   const lifecycleSignatureRef = useRef<string | null>(null);
@@ -419,6 +432,20 @@ export function useDeckLibraryController({
     }
     setSheet({ kind: "move-selection" });
   }, [decks, selection, selectionIsCurrent, showToast]);
+
+  const openPracticeSetup = useCallback((): void => {
+    const analysis = analyzeDeckSelection(selection, decks);
+    const validation = practiceSelectionValidation(analysis);
+    if (!validation.valid) {
+      showToast("info", validation.message);
+      if (analysis.missingIds.length > 0) {
+        setSelection((current) => reconcileDeckSelection(current, currentScopeDecks));
+      }
+      return;
+    }
+    const scope = snapshotPracticeDeckScope(analysis);
+    if (scope) setSheet({ kind: "practice-setup", scope });
+  }, [currentScopeDecks, decks, selection, showToast]);
 
   const moveSelection = useCallback(
     async (targetFolderId: string | null): Promise<void> => {
@@ -689,6 +716,7 @@ export function useDeckLibraryController({
         !currentSheet ||
         currentSheet.kind === "create-deck" ||
         currentSheet.kind === "move-selection" ||
+        currentSheet.kind === "practice-setup" ||
         !beginMutation()
       ) {
         return;
@@ -888,6 +916,7 @@ export function useDeckLibraryController({
     selectCurrentScope: () =>
       setSelection((current) => addDecksToSelection(current, currentScopeDecks)),
     clearSelection: () => setSelection(clearDeckSelection()),
+    openPracticeSetup,
     openSelectionMover,
     moveSelection,
     setSelectionArchived,

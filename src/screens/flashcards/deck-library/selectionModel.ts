@@ -1,4 +1,5 @@
 import type { DeckSummary } from "../../../ipc/decks";
+import type { TransientDeckSelectionEntry } from "../../../navigation/flashcardsRoutes";
 
 export type DeckSelectionLifecycle = "active" | "archived";
 
@@ -26,6 +27,27 @@ export interface DeckSelectionAnalysis {
 
 export function emptyDeckSelection(): DeckSelectionState {
   return { entries: new Map() };
+}
+
+export function restoreDeckSelection(
+  restored: readonly TransientDeckSelectionEntry[],
+  decks: readonly DeckSummary[],
+): DeckSelectionState {
+  const decksById = new Map(decks.map((deck) => [deck.id, deck]));
+  const entries = new Map<string, DeckSelectionEntry>();
+  for (const entry of restored) {
+    const deck = decksById.get(entry.id);
+    if (
+      !deck ||
+      deck.revision !== entry.revision ||
+      deck.archivedAt !== null ||
+      deck.generatedCardCount === 0
+    ) {
+      continue;
+    }
+    entries.set(deck.id, selectionEntry(deck));
+  }
+  return { entries };
 }
 
 export function deckSelectionIds(selection: DeckSelectionState): ReadonlySet<string> {

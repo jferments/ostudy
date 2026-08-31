@@ -735,8 +735,132 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
 
-    progress("Verifying contextual Practice and exact deck return")
+    progress("Opening and dismissing selected-deck Practice setup")
     deadline = deadline_after()
+    decks_button = find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    click(session_id, decks_button)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    selection = find_element(
+        session_id,
+        "xpath",
+        f"//input[@aria-label={json.dumps(f'Select {deck_name}')}]",
+        deadline,
+    )
+    click(session_id, selection)
+    click_text_button(session_id, "Practice", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        "//*[@role='dialog'][.//h2[normalize-space(.)='Practice selected decks']]",
+        deadline,
+    )
+    original_rect = request("GET", f"/session/{session_id}/window/rect")
+    if not isinstance(original_rect, dict):
+        raise AssertionError(f"Practice setup viewport could not be recorded: {original_rect!r}")
+    try:
+        for expected_mode, width, height in (
+            ("wide", 1280, 800),
+            ("medium", 900, 760),
+            ("compact", 390, 700),
+        ):
+            request(
+                "POST",
+                f"/session/{session_id}/window/rect",
+                {"width": width, "height": height},
+            )
+            layout = None
+            layout_deadline = deadline_after()
+            while time.monotonic() < layout_deadline:
+                layout = request(
+                    "POST",
+                    f"/session/{session_id}/execute/sync",
+                    {
+                        "script": """
+                            const content = document.querySelector(
+                              "dialog [data-layout-mode]",
+                            );
+                            return content ? {
+                              mode: content.dataset.layoutMode,
+                              contained: content.scrollWidth <= content.clientWidth,
+                            } : null;
+                        """,
+                        "args": [],
+                    },
+                )
+                if layout == {"mode": expected_mode, "contained": True}:
+                    break
+                time.sleep(0.1)
+            else:
+                raise AssertionError(
+                    f"Practice setup {expected_mode} layout was not contained: {layout!r}"
+                )
+    finally:
+        request(
+            "POST",
+            f"/session/{session_id}/window/rect",
+            {
+                "x": original_rect.get("x"),
+                "y": original_rect.get("y"),
+                "width": original_rect.get("width"),
+                "height": original_rect.get("height"),
+            },
+        )
+    close_setup = find_element(
+        session_id,
+        "css selector",
+        "dialog button[aria-label='Close dialog']",
+        deadline,
+    )
+    click(session_id, close_setup)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+
+    progress("Verifying one-step row Practice returns to the library")
+    deadline = deadline_after()
+    row_practice_button = find_element(
+        session_id,
+        "xpath",
+        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]"
+        "//button[normalize-space(.)='Practice']",
+        deadline,
+    )
+    click(session_id, row_practice_button)
+    show_answer = find_element(
+        session_id,
+        "xpath",
+        "//button[normalize-space(.)='Show answer']",
+        deadline,
+    )
+    assert_internal_practice_shell(session_id, deck_name)
+    click_text_button(session_id, "End session", deadline)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks'][aria-current='page']",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        deadline,
+    )
+
+    progress("Verifying deck-detail Practice returns to that exact deck")
+    deadline = deadline_after()
+    deck_row = find_element(
+        session_id,
+        "xpath",
+        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        deadline,
+    )
+    click(session_id, deck_row)
+    wait_for_main_heading(session_id, deck_name, deadline)
     practice_button = find_element(
         session_id,
         "xpath",
@@ -755,18 +879,12 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     wait_for_main_heading(session_id, deck_name, deadline)
     find_element(
         session_id,
-        "css selector",
-        "button[data-testid='nav-decks'][aria-current='page']",
-        deadline,
-    )
-    find_element(
-        session_id,
         "xpath",
         f"//strong[normalize-space(.)={json.dumps(question)}]",
         deadline,
     )
 
-    progress("Completing one review after the early return")
+    progress("Completing one review after the exact detail return")
     deadline = deadline_after()
     practice_button = find_element(
         session_id,

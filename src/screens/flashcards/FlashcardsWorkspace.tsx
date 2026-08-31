@@ -4,7 +4,11 @@ import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
-import type { FlashcardsWorkspaceName } from "../../navigation/flashcardsRoutes";
+import type { SelectedPracticeRequest } from "../../ipc/practice";
+import type {
+  FlashcardsWorkspaceName,
+  TransientDeckSelectionEntry,
+} from "../../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
@@ -24,6 +28,11 @@ interface FlashcardsWorkspaceProps {
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
   onPracticeDeck: (deckId: string) => void | Promise<void>;
+  onPracticeSelected: (
+    request: SelectedPracticeRequest,
+    originSelection: readonly TransientDeckSelectionEntry[],
+  ) => void | Promise<void>;
+  restoredSelection?: readonly TransientDeckSelectionEntry[];
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (deckId: string) => void;
   onReturnToLibrary: () => void;
@@ -53,6 +62,8 @@ export function FlashcardsWorkspace({
   settings,
   refreshDecks,
   onPracticeDeck,
+  onPracticeSelected,
+  restoredSelection,
   onPracticeCards,
   openDeckRequest,
   onOpenDeck,
@@ -146,6 +157,8 @@ export function FlashcardsWorkspace({
               settings={settings}
               refreshDecks={refreshDecks}
               onPracticeDeck={onPracticeDeck}
+              onPracticeSelected={onPracticeSelected}
+              restoredSelection={restoredSelection}
               openDeckRequest={openDeckRequest}
               onOpenDeck={onOpenDeck}
               onReturnToLibrary={onReturnToLibrary}

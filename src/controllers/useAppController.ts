@@ -5,6 +5,10 @@ import type { AnalyticsRange } from "../ipc/analytics";
 import { getErrorMessage } from "../ipc/common";
 import { listDecks, type DeckSummary } from "../ipc/decks";
 import { listenToLifecycle } from "../ipc/platform";
+import type {
+  CardPracticeRequest,
+  SelectedPracticeRequest,
+} from "../ipc/practice";
 import { getSettings, type AppSettings } from "../ipc/settings";
 import {
   getUiCheckpoint,
@@ -21,6 +25,7 @@ import {
   normalizeFlashcardsWorkspace,
   type FlashcardsRoute,
   type FlashcardsWorkspaceName,
+  type TransientDeckSelectionEntry,
 } from "../navigation/flashcardsRoutes";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { DEFAULT_FONT_PRESET } from "../ui/appearance/appearanceTypes";
@@ -48,6 +53,7 @@ export interface PracticeReturnTarget {
   section: AppSection;
   deckId?: string;
   flashcardsWorkspace?: FlashcardsWorkspaceName;
+  restoreDeckSelection?: TransientDeckSelectionEntry[];
 }
 
 export interface DeckOpenRequest {
@@ -55,20 +61,14 @@ export interface DeckOpenRequest {
   deckId: string;
 }
 
-interface PracticeSelectedLaunchRequest {
+interface PracticeSelectedLaunchRequest extends SelectedPracticeRequest {
   requestId: number;
   kind: "selected";
-  deckIds: string[];
-  tagIds: string[];
-  autoStart: boolean;
-  mode: "scheduled" | "extra";
 }
 
-interface PracticeCardsLaunchRequest {
+interface PracticeCardsLaunchRequest extends CardPracticeRequest {
   requestId: number;
   kind: "cards";
-  cardIds: string[];
-  autoStart: boolean;
 }
 
 export type PracticeLaunchRequest =
@@ -81,6 +81,11 @@ type PracticeLaunchInput =
 
 export type ContextualPracticeLaunchRequest =
   | { kind: "deck"; deckId: string }
+  | {
+      kind: "selected-decks";
+      request: SelectedPracticeRequest;
+      originSelection: readonly TransientDeckSelectionEntry[];
+    }
   | { kind: "scope"; deckIds: string[]; tagIds: string[] }
   | { kind: "cards"; cardIds: string[] };
 
@@ -340,7 +345,7 @@ export function useAppController() {
   useEffect(() => {
     if (section === "decks" && !practiceWorkflow) return;
     return registerPlatformBackHandler(() => {
-      void navigate("decks");
+      void (practiceWorkflow ? returnPracticeToOrigin() : navigate("decks"));
       return true;
     });
   }, [
@@ -471,10 +476,21 @@ export function useAppController() {
           kind: "selected",
           deckIds: [request.deckId],
           tagIds: [],
-          autoStart: true,
+          shuffle: activeSettings.practiceShuffle,
           mode: "extra",
         },
         returnTarget,
+      );
+      return;
+    }
+    if (request.kind === "selected-decks") {
+      openPracticeWorkflow(
+        { kind: "selected", ...request.request },
+        {
+          section: "decks",
+          flashcardsWorkspace: "decks",
+          restoreDeckSelection: [...request.originSelection],
+        },
       );
       return;
     }
@@ -484,15 +500,17 @@ export function useAppController() {
           kind: "selected",
           deckIds: request.deckIds,
           tagIds: request.tagIds,
-          autoStart: true,
+          shuffle: activeSettings.practiceShuffle,
           mode: "scheduled",
         },
         returnTarget,
       );
       return;
     }
+    const cardIds = deduplicateCardIds(request.cardIds);
+    if (cardIds.length === 0) return;
     openPracticeWorkflow(
-      { kind: "cards", cardIds: request.cardIds, autoStart: true },
+      { kind: "cards", cardIds, shuffle: activeSettings.practiceShuffle },
       returnTarget,
     );
   }
@@ -563,16 +581,31 @@ export function useAppController() {
     return launchPractice({ kind: "scope", deckIds, tagIds });
   }
 
+  function practiceSelected(
+    request: SelectedPracticeRequest,
+    originSelection: readonly TransientDeckSelectionEntry[],
+  ): Promise<void> {
+    return launchPractice({ kind: "selected-decks", request, originSelection });
+  }
+
   function practiceCards(cardIds: string[]): Promise<void> {
     return launchPractice({ kind: "cards", cardIds });
   }
 
-  function returnFromPractice(target: PracticeReturnTarget): void {
+  async function returnFromPractice(target: PracticeReturnTarget): Promise<void> {
     practiceCursorRef.current = null;
     setPracticeWorkflow(null);
+    let currentDecks = decks;
+    if (target.section === "decks") {
+      try {
+        currentDecks = await refreshDecks();
+      } catch (error: unknown) {
+        showToast("error", `Deck selection could not be refreshed: ${getErrorMessage(error)}`);
+      }
+    }
     const restoredTarget = normalizeRestoredReturnTarget(
       toCheckpointReturnTarget(target),
-      decks,
+      currentDecks,
     );
     const destination = normalizeDestination(restoredTarget.section);
     const workspace =
@@ -581,10 +614,11 @@ export function useAppController() {
       setFlashcardsRoute(
         restoredTarget.deckId
           ? createFlashcardsDeckRoute(restoredTarget.deckId, nextFlashcardsRequestId())
-          : createFlashcardsRootRoute(workspace, nextFlashcardsRequestId()),
-      );
-      void refreshDecks().catch((error: unknown) =>
-        showToast("error", getErrorMessage(error)),
+          : createFlashcardsRootRoute(
+              workspace,
+              nextFlashcardsRequestId(),
+              reconcileReturnedDeckSelection(target.restoreDeckSelection, currentDecks),
+            ),
       );
     } else if (destination.section === "analytics") {
       const analytics = analyticsCheckpointRef.current ?? {
@@ -597,6 +631,24 @@ export function useAppController() {
       setAnalyticsLaunch({ requestId, ...analytics });
     }
     setSection(destination.section);
+  }
+
+  async function returnPracticeToOrigin(): Promise<void> {
+    const target = practiceWorkflow?.returnTarget;
+    if (!practiceWorkflow || !(await confirmPracticeTermination())) return;
+    if (!(await canLeaveCurrentSection())) return;
+    await returnFromPractice(
+      target ?? { section: "decks", flashcardsWorkspace: "decks" },
+    );
+  }
+
+  async function choosePracticeDecks(): Promise<void> {
+    const restoreDeckSelection = practiceWorkflow?.returnTarget?.restoreDeckSelection;
+    await returnFromPractice({
+      section: "decks",
+      flashcardsWorkspace: "decks",
+      restoreDeckSelection,
+    });
   }
 
   function viewSessionAnalytics(sessionId: string, deckIds: string[]): void {
@@ -616,12 +668,6 @@ export function useAppController() {
       highlightedSessionId: sessionId,
     });
     setSection("analytics");
-  }
-
-  function clearPracticeReturnTarget(): void {
-    setPracticeWorkflow((current) =>
-      current ? { ...current, returnTarget: null } : current,
-    );
   }
 
   function saveSettingsLocally(settings: AppSettings): void {
@@ -659,10 +705,11 @@ export function useAppController() {
     returnToFlashcardsLibrary,
     practiceDeck,
     practiceScope,
+    practiceSelected,
     practiceCards,
     launchPractice,
     returnFromPractice,
-    clearPracticeReturnTarget,
+    choosePracticeDecks,
     viewSessionAnalytics,
     setHasUnsavedCard,
     setHasUnsavedTemplate,
@@ -778,4 +825,31 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     dailyReviewLimit: settings.dailyReviewLimit,
     aiReasoningEffort: settings.aiReasoningEffort,
   };
+}
+
+function deduplicateCardIds(cardIds: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return cardIds.filter((cardId) => {
+    if (seen.has(cardId)) return false;
+    seen.add(cardId);
+    return true;
+  });
+}
+
+function reconcileReturnedDeckSelection(
+  restored: readonly TransientDeckSelectionEntry[] | undefined,
+  decks: readonly DeckSummary[],
+): TransientDeckSelectionEntry[] | undefined {
+  if (!restored || restored.length === 0) return undefined;
+  const currentById = new Map(decks.map((deck) => [deck.id, deck]));
+  const valid = restored.filter((entry) => {
+    const deck = currentById.get(entry.id);
+    return Boolean(
+      deck &&
+        deck.revision === entry.revision &&
+        deck.archivedAt === null &&
+        deck.generatedCardCount > 0,
+    );
+  });
+  return valid.length > 0 ? valid : undefined;
 }
