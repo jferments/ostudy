@@ -1,7 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAnalytics, getRecentPracticeReviews } from "./analytics";
+import {
+  getAnalytics,
+  getRecentPracticeReviews,
+  type RecentReview,
+} from "./analytics";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -27,9 +31,33 @@ describe("analytics IPC", () => {
   });
 
   it("uses the lightweight recent-review command for Practice", async () => {
-    vi.mocked(invoke).mockResolvedValue([]);
+    const reviews: RecentReview[] = [
+      {
+        id: "a".repeat(32),
+        deckName: "Medication",
+        capturedDeckName: "Medication",
+        cardId: "c".repeat(32),
+        cardLabel: "Basic",
+        questionExcerpt: "Question",
+        tags: [
+          {
+            tagId: "b".repeat(32),
+            tagName: "Medication\u001fsafety",
+            isCurrent: false,
+          },
+        ],
+        outcome: "somewhat_confident",
+        rating: 3,
+        responseTimeMs: 1_000,
+        reviewedAt: 2,
+        reviewLocalDate: "2026-08-30",
+        dueAfter: 3,
+        attributionSource: "captured",
+      },
+    ];
+    vi.mocked(invoke).mockResolvedValue(reviews);
 
-    await expect(getRecentPracticeReviews()).resolves.toEqual([]);
+    await expect(getRecentPracticeReviews()).resolves.toEqual(reviews);
     expect(invoke).toHaveBeenCalledWith("get_recent_practice_reviews");
   });
 

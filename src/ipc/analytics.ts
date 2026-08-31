@@ -135,7 +135,7 @@ export interface RecentReview {
   cardId: string;
   cardLabel: string;
   questionExcerpt: string;
-  tags: string[];
+  tags: RecentReviewTag[];
   outcome: ReviewOutcome;
   rating: 1 | 2 | 3 | 4;
   responseTimeMs: number;
@@ -143,6 +143,12 @@ export interface RecentReview {
   reviewLocalDate: string;
   dueAfter: number;
   attributionSource: AttributionSource;
+}
+
+export interface RecentReviewTag {
+  tagId: string;
+  tagName: string;
+  isCurrent: boolean;
 }
 
 export interface SessionAnalytics {

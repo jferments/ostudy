@@ -167,6 +167,14 @@ pub struct TagAnalyticsDto {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RecentReviewTagDto {
+    pub tag_id: String,
+    pub tag_name: String,
+    pub is_current: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RecentReviewDto {
     pub id: String,
     pub deck_name: String,
@@ -174,7 +182,7 @@ pub struct RecentReviewDto {
     pub card_id: String,
     pub card_label: String,
     pub question_excerpt: String,
-    pub tags: Vec<String>,
+    pub tags: Vec<RecentReviewTagDto>,
     pub outcome: String,
     pub rating: i64,
     pub response_time_ms: i64,

@@ -5,12 +5,11 @@ use crate::error::CommandError;
 use super::{
     scope::{AnalyticsContext, HistoryPeriod},
     AnalyticsDeckOptionDto, AnalyticsDimensionOptionsDto, AnalyticsTagOptionDto, RecentReviewDto,
-    SessionAnalyticsDto,
+    RecentReviewTagDto, SessionAnalyticsDto,
 };
 
 const RECENT_REVIEW_LIMIT: i64 = 20;
 const RECENT_SESSION_LIMIT: i64 = 12;
-const TAG_SEPARATOR: char = '\u{001f}';
 
 pub fn load_reviews(
     connection: &Connection,
@@ -19,64 +18,133 @@ pub fn load_reviews(
     let mut values = Vec::<SqlValue>::new();
     let conditions = context.historical_conditions(&mut values, HistoryPeriod::Current);
     let sql = format!(
-        "SELECT
-             r.id,
-             d.name,
-             a.captured_deck_name,
-             r.card_id,
-             a.card_label,
-             a.question_excerpt,
-             COALESCE((
-                 SELECT group_concat(tag_name, char(31))
-                 FROM (
-                     SELECT COALESCE(t.name, rta.tag_name) AS tag_name
-                     FROM review_event_tag_attributions rta
-                     LEFT JOIN tags t ON t.id = rta.tag_id
-                     WHERE rta.review_event_id = r.id
-                     ORDER BY tag_name COLLATE NOCASE, rta.tag_id
-                 )
-             ), ''),
-             r.confidence,
-             r.rating,
-             r.response_time_ms,
-             r.reviewed_at,
-             a.review_local_date,
-             r.due_after,
-             a.attribution_source
-         FROM review_events r
-         JOIN review_event_attributions a ON a.review_event_id = r.id
-         JOIN cards c ON c.id = r.card_id
-         JOIN notes n ON n.id = c.note_id
-         JOIN decks d ON d.id = c.deck_id
-         WHERE {conditions}
-         ORDER BY r.reviewed_at DESC, r.created_at DESC, r.id DESC
-         LIMIT {RECENT_REVIEW_LIMIT}",
+        "WITH recent_reviews AS (
+             SELECT
+                 r.id,
+                 d.name AS deck_name,
+                 a.captured_deck_name,
+                 r.card_id,
+                 a.card_label,
+                 a.question_excerpt,
+                 r.confidence,
+                 r.rating,
+                 r.response_time_ms,
+                 r.reviewed_at,
+                 a.review_local_date,
+                 r.due_after,
+                 a.attribution_source,
+                 r.created_at
+             FROM review_events r
+             JOIN review_event_attributions a ON a.review_event_id = r.id
+             JOIN cards c ON c.id = r.card_id
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
+             WHERE {conditions}
+             ORDER BY r.reviewed_at DESC, r.created_at DESC, r.id DESC
+             LIMIT {RECENT_REVIEW_LIMIT}
+         ),
+         current_tag_ids AS (
+             SELECT DISTINCT nt.tag_id
+             FROM note_tags nt
+             JOIN notes current_note ON current_note.id = nt.note_id
+             JOIN decks current_deck ON current_deck.id = current_note.deck_id
+             WHERE current_note.deleted_at IS NULL
+               AND current_deck.deleted_at IS NULL
+               AND current_deck.archived_at IS NULL
+         )
+         SELECT
+             recent.id,
+             recent.deck_name,
+             recent.captured_deck_name,
+             recent.card_id,
+             recent.card_label,
+             recent.question_excerpt,
+             recent.confidence,
+             recent.rating,
+             recent.response_time_ms,
+             recent.reviewed_at,
+             recent.review_local_date,
+             recent.due_after,
+             recent.attribution_source,
+             rta.tag_id,
+             CASE
+                 WHEN current_tag_ids.tag_id IS NOT NULL THEN tags.name
+                 ELSE rta.tag_name
+             END AS resolved_tag_name,
+             CASE
+                 WHEN rta.tag_id IS NULL THEN NULL
+                 ELSE current_tag_ids.tag_id IS NOT NULL
+             END AS is_current,
+             recent.created_at
+         FROM recent_reviews recent
+         LEFT JOIN review_event_tag_attributions rta
+           ON rta.review_event_id = recent.id
+         LEFT JOIN current_tag_ids ON current_tag_ids.tag_id = rta.tag_id
+         LEFT JOIN tags ON tags.id = current_tag_ids.tag_id
+         ORDER BY recent.reviewed_at DESC, recent.created_at DESC, recent.id DESC,
+                  resolved_tag_name COLLATE NOCASE ASC, rta.tag_id ASC",
         conditions = conditions.join(" AND "),
     );
     let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
-    let reviews = statement
+    let flattened = statement
         .query_map(params_from_iter(values.iter()), |row| {
-            let grouped: String = row.get(6)?;
-            Ok(RecentReviewDto {
-                id: row.get(0)?,
-                deck_name: row.get(1)?,
-                captured_deck_name: row.get(2)?,
-                card_id: row.get(3)?,
-                card_label: row.get(4)?,
-                question_excerpt: row.get(5)?,
-                tags: split_grouped(&grouped),
-                outcome: row.get(7)?,
-                rating: row.get(8)?,
-                response_time_ms: row.get(9)?,
-                reviewed_at: row.get(10)?,
-                review_local_date: row.get(11)?,
-                due_after: row.get(12)?,
-                attribution_source: row.get(13)?,
-            })
+            let tag_id = row.get::<_, Option<String>>(13)?;
+            let tag_name = row.get::<_, Option<String>>(14)?;
+            let is_current = row.get::<_, Option<i64>>(15)?;
+            let tag = match (tag_id, tag_name, is_current) {
+                (None, None, None) => None,
+                (Some(tag_id), Some(tag_name), Some(is_current)) => Some(RecentReviewTagDto {
+                    tag_id,
+                    tag_name,
+                    is_current: is_current != 0,
+                }),
+                _ => {
+                    return Err(rusqlite::Error::InvalidColumnType(
+                        13,
+                        "recent review tag tuple".to_string(),
+                        rusqlite::types::Type::Null,
+                    ));
+                }
+            };
+            Ok((
+                RecentReviewDto {
+                    id: row.get(0)?,
+                    deck_name: row.get(1)?,
+                    captured_deck_name: row.get(2)?,
+                    card_id: row.get(3)?,
+                    card_label: row.get(4)?,
+                    question_excerpt: row.get(5)?,
+                    tags: Vec::new(),
+                    outcome: row.get(6)?,
+                    rating: row.get(7)?,
+                    response_time_ms: row.get(8)?,
+                    reviewed_at: row.get(9)?,
+                    review_local_date: row.get(10)?,
+                    due_after: row.get(11)?,
+                    attribution_source: row.get(12)?,
+                },
+                tag,
+            ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
+
+    let mut reviews = Vec::<RecentReviewDto>::new();
+    for (mut review, tag) in flattened {
+        if let Some(previous) = reviews.last_mut() {
+            if previous.id == review.id {
+                if let Some(tag) = tag {
+                    previous.tags.push(tag);
+                }
+                continue;
+            }
+        }
+        if let Some(tag) = tag {
+            review.tags.push(tag);
+        }
+        reviews.push(review);
+    }
     Ok(reviews)
 }
 
@@ -241,12 +309,4 @@ pub fn load_dimension_options(
         tag_options
     };
     Ok(AnalyticsDimensionOptionsDto { decks, tags })
-}
-
-fn split_grouped(value: &str) -> Vec<String> {
-    value
-        .split(TAG_SEPARATOR)
-        .filter(|item| !item.is_empty())
-        .map(str::to_string)
-        .collect()
 }

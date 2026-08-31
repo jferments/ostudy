@@ -170,7 +170,10 @@ function analyticsForRange(
         cardId: "d".repeat(32),
         cardLabel: "Basic",
         questionExcerpt: "What rhythm has no P waves?",
-        tags: ["Arrhythmias"],
+        tags: [
+          { tagId: "f".repeat(32), tagName: "Shared name", isCurrent: true },
+          { tagId: "0".repeat(32), tagName: "Shared name", isCurrent: false },
+        ],
         outcome: "somewhat_confident",
         rating: 3,
         responseTimeMs: 4000,
@@ -263,6 +266,8 @@ describe("AnalyticsScreen", () => {
     expect(screen.getByRole("img", { name: "Learning progress chart" })).toBeTruthy();
     expect(screen.getAllByText("Arrhythmias").length).toBeGreaterThan(0);
     expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.getAllByText(/Shared name/)).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Shared name" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "View chart data" }));
     expect(

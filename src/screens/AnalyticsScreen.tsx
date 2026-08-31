@@ -449,7 +449,16 @@ export function AnalyticsScreen({
                       {review.capturedDeckName !== review.deckName ? (
                         <small>Reviewed while named “{review.capturedDeckName}”</small>
                       ) : null}
-                      {review.tags.length > 0 ? <small>{review.tags.join(" · ")}</small> : null}
+                      {review.tags.length > 0 ? (
+                        <small>
+                          {review.tags.map((tag, index) => (
+                            <span key={tag.tagId}>
+                              {index > 0 ? " · " : null}
+                              {tag.tagName}
+                            </span>
+                          ))}
+                        </small>
+                      ) : null}
                     </div>
                     <div className={ownedClassNames(ownedStyleMaps, "recent-review-meta")}>
                       <strong>{formatDuration(review.responseTimeMs)}</strong>
