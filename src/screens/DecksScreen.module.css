@@ -110,6 +110,9 @@
       align-items: flex-start;
       gap: var(--ostudy-space-3);
   }
+  .deck-title-line > :last-child {
+    flex: 0 0 auto;
+  }
   .deck-title-row h1 {
     margin: 0;
       min-width: 0;
