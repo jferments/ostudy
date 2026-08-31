@@ -79,7 +79,7 @@ fi
 OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA="$APP_DATA_DIR" \
   cargo test --manifest-path "$ROOT_DIR/src-tauri/Cargo.toml" --locked --all-features --lib \
     "$FIXTURE_TEST" \
-    -- --exact
+    -- --exact --ignored
 
 printf '[ui-performance] Building isolated React profiling application\n'
 (

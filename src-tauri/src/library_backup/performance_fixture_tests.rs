@@ -183,6 +183,7 @@ fn insert_document(
 }
 
 #[test]
+#[ignore = "fixture generator requires OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA"]
 pub fn writes_stage_0_ui_performance_pending_restore() {
     let app_data = std::env::var_os("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA")
         .map(PathBuf::from)
@@ -340,6 +341,7 @@ pub fn writes_stage_0_ui_performance_pending_restore() {
 }
 
 #[test]
+#[ignore = "fixture generator requires OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA"]
 pub fn writes_stage_4a_large_library_drag_pending_restore() {
     let app_data = std::env::var_os("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA")
         .map(PathBuf::from)
