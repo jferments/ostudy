@@ -1086,6 +1086,21 @@ def verify_deck_detail_header(
                   return bounds.left >= headerRect.left - 1
                     && bounds.right <= headerRect.right + 1;
                 });
+                const openTooltips = [...header.querySelectorAll('[role="tooltip"]')];
+                const tooltipDisplays = openTooltips.map((tooltip) => tooltip.style.display);
+                let persistentHeaderScrollWidth;
+                let persistentHeaderClientWidth;
+                try {
+                  openTooltips.forEach((tooltip) => {
+                    tooltip.style.display = 'none';
+                  });
+                  persistentHeaderScrollWidth = header.scrollWidth;
+                  persistentHeaderClientWidth = header.clientWidth;
+                } finally {
+                  openTooltips.forEach((tooltip, index) => {
+                    tooltip.style.display = tooltipDisplays[index];
+                  });
+                }
                 const above = (upper, lower) => upper.bottom <= lower.top + 1;
                 return {
                   mode: actions.dataset.layoutMode,
@@ -1104,7 +1119,11 @@ def verify_deck_detail_header(
                     && geometry.titleRow.width >= headerRect.width - 2,
                   geometry,
                   contained,
-                  noHeaderOverflow: header.scrollWidth <= header.clientWidth,
+                  excludedOpenTooltipCount: openTooltips.length,
+                  persistentHeaderScrollWidth,
+                  persistentHeaderClientWidth,
+                  noHeaderOverflow:
+                    persistentHeaderScrollWidth <= persistentHeaderClientWidth,
                   noDocumentOverflow:
                     document.documentElement.scrollWidth <= document.documentElement.clientWidth,
                 };
