@@ -1371,7 +1371,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 )
 
         self.assertEqual(["pointerdown", "pointermove", "pointercancel"], dispatches)
-        finish.assert_not_called()
+        finish.assert_called_once_with("session-1")
         release.assert_called_once_with("session-1")
 
     def test_candidate_post_pointerdown_cleanup_preserves_the_primary_failure(self) -> None:
