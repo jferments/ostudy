@@ -26,10 +26,33 @@
     box-shadow: var(--ostudy-shadow-focus);
   }
 
-  .item[data-drag-over="deck"] {
+  .item[data-drag-state="valid"] {
     border-color: var(--ostudy-color-border-accent);
     box-shadow: var(--ostudy-shadow-focus);
     transform: translateY(2px);
+  }
+
+  .item[data-drag-state="noop"] {
+    border-color: var(--ostudy-color-status-warning);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-warning) 35%, transparent);
+  }
+
+  .item[data-drag-state="invalid"] {
+    border-color: var(--ostudy-color-status-danger);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
+  }
+
+  .item[data-drag-insertion]::before {
+    position: absolute;
+    inset: -4px var(--ostudy-space-3) auto;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--ostudy-color-border-accent);
+    content: "";
+  }
+
+  .item[data-drag-insertion] {
+    position: relative;
   }
 
   .selection {

@@ -47,6 +47,15 @@ Read-only verification:
 ./scripts/ui-performance-baselines.sh verify
 ```
 
+Normal `verify` is source-sensitive: it compares every measurement-sensitive
+file in the current tree with the manifest's recorded Stage 0 source and fails
+when those bytes drift. A separate structural check verifies the immutable
+reference at its own recorded identity without impersonating that source:
+
+```bash
+./scripts/ui-performance-baselines.sh verify-reference
+```
+
 Explicit capture on the clean reviewed harness checkpoint (native build, Xvfb, WebKitWebDriver, and `tauri-driver` required):
 
 ```bash
@@ -58,6 +67,27 @@ Read-only comparison of a compatible candidate evidence directory:
 ```bash
 ./scripts/ui-performance-baselines.sh compare /absolute/path/to/candidate
 ```
+
+Stage 4A adds safer candidate-only entry points without changing the committed
+reference evidence:
+
+```bash
+./scripts/ui-performance-baselines.sh capture-candidate /absolute/new/output-directory
+./scripts/ui-performance-baselines.sh compare-candidate /absolute/path/to/candidate
+```
+
+`capture-candidate` requires a clean committed HEAD and a new absolute output
+path outside the repository. It rejects symlink aliases, the committed
+reference tree, and existing destinations; uses the distinct
+`ui-workflow-redesign-stage-4a-deck-drag-large-library` evidence identity and
+large-library fixture; captures only `deck-drag-v1` with three warmups and
+twelve samples; verifies a sibling staging tree; and installs it with an atomic
+no-replace rename. It never invokes another performance scenario, updates the
+roadmap, or changes committed reference evidence. `compare-candidate` is
+read-only, requires compatible source and environment identity, and evaluates
+only the committed drag limits for avoidable React commits, visible feedback,
+and maximum pointer-frame work. It returns nonzero when any of those three
+limits fails.
 
 Verification and comparison never rewrite evidence. Capture stages all JSON in a sibling temporary directory, strictly verifies it, replaces the canonical tree only after success, and then checks exactly the two open Stage 0D roadmap rows. The verifier rejects duplicate JSON keys and entries, missing/extra scenarios or files, non-finite/malformed values, applicability errors, stale ordinals/budgets/versions/source SHA, noncanonical paths, hash mismatches, and incompatible reference-runtime metadata.
 

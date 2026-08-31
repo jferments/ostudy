@@ -9,9 +9,19 @@
       box-shadow var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
   }
 
-  .folder[data-drag-over] {
+  .folder[data-drag-state="valid"] {
     border-color: var(--ostudy-color-border-accent);
     box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .folder[data-drag-state="noop"] {
+    border-color: var(--ostudy-color-status-warning);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-warning) 35%, transparent);
+  }
+
+  .folder[data-drag-state="invalid"] {
+    border-color: var(--ostudy-color-status-danger);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
   }
 
   .header {
@@ -22,7 +32,7 @@
     gap: var(--ostudy-space-2);
   }
 
-  .dragHandle {
+  .keyboardReorder {
     display: grid;
     width: 34px;
     height: 42px;
@@ -30,21 +40,16 @@
     place-items: center;
     border-radius: var(--ostudy-radius-small);
     color: var(--ostudy-color-text-muted);
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
+    border: 0;
+    background: transparent;
   }
 
-  .dragHandle:hover {
+  .keyboardReorder:hover:not(:disabled) {
     background: var(--ostudy-color-surface-soft);
     color: var(--ostudy-color-text-primary);
   }
 
-  .dragHandle:active {
-    cursor: grabbing;
-  }
-
-  .dragHandle:focus-visible {
+  .keyboardReorder:focus-visible {
     outline: none;
     box-shadow: var(--ostudy-shadow-focus);
   }
@@ -199,7 +204,7 @@
     min-height: var(--ostudy-size-touch-target);
   }
 
-  :global(:root[data-input-mode="coarse"]) .dragHandle {
+  :global(:root[data-input-mode="coarse"]) .keyboardReorder {
     width: var(--ostudy-size-touch-target);
     min-width: var(--ostudy-size-touch-target);
   }

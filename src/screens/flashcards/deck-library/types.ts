@@ -1,7 +1,7 @@
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckFolder } from "../../../ipc/deckFolders";
 
-export type LibraryMoveSource = "keyboard" | "html-drag" | "pointer" | "fallback";
+export type LibraryMoveSource = "keyboard" | "pointer" | "fallback";
 
 export type LibraryMoveIntent =
   | {

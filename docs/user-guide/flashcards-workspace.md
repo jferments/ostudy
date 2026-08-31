@@ -27,21 +27,26 @@ Folders do not own cards and do not change scheduling or analytics. Deleting a f
 
 ### Dragging and keyboard organization
 
-Use the dedicated drag handle to:
+Start a pointer drag from any open, non-interactive part of an active deck or
+folder row to:
 
 - reorder a folder;
 - reorder a deck within its current group;
 - move a deck into another folder;
 - move a deck into **Unsorted decks**.
 
-Touch dragging uses the same durable organization command as mouse dragging. A highlighted drop target shows where the folder or deck will be placed.
+Buttons, checkboxes, menus, links, editable content, and selected text remain
+ordinary interactions. Touch, pen, and mouse dragging use the same validated
+organization path. The preview and highlighted target identify the destination
+and insertion position before a move is saved.
 
-Dragging is not required. Focus a folder handle and use:
+Dragging is not required. Focus a folder’s keyboard reorder control and use:
 
 - **Up** or **Down** to move one position;
 - **Home** or **End** to move to the beginning or end.
 
-Focus a deck handle and use:
+Screen-reader move actions and the selected-deck **Move selected** sheet remain
+available for deck movement. Keyboard movement retains:
 
 - **Up**, **Down**, **Home**, or **End** within the current group;
 - **Left** or **Right** to move between folder groups and Unsorted decks.
@@ -56,9 +61,7 @@ Collapse state is presentational only. It does not alter folder membership, deck
 
 ### Compact deck rows
 
-Deck rows use one compact presentation on desktop, tablet, and mobile. There is no Comfortable/Compact preference. The compact visual spacing does not reduce keyboard focus, drag handles, or coarse-pointer touch targets.
-
-The drag handle is identified by its grip icon, focus ring, pointer feedback, and accessible instructions; it does not use a permanent vertical separator.
+Deck rows use one compact presentation on desktop, tablet, and mobile. There is no Comfortable/Compact preference. The compact visual spacing does not reduce keyboard focus, pointer movement surfaces, or coarse-pointer touch targets.
 
 ### Practice buttons
 

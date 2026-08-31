@@ -310,6 +310,10 @@ The effects layer is pointer-transparent, does not affect layout, uses named UI 
 - Keyboard shortcuts do not fire while an overlay is active or focus is inside an interactive editor/control.
 - Core actions do not require hover or long-press.
 - Drag-and-drop enhancements retain button and keyboard alternatives.
+- Deck-library pointer movement is transient presentation state. One thresholded
+  fine/coarse pointer session owns capture, cached geometry, bounded hover
+  expansion and edge scrolling, and semantic feedback; only its final validated
+  `LibraryMoveIntent` crosses into the existing controller mutation path.
 - Loading, empty, error, success, and committed-but-not-reconciled states remain explicit.
 - A busy operation explains what is happening and whether cancellation or dismissal is safe.
 - Dense tables and charts retain semantic text or table equivalents.

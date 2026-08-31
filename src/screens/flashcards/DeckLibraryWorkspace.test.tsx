@@ -535,7 +535,7 @@ describe("DeckLibraryWorkspace", () => {
     );
   });
 
-  it("reorders folders with the drag-handle keyboard alternative", async () => {
+  it("reorders folders with the retained keyboard alternative", async () => {
     const secondFolder = {
       ...folder,
       id: "g".repeat(32),

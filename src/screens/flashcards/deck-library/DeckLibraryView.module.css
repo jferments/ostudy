@@ -88,18 +88,6 @@
     gap: var(--ostudy-space-4);
   }
 
-  .folderDropTail {
-    min-height: 12px;
-    border: 1px dashed transparent;
-    border-radius: var(--ostudy-radius-medium);
-  }
-
-  .folderDropTail[data-drag-over="folder"] {
-    min-height: 44px;
-    border-color: var(--ostudy-color-border-accent);
-    background: var(--ostudy-color-accent-soft);
-  }
-
   .emptyFolderHint {
     display: flex;
     min-height: 68px;
@@ -109,9 +97,19 @@
     color: var(--ostudy-color-text-muted);
   }
 
-  .unsortedArea[data-drag-over="deck"] {
+  .unsortedArea[data-drag-state="valid"] {
     border-radius: var(--ostudy-radius-large);
     box-shadow: var(--ostudy-shadow-focus);
+  }
+
+  .unsortedArea[data-drag-state="noop"] {
+    border-radius: var(--ostudy-radius-large);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-warning) 35%, transparent);
+  }
+
+  .unsortedArea[data-drag-state="invalid"] {
+    border-radius: var(--ostudy-radius-large);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
   }
 
   @container deck-library (max-width: 620px) {

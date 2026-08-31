@@ -106,6 +106,12 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         "//main//h2[normalize-space(.)='Folders']",
         deadline,
     )
+    pointer_surface = webdriver.find_element(
+        session_id,
+        "css selector",
+        "main [data-deck-library-pointer-surface='true']",
+        deadline,
+    )
     new_folder = webdriver.find_element(
         session_id,
         "xpath",
@@ -124,6 +130,7 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         const heading = arguments[0];
         const folder = arguments[1];
         const deck = arguments[2];
+        const pointerSurface = arguments[3];
         const folderSection = heading.closest('section');
         const folderActions = folder.parentElement;
         const deckActions = deck.parentElement;
@@ -133,7 +140,8 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
           !(deck instanceof HTMLElement) ||
           !(folderSection instanceof HTMLElement) ||
           !(folderActions instanceof HTMLElement) ||
-          !(deckActions instanceof HTMLElement)
+          !(deckActions instanceof HTMLElement) ||
+          !(pointerSurface instanceof HTMLElement)
         ) {
           return null;
         }
@@ -176,12 +184,16 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
           viewport,
           folderActions: controlMetrics(folderActions),
           deckActions: controlMetrics(deckActions),
+          pointerSurfacePresent: pointerSurface.dataset.deckLibraryPointerSurface === 'true',
+          pointerRowCount: pointerSurface.querySelectorAll('[data-library-row]').length,
+          obsoleteDraggableHandleCount: pointerSurface.querySelectorAll('[draggable="true"][aria-label^="Reorder "]').length,
         };
         """,
         [
             {webdriver.ELEMENT_KEY: folders_heading},
             {webdriver.ELEMENT_KEY: new_folder},
             {webdriver.ELEMENT_KEY: new_deck},
+            {webdriver.ELEMENT_KEY: pointer_surface},
         ],
     )
     if not isinstance(measurements, dict):
@@ -190,6 +202,10 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         raise AssertionError(
             f"New folder was not placed inside the Folders section at {width}px: {measurements!r}"
         )
+    if measurements["pointerSurfacePresent"] is not True:
+        raise AssertionError(f"Deck pointer session surface was unavailable at {width}px: {measurements!r}")
+    if int(measurements["obsoleteDraggableHandleCount"]) != 0:
+        raise AssertionError(f"An obsolete draggable-handle contract remained at {width}px: {measurements!r}")
     if measurements["deckInFoldersSection"] is True:
         raise AssertionError(
             f"New deck was incorrectly moved into the Folders section at {width}px: {measurements!r}"
@@ -261,7 +277,7 @@ def main() -> int:
             "Native Flashcards layout smoke passed: compact tabs form a centered 2x2 "
             "layout without horizontal scrolling, New folder stays inside the Folders section, "
             "New deck remains in the top toolbar, and visible action controls stay contained "
-            "without clipped labels."
+            "without clipped labels, and the row pointer-session surface has no obsolete draggable handle."
         )
         return 0
     except Exception:

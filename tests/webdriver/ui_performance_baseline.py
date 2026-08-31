@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import http.client
 import json
@@ -28,9 +30,11 @@ import ui_platform_smoke as ui
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BASELINE_DIR = ROOT_DIR / "tests/performance-baselines/ui-workflow-redesign-stage-0"
 BASELINE_ID = "ui-workflow-redesign-stage-0"
+CANDIDATE_ID = "ui-workflow-redesign-stage-4a-deck-drag-large-library"
 SCHEMA_VERSION = 1
 INSTRUMENTATION_VERSION = "ui-performance-v1"
 FIXTURE_VERSION = "ui-performance-fixture-v1"
+CANDIDATE_FIXTURE_VERSION = "ui-performance-large-library-drag-v1"
 WARMUP_COUNT = 3
 SAMPLE_COUNT = 12
 SCENARIOS = (
@@ -41,6 +45,7 @@ SCENARIOS = (
     "study-guide-open-v1",
     "active-practice-progress-v1",
 )
+CANDIDATE_SCENARIOS = ("deck-drag-v1",)
 POINTER_SCENARIOS = {"navigation-hover-v1", "deck-drag-v1"}
 BOUNDARIES = {"navigation", "documents", "deck-library", "practice-setup", "guide-library", "guide-dialog", "active-practice"}
 EXPECTED_BOUNDARIES = {
@@ -68,6 +73,10 @@ PRACTICE_SETUP_STATE_KEYS = {
 }
 PRACTICE_WORKLOAD_PHASES = {"unavailable", "idle", "empty", "updating", "error", "settled"}
 ROADMAP_PATH = ROOT_DIR / "docs/development/ui-workflow-redesign-roadmap.md"
+LARGE_LIBRARY_DRAG_XPATH = (
+    "//main//*[@data-library-row='deck' and "
+    "@data-item-name='Large library drag source']"
+)
 MEASUREMENT_KEYS = {
     "schemaVersion", "baselineId", "sourceSha", "instrumentationVersion",
     "fixtureVersion", "scenarioId", "scenarioVersion", "samples",
@@ -82,6 +91,17 @@ MEASUREMENT_SENSITIVE_PATHS = (
     "src-tauri/src/library_backup/performance_fixture_tests.rs",
     "scripts/ui-performance-baselines.sh", "tests/webdriver/smoke.py",
     "tests/webdriver/ui_performance_baseline.py",
+)
+CANDIDATE_SENSITIVE_PATHS = (
+    *MEASUREMENT_SENSITIVE_PATHS,
+    "src/screens/flashcards/deck-library/dragSessionModel.ts",
+    "src/screens/flashcards/deck-library/pointerDragSession.ts",
+    "src/screens/flashcards/deck-library/useDeckLibraryPointerSession.ts",
+    "src/screens/flashcards/deck-library/useDeckLibraryReorder.ts",
+    "src/screens/flashcards/deck-library/DeckItem.tsx",
+    "src/screens/flashcards/deck-library/FolderSection.tsx",
+    "src/screens/flashcards/deck-library/DeckLibraryView.tsx",
+    "src/screens/flashcards/deck-library/LibraryDragFeedback.tsx",
 )
 
 
@@ -160,10 +180,28 @@ def current_source_sha() -> str:
     return sha
 
 
-def assert_measurement_sources_unchanged(source_sha: str) -> None:
+def assert_clean_committed_head(source_sha: str) -> None:
+    if current_source_sha() != source_sha:
+        fail("Candidate source identity must equal the current committed HEAD.")
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=ROOT_DIR,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if status.stdout:
+        fail("Candidate capture requires a clean committed HEAD.")
+
+
+def assert_measurement_sources_unchanged(
+    source_sha: str,
+    sensitive_paths: tuple[str, ...] = MEASUREMENT_SENSITIVE_PATHS,
+) -> None:
     if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
         fail(f"manifest.sourceSha is not a Git commit SHA: {source_sha!r}.")
-    for relative in MEASUREMENT_SENSITIVE_PATHS:
+    for relative in sensitive_paths:
         committed = subprocess.run(
             ["git", "show", f"{source_sha}:{relative}"], cwd=ROOT_DIR, check=False,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -242,13 +280,20 @@ def verify_sample(sample: Any, scenario: str, ordinal: int) -> None:
             finite(value, f"{scenario}.pointer.{key}", integer=key in {"eventCount", "frameCount"})
 
 
-def verify_measurement(path: Path, scenario: str, source_sha: str) -> dict[str, Any]:
+def verify_measurement(
+    path: Path,
+    scenario: str,
+    source_sha: str,
+    *,
+    evidence_id: str = BASELINE_ID,
+    fixture_version: str = FIXTURE_VERSION,
+) -> dict[str, Any]:
     measurement = load_json(path)
     exact_keys(measurement, MEASUREMENT_KEYS, path.name)
     expected = {
-        "schemaVersion": SCHEMA_VERSION, "baselineId": BASELINE_ID,
+        "schemaVersion": SCHEMA_VERSION, "baselineId": evidence_id,
         "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION,
-        "fixtureVersion": FIXTURE_VERSION, "scenarioId": scenario, "scenarioVersion": scenario,
+        "fixtureVersion": fixture_version, "scenarioId": scenario, "scenarioVersion": scenario,
     }
     for key, value in expected.items():
         if measurement[key] != value: fail(f"{path.name}.{key} drifted: expected {value!r}, received {measurement[key]!r}.")
@@ -365,6 +410,121 @@ def verify_baseline(baseline_dir: Path = BASELINE_DIR, *, expected_source_sha: s
     return {"manifest": manifest, "measurements": measurements, "budgets": budgets}
 
 
+def verify_reference(baseline_dir: Path = BASELINE_DIR) -> dict[str, Any]:
+    """Structurally verify the immutable reference at its recorded source identity."""
+    manifest = load_json(baseline_dir / "manifest.json")
+    return verify_baseline(baseline_dir, expected_source_sha=manifest.get("sourceSha"))
+
+
+def verify_drag_candidate(
+    candidate_dir: Path,
+    *,
+    expected_source_sha: str | None = None,
+) -> dict[str, Any]:
+    candidate_dir = candidate_dir.resolve()
+    manifest = load_json(candidate_dir / "manifest.json")
+    exact_keys(
+        manifest,
+        {
+            "schemaVersion", "baselineId", "sourceSha", "instrumentationVersion",
+            "fixtureVersion", "warmupCount", "sampleCount", "scenarioVersions",
+            "captureEnvironment", "measurements",
+        },
+        "candidate manifest",
+    )
+    source_sha = manifest["sourceSha"]
+    if not isinstance(source_sha, str) or re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+        fail(f"candidate manifest.sourceSha is not a Git commit SHA: {source_sha!r}.")
+    if expected_source_sha is None:
+        if source_sha != current_source_sha():
+            fail("Candidate source identity must equal the current committed HEAD.")
+        assert_measurement_sources_unchanged(source_sha, CANDIDATE_SENSITIVE_PATHS)
+    elif source_sha != expected_source_sha:
+        fail(
+            "candidate manifest.sourceSha drifted: "
+            f"expected {expected_source_sha!r}, received {source_sha!r}."
+        )
+    expected_identity = {
+        "schemaVersion": SCHEMA_VERSION,
+        "baselineId": CANDIDATE_ID,
+        "sourceSha": source_sha,
+        "instrumentationVersion": INSTRUMENTATION_VERSION,
+        "fixtureVersion": CANDIDATE_FIXTURE_VERSION,
+        "warmupCount": WARMUP_COUNT,
+        "sampleCount": SAMPLE_COUNT,
+    }
+    for key, value in expected_identity.items():
+        if manifest[key] != value:
+            fail(
+                f"candidate manifest.{key} drifted: "
+                f"expected {value!r}, received {manifest[key]!r}."
+            )
+    scenario_versions = {scenario: scenario for scenario in CANDIDATE_SCENARIOS}
+    if manifest["scenarioVersions"] != scenario_versions:
+        fail("Candidate must contain only the deck-drag-v1 scenario identity.")
+
+    environment = manifest["captureEnvironment"]
+    if not isinstance(environment, dict):
+        fail("candidate captureEnvironment must be an object.")
+    exact_keys(
+        environment,
+        {
+            "viewport", "theme", "scalePercent", "motion", "materials", "pointer",
+            "devicePixelRatio", "display", "applicationSha256", "python", "platform",
+            "tauriDriver", "webkitWebDriver", "xvfb", "reactProfilingBuild",
+        },
+        "candidate captureEnvironment",
+    )
+    if environment["viewport"] != VIEWPORT or environment["display"] != DISPLAY:
+        fail("Candidate viewport/display metadata drifted from the reference contract.")
+    if {
+        key: environment[key]
+        for key in ("theme", "scalePercent", "motion", "materials", "pointer", "reactProfilingBuild")
+    } != {
+        "theme": "light", "scalePercent": 100, "motion": "full",
+        "materials": "rich", "pointer": "fine", "reactProfilingBuild": True,
+    }:
+        fail("Candidate runtime metadata drifted from the fixed reference contract.")
+    finite(environment["devicePixelRatio"], "candidate captureEnvironment.devicePixelRatio")
+    if re.fullmatch(r"[0-9a-f]{64}", str(environment["applicationSha256"])) is None:
+        fail("candidate captureEnvironment.applicationSha256 must be a SHA-256 digest.")
+
+    entries = manifest["measurements"]
+    if not isinstance(entries, list) or len(entries) != 1:
+        fail("Candidate manifest must reference exactly one deck-drag-v1 measurement.")
+    entry = entries[0]
+    if not isinstance(entry, dict):
+        fail("candidate measurements[0] must be an object.")
+    exact_keys(entry, {"scenarioId", "path", "sha256"}, "candidate measurements[0]")
+    scenario = CANDIDATE_SCENARIOS[0]
+    expected_path = canonical_measurement_path(scenario)
+    if entry["scenarioId"] != scenario or entry["path"] != expected_path:
+        fail("Candidate measurement must be the canonical deck-drag-v1 path.")
+    path = candidate_dir / expected_path
+    if sha256_file(path) != entry["sha256"]:
+        fail("Candidate deck-drag-v1 measurement hash mismatch.")
+    measurement = verify_measurement(
+        path,
+        scenario,
+        source_sha,
+        evidence_id=CANDIDATE_ID,
+        fixture_version=CANDIDATE_FIXTURE_VERSION,
+    )
+    expected_files = {"manifest.json", expected_path}
+    actual_files = {
+        str(path.relative_to(candidate_dir))
+        for path in candidate_dir.rglob("*")
+        if path.is_file()
+    }
+    if actual_files != expected_files:
+        fail(
+            "Candidate file set differs; "
+            f"missing={sorted(expected_files-actual_files)!r}, "
+            f"extra={sorted(actual_files-expected_files)!r}."
+        )
+    return {"manifest": manifest, "measurements": {scenario: measurement}}
+
+
 def metric_values(measurement: dict[str, Any], metric: str) -> list[float]:
     if metric == "avoidableReactCommitCount": return [float(s["react"]["avoidableCommitCount"]) for s in measurement["samples"]]
     if metric == "interactionToVisibleMs": return [float(s["interactionToVisible"]["valueMs"]) for s in measurement["samples"]]
@@ -391,6 +551,94 @@ def compare_baseline(candidate_dir: Path, baseline_dir: Path = BASELINE_DIR, *, 
         if value > float(entry["budget"]):
             failures.append(f"{entry['scenarioId']}:{entry['metric']} maximum {value:.3f} exceeds budget {float(entry['budget']):.3f}")
     return failures
+
+
+def compare_drag_candidate(
+    candidate_dir: Path,
+    baseline_dir: Path = BASELINE_DIR,
+    *,
+    expected_candidate_source_sha: str | None = None,
+) -> list[str]:
+    baseline = verify_reference(baseline_dir)
+    candidate = verify_drag_candidate(
+        candidate_dir,
+        expected_source_sha=expected_candidate_source_sha,
+    )
+    compatible_keys = (
+        "viewport", "theme", "scalePercent", "motion", "materials", "pointer",
+        "display", "python", "platform", "tauriDriver", "webkitWebDriver", "xvfb",
+        "reactProfilingBuild",
+    )
+    base_env = baseline["manifest"]["captureEnvironment"]
+    candidate_env = candidate["manifest"]["captureEnvironment"]
+    for key in compatible_keys:
+        if candidate_env[key] != base_env[key]:
+            fail(f"Candidate runtime metadata is not comparable: {key} differs.")
+    drag_budgets = [
+        entry
+        for entry in baseline["budgets"]["entries"]
+        if entry["scenarioId"] == CANDIDATE_SCENARIOS[0]
+    ]
+    expected_metrics = {
+        "avoidableReactCommitCount",
+        "interactionToVisibleMs",
+        "maxPointerFrameWorkMs",
+    }
+    if len(drag_budgets) != 3 or {entry["metric"] for entry in drag_budgets} != expected_metrics:
+        fail("Committed reference must expose exactly the three deck-drag-v1 limits.")
+    measurement = candidate["measurements"][CANDIDATE_SCENARIOS[0]]
+    failures: list[str] = []
+    for entry in drag_budgets:
+        value = max(metric_values(measurement, entry["metric"]))
+        if value > float(entry["budget"]):
+            failures.append(
+                f"{entry['scenarioId']}:{entry['metric']} maximum {value:.3f} "
+                f"exceeds budget {float(entry['budget']):.3f}"
+            )
+    return failures
+
+
+def validate_candidate_destination(destination: Path) -> Path:
+    if not destination.is_absolute():
+        fail("Candidate destination must be an explicit absolute path.")
+    if destination.exists() or destination.is_symlink():
+        fail("Candidate destination must not already exist.")
+    resolved_parent = destination.parent.resolve(strict=True)
+    resolved = resolved_parent / destination.name
+    repository = ROOT_DIR.resolve()
+    reference = BASELINE_DIR.resolve()
+    if resolved == reference or reference in resolved.parents:
+        fail("Candidate destination must not alias the committed reference tree.")
+    if resolved == repository or repository in resolved.parents:
+        fail("Candidate destination must be outside the repository.")
+    if destination.parent != resolved_parent:
+        fail("Candidate destination must not use a symlinked parent alias.")
+    return resolved
+
+
+def install_staged_candidate(staging: Path, destination: Path) -> None:
+    destination = validate_candidate_destination(destination)
+    if staging.parent.resolve() != destination.parent:
+        fail("Candidate staging must be a sibling of the destination.")
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        fail("Atomic no-replace installation is unavailable on this platform.")
+    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        -100,
+        os.fsencode(staging),
+        -100,
+        os.fsencode(destination),
+        1,
+    )
+    if result == 0:
+        return
+    error_number = ctypes.get_errno()
+    if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+        fail("Candidate destination appeared during capture; no files were overwritten.")
+    raise OSError(error_number, os.strerror(error_number), destination)
 
 
 def execute(session_id: str, script: str, args: list[Any] | None = None) -> Any:
@@ -506,20 +754,128 @@ def pointer_actions(
     session_id: str,
     element_id: str,
     *,
-    touch_drag: bool = False,
     release: bool = True,
 ) -> None:
-    pointer_type = "touch" if touch_drag else "mouse"
     actions: list[dict[str, Any]] = [{"type": "pointerMove", "duration": 0, "origin": {webdriver.ELEMENT_KEY: element_id}, "x": 0, "y": 0}]
-    if touch_drag:
-        actions.extend([
-            {"type": "pointerDown", "button": 0},
-            {"type": "pointerMove", "duration": 80, "origin": "pointer", "x": 24, "y": 16},
-            {"type": "pointerMove", "duration": 80, "origin": "viewport", "x": 1400, "y": 850},
-            {"type": "pointerCancel"},
-        ])
-    webdriver.request("POST", f"/session/{session_id}/actions", {"actions": [{"type": "pointer", "id": f"stage0-{pointer_type}", "parameters": {"pointerType": pointer_type}, "actions": actions}]})
+    webdriver.request("POST", f"/session/{session_id}/actions", {"actions": [{"type": "pointer", "id": "stage0-mouse", "parameters": {"pointerType": "mouse"}, "actions": actions}]})
     if release:
+        release_pointer_actions(session_id)
+
+
+def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
+    point = execute_read_only(
+        session_id,
+        """
+        const row = arguments[0];
+        if (!(row instanceof HTMLElement) || row.dataset.libraryRow !== 'deck') return null;
+        const rect = row.getBoundingClientRect();
+        const left = Math.max(0, Math.ceil(rect.left));
+        const right = Math.min(window.innerWidth - 1, Math.floor(rect.right));
+        const top = Math.max(0, Math.ceil(rect.top));
+        const bottom = Math.min(window.innerHeight - 1, Math.floor(rect.bottom));
+        for (let y = top; y <= bottom; y += 1) {
+          for (let x = left; x <= right; x += 1) {
+            if (document.elementFromPoint(x, y) === row) return {x, y};
+          }
+        }
+        return null;
+        """,
+        [{webdriver.ELEMENT_KEY: element_id}],
+    )
+    if (
+        not isinstance(point, dict)
+        or set(point) != {"x", "y"}
+        or not all(type(point[axis]) is int for axis in ("x", "y"))
+    ):
+        raise AssertionError("Deck drag source has no verified noninteractive row point.")
+    return {"x": point["x"], "y": point["y"]}
+
+
+def position_and_press_drag_pointer(session_id: str, point: dict[str, int]) -> None:
+    webdriver.request(
+        "POST",
+        f"/session/{session_id}/actions",
+        {
+            "actions": [{
+                "type": "pointer",
+                "id": "stage0-touch",
+                "parameters": {"pointerType": "touch"},
+                "actions": [
+                    {
+                        "type": "pointerMove",
+                        "duration": 0,
+                        "origin": "viewport",
+                        "x": point["x"],
+                        "y": point["y"],
+                    },
+                    {"type": "pointerDown", "button": 0},
+                ],
+            }],
+        },
+    )
+
+
+def activate_drag_pointer(session_id: str) -> None:
+    webdriver.request(
+        "POST",
+        f"/session/{session_id}/actions",
+        {
+            "actions": [{
+                "type": "pointer",
+                "id": "stage0-touch",
+                "parameters": {"pointerType": "touch"},
+                "actions": [{
+                    "type": "pointerMove",
+                    "duration": 80,
+                    "origin": "pointer",
+                    "x": 24,
+                    "y": 16,
+                }],
+            }],
+        },
+    )
+
+
+def cancel_drag_pointer(session_id: str) -> None:
+    webdriver.request(
+        "POST",
+        f"/session/{session_id}/actions",
+        {
+            "actions": [{
+                "type": "pointer",
+                "id": "stage0-touch",
+                "parameters": {"pointerType": "touch"},
+                "actions": [
+                    {
+                        "type": "pointerMove",
+                        "duration": 80,
+                        "origin": "viewport",
+                        "x": 1400,
+                        "y": 850,
+                    },
+                    {"type": "pointerCancel"},
+                ],
+            }],
+        },
+    )
+
+
+def collect_drag_sample(
+    session_id: str,
+    target: str,
+    scenario: str,
+    deadline: float,
+) -> dict[str, Any]:
+    point = find_safe_drag_point(session_id, target)
+    position_and_press_drag_pointer(session_id, point)
+    try:
+        arm(session_id, scenario, target)
+        activate_drag_pointer(session_id)
+        wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
+        cancel_drag_pointer(session_id)
+        wait_js(session_id, "!document.querySelector('[data-drag-preview]')", deadline)
+        return finish(session_id)
+    finally:
         release_pointer_actions(session_id)
 
 
@@ -842,9 +1198,13 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         wait_js(session_id, "document.querySelectorAll('main article').length === 2", deadline)
     elif scenario == "deck-drag-v1":
         navigate(session_id, "decks", "Flashcards")
-        target = webdriver.find_element(session_id, "css selector", "main [aria-label^='Reorder '][role='button']", deadline)
-        arm(session_id, scenario, target); pointer_actions(session_id, target, touch_drag=True)
-        wait_js(session_id, "document.querySelectorAll('[data-drag-over]').length === 0", deadline)
+        target = webdriver.find_element(
+            session_id,
+            "css selector",
+            "main [data-library-row='deck']",
+            deadline,
+        )
+        result = collect_drag_sample(session_id, target, scenario, deadline)
     elif scenario == "deck-selection-v1":
         navigate(session_id, "practice", "Practice")
         canonicalize_practice_setup(session_id, deadline)
@@ -875,7 +1235,7 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
         rate = webdriver.find_element(session_id, "xpath", "//main//button[contains(normalize-space(.),'Easy')]", deadline)
         arm(session_id, scenario, rate); webdriver.click(session_id, rate)
         wait_js(session_id, f"document.body.textContent.includes('{sample_index + 1} studied')", deadline)
-    if scenario != "deck-selection-v1":
+    if scenario not in {"deck-drag-v1", "deck-selection-v1"}:
         result = finish(session_id)
     # Reset non-durable interactions deterministically.
     if scenario == "navigation-hover-v1":
@@ -901,6 +1261,26 @@ def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[
     return result
 
 
+def collect_candidate_drag_scenario(session_id: str) -> dict[str, Any]:
+    """Collect only the large-library drag scenario from the initial Flashcards route."""
+    deadline = webdriver.deadline_after(30)
+    heading = execute_read_only(
+        session_id,
+        "return document.querySelector('main h1')?.textContent?.trim() ?? null;",
+    )
+    if heading != "Flashcards":
+        raise AssertionError(
+            f"Stage 4A drag candidate must start on Flashcards without navigation: {heading!r}"
+        )
+    target = webdriver.find_element(session_id, "xpath", LARGE_LIBRARY_DRAG_XPATH, deadline)
+    return collect_drag_sample(
+        session_id,
+        target,
+        CANDIDATE_SCENARIOS[0],
+        deadline,
+    )
+
+
 def install_staged_baseline(staging: Path, baseline_dir: Path) -> None:
     previous = baseline_dir.with_name(f".{baseline_dir.name}.previous-{os.getpid()}")
     if previous.exists(): shutil.rmtree(previous)
@@ -917,15 +1297,28 @@ def install_staged_baseline(staging: Path, baseline_dir: Path) -> None:
     if previous.exists(): shutil.rmtree(previous)
 
 
-def capture(application: Path, baseline_dir: Path, source_sha: str) -> None:
+def capture(
+    application: Path,
+    baseline_dir: Path,
+    source_sha: str,
+    *,
+    candidate: bool = False,
+) -> None:
+    if candidate:
+        baseline_dir = validate_candidate_destination(baseline_dir)
+        assert_clean_committed_head(source_sha)
+    scenarios = CANDIDATE_SCENARIOS if candidate else SCENARIOS
+    evidence_id = CANDIDATE_ID if candidate else BASELINE_ID
+    fixture_version = CANDIDATE_FIXTURE_VERSION if candidate else FIXTURE_VERSION
     baseline_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{baseline_dir.name}.capture-", dir=baseline_dir.parent))
     (staging / "measurements").mkdir()
     session_id: str | None = None
-    with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as log:
-        log_path = Path(log.name)
-        driver = subprocess.Popen(["tauri-driver"], stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
+    driver: subprocess.Popen[str] | None = None
+    log = tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False)
+    log_path = Path(log.name)
     try:
+        driver = subprocess.Popen(["tauri-driver"], stdout=log, stderr=subprocess.STDOUT, text=True, start_new_session=True)
         webdriver.wait_for_driver(webdriver.deadline_after(20))
         session_id = webdriver.create_session(application.resolve())
         webdriver.verify_shell(session_id, webdriver.deadline_after())
@@ -947,27 +1340,43 @@ def capture(application: Path, baseline_dir: Path, source_sha: str) -> None:
         if not isinstance(resolved, dict) or any(resolved.get(key) != value for key, value in expected_resolved.items()):
             raise AssertionError(f"Capture runtime did not resolve the fixed metadata contract: {resolved!r}")
         measurements: dict[str, dict[str, Any]] = {}
-        for scenario in SCENARIOS:
+        for scenario in scenarios:
             recorded: list[dict[str, Any]] = []
             for index in range(WARMUP_COUNT + SAMPLE_COUNT):
-                sample = collect_scenario(session_id, scenario, index if scenario == "active-practice-progress-v1" else 0)
+                sample = (
+                    collect_candidate_drag_scenario(session_id)
+                    if candidate
+                    else collect_scenario(
+                        session_id,
+                        scenario,
+                        index if scenario == "active-practice-progress-v1" else 0,
+                    )
+                )
                 if index >= WARMUP_COUNT:
                     sample["ordinal"] = index - WARMUP_COUNT + 1
                     recorded.append(sample)
-            measurement = {"schemaVersion": SCHEMA_VERSION, "baselineId": BASELINE_ID, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "fixtureVersion": FIXTURE_VERSION, "scenarioId": scenario, "scenarioVersion": scenario, "samples": recorded}
+            measurement = {"schemaVersion": SCHEMA_VERSION, "baselineId": evidence_id, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "fixtureVersion": fixture_version, "scenarioId": scenario, "scenarioVersion": scenario, "samples": recorded}
             path = staging / canonical_measurement_path(scenario)
             path.write_text(json.dumps(measurement, indent=2) + "\n", encoding="utf-8")
             measurements[scenario] = measurement
-        budgets = {"schemaVersion": SCHEMA_VERSION, "baselineId": BASELINE_ID, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "scenarioVersions": {s: s for s in SCENARIOS}, "rounding": "milliseconds-to-3-decimal-places", "entries": expected_budget_entries(measurements)}
-        budgets_path = staging / "budgets.json"; budgets_path.write_text(json.dumps(budgets, indent=2) + "\n", encoding="utf-8")
         environment = {**resolved, "display": DISPLAY, "applicationSha256": sha256_file(application), "python": platform.python_version(), "platform": platform.platform(), "tauriDriver": run_version(["tauri-driver", "--version"], "unavailable"), "webkitWebDriver": run_version(["WebKitWebDriver", "--version"], "unavailable"), "xvfb": run_version(["Xvfb", "-version"], "unavailable"), "reactProfilingBuild": True}
-        refs = [{"scenarioId": s, "path": canonical_measurement_path(s), "sha256": sha256_file(staging / canonical_measurement_path(s))} for s in SCENARIOS]
-        manifest = {"schemaVersion": SCHEMA_VERSION, "baselineId": BASELINE_ID, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "fixtureVersion": FIXTURE_VERSION, "warmupCount": WARMUP_COUNT, "sampleCount": SAMPLE_COUNT, "scenarioVersions": {s: s for s in SCENARIOS}, "captureEnvironment": environment, "measurements": refs, "budgets": {"path": "budgets.json", "sha256": sha256_file(budgets_path)}}
+        refs = [{"scenarioId": s, "path": canonical_measurement_path(s), "sha256": sha256_file(staging / canonical_measurement_path(s))} for s in scenarios]
+        manifest = {"schemaVersion": SCHEMA_VERSION, "baselineId": evidence_id, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "fixtureVersion": fixture_version, "warmupCount": WARMUP_COUNT, "sampleCount": SAMPLE_COUNT, "scenarioVersions": {s: s for s in scenarios}, "captureEnvironment": environment, "measurements": refs}
+        if not candidate:
+            budgets = {"schemaVersion": SCHEMA_VERSION, "baselineId": BASELINE_ID, "sourceSha": source_sha, "instrumentationVersion": INSTRUMENTATION_VERSION, "scenarioVersions": {s: s for s in SCENARIOS}, "rounding": "milliseconds-to-3-decimal-places", "entries": expected_budget_entries(measurements)}
+            budgets_path = staging / "budgets.json"
+            budgets_path.write_text(json.dumps(budgets, indent=2) + "\n", encoding="utf-8")
+            manifest["budgets"] = {"path": "budgets.json", "sha256": sha256_file(budgets_path)}
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-        verify_baseline(staging, expected_source_sha=source_sha)
-        install_staged_baseline(staging, baseline_dir)
+        if candidate:
+            verify_drag_candidate(staging, expected_source_sha=source_sha)
+            install_staged_candidate(staging, baseline_dir)
+        else:
+            verify_baseline(staging, expected_source_sha=source_sha)
+            install_staged_baseline(staging, baseline_dir)
         staging = Path()
-        update_roadmap_after_capture()
+        if not candidate:
+            update_roadmap_after_capture()
     except Exception:
         try: print(log_path.read_text(encoding="utf-8"))
         except OSError: pass
@@ -976,10 +1385,11 @@ def capture(application: Path, baseline_dir: Path, source_sha: str) -> None:
         if session_id:
             try: webdriver.delete_session(session_id)
             except Exception: pass
-        if driver.poll() is None:
+        if driver is not None and driver.poll() is None:
             os.killpg(driver.pid, signal.SIGTERM)
             try: driver.wait(timeout=5)
             except subprocess.TimeoutExpired: os.killpg(driver.pid, signal.SIGKILL); driver.wait(timeout=5)
+        log.close()
         log_path.unlink(missing_ok=True)
         if staging != Path() and staging.exists(): shutil.rmtree(staging)
 
@@ -1010,15 +1420,42 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     verify = sub.add_parser("verify"); verify.add_argument("--baseline-dir", type=Path, default=BASELINE_DIR); verify.add_argument("--source-sha")
+    verify_reference_parser = sub.add_parser("verify-reference"); verify_reference_parser.add_argument("--baseline-dir", type=Path, default=BASELINE_DIR)
     compare = sub.add_parser("compare"); compare.add_argument("--baseline-dir", type=Path, default=BASELINE_DIR); compare.add_argument("--candidate-dir", type=Path, required=True); compare.add_argument("--source-sha")
+    compare_candidate = sub.add_parser("compare-candidate"); compare_candidate.add_argument("--baseline-dir", type=Path, default=BASELINE_DIR); compare_candidate.add_argument("--candidate-dir", type=Path, required=True); compare_candidate.add_argument("--source-sha")
     capture_parser = sub.add_parser("capture"); capture_parser.add_argument("--baseline-dir", type=Path, default=BASELINE_DIR); capture_parser.add_argument("--application", type=Path, required=True); capture_parser.add_argument("--source-sha", required=True)
+    candidate_parser = sub.add_parser("capture-candidate"); candidate_parser.add_argument("--candidate-dir", type=Path, required=True); candidate_parser.add_argument("--application", type=Path, required=True); candidate_parser.add_argument("--source-sha", required=True)
+    validate_candidate = sub.add_parser("validate-candidate-path"); validate_candidate.add_argument("--candidate-dir", type=Path, required=True)
     args = parser.parse_args()
-    if args.command == "verify": verify_baseline(args.baseline_dir, expected_source_sha=args.source_sha); print("Verified Stage 0D performance baseline (read-only).")
+    if args.command == "verify":
+        verify_baseline(args.baseline_dir, expected_source_sha=args.source_sha)
+        print("Verified Stage 0D performance baseline against the current source (read-only).")
+    elif args.command == "verify-reference":
+        verify_reference(args.baseline_dir)
+        print("Verified immutable Stage 0D reference structure at its recorded source (read-only).")
     elif args.command == "compare":
         failures = compare_baseline(args.candidate_dir, args.baseline_dir, expected_source_sha=args.source_sha)
         if failures: raise PerformanceBaselineError("Performance budget comparison failed:\n" + "\n".join(failures))
         print("Candidate satisfies all comparable Stage 0D budgets (read-only).")
-    else: capture(args.application, args.baseline_dir, args.source_sha); print("Captured and verified Stage 0D performance baseline.")
+    elif args.command == "compare-candidate":
+        failures = compare_drag_candidate(
+            args.candidate_dir,
+            args.baseline_dir,
+            expected_candidate_source_sha=args.source_sha,
+        )
+        if failures:
+            raise PerformanceBaselineError(
+                "Stage 4A drag budget comparison failed:\n" + "\n".join(failures)
+            )
+        print("Stage 4A candidate satisfies all three deck-drag-v1 limits (read-only).")
+    elif args.command == "capture":
+        capture(args.application, args.baseline_dir, args.source_sha)
+        print("Captured and verified Stage 0D performance baseline.")
+    elif args.command == "capture-candidate":
+        capture(args.application, args.candidate_dir, args.source_sha, candidate=True)
+        print("Captured and atomically installed the verified Stage 4A candidate.")
+    else:
+        print(validate_candidate_destination(args.candidate_dir))
     return 0
 
 

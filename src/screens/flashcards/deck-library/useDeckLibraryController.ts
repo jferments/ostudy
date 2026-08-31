@@ -139,6 +139,7 @@ export interface DeckLibraryController {
   removeFolder(folderId: string): Promise<void>;
   move(intent: LibraryMoveIntent): Promise<void>;
   toggleFolder(folderId: string): void;
+  expandFolder(folderId: string): void;
   collapseAllFolders(): void;
   toggleArchived(): void;
 }
@@ -929,6 +930,14 @@ export function useDeckLibraryController({
         const next = new Set(current);
         if (next.has(folderId)) next.delete(folderId);
         else next.add(folderId);
+        return next;
+      });
+    },
+    expandFolder: (folderId: string) => {
+      setCollapsedFolderIds((current) => {
+        if (!current.has(folderId)) return current;
+        const next = new Set(current);
+        next.delete(folderId);
         return next;
       });
     },

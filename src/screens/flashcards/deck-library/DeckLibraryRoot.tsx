@@ -1,3 +1,5 @@
+import { useMemo, useRef } from "react";
+
 import { Icon } from "../../../ui/icons/Icon";
 import { Button } from "../../../ui/primitives/Button";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
@@ -13,6 +15,8 @@ import { useDeckLibraryReorder } from "./useDeckLibraryReorder";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import { practiceSelectionValidation } from "./practiceSetupModel";
+import { LibraryDragFeedback } from "./LibraryDragFeedback";
+import { useDeckLibraryPointerSession } from "./useDeckLibraryPointerSession";
 
 interface DeckLibraryRootProps {
   controller: DeckLibraryController;
@@ -175,12 +179,37 @@ function ReadyDeckLibrary({
 }: Pick<DeckLibraryRootProps, "controller" | "onPracticeDeck"> & {
   snapshot: DeckLibrarySnapshot;
 }) {
-  const reorder = useDeckLibraryReorder(snapshot, controller.isMutating, controller.move);
+  const libraryRef = useRef<HTMLDivElement | null>(null);
+  const structureKey = useMemo(
+    () =>
+      `${snapshot.organization.revision}:${snapshot.folders
+        .map((folder) => `${folder.id}:${controller.collapsedFolderIds.has(folder.id)}`)
+        .join("|")}:${snapshot.activeDecks.map((deck) => deck.id).join("|")}`,
+    [controller.collapsedFolderIds, snapshot],
+  );
+  const pointer = useDeckLibraryPointerSession(
+    libraryRef,
+    snapshot,
+    controller.isMutating,
+    structureKey,
+    controller.move,
+    controller.expandFolder,
+  );
+  const reorder = useDeckLibraryReorder(
+    snapshot,
+    controller.isMutating,
+    controller.move,
+    pointer.beginPointerSession,
+  );
   return (
-    <DeckLibraryView
-      controller={controller}
-      reorder={reorder}
-      onPracticeDeck={onPracticeDeck}
-    />
+    <>
+      <DeckLibraryView
+        controller={controller}
+        reorder={reorder}
+        libraryRef={libraryRef}
+        onPracticeDeck={onPracticeDeck}
+      />
+      <LibraryDragFeedback feedback={pointer.feedback} bindPreview={pointer.bindPreview} />
+    </>
   );
 }

@@ -169,19 +169,24 @@ without entering the versioned checkpoint or durable settings.
 
 ## Stage 4 — Deck and folder drag/drop reliability and performance
 
-- [ ] Keep all movement inputs routed through the existing `LibraryMoveIntent` and organization policy.
-- [ ] Allow drag initiation from any non-interactive area of a deck or folder row rather than a tiny move icon.
-- [ ] Exclude buttons, links, inputs, checkboxes, text selection, and overflow menus from drag initiation.
-- [ ] Add a small pointer activation threshold and pointer capture so clicks remain clicks and deliberate drags reliably “catch.”
-- [ ] Make the full visible folder row/card a valid drop target, including its padded area rather than only a narrow label region.
-- [ ] Add clear valid/invalid drop styling, insertion location, destination folder name, and screen-reader announcements.
-- [ ] Add hover-to-expand and edge auto-scroll with bounded timers and cancellation.
-- [ ] Keep keyboard move controls and the touch/mobile Move sheet as equal, tested alternatives.
-- [ ] Separate transient drag-preview state from persisted organization state and avoid reloads or IPC during pointer movement.
-- [ ] Throttle pointer/layout work to animation frames and cache row/folder geometry for a drag session.
-- [ ] Memoize deck/folder row rendering and prevent drag hover from committing the entire library tree.
+- [x] Keep all movement inputs routed through the existing `LibraryMoveIntent` and organization policy.
+- [x] Allow drag initiation from any non-interactive area of a deck or folder row rather than a tiny move icon.
+- [x] Exclude buttons, links, inputs, checkboxes, text selection, and overflow menus from drag initiation.
+- [x] Add a small pointer activation threshold and pointer capture so clicks remain clicks and deliberate drags reliably “catch.”
+- [x] Make the full visible folder row/card a valid drop target, including its padded area rather than only a narrow label region.
+- [x] Add clear valid/invalid drop styling, insertion location, destination folder name, and screen-reader announcements.
+- [x] Add hover-to-expand and edge auto-scroll with bounded timers and cancellation.
+- [x] Keep keyboard move controls and the touch/mobile Move sheet as equal, tested alternatives.
+- [x] Separate transient drag-preview state from persisted organization state and avoid reloads or IPC during pointer movement.
+- [x] Throttle pointer/layout work to animation frames and cache row/folder geometry for a drag session.
+- [x] Memoize deck/folder row rendering and prevent drag hover from committing the entire library tree.
 - [ ] Add large-library drag traces, interaction tests for anywhere-to-anywhere movement, and regressions for invalid descendants and stale revisions.
 - [ ] Meet the recorded pointer-frame and visible-feedback budgets before considering the stage complete.
+
+Stage 4A implements rows 1–11 with focused model, session, component, layout,
+and deterministic render coverage. Candidate capture, large-library trace
+evidence, budget closure, rows 12–13, and overall Stage 4 completion remain
+pending and must be evaluated on a later clean committed candidate head.
 
 ## Stage 5 — Deck detail, active-practice progress, and analytics navigation
 

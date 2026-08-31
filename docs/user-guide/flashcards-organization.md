@@ -21,20 +21,34 @@ Deck creation, archive changes, restoration, soft deletion, and permanent purge 
 
 ## Moving and ordering
 
-Pointer users can drag a deck or folder by its dedicated handle. Dragging is an enhancement rather than a required input method. The same focused handle provides a keyboard alternative:
+On a pointer device, start moving an active deck or folder from any open part of
+its row. Buttons, checkboxes, menus, links, editable content, and selected text
+continue to behave normally. A short movement remains an ordinary click; after
+the drag activates, the preview names the destination and insertion position.
+Folders accept a deck across their complete visible surface and can expand after
+a brief hover.
+
+Dragging is an enhancement rather than a required input method. The focused
+keyboard reorder control retains these shortcuts:
 
 - **Up**, **Down**, **Home**, and **End** reorder within the current group;
 - **Left** and **Right** move a deck between folders and Unsorted decks.
 
-The visible arrow and Move controls are not duplicated in each row. Screen-reader-only move actions remain available, and successful operations are announced through the live region.
+The compact **Move selected** sheet and screen-reader-only move actions remain
+available. Valid, invalid, and unchanged destinations are identified before a
+move is saved, and meaningful target changes and completion are announced.
 
-Nested drop targets stop propagation once a deck row or folder accepts a drop, so one pointer gesture can issue at most one revisioned move. The native command receives the target folder, target index, and expected organization revision. It rewrites the affected sequence to stable spaced sort values inside one immediate transaction. If the operation fails, the optimistic presentation is replaced with the authoritative native snapshot before the interface accepts another organization mutation.
+One completed pointer gesture can issue at most one validated revisioned move;
+hovering, scrolling, cancellation, invalid destinations, and unchanged
+positions issue none. The native command receives the target folder, target
+index, and expected organization revision. It rewrites the affected sequence
+to stable spaced sort values inside one immediate transaction. If the operation
+fails, the optimistic presentation is replaced with the authoritative native
+snapshot before the interface accepts another organization mutation.
 
 ## Compact deck presentation
 
-Decks use one compact row presentation on every platform. The removed Comfortable/Compact preference no longer creates divergent layout states or persists an obsolete setting. Compact spacing preserves deck name, card count, ready count, movement handle, and study actions while coarse-pointer controls retain full touch targets.
-
-The drag handle no longer uses a permanent vertical separator. Its icon, focus state, hover state, cursor, accessible instructions, and touch target identify the interaction without adding visual clutter.
+Decks use one compact row presentation on every platform. The removed Comfortable/Compact preference no longer creates divergent layout states or persists an obsolete setting. Compact spacing preserves deck name, card count, ready count, keyboard movement, and study actions while coarse-pointer controls retain full touch targets.
 
 ## Search and progressive disclosure
 

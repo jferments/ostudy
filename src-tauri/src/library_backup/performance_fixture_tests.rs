@@ -338,3 +338,82 @@ pub fn writes_stage_0_ui_performance_pending_restore() {
         .expect("fixture counts");
     assert_eq!(counts, (2, 2, 16, 1));
 }
+
+#[test]
+pub fn writes_stage_4a_large_library_drag_pending_restore() {
+    let app_data = std::env::var_os("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA")
+        .map(PathBuf::from)
+        .expect("OSTUDY_UI_PERFORMANCE_FIXTURE_APP_DATA must name isolated temporary state");
+    assert!(app_data.starts_with(std::env::temp_dir()));
+    let paths = AppPaths::new(app_data).expect("isolated fixture paths");
+    let database = Database::open(paths.database_path()).expect("fixture database");
+
+    database
+        .with_connection(|connection| {
+            let folder_id = generate_id(connection)?;
+            connection
+                .execute(
+                    "INSERT INTO deck_folders (id, name, sort_order, created_at, updated_at, revision)
+                     VALUES (?1, 'Large library folder', 0, ?2, ?2, 1)",
+                    params![folder_id, FIXTURE_TIME],
+                )
+                .map_err(CommandError::database)?;
+            for index in 0..120 {
+                let deck = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: if index == 0 {
+                            "Large library drag source".to_string()
+                        } else {
+                            format!("Large library deck {:03}", index + 1)
+                        },
+                        description: Some(
+                            "Stage 4A large-library drag candidate fixture".to_string(),
+                        ),
+                    },
+                )?;
+                if index % 2 == 0 {
+                    connection
+                        .execute(
+                            "UPDATE decks SET folder_id = ?1 WHERE id = ?2",
+                            params![folder_id, deck.id],
+                        )
+                        .map_err(CommandError::database)?;
+                }
+            }
+            for (key, value) in [
+                ("theme", json!("light")),
+                ("uiScale", json!(100)),
+                ("motionPreference", json!("full")),
+                ("materialPreference", json!("rich")),
+                ("tutorialsEnabled", json!(false)),
+            ] {
+                connection
+                    .execute(
+                        "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?1, ?2, ?3)",
+                        params![key, value.to_string(), FIXTURE_TIME],
+                    )
+                    .map_err(CommandError::database)?;
+            }
+            Ok(())
+        })
+        .expect("large-library decks and settings");
+
+    let pending = paths
+        .app_data_dir()
+        .join("pending-library-restore.ostudybackup");
+    export_backup(&database, &paths, &pending).expect("validated Stage 4A pending restore fixture");
+    assert!(pending.is_file());
+    let deck_count = database
+        .with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM decks WHERE deleted_at IS NULL",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(CommandError::database)
+        })
+        .expect("large-library fixture count");
+    assert_eq!(deck_count, 120);
+}

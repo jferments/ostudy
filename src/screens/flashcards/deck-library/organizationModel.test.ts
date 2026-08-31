@@ -86,7 +86,7 @@ describe("deck-library organization model", () => {
         deckId: activeC.id,
         targetFolderId: folderA.id,
         targetIndex: 99,
-        source: "html-drag",
+        source: "pointer",
       } as const,
       status: "valid",
       targetIndex: 2,

@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckFolder } from "../../../ipc/deckFolders";
 import { Artwork } from "../../../ui/artwork/Artwork";
@@ -29,7 +31,7 @@ interface FolderSectionProps {
   onToggleDeckSelected(deck: DeckSummary): void;
 }
 
-export function FolderSection({
+export const FolderSection = memo(function FolderSection({
   folder,
   decks,
   folderIndex,
@@ -54,35 +56,38 @@ export function FolderSection({
       as="section"
       level={2}
       className={styles.folder}
-      data-library-drop="folder"
+      data-library-row="folder"
+      data-library-folder-surface="true"
+      data-geometry-key={`folder:${folder.id}`}
+      data-item-id={folder.id}
+      data-item-index={folderIndex}
+      data-item-name={folder.name}
       data-folder-id={folder.id}
       data-folder-index={folderIndex}
-      data-target-index={decks.length}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => reorder.dropFolder(event, folder.id, folderIndex, decks.length)}
+      data-destination-name={folder.name}
+      data-collapsed={collapsed ? "true" : "false"}
+      onPointerDown={(event) =>
+        reorder.beginPointerDrag(
+          event,
+          { kind: "folder", id: folder.id },
+          `${folder.name} folder`,
+        )
+      }
     >
       <header className={styles.header}>
-        <span
-          className={styles.dragHandle}
-          draggable={!disabled}
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          className={styles.keyboardReorder}
+          disabled={disabled}
           aria-label={`Reorder ${folder.name} folder. Use Up and Down arrow keys.`}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
-          title="Drag to reorder folder"
-          onDragStart={(event) => reorder.startFolderDrag(event, folder.id)}
+          title="Reorder folder with keyboard"
           onKeyDown={(event) =>
             reorder.moveFolderWithKeyboard(event, folder.id, folderIndex)
           }
-          onPointerDown={(event) =>
-            reorder.beginPointerDrag(event, { kind: "folder", id: folder.id })
-          }
-          onPointerMove={reorder.updatePointerDrag}
-          onPointerUp={reorder.finishPointerDrag}
-          onPointerCancel={reorder.cancelPointerDrag}
         >
           <Icon name="move" size={16} />
-        </span>
+        </button>
         <button
           type="button"
           className={styles.toggle}
@@ -169,4 +174,4 @@ export function FolderSection({
       </VisuallyHidden>
     </Surface>
   );
-}
+});

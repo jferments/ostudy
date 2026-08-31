@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
 import { IconButton } from "../../../ui/icons/IconButton";
@@ -24,7 +26,7 @@ interface DeckItemProps {
   onToggleSelected(): void;
 }
 
-export function DeckItem({
+export const DeckItem = memo(function DeckItem({
   deck,
   folderId,
   index,
@@ -42,13 +44,24 @@ export function DeckItem({
   return (
     <article
       className={styles.item}
-      data-archived={archived || undefined}
+      data-archived={archived ? "true" : undefined}
       data-selected={selected || undefined}
-      data-library-drop={archived ? undefined : "deck"}
+      data-library-row={archived ? undefined : "deck"}
+      data-geometry-key={archived ? undefined : `deck:${deck.id}`}
+      data-item-id={archived ? undefined : deck.id}
+      data-item-index={archived ? undefined : index}
+      data-item-name={archived ? undefined : deck.name}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
-      data-target-index={index}
-      onDragOver={archived ? undefined : (event) => event.preventDefault()}
-      onDrop={archived ? undefined : (event) => reorder.dropDeck(event, folderId, index)}
+      onPointerDown={
+        archived
+          ? undefined
+          : (event) =>
+              reorder.beginPointerDrag(
+                event,
+                { kind: "deck", id: deck.id },
+                deck.name,
+              )
+      }
     >
       <label className={styles.selection}>
         <input
@@ -59,7 +72,20 @@ export function DeckItem({
           onChange={onToggleSelected}
         />
       </label>
-      <button type="button" className={styles.main} onClick={onOpen}>
+      <button
+        type="button"
+        className={styles.main}
+        aria-keyshortcuts={
+          archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
+        }
+        onKeyDown={
+          archived
+            ? undefined
+            : (event) =>
+                reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
+        }
+        onClick={onOpen}
+      >
         <span className={styles.mark}>
           <Icon name="cards" size={20} />
         </span>
@@ -144,4 +170,4 @@ export function DeckItem({
       </VisuallyHidden>
     </article>
   );
-}
+});

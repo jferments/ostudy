@@ -5,13 +5,18 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [viewCss, folderCss, deckCss, tauriConfigText] = await Promise.all([
+const [viewCss, folderCss, deckCss, feedbackCss, deckSource, folderSource, reorderSource, tauriConfigText] = await Promise.all([
   readFile(join(root, "src/screens/flashcards/deck-library/DeckLibraryView.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/FolderSection.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/DeckItem.module.css"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/DeckItem.tsx"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/FolderSection.tsx"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/useDeckLibraryReorder.ts"), "utf8"),
   readFile(join(root, "src-tauri/tauri.conf.json"), "utf8"),
 ]);
-const css = `${viewCss}\n${folderCss}\n${deckCss}`;
+const css = `${viewCss}\n${folderCss}\n${deckCss}\n${feedbackCss}`;
+const movementSource = `${deckSource}\n${folderSource}\n${reorderSource}`;
 const failures = [];
 
 expectRule(
@@ -60,13 +65,37 @@ expectNestedRule(
 );
 expectContains(
   css,
-  ':global(:root[data-input-mode="coarse"]) .dragHandle',
-  "coarse-pointer drag handle sizing",
+  ':global(:root[data-input-mode="coarse"]) .keyboardReorder',
+  "coarse-pointer keyboard reorder sizing",
 );
+expectContains(deckSource, 'data-library-row={archived ? undefined : "deck"}', "active deck pointer row identity");
+expectContains(folderSource, 'data-library-folder-surface="true"', "complete folder pointer destination");
+expectContains(deckSource, "reorder.beginPointerDrag", "deck row pointer session initiation");
+expectContains(folderSource, "reorder.beginPointerDrag", "folder surface pointer session initiation");
+expectContains(css, '.preview[data-status="valid"]', "valid drag feedback");
+expectContains(css, '.preview[data-status="noop"]', "no-op drag feedback");
+expectContains(css, '.preview[data-status="invalid"]', "invalid drag feedback");
 expectAbsent(css, ".density", "removed deck-density selector");
+expectAbsent(css, ".dragHandle", "obsolete drag-handle selector");
+for (const nativeDragFragment of [
+  "DragEvent",
+  "dataTransfer",
+  "onDragStart",
+  "onDragOver",
+  "onDrop",
+  "draggable=",
+  "html-drag",
+  "application/x-ostudy",
+]) {
+  expectAbsent(
+    movementSource,
+    nativeDragFragment,
+    `native HTML movement fragment ${nativeDragFragment}`,
+  );
+}
 expectRuleAbsent(
   css,
-  ".dragHandle",
+  ".keyboardReorder",
   "border-inline-end",
   "removed move-handle divider",
 );
@@ -83,7 +112,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Default desktop sizing, container-responsive deck controls, compact density, and coarse-pointer targets are consistent.",
+  "OK   Deck layout, row pointer surfaces, semantic drag feedback, keyboard reorder controls, and coarse-pointer targets are consistent.",
 );
 
 function expectContains(source, expected, label) {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib.util
+import inspect
 import json
 import math
 import sys
@@ -138,6 +139,51 @@ def make_tree(root: Path, *, offset: float = 0.0) -> None:
     write_json(root / "manifest.json", manifest)
 
 
+def make_drag_candidate(root: Path, *, offset: float = 0.0) -> None:
+    scenario = baseline.CANDIDATE_SCENARIOS[0]
+    samples = [sample(index, scenario, offset=offset) for index in range(1, 13)]
+    if offset > 0:
+        for candidate_sample in samples:
+            candidate_sample["react"]["avoidableCommitCount"] = 1
+            candidate_sample["react"]["commits"][0]["boundaryId"] = "navigation"
+    measurement = {
+        "schemaVersion": 1,
+        "baselineId": baseline.CANDIDATE_ID,
+        "sourceSha": SOURCE_SHA,
+        "instrumentationVersion": baseline.INSTRUMENTATION_VERSION,
+        "fixtureVersion": baseline.CANDIDATE_FIXTURE_VERSION,
+        "scenarioId": scenario,
+        "scenarioVersion": scenario,
+        "samples": samples,
+    }
+    measurement_path = root / baseline.canonical_measurement_path(scenario)
+    write_json(measurement_path, measurement)
+    environment = {
+        "viewport": baseline.VIEWPORT, "theme": "light", "scalePercent": 100,
+        "motion": "full", "materials": "rich", "pointer": "fine", "devicePixelRatio": 1,
+        "display": baseline.DISPLAY, "applicationSha256": "b" * 64, "python": "3.12.0",
+        "platform": "codex-dev", "tauriDriver": "2.0", "webkitWebDriver": "2.48",
+        "xvfb": "21.1", "reactProfilingBuild": True,
+    }
+    manifest = {
+        "schemaVersion": 1,
+        "baselineId": baseline.CANDIDATE_ID,
+        "sourceSha": SOURCE_SHA,
+        "instrumentationVersion": baseline.INSTRUMENTATION_VERSION,
+        "fixtureVersion": baseline.CANDIDATE_FIXTURE_VERSION,
+        "warmupCount": 3,
+        "sampleCount": 12,
+        "scenarioVersions": {scenario: scenario},
+        "captureEnvironment": environment,
+        "measurements": [{
+            "scenarioId": scenario,
+            "path": baseline.canonical_measurement_path(scenario),
+            "sha256": digest(measurement_path),
+        }],
+    }
+    write_json(root / "manifest.json", manifest)
+
+
 class PerformanceBaselineContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -159,6 +205,17 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         baseline.verify_baseline(self.root, expected_source_sha=SOURCE_SHA)
         self.assertEqual([], baseline.compare_baseline(self.root, self.root, expected_source_sha=SOURCE_SHA))
         self.assertEqual(before, {path.relative_to(self.root): path.read_bytes() for path in self.root.rglob("*") if path.is_file()})
+
+    def test_normal_verify_detects_source_drift_while_reference_verify_is_pinned(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "assert_measurement_sources_unchanged",
+            side_effect=baseline.PerformanceBaselineError("current source drift"),
+        ) as drift_guard:
+            with self.assertRaisesRegex(baseline.PerformanceBaselineError, "current source drift"):
+                baseline.verify_baseline(self.root)
+            baseline.verify_reference(self.root)
+        drift_guard.assert_called_once_with(SOURCE_SHA)
 
     def test_duplicate_json_key_is_rejected(self) -> None:
         path = self.root / "manifest.json"; path.write_text('{"schemaVersion":1,"schemaVersion":1}', encoding="utf-8")
@@ -226,6 +283,256 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         manifest_path = candidate / "manifest.json"; value = json.loads(manifest_path.read_text()); value["captureEnvironment"]["platform"] = "different"; write_json(manifest_path, value)
         with self.assertRaisesRegex(baseline.PerformanceBaselineError, "not comparable"):
             baseline.compare_baseline(candidate, self.root, expected_source_sha=SOURCE_SHA)
+
+    def test_candidate_destination_rejects_unsafe_aliases_and_existing_paths(self) -> None:
+        with self.assertRaisesRegex(baseline.PerformanceBaselineError, "absolute"):
+            baseline.validate_candidate_destination(Path("relative-candidate"))
+        with self.assertRaisesRegex(baseline.PerformanceBaselineError, "reference tree"):
+            baseline.validate_candidate_destination(baseline.BASELINE_DIR / "candidate")
+        with self.assertRaisesRegex(baseline.PerformanceBaselineError, "outside the repository"):
+            baseline.validate_candidate_destination(baseline.ROOT_DIR / "candidate")
+        existing = Path(self.temp.name) / "existing"; existing.mkdir()
+        with self.assertRaisesRegex(baseline.PerformanceBaselineError, "must not already exist"):
+            baseline.validate_candidate_destination(existing)
+        real_parent = Path(self.temp.name) / "real"; real_parent.mkdir()
+        alias_parent = Path(self.temp.name) / "alias"; alias_parent.symlink_to(real_parent, target_is_directory=True)
+        with self.assertRaisesRegex(baseline.PerformanceBaselineError, "symlinked parent"):
+            baseline.validate_candidate_destination(alias_parent / "candidate")
+
+    def test_candidate_install_is_atomic_and_never_replaces_an_existing_destination(self) -> None:
+        parent = Path(self.temp.name)
+        staging = parent / ".candidate.capture"; staging.mkdir(); (staging / "manifest.json").write_text("verified")
+        destination = parent / "candidate"
+        baseline.install_staged_candidate(staging, destination)
+        self.assertEqual("verified", (destination / "manifest.json").read_text())
+
+        replacement = parent / ".candidate.replacement"; replacement.mkdir(); (replacement / "manifest.json").write_text("new")
+        with mock.patch.object(
+            baseline,
+            "validate_candidate_destination",
+            return_value=destination,
+        ):
+            with self.assertRaisesRegex(baseline.PerformanceBaselineError, "appeared during capture"):
+                baseline.install_staged_candidate(replacement, destination)
+        self.assertEqual("verified", (destination / "manifest.json").read_text())
+        self.assertTrue(replacement.is_dir())
+
+    def test_failed_candidate_capture_cleans_sibling_staging_without_installing(self) -> None:
+        destination = Path(self.temp.name) / "candidate"
+        application = Path(self.temp.name) / "ostudy"; application.write_text("binary")
+        with mock.patch.object(baseline, "assert_clean_committed_head"), mock.patch.object(
+            baseline.subprocess,
+            "Popen",
+            side_effect=RuntimeError("driver unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "driver unavailable"):
+                baseline.capture(application, destination, SOURCE_SHA, candidate=True)
+        self.assertFalse(destination.exists())
+        self.assertEqual([], list(Path(self.temp.name).glob(".candidate.capture-*")))
+
+    def test_candidate_capture_requires_the_exact_clean_committed_source(self) -> None:
+        with mock.patch.object(baseline, "current_source_sha", return_value="b" * 40):
+            with self.assertRaisesRegex(baseline.PerformanceBaselineError, "source identity"):
+                baseline.assert_clean_committed_head(SOURCE_SHA)
+        clean = mock.Mock(stdout="")
+        dirty = mock.Mock(stdout=" M source.ts\n")
+        with mock.patch.object(baseline, "current_source_sha", return_value=SOURCE_SHA), mock.patch.object(
+            baseline.subprocess,
+            "run",
+            side_effect=[clean, dirty],
+        ):
+            baseline.assert_clean_committed_head(SOURCE_SHA)
+            with self.assertRaisesRegex(baseline.PerformanceBaselineError, "clean committed HEAD"):
+                baseline.assert_clean_committed_head(SOURCE_SHA)
+
+    def test_large_library_drag_has_a_distinct_stable_row_identity(self) -> None:
+        self.assertIn("data-library-row='deck'", baseline.LARGE_LIBRARY_DRAG_XPATH)
+        self.assertIn("Large library drag source", baseline.LARGE_LIBRARY_DRAG_XPATH)
+        source = (baseline.ROOT_DIR / "src-tauri/src/library_backup/performance_fixture_tests.rs").read_text()
+        self.assertIn("for index in 0..120", source)
+
+    def test_drag_candidate_has_distinct_identity_and_only_three_drag_limits(self) -> None:
+        candidate = Path(self.temp.name) / "candidate"
+        make_drag_candidate(candidate, offset=100)
+        verified = baseline.verify_drag_candidate(candidate, expected_source_sha=SOURCE_SHA)
+        self.assertEqual(baseline.CANDIDATE_ID, verified["manifest"]["baselineId"])
+        self.assertEqual({"deck-drag-v1"}, set(verified["measurements"]))
+        failures = baseline.compare_drag_candidate(
+            candidate,
+            self.root,
+            expected_candidate_source_sha=SOURCE_SHA,
+        )
+        self.assertEqual(3, len(failures))
+        self.assertTrue(all(failure.startswith("deck-drag-v1:") for failure in failures))
+
+    def test_candidate_driver_is_drag_only_without_navigation_or_other_workflows(self) -> None:
+        source = inspect.getsource(baseline.collect_candidate_drag_scenario)
+        self.assertNotIn("navigate(", source)
+        self.assertNotIn("document-list-interaction", source)
+        self.assertNotIn("deck-selection", source)
+        self.assertNotIn("study-guide", source)
+        self.assertNotIn("active-practice", source)
+        self.assertIn("LARGE_LIBRARY_DRAG_XPATH", source)
+
+    def test_candidate_driver_uses_only_the_large_library_native_selector(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value="Flashcards",
+        ), mock.patch.object(
+            baseline.webdriver,
+            "find_element",
+            return_value="large-drag-row",
+        ) as find_element, mock.patch.object(
+            baseline,
+            "collect_drag_sample",
+            return_value={"sample": True},
+        ) as collect_drag_sample:
+            result = baseline.collect_candidate_drag_scenario("session-1")
+
+        find_element.assert_called_once_with(
+            "session-1",
+            "xpath",
+            baseline.LARGE_LIBRARY_DRAG_XPATH,
+            mock.ANY,
+        )
+        collect_drag_sample.assert_called_once_with(
+            "session-1",
+            "large-drag-row",
+            "deck-drag-v1",
+            mock.ANY,
+        )
+        self.assertEqual({"sample": True}, result)
+
+    def test_drag_sample_positions_and_presses_before_arm_then_proves_preview_and_cleanup(self) -> None:
+        events: list[str] = []
+        with mock.patch.object(
+            baseline,
+            "find_safe_drag_point",
+            side_effect=lambda *_args: events.append("safe-point") or {"x": 10, "y": 20},
+        ), mock.patch.object(
+            baseline,
+            "position_and_press_drag_pointer",
+            side_effect=lambda *_args: events.append("press"),
+        ), mock.patch.object(
+            baseline,
+            "arm",
+            side_effect=lambda *_args: events.append("arm"),
+        ), mock.patch.object(
+            baseline,
+            "activate_drag_pointer",
+            side_effect=lambda *_args: events.append("threshold-move"),
+        ), mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=lambda _session, expression, _deadline: events.append(
+                "preview-active" if expression.startswith("document") else "preview-clean"
+            ),
+        ), mock.patch.object(
+            baseline,
+            "cancel_drag_pointer",
+            side_effect=lambda *_args: events.append("cancel"),
+        ), mock.patch.object(
+            baseline,
+            "finish",
+            side_effect=lambda *_args: events.append("finish") or {"sample": True},
+        ), mock.patch.object(
+            baseline,
+            "release_pointer_actions",
+            side_effect=lambda *_args: events.append("release"),
+        ):
+            result = baseline.collect_drag_sample(
+                "session-1",
+                "large-drag-row",
+                "deck-drag-v1",
+                123.0,
+            )
+
+        self.assertEqual(
+            [
+                "safe-point",
+                "press",
+                "arm",
+                "threshold-move",
+                "preview-active",
+                "cancel",
+                "preview-clean",
+                "finish",
+                "release",
+            ],
+            events,
+        )
+        self.assertEqual({"sample": True}, result)
+
+    def test_drag_sample_cannot_finish_when_no_active_preview_is_observed(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "find_safe_drag_point",
+            return_value={"x": 10, "y": 20},
+        ), mock.patch.object(
+            baseline,
+            "position_and_press_drag_pointer",
+        ), mock.patch.object(
+            baseline,
+            "arm",
+        ), mock.patch.object(
+            baseline,
+            "activate_drag_pointer",
+        ), mock.patch.object(
+            baseline,
+            "wait_js",
+            side_effect=AssertionError("no active drag preview"),
+        ), mock.patch.object(
+            baseline,
+            "cancel_drag_pointer",
+        ) as cancel, mock.patch.object(
+            baseline,
+            "finish",
+        ) as finish, mock.patch.object(
+            baseline,
+            "release_pointer_actions",
+        ) as release:
+            with self.assertRaisesRegex(AssertionError, "no active drag preview"):
+                baseline.collect_drag_sample(
+                    "session-1",
+                    "large-drag-row",
+                    "deck-drag-v1",
+                    123.0,
+                )
+
+        cancel.assert_not_called()
+        finish.assert_not_called()
+        release.assert_called_once_with("session-1")
+
+    def test_drag_capture_rejects_a_row_without_a_safe_noninteractive_point(self) -> None:
+        with mock.patch.object(
+            baseline,
+            "execute_read_only",
+            return_value=None,
+        ) as execute_read_only:
+            with self.assertRaisesRegex(AssertionError, "no verified noninteractive row point"):
+                baseline.find_safe_drag_point("session-1", "covered-row")
+
+        script = execute_read_only.call_args.args[1]
+        self.assertIn("document.elementFromPoint(x, y) === row", script)
+        self.assertNotIn("closest(", script)
+
+    def test_split_drag_actions_reuse_one_persistent_touch_pointer(self) -> None:
+        with mock.patch.object(baseline.webdriver, "request") as request:
+            baseline.position_and_press_drag_pointer("session-1", {"x": 10, "y": 20})
+            baseline.activate_drag_pointer("session-1")
+            baseline.cancel_drag_pointer("session-1")
+
+        self.assertEqual(3, request.call_count)
+        for call in request.call_args_list:
+            self.assertEqual("stage0-touch", call.args[2]["actions"][0]["id"])
+        self.assertEqual(
+            [["pointerMove", "pointerDown"], ["pointerMove"], ["pointerMove", "pointerCancel"]],
+            [
+                [action["type"] for action in call.args[2]["actions"][0]["actions"]]
+                for call in request.call_args_list
+            ],
+        )
 
     def test_capture_updates_only_the_two_stage_zero_rows_and_is_idempotent(self) -> None:
         roadmap = Path(self.temp.name) / "roadmap.md"
