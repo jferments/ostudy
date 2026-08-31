@@ -122,8 +122,9 @@ starts a separate disposable driver/application session, opens the isolated Xvfb
 display through XTEST,
 calibrates X-root coordinates against a browser-observed trusted event, injects
 native motion/button-down/threshold-crossing motion/Escape/button-up, and requires
-WebKit to report `isTrusted` mouse Pointer Events with the expected target,
-coordinates, primary-pointer continuity, and button state. The real product
+WebKit to report `isTrusted` mouse Pointer Events within the canonical row on a
+non-interactive target, with the expected coordinates, primary-pointer continuity,
+and button state. The real product
 preview must appear and clear on trusted Escape without a drop, the exact
 synthetic organization structure must remain unchanged, and cleanup
 unconditionally releases button 1. This is the automated Linux

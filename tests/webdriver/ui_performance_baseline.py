@@ -1242,7 +1242,15 @@ def install_native_pointer_probe(
         const key = '__OSTUDY_NATIVE_POINTER_PROBE__';
         window[key]?.dispose?.();
         const state = {sequence: 0, events: [], row};
+        const interactiveSelector = [
+          "button", "a[href]", "input", "select", "textarea", "label",
+          "[contenteditable]:not([contenteditable='false'])",
+          "[role='button']", "[role='link']", "[role='menuitem']",
+          "[data-library-no-pointer-drag]",
+        ].join(",");
         const observe = (event) => {
+          const eventTarget = event.target;
+          const targetElement = eventTarget instanceof Element ? eventTarget : null;
           state.sequence += 1;
           state.events.push({
             sequence: state.sequence,
@@ -1258,7 +1266,9 @@ def install_native_pointer_probe(
             button: event.button,
             buttons: event.buttons,
             key: event.key,
-            targetIsRow: event.target === row,
+            targetIsRow: eventTarget === row,
+            targetWithinRow: eventTarget instanceof Node && row.contains(eventTarget),
+            targetInteractive: Boolean(targetElement?.closest(interactiveSelector)),
           });
           if (state.events.length > 64) state.events.shift();
         };
@@ -1323,7 +1333,8 @@ def wait_for_native_pointer_event(
     buttons: int | None = None,
     button: int | None = None,
     pointer_id: int | None = None,
-    target_is_row: bool | None = None,
+    target_within_row: bool | None = None,
+    target_interactive: bool | None = None,
 ) -> dict[str, Any]:
     last: list[dict[str, Any]] = []
     while time.monotonic() < deadline:
@@ -1344,7 +1355,14 @@ def wait_for_native_pointer_event(
                 and (buttons is None or event.get("buttons") == buttons)
                 and (button is None or event.get("button") == button)
                 and (pointer_id is None or event.get("pointerId") == pointer_id)
-                and (target_is_row is None or event.get("targetIsRow") is target_is_row)
+                and (
+                    target_within_row is None
+                    or event.get("targetWithinRow") is target_within_row
+                )
+                and (
+                    target_interactive is None
+                    or event.get("targetInteractive") is target_interactive
+                )
             ):
                 return event
         time.sleep(0.02)
@@ -1421,7 +1439,8 @@ def calibrate_native_pointer(
                 and observed.get("clientY") == point["y"]
                 and observed.get("screenX") == requested["x"]
                 and observed.get("screenY") == requested["y"]
-                and observed.get("targetIsRow") is True
+                and observed.get("targetWithinRow") is True
+                and observed.get("targetInteractive") is False
             ):
                 return requested
             corrected = {
@@ -1441,7 +1460,8 @@ def calibrate_native_pointer(
                 screen_y=corrected["y"],
                 buttons=0,
                 button=-1,
-                target_is_row=True,
+                target_within_row=True,
+                target_interactive=False,
             )
             return corrected
         except (AssertionError, KeyError, TypeError, ValueError) as error:
@@ -1522,7 +1542,8 @@ def verify_trusted_native_drag_smoke(session_id: str) -> dict[str, Any]:
             client_y=point["y"],
             buttons=1,
             button=0,
-            target_is_row=True,
+            target_within_row=True,
+            target_interactive=False,
         )
         pointer.move(
             root_anchor["x"] + CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
