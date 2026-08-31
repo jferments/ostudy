@@ -2,14 +2,32 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppSettings } from "../../ipc/settings";
-import type { FlashcardsWorkspaceName } from "../../navigation/flashcardsRoutes";
+import type {
+  AnalyticsSearchLaunch,
+  FlashcardsWorkspaceName,
+} from "../../navigation/flashcardsRoutes";
 import {
   dispatchPlatformBack,
   platformBackHandlerCountForTests,
 } from "../../platform/backNavigation";
 import { FlashcardsWorkspace } from "./FlashcardsWorkspace";
 
-vi.mock("../CardsScreen", () => ({ CardsScreen: () => <div>Search workspace</div> }));
+vi.mock("../CardsScreen", () => ({
+  CardsScreen: ({
+    analyticsSearchLaunch,
+  }: {
+    analyticsSearchLaunch?: AnalyticsSearchLaunch;
+  }) => (
+    <div>
+      Search workspace
+      <output aria-label="Forwarded Analytics Search launch">
+        {analyticsSearchLaunch
+          ? `${analyticsSearchLaunch.requestId}|${analyticsSearchLaunch.source}|${analyticsSearchLaunch.tagIds.join(",")}`
+          : "none"}
+      </output>
+    </div>
+  ),
+}));
 vi.mock("../TemplatesScreen", () => ({ TemplatesScreen: () => <div>Templates workspace</div> }));
 vi.mock("./TransferWorkspace", () => ({ TransferWorkspace: () => <div>Transfer workspace</div> }));
 vi.mock("./DeckLibraryWorkspace", () => ({
@@ -45,12 +63,14 @@ interface RenderWorkspaceOptions {
   workspace?: FlashcardsWorkspaceName;
   navigationKey?: number;
   onWorkspaceChange?: (workspace: FlashcardsWorkspaceName) => void | Promise<void>;
+  analyticsSearchLaunch?: AnalyticsSearchLaunch;
 }
 
 function renderWorkspace({
   workspace = "decks",
   navigationKey = 1,
   onWorkspaceChange = vi.fn(),
+  analyticsSearchLaunch,
 }: RenderWorkspaceOptions = {}) {
   return render(
     <FlashcardsWorkspace
@@ -63,6 +83,7 @@ function renderWorkspace({
       onPracticeDeck={vi.fn()}
       onPracticeSelected={vi.fn()}
       onPracticeCards={vi.fn()}
+      analyticsSearchLaunch={analyticsSearchLaunch}
       openDeckRequest={null}
       onOpenDeck={vi.fn()}
       onReturnToLibrary={vi.fn()}
@@ -96,6 +117,23 @@ describe("FlashcardsWorkspace root navigation", () => {
       expect(dispatchPlatformBack()).toBe(true);
     });
     expect(onWorkspaceChange).toHaveBeenCalledWith("decks");
+    view.unmount();
+  });
+
+  it("forwards the typed launch through the keyed Search workspace boundary", () => {
+    const view = renderWorkspace({
+      workspace: "search",
+      navigationKey: 19,
+      analyticsSearchLaunch: {
+        requestId: 19,
+        source: "analytics",
+        tagIds: ["stable-tag-id"],
+      },
+    });
+
+    expect(screen.getByLabelText("Forwarded Analytics Search launch").textContent).toBe(
+      "19|analytics|stable-tag-id",
+    );
     view.unmount();
   });
 

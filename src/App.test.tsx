@@ -13,6 +13,7 @@ import type { SelectedPracticeRequest } from "./ipc/practice";
 import * as settingsIpc from "./ipc/settings";
 import * as checkpointIpc from "./ipc/uiCheckpoint";
 import type {
+  AnalyticsSearchLaunch,
   FlashcardsWorkspaceName,
   TransientDeckSelectionEntry,
 } from "./navigation/flashcardsRoutes";
@@ -77,6 +78,7 @@ vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
     onPracticeSelected,
     onPracticeCards,
     restoredSelection,
+    analyticsSearchLaunch,
     openDeckRequest,
     onOpenDeck,
     onCardDirtyChange,
@@ -91,6 +93,7 @@ vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
     ) => void;
     onPracticeCards: (cardIds: string[]) => void;
     restoredSelection?: readonly TransientDeckSelectionEntry[];
+    analyticsSearchLaunch?: AnalyticsSearchLaunch;
     openDeckRequest: DeckOpenRequest | null;
     onOpenDeck: (deckId: string) => void;
     onCardDirtyChange: (dirty: boolean) => void;
@@ -102,6 +105,11 @@ vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
       <output aria-label="Deck open request">{openDeckRequest?.deckId ?? "none"}</output>
       <output aria-label="Restored deck selection">
         {restoredSelection?.map((entry) => entry.id).join(",") ?? "none"}
+      </output>
+      <output aria-label="Analytics Search launch">
+        {analyticsSearchLaunch
+          ? `${analyticsSearchLaunch.requestId}|${analyticsSearchLaunch.source}|${analyticsSearchLaunch.tagIds.join(",")}`
+          : "none"}
       </output>
       <button type="button" onClick={() => onCardDirtyChange(true)}>
         Mark card dirty
@@ -195,9 +203,11 @@ vi.mock("./screens/AnalyticsScreen", () => ({
   AnalyticsScreen: ({
     launchRequest,
     onPracticeScope,
+    onSearchTag,
   }: {
     launchRequest: AnalyticsLaunchRequest | null;
     onPracticeScope: (deckIds: string[], tagIds: string[]) => void;
+    onSearchTag: (tagId: string) => void;
   }) => (
     <section>
       <h1>Analytics mock</h1>
@@ -210,6 +220,9 @@ vi.mock("./screens/AnalyticsScreen", () => ({
       </output>
       <button type="button" onClick={() => onPracticeScope([], ["analytics-tag"])}>
         Practice analytics scope mock
+      </button>
+      <button type="button" onClick={() => onSearchTag("stable-analytics-tag-id")}>
+        Search current analytics tag mock
       </button>
     </section>
   ),
@@ -323,6 +336,54 @@ describe("App shell", () => {
     );
     expect(screen.getByRole("button", { name: "Flashcards" }).getAttribute("aria-current")).toBe(
       "page",
+    );
+  });
+
+  it("routes Analytics tags into Search with fresh transient request IDs", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search current analytics tag mock" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Flashcards workspace").textContent).toBe("search"),
+    );
+    const firstLaunch = screen.getByLabelText("Analytics Search launch").textContent;
+    expect(firstLaunch).toMatch(/^\d+\|analytics\|stable-analytics-tag-id$/u);
+
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search current analytics tag mock" }),
+    );
+    const secondLaunch = await screen.findByLabelText("Analytics Search launch");
+    expect(secondLaunch.textContent).toMatch(
+      /^\d+\|analytics\|stable-analytics-tag-id$/u,
+    );
+    expect(secondLaunch.textContent).not.toBe(firstLaunch);
+  });
+
+  it("clears an Analytics Search launch on ordinary workspace navigation", async () => {
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Analytics" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Search current analytics tag mock" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Analytics Search launch").textContent).not.toBe("none"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Search workspace" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Analytics Search launch").textContent).toBe("none"),
     );
   });
 

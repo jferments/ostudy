@@ -135,6 +135,22 @@ Mixed sessions require counter recomputation after some cards are purged. Empty 
 - verify deck/tag filters do not change captured presentation facts;
 - verify an old request cannot overwrite a newer filter/range response.
 
+### Analytics-to-Search tag launches
+
+Current tags in recent review evidence are actionable by stable tag ID;
+historical tags are plain text. Cover duplicate display names with distinct IDs
+and require a fresh process-local request ID for every activation. The launch
+must cross the existing keyed Flashcards remount boundary and remain absent
+from checkpoint serialization and restoration.
+
+Search initializes the requested tag tuple before effects run and calls
+`listTags([])` before any `searchCards` entry point. Test delayed valid,
+missing, and rejected lookups. Valid lookup permits only exact-tag initial
+queries; missing or rejected lookup permits none. Explicit clearing is the only
+recovery to `tagIds = []`, including while verification is pending. Resolve and
+reject the late lookup in separate cases and prove neither completion restores
+the old tag nor blocks the already-cleared search.
+
 ## SQL statement-count discipline
 
 Query-count tests should measure SQL statement count, not wall-clock duration. Timing thresholds are nondeterministic across developer machines and CI runners.

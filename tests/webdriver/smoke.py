@@ -707,10 +707,39 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
         )
 
 
+def verify_analytics_tag_search(
+    session_id: str,
+    question: str,
+    tag_name: str,
+    deadline: float,
+) -> None:
+    tag_action = find_element(
+        session_id,
+        "xpath",
+        f"//main//button[@aria-label={json.dumps(f'Search cards tagged {tag_name}')}]",
+        deadline,
+    )
+    click(session_id, tag_action)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//button[@aria-label={json.dumps(f'Remove Tag: {tag_name} filter')}]",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+
 def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_name = "Native smoke deck"
     question = "What does the native smoke test persist?"
     answer = "A deck, a card, and one accepted review."
+    tag_name = "Native smoke tag"
 
     progress("Creating a deck")
     deadline = deadline_after()
@@ -736,6 +765,19 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     click_text_button(session_id, "Add flashcard", deadline)
     set_rich_editor_text(session_id, 0, question, deadline)
     set_rich_editor_text(session_id, 1, answer, deadline)
+    tag_input = find_element(
+        session_id,
+        "css selector",
+        "main input[aria-label='Tags']",
+        deadline,
+    )
+    send_keys(session_id, tag_input, f"{tag_name},")
+    find_element(
+        session_id,
+        "css selector",
+        f"main button[aria-label={json.dumps(f'Remove {tag_name} tag')}]",
+        deadline,
+    )
     save_button = wait_for_enabled_element(
         session_id,
         "xpath",
@@ -951,6 +993,8 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     )
     click(session_id, chart_data_button)
     find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
+    progress("Opening Search from the current recent-review tag")
+    verify_analytics_tag_search(session_id, question, tag_name, deadline)
     progress("Analytics verification completed")
     return deck_name, question
 

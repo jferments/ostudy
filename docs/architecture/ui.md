@@ -205,6 +205,24 @@ Flashcards return target. Restoration allocates new route/request identities,
 and lifecycle saves flush the same controller-owned snapshot used by ordinary
 navigation saves.
 
+Analytics current recent-review tags use a separate process-local Search
+launch. The application controller allocates a fresh route request ID and
+carries `source = "analytics"` plus a statically non-empty tuple of stable tag
+IDs through the existing keyed Flashcards remount boundary. Display names are
+never route identity. Historical tags remain readable evidence without a
+Search action.
+
+This transient launch is deliberately projected out of the device UI
+checkpoint: only the visible Search workspace is saved, and restored Search
+starts as an ordinary route. Top-level navigation, Flashcards tab changes,
+platform Back, deck opening, and library return also construct plain routes.
+Before the first launched query, the card browser synchronously installs the
+requested IDs and verifies them with the unscoped tag list. It issues no card
+search while verification is pending or unsuccessful. A missing or
+unverifiable tag stays blocked until the learner explicitly clears it; clearing
+permits an ordinary unfiltered search, and a late lookup cannot restore or
+re-block the cleared launch.
+
 ## Shared primitives
 
 The common layer includes:

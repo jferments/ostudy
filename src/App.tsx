@@ -147,6 +147,11 @@ function App() {
                                 ? controller.flashcardsRoute.restoreDeckSelection
                                 : undefined
                             }
+                            analyticsSearchLaunch={
+                              controller.flashcardsRoute.view === "root"
+                                ? controller.flashcardsRoute.analyticsSearchLaunch
+                                : undefined
+                            }
                             onPracticeCards={controller.practiceCards}
                             openDeckRequest={controller.deckOpenRequest}
                             onOpenDeck={controller.openFlashcardsDeck}
@@ -175,6 +180,7 @@ function App() {
                             launchRequest={controller.analyticsLaunch}
                             onLaunchConsumed={controller.consumeAnalyticsLaunch}
                             onPracticeScope={controller.practiceScope}
+                            onSearchTag={controller.openAnalyticsTagSearch}
                             showToast={controller.showToast}
                           />
                         ) : controller.section === "settings" ? (

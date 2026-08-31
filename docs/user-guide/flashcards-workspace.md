@@ -118,6 +118,13 @@ The common controls stay visible:
 
 Open **All filters** for availability, scheduling status, last-studied date, individual decks, folders, and tags. Applied criteria appear as removable chips above the results.
 
+In **Analytics**, current tag names attached to recent reviews are buttons. Use
+one to open Search with that exact tag already applied. Tags retained only as
+historical review evidence stay readable but are not links because they no
+longer identify a current library filter. If a selected current tag disappears
+or cannot be verified before Search opens, ostudy does not show unfiltered
+results; choose **Clear unavailable tag filter** to search without it.
+
 **Select visible** selects only the loaded rows. **Select all matching** resolves the complete filtered result set before a bulk action.
 
 Choose **Practice selected** to start an exact-card session for the selected

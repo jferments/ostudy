@@ -450,6 +450,29 @@
       color: var(--ostudy-color-text-muted);
       font-size: 0.68rem;
   }
+  .recent-review-tags {
+    display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 3px;
+  }
+  .recent-review-tag-action {
+    min-height: var(--ostudy-size-touch-target);
+      padding: 2px 6px;
+      border: 1px solid var(--ostudy-color-border-subtle);
+      border-radius: 6px;
+      color: var(--ostudy-color-accent-base);
+      background: var(--ostudy-color-surface-raised);
+      font: inherit;
+      cursor: pointer;
+  }
+  .recent-review-tag-action:hover {
+    border-color: var(--ostudy-color-border-strong);
+  }
+  .recent-review-tag-action:focus-visible {
+    outline: 2px solid var(--ostudy-color-focus-ring);
+      outline-offset: 2px;
+  }
   @media (max-width: 1180px) {
     .analytics-metrics {
       grid-template-columns: repeat(3, minmax(0, 1fr));

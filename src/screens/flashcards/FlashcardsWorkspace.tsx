@@ -6,6 +6,7 @@ import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
 import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type {
+  AnalyticsSearchLaunch,
   FlashcardsWorkspaceName,
   TransientDeckSelectionEntry,
 } from "../../navigation/flashcardsRoutes";
@@ -33,6 +34,7 @@ interface FlashcardsWorkspaceProps {
     originSelection: readonly TransientDeckSelectionEntry[],
   ) => void | Promise<void>;
   restoredSelection?: readonly TransientDeckSelectionEntry[];
+  analyticsSearchLaunch?: AnalyticsSearchLaunch;
   openDeckRequest: DeckOpenRequest | null;
   onOpenDeck: (deckId: string) => void;
   onReturnToLibrary: () => void;
@@ -64,6 +66,7 @@ export function FlashcardsWorkspace({
   onPracticeDeck,
   onPracticeSelected,
   restoredSelection,
+  analyticsSearchLaunch,
   onPracticeCards,
   openDeckRequest,
   onOpenDeck,
@@ -183,6 +186,7 @@ export function FlashcardsWorkspace({
               onPracticeCards={onPracticeCards}
               onDirtyChange={onCardDirtyChange}
               showToast={showToast}
+              analyticsSearchLaunch={analyticsSearchLaunch}
             />
           ) : null}
           {workspace === "transfer" ? (

@@ -73,6 +73,12 @@ function Harness() {
       <output aria-label="analytics request">
         {controller.analyticsLaunch?.requestId ?? "none"}
       </output>
+      <output aria-label="analytics search launch">
+        {controller.flashcardsRoute.view === "root" &&
+        controller.flashcardsRoute.analyticsSearchLaunch
+          ? `${controller.flashcardsRoute.analyticsSearchLaunch.requestId}|${controller.flashcardsRoute.analyticsSearchLaunch.source}|${controller.flashcardsRoute.analyticsSearchLaunch.tagIds.join(",")}`
+          : "none"}
+      </output>
       <output aria-label="restored selection">
         {controller.flashcardsRoute.view === "root"
           ? controller.flashcardsRoute.restoreDeckSelection?.map((entry) => entry.id).join(",") ?? "none"
@@ -80,6 +86,24 @@ function Harness() {
       </output>
       <button type="button" onClick={() => void controller.navigate("study-guides")}>
         Open Study Guides
+      </button>
+      <button
+        type="button"
+        onClick={() => controller.openAnalyticsTagSearch("analytics-tag-id")}
+      >
+        Open Analytics Search
+      </button>
+      <button
+        type="button"
+        onClick={() => void controller.navigateFlashcardsWorkspace("templates")}
+      >
+        Open Templates
+      </button>
+      <button type="button" onClick={() => controller.openFlashcardsDeck("d".repeat(32))}>
+        Open deck
+      </button>
+      <button type="button" onClick={controller.returnToFlashcardsLibrary}>
+        Return to library
       </button>
       <button type="button" onClick={() => void controller.practiceDeck("launch-deck")}>
         Open Practice
@@ -161,6 +185,60 @@ describe("application checkpoint lifecycle", () => {
         expect.objectContaining({ section: "study-guides" }),
       ),
     );
+  });
+
+  it("checkpoints only the visible Search workspace and omits the Analytics launch", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("analytics search launch").textContent).toMatch(
+        /^\d+\|analytics\|analytics-tag-id$/u,
+      ),
+    );
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+
+    lifecycle("background");
+
+    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalledOnce());
+    const saved = vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls[0]?.[0];
+    expect(saved).toEqual({
+      section: "decks",
+      flashcardsWorkspace: "search",
+      deckId: undefined,
+      practice: undefined,
+      analytics: undefined,
+    });
+    expect(JSON.stringify(saved)).not.toContain("analytics-tag-id");
+    expect(JSON.stringify(saved)).not.toContain("requestId");
+    expect(JSON.stringify(saved)).not.toContain("source");
+  });
+
+  it("constructs plain routes for top-level, workspace, deck, and library navigation", async () => {
+    renderHarness();
+    await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
+    expect(screen.getByLabelText("analytics search launch").textContent).not.toBe("none");
+    fireEvent.click(screen.getByRole("button", { name: "Open Templates" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("analytics search launch").textContent).toBe("none"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open deck" }));
+    expect(screen.getByLabelText("analytics search launch").textContent).toBe("none");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
+    fireEvent.click(screen.getByRole("button", { name: "Return to library" }));
+    expect(screen.getByLabelText("analytics search launch").textContent).toBe("none");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Study Guides" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("analytics search launch").textContent).toBe("none"),
+    );
+    expect(screen.getByLabelText("section").textContent).toBe("study-guides");
   });
 
   it("flushes the latest active Practice cursor and logical return target on lifecycle save", async () => {

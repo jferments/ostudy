@@ -5,6 +5,7 @@ import * as cardsIpc from "../ipc/cards";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
 import * as schedulingIpc from "../ipc/scheduling";
+import type { AnalyticsSearchLaunch } from "../navigation/flashcardsRoutes";
 import { CardsScreen } from "./CardsScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
@@ -138,7 +139,10 @@ function actionResult(
   };
 }
 
-function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck]) {
+function renderScreen(
+  decks: decksIpc.DeckSummary[] = [deck, secondDeck],
+  analyticsSearchLaunch?: AnalyticsSearchLaunch,
+) {
   const showToast = vi.fn();
   const view = render(
     <CardsScreen
@@ -147,9 +151,20 @@ function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck]) {
       onPracticeCards={vi.fn()}
       onDirtyChange={vi.fn()}
       showToast={showToast}
+      analyticsSearchLaunch={analyticsSearchLaunch}
     />,
   );
   return { ...view, showToast };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
 }
 
 function chooseSelectedAction(label: string): void {
@@ -190,6 +205,136 @@ describe("CardsScreen", () => {
         expect.objectContaining({ statusFilter: "suspended" }),
       ),
     );
+  });
+
+  it("gates an Analytics launch until its exact stable tag ID is verified", async () => {
+    const tagId = "d".repeat(32);
+    const lookup = deferred<cardsIpc.TagSummary[]>();
+    vi.mocked(cardsIpc.listTags).mockReturnValueOnce(lookup.promise);
+    renderScreen(undefined, {
+      requestId: 41,
+      source: "analytics",
+      tagIds: [tagId],
+    });
+
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
+    expect(cardsIpc.searchCards).not.toHaveBeenCalled();
+    lookup.resolve([
+      {
+        id: tagId,
+        name: "Anticoagulants",
+        sourceNoteCount: 1,
+        generatedCardCount: 1,
+        studyableDueCount: 1,
+      },
+    ]);
+
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([tagId]);
+    expect(
+      vi.mocked(cardsIpc.searchCards).mock.calls.every(
+        ([input]) => input.tagIds.length === 1 && input.tagIds[0] === tagId,
+      ),
+    ).toBe(true);
+  });
+
+  it("blocks a missing Analytics tag until the user explicitly clears it", async () => {
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
+    renderScreen(undefined, {
+      requestId: 42,
+      source: "analytics",
+      tagIds: ["9".repeat(32)],
+    });
+
+    const clearButton = await screen.findByRole("button", {
+      name: "Clear unavailable tag filter",
+    });
+    expect(cardsIpc.searchCards).not.toHaveBeenCalled();
+    fireEvent.click(clearButton);
+
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
+  });
+
+  it("blocks a rejected Analytics tag lookup until the user explicitly clears it", async () => {
+    vi.mocked(cardsIpc.listTags)
+      .mockRejectedValueOnce(new Error("Tag lookup failed"))
+      .mockResolvedValueOnce([]);
+    renderScreen(undefined, {
+      requestId: 43,
+      source: "analytics",
+      tagIds: ["8".repeat(32)],
+    });
+
+    expect(await screen.findByText(/Tag lookup failed/u)).toBeTruthy();
+    expect(cardsIpc.searchCards).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear unavailable tag filter" }),
+    );
+
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
+  });
+
+  it("keeps an explicit clear while verification is pending despite late completion", async () => {
+    const tagId = "7".repeat(32);
+    const lookup = deferred<cardsIpc.TagSummary[]>();
+    vi.mocked(cardsIpc.listTags)
+      .mockReturnValueOnce(lookup.promise)
+      .mockResolvedValueOnce([]);
+    renderScreen(undefined, {
+      requestId: 44,
+      source: "analytics",
+      tagIds: [tagId],
+    });
+
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
+
+    lookup.resolve([
+      {
+        id: tagId,
+        name: "Late tag",
+        sourceNoteCount: 1,
+        generatedCardCount: 1,
+        studyableDueCount: 1,
+      },
+    ]);
+    await Promise.resolve();
+    expect(
+      vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0),
+    ).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Clear unavailable tag filter" }),
+    ).toBeNull();
+  });
+
+  it("keeps an explicit clear while verification is pending despite late rejection", async () => {
+    const lookup = deferred<cardsIpc.TagSummary[]>();
+    vi.mocked(cardsIpc.listTags)
+      .mockReturnValueOnce(lookup.promise)
+      .mockResolvedValueOnce([]);
+    renderScreen(undefined, {
+      requestId: 45,
+      source: "analytics",
+      tagIds: ["6".repeat(32)],
+    });
+
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    lookup.reject(new Error("Late tag failure"));
+    await Promise.resolve();
+
+    expect(
+      vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0),
+    ).toBe(true);
+    expect(screen.queryByText(/Late tag failure/u)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Clear unavailable tag filter" }),
+    ).toBeNull();
   });
 
   it("applies an exact-card suspend action from the selection menu", async () => {

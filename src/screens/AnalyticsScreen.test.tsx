@@ -225,7 +225,7 @@ function analyticsForRange(
   };
 }
 
-function renderAnalytics(onPracticeScope = vi.fn()) {
+function renderAnalytics(onPracticeScope = vi.fn(), onSearchTag = vi.fn()) {
   render(
     <AnalyticsScreen
       decks={[deck]}
@@ -233,6 +233,7 @@ function renderAnalytics(onPracticeScope = vi.fn()) {
       launchRequest={null}
       onLaunchConsumed={vi.fn()}
       onPracticeScope={onPracticeScope}
+      onSearchTag={onSearchTag}
       showToast={vi.fn()}
     />,
   );
@@ -290,6 +291,38 @@ describe("AnalyticsScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Practice ready" }));
     expect(onPracticeScope).toHaveBeenCalledWith([], [tagId]);
+  });
+
+  it("routes current recent-review tags by stable ID and leaves historical tags as text", async () => {
+    const onSearchTag = vi.fn();
+    const analytics = analyticsForRange("7d");
+    const recent = analytics.recentReviews[0];
+    if (!recent) throw new Error("Expected a recent review fixture.");
+    recent.tags = [
+      { tagId: "f".repeat(32), tagName: "Shared name", isCurrent: true },
+      { tagId: "e".repeat(32), tagName: "Shared name", isCurrent: true },
+      { tagId: "0".repeat(32), tagName: "Shared name", isCurrent: false },
+    ];
+    vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
+    renderAnalytics(vi.fn(), onSearchTag);
+
+    const actions = await screen.findAllByRole("button", {
+      name: "Search cards tagged Shared name",
+    });
+    expect(actions).toHaveLength(2);
+    actions[0]?.focus();
+    expect(document.activeElement).toBe(actions[0]);
+    expect(actions[0]?.tagName).toBe("BUTTON");
+    fireEvent.click(actions[0]!);
+    fireEvent.click(actions[1]!);
+
+    expect(onSearchTag.mock.calls).toEqual([
+      ["f".repeat(32)],
+      ["e".repeat(32)],
+    ]);
+    const tagGroup = actions[0]?.closest("small");
+    expect(tagGroup?.querySelectorAll("button")).toHaveLength(2);
+    expect(tagGroup?.textContent?.match(/Shared name/gu)).toHaveLength(3);
   });
 
   it("submits an exact custom local date range", async () => {

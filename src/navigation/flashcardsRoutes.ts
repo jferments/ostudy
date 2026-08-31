@@ -13,11 +13,21 @@ export interface TransientDeckSelectionEntry {
   revision: number;
 }
 
+export type NonEmptyTagIds = readonly [string, ...string[]];
+
+/** Process-local intent from Analytics. This must never enter a UI checkpoint. */
+export interface AnalyticsSearchLaunch {
+  requestId: number;
+  source: "analytics";
+  tagIds: NonEmptyTagIds;
+}
+
 export interface FlashcardsRootRoute {
   requestId: number;
   workspace: FlashcardsWorkspaceName;
   view: "root";
   restoreDeckSelection?: TransientDeckSelectionEntry[];
+  analyticsSearchLaunch?: AnalyticsSearchLaunch;
 }
 
 export interface FlashcardsDeckRoute {
@@ -54,4 +64,20 @@ export function createFlashcardsDeckRoute(
   requestId: number,
 ): FlashcardsDeckRoute {
   return { requestId, workspace: "decks", view: "deck", deckId };
+}
+
+export function createAnalyticsSearchRoute(
+  tagId: string,
+  requestId: number,
+): FlashcardsRootRoute {
+  return {
+    requestId,
+    workspace: "search",
+    view: "root",
+    analyticsSearchLaunch: {
+      requestId,
+      source: "analytics",
+      tagIds: [tagId],
+    },
+  };
 }

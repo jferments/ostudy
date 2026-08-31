@@ -375,6 +375,15 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
 
+    def test_native_smoke_verifies_analytics_recent_tag_search(self) -> None:
+        harness = SMOKE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("def verify_analytics_tag_search", harness)
+        self.assertIn("Search cards tagged {tag_name}", harness)
+        self.assertIn("Tag: {tag_name}", harness)
+        self.assertIn("Native smoke tag", harness)
+        self.assertIn("verify_analytics_tag_search(session_id, question, tag_name, deadline)", harness)
+
     def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:
         state = {
             "selectedPrimary": [],

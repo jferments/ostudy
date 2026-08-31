@@ -20,6 +20,7 @@ import {
   type SaveUiCheckpointInput,
 } from "../ipc/uiCheckpoint";
 import {
+  createAnalyticsSearchRoute,
   createFlashcardsDeckRoute,
   createFlashcardsRootRoute,
   normalizeFlashcardsWorkspace,
@@ -527,6 +528,13 @@ export function useAppController() {
       practiceCursorRef.current = null;
       setPracticeWorkflow(null);
     }
+    if (
+      destination.section !== "decks" &&
+      flashcardsRoute.view === "root" &&
+      flashcardsRoute.analyticsSearchLaunch
+    ) {
+      setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
+    }
     if (destination.section === "analytics") {
       const requestId = analyticsRequestSequence.current;
       analyticsRequestSequence.current += 1;
@@ -564,6 +572,15 @@ export function useAppController() {
   function openFlashcardsDeck(deckId: string): void {
     setSection("decks");
     setFlashcardsRoute(createFlashcardsDeckRoute(deckId, nextFlashcardsRequestId()));
+  }
+
+  function openAnalyticsTagSearch(tagId: string): void {
+    const requestId = nextFlashcardsRequestId();
+    setSection("decks");
+    setFlashcardsRoute(createAnalyticsSearchRoute(tagId, requestId));
+    void refreshDecks().catch((error: unknown) =>
+      showToast("error", getErrorMessage(error)),
+    );
   }
 
   function returnToFlashcardsLibrary(): void {
@@ -702,6 +719,7 @@ export function useAppController() {
     navigate,
     navigateFlashcardsWorkspace,
     openFlashcardsDeck,
+    openAnalyticsTagSearch,
     returnToFlashcardsLibrary,
     practiceDeck,
     practiceScope,

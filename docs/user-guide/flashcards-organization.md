@@ -63,6 +63,13 @@ The filter sheet contains less frequently changed criteria: availability, curren
 
 A folder scope expands to its current active deck identifiers. It does not create a temporary deck and does not change folder membership. Archived decks remain available through their dedicated library area but are excluded from ordinary active Search scope unless the underlying Search status explicitly includes them.
 
+Current tag names in **Analytics → Recent reviews** open Search with that exact
+stable tag selected. Historical tags remain plain text. Search verifies the
+current tag before loading results, so a renamed tag continues to select the
+same identity while a removed or unavailable tag cannot briefly expose an
+unfiltered list. Clear the unavailable filter explicitly if you want to
+continue with an unfiltered Search.
+
 ## Practice ownership
 
 Review history and scheduling belong to generated cards, not folders. Moving a deck between folders has no effect on its cards. Moving a card between decks transfers that card and its review evidence according to the existing card-ownership rules; the folder containing either deck does not become an analytics owner.

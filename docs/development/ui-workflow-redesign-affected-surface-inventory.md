@@ -209,6 +209,23 @@ selected-deck Move sheet path. No Stage-4-owned deck-library source was changed.
 Analytics tag navigation, Search filter requests, workload/recent summaries,
 and their smoke coverage remain Stage 5B.
 
+## Stage 5B Analytics-to-Search delta
+
+Current tags in Analytics recent-review evidence are keyboard-operable Search
+actions keyed by stable tag ID; historical captured tags remain plain text.
+`src/navigation/flashcardsRoutes.ts` owns the process-local launch with a fresh
+request ID, literal Analytics source, and non-empty tag tuple. The App
+controller passes it through the existing keyed Flashcards remount boundary;
+plain route construction for top-level/workspace/Back/deck/library navigation
+clears it, and the schema-v2 checkpoint retains only the visible Search root.
+
+`CardBrowserWorkspace` installs requested IDs synchronously and gates all card
+queries on `listTags([])`. A valid lookup opens the exact tag-filtered query; a
+missing or rejected lookup stays blocked. Explicit clearing opens ordinary
+unfiltered Search even while validation is pending, and late completion cannot
+restore or re-block the transient request. Rust search and Analytics
+aggregation semantics are unchanged.
+
 ## Route and navigation topology
 
 Visible destination vocabulary is owned by `AppSection`; protected workflow
@@ -224,7 +241,7 @@ route/smoke contract.
 | Flashcards | `src/controllers/useAppController.ts`, `src/App.tsx`, `src/components/NavigationSidebar.tsx` | `section = "decks"` is a primary destination and owns the `FlashcardsRoute` state. | Remains the first primary destination and becomes the fallback for setup-only old Practice checkpoints. | Stages 2–5 |
 | Documents | `src/App.tsx`, `src/screens/DocumentsSection.tsx`, `src/screens/DocumentsScreen.tsx` | `section = "documents"` is a primary destination. | Route remains primary while archive semantics and action density change; document actions later route into Study Guides. | Stages 1, 2, 6–9 |
 | Practice | `src/controllers/useAppController.ts`, `src/controllers/practiceController.ts`, `src/App.tsx`, `src/screens/PracticeScreen.tsx` | `AppWorkflow = "practice"` and `PracticeWorkflowState` own the internal launch/restore container independently of the visible `section`; schema v2 stores only a resumable cursor and logical visible return target. One discriminated controller start boundary retains the existing selected-scope and exact-card native gateways. | SQLite remains authoritative; route/request IDs are reconstructed rather than persisted. Stage 3 relocates setup. | Stages 2, 3, 5 |
-| Analytics | `src/App.tsx`, `src/screens/AnalyticsScreen.tsx`, `src/controllers/analyticsController.ts` | `section = "analytics"` is a primary destination. `AnalyticsLaunchRequest` can carry range, deck/tag filters, and highlighted session. | Receives workload/recent-practice material and must launch Search with a typed tag-filter request without duplicating native analytics or scheduling rules. | Stage 5 |
+| Analytics | `src/App.tsx`, `src/screens/AnalyticsScreen.tsx`, `src/controllers/analyticsController.ts` | `section = "analytics"` is a primary destination. `AnalyticsLaunchRequest` can carry range, deck/tag filters, and highlighted session; current recent tags emit a transient stable-ID Search launch. | Workload/recent-practice material and current-tag Search actions reuse native projections without duplicating analytics or scheduling rules; historical tags remain text. | Stage 5 |
 | Settings | `src/App.tsx`, `src/screens/SettingsScreen.tsx` | `section = "settings"` is a primary destination; the screen owns settings draft/preview/save state and composes the AI-profile controller. | Navigation order changes; font, window, and per-model reasoning work must preserve dirty-state guards and platform/security boundaries. | Stages 2, 9, 11 |
 | Cards alias | `src/controllers/useAppController.ts` (`AppSection`, `normalizeDestination`) | `"cards"` is a compatibility alias normalized to `decks/search`; it is not rendered as a primary destination. | Preserve callers/checkpoints until they are deliberately migrated; do not add a second Search route. | Stages 2, 3, 5 |
 | Templates alias | `src/controllers/useAppController.ts` (`AppSection`, `normalizeDestination`) | `"templates"` is a compatibility alias normalized to `decks/templates`; it is not rendered as a primary destination. | Preserve callers/checkpoints and unsaved-template guarding while navigation changes. | Stages 2, 10 |
@@ -238,7 +255,7 @@ route/smoke contract.
 | --- | --- | --- | --- |
 | Decks | `{ workspace: "decks", view: "root" }` | Default Flashcards root. Deck list/folder selection and later bulk selection remain separate from application routing. | Stages 2–5 |
 | Templates | `{ workspace: "templates", view: "root" }` | Canonical destination for the `templates` alias and template dirty-state guard. | Stages 2, 10 |
-| Search | `{ workspace: "search", view: "root" }` | Canonical destination for the `cards` alias. Later Analytics tag launches must enter this route with controller-owned filter intent. | Stages 3, 5, 10 |
+| Search | `{ workspace: "search", view: "root" }` | Canonical destination for the `cards` alias. Analytics may attach a process-local verified tag launch; checkpoint restoration and ordinary navigation construct the plain route. | Stages 3, 5, 10 |
 | Import/Export | `{ workspace: "transfer", view: "root" }` | Owns deck/import/backup launch UI, while durable formats remain Rust-owned. | Stages 2, 6, 10 |
 | Deck detail | `{ workspace: "decks", view: "deck", deckId }` | `createFlashcardsDeckRoute`, `openFlashcardsDeck`, and `returnToFlashcardsLibrary` preserve request identity and platform-Back behavior. | Stages 2, 3, 5, 6 |
 
@@ -331,7 +348,7 @@ The public schema is append-only. `src-tauri/src/database.rs` registers migratio
 | `src/screens/StudyGuideLibrarySection.test.tsx`, `src/screens/StudyGuideDialog.test.tsx`; Rust guide/overlay/export/migration/backup tests | Current nested library, guide revision/regeneration, overlays/conflicts, topic practice, export, deletion cascade, and backup. | Stages 8, 9. |
 | Editor/card/template frontend tests plus native authoring, `studydeck`, and backup tests | Canonical rich docs, Tiptap behavior, draft recovery, templates, practice rendering, and transfer compatibility. | Stage 10. |
 | Settings/profile tests under `src/screens/SettingsScreen*.test.tsx`, `src/screens/settings/*test.tsx`, `src/controllers/aiProfilesController.test.tsx`; Rust settings/profile/probe/backup tests | Font choices/default compatibility, dirty/save behavior, model lists/capabilities, global reasoning, profiles/defaults, and credential markers. | Stages 2, 9, 11. |
-| `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates deck/card, proves contextual internal Practice has no selected primary destination, requires complete inline-progress accessible value text with no former header chip, restores the exact deck after early exit, then completes a later session and preserves review/Analytics state across restart. | Stages 2, 3, 5, 10, 13. |
+| `scripts/smoke-native.sh` → `tests/webdriver/durable_library_smoke.py` (which runs `tests/webdriver/smoke.py`) | Creates and reviews a tagged card, proves contextual internal Practice and inline progress, opens the current recent tag into exact-filtered Search with the matching result, then preserves review/Analytics state across restart. | Stages 2, 3, 5, 10, 13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/ui_platform_smoke.py` | Wide/medium/compact navigation and mascot/font defaults, current Study Guides, viewport-filling shell/routes across resize and each native window transition, dialog bounds/scroll ownership, Flashcards tabs/Search, overlay focus, vertical deck-detail header order/action placement/overflow containment, deck-scoped authoring, Settings, and overflow. | Stages 1–5, 8–13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/card_listing_followup_smoke.py` | Complete labeled medium navigation plus Deck and Search card-listing parity and authoring. | Stages 2, 3, 5, 10, 13. |
 | `scripts/smoke-native.sh` → `tests/webdriver/deck_toolbar_layout_smoke.py` | Compact Flashcards tabs, deck toolbar containment, and horizontal-overflow bounds. | Stages 1–5, 12, 13. |
