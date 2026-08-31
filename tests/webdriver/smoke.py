@@ -707,20 +707,20 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
         )
 
 
-def verify_analytics_tag_search(
+def verify_tag_filtered_search(
     session_id: str,
     question: str,
     tag_name: str,
     deadline: float,
 ) -> None:
-    tag_action = find_element(
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(
         session_id,
         "xpath",
-        f"//main//button[@aria-label={json.dumps(f'Search cards tagged {tag_name}')}]",
+        "//main//*[@role='tab' and @aria-selected='true']"
+        "[contains(normalize-space(.), 'Search')]",
         deadline,
     )
-    click(session_id, tag_action)
-    wait_for_main_heading(session_id, "Flashcards", deadline)
     find_element(
         session_id,
         "xpath",
@@ -734,6 +734,21 @@ def verify_analytics_tag_search(
         deadline,
     )
 
+
+def verify_analytics_tag_search(
+    session_id: str,
+    question: str,
+    tag_name: str,
+    deadline: float,
+) -> None:
+    tag_action = find_element(
+        session_id,
+        "xpath",
+        f"//main//button[@aria-label={json.dumps(f'Search cards tagged {tag_name}')}]",
+        deadline,
+    )
+    click(session_id, tag_action)
+    verify_tag_filtered_search(session_id, question, tag_name, deadline)
 
 def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_name = "Native smoke deck"

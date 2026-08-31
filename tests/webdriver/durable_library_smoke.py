@@ -14,20 +14,13 @@ def verify_persistence_after_restart(
     question: str,
 ) -> None:
     """Verify A2 UI restoration, then navigate explicitly to durable library state."""
-    webdriver.progress("Verifying restored Analytics checkpoint after restart")
+    webdriver.progress("Verifying restored filtered Search checkpoint after restart")
     deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
     webdriver.verify_shell(session_id, deadline)
-    webdriver.find_element(
+    webdriver.verify_tag_filtered_search(
         session_id,
-        "css selector",
-        webdriver.ANALYTICS_SCREEN_SELECTOR,
-        deadline,
-    )
-    webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
-        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        question,
+        "Native smoke tag",
         deadline,
     )
 

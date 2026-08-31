@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
+DURABLE_LIBRARY_SMOKE_PATH = ROOT / "tests" / "webdriver" / "durable_library_smoke.py"
 UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
 NATIVE_SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
 PROGRESS_STYLES_PATH = ROOT / "src" / "ui" / "primitives" / "Progress.module.css"
@@ -379,11 +380,41 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
     def test_native_smoke_verifies_analytics_recent_tag_search(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
 
+        self.assertIn("def verify_tag_filtered_search", harness)
         self.assertIn("def verify_analytics_tag_search", harness)
         self.assertIn("Search cards tagged {tag_name}", harness)
         self.assertIn("Tag: {tag_name}", harness)
         self.assertIn("Native smoke tag", harness)
         self.assertIn("verify_analytics_tag_search(session_id, question, tag_name, deadline)", harness)
+
+    def test_tag_filtered_search_contract_requires_selected_tab_filter_and_card(self) -> None:
+        with patch.object(self.smoke, "wait_for_main_heading") as heading, patch.object(
+            self.smoke,
+            "find_element",
+            side_effect=["search-tab", "tag-filter", "reviewed-card"],
+        ) as find_element:
+            self.smoke.verify_tag_filtered_search(
+                "session-1",
+                "What persisted?",
+                "Native smoke tag",
+                42.0,
+            )
+
+        heading.assert_called_once_with("session-1", "Flashcards", 42.0)
+        self.assertEqual(3, find_element.call_count)
+        selectors = [call.args[2] for call in find_element.call_args_list]
+        self.assertIn("@aria-selected='true'", selectors[0])
+        self.assertIn("Search", selectors[0])
+        self.assertIn("Remove Tag: Native smoke tag filter", selectors[1])
+        self.assertIn("What persisted?", selectors[2])
+
+    def test_durable_smoke_restores_stage_five_tag_search_checkpoint(self) -> None:
+        source = DURABLE_LIBRARY_SMOKE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("Verifying restored filtered Search checkpoint after restart", source)
+        self.assertIn("webdriver.verify_tag_filtered_search(", source)
+        self.assertIn('"Native smoke tag"', source)
+        self.assertNotIn("Verifying restored Analytics checkpoint after restart", source)
 
     def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:
         state = {
