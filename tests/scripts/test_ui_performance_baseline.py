@@ -414,8 +414,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
     def test_native_window_keyboard_activation_targets_the_resolved_element(self) -> None:
         probe = {
             "token": "probe",
-            "keydown": {"trusted": True, "key": "Enter"},
-            "keyup": {"trusted": True, "key": "Enter"},
+            "keydown": {"trusted": True, "key": " "},
+            "keyup": {"trusted": True, "key": " "},
             "click": {"trusted": True, "detail": 0},
         }
         with mock.patch.object(
@@ -459,17 +459,17 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         request.assert_called_once_with("GET", "/session/session-id/window/rect")
         arm_probe.assert_called_once()
         send_element_key.assert_called_once_with(
-            "session-id", "window-control-id", baseline.ui.ENTER_KEY
+            "session-id", "window-control-id", baseline.ui.SPACE_KEY
         )
         wait_probe.assert_called_once()
         send_global_key.assert_not_called()
         self.assertEqual({"width": 1440, "height": 900}, result["initialWindowRect"])
 
-    def test_native_keyboard_probe_requires_trusted_enter_and_keyboard_click(self) -> None:
+    def test_native_keyboard_probe_requires_trusted_space_and_keyboard_click(self) -> None:
         complete = {
             "token": "probe",
-            "keydown": {"trusted": True, "key": "Enter"},
-            "keyup": {"trusted": True, "key": "Enter"},
+            "keydown": {"trusted": True, "key": " "},
+            "keyup": {"trusted": True, "key": " "},
             "click": {"trusted": True, "detail": 0},
         }
         with mock.patch.object(
@@ -498,8 +498,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
     def test_native_keyboard_probe_rejects_boolean_click_detail(self) -> None:
         invalid = {
             "token": "probe",
-            "keydown": {"trusted": True, "key": "Enter"},
-            "keyup": {"trusted": True, "key": "Enter"},
+            "keydown": {"trusted": True, "key": " "},
+            "keyup": {"trusted": True, "key": " "},
             "click": {"trusted": True, "detail": False},
         }
         with mock.patch.object(
@@ -511,7 +511,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             "monotonic",
             side_effect=[0.0, 0.0, 0.1],
         ), mock.patch.object(baseline.ui.time, "sleep"):
-            with self.assertRaisesRegex(AssertionError, "trusted Enter"):
+            with self.assertRaisesRegex(AssertionError, "trusted Space"):
                 baseline.ui.wait_for_window_control_keyboard_probe(
                     "session-id", "probe", 0.05
                 )
