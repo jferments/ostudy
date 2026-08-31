@@ -516,7 +516,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                     "session-id", "probe", 0.05
                 )
 
-    def test_native_smoke_declares_and_verifies_an_ewmh_window_manager(self) -> None:
+    def test_native_launchers_declare_and_verify_an_ewmh_window_manager(self) -> None:
         setup = (baseline.ROOT_DIR / "scripts/setup-ubuntu.sh").read_text(
             encoding="utf-8"
         )
@@ -532,6 +532,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         smoke = (baseline.ROOT_DIR / "scripts/smoke-native.sh").read_text(
             encoding="utf-8"
         )
+        performance = (
+            baseline.ROOT_DIR / "scripts/ui-performance-baselines.sh"
+        ).read_text(encoding="utf-8")
 
         for provisioning in (setup, bootstrap):
             self.assertIn("openbox", provisioning)
@@ -545,9 +548,12 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             'exec env OSTUDY_IN_XVFB=1 xvfb-run -a "$0" "$@"',
             smoke,
         )
-        self.assertIn("openbox --sm-disable", smoke)
-        self.assertIn("_NET_SUPPORTING_WM_CHECK", smoke)
-        self.assertIn("window_manager_ready", smoke)
+        for launcher in (smoke, performance):
+            self.assertIn("openbox --sm-disable", launcher)
+            self.assertIn("_NET_SUPPORTING_WM_CHECK", launcher)
+            self.assertIn("window_manager_ready", launcher)
+        self.assertIn("OSTUDY_PERFORMANCE_IN_XVFB", performance)
+        self.assertIn("UI performance capture cannot qualify a throttled rendering surface", performance)
 
     def test_drag_candidate_has_distinct_identity_and_only_three_drag_limits(self) -> None:
         candidate = Path(self.temp.name) / "candidate"

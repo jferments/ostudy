@@ -6,7 +6,7 @@ This document defines the measurement and evidence contract for the two Stage 0D
 
 Performance collection is available only when `OSTUDY_UI_PERFORMANCE_CAPTURE=1` builds a separate Tauri artifact with the installed `react-dom/profiling` renderer. Ordinary builds use `react-dom/client`, do not install `window.__OSTUDY_UI_PERFORMANCE__`, and do not collect measurements. The capture bridge accepts only enumerated scenario IDs, DOM element handles, profiler boundary IDs, and bounded numeric timing/count data. It does not serialize the DOM or retain card text, document text, filenames, prompts, provider responses, credentials, identifiers, screenshots, or raw browser traces. The capture bridge performs no network I/O. In Actions, the workflow uploads only the explicitly bounded synthetic manifest, deck-drag measurement, and captured log artifacts described below.
 
-The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
+The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. On its private Xvfb display, the launcher also starts an isolated Openbox process and verifies the EWMH window-manager selection before opening WebKit; capture fails closed instead of timing a throttled or unmanaged rendering surface. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
 
 ## Scenario contract
 
@@ -56,7 +56,7 @@ reference at its own recorded identity without impersonating that source:
 ./scripts/ui-performance-baselines.sh verify-reference
 ```
 
-Explicit capture on the clean reviewed harness checkpoint (native build, Xvfb, WebKitWebDriver, and `tauri-driver` required):
+Explicit capture on the clean reviewed harness checkpoint (native build, Xvfb, Openbox plus `xprop`, WebKitWebDriver, and `tauri-driver` required):
 
 ```bash
 ./scripts/ui-performance-baselines.sh capture
@@ -137,7 +137,9 @@ into the React Pointer Events consumed by the new adapter. Candidate timing
 therefore does not depend on WebKitWebDriver pointer-action translation: it
 dispatches pointerdown before arming, dispatches a same-target mouse pointermove
 strictly beyond the 8px activation threshold after arming, proves real preview
-appearance and cancellation cleanup, and only then finishes the sample. This
+appearance, finalizes the visible-frame timing while that preview remains mounted,
+and then proves cancellation cleanup. This ordering excludes WebDriver cleanup latency
+from the visible-response metric. This
 deterministic DOM-event performance path exercises the production React drag
 adapter, preview, cancellation, Profiler, User Timing, and pointer-frame
 instrumentation. Those samples do not themselves prove operating-system input
@@ -150,7 +152,7 @@ Verification and comparison never rewrite evidence. Capture stages all JSON in a
 ## Limitations
 
 The committed distribution was captured on the pinned codex-dev
-Linux/WebKit/Xvfb reference environment. Exact-head Actions applies its three
+Linux/WebKit/Xvfb/EWMH reference environment. Exact-head Actions applies its three
 drag maxima as absolute SLOs on the separately maintained `ostudy-unified`
 runner profile after guest preflight; this is not represented as a same-host
 statistical comparison. The current manifest verifies runtime ABI, display,
