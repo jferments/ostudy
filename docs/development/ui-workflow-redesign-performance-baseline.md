@@ -145,8 +145,13 @@ preview to exist, have nonzero layout bounds, and resolve to visible computed
 styles. That style/layout-ready timestamp replaces only the candidate's
 `interactionToVisible` value; React commit, pointer work, and readiness evidence
 still come from the production profiling bridge while the preview remains mounted.
-The 29 ms reference limit therefore acts as a conservative next-frame readiness
-deadline without trusting Xvfb's virtual paint cadence. Cancellation cleanup is
+The drag adapter synchronously commits only the threshold-crossing preview state
+because its native `window` listener is outside React's discrete-event priority;
+candidate resolution and all later movement remain animation-frame coalesced. This
+prevents continuous-event scheduling from intermittently delaying the first preview
+without moving normal drag work into the input handler. The 29 ms reference limit
+therefore acts as a conservative next-frame readiness deadline without trusting
+Xvfb's virtual paint cadence. Cancellation cleanup is
 then proved separately. This deterministic path exercises the production React
 drag adapter, preview, cancellation, Profiler, User Timing, layout, computed style,
 and pointer-frame instrumentation. Those samples do not themselves prove operating-system input

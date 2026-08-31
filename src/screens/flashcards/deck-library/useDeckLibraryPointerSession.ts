@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefCallback,
 } from "react";
+import { flushSync } from "react-dom";
 
 import type { DeckLibrarySnapshot } from "./organizationModel";
 import { resolveDragCandidate, type DragCandidate } from "./dragSessionModel";
@@ -312,7 +313,13 @@ export function useDeckLibraryPointerSession(
       } catch {
         // Keep activation, feedback, movement, and cancellation on the window path.
       }
-      setFeedback({ active: true, sourceName: session.sourceName, candidate: null });
+      // This listener is attached directly to window, outside React's discrete-event
+      // priority. Commit the one-time preview synchronously so continuous-event
+      // scheduling cannot postpone visible drag activation. Subsequent movement
+      // and candidate work remains coalesced through requestAnimationFrame.
+      flushSync(() => {
+        setFeedback({ active: true, sourceName: session.sourceName, candidate: null });
+      });
     }
     event.preventDefault();
     scheduleFrame(session);
