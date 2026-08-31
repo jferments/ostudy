@@ -17,7 +17,7 @@ import smoke as webdriver
 
 ESCAPE_KEY = "\ue00c"
 TAB_KEY = "\ue004"
-ENTER_KEY = "\ue007"
+SPACE_KEY = "\ue00d"
 EXPECTED_PLEX_FAMILY_SERIALIZATIONS = frozenset(
     {
         "'IBM Plex Sans', var(--ostudy-font-family-system)",
@@ -106,7 +106,7 @@ def arm_window_control_keyboard_probe(
           click: null
         };
         const recordKey = (field, event) => {
-          if (event.target !== button || event.key !== "Enter") return;
+          if (event.target !== button || event.key !== " ") return;
           state[field] = {
             trusted: event.isTrusted,
             key: event.key,
@@ -168,10 +168,10 @@ def wait_for_window_control_keyboard_probe(
             if (
                 isinstance(keydown, dict)
                 and keydown.get("trusted") is True
-                and keydown.get("key") == "Enter"
+                and keydown.get("key") == " "
                 and isinstance(keyup, dict)
                 and keyup.get("trusted") is True
-                and keyup.get("key") == "Enter"
+                and keyup.get("key") == " "
                 and isinstance(click, dict)
                 and click.get("trusted") is True
                 and type(click.get("detail")) is int
@@ -185,7 +185,7 @@ def wait_for_window_control_keyboard_probe(
         time.sleep(0.05)
     raise AssertionError(
         "Native window-control keyboard activation did not produce trusted "
-        f"Enter keydown/keyup and keyboard click events: {last!r}"
+        f"Space keydown/keyup and keyboard click events: {last!r}"
     )
 
 
@@ -639,7 +639,9 @@ def activate_window_control_with_keyboard(
     # keyboard activation without relying on WebKitDriver's global focus bridge.
     token = f"window-control-{time.monotonic_ns()}"
     arm_window_control_keyboard_probe(session_id, element, token)
-    send_element_key(session_id, element, ENTER_KEY)
+    # Space activates an HTML button on keyup, so the complete trusted key
+    # sequence is observed before the click can trigger a native-state rerender.
+    send_element_key(session_id, element, SPACE_KEY)
     probe = wait_for_window_control_keyboard_probe(session_id, token, deadline)
     probe["initialWindowRect"] = initial_window_rect
     return probe
