@@ -6,7 +6,7 @@ This document defines the measurement and evidence contract for the two Stage 0D
 
 Performance collection is available only when `OSTUDY_UI_PERFORMANCE_CAPTURE=1` builds a separate Tauri artifact with the installed `react-dom/profiling` renderer. Ordinary builds use `react-dom/client`, do not install `window.__OSTUDY_UI_PERFORMANCE__`, and do not collect measurements. The capture bridge accepts only enumerated scenario IDs, DOM element handles, profiler boundary IDs, and bounded numeric timing/count data. It does not serialize the DOM or retain card text, document text, filenames, prompts, provider responses, credentials, identifiers, screenshots, or raw browser traces. The capture bridge performs no network I/O. In Actions, the workflow uploads only the explicitly bounded synthetic manifest, deck-drag measurement, and captured log artifacts described below.
 
-The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. On its private Xvfb display, the launcher also starts an isolated Openbox process and verifies the EWMH window-manager selection before opening WebKit; capture fails closed instead of timing a throttled or unmanaged rendering surface. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
+The explicit capture operation creates a temporary XDG data/config/cache/state/runtime home, generates a validated synthetic complete-library backup through cfg(test)-only Rust support, installs it as a pending restore inside that temporary application-data directory, builds into a separate temporary Cargo target, and deletes the complete boundary on exit. On its private Xvfb display, the launcher pins X.Org's fake vblank clock to 60 Hz, starts an isolated Openbox process, and verifies the EWMH window-manager selection before opening WebKit; capture fails closed instead of timing a throttled or unmanaged rendering surface. It never resolves or opens the learner's normal ostudy data, documents, managed assets, credentials, or settings.
 
 ## Scenario contract
 
@@ -27,7 +27,7 @@ Every scenario uses three warmups followed by twelve recorded samples. Readiness
 
 The explicit capture operation writes only this canonical evidence tree:
 
-- `tests/performance-baselines/ui-workflow-redesign-stage-0/manifest.json` records the exact harness source SHA, application binary hash, profiling identity, versions, 1440×900 CSS viewport, Light theme, 100% scale, full motion, rich materials, fine pointer, device-pixel ratio, and the 1920×1200×24 Xvfb display at 96 DPI.
+- `tests/performance-baselines/ui-workflow-redesign-stage-0/manifest.json` records the exact harness source SHA, application binary hash, profiling identity, versions, 1440×900 CSS viewport, Light theme, 100% scale, full motion, rich materials, fine pointer, device-pixel ratio, and the 1920×1200×24 Xvfb display at 96 DPI with a pinned 60 Hz fake vblank clock.
 - `tests/performance-baselines/ui-workflow-redesign-stage-0/budgets.json` contains the derived budgets, formulas, source statistics, rounding rule, comparison operator, and rationale.
 - `measurements/<scenario-id>.json` contains twelve numeric samples for exactly one scenario. Each sample records interaction-to-visible and interaction-to-ready User Timing, React unique commit count and render duration, unexpected-boundary/avoidable commit count, and either available pointer-frame evidence or an explicit `notApplicable` state.
 
@@ -115,8 +115,11 @@ Python major/minor, device-pixel ratio, viewport/display, fixed UI metadata,
 captured driver-command output, profiling identity, source and application
 hashes, scenario/sample structure, and budget contracts.
 
-Before timed samples, Stage 4A starts a separate disposable driver/application
-session, opens the isolated Xvfb display through XTEST,
+Before timed samples, Stage 4A verifies that the timing session is visible and
+samples seven consecutive animation-frame intervals; a median above 50 ms fails as
+a throttled rendering surface before any product measurement is accepted. It then
+starts a separate disposable driver/application session, opens the isolated Xvfb
+display through XTEST,
 calibrates X-root coordinates against a browser-observed trusted event, injects
 native motion/button-down/threshold-crossing motion/Escape/button-up, and requires
 WebKit to report `isTrusted` mouse Pointer Events with the expected target,

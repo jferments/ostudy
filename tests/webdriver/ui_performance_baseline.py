@@ -2292,6 +2292,71 @@ def achieve_reference_viewport(session_id: str) -> None:
     raise AssertionError(f"Could not achieve exact {VIEWPORT['width']}x{VIEWPORT['height']} CSS viewport.")
 
 
+def verify_rendering_frame_clock(session_id: str) -> dict[str, Any]:
+    result = webdriver.request(
+        "POST",
+        f"/session/{session_id}/execute/async",
+        {
+            "script": """
+              const done = arguments[arguments.length - 1];
+              const timestamps = [];
+              const sample = (timestamp) => {
+                timestamps.push(timestamp);
+                if (timestamps.length < 8) {
+                  requestAnimationFrame(sample);
+                  return;
+                }
+                done({
+                  visibilityState: document.visibilityState,
+                  hidden: document.hidden,
+                  hasFocus: document.hasFocus(),
+                  intervals: timestamps.slice(1).map(
+                    (value, index) => value - timestamps[index],
+                  ),
+                });
+              };
+              requestAnimationFrame(sample);
+            """,
+            "args": [],
+        },
+    )
+    if not isinstance(result, dict) or set(result) != {
+        "visibilityState", "hidden", "hasFocus", "intervals",
+    }:
+        raise AssertionError(f"Invalid rendering frame-clock evidence: {result!r}")
+    intervals = result["intervals"]
+    if (
+        result["visibilityState"] != "visible"
+        or result["hidden"] is not False
+        or type(result["hasFocus"]) is not bool
+        or not isinstance(intervals, list)
+        or len(intervals) != 7
+        or any(type(value) not in {int, float} or not math.isfinite(value) or value < 0 for value in intervals)
+    ):
+        raise AssertionError(f"Rendering surface is not visibly measurable: {result!r}")
+    median_interval = float(statistics.median(intervals))
+    maximum_interval = float(max(intervals))
+    if median_interval > 50:
+        raise AssertionError(
+            "Rendering frame clock is throttled before capture: "
+            f"median={median_interval:.3f}ms maximum={maximum_interval:.3f}ms "
+            f"focus={result['hasFocus']!r}."
+        )
+    evidence = {
+        "visibilityState": result["visibilityState"],
+        "hasFocus": result["hasFocus"],
+        "medianIntervalMs": median_interval,
+        "maximumIntervalMs": maximum_interval,
+    }
+    print(
+        "[ui-performance] Verified active rendering frame clock: "
+        f"visibility={evidence['visibilityState']} focus={evidence['hasFocus']} "
+        f"median={median_interval:.3f}ms maximum={maximum_interval:.3f}ms",
+        flush=True,
+    )
+    return evidence
+
+
 def collect_scenario(session_id: str, scenario: str, sample_index: int) -> dict[str, Any]:
     deadline = webdriver.deadline_after(30)
     if scenario == "navigation-hover-v1":
@@ -2447,6 +2512,7 @@ def capture(
         webdriver.verify_shell(session_id, webdriver.deadline_after())
         achieve_reference_viewport(session_id)
         wait_js(session_id, "window.__OSTUDY_UI_PERFORMANCE__?.profilingRenderer === true", webdriver.deadline_after(20))
+        verify_rendering_frame_clock(session_id)
         resolved = execute_read_only(session_id, """
           const root = document.documentElement;
           return {

@@ -1063,6 +1063,30 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         x11.XCloseDisplay.assert_called_once_with(1)
         x11.XQueryPointer.assert_not_called()
 
+    def test_rendering_frame_clock_requires_visible_unthrottled_frames(self) -> None:
+        active = {
+            "visibilityState": "visible",
+            "hidden": False,
+            "hasFocus": True,
+            "intervals": [16.0, 17.0, 16.5, 17.5, 16.0, 18.0, 16.0],
+        }
+        with mock.patch.object(baseline.webdriver, "request", return_value=active):
+            evidence = baseline.verify_rendering_frame_clock("session-1")
+        self.assertEqual("visible", evidence["visibilityState"])
+        self.assertTrue(evidence["hasFocus"])
+        self.assertLess(evidence["medianIntervalMs"], 20)
+
+        hidden = {**active, "visibilityState": "hidden", "hidden": True}
+        with mock.patch.object(baseline.webdriver, "request", return_value=hidden):
+            with self.assertRaisesRegex(AssertionError, "visibly measurable"):
+                baseline.verify_rendering_frame_clock("session-1")
+
+        throttled = {**active, "hasFocus": False, "intervals": [200.0] * 7}
+        with mock.patch.object(baseline.webdriver, "request", return_value=throttled):
+            with self.assertRaisesRegex(AssertionError, "frame clock is throttled"):
+                baseline.verify_rendering_frame_clock("session-1")
+
+
     def test_candidate_launcher_pins_x11_backend_for_trusted_input(self) -> None:
         launcher = (
             baseline.ROOT_DIR / "scripts/ui-performance-baselines.sh"
@@ -1071,6 +1095,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             'if [[ "$CAPTURE_COMMAND" == "capture-candidate" ]]',
         )[-1].split("else", 1)[0]
         self.assertIn("GDK_BACKEND=x11", candidate_section)
+        self.assertIn("-fakescreenfps 60", launcher)
 
     def test_candidate_driver_uses_only_the_large_library_native_selector(self) -> None:
         with mock.patch.object(

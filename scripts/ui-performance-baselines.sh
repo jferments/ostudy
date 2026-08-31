@@ -56,11 +56,11 @@ if [[ "${OSTUDY_PERFORMANCE_IN_XVFB:-0}" != "1" ]]; then
   }
   if [[ "$CAPTURE_COMMAND" == "capture-candidate" ]]; then
     exec env OSTUDY_PERFORMANCE_IN_XVFB=1 xvfb-run -a \
-      --server-args="-screen 0 1920x1200x24 -dpi 96 -nolisten tcp" \
+      --server-args="-screen 0 1920x1200x24 -dpi 96 -fakescreenfps 60 -nolisten tcp" \
       "$0" capture-candidate "$CANDIDATE_DIR"
   fi
   exec env OSTUDY_PERFORMANCE_IN_XVFB=1 xvfb-run -a \
-    --server-args="-screen 0 1920x1200x24 -dpi 96 -nolisten tcp" \
+    --server-args="-screen 0 1920x1200x24 -dpi 96 -fakescreenfps 60 -nolisten tcp" \
     "$0" capture
 fi
 
