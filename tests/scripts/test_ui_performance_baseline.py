@@ -1096,7 +1096,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         )
         self.assertEqual({"sample": True}, result)
 
-    def test_candidate_drag_dispatches_down_before_arm_move_after_arm_then_proves_cleanup(self) -> None:
+    def test_candidate_drag_finalizes_active_preview_before_proving_cleanup(self) -> None:
         events: list[str] = []
         with mock.patch.object(
             baseline,
@@ -1141,9 +1141,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 "arm",
                 "pointermove:19,20",
                 "preview-active",
+                "finish",
                 "pointercancel:19,20",
                 "preview-clean",
-                "finish",
                 "release",
             ],
             events,

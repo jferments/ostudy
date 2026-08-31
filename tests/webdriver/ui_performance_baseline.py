@@ -1929,6 +1929,11 @@ def collect_candidate_drag_sample(
             activation_point["y"],
         )
         wait_js(session_id, "document.querySelector('[data-drag-preview]')", deadline)
+        # Finalize while the activated preview is still mounted. WebKit can defer
+        # requestAnimationFrame while synchronous WebDriver cleanup commands run;
+        # cancelling first would therefore measure harness cleanup latency instead
+        # of the interaction-to-visible frame.
+        sample = finish(session_id)
         cancel_attempted = True
         dispatch_candidate_drag_pointer_event(
             session_id,
@@ -1939,7 +1944,7 @@ def collect_candidate_drag_sample(
             activation_point["y"],
         )
         wait_js(session_id, "!document.querySelector('[data-drag-preview]')", deadline)
-        return finish(session_id)
+        return sample
     except BaseException as error:
         primary_error = error
         if (
