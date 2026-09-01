@@ -166,6 +166,11 @@ active session, editing, completion, and checkpoint cursor behavior; the
 standing setup, recent-practice, and duplicate Study Guide composition are gone.
 Selected deck return state remains process-local and is revision-reconciled
 without entering the versioned checkpoint or durable settings.
+The Stage 3–5 closure also carries an ordinary library selection through the
+typed deck-detail route and keyed remount. Return refreshes current decks, drops
+revision/lifecycle-invalid entries, retains unchanged active empty decks for
+Move/Archive/Delete while Practice remains unavailable, and still projects no
+selection into the UI checkpoint.
 
 ## Stage 4 — Deck and folder drag/drop reliability and performance
 
@@ -189,6 +194,13 @@ the 120-deck candidate fixture, anywhere-to-anywhere and invalid-target/stale-
 revision regressions, a disposable trusted X11/XTEST mouse smoke, and the
 three-warmup/twelve-sample drag comparison against the recorded budgets. The
 exact-head `all-full` gate must pass this evidence contract before merge.
+The closure audit removes the former interactive drag-surface exemption,
+separates destination styling from exact before/end/empty insertion markers,
+and measures production activation plus animation-frame drag work under the
+distinct `deck-drag-production-v2` candidate identity. Activation counts as one
+pointer event while animation-frame work remains timing evidence rather than a
+second event. The immutable Stage 0 evidence and budgets remain unchanged and
+serve only as absolute acceptance ceilings for the non-comparable candidate.
 
 ## Stage 5 — Deck detail, active-practice progress, and analytics navigation
 
@@ -214,6 +226,9 @@ imagery; all remaining move controls are functional alternatives owned by Stage
 Stage 5B completes rows 9–12. Current recent-review tags now launch Search by
 stable tag ID through a transient verified request, historical tags remain
 plain evidence, and the maintained native smoke covers the tagged review path.
+Archived deck detail now keeps Practice truthfully disabled and replaces the
+active Archive action with a revision-checked Restore action. Analytics workload
+guidance names the current deck Practice launch surface.
 
 ## Stage 6 — Document lifecycle simplification, compact cards, and durable citations
 

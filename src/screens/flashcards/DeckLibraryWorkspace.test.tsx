@@ -102,7 +102,10 @@ interface RenderOptions {
   refreshDecks?: () => Promise<DeckSummary[]>;
   showToast?: ShowToast;
   openDeckRequest?: { requestId: number; deckId: string } | null;
-  onOpenDeck?: (deckId: string) => void;
+  onOpenDeck?: (
+    deckId: string,
+    selection?: readonly TransientDeckSelectionEntry[],
+  ) => void;
   onReturnToLibrary?: () => void;
   onPracticeDeck?: (deckId: string) => void;
   onPracticeSelected?: (
@@ -233,7 +236,7 @@ describe("DeckLibraryWorkspace", () => {
     expect(deckButton).not.toBeNull();
     fireEvent.click(deckButton as HTMLButtonElement);
 
-    expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id);
+    expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, []);
   });
 
   it("keeps checkbox and action interactions separate from ordinary row opening", async () => {
@@ -249,7 +252,9 @@ describe("DeckLibraryWorkspace", () => {
 
     const rowButton = screen.getByText("Pharmacology").closest("button");
     fireEvent.click(rowButton as HTMLButtonElement);
-    expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id);
+    expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, [
+      { id: pharmacology.id, revision: pharmacology.revision },
+    ]);
     expect((checkbox as HTMLInputElement).checked).toBe(true);
   });
 
@@ -313,6 +318,28 @@ describe("DeckLibraryWorkspace", () => {
         .getByRole("button", { name: "Practice" })
         .hasAttribute("disabled"),
     ).toBe(true);
+    const emptySelectionActions = screen.getByRole("region", {
+      name: "Selected deck actions",
+    });
+    expect(
+      within(emptySelectionActions)
+        .getByRole("button", { name: "Move selected" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    expect(
+      within(emptySelectionActions)
+        .getByRole("button", { name: "Archive selected" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    fireEvent.click(
+      within(emptySelectionActions).getByRole("button", {
+        name: "More selection actions",
+      }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Delete selected" }).hasAttribute("disabled"),
+    ).toBe(false);
+    fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Empty" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Pharmacology" }));

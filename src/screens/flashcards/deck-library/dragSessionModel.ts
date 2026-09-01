@@ -38,6 +38,7 @@ export interface DragGeometrySnapshot {
 }
 
 export type DragCandidateStatus = "valid" | "noop" | "invalid";
+export type DragInsertionEdge = "before" | "after" | "empty";
 
 export interface DragCandidate {
   key: string;
@@ -47,6 +48,8 @@ export interface DragCandidate {
   destinationFolderId: string | null;
   destinationName: string;
   insertionLabel: string;
+  insertionTargetKey: string | null;
+  insertionEdge: DragInsertionEdge | null;
   announcement: string;
 }
 
@@ -90,6 +93,7 @@ function resolveDeckCandidate(
     )
     .sort((left, right) => left.index - right.index);
   const targetIndex = insertionIndex(point.y, rows);
+  const insertion = insertionAnchor(rows, targetIndex, destination.key);
   const intent: LibraryMoveIntent = {
     kind: "deck",
     deckId,
@@ -103,6 +107,8 @@ function resolveDeckCandidate(
     destination.folderId,
     destination.name,
     `position ${targetIndex + 1}`,
+    insertion.targetKey,
+    insertion.edge,
   );
 }
 
@@ -121,6 +127,8 @@ function resolveFolderCandidate(
   }
   const sourceIndex = organization.folders.findIndex((folder) => folder.id === folderId);
   if (containing.id === folderId) {
+    const remainingRows = rows.filter((row) => row.id !== folderId);
+    const insertion = insertionAnchor(remainingRows, sourceIndex, containing.key);
     const intent: LibraryMoveIntent = {
       kind: "folder",
       folderId,
@@ -133,6 +141,8 @@ function resolveFolderCandidate(
       null,
       "Folders",
       `position ${Math.max(0, sourceIndex) + 1}`,
+      insertion.targetKey,
+      insertion.edge,
     );
   }
   const remainingRows = rows.filter((row) => row.id !== folderId);
@@ -140,6 +150,7 @@ function resolveFolderCandidate(
   const targetIndex = point.y < midpoint(containing.rect)
     ? containingIndex
     : containingIndex + 1;
+  const insertion = insertionAnchor(remainingRows, targetIndex, containing.key);
   const intent: LibraryMoveIntent = {
     kind: "folder",
     folderId,
@@ -152,7 +163,21 @@ function resolveFolderCandidate(
     null,
     "Folders",
     `position ${targetIndex + 1}`,
+    insertion.targetKey,
+    insertion.edge,
   );
+}
+
+function insertionAnchor(
+  rows: readonly DragGeometryRow[],
+  targetIndex: number,
+  emptyTargetKey: string,
+): { targetKey: string; edge: DragInsertionEdge } {
+  if (rows.length === 0) return { targetKey: emptyTargetKey, edge: "empty" };
+  const nextRow = rows[targetIndex];
+  if (nextRow) return { targetKey: nextRow.key, edge: "before" };
+  const lastRow = rows.at(-1);
+  return { targetKey: lastRow?.key ?? emptyTargetKey, edge: "after" };
 }
 
 function smallestContainingDestination(
@@ -177,6 +202,8 @@ function candidateFromValidation(
   destinationFolderId: string | null,
   destinationName: string,
   insertionLabel: string,
+  insertionTargetKey: string,
+  insertionEdge: DragInsertionEdge,
 ): DragCandidate {
   if (validation.status === "invalid") {
     return invalidCandidate(
@@ -186,6 +213,8 @@ function candidateFromValidation(
       destinationFolderId,
       destinationName,
       insertionLabel,
+      insertionTargetKey,
+      insertionEdge,
     );
   }
   const status = validation.status;
@@ -193,13 +222,15 @@ function candidateFromValidation(
     status === "valid" ? "Valid move." : "Already in this position."
   }`;
   return {
-    key: `${status}:${targetKey}:${insertionLabel}`,
+    key: `${status}:${targetKey}:${insertionTargetKey}:${insertionEdge}:${insertionLabel}`,
     status,
     intent: validation.intent,
     targetKey,
     destinationFolderId,
     destinationName,
     insertionLabel,
+    insertionTargetKey,
+    insertionEdge,
     announcement,
   };
 }
@@ -211,6 +242,8 @@ function invalidCandidate(
   destinationFolderId: string | null = null,
   destinationName = "Unavailable",
   insertionLabel = "No insertion position",
+  insertionTargetKey: string | null = null,
+  insertionEdge: DragInsertionEdge | null = null,
 ): DragCandidate {
   return {
     key: `invalid:${key}`,
@@ -220,6 +253,8 @@ function invalidCandidate(
     destinationFolderId,
     destinationName,
     insertionLabel,
+    insertionTargetKey,
+    insertionEdge,
     announcement,
   };
 }

@@ -9,6 +9,10 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
+import {
+  beginUiPerformancePointerWork,
+  endUiPerformancePointerWork,
+} from "../../../testing/uiPerformanceInstrumentation";
 import type { DeckLibrarySnapshot } from "./organizationModel";
 import { resolveDragCandidate, type DragCandidate } from "./dragSessionModel";
 import {
@@ -91,11 +95,16 @@ export function useDeckLibraryPointerSession(
   onExpandFolderRef.current = onExpandFolder;
 
   const clearTarget = useCallback((session: ActivePointerSession): void => {
-    if (!session.geometry || !session.candidate?.targetKey) return;
-    const element = session.geometry.elements.get(session.candidate.targetKey);
-    if (element) {
-      delete element.dataset.dragState;
-      delete element.dataset.dragInsertion;
+    if (!session.geometry || !session.candidate) return;
+    if (session.candidate.targetKey) {
+      const destination = session.geometry.elements.get(session.candidate.targetKey);
+      if (destination) delete destination.dataset.dragState;
+    }
+    if (session.candidate.insertionTargetKey) {
+      const insertion = session.geometry.elements.get(
+        session.candidate.insertionTargetKey,
+      );
+      if (insertion) delete insertion.dataset.dragInsertion;
     }
   }, []);
 
@@ -104,6 +113,21 @@ export function useDeckLibraryPointerSession(
     session.hoverTimer = null;
     session.hoverFolderId = null;
   }, []);
+
+  const applyCandidateAttributes = useCallback(
+    (session: ActivePointerSession, candidate: DragCandidate): void => {
+      if (!session.geometry) return;
+      if (candidate.targetKey) {
+        const destination = session.geometry.elements.get(candidate.targetKey);
+        if (destination) destination.dataset.dragState = candidate.status;
+      }
+      if (candidate.insertionTargetKey && candidate.insertionEdge) {
+        const insertion = session.geometry.elements.get(candidate.insertionTargetKey);
+        if (insertion) insertion.dataset.dragInsertion = candidate.insertionEdge;
+      }
+    },
+    [],
+  );
 
   const clearClickSuppression = useCallback((): void => {
     const suppression = clickSuppressionRef.current;
@@ -200,24 +224,12 @@ export function useDeckLibraryPointerSession(
     (session: ActivePointerSession, next: DragCandidate): void => {
       const semanticCandidateChanged = session.candidate?.key !== next.key;
       if (!semanticCandidateChanged) {
-        if (session.geometry && next.targetKey) {
-          const element = session.geometry.elements.get(next.targetKey);
-          if (element) {
-            element.dataset.dragState = next.status;
-            element.dataset.dragInsertion = next.insertionLabel;
-          }
-        }
+        applyCandidateAttributes(session, next);
         return;
       }
       clearTarget(session);
       session.candidate = next;
-      if (session.geometry && next.targetKey) {
-        const element = session.geometry.elements.get(next.targetKey);
-        if (element) {
-          element.dataset.dragState = next.status;
-          element.dataset.dragInsertion = next.insertionLabel;
-        }
-      }
+      applyCandidateAttributes(session, next);
       setFeedback({ active: true, sourceName: session.sourceName, candidate: next });
 
       const destination = session.geometry?.snapshot.destinations.find(
@@ -246,42 +258,47 @@ export function useDeckLibraryPointerSession(
         clearHoverTimer(session);
       }
     },
-    [clearHoverTimer, clearTarget],
+    [applyCandidateAttributes, clearHoverTimer, clearTarget],
   );
 
   const processFrame = useCallback(
     (session: ActivePointerSession): void => {
-      session.frame = null;
-      if (sessionRef.current !== session || !session.active) return;
-      const root = rootRef.current;
-      if (!root) {
-        finishSession(false);
-        return;
-      }
-      if (session.geometryDirty || session.geometry === null) {
-        clearTarget(session);
-        session.geometry = captureDragGeometry(root);
-        session.geometryDirty = false;
-      }
-      if (previewRef.current) {
-        previewRef.current.style.transform = `translate3d(${session.lastX + 14}px, ${session.lastY + 14}px, 0)`;
-      }
-      const candidate = resolveDragCandidate(
-        session.payload,
-        { x: session.lastX, y: session.lastY },
-        session.geometry.snapshot,
-        snapshotRef.current,
-      );
-      applyCandidate(session, candidate);
+      const pointerWork = beginUiPerformancePointerWork("deck-drag-frame");
+      try {
+        session.frame = null;
+        if (sessionRef.current !== session || !session.active) return;
+        const root = rootRef.current;
+        if (!root) {
+          finishSession(false);
+          return;
+        }
+        if (session.geometryDirty || session.geometry === null) {
+          clearTarget(session);
+          session.geometry = captureDragGeometry(root);
+          session.geometryDirty = false;
+        }
+        if (previewRef.current) {
+          previewRef.current.style.transform = `translate3d(${session.lastX + 14}px, ${session.lastY + 14}px, 0)`;
+        }
+        const candidate = resolveDragCandidate(
+          session.payload,
+          { x: session.lastX, y: session.lastY },
+          session.geometry.snapshot,
+          snapshotRef.current,
+        );
+        applyCandidate(session, candidate);
 
-      const velocity = edgeScrollVelocity(
-        session.lastY,
-        session.scrollOwner.getBoundingClientRect(),
-      );
-      if (velocity !== 0) {
-        session.scrollOwner.scrollBy({ top: velocity, behavior: "auto" });
-        session.geometryDirty = true;
-        scheduleFrame(session);
+        const velocity = edgeScrollVelocity(
+          session.lastY,
+          session.scrollOwner.getBoundingClientRect(),
+        );
+        if (velocity !== 0) {
+          session.scrollOwner.scrollBy({ top: velocity, behavior: "auto" });
+          session.geometryDirty = true;
+          scheduleFrame(session);
+        }
+      } finally {
+        endUiPerformancePointerWork(pointerWork);
       }
     },
     [applyCandidate, clearTarget, finishSession, rootRef],
@@ -299,30 +316,47 @@ export function useDeckLibraryPointerSession(
   function handlePointerMove(event: PointerEvent): void {
     const session = sessionRef.current;
     if (!session || event.pointerId !== session.pointerId) return;
-    session.lastX = event.clientX;
-    session.lastY = event.clientY;
-    if (!session.active) {
-      if (!movementExceedsThreshold(session.startX, session.startY, event.clientX, event.clientY)) {
-        return;
-      }
-      session.active = true;
-      try {
-        // Window listeners already own the active session. Pointer capture improves
-        // native delivery but synthetic pointers are not always capture-eligible.
-        session.origin.setPointerCapture?.(session.pointerId);
-      } catch {
-        // Keep activation, feedback, movement, and cancellation on the window path.
-      }
-      // This listener is attached directly to window, outside React's discrete-event
-      // priority. Commit the one-time preview synchronously so continuous-event
-      // scheduling cannot postpone visible drag activation. Subsequent movement
-      // and candidate work remains coalesced through requestAnimationFrame.
-      flushSync(() => {
-        setFeedback({ active: true, sourceName: session.sourceName, candidate: null });
-      });
+    const activating =
+      !session.active &&
+      movementExceedsThreshold(
+        session.startX,
+        session.startY,
+        event.clientX,
+        event.clientY,
+      );
+    if (!session.active && !activating) {
+      session.lastX = event.clientX;
+      session.lastY = event.clientY;
+      return;
     }
-    event.preventDefault();
-    scheduleFrame(session);
+    const pointerWork = beginUiPerformancePointerWork(
+      activating ? "deck-drag-activation" : "deck-drag-pointer",
+    );
+    try {
+      session.lastX = event.clientX;
+      session.lastY = event.clientY;
+      if (activating) {
+        session.active = true;
+        try {
+          // Window listeners already own the active session. Pointer capture improves
+          // native delivery but synthetic pointers are not always capture-eligible.
+          session.origin.setPointerCapture?.(session.pointerId);
+        } catch {
+          // Keep activation, feedback, movement, and cancellation on the window path.
+        }
+        // This listener is attached directly to window, outside React's discrete-event
+        // priority. Commit the one-time preview synchronously so continuous-event
+        // scheduling cannot postpone visible drag activation. Subsequent movement
+        // and candidate work remains coalesced through requestAnimationFrame.
+        flushSync(() => {
+          setFeedback({ active: true, sourceName: session.sourceName, candidate: null });
+        });
+      }
+      event.preventDefault();
+      scheduleFrame(session);
+    } finally {
+      endUiPerformancePointerWork(pointerWork);
+    }
   }
 
   function handlePointerUp(event: PointerEvent): void {

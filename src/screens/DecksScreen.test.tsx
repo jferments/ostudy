@@ -144,6 +144,7 @@ function renderDecks(
   onPracticeDeck = vi.fn(),
   layoutMode: "wide" | "medium" | "compact" = "wide",
   availableDecks: decksIpc.DeckSummary[] = [deck],
+  openDeckRequest: { requestId: number; deckId: string } | null = null,
 ) {
   setLayoutMode(layoutMode);
   render(
@@ -154,6 +155,7 @@ function renderDecks(
           settings={settings}
           refreshDecks={async () => availableDecks}
           onPracticeDeck={onPracticeDeck}
+          openDeckRequest={openDeckRequest}
           onDirtyChange={vi.fn()}
           showToast={showToast}
         />
@@ -292,6 +294,47 @@ describe("DecksScreen", () => {
         deckId: deck.id,
         revision: deck.revision,
         archived: true,
+      }),
+    );
+  });
+
+  it("disables archived detail Practice with a truthful explanation and restores by revision", async () => {
+    const archivedDeck = { ...deck, archivedAt: Date.now(), revision: 4 };
+    vi.mocked(decksIpc.getDeck).mockResolvedValue(archivedDeck);
+    vi.mocked(decksIpc.setDeckArchived).mockResolvedValue({
+      ...archivedDeck,
+      archivedAt: null,
+      revision: 5,
+    });
+    const { onPracticeDeck } = renderDecks(
+      vi.fn(),
+      vi.fn(),
+      "wide",
+      [archivedDeck],
+      { requestId: 1, deckId: archivedDeck.id },
+    );
+    await screen.findByRole("heading", { name: "Dog facts" });
+
+    const group = screen.getByRole("group", { name: "Dog facts actions" });
+    const practice = within(group).getByRole("button", { name: "Practice" });
+    expect((practice as HTMLButtonElement).disabled).toBe(true);
+    expect(practice.getAttribute("title")).toBe(
+      "Unarchive this deck before practicing",
+    );
+    const descriptionId = practice.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId as string)?.textContent).toBe(
+      "Unarchive this deck before practicing",
+    );
+    fireEvent.click(practice);
+    expect(onPracticeDeck).not.toHaveBeenCalled();
+
+    fireEvent.click(within(group).getByRole("button", { name: "Restore Dog facts" }));
+    await waitFor(() =>
+      expect(decksIpc.setDeckArchived).toHaveBeenCalledWith({
+        deckId: archivedDeck.id,
+        revision: archivedDeck.revision,
+        archived: false,
       }),
     );
   });

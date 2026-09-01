@@ -19,12 +19,20 @@ Deleting a folder moves its decks to Unsorted decks. It never deletes those deck
 
 Deck creation, archive changes, restoration, soft deletion, and permanent purge also advance the shared organization revision. The Decks workspace refreshes organization state when those lifecycle changes appear in the deck list, including after returning from nested deck editing or using Undo. This prevents an apparently unrelated deck operation from leaving a stale drag or reorder operation eligible to commit.
 
+Deck selection is process-local. Opening a deck and returning to the library
+preserves unchanged active selections across the route remount, but entries
+whose revision or lifecycle changed are removed. An unchanged empty deck remains
+selected so it can still be moved, archived, or deleted even though Practice is
+unavailable. Selection is never written to the device UI checkpoint.
+
 ## Moving and ordering
 
 On a pointer device, start moving an active deck or folder from any open part of
 its row. Buttons, checkboxes, menus, links, editable content, and selected text
 continue to behave normally. A short movement remains an ordinary click; after
-the drag activates, the preview names the destination and insertion position.
+the drag activates, the preview names the destination. Destination highlighting
+shows whether the move is valid, while a separate line marks the exact before,
+end, or empty insertion boundary.
 Folders accept a deck across their complete visible surface and can expand after
 a brief hover.
 

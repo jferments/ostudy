@@ -293,6 +293,37 @@ describe("AnalyticsScreen", () => {
     expect(onPracticeScope).toHaveBeenCalledWith([], [tagId]);
   });
 
+  it.each([
+    {
+      label: "reached review limit",
+      reviewsRemaining: 0,
+      dueCount: 4,
+      expected:
+        "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from a deck’s Practice action in Flashcards.",
+    },
+    {
+      label: "ready work exceeds capacity",
+      reviewsRemaining: 2,
+      dueCount: 5,
+      expected: "3 ready cards exceed today's remaining review capacity.",
+    },
+    {
+      label: "work remains within limits",
+      reviewsRemaining: 190,
+      dueCount: 4,
+      expected: "190 reviews and 17 new cards remain in today's limits.",
+    },
+  ])("renders the $label workload branch", async ({ reviewsRemaining, dueCount, expected }) => {
+    const analytics = analyticsForRange("7d");
+    analytics.dailyLimits.reviewsRemaining = reviewsRemaining;
+    analytics.currentInventory.studyableDueCount = dueCount;
+    vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
+
+    renderAnalytics();
+
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
   it("routes current recent-review tags by stable ID and leaves historical tags as text", async () => {
     const onSearchTag = vi.fn();
     const analytics = analyticsForRange("7d");

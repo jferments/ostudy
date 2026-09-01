@@ -112,6 +112,19 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
   }
 
+  .unsortedArea[data-drag-insertion="empty"] {
+    position: relative;
+  }
+
+  .unsortedArea[data-drag-insertion="empty"]::after {
+    position: absolute;
+    inset: auto var(--ostudy-space-3) -4px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--ostudy-color-border-accent);
+    content: "";
+  }
+
   @container deck-library (max-width: 620px) {
     .toolbarActions {
       width: 100%;

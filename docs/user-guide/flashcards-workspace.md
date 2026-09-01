@@ -13,6 +13,14 @@ On compact mobile layouts the tabs form a two-by-two grid. They do not require h
 
 Selecting a workspace tab always opens that workspace's root. Selecting **Decks** while a deck is open therefore returns to the main deck listing. Selecting the primary **Flashcards** navigation destination has the same effect. Unsaved card or template changes still receive the normal discard confirmation before navigation proceeds.
 
+Opening one deck from a selected library does not discard the process-local
+selection. Returning through **All decks** restores entries that still match the
+current active deck revision and lifecycle; changed or archived entries are
+removed. A matching deck remains selected if its generated-card count reaches
+zero: **Practice** is unavailable, while **Move**, **Archive**, and **Delete**
+remain valid organization actions. This transient selection is not part of the
+local presentation checkpoint.
+
 The active workspace and an explicitly open deck are stored in the local presentation checkpoint so ostudy can restore the destination after restart. Card content, review history, credentials, and runtime transition IDs are not stored in that checkpoint. Older checkpoints that named the removed Create Cards workspace return safely to the Decks root. A resumable Practice session can reopen over this logical Flashcards destination and returns with a newly created route transition; if a saved deck no longer exists, the session remains resumable and its destination falls back to the Decks root.
 
 ## Decks
@@ -37,8 +45,9 @@ folder row to:
 
 Buttons, checkboxes, menus, links, editable content, and selected text remain
 ordinary interactions. Touch, pen, and mouse dragging use the same validated
-organization path. The preview and highlighted target identify the destination
-and insertion position before a move is saved.
+organization path. The preview and highlighted target identify the destination;
+a separate line identifies the exact before, end, or empty insertion boundary
+before a move is saved.
 
 Dragging is not required. Focus a folder’s keyboard reorder control and use:
 
@@ -87,6 +96,11 @@ tablet/medium layouts, while **Archive** remains visible only on wide layouts.
 On compact layouts, **More actions** contains Export, Archive, and Delete;
 Delete is always in More actions and still requires explicit confirmation with
 the existing Undo window after deletion.
+
+An archived deck detail keeps **Practice** visible but disabled with an
+explanation that the deck must be restored first. Its lifecycle action is
+**Restore** and uses the current deck revision. Active deck action placement and
+Archive behavior remain unchanged.
 
 ### Adding cards inside a deck
 

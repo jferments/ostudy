@@ -22,7 +22,12 @@ const INTERACTIVE_SELECTOR = [
   "select",
   "textarea",
   "label",
+  "summary",
+  "iframe",
+  "audio[controls]",
+  "video[controls]",
   "[contenteditable]:not([contenteditable='false'])",
+  "[tabindex]:not([tabindex='-1'])",
   "[role='button']",
   "[role='link']",
   "[role='menuitem']",
@@ -61,13 +66,7 @@ export function canStartPointerSession(input: PointerStartInput): boolean {
   ) {
     return false;
   }
-  const interactiveTarget = input.target.closest(INTERACTIVE_SELECTOR);
-  if (
-    interactiveTarget &&
-    interactiveTarget.getAttribute("data-library-drag-surface") !== "true"
-  ) {
-    return false;
-  }
+  if (input.target.closest(INTERACTIVE_SELECTOR)) return false;
   const selection = input.currentTarget.ownerDocument.getSelection?.();
   return !selection || selection.isCollapsed || selection.toString().trim().length === 0;
 }

@@ -106,6 +106,8 @@ function dragFeedback(
       destinationFolderId: null,
       destinationName,
       insertionLabel: "position 1",
+      insertionTargetKey: null,
+      insertionEdge: null,
       announcement: `${destinationName}, position 1.`,
     },
   };

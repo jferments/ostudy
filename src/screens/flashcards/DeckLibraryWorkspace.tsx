@@ -23,8 +23,11 @@ interface DeckLibraryWorkspaceProps {
   ) => void | Promise<void>;
   restoredSelection?: readonly TransientDeckSelectionEntry[];
   openDeckRequest: DeckOpenRequest | null;
-  onOpenDeck: (deckId: string) => void;
-  onReturnToLibrary: () => void;
+  onOpenDeck: (
+    deckId: string,
+    returnDeckSelection?: readonly TransientDeckSelectionEntry[],
+  ) => void;
+  onReturnToLibrary: () => void | Promise<void>;
   onManageTemplates: () => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
@@ -45,15 +48,21 @@ export function DeckLibraryWorkspace({
   showToast,
 }: DeckLibraryWorkspaceProps) {
   const detailOpenedRef = useRef(false);
+  const controllerSelectionRef = useRef<TransientDeckSelectionEntry[]>([]);
   const confirm = useConfirm();
   const controller = useDeckLibraryController({
     decks,
     refreshDecks,
-    onOpenDeck,
+    onOpenDeck: (deckId) =>
+      onOpenDeck(
+        deckId,
+        controllerSelectionRef.current,
+      ),
     showToast,
     confirm,
     restoredSelection,
   });
+  controllerSelectionRef.current = controllerSelectionEntries(controller.selection);
 
   if (openDeckRequest) {
     return (
@@ -70,8 +79,7 @@ export function DeckLibraryWorkspace({
           if (view === "detail" || view === "editor") detailOpenedRef.current = true;
           if (view === "library" && detailOpenedRef.current) {
             detailOpenedRef.current = false;
-            onReturnToLibrary();
-            void controller.refreshLibraryAfterDetail();
+            void onReturnToLibrary();
           }
         }}
         onDirtyChange={onCardDirtyChange}
@@ -99,4 +107,10 @@ export function DeckLibraryWorkspace({
       />
     </PerformanceProfiler>
   );
+}
+
+function controllerSelectionEntries(
+  selection: ReturnType<typeof useDeckLibraryController>["selection"],
+): TransientDeckSelectionEntry[] {
+  return [...selection.entries.values()].map(({ id, revision }) => ({ id, revision }));
 }

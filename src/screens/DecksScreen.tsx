@@ -557,7 +557,9 @@ export function DecksScreen({
                     placement: "always-visible",
                     variant: "primary",
                     description: practiceTitle(selectedDeck),
-                    disabled: selectedDeck.generatedCardCount === 0,
+                    disabled:
+                      selectedDeck.archivedAt !== null ||
+                      selectedDeck.generatedCardCount === 0,
                     onSelect: () => void onPracticeDeck(selectedDeck.id),
                   },
                   {
@@ -568,12 +570,20 @@ export function DecksScreen({
                     onSelect: () => void handleExport(selectedDeck),
                   },
                   {
-                    id: "archive",
-                    label: `Archive ${selectedDeck.name}`,
+                    id: selectedDeck.archivedAt === null ? "archive" : "restore",
+                    label:
+                      selectedDeck.archivedAt === null
+                        ? `Archive ${selectedDeck.name}`
+                        : `Restore ${selectedDeck.name}`,
                     placement: "wide-only",
-                    presentation: "icon",
-                    icon: "archive",
-                    onSelect: () => void handleArchiveDeck(selectedDeck, true),
+                    ...(selectedDeck.archivedAt === null
+                      ? { presentation: "icon" as const, icon: "archive" as const }
+                      : {}),
+                    onSelect: () =>
+                      void handleArchiveDeck(
+                        selectedDeck,
+                        selectedDeck.archivedAt === null,
+                      ),
                   },
                   {
                     id: "delete",

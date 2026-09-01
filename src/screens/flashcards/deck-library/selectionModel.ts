@@ -40,8 +40,7 @@ export function restoreDeckSelection(
     if (
       !deck ||
       deck.revision !== entry.revision ||
-      deck.archivedAt !== null ||
-      deck.generatedCardCount === 0
+      deck.archivedAt !== null
     ) {
       continue;
     }

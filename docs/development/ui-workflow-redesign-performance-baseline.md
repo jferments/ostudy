@@ -47,10 +47,13 @@ Read-only verification:
 ./scripts/ui-performance-baselines.sh verify
 ```
 
-Normal `verify` is source-sensitive: it compares every measurement-sensitive
-file in the current tree with the manifest's recorded Stage 0 source and fails
-when those bytes drift. A separate structural check verifies the immutable
-reference at its own recorded identity without impersonating that source:
+Normal `verify` remains source-sensitive across every Stage 0
+measurement-sensitive path and fails when any of those bytes drift. Stage 4
+necessarily changes shared instrumentation, deck-library, and capture-driver
+source, so that historical current-source check is expected to fail and is not
+used to qualify the versioned candidate. A separate structural check verifies
+every immutable Stage 0 JSON identity, hash, sample, and derived budget at its
+own recorded identity without comparing current source:
 
 ```bash
 ./scripts/ui-performance-baselines.sh verify-reference
@@ -79,15 +82,19 @@ reference evidence:
 `capture-candidate` requires a clean committed HEAD and a new absolute output
 path outside the repository. It rejects symlink aliases, the committed
 reference tree, and existing destinations; uses the distinct
-`ui-workflow-redesign-stage-4a-deck-drag-large-library` evidence identity and
-large-library fixture; captures only `deck-drag-v1` with three warmups and
+`ui-workflow-redesign-stage-4a-deck-drag-production-v2` evidence identity and
+`ui-performance-large-library-drag-v3-production-timing` fixture; captures only
+`deck-drag-production-v2` with three warmups and
 twelve samples; verifies a sibling staging tree; and installs it with an atomic
 no-replace rename. It never invokes another performance scenario, updates the
 roadmap, or changes committed reference evidence. `compare-candidate` is
 read-only, requires compatible source and environment identity, and evaluates
-only the committed drag limits for avoidable React commits, visible feedback,
-and maximum pointer-frame work. It returns nonzero when any of those three
-limits fails.
+the versioned production scenario against only the unchanged Stage 0 drag
+limits for avoidable React commits, visible feedback, and maximum pointer-frame
+work. `deck-drag-production-v2` is deliberately not represented as a comparable
+`deck-drag-v1` distribution: the Stage 0 maxima remain absolute SLO ceilings,
+not relabeled candidate evidence. The command returns nonzero when any of those
+three limits fails.
 
 The host-side CI wrapper is:
 
@@ -124,8 +131,8 @@ starts a separate disposable driver/application session, opens the isolated Xvfb
 display through XTEST,
 calibrates X-root coordinates against a browser-observed trusted event, injects
 native motion/button-down/threshold-crossing motion/Escape/button-up, and requires
-WebKit to report `isTrusted` mouse Pointer Events within the canonical row on
-either a non-interactive target or the explicitly approved primary row surface,
+WebKit to report `isTrusted` mouse Pointer Events within the canonical row at a
+verified non-interactive target (interactive descendants have no drag exemption),
 with the expected coordinates, primary-pointer continuity, and button state. The real product
 preview must appear and clear on trusted Escape without a drop, the exact
 synthetic organization structure must remain unchanged, and cleanup
@@ -142,7 +149,8 @@ into the React Pointer Events consumed by the adapter, so deterministic timing
 does not depend on that translation. After a same-target mouse pointermove crosses
 the 8px threshold, one bounded asynchronous browser command requires the real
 preview to exist, have nonzero layout bounds, and resolve to visible computed
-styles. That style/layout-ready timestamp replaces only the candidate's
+styles, then waits for the production drag animation-frame callback to complete
+before finalizing the sample. That style/layout-ready timestamp replaces only the candidate's
 `interactionToVisible` value; React commit, pointer work, and readiness evidence
 still come from the production profiling bridge while the preview remains mounted.
 The drag adapter synchronously commits only the threshold-crossing preview state
@@ -152,9 +160,15 @@ prevents continuous-event scheduling from intermittently delaying the first prev
 without moving normal drag work into the input handler. The 29 ms reference limit
 therefore acts as a conservative next-frame readiness deadline without trusting
 Xvfb's virtual paint cadence. Cancellation cleanup is
-then proved separately. This deterministic path exercises the production React
+then proved separately. This deterministic `deck-drag-production-v2` path exercises the production React
 drag adapter, preview, cancellation, Profiler, User Timing, layout, computed style,
-and pointer-frame instrumentation. Those samples do not themselves prove operating-system input
+and pointer-frame instrumentation. Interaction timing begins inside the production
+threshold-crossing pointer-move handler before pointer capture and synchronous
+preview activation. The threshold-crossing handler counts as one pointer event.
+Pointer-frame work accounts for that activation handler and the
+request-animation-frame geometry, candidate, and preview work without counting
+the animation-frame callback as another pointer event; the later DOM target
+listener is deliberately not authoritative. Those samples do not themselves prove operating-system input
 translation; the preceding trusted XTEST smoke covers the supported Linux mouse
 path. Physical touch/pen behavior and subjective interaction feel remain manual
 acceptance boundaries.

@@ -69,6 +69,8 @@ describe("drag session candidate model", () => {
       status: "valid",
       destinationName: "Nursing",
       insertionLabel: "position 1",
+      insertionTargetKey: `deck:${deckA.id}`,
+      insertionEdge: "before",
       intent: {
         kind: "deck",
         deckId: deckC.id,
@@ -85,6 +87,44 @@ describe("drag session candidate model", () => {
       snapshot,
     );
     expect(afterFirst.intent).toMatchObject({ targetIndex: 1 });
+  });
+
+  it("anchors before, end, and empty insertion boundaries separately from destination state", () => {
+    const before = resolveDragCandidate(
+      { kind: "deck", id: deckC.id },
+      { x: 40, y: 100 },
+      geometry,
+      snapshot,
+    );
+    expect(before).toMatchObject({
+      targetKey: "folder:a",
+      insertionTargetKey: `deck:${deckA.id}`,
+      insertionEdge: "before",
+    });
+
+    const end = resolveDragCandidate(
+      { kind: "deck", id: deckC.id },
+      { x: 40, y: 280 },
+      geometry,
+      snapshot,
+    );
+    expect(end).toMatchObject({
+      targetKey: "folder:a",
+      insertionTargetKey: `deck:${deckB.id}`,
+      insertionEdge: "after",
+    });
+
+    const empty = resolveDragCandidate(
+      { kind: "deck", id: deckC.id },
+      { x: 40, y: 360 },
+      geometry,
+      snapshot,
+    );
+    expect(empty).toMatchObject({
+      targetKey: "folder:b",
+      insertionTargetKey: "folder:b",
+      insertionEdge: "empty",
+    });
   });
 
   it("distinguishes valid, no-op, and invalid candidates", () => {

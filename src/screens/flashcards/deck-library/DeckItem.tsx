@@ -72,31 +72,35 @@ export const DeckItem = memo(function DeckItem({
           onChange={onToggleSelected}
         />
       </label>
-      <button
-        type="button"
+      <div
         className={styles.main}
-        data-library-drag-surface="true"
-        aria-keyshortcuts={
-          archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
-        }
-        onKeyDown={
-          archived
-            ? undefined
-            : (event) =>
-                reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
-        }
-        onClick={onOpen}
+        data-library-pointer-drag-source={archived ? undefined : "true"}
       >
         <span className={styles.mark}>
           <Icon name="cards" size={20} />
         </span>
-        <span className={styles.copy}>
-          <strong>{deck.name}</strong>
-          <small>
-            {deck.generatedCardCount} cards · {deck.studyableDueCount} ready
-          </small>
-        </span>
-      </button>
+        <button
+          type="button"
+          className={styles.open}
+          aria-keyshortcuts={
+            archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
+          }
+          onKeyDown={
+            archived
+              ? undefined
+              : (event) =>
+                  reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
+          }
+          onClick={onOpen}
+        >
+          <span className={styles.copy}>
+            <strong>{deck.name}</strong>
+            <small>
+              {deck.generatedCardCount} cards · {deck.studyableDueCount} ready
+            </small>
+          </span>
+        </button>
+      </div>
       <div className={styles.actions}>
         {!archived ? (
           <ResponsiveActionGroup

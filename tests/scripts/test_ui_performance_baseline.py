@@ -219,6 +219,28 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             baseline.verify_reference(self.root)
         drift_guard.assert_called_once_with(SOURCE_SHA)
 
+    def test_candidate_verify_is_exact_head_and_source_sensitive(self) -> None:
+        candidate = Path(self.temp.name) / "source-sensitive-candidate"
+        make_drag_candidate(candidate)
+        with mock.patch.object(
+            baseline,
+            "current_source_sha",
+            return_value=SOURCE_SHA,
+        ), mock.patch.object(
+            baseline,
+            "assert_measurement_sources_unchanged",
+            side_effect=baseline.PerformanceBaselineError("candidate source drift"),
+        ) as drift_guard:
+            with self.assertRaisesRegex(
+                baseline.PerformanceBaselineError,
+                "candidate source drift",
+            ):
+                baseline.verify_drag_candidate(candidate)
+        drift_guard.assert_called_once_with(
+            SOURCE_SHA,
+            baseline.CANDIDATE_SENSITIVE_PATHS,
+        )
+
     def test_duplicate_json_key_is_rejected(self) -> None:
         path = self.root / "manifest.json"; path.write_text('{"schemaVersion":1,"schemaVersion":1}', encoding="utf-8")
         with self.assertRaisesRegex(baseline.PerformanceBaselineError, "Duplicate JSON key"):
@@ -560,14 +582,27 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         make_drag_candidate(candidate, offset=100)
         verified = baseline.verify_drag_candidate(candidate, expected_source_sha=SOURCE_SHA)
         self.assertEqual(baseline.CANDIDATE_ID, verified["manifest"]["baselineId"])
-        self.assertEqual({"deck-drag-v1"}, set(verified["measurements"]))
+        self.assertNotIn(baseline.CANDIDATE_SCENARIOS[0], baseline.SCENARIOS)
+        self.assertNotEqual(
+            baseline.CANDIDATE_SCENARIOS[0],
+            baseline.REFERENCE_DRAG_SCENARIO,
+        )
+        self.assertEqual(set(baseline.CANDIDATE_SCENARIOS), set(verified["measurements"]))
         failures = baseline.compare_drag_candidate(
             candidate,
             self.root,
             expected_candidate_source_sha=SOURCE_SHA,
         )
         self.assertEqual(3, len(failures))
-        self.assertTrue(all(failure.startswith("deck-drag-v1:") for failure in failures))
+        self.assertTrue(
+            all(
+                failure.startswith(
+                    f"{baseline.CANDIDATE_SCENARIOS[0]} against "
+                    f"{baseline.REFERENCE_DRAG_SCENARIO}:"
+                )
+                for failure in failures
+            )
+        )
 
     def test_drag_candidate_uses_one_millisecond_webkit_timer_floor_only_for_pointer_work(self) -> None:
         reference = Path(self.temp.name) / "zero-pointer-reference"
@@ -653,7 +688,9 @@ class PerformanceBaselineContractTests(unittest.TestCase):
     def test_drag_candidate_rejects_symlinked_evidence_files_and_roots(self) -> None:
         candidate = Path(self.temp.name) / "symlinked-measurement"
         make_drag_candidate(candidate)
-        measurement = candidate / baseline.canonical_measurement_path("deck-drag-v1")
+        measurement = candidate / baseline.canonical_measurement_path(
+            baseline.CANDIDATE_SCENARIOS[0]
+        )
         external = Path(self.temp.name) / "external-measurement.json"
         measurement.replace(external)
         measurement.symlink_to(external)
@@ -981,7 +1018,8 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         self.assertIn('event.get("targetInteractive")', wait_source)
         self.assertIn('event.get("targetCanStartDrag")', wait_source)
         self.assertIn("targetElement?.closest(interactiveSelector)", probe_source)
-        self.assertIn("targetApprovedDragSurface", probe_source)
+        self.assertNotIn("targetApprovedDragSurface", probe_source)
+        self.assertIn("targetWithinRow && !interactiveTarget", probe_source)
         self.assertIn("XTestQueryExtension", adapter_source)
         self.assertIn("if self._button_down", adapter_source)
         self.assertIn("XTestFakeButtonEvent(self._display, 1, 0, 0)", adapter_source)
@@ -1000,8 +1038,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             "screenY": 30,
             "targetIsRow": True,
             "targetWithinRow": True,
-            "targetInteractive": True,
-            "targetApprovedDragSurface": True,
+            "targetInteractive": False,
             "targetCanStartDrag": True,
         }
         with mock.patch.object(
@@ -1047,7 +1084,6 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                     "targetIsRow": False,
                     "targetWithinRow": False,
                     "targetInteractive": True,
-                    "targetApprovedDragSurface": False,
                     "targetCanStartDrag": False,
                 },
                 {"sequence": 6},
@@ -1180,7 +1216,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         collect_candidate_drag_sample.assert_called_once_with(
             "session-1",
             "large-drag-row",
-            "deck-drag-v1",
+            baseline.CANDIDATE_SCENARIOS[0],
             mock.ANY,
         )
         self.assertEqual({"sample": True}, result)
@@ -1221,7 +1257,10 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             side_effect=lambda *_args: events.append("release"),
         ):
             result = baseline.collect_candidate_drag_sample(
-                "session-1", "large-drag-row", "deck-drag-v1", 123.0,
+                "session-1",
+                "large-drag-row",
+                baseline.CANDIDATE_SCENARIOS[0],
+                123.0,
             )
 
         self.assertEqual(
@@ -1262,7 +1301,10 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         ) as release:
             with self.assertRaisesRegex(AssertionError, "no active drag preview"):
                 baseline.collect_candidate_drag_sample(
-                    "session-1", "large-drag-row", "deck-drag-v1", 123.0,
+                    "session-1",
+                    "large-drag-row",
+                    baseline.CANDIDATE_SCENARIOS[0],
+                    123.0,
                 )
 
         self.assertEqual(["pointerdown", "pointercancel"], dispatches)
@@ -1280,18 +1322,19 @@ class PerformanceBaselineContractTests(unittest.TestCase):
         release.assert_called_once_with("session-1")
 
 
-    def test_drag_capture_rejects_a_row_without_an_approved_primary_surface(self) -> None:
+    def test_drag_capture_rejects_a_row_without_a_noninteractive_surface(self) -> None:
         with mock.patch.object(
             baseline,
             "execute_read_only",
             return_value=None,
         ) as execute_read_only:
-            with self.assertRaisesRegex(AssertionError, "no verified primary drag surface point"):
+            with self.assertRaisesRegex(AssertionError, "no verified noninteractive drag point"):
                 baseline.find_safe_drag_point("session-1", "covered-row")
 
         script = execute_read_only.call_args.args[1]
-        self.assertIn("[data-library-drag-surface='true']", script)
+        self.assertIn("[data-library-pointer-drag-source='true']", script)
         self.assertIn("target.closest", script)
+        self.assertIn("!target.closest(interactiveSelector)", script)
         self.assertIn("canStartAt(x + activationOffsetX, y)", script)
         self.assertEqual(
             baseline.CANDIDATE_DRAG_ACTIVATION_OFFSET["x"],
@@ -1353,7 +1396,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             )
             self.assertIn("typeof PointerEvent !== 'function'", script)
             self.assertIn("Candidate deck drag target is stale or wrong", script)
-            self.assertIn("[data-library-drag-surface='true']", script)
+            self.assertIn("[data-library-pointer-drag-source='true']", script)
             self.assertIn(".closest(", script)
             self.assertIn("row.dispatchEvent(event)", script)
             self.assertIn("!targetObserved || !windowObserved", script)
@@ -1481,7 +1524,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 baseline.collect_candidate_drag_sample(
                     "session-1",
                     "large-drag-row",
-                    "deck-drag-v1",
+                    baseline.CANDIDATE_SCENARIOS[0],
                     123.0,
                 )
 
@@ -1523,7 +1566,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 baseline.collect_candidate_drag_sample(
                     "session-1",
                     "large-drag-row",
-                    "deck-drag-v1",
+                    baseline.CANDIDATE_SCENARIOS[0],
                     123.0,
                 )
 
@@ -1569,7 +1612,7 @@ class PerformanceBaselineContractTests(unittest.TestCase):
                 baseline.collect_candidate_drag_sample(
                     "session-1",
                     "large-drag-row",
-                    "deck-drag-v1",
+                    baseline.CANDIDATE_SCENARIOS[0],
                     123.0,
                 )
 

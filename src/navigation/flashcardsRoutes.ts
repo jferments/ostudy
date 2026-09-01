@@ -35,6 +35,8 @@ export interface FlashcardsDeckRoute {
   workspace: "decks";
   view: "deck";
   deckId: string;
+  /** Process-local library state restored when this detail route returns. */
+  returnDeckSelection?: TransientDeckSelectionEntry[];
 }
 
 export type FlashcardsRoute = FlashcardsRootRoute | FlashcardsDeckRoute;
@@ -62,8 +64,17 @@ export function createFlashcardsRootRoute(
 export function createFlashcardsDeckRoute(
   deckId: string,
   requestId: number,
+  returnDeckSelection?: readonly TransientDeckSelectionEntry[],
 ): FlashcardsDeckRoute {
-  return { requestId, workspace: "decks", view: "deck", deckId };
+  return returnDeckSelection && returnDeckSelection.length > 0
+    ? {
+        requestId,
+        workspace: "decks",
+        view: "deck",
+        deckId,
+        returnDeckSelection: [...returnDeckSelection],
+      }
+    : { requestId, workspace: "decks", view: "deck", deckId };
 }
 
 export function createAnalyticsSearchRoute(

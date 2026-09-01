@@ -569,9 +569,18 @@ export function useAppController() {
     }
   }
 
-  function openFlashcardsDeck(deckId: string): void {
+  function openFlashcardsDeck(
+    deckId: string,
+    returnDeckSelection: readonly TransientDeckSelectionEntry[] = [],
+  ): void {
     setSection("decks");
-    setFlashcardsRoute(createFlashcardsDeckRoute(deckId, nextFlashcardsRequestId()));
+    setFlashcardsRoute(
+      createFlashcardsDeckRoute(
+        deckId,
+        nextFlashcardsRequestId(),
+        returnDeckSelection,
+      ),
+    );
   }
 
   function openAnalyticsTagSearch(tagId: string): void {
@@ -583,10 +592,27 @@ export function useAppController() {
     );
   }
 
-  function returnToFlashcardsLibrary(): void {
-    setFlashcardsRoute(createFlashcardsRootRoute("decks", nextFlashcardsRequestId()));
-    void refreshDecks().catch((error: unknown) =>
-      showToast("error", getErrorMessage(error)),
+  async function returnToFlashcardsLibrary(): Promise<void> {
+    const returnDeckSelection =
+      flashcardsRoute.view === "deck"
+        ? flashcardsRoute.returnDeckSelection
+        : undefined;
+    let reconciledSelection: TransientDeckSelectionEntry[] | undefined;
+    try {
+      const currentDecks = await refreshDecks();
+      reconciledSelection = reconcileReturnedDeckSelection(
+        returnDeckSelection,
+        currentDecks,
+      );
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    }
+    setFlashcardsRoute(
+      createFlashcardsRootRoute(
+        "decks",
+        nextFlashcardsRequestId(),
+        reconciledSelection,
+      ),
     );
   }
 
@@ -865,8 +891,7 @@ function reconcileReturnedDeckSelection(
     return Boolean(
       deck &&
         deck.revision === entry.revision &&
-        deck.archivedAt === null &&
-        deck.generatedCardCount > 0,
+        deck.archivedAt === null,
     );
   });
   return valid.length > 0 ? valid : undefined;

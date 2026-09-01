@@ -8,6 +8,7 @@ export const UI_PERFORMANCE_SCENARIOS = [
   "navigation-hover-v1",
   "document-list-interaction-v1",
   "deck-drag-v1",
+  "deck-drag-production-v2",
   "deck-selection-v1",
   "study-guide-open-v1",
   "active-practice-progress-v1",
@@ -29,6 +30,7 @@ const EXPECTED_BOUNDARIES: Record<UiPerformanceScenarioId, readonly UiPerformanc
   "navigation-hover-v1": ["navigation"],
   "document-list-interaction-v1": ["documents"],
   "deck-drag-v1": ["deck-library"],
+  "deck-drag-production-v2": ["deck-library"],
   "deck-selection-v1": ["practice-setup"],
   "study-guide-open-v1": ["guide-library", "guide-dialog"],
   "active-practice-progress-v1": ["active-practice"],
@@ -36,6 +38,7 @@ const EXPECTED_BOUNDARIES: Record<UiPerformanceScenarioId, readonly UiPerformanc
 const POINTER_SCENARIOS = new Set<UiPerformanceScenarioId>([
   "navigation-hover-v1",
   "deck-drag-v1",
+  "deck-drag-production-v2",
 ]);
 const MAX_COMMITS = 512;
 const MAX_POINTER_EVENTS = 2048;
@@ -77,6 +80,7 @@ interface ActiveMeasurement {
   commits: UiPerformanceCommit[];
   pointerEventCount: number;
   pointerFrameWork: Map<number, number>;
+  productionFrameCount: number;
   frameIntervals: number[];
   currentFrame: number;
   lastFrameTime: number;
@@ -84,8 +88,21 @@ interface ActiveMeasurement {
   overflowed: boolean;
   mutationObserver: MutationObserver;
   frameHandle: number;
+  scheduleVisibleMark(): void;
   removeListeners(): void;
 }
+
+export interface UiPerformancePointerWork {
+  readonly owner: object;
+  readonly frame: number;
+  readonly startedAt: number;
+  readonly phase: UiPerformancePointerWorkPhase;
+}
+
+export type UiPerformancePointerWorkPhase =
+  | "deck-drag-activation"
+  | "deck-drag-pointer"
+  | "deck-drag-frame";
 
 let active: ActiveMeasurement | null = null;
 
@@ -162,9 +179,12 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
     );
     delete extended.pointerStartedAt;
   };
-  const beginEvents = POINTER_SCENARIOS.has(scenarioValue)
-    ? ["pointerover", "pointerdown", "pointermove"]
-    : ["click", "change"];
+  const beginEvents =
+    scenarioValue === "deck-drag-production-v2"
+      ? []
+      : POINTER_SCENARIOS.has(scenarioValue)
+        ? ["pointerover", "pointerdown", "pointermove"]
+        : ["click", "change"];
   beginEvents.forEach((eventName) => target.addEventListener(eventName, pointerStart, true));
   beginEvents.forEach((eventName) => target.addEventListener(eventName, pointerEnd, false));
 
@@ -194,6 +214,7 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
     commits: [],
     pointerEventCount: 0,
     pointerFrameWork: new Map(),
+    productionFrameCount: 0,
     frameIntervals: [],
     currentFrame: 0,
     lastFrameTime: 0,
@@ -201,12 +222,56 @@ export function armUiPerformanceMeasurement(scenarioValue: string, target: Eleme
     overflowed: false,
     mutationObserver: observer,
     frameHandle: requestAnimationFrame(tick),
+    scheduleVisibleMark,
     removeListeners: () => {
       beginEvents.forEach((eventName) => target.removeEventListener(eventName, pointerStart, true));
       beginEvents.forEach((eventName) => target.removeEventListener(eventName, pointerEnd, false));
     },
   };
   active = measurement;
+}
+
+export function beginUiPerformancePointerWork(
+  phase: UiPerformancePointerWorkPhase,
+): UiPerformancePointerWork | null {
+  const measurement = active;
+  if (!measurement || measurement.scenarioId !== "deck-drag-production-v2") {
+    return null;
+  }
+  const startedAt = performance.now();
+  if (measurement.startTime === null) {
+    if (phase !== "deck-drag-activation") return null;
+    measurement.startTime = startedAt;
+    performance.mark("ostudy-ui-interaction-start", { startTime: startedAt });
+    measurement.scheduleVisibleMark();
+  }
+  return {
+    owner: measurement,
+    frame: measurement.currentFrame,
+    startedAt,
+    phase,
+  };
+}
+
+export function endUiPerformancePointerWork(
+  work: UiPerformancePointerWork | null,
+): void {
+  if (!work || active !== work.owner) return;
+  const measurement = work.owner as ActiveMeasurement;
+  if (work.phase === "deck-drag-frame") {
+    measurement.productionFrameCount += 1;
+  } else {
+    measurement.pointerEventCount += 1;
+    if (measurement.pointerEventCount > MAX_POINTER_EVENTS) measurement.overflowed = true;
+  }
+  const duration = finiteNonnegative(
+    performance.now() - work.startedAt,
+    "pointer work",
+  );
+  measurement.pointerFrameWork.set(
+    work.frame,
+    (measurement.pointerFrameWork.get(work.frame) ?? 0) + duration,
+  );
 }
 
 export const recordUiPerformanceCommit: ProfilerOnRenderCallback = (
@@ -237,13 +302,25 @@ export async function finishUiPerformanceMeasurement(): Promise<UiPerformanceSam
   const measurement = active;
   if (!measurement || measurement.startTime === null) throw new Error("No interaction was observed.");
   if (measurement.overflowed) throw new Error("UI performance measurement exceeded its bounded capacity.");
-  if (measurement.visibleTime === null && measurement.visibleFramePending) {
+  const productionFramePending =
+    measurement.scenarioId === "deck-drag-production-v2" &&
+    measurement.productionFrameCount === 0;
+  if (
+    (measurement.visibleTime === null && measurement.visibleFramePending) ||
+    productionFramePending
+  ) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
   if (active !== measurement) {
     throw new Error("UI performance measurement changed while awaiting its visible response.");
   }
   if (measurement.overflowed) throw new Error("UI performance measurement exceeded its bounded capacity.");
+  if (
+    measurement.scenarioId === "deck-drag-production-v2" &&
+    measurement.productionFrameCount === 0
+  ) {
+    throw new Error("No production drag animation frame completed.");
+  }
   const visibleTime = measurement.visibleTime;
   if (visibleTime === null) throw new Error("No visible-response mutation was observed.");
   const readyTime = performance.now();

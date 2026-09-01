@@ -81,6 +81,7 @@ vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
     analyticsSearchLaunch,
     openDeckRequest,
     onOpenDeck,
+    onReturnToLibrary,
     onCardDirtyChange,
   }: {
     workspace: FlashcardsWorkspaceName;
@@ -95,7 +96,11 @@ vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
     restoredSelection?: readonly TransientDeckSelectionEntry[];
     analyticsSearchLaunch?: AnalyticsSearchLaunch;
     openDeckRequest: DeckOpenRequest | null;
-    onOpenDeck: (deckId: string) => void;
+    onOpenDeck: (
+      deckId: string,
+      returnDeckSelection?: readonly TransientDeckSelectionEntry[],
+    ) => void;
+    onReturnToLibrary: () => void | Promise<void>;
     onCardDirtyChange: (dirty: boolean) => void;
   }) => (
     <section>
@@ -117,8 +122,17 @@ vi.mock("./screens/flashcards/FlashcardsWorkspace", () => ({
       <button type="button" onClick={() => onWorkspaceChange("search")}>
         Open Search workspace
       </button>
-      <button type="button" onClick={() => onOpenDeck(decks[0]?.id ?? "")}>
+      <button
+        type="button"
+        onClick={() => {
+          const deck = decks[0];
+          if (deck) onOpenDeck(deck.id, [{ id: deck.id, revision: deck.revision }]);
+        }}
+      >
         Open deck detail mock
+      </button>
+      <button type="button" onClick={() => void onReturnToLibrary()}>
+        Return to library mock
       </button>
       <button type="button" onClick={() => onPracticeDeck(decks[0]?.id ?? "")}>
         Practice deck mock
@@ -508,6 +522,69 @@ describe("App shell", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("Restored deck selection").textContent).toBe(deck.id),
     );
+  });
+
+  it("preserves selected decks through the real detail return route without checkpointing them", async () => {
+    const deck = makeDeck({
+      name: "Pharmacology",
+      revision: 7,
+      generatedCardCount: 0,
+    });
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([deck]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Open deck detail mock" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Deck open request").textContent).toBe(deck.id),
+    );
+    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalled());
+    expect(
+      vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls.every(
+        ([saved]) => !JSON.stringify(saved).includes("returnDeckSelection"),
+      ),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Return to library mock" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Restored deck selection").textContent).toBe(deck.id),
+    );
+  });
+
+  it.each([
+    [
+      "revision changes",
+      (candidate: decksIpc.DeckSummary) => ({ ...candidate, revision: 8 }),
+    ],
+    [
+      "the deck is archived",
+      (candidate: decksIpc.DeckSummary) => ({
+        ...candidate,
+        archivedAt: Date.now(),
+      }),
+    ],
+  ] as const)("drops selection when %s before detail returns", async (_label, updateDeck) => {
+    const original = makeDeck({ name: "Pharmacology", revision: 7 });
+    const changed = updateDeck(original);
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks)
+      .mockResolvedValueOnce([original])
+      .mockResolvedValueOnce([changed]);
+
+    renderApp();
+    await screen.findByRole("heading", { name: "Decks mock" });
+    fireEvent.click(screen.getByRole("button", { name: "Open deck detail mock" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Deck open request").textContent).toBe(original.id),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Return to library mock" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Restored deck selection").textContent).toBe("none"),
+    );
+    expect(decksIpc.listDecks).toHaveBeenCalledTimes(2);
   });
 
   it("opens Study Guides directly without exposing a Practice destination", async () => {

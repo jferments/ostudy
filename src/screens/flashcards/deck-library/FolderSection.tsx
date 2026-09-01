@@ -58,6 +58,7 @@ export const FolderSection = memo(function FolderSection({
       className={styles.folder}
       data-library-row="folder"
       data-library-folder-surface="true"
+      data-library-pointer-drag-source="true"
       data-geometry-key={`folder:${folder.id}`}
       data-item-id={folder.id}
       data-item-index={folderIndex}
@@ -91,7 +92,6 @@ export const FolderSection = memo(function FolderSection({
         <button
           type="button"
           className={styles.toggle}
-          data-library-drag-surface="true"
           aria-expanded={!collapsed}
           aria-controls={contentId}
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}

@@ -20,6 +20,8 @@ describe("LibraryDragFeedback", () => {
               destinationFolderId: "nursing",
               destinationName: "Nursing",
               insertionLabel: "position 2",
+              insertionTargetKey: "deck:biology",
+              insertionEdge: "before",
               announcement: `Nursing, position 2. ${status}.`,
             },
           }}
@@ -48,6 +50,8 @@ describe("LibraryDragFeedback", () => {
             destinationFolderId: "nursing",
             destinationName: "Nursing",
             insertionLabel: "position 2",
+            insertionTargetKey: "deck:biology",
+            insertionEdge: "before",
             announcement: "Moved Biology to Nursing, position 2.",
           },
         }}

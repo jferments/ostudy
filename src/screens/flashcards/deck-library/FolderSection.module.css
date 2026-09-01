@@ -24,6 +24,31 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
   }
 
+  .folder[data-drag-insertion] {
+    position: relative;
+  }
+
+  .folder[data-drag-insertion="before"]::before,
+  .folder[data-drag-insertion="after"]::after,
+  .folder[data-drag-insertion="empty"]::after {
+    position: absolute;
+    z-index: 1;
+    inset-inline: var(--ostudy-space-3);
+    height: 3px;
+    border-radius: 999px;
+    background: var(--ostudy-color-border-accent);
+    content: "";
+  }
+
+  .folder[data-drag-insertion="before"]::before {
+    inset-block-start: -4px;
+  }
+
+  .folder[data-drag-insertion="after"]::after,
+  .folder[data-drag-insertion="empty"]::after {
+    inset-block-end: -4px;
+  }
+
   .header {
     display: grid;
     min-width: 0;

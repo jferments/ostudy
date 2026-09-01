@@ -99,7 +99,14 @@ function Harness() {
       >
         Open Templates
       </button>
-      <button type="button" onClick={() => controller.openFlashcardsDeck("d".repeat(32))}>
+      <button
+        type="button"
+        onClick={() =>
+          controller.openFlashcardsDeck("d".repeat(32), [
+            { id: "d".repeat(32), revision: 1 },
+          ])
+        }
+      >
         Open deck
       </button>
       <button type="button" onClick={controller.returnToFlashcardsLibrary}>
@@ -228,10 +235,18 @@ describe("application checkpoint lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
     fireEvent.click(screen.getByRole("button", { name: "Open deck" }));
     expect(screen.getByLabelText("analytics search launch").textContent).toBe("none");
+    vi.mocked(checkpointIpc.saveUiCheckpoint).mockClear();
+    lifecycle("background");
+    await waitFor(() => expect(checkpointIpc.saveUiCheckpoint).toHaveBeenCalledOnce());
+    expect(
+      JSON.stringify(vi.mocked(checkpointIpc.saveUiCheckpoint).mock.calls[0]?.[0]),
+    ).not.toContain("returnDeckSelection");
 
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
     fireEvent.click(screen.getByRole("button", { name: "Return to library" }));
-    expect(screen.getByLabelText("analytics search launch").textContent).toBe("none");
+    await waitFor(() =>
+      expect(screen.getByLabelText("analytics search launch").textContent).toBe("none"),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Open Analytics Search" }));
     fireEvent.click(screen.getByRole("button", { name: "Open Study Guides" }));
@@ -274,7 +289,7 @@ describe("application checkpoint lifecycle", () => {
   });
 
   it("keeps selected-deck return state in memory, out of the checkpoint, and reconciles it on return", async () => {
-    const current = makeDeck({ id: "d".repeat(32), revision: 1, generatedCardCount: 2 });
+    const current = makeDeck({ id: "d".repeat(32), revision: 1, generatedCardCount: 0 });
     const removed = makeDeck({ id: "e".repeat(32), revision: 1, generatedCardCount: 2 });
     vi.mocked(decksIpc.listDecks)
       .mockResolvedValueOnce([current, removed])

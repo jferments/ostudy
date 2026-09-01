@@ -581,7 +581,7 @@ function StatusBadge({ status }: { status: TagAnalytics["status"] }) {
 }
 function workloadMessage(analytics: Analytics): string {
   if (analytics.dailyLimits.reviewsRemaining === 0) {
-    return "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from Practice.";
+    return "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from a deck’s Practice action in Flashcards.";
   }
   if (analytics.currentInventory.studyableDueCount > analytics.dailyLimits.reviewsRemaining) {
     return `${

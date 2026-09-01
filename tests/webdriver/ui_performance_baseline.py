@@ -31,11 +31,11 @@ import ui_platform_smoke as ui
 ROOT_DIR = Path(__file__).resolve().parents[2]
 BASELINE_DIR = ROOT_DIR / "tests/performance-baselines/ui-workflow-redesign-stage-0"
 BASELINE_ID = "ui-workflow-redesign-stage-0"
-CANDIDATE_ID = "ui-workflow-redesign-stage-4a-deck-drag-large-library"
+CANDIDATE_ID = "ui-workflow-redesign-stage-4a-deck-drag-production-v2"
 SCHEMA_VERSION = 1
 INSTRUMENTATION_VERSION = "ui-performance-v1"
 FIXTURE_VERSION = "ui-performance-fixture-v1"
-CANDIDATE_FIXTURE_VERSION = "ui-performance-large-library-drag-v2-style-ready"
+CANDIDATE_FIXTURE_VERSION = "ui-performance-large-library-drag-v3-production-timing"
 CANDIDATE_VISIBLE_BOUNDARY = "laid-out-visible-drag-preview-v1"
 CANDIDATE_POINTER_WORK_TIMER_FLOOR_MS = 1.0
 WARMUP_COUNT = 3
@@ -48,7 +48,8 @@ SCENARIOS = (
     "study-guide-open-v1",
     "active-practice-progress-v1",
 )
-CANDIDATE_SCENARIOS = ("deck-drag-v1",)
+REFERENCE_DRAG_SCENARIO = "deck-drag-v1"
+CANDIDATE_SCENARIOS = ("deck-drag-production-v2",)
 LEGACY_DRAG_POINTER_ID = "stage0-touch"
 CANDIDATE_DRAG_POINTER_ID = 4_004
 CANDIDATE_DRAG_ACTIVATION_OFFSET = {"x": 9, "y": 0}
@@ -77,12 +78,20 @@ PYTHON_PATTERN = re.compile(
     r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z",
     re.ASCII,
 )
-POINTER_SCENARIOS = {"navigation-hover-v1", "deck-drag-v1"}
+REFERENCE_POINTER_SCENARIOS = {
+    "navigation-hover-v1",
+    REFERENCE_DRAG_SCENARIO,
+}
+POINTER_SCENARIOS = {
+    *REFERENCE_POINTER_SCENARIOS,
+    *CANDIDATE_SCENARIOS,
+}
 BOUNDARIES = {"navigation", "documents", "deck-library", "practice-setup", "guide-library", "guide-dialog", "active-practice"}
 EXPECTED_BOUNDARIES = {
     "navigation-hover-v1": {"navigation"},
     "document-list-interaction-v1": {"documents"},
     "deck-drag-v1": {"deck-library"},
+    "deck-drag-production-v2": {"deck-library"},
     "deck-selection-v1": {"practice-setup"},
     "study-guide-open-v1": {"guide-library", "guide-dialog"},
     "active-practice-progress-v1": {"active-practice"},
@@ -381,7 +390,8 @@ def expected_budget_entries(measurements: dict[str, dict[str, Any]]) -> list[dic
     entries: list[dict[str, Any]] = []
     refresh_values = [
         float(sample["pointer"]["maxFrameIntervalMs"])
-        for scenario in POINTER_SCENARIOS for sample in measurements[scenario]["samples"]
+        for scenario in REFERENCE_POINTER_SCENARIOS
+        for sample in measurements[scenario]["samples"]
     ]
     refresh_interval = round(statistics.median(refresh_values), 3)
     for scenario in SCENARIOS:
@@ -392,7 +402,7 @@ def expected_budget_entries(measurements: dict[str, dict[str, Any]]) -> list[dic
             "formula": {"kind": "observedMaximum", "observedMaximum": int(max(commits)), "headroom": 0},
             "rationale": "Discrete unexpected commits receive no noise headroom at Stage 0.",
         })
-        if scenario in POINTER_SCENARIOS:
+        if scenario in REFERENCE_POINTER_SCENARIOS:
             visible = [float(sample["interactionToVisible"]["valueMs"]) for sample in measurements[scenario]["samples"]]
             work = [float(sample["pointer"]["maxFrameWorkMs"]) for sample in measurements[scenario]["samples"]]
             visible_budget = round(max(visible) + refresh_interval, 3)
@@ -599,7 +609,9 @@ def verify_drag_candidate(
             )
     scenario_versions = {scenario: scenario for scenario in CANDIDATE_SCENARIOS}
     if not strict_json_equal(manifest["scenarioVersions"], scenario_versions):
-        fail("Candidate must contain only the deck-drag-v1 scenario identity.")
+        fail(
+            "Candidate must contain only the versioned production drag scenario identity."
+        )
     verify_trusted_native_input_attestation(manifest["trustedNativeInput"])
 
     environment = manifest["captureEnvironment"]
@@ -642,7 +654,7 @@ def verify_drag_candidate(
 
     entries = manifest["measurements"]
     if not isinstance(entries, list) or len(entries) != 1:
-        fail("Candidate manifest must reference exactly one deck-drag-v1 measurement.")
+        fail("Candidate manifest must reference exactly one production drag measurement.")
     entry = entries[0]
     if not isinstance(entry, dict):
         fail("candidate measurements[0] must be an object.")
@@ -650,10 +662,10 @@ def verify_drag_candidate(
     scenario = CANDIDATE_SCENARIOS[0]
     expected_path = canonical_measurement_path(scenario)
     if entry["scenarioId"] != scenario or entry["path"] != expected_path:
-        fail("Candidate measurement must be the canonical deck-drag-v1 path.")
+        fail("Candidate measurement must use the canonical production drag path.")
     path = candidate_dir / expected_path
     if sha256_file(path) != entry["sha256"]:
-        fail("Candidate deck-drag-v1 measurement hash mismatch.")
+        fail("Candidate production drag measurement hash mismatch.")
     measurement = verify_measurement(
         path,
         scenario,
@@ -778,7 +790,7 @@ def compare_drag_candidate(
     drag_budgets = [
         entry
         for entry in baseline["budgets"]["entries"]
-        if entry["scenarioId"] == CANDIDATE_SCENARIOS[0]
+        if entry["scenarioId"] == REFERENCE_DRAG_SCENARIO
     ]
     expected_metrics = {
         "avoidableReactCommitCount",
@@ -805,7 +817,8 @@ def compare_drag_candidate(
                 else ""
             )
             failures.append(
-                f"{entry['scenarioId']}:{entry['metric']} maximum {value:.3f} "
+                f"{CANDIDATE_SCENARIOS[0]} against "
+                f"{REFERENCE_DRAG_SCENARIO}:{entry['metric']} maximum {value:.3f} "
                 f"exceeds budget {effective_budget:.3f}{suffix}"
             )
     return failures
@@ -991,8 +1004,16 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
           row.dataset.libraryRow !== 'deck' ||
           !Number.isInteger(activationOffsetX)
         ) return null;
-        const surface = row.querySelector("[data-library-drag-surface='true']");
+        const surface = row.querySelector("[data-library-pointer-drag-source='true']");
         if (!(surface instanceof HTMLElement)) return null;
+        const interactiveSelector = [
+          "button", "a[href]", "input", "select", "textarea", "label",
+          "summary", "iframe", "audio[controls]", "video[controls]",
+          "[contenteditable]:not([contenteditable='false'])",
+          "[tabindex]:not([tabindex='-1'])",
+          "[role='button']", "[role='link']", "[role='menuitem']",
+          "[data-library-no-pointer-drag]",
+        ].join(",");
         const rect = surface.getBoundingClientRect();
         const left = Math.max(0, Math.ceil(rect.left));
         const right = Math.min(
@@ -1006,7 +1027,8 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
           return (
             target instanceof Element &&
             row.contains(target) &&
-            target.closest("[data-library-drag-surface='true']") === surface
+            target.closest("[data-library-pointer-drag-source='true']") === surface &&
+            !target.closest(interactiveSelector)
           );
         };
         for (let y = top; y <= bottom; y += 1) {
@@ -1028,7 +1050,7 @@ def find_safe_drag_point(session_id: str, element_id: str) -> dict[str, int]:
         or set(point) != {"x", "y"}
         or not all(type(point[axis]) is int for axis in ("x", "y"))
     ):
-        raise AssertionError("Deck drag source has no verified primary drag surface point.")
+        raise AssertionError("Deck drag source has no verified noninteractive drag point.")
     return {"x": point["x"], "y": point["y"]}
 
 
@@ -1281,7 +1303,9 @@ def install_native_pointer_probe(
         const state = {sequence: 0, events: [], row};
         const interactiveSelector = [
           "button", "a[href]", "input", "select", "textarea", "label",
+          "summary", "iframe", "audio[controls]", "video[controls]",
           "[contenteditable]:not([contenteditable='false'])",
+          "[tabindex]:not([tabindex='-1'])",
           "[role='button']", "[role='link']", "[role='menuitem']",
           "[data-library-no-pointer-drag]",
         ].join(",");
@@ -1290,8 +1314,6 @@ def install_native_pointer_probe(
           const targetElement = eventTarget instanceof Element ? eventTarget : null;
           const targetWithinRow = eventTarget instanceof Node && row.contains(eventTarget);
           const interactiveTarget = targetElement?.closest(interactiveSelector) ?? null;
-          const targetApprovedDragSurface =
-            interactiveTarget?.getAttribute("data-library-drag-surface") === "true";
           state.sequence += 1;
           state.events.push({
             sequence: state.sequence,
@@ -1310,9 +1332,7 @@ def install_native_pointer_probe(
             targetIsRow: eventTarget === row,
             targetWithinRow,
             targetInteractive: Boolean(interactiveTarget),
-            targetApprovedDragSurface,
-            targetCanStartDrag:
-              targetWithinRow && (!interactiveTarget || targetApprovedDragSurface),
+            targetCanStartDrag: targetWithinRow && !interactiveTarget,
           });
           if (state.events.length > 64) state.events.shift();
         };
@@ -1792,11 +1812,13 @@ def dispatch_candidate_drag_pointer_event(
               !row.isConnected ||
               row.dataset.libraryRow !== 'deck' ||
               row.dataset.itemName !== 'Large library drag source' ||
-              !(row.querySelector("[data-library-drag-surface='true']") instanceof HTMLElement) ||
+              !(row.querySelector("[data-library-pointer-drag-source='true']") instanceof HTMLElement) ||
               !(document.elementFromPoint(expected.anchorX, expected.anchorY) instanceof Element) ||
               document.elementFromPoint(expected.anchorX, expected.anchorY)
-                .closest("[data-library-drag-surface='true']") !==
-                row.querySelector("[data-library-drag-surface='true']")
+                .closest("[data-library-pointer-drag-source='true']") !==
+                row.querySelector("[data-library-pointer-drag-source='true']") ||
+              document.elementFromPoint(expected.anchorX, expected.anchorY)
+                .closest("button, a[href], input, select, textarea, label, summary, iframe, audio[controls], video[controls], [contenteditable]:not([contenteditable='false']), [tabindex]:not([tabindex='-1']), [role='button'], [role='link'], [role='menuitem'], [data-library-no-pointer-drag]")
             ) {
               throw new Error('Candidate deck drag target is stale or wrong.');
             }
@@ -1911,11 +1933,13 @@ def dispatch_candidate_drag_activation_and_finish(
                       !row.isConnected ||
                       row.dataset.libraryRow !== 'deck' ||
                       row.dataset.itemName !== 'Large library drag source' ||
-                      !(row.querySelector("[data-library-drag-surface='true']") instanceof HTMLElement) ||
+                      !(row.querySelector("[data-library-pointer-drag-source='true']") instanceof HTMLElement) ||
                       !(document.elementFromPoint(expected.anchorX, expected.anchorY) instanceof Element) ||
                       document.elementFromPoint(expected.anchorX, expected.anchorY)
-                        .closest("[data-library-drag-surface='true']") !==
-                        row.querySelector("[data-library-drag-surface='true']")
+                        .closest("[data-library-pointer-drag-source='true']") !==
+                        row.querySelector("[data-library-pointer-drag-source='true']") ||
+                      document.elementFromPoint(expected.anchorX, expected.anchorY)
+                        .closest("button, a[href], input, select, textarea, label, summary, iframe, audio[controls], video[controls], [contenteditable]:not([contenteditable='false']), [tabindex]:not([tabindex='-1']), [role='button'], [role='link'], [role='menuitem'], [data-library-no-pointer-drag]")
                     ) {
                       throw new Error('Candidate deck drag target is stale or wrong.');
                     }
@@ -2934,7 +2958,10 @@ def main() -> int:
             raise PerformanceBaselineError(
                 "Stage 4A drag budget comparison failed:\n" + "\n".join(failures)
             )
-        print("Stage 4A candidate satisfies all three deck-drag-v1 limits (read-only).")
+        print(
+            "Stage 4A production-drag-v2 candidate satisfies the three unchanged "
+            "deck-drag-v1 acceptance limits as non-comparable SLO ceilings (read-only)."
+        )
     elif args.command == "capture":
         capture(args.application, args.baseline_dir, args.source_sha)
         print("Captured and verified Stage 0D performance baseline.")

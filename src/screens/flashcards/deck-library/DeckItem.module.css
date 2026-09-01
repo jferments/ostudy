@@ -42,13 +42,22 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
   }
 
-  .item[data-drag-insertion]::before {
+  .item[data-drag-insertion="before"]::before,
+  .item[data-drag-insertion="after"]::after {
     position: absolute;
-    inset: -4px var(--ostudy-space-3) auto;
+    inset-inline: var(--ostudy-space-3);
     height: 3px;
     border-radius: 999px;
     background: var(--ostudy-color-border-accent);
     content: "";
+  }
+
+  .item[data-drag-insertion="before"]::before {
+    inset-block-start: -4px;
+  }
+
+  .item[data-drag-insertion="after"]::after {
+    inset-block-end: -4px;
   }
 
   .item[data-drag-insertion] {
@@ -84,6 +93,23 @@
     background: transparent;
     color: var(--ostudy-color-text-primary);
     text-align: start;
+  }
+
+  .open {
+    display: grid;
+    min-width: 0;
+    border: 0;
+    border-radius: var(--ostudy-radius-small);
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+
+  .open:focus-visible {
+    outline: none;
+    box-shadow: var(--ostudy-shadow-focus);
   }
 
   .mark {

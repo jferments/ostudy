@@ -347,6 +347,21 @@ The effects layer is pointer-transparent, does not affect layout, uses named UI 
   fine/coarse pointer session owns capture, cached geometry, bounded hover
   expansion and edge scrolling, and semantic feedback; only its final validated
   `LibraryMoveIntent` crosses into the existing controller mutation path.
+- Interactive descendants never start that pointer session, including deck-open
+  and folder-toggle buttons. Rows and folders retain broad non-interactive
+  movement space plus the keyboard and compact Move paths.
+- Destination validity and insertion position are separate drag presentation
+  states. The destination surface shows valid/no-op/invalid state while a
+  distinct marker anchors the exact before, end, or empty boundary; both clear
+  when the candidate changes or the session ends.
+- Profiling capture starts deck-drag timing inside the production
+  threshold-crossing pointer-move handler before capture and synchronous preview
+  activation. The activation counts as one pointer event. Pointer-frame work
+  includes that activation and the animation-frame geometry, candidate, and
+  preview work without treating animation-frame production work as another
+  pointer event; a later target listener is not the timing authority. Corrected
+  candidate capture uses its own versioned scenario identity rather than
+  relabeling this work as the immutable Stage 0 drag distribution.
 - Loading, empty, error, success, and committed-but-not-reconciled states remain explicit.
 - A busy operation explains what is happening and whether cancellation or dismissal is safe.
 - Dense tables and charts retain semantic text or table equivalents.

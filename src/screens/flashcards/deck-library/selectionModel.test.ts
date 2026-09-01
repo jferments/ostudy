@@ -78,7 +78,7 @@ describe("deck selection model", () => {
     expect(analysis.staleIds).toEqual([activeA.id]);
   });
 
-  it("restores only current active non-empty in-process return entries", () => {
+  it("restores current active in-process return entries regardless of card count", () => {
     const revised = { ...activeA, revision: 2 };
     const restored = restoreDeckSelection(
       [
@@ -89,7 +89,7 @@ describe("deck selection model", () => {
       ],
       [revised, activeB, archived],
     );
-    expect([...deckSelectionIds(restored)]).toEqual([revised.id]);
+    expect([...deckSelectionIds(restored)]).toEqual([revised.id, activeB.id]);
   });
 });
 

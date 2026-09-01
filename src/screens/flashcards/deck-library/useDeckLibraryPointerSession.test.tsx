@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
+import * as uiPerformanceInstrumentation from "../../../testing/uiPerformanceInstrumentation";
 import { createDeckLibrarySnapshot } from "./organizationModel";
 import { useDeckLibraryPointerSession } from "./useDeckLibraryPointerSession";
 
@@ -75,6 +76,8 @@ describe("useDeckLibraryPointerSession", () => {
         targetIndex: 0,
         source: "pointer",
       });
+      expect(harness.folderSurface.dataset.dragState).toBeUndefined();
+      expect(harness.folderDeck.dataset.dragInsertion).toBeUndefined();
       expect(result.current.feedback.candidate?.announcement).toContain("Moved Biology");
       harness.origin.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       expect(clicked).not.toHaveBeenCalled();
@@ -83,6 +86,51 @@ describe("useDeckLibraryPointerSession", () => {
       unmount();
     },
   );
+
+  it("starts production timing before capture and brackets animation-frame work", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const beginWork = vi
+      .spyOn(uiPerformanceInstrumentation, "beginUiPerformancePointerWork")
+      .mockReturnValue(null);
+    const endWork = vi
+      .spyOn(uiPerformanceInstrumentation, "endUiPerformancePointerWork")
+      .mockImplementation(() => undefined);
+    const harness = libraryHarness();
+    const { result } = renderHook(() =>
+      useDeckLibraryPointerSession(
+        harness.ref,
+        snapshot,
+        false,
+        "stable",
+        vi.fn(),
+        vi.fn(),
+      ),
+    );
+
+    act(() => {
+      result.current.beginPointerSession(
+        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
+        { kind: "deck", id: deckB.id },
+        deckB.name,
+      );
+      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
+    });
+
+    expect(beginWork).toHaveBeenNthCalledWith(1, "deck-drag-activation");
+    expect(beginWork.mock.invocationCallOrder[0] as number).toBeLessThan(
+      harness.origin.setPointerCapture.mock.invocationCallOrder[0] as number,
+    );
+    expect(endWork).toHaveBeenCalledTimes(1);
+
+    act(() => frames.shift()?.(0));
+
+    expect(beginWork).toHaveBeenNthCalledWith(2, "deck-drag-frame");
+    expect(endWork).toHaveBeenCalledTimes(2);
+  });
 
   it("keeps an activated window-listener drag cancellable when pointer capture throws", () => {
     const harness = libraryHarness();
@@ -189,12 +237,41 @@ describe("useDeckLibraryPointerSession", () => {
   });
 
   it.each([
-    ["valid", { kind: "deck", id: deckB.id } as const],
-    ["noop", { kind: "deck", id: deckA.id } as const],
-    ["invalid", { kind: "deck", id: "missing" } as const],
-  ])(
-    "reapplies %s target styling after same-candidate geometry recapture without feedback commits",
-    (status, payload) => {
+    {
+      label: "valid before",
+      status: "valid",
+      payload: { kind: "deck", id: deckB.id } as const,
+      clientY: 100,
+      insertionTarget: "deck",
+      insertionEdge: "before",
+    },
+    {
+      label: "valid after",
+      status: "valid",
+      payload: { kind: "deck", id: deckB.id } as const,
+      clientY: 280,
+      insertionTarget: "deck",
+      insertionEdge: "after",
+    },
+    {
+      label: "no-op empty",
+      status: "noop",
+      payload: { kind: "deck", id: deckA.id } as const,
+      clientY: 100,
+      insertionTarget: "destination",
+      insertionEdge: "empty",
+    },
+    {
+      label: "invalid before",
+      status: "invalid",
+      payload: { kind: "deck", id: "missing" } as const,
+      clientY: 100,
+      insertionTarget: "deck",
+      insertionEdge: "before",
+    },
+  ] as const)(
+    "reapplies $label target and insertion styling after same-candidate geometry recapture without feedback commits",
+    ({ status, payload, clientY, insertionTarget, insertionEdge }) => {
       const frames: FrameRequestCallback[] = [];
       vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
         frames.push(callback);
@@ -220,11 +297,16 @@ describe("useDeckLibraryPointerSession", () => {
           payload,
           deckB.name,
         );
-        window.dispatchEvent(pointerEvent("pointermove", 60, 100));
+        window.dispatchEvent(pointerEvent("pointermove", 60, clientY));
         frames.shift()?.(0);
       });
       expect(harness.folderSurface.dataset.dragState).toBe(status);
-      expect(harness.folderSurface.dataset.dragInsertion).toBe("position 1");
+      expect(harness.folderSurface.dataset.dragInsertion).toBe(
+        insertionTarget === "destination" ? insertionEdge : undefined,
+      );
+      expect(harness.folderDeck.dataset.dragInsertion).toBe(
+        insertionTarget === "deck" ? insertionEdge : undefined,
+      );
       const feedbackBeforeRecapture = result.current.feedback;
       const rendersBeforeRecapture = renders;
 
@@ -238,12 +320,59 @@ describe("useDeckLibraryPointerSession", () => {
       });
 
       expect(recapturedSurface.dataset.dragState).toBe(status);
-      expect(recapturedSurface.dataset.dragInsertion).toBe("position 1");
+      expect(recapturedSurface.dataset.dragInsertion).toBe(
+        insertionTarget === "destination" ? insertionEdge : undefined,
+      );
+      expect(harness.folderDeck.dataset.dragInsertion).toBe(
+        insertionTarget === "deck" ? insertionEdge : undefined,
+      );
       expect(result.current.feedback).toBe(feedbackBeforeRecapture);
       expect(renders).toBe(rendersBeforeRecapture);
       act(() => result.current.cancel());
+      expect(recapturedSurface.dataset.dragState).toBeUndefined();
+      expect(harness.folderDeck.dataset.dragInsertion).toBeUndefined();
     },
   );
+
+  it("moves and clears destination and insertion attributes independently", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const harness = libraryHarness();
+    const { result } = renderHook(() =>
+      useDeckLibraryPointerSession(
+        harness.ref,
+        snapshot,
+        false,
+        "stable",
+        vi.fn(),
+        vi.fn(),
+      ),
+    );
+
+    act(() => {
+      result.current.beginPointerSession(
+        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
+        { kind: "deck", id: deckB.id },
+        deckB.name,
+      );
+      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
+      frames.shift()?.(0);
+    });
+    expect(harness.folderSurface.dataset.dragState).toBe("valid");
+    expect(harness.folderDeck.dataset.dragInsertion).toBe("before");
+
+    act(() => {
+      window.dispatchEvent(pointerEvent("pointermove", 900, 500));
+      frames.shift()?.(16);
+    });
+    expect(harness.folderSurface.dataset.dragState).toBeUndefined();
+    expect(harness.folderDeck.dataset.dragInsertion).toBeUndefined();
+
+    act(() => result.current.cancel());
+  });
 
   it("keeps movement below threshold as an ordinary click without capture or move", () => {
     const harness = libraryHarness();

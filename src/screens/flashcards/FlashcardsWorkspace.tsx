@@ -36,8 +36,11 @@ interface FlashcardsWorkspaceProps {
   restoredSelection?: readonly TransientDeckSelectionEntry[];
   analyticsSearchLaunch?: AnalyticsSearchLaunch;
   openDeckRequest: DeckOpenRequest | null;
-  onOpenDeck: (deckId: string) => void;
-  onReturnToLibrary: () => void;
+  onOpenDeck: (
+    deckId: string,
+    returnDeckSelection?: readonly TransientDeckSelectionEntry[],
+  ) => void;
+  onReturnToLibrary: () => void | Promise<void>;
   onPracticeCards: (cardIds: string[]) => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   onTemplateDirtyChange: (dirty: boolean) => void;

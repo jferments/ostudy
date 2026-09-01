@@ -25,7 +25,7 @@ describe("pointer drag session policy", () => {
     }
   });
 
-  it("allows the marked primary row control while preserving click semantics", () => {
+  it("rejects a marked deck-open button and its descendants without an interactive exemption", () => {
     const row = document.createElement("article");
     const primary = document.createElement("button");
     const copy = document.createElement("span");
@@ -40,7 +40,35 @@ describe("pointer drag session policy", () => {
         target: copy,
         currentTarget: row,
       }),
+    ).toBe(false);
+  });
+
+  it("rejects the folder-toggle button while accepting its broad noninteractive parent", () => {
+    const folder = document.createElement("section");
+    const openArea = document.createElement("div");
+    const toggle = document.createElement("button");
+    const title = document.createElement("span");
+    toggle.append(title);
+    folder.append(openArea, toggle);
+
+    expect(
+      canStartPointerSession({
+        button: 0,
+        isPrimary: true,
+        pointerType: "mouse",
+        target: openArea,
+        currentTarget: folder,
+      }),
     ).toBe(true);
+    expect(
+      canStartPointerSession({
+        button: 0,
+        isPrimary: true,
+        pointerType: "mouse",
+        target: title,
+        currentTarget: folder,
+      }),
+    ).toBe(false);
   });
 
   it.each(["button", "a", "input", "label", "textarea", "select"])(
@@ -61,6 +89,40 @@ describe("pointer drag session policy", () => {
       ).toBe(false);
     },
   );
+
+  it.each([
+    ["summary", "summary", ""],
+    ["iframe", "iframe", ""],
+    ["controlled audio", "audio", "controls"],
+    ["controlled video", "video", "controls"],
+    ["tab stop", "span", "tabindex=0"],
+    ["button role", "span", "role=button"],
+    ["link role", "span", "role=link"],
+    ["menu-item role", "span", "role=menuitem"],
+    ["explicit exclusion", "span", "data-library-no-pointer-drag=true"],
+  ] as const)("rejects starts from a %s", (_label, tag, attribute) => {
+    const row = document.createElement("article");
+    const control = document.createElement(tag);
+    if (attribute === "controls") control.setAttribute("controls", "");
+    else if (attribute) {
+      const separator = attribute.indexOf("=");
+      control.setAttribute(
+        attribute.slice(0, separator),
+        attribute.slice(separator + 1),
+      );
+    }
+    row.append(control);
+
+    expect(
+      canStartPointerSession({
+        button: 0,
+        isPrimary: true,
+        pointerType: "mouse",
+        target: control,
+        currentTarget: row,
+      }),
+    ).toBe(false);
+  });
 
   it("rejects archived rows, non-primary buttons, editable content, and active selection", () => {
     const row = document.createElement("article");
