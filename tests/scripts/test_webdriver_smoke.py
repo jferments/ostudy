@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
+SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
 CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
@@ -189,6 +190,10 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
                 self.smoke.click("session-1", "element-1")
 
         self.assertEqual(request.call_count, 2)
+
+    def test_native_smoke_timeout_has_a_hard_kill_fallback(self) -> None:
+        runner = SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
+        self.assertIn("timeout --signal=INT --kill-after=30s 300s", runner)
 
     def test_native_smoke_uses_structural_practice_completion_contract(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")

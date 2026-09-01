@@ -16,6 +16,7 @@ class AgentHandoffTests(unittest.TestCase):
         ledger_uses_base: bool = False,
         artifact_valid: bool = True,
         failure: dict | None = None,
+        include_contract: bool = True,
     ) -> tuple[subprocess.CompletedProcess[str], str, str, str]:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -122,19 +123,21 @@ class AgentHandoffTests(unittest.TestCase):
             output_path = directory / "handoff.md"
             contract_path.write_text(json.dumps(contract_artifact), encoding="utf-8")
             qualification_path.write_text(json.dumps(qualification), encoding="utf-8")
-            completed = subprocess.run(
+            arguments = ["node", str(SCRIPT)]
+            if include_contract:
+                arguments.extend(["--contract", str(contract_path)])
+            arguments.extend(
                 [
-                    "node",
-                    str(SCRIPT),
-                    "--contract",
-                    str(contract_path),
                     "--qualification",
                     str(qualification_path),
                     "--repository-root",
                     str(repository),
                     "--output",
                     str(output_path),
-                ],
+                ]
+            )
+            completed = subprocess.run(
+                arguments,
                 cwd=ROOT,
                 text=True,
                 stdout=subprocess.PIPE,
@@ -154,6 +157,13 @@ class AgentHandoffTests(unittest.TestCase):
         self.assertIn("No product behavior changes", handoff)
         self.assertIn("included by successful", handoff)
         self.assertIn("Requested method: squash", handoff)
+        self.assertIn("Integrity status: valid", handoff)
+
+    def test_draft_handoff_without_contract_remains_valid(self) -> None:
+        completed, handoff, _, head_sha = self.run_handoff(include_contract=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn(head_sha, handoff)
+        self.assertIn("Contract artifact: not supplied", handoff)
         self.assertIn("Integrity status: valid", handoff)
 
     def test_mismatched_qualification_head_is_reported_and_fails(self) -> None:

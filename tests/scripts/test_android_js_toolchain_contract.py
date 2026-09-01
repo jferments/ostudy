@@ -26,6 +26,17 @@ class AndroidJavaScriptToolchainContractTests(unittest.TestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertIn('source "$SCRIPT_DIR/android-env.sh"', source, relative)
 
+    def test_android_instrumentation_has_a_hard_timeout_and_cleanup(self) -> None:
+        source = (ROOT / "scripts" / "android-emulator-smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("timeout --signal=INT --kill-after=30s 180s", source)
+        self.assertIn('local instrument_status="${PIPESTATUS[0]}"', source)
+        self.assertGreaterEqual(
+            source.count('"$adb" -s "$SERIAL" shell am force-stop "$APP_ID"'),
+            2,
+        )
+
     def test_vitest_workers_disable_node_process_web_storage(self) -> None:
         config = (ROOT / "vitest.config.mjs").read_text(encoding="utf-8")
         setup = (ROOT / "src" / "test" / "setup.ts").read_text(encoding="utf-8")

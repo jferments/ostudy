@@ -149,7 +149,7 @@ For the shared desktop/Tauri gate:
 ./scripts/check.sh
 ```
 
-For pull requests, the PR #60 state ledger and exact-head CI evidence are authoritative. A green run qualifies only the SHA it tested.
+For pull requests, GitHub's remote head and exact-head CI evidence are authoritative. The compatibility acceptance snapshot records evidence but does not override either. A green run qualifies only the SHA it tested.
 
 ## 6. PDF processing and OCR
 

@@ -13,7 +13,7 @@ Describe the user-visible or developer-visible result.
 
 ## Acceptance criteria
 
-Use stable identifiers and keep these synchronized with the state ledger.
+Use stable identifiers and keep these synchronized with the compatibility acceptance snapshot.
 
 - **AC-01:** Describe one independently verifiable requirement.
 - **AC-02:** Describe another independently verifiable requirement.
@@ -47,6 +47,8 @@ List concrete workflows actually exercised, plus physical-device, live-provider,
 ## Known limitations and residual risks
 
 List unresolved defects, compatibility effects, rollback concerns, or `None known` when supported by evidence.
+
+The JSON below is a compatibility evidence snapshot. GitHub's remote head and exact-SHA Actions results remain authoritative; editing this snapshot does not trigger or select product qualification.
 
 <!-- ostudy-agent-state:start -->
 ```json

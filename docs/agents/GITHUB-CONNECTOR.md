@@ -19,7 +19,7 @@ Do not substitute:
 
 Those mechanisms do not establish whether the Connector can read or write the private repository.
 
-Record `executionMode: githubConnector` in the pull-request state ledger. Use `githubConnectorWithExecutionWorkspace` only when a separate workspace can execute the exact published source; that workspace is never the sole location of the implementation.
+Record `executionMode: githubConnector` in the pull-request acceptance snapshot. Use `githubConnectorWithExecutionWorkspace` only when a separate workspace can execute the exact published source; that workspace is never the sole location of the implementation.
 
 ## 2. Model GitHub state as separate dimensions
 
@@ -51,7 +51,7 @@ Before editing, use Connector reads to:
 2. confirm the default branch and repository permissions exposed by the Connector;
 3. fetch the intended base, normally current `main`;
 4. record the exact base commit SHA;
-5. inspect the relevant files, active pull request, state ledger, and branch state.
+5. inspect the relevant files, active pull request, compatibility acceptance snapshot, and branch state.
 
 When resuming work, also read the actual PR head, exact-head workflow state, unresolved review threads, and incomplete acceptance criteria before changing source.
 
@@ -105,18 +105,32 @@ unless the relevant operation was actually attempted and the exact evidence supp
 For a normal change:
 
 1. create one short-lived `agent/<description>` branch from the recorded base SHA;
-2. make the first meaningful source/test/ADR commit through Connector file or Git-data operations;
+2. make the first meaningful source/test/ADR commit through Git-data operations that bind the verified branch head;
 3. verify the remote branch head;
 4. open one draft pull request against `main`;
-5. initialize the state ledger with stable `AC-##` criteria and truthful current status;
+5. initialize the compatibility acceptance snapshot with stable `AC-##` criteria and truthful current status;
 6. continue direct source changes on the same branch and PR;
 7. verify the new remote head after every meaningful publication step.
+
+### Expected-head publication protocol
+
+The selected Connector session or execution workspace is the branch's only source writer until handoff. Immediately before a commit/ref mutation:
+
+1. fetch the remote branch head;
+2. require it to equal the last verified expected head;
+3. create the new commit with that head as its parent;
+4. update the ref without force;
+5. read the remote head again and record the confirmed SHA.
+
+If step 2 or 4 fails, stop. Do not force-update, replay an unreviewed local tree, or let another chat independently repair the same branch. Read the competing head and explicitly resume or hand off from it.
+
+For every task-branch source publication after branch creation, including the first meaningful commit, use Git-data operations that name the expected parent (`create_tree` → `create_commit(parent_sha=expected)` → non-force `update_ref`). A Contents API file update binds a file blob, not the branch head, so it cannot satisfy this stop-on-branch-mismatch protocol.
 
 A generated patch, proposed commit message, transient execution workspace, task-specific applicator, or CI-generated product tree is not delivery. The branch must contain the actual reviewable source before qualification.
 
 Automatic pull-request CI is read-only and may not author commits, push source, persist write credentials, or change PR readiness. Explicit manual maintenance workflows are separate from ordinary qualification and may never push directly to `main`.
 
-## 6. Keep the PR state ledger current
+## 6. Keep the PR acceptance snapshot current
 
 After each coherent publication checkpoint:
 
@@ -127,7 +141,7 @@ After each coherent publication checkpoint:
 - record only validation that actually passed, with the exact tested SHA;
 - preserve pending human-only boundaries explicitly.
 
-A draft synchronize event can race a PR-body edit, so the verifier warns rather than fails when a draft ledger temporarily lags the actual head. Before readiness, the ledger must exactly match the GitHub base, branch, and head, and static, fast, and full must pass on that head.
+A draft synchronize event can race a PR-body edit, so the verifier warns rather than fails when the compatibility snapshot temporarily lags the actual head. The snapshot records acceptance evidence but does not own branch, runner, or workflow state. Before readiness, it must exactly match the GitHub base, branch, and head, and static, fast, and full must pass on that head.
 
 ## 7. Keep CI and repository access independent
 
@@ -191,6 +205,8 @@ In addition to the normal handoff requirements, report:
 - the base SHA read through GitHub;
 - the task branch name;
 - the current remote head SHA;
+- the selected writer/execution mode and last expected remote SHA;
+- any execution-workspace dirty state or active PID/job;
 - the pull-request number and draft/ready state;
 - whether each claimed mutation was verified remotely;
 - any Connector operation that failed and its exact error;
@@ -198,6 +214,7 @@ In addition to the normal handoff requirements, report:
 - CI state separately from publication state;
 - the exact head SHA that passed each required gate;
 - manual acceptance performed or still assigned to the human.
+- explicit release or transfer of task-branch writer ownership.
 
 ## Non-negotiable reasoning rules
 

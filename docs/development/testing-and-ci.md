@@ -93,6 +93,10 @@ Automatic gates are intentionally conservative:
 - non-draft reopened/synchronized pull request: `all-full`;
 - push to `main`: `all-full`.
 
+Pull-request description edits do not start product qualification. Automatic and manual runs use separate concurrency groups and check contexts so neither can evict or replace the other's pending result. A newer source/lifecycle event for the same PR or ref cancels obsolete automatic work; closing a PR enters that automatic group but skips the qualification job. A newer manual dispatch supersedes only older manual work and publishes `manual-check` diagnostic/exact-head evidence rather than the required automatic PR `check`. Dispatch manual qualification only after the automatic run is complete; if source changes afterward, cancel or disregard the now-obsolete manual run and qualify the new exact SHA.
+
+Draft source qualification does not depend on the compatibility PR acceptance snapshot. The snapshot is validated strictly only after the PR is marked ready, so malformed draft metadata cannot suppress fast source feedback.
+
 Every non-`preflight` run executes **static qualification first** as the first substantive qualification boundary, before KVM/runner preflight, dependency-graph validation, fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
 
 `all-full` runs, in order:
@@ -110,6 +114,8 @@ check-static.sh
 ```
 
 The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
+
+Wall-clock UI/WebKit performance measurements are diagnostic evidence, not required correctness gates. They run manually or as advisory work outside `Check`; a timing regression must never prevent Linux or Android correctness qualification from running.
 
 The workflow uses the minimum normal permission:
 
@@ -157,7 +163,7 @@ The former automatic `android-check.yml` split workflow is retired. On a single 
 
 ## Shadow and runner-health qualification
 
-`.github/workflows/unified-runner-qualification.yml` remains an opt-in runner-health/shadow workflow. It targets only `ostudy-unified` and can execute:
+`.github/workflows/unified-runner-qualification.yml` is a manual-only runner-health workflow. It targets only `ostudy-unified` and can execute:
 
 ```text
 preflight
@@ -167,7 +173,7 @@ android-full
 all-full
 ```
 
-During infrastructure work, one explicit PR-body marker may activate a lane. Normal product pull requests do not need a marker and the shadow job does not replace the authoritative `Check` result.
+Choose the branch or exact ref and lane explicitly through `workflow_dispatch`. Pull-request body edits and persistent markers never start this workflow, and its result does not replace the authoritative `Check` result.
 
 ## Packaging and releases
 
@@ -178,6 +184,8 @@ During infrastructure work, one explicit PR-body marker may activate a lane. Nor
 ## Failure evidence
 
 Qualification failures preserve bounded diagnostics rather than user study data.
+
+Long-running captured commands emit a metadata-only heartbeat every 60 seconds with the phase, elapsed time, total log bytes, and byte growth. Complete command output remains in the raw artifact; the heartbeat provides liveness without flooding Actions or Connector responses.
 
 Nested qualification wrappers share one failure-capture token, so the innermost precise failure wins and outer `initialization` traps do not create duplicate evidence. Each failing script writes its authoritative capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
 

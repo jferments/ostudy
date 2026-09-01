@@ -41,6 +41,11 @@ while (($#)); do
   shift
 done
 
+command -v timeout >/dev/null 2>&1 || {
+  printf 'GNU timeout is required to bound Android instrumentation smoke cases.\n' >&2
+  exit 1
+}
+
 cd "$ROOT_DIR"
 printf 'Android emulator build parallelism: %s Gradle workers, %s Cargo jobs.\n' \
   "$OSTUDY_GRADLE_WORKERS" "$CARGO_BUILD_JOBS"
@@ -137,7 +142,8 @@ run_case() {
 
   printf 'Running Android smoke case %s#%s...\n' "$class_name" "$method"
   set +e
-  "$adb" -s "$SERIAL" shell am instrument -w -r \
+  timeout --signal=INT --kill-after=30s 180s \
+    "$adb" -s "$SERIAL" shell am instrument -w -r \
     -e waitForActivitiesToComplete false \
     -e class "io.github.jferments.ostudy.${class_name}#${method}" \
     "$runner" | tee "$log"
@@ -145,6 +151,7 @@ run_case() {
   set -e
 
   if ((instrument_status != 0)) || ! grep -q '^OK (' "$log"; then
+    "$adb" -s "$SERIAL" shell am force-stop "$APP_ID" >/dev/null 2>&1 || true
     printf 'Android smoke case failed: %s#%s (instrumentation exit %s)\n' \
       "$class_name" "$method" "$instrument_status" >&2
     dump_case_logcat "$case_name"

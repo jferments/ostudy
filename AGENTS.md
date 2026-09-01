@@ -23,14 +23,16 @@ For every substantial code task:
 2. Select one execution mode: local checkout, authenticated GitHub Connector, or Connector with a separate execution workspace.
 3. Read and record the exact base SHA.
 4. Create one short-lived `agent/<description>` branch, publish a meaningful first commit, and open one draft pull request.
-5. Keep the PR's machine-readable state ledger current. Target scope is not implementation evidence.
+5. Keep the PR's machine-readable acceptance snapshot current for compatibility. It records evidence but does not own source, job, or runner state.
 6. Publish the actual reviewed source directly. CI must not be the only place where product source exists and must not author the PR branch.
 7. Implement in coherent vertical commits; update acceptance evidence and tests as each criterion becomes real.
 8. Consume exact failure evidence and use focused reproduction before another broad qualification run.
 9. Escalate through `check-changed`, static, fast, full, platform, and manual acceptance. A green result qualifies only the exact SHA it tested.
 10. Report publication, automated validation, and manual acceptance as separate states. Never say complete until the completion predicate in [`docs/agents/EXECUTION-STATE.md`](docs/agents/EXECUTION-STATE.md) holds.
 
-When work resumes after interruption or in another conversation, first read the open PR state ledger, verify the actual remote head, inspect exact-head CI, enumerate incomplete criteria, and continue from that evidence. Do not reconstruct task state from conversational memory.
+Exactly one source writer owns the task branch at a time. Before every publication, re-read the remote head, require it as the expected parent, and update without force. A mismatch is a stop-and-handoff boundary, not permission to overwrite or start a competing repair.
+
+When work resumes after interruption or in another conversation, first read the open PR acceptance snapshot, verify the actual remote head, inspect exact-head CI, enumerate incomplete criteria, and continue from that evidence. Do not reconstruct task state from conversational memory.
 
 ## Required reading
 
@@ -131,6 +133,8 @@ When operating through an authenticated GitHub Connector on this private reposit
 - do not change the Connector to permanent or unrestricted write access merely to bypass per-change authorization;
 - at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
 - only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
+- treat the concrete named session or workspace as the branch's only source writer until explicit handoff, and before starting or resuming confirm the prior writer released ownership with no unpublished source or active task job;
+- immediately before publication, verify the expected remote head and use a non-force update; stop if it changed;
 - after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
 - keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
 
@@ -192,11 +196,11 @@ Use the repository's tiered model instead of repeatedly running the most expensi
 ./scripts/check.sh          # authoritative full merge qualification
 ```
 
-Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
+Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. PR-body edits do not trigger product qualification, and wall-clock performance measurements remain manual/advisory rather than required correctness gates. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
 
 The full Rust tier includes generated `.ostudy.json` conformance, migrations, package/backup behavior, scheduling and analytics invariants, provider contracts, document-processing tests, and native WebDriver persistence. Manually exercise every affected user workflow. Static inspection or a successful frontend build must never be reported as a successful native Tauri test.
 
-The `Check` workflow validates the PR state ledger before qualification and always uploads a machine-readable exact-head result. Static, fast, and full must pass on the current head before a PR can truthfully record `readyForReview`; Android may be `notRequired` only when the change does not affect Android qualification surfaces.
+For non-draft pull requests, the `Check` workflow validates the PR acceptance snapshot before qualification and always uploads a machine-readable exact-head result. Draft fast qualification does not depend on compatibility snapshot metadata. Static, fast, and full must pass on the current head before a PR can truthfully record `readyForReview`; Android may be `notRequired` only when the change does not affect Android qualification surfaces.
 
 See `docs/development/testing-and-ci.md` for authoritative mechanics.
 
@@ -205,6 +209,8 @@ See `docs/development/testing-and-ci.md` for authoritative mechanics.
 Every completed change must report:
 
 - exact base commit SHA, branch, head SHA, and pull-request number;
+- selected source writer/execution mode and its last expected remote SHA;
+- unpublished workspace clean/dirty state and any active PID/job;
 - acceptance criteria and non-goals addressed;
 - changed files grouped by purpose;
 - tests and documentation added or updated;
@@ -214,6 +220,7 @@ Every completed change must report:
 - manual behavior actually exercised or still required;
 - known limitations, migration/compatibility effects, rollback concerns, and residual risks;
 - the requested merge method.
+- explicit release or transfer of task-branch writer ownership.
 
 For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
 
