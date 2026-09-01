@@ -10,10 +10,15 @@ class StudyGuideLayoutContractTests(unittest.TestCase):
     def test_document_actions_have_a_bounded_column_that_cannot_crush_the_title(self) -> None:
         css = DOCUMENTS_CSS.read_text(encoding="utf-8")
         self.assertIn(
-            "grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 36rem);",
+            "grid-template-columns: minmax(16rem, 1fr) auto;",
             css,
         )
-        self.assertIn(".actions {\n  display: flex;\n  min-width: 0;", css)
+        self.assertIn(".cardMain {\n  min-width: 0;", css)
+        self.assertIn(".actions {\n  align-self: center;", css)
+        self.assertIn(
+            "@media (max-width: 780px) {\n  .card {\n    grid-template-columns: minmax(0, 1fr);",
+            css,
+        )
         self.assertNotIn("flex: 0 0 auto;", css)
 
     def test_guide_toolbar_and_contents_use_opaque_current_semantic_surfaces(self) -> None:
