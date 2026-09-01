@@ -1,5 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
@@ -36,7 +35,6 @@ function renderNavigation(
   onNavigate = vi.fn(),
   section: AppSection = "decks",
   activeWorkflow: AppWorkflow | null = null,
-  windowControls?: ReactNode,
 ) {
   setViewport(width);
   render(
@@ -46,7 +44,6 @@ function renderNavigation(
           section={section}
           activeWorkflow={activeWorkflow}
           onNavigate={onNavigate}
-          windowControls={windowControls}
         />
       </OverlayProvider>
     </LayoutModeProvider>,
@@ -90,28 +87,12 @@ describe("NavigationSidebar", () => {
     expect(screen.queryByRole("button", { name: "Practice" })).toBeNull();
   });
 
-  it("places desktop window controls after navigation but omits them from compact navigation", () => {
-    renderNavigation(
-      1440,
-      vi.fn(),
-      "decks",
-      null,
-      <span data-testid="window-controls-slot">controls</span>,
-    );
-    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(navigation.closest("aside")?.contains(screen.getByTestId("window-controls-slot"))).toBe(
-      true,
-    );
+  it("renders no app-owned window controls in desktop or compact navigation", () => {
+    renderNavigation(1440);
+    expect(screen.queryByRole("button", { name: /maximize|restore window|full screen/iu })).toBeNull();
 
-    cleanup();
-    renderNavigation(
-      390,
-      vi.fn(),
-      "decks",
-      null,
-      <span data-testid="window-controls-slot">controls</span>,
-    );
-    expect(screen.queryByTestId("window-controls-slot")).toBeNull();
+    renderNavigation(390);
+    expect(screen.queryByRole("button", { name: /maximize|restore window|full screen/iu })).toBeNull();
   });
 
   it("routes every visible destination through the typed navigation callback", () => {

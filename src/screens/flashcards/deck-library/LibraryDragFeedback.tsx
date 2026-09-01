@@ -2,13 +2,13 @@ import type { RefCallback } from "react";
 
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
 import styles from "./LibraryDragFeedback.module.css";
-import type { PointerFeedback } from "./useDeckLibraryPointerSession";
+import type { PointerDragFeedbackState } from "./useDeckLibraryPointerSession";
 
 export function LibraryDragFeedback({
   feedback,
   bindPreview,
 }: {
-  feedback: PointerFeedback | null;
+  feedback: PointerDragFeedbackState | null;
   bindPreview: RefCallback<HTMLDivElement>;
 }) {
   const announcement = feedback?.candidate?.announcement ?? "";
