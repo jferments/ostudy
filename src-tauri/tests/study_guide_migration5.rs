@@ -11,6 +11,7 @@ fn latest_schema() -> Connection {
         include_str!("../migrations/0003_anydoc_document_adapters.sql"),
         include_str!("../migrations/0004_study_guides_and_learning_topics.sql"),
         include_str!("../migrations/0005_study_guide_pdf_exports.sql"),
+        include_str!("../migrations/0006_document_citations.sql"),
     ] {
         connection
             .execute_batch(migration)

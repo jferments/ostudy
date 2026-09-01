@@ -57,9 +57,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "a8736b2a4e8bd0a8fcf3455b8bb20058d7531653964662496271140d7e716f33",
         sql: include_str!("../migrations/0005_study_guide_pdf_exports.sql"),
     },
+    Migration {
+        version: 6,
+        name: "document_citations",
+        checksum: "51507730f9b56e34ca6964cbf2bc1b7a0d74232b04d4ba1bcc2252b4998c5685",
+        sql: include_str!("../migrations/0006_document_citations.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 5;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 6;
 
 pub struct Database {
     connection: Mutex<Connection>,
