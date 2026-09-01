@@ -10,7 +10,7 @@ use std::{
     path::Path,
 };
 
-use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
@@ -18,7 +18,8 @@ use tauri_plugin_opener::OpenerExt;
 use crate::{
     ai::AiRuntimeState,
     database::Database,
-    document_domain::{DocumentFormat, SourceUnitKind},
+    document_citations,
+    document_domain::DocumentFormat,
     documents::{self, DocumentGenerationResultDto, RetryPdfGenerationInput},
     error::CommandError,
     paths::AppPaths,
@@ -26,8 +27,6 @@ use crate::{
     task_cancellation::{cancel_document_task, is_document_task_active, run_document_task},
     util::{unix_time_millis, validate_entity_id},
 };
-
-const MAX_DECK_DESCRIPTION_CHARS: usize = 2_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -100,10 +99,11 @@ pub fn open_document_source(
         })
 }
 
-/// Permanently delete one managed source and all rebuildable document
-/// derivatives. Generated cards/decks remain. Before the document ledger is
-/// removed, every surviving generated deck receives (or retains) a textual
-/// source citation so it never depends on the deleted filesystem path.
+/// Permanently delete one managed source and all document-owned derivatives.
+///
+/// Generated decks and notes remain. Before the document ledger is removed,
+/// structured source snapshots and exact primary note locators are materialized
+/// independently of the `documents` row and marked unavailable.
 #[tauri::command]
 pub fn delete_document(
     database: State<'_, Database>,
@@ -127,8 +127,7 @@ pub fn delete_document(
     let stored = database.with_connection(|connection| {
         connection
             .query_row(
-                "SELECT title, original_filename, source_format, source_unit_kind,
-                        source_unit_count, source_relative_path, lifecycle_state, revision
+                "SELECT source_format, source_relative_path, lifecycle_state, revision
                  FROM documents WHERE id = ?1",
                 [input.document_id.as_str()],
                 |row| {
@@ -136,11 +135,7 @@ pub fn delete_document(
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, i64>(4)?,
-                        row.get::<_, String>(5)?,
-                        row.get::<_, String>(6)?,
-                        row.get::<_, i64>(7)?,
+                        row.get::<_, i64>(3)?,
                     ))
                 },
             )
@@ -153,16 +148,7 @@ pub fn delete_document(
                 )
             })
     })?;
-    let (
-        title,
-        original_filename,
-        source_format,
-        source_unit_kind,
-        source_unit_count,
-        source_relative_path,
-        lifecycle_state,
-        revision,
-    ) = stored;
+    let (source_format, source_relative_path, lifecycle_state, revision) = stored;
     if revision != input.revision {
         return Err(CommandError::new(
             "document_changed",
@@ -177,7 +163,6 @@ pub fn delete_document(
     }
 
     let format = DocumentFormat::from_db(&source_format)?;
-    let unit_kind = SourceUnitKind::from_db(&source_unit_kind)?;
     let expected_source = AppPaths::document_source_relative_path_with_extension(
         &input.document_id,
         format.default_extension(),
@@ -207,13 +192,6 @@ pub fn delete_document(
         false
     };
 
-    let citation = deleted_document_citation(
-        &title,
-        &original_filename,
-        format,
-        unit_kind,
-        source_unit_count,
-    );
     let transaction_result = database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -239,27 +217,11 @@ pub fn delete_document(
             ));
         }
 
-        let generated_decks = load_surviving_generated_decks(&transaction, &input.document_id)?;
-
-        let mut citation_count = 0_i64;
-        for (deck_id, description) in generated_decks {
-            let preserved = preserve_deleted_document_citation(
-                &description,
-                &citation,
-                &title,
-                &original_filename,
-            )?;
-            if preserved != description {
-                transaction
-                    .execute(
-                        "UPDATE decks SET description = ?1, updated_at = ?2, revision = revision + 1
-                         WHERE id = ?3",
-                        params![preserved, now, deck_id],
-                    )
-                    .map_err(CommandError::database)?;
-            }
-            citation_count = citation_count.saturating_add(1);
-        }
+        let preserved = document_citations::preserve_document_citations_before_delete(
+            &transaction,
+            &input.document_id,
+            now,
+        )?;
 
         let deleted = transaction
             .execute(
@@ -275,7 +237,7 @@ pub fn delete_document(
             ));
         }
         transaction.commit().map_err(CommandError::database)?;
-        Ok(citation_count)
+        Ok(preserved.active_deck_count)
     });
 
     let citation_count = match transaction_result {
@@ -305,31 +267,6 @@ pub fn delete_document(
     })
 }
 
-fn load_surviving_generated_decks(
-    connection: &Connection,
-    document_id: &str,
-) -> Result<Vec<(String, String)>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT DISTINCT deck.id, deck.description
-             FROM document_decks provenance
-             JOIN decks deck ON deck.id = provenance.deck_id
-             WHERE provenance.document_id = ?1
-               AND deck.deleted_at IS NULL
-             ORDER BY deck.id",
-        )
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([document_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(CommandError::database)?;
-    let decks = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    Ok(decks)
-}
-
 pub(crate) fn reconcile_deleted_document_trash(paths: &AppPaths) -> Result<(), CommandError> {
     let trash_root = paths.app_data_dir().join("documents").join("trash");
     if !trash_root.is_dir() {
@@ -347,68 +284,6 @@ pub(crate) fn reconcile_deleted_document_trash(paths: &AppPaths) -> Result<(), C
     sync_directory(&trash_root)
 }
 
-fn deleted_document_citation(
-    title: &str,
-    original_filename: &str,
-    format: DocumentFormat,
-    unit_kind: SourceUnitKind,
-    unit_count: i64,
-) -> String {
-    let units = if unit_count > 0 {
-        let label = if unit_count == 1 {
-            unit_kind.singular_label()
-        } else {
-            unit_kind.plural_label()
-        };
-        format!(", {unit_count} {label}")
-    } else {
-        String::new()
-    };
-    format!(
-        "Source document (deleted from Documents): {title} ({original_filename}; {}{units}).",
-        format.display_label()
-    )
-}
-
-fn preserve_deleted_document_citation(
-    description: &str,
-    citation: &str,
-    title: &str,
-    original_filename: &str,
-) -> Result<String, CommandError> {
-    if description.contains("Source document (deleted from Documents):") {
-        return Ok(description.to_string());
-    }
-    let automatic = format!("AI-generated flashcards from {original_filename}.");
-    if description.contains(&automatic) {
-        let replacement = format!("AI-generated flashcards. {citation}");
-        let updated = description.replacen(&automatic, &replacement, 1);
-        if updated.chars().count() <= MAX_DECK_DESCRIPTION_CHARS {
-            return Ok(updated);
-        }
-    }
-
-    let separator = if description.trim().is_empty() {
-        ""
-    } else {
-        "\n\n"
-    };
-    let appended = format!("{}{separator}{citation}", description.trim_end());
-    if appended.chars().count() <= MAX_DECK_DESCRIPTION_CHARS {
-        return Ok(appended);
-    }
-
-    // A user-edited description may already contain a serviceable textual
-    // source reference. Never truncate user content merely to add our wording.
-    if description.contains(original_filename) || description.contains(title) {
-        return Ok(description.to_string());
-    }
-    Err(CommandError::new(
-        "document_citation_preservation_failed",
-        "The generated deck description is too long to preserve a text citation for this document. Shorten that deck description, then delete the document again.",
-    ))
-}
-
 #[cfg(unix)]
 fn sync_directory(path: &Path) -> Result<(), CommandError> {
     File::open(path)
@@ -419,76 +294,4 @@ fn sync_directory(path: &Path) -> Result<(), CommandError> {
 #[cfg(not(unix))]
 fn sync_directory(_path: &Path) -> Result<(), CommandError> {
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deletion_citation_replaces_the_generated_file_reference() {
-        let description =
-            "AI-generated flashcards from chapter.docx. Edit or delete these cards through the normal deck tools.";
-        let citation = deleted_document_citation(
-            "Chapter",
-            "chapter.docx",
-            DocumentFormat::Docx,
-            SourceUnitKind::Section,
-            10,
-        );
-        let preserved =
-            preserve_deleted_document_citation(description, &citation, "Chapter", "chapter.docx")
-                .expect("automatic citation should fit");
-        assert!(preserved.contains(
-            "Source document (deleted from Documents): Chapter (chapter.docx; Word, 10 sections)."
-        ));
-        assert!(!preserved.contains("AI-generated flashcards from chapter.docx."));
-    }
-
-    #[test]
-    fn deletion_never_truncates_a_user_description_that_already_names_the_source() {
-        let description = format!("{} chapter.pdf", "x".repeat(1_980));
-        let citation = deleted_document_citation(
-            "Chapter",
-            "chapter.pdf",
-            DocumentFormat::Pdf,
-            SourceUnitKind::Page,
-            10,
-        );
-        let preserved =
-            preserve_deleted_document_citation(&description, &citation, "Chapter", "chapter.pdf")
-                .expect("existing text source reference is sufficient");
-        assert_eq!(preserved, description);
-    }
-
-    #[test]
-    fn soft_deleted_generated_decks_are_not_counted_for_document_citation_preservation() {
-        let connection = Connection::open_in_memory().expect("fixture database should open");
-        connection
-            .execute_batch(
-                "CREATE TABLE decks (
-                     id TEXT PRIMARY KEY,
-                     description TEXT NOT NULL,
-                     deleted_at INTEGER
-                 );
-                 CREATE TABLE document_decks (
-                     document_id TEXT NOT NULL,
-                     deck_id TEXT NOT NULL
-                 );
-                 INSERT INTO decks (id, description, deleted_at) VALUES
-                     ('active', 'active deck', NULL),
-                     ('deleted', 'deleted deck', 123);
-                 INSERT INTO document_decks (document_id, deck_id) VALUES
-                     ('document', 'active'),
-                     ('document', 'deleted');",
-            )
-            .expect("fixture schema should initialize");
-
-        let decks = load_surviving_generated_decks(&connection, "document")
-            .expect("surviving deck lookup should succeed");
-        assert_eq!(
-            decks,
-            vec![("active".to_string(), "active deck".to_string())]
-        );
-    }
 }
