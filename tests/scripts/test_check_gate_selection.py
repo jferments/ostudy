@@ -82,6 +82,7 @@ class CheckGateSelectionTests(unittest.TestCase):
                 "reopened",
                 "ready_for_review",
                 "converted_to_draft",
+                "closed",
             },
         )
         self.assertNotIn("PR_BODY:", workflow)
@@ -90,6 +91,15 @@ class CheckGateSelectionTests(unittest.TestCase):
             "group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}",
             workflow,
         )
+        self.assertIn(
+            "cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}",
+            workflow,
+        )
+        self.assertIn(
+            "name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}",
+            workflow,
+        )
+        self.assertIn("if: github.event.action != 'closed'", workflow)
         self.assertIn(
             "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false",
             workflow,

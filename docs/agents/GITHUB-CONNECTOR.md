@@ -105,7 +105,7 @@ unless the relevant operation was actually attempted and the exact evidence supp
 For a normal change:
 
 1. create one short-lived `agent/<description>` branch from the recorded base SHA;
-2. make the first meaningful source/test/ADR commit through Connector file or Git-data operations;
+2. make the first meaningful source/test/ADR commit through Git-data operations that bind the verified branch head;
 3. verify the remote branch head;
 4. open one draft pull request against `main`;
 5. initialize the compatibility acceptance snapshot with stable `AC-##` criteria and truthful current status;
@@ -124,7 +124,7 @@ The selected Connector session or execution workspace is the branch's only sourc
 
 If step 2 or 4 fails, stop. Do not force-update, replay an unreviewed local tree, or let another chat independently repair the same branch. Read the competing head and explicitly resume or hand off from it.
 
-For subsequent task-branch publication, use Git-data operations that name the expected parent (`create_tree` → `create_commit(parent_sha=expected)` → non-force `update_ref`). A Contents API file update binds a file blob, not the branch head, so it cannot satisfy this stop-on-branch-mismatch protocol.
+For every task-branch source publication after branch creation, including the first meaningful commit, use Git-data operations that name the expected parent (`create_tree` → `create_commit(parent_sha=expected)` → non-force `update_ref`). A Contents API file update binds a file blob, not the branch head, so it cannot satisfy this stop-on-branch-mismatch protocol.
 
 A generated patch, proposed commit message, transient execution workspace, task-specific applicator, or CI-generated product tree is not delivery. The branch must contain the actual reviewable source before qualification.
 

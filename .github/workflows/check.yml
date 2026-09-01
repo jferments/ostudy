@@ -3,7 +3,7 @@ name: Check
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed]
   push:
     branches: [main]
   workflow_dispatch:
@@ -23,9 +23,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  # Only source/lifecycle events reach this workflow, so a newer invocation for
-  # the same PR/ref always supersedes obsolete work.
-  cancel-in-progress: true
+  # Source/lifecycle events supersede older same-branch work. Manual diagnostics
+  # share the group but queue instead of cancelling automatic qualification.
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -37,6 +37,10 @@ permissions:
 
 jobs:
   check:
+    # A closed event exists only to enter this concurrency group and cancel
+    # obsolete work for the abandoned PR.
+    if: github.event.action != 'closed'
+    name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 300
 

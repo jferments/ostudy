@@ -94,7 +94,7 @@ In a local checkout:
 git push -u origin HEAD
 ```
 
-In Connector mode, create the branch from the recorded base SHA and verify the remote branch state. For every later commit, re-read the current remote head and refuse a non-fast-forward update instead of force-pushing or guessing which writer should win.
+In Connector mode, create the branch from the recorded base SHA and verify the remote branch state. For every source commit, including the first one after branch creation, re-read the current remote head, create the commit with that exact head as its parent, and refuse a non-fast-forward ref update instead of force-pushing or guessing which writer should win.
 
 Do not develop directly on `main`. Do not create competing replacement branches for ordinary failures. A new branch is appropriate only when the existing branch is genuinely unrecoverable or the scope is a separate reviewable change.
 
@@ -111,7 +111,7 @@ git commit -m "chore: scaffold <change>"
 git push
 ```
 
-In Connector mode, create/update the intended source paths and verify the resulting remote head.
+In Connector mode, publish the intended source through Git-data operations that bind the verified branch head (`create_tree` → `create_commit(parent_sha=expected)` → non-force `update_ref`), then verify the resulting remote head. Do this for the first meaningful commit as well as every later commit; a Contents API file update does not bind the expected branch head.
 
 A generated local patch, task-specific source applicator, finalizer, CI-generated product tree, or proposed commit message is not publication. Automatic PR CI may validate source but may not author, stage, commit, push, or change PR readiness.
 
@@ -166,7 +166,7 @@ Use increasingly expensive checks:
 ./scripts/check-fast.sh
 ```
 
-The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification and do not depend on the compatibility acceptance snapshot; non-draft PRs validate that snapshot before qualification. Every run checks out and verifies the exact PR head. PR-body edits do not trigger product CI, and a newer source event cancels obsolete qualification for the same branch, including an overlapping manual run.
+The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification and do not depend on the compatibility acceptance snapshot; non-draft PRs validate that snapshot before qualification. Every run checks out and verifies the exact PR head. PR-body edits do not trigger product CI, and a newer source event cancels obsolete qualification for the same branch, including an overlapping manual run. Closing a PR enters the same cancellation group but skips its qualification job. Manual dispatches queue rather than cancel automatic qualification and use a separate `manual-check` context, so their evidence cannot replace the automatic PR `check`.
 
 `.github/workflows/orchestrator-pr-ledger.yml` may compare-and-swap checklist metadata after a successful `Check`. It is retained as a nonauthoritative compatibility projector: it never owns source, branch, or active-job state, and its body edits do not start product qualification.
 

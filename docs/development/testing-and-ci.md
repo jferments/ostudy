@@ -93,7 +93,7 @@ Automatic gates are intentionally conservative:
 - non-draft reopened/synchronized pull request: `all-full`;
 - push to `main`: `all-full`.
 
-Pull-request description edits do not start product qualification. A newer source/lifecycle event for the same PR or ref cancels obsolete work before it can consume the serialized runner.
+Pull-request description edits do not start product qualification. A newer source/lifecycle event for the same PR or ref cancels obsolete work before it can consume the serialized runner. Closing a PR triggers cancellation for its branch but skips the qualification job. Manual dispatches queue behind automatic qualification, use a distinct `manual-check` context, and provide diagnostic/exact-head evidence without replacing the required automatic PR `check`.
 
 Draft source qualification does not depend on the compatibility PR acceptance snapshot. The snapshot is validated strictly only after the PR is marked ready, so malformed draft metadata cannot suppress fast source feedback.
 

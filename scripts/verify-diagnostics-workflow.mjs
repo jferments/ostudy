@@ -64,13 +64,18 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
-for (const [path, content] of [
-  [".github/workflows/check.yml", workflow],
-  [".github/workflows/unified-runner-qualification.yml", unifiedRunnerWorkflow],
-]) {
-  if (!content.includes("cancel-in-progress: true")) {
-    failures.push(`${path} must cancel obsolete work for the same PR/ref`);
-  }
+const checkCancellationPolicy =
+  "cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}";
+if (!workflow.includes(checkCancellationPolicy)) {
+  failures.push(
+    "check.yml must let source events cancel obsolete work without letting manual diagnostics cancel automatic qualification",
+  );
+}
+
+if (!unifiedRunnerWorkflow.includes("cancel-in-progress: true")) {
+  failures.push(
+    "unified-runner-qualification.yml must cancel obsolete manual qualification for the same ref",
+  );
 }
 
 const checkBranchConcurrency =
@@ -78,6 +83,20 @@ const checkBranchConcurrency =
 if (!workflow.includes(checkBranchConcurrency)) {
   failures.push(
     "check.yml must give automatic and manual qualification for the same branch one cancellation key",
+  );
+}
+
+const manualCheckContext =
+  "name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}";
+if (!workflow.includes(manualCheckContext)) {
+  failures.push(
+    "check.yml must keep manual diagnostic results from replacing the automatic PR check context",
+  );
+}
+
+if (!workflow.includes("if: github.event.action != 'closed'")) {
+  failures.push(
+    "check.yml must use a cancellation-only closed event without starting qualification",
   );
 }
 
