@@ -9,7 +9,6 @@ import {
   listDocuments,
   openDocumentSource,
   retryDocumentFlashcardGeneration,
-  setDocumentArchived,
 } from "./documents";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -22,9 +21,9 @@ describe("document IPC", () => {
     vi.mocked(invoke).mockResolvedValue({});
   });
 
-  it("lists active or archived documents through a bounded command", async () => {
-    await listDocuments(true);
-    expect(invoke).toHaveBeenCalledWith("list_documents", { includeArchived: true });
+  it("lists the bounded active document library without archive state", async () => {
+    await listDocuments();
+    expect(invoke).toHaveBeenCalledWith("list_documents");
   });
 
   it("establishes document identity before starting cancellable document generation", async () => {
@@ -42,7 +41,7 @@ describe("document IPC", () => {
     });
   });
 
-  it("uses narrow generation, additional-pass, cancel, native-open, deletion, and archive commands", async () => {
+  it("uses narrow generation, additional-pass, cancel, native-open, and deletion commands", async () => {
     await retryDocumentFlashcardGeneration(documentId);
     expect(invoke).toHaveBeenCalledWith("run_document_flashcard_generation", {
       input: { documentId },
@@ -66,12 +65,6 @@ describe("document IPC", () => {
     await deleteDocument(documentId, 4);
     expect(invoke).toHaveBeenCalledWith("delete_document", {
       input: { documentId, revision: 4 },
-    });
-
-    vi.mocked(invoke).mockClear();
-    await setDocumentArchived(documentId, 4, true);
-    expect(invoke).toHaveBeenCalledWith("set_document_archived", {
-      input: { documentId, revision: 4, archived: true },
     });
   });
 });

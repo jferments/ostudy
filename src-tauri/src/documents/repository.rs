@@ -14,7 +14,6 @@ pub(crate) struct StoredDocument {
 
 pub(crate) fn list_document_rows(
     connection: &Connection,
-    include_archived: bool,
 ) -> Result<Vec<DocumentDto>, CommandError> {
     let mut statement = connection
         .prepare(
@@ -35,19 +34,12 @@ pub(crate) fn list_document_rows(
                     processing_duration_ms, api_token_count, api_token_usage_complete,
                     source_format, source_unit_kind, source_unit_count
              FROM documents
-             WHERE (?1 = 1 OR archived_at IS NULL)
              ORDER BY updated_at DESC, id
-             LIMIT ?2",
+             LIMIT ?1",
         )
         .map_err(CommandError::database)?;
     let rows = statement
-        .query_map(
-            params![
-                if include_archived { 1_i64 } else { 0_i64 },
-                MAX_DOCUMENTS_RETURNED
-            ],
-            document_row,
-        )
+        .query_map(params![MAX_DOCUMENTS_RETURNED], document_row)
         .map_err(CommandError::database)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)

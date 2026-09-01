@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { SourceLocator } from "./studyGuides";
 
-export type DocumentLifecycleState = "processing" | "ready" | "failed" | "archived";
+export type DocumentLifecycleState = "processing" | "ready" | "failed";
 export type DocumentScaleMode = "standard" | "large";
 export type DocumentExtractionMode = "native" | "page_text_fallback" | "ocr_fallback";
 
@@ -64,7 +64,6 @@ export interface DocumentSummary {
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;
-  archivedAt: number | null;
   revision: number;
   processingDurationMs: number | null;
   apiTokenCount: number | null;
@@ -112,8 +111,8 @@ interface ImportedDocument {
   documentId: string;
 }
 
-export async function listDocuments(includeArchived = false): Promise<DocumentSummary[]> {
-  return invoke<DocumentSummary[]>("list_documents", { includeArchived });
+export async function listDocuments(): Promise<DocumentSummary[]> {
+  return invoke<DocumentSummary[]>("list_documents");
 }
 
 export async function getDocumentGenerationProgress(
@@ -178,16 +177,6 @@ export async function deleteDocument(
 ): Promise<DeleteDocumentResult> {
   return invoke<DeleteDocumentResult>("delete_document", {
     input: { documentId, revision },
-  });
-}
-
-export async function setDocumentArchived(
-  documentId: string,
-  revision: number,
-  archived: boolean,
-): Promise<DocumentSummary> {
-  return invoke<DocumentSummary>("set_document_archived", {
-    input: { documentId, revision, archived },
   });
 }
 

@@ -271,7 +271,6 @@ pub fn run() {
             document_operations::delete_document,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
-            documents::commands::set_document_archived,
             document_study_guide_commands::generate_document_study_guide,
             document_study_guide_commands::cancel_document_study_guide_generation,
             document_study_guide_commands::get_document_study_guide,
