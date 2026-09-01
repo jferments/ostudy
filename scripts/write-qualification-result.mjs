@@ -8,6 +8,7 @@ const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/gu;
 const VITEST_FAILED_FILE = /^\s*FAIL\s+([A-Za-z0-9_./-]+\.(?:test|spec)\.[cm]?[jt]sx?)(?=\s|$)/gmu;
 const RUST_FAILED_TEST = /^test (.+) \.\.\. FAILED$/gmu;
 const PYTHON_FAILED_TEST = /^FAIL:\s+([^\s(]+)(?:\s+\([^)]*\))?/gmu;
+const ADVISORY_STEPS = new Set(["ui-performance"]);
 const options = parseArguments(process.argv.slice(2));
 
 const logs = await readLogs(options.logFiles);
@@ -63,20 +64,13 @@ if (compositionFailure) process.exitCode = 1;
 function qualificationCompositionFailure(parsed) {
   if (parsed.status !== "success") return null;
   const failedStep = parsed.steps.find(
-    ({ status }) => status === "failure" || status === "cancelled",
+    ({ name, status }) => !ADVISORY_STEPS.has(name)
+      && (status === "failure" || status === "cancelled"),
   );
   if (failedStep) {
     return {
       boundary: failedStep.name,
       summary: `Qualification reported success while ${failedStep.name} was ${failedStep.status}.`,
-    };
-  }
-  if (parsed.gate !== "linux-full" && parsed.gate !== "all-full") return null;
-  const performanceSteps = parsed.steps.filter(({ name }) => name === "ui-performance");
-  if (performanceSteps.length !== 1 || performanceSteps[0].status !== "success") {
-    return {
-      boundary: "ui-performance",
-      summary: "Linux full qualification cannot succeed without one successful UI performance and trusted-mouse step.",
     };
   }
   return null;

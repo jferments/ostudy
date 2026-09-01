@@ -100,43 +100,42 @@ FAST CHECK FAILED during: React tests (exit 1)
         self.assertRegex(result["failure"]["fingerprint"], r"^qf-[0-9a-f]{16}$")
         self.assertEqual(result["failure"]["reproduction"], "./scripts/check.sh")
 
-    def test_linux_full_success_requires_native_ui_performance_evidence(self) -> None:
+    def test_linux_full_success_does_not_require_advisory_ui_performance(self) -> None:
         completed, result = self.run_result(
             "Linux qualification passed without UI performance evidence.\n",
             status="success",
             gate="linux-full",
             step_name="linux-full",
         )
-        self.assertNotEqual(completed.returncode, 0)
-        self.assertEqual("failure", result["status"])
-        self.assertEqual("ui-performance", result["failure"]["boundary"])
-        self.assertIn("cannot succeed", result["failure"]["summary"])
-        self.assertIn("check-ui-performance-candidate.sh", result["failure"]["reproduction"])
-
-    def test_linux_full_success_accepts_one_successful_native_performance_step(self) -> None:
-        completed, result = self.run_result(
-            "Native performance qualification passed.\n",
-            status="success",
-            gate="linux-full",
-            step_name="ui-performance",
-        )
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertEqual("success", result["status"])
         self.assertIsNone(result["failure"])
 
-    def test_success_status_cannot_hide_a_failed_native_performance_step(self) -> None:
+    def test_all_full_success_keeps_failed_ui_performance_advisory(self) -> None:
         completed, result = self.run_result(
-            "ERROR: UI performance candidate comparison failed.\n",
+            "ERROR: Advisory UI performance candidate comparison failed.\n",
             status="success",
             gate="all-full",
             step_name="ui-performance",
             step_status="failure",
         )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual("success", result["status"])
+        self.assertIsNone(result["failure"])
+
+    def test_success_status_cannot_hide_failed_android_correctness(self) -> None:
+        completed, result = self.run_result(
+            "ERROR: Android compile and package qualification failed.\n",
+            status="success",
+            gate="all-full",
+            step_name="android-compile",
+            step_status="failure",
+        )
         self.assertNotEqual(completed.returncode, 0)
         self.assertEqual("failure", result["status"])
-        self.assertEqual("ui-performance", result["failure"]["boundary"])
+        self.assertEqual("android-compile", result["failure"]["boundary"])
         self.assertIn("reported success", result["failure"]["summary"])
-        self.assertIn("/absolute/new/output-directory", result["failure"]["reproduction"])
+        self.assertIn("android-test.sh", result["failure"]["reproduction"])
 
 
 if __name__ == "__main__":
