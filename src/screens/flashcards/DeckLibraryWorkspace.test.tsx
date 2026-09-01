@@ -238,7 +238,7 @@ describe("DeckLibraryWorkspace", () => {
     expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, []);
   });
 
-  it("keeps checkbox and action interactions separate from ordinary row opening", async () => {
+  it("keeps selection unchanged across ordinary row opening and isolated controls", async () => {
     const onOpenDeck = vi.fn();
     renderLibrary({ onOpenDeck });
 
@@ -249,11 +249,18 @@ describe("DeckLibraryWorkspace", () => {
     expect((checkbox as HTMLInputElement).checked).toBe(true);
     expect(article?.getAttribute("data-selected")).toBe("true");
 
+    fireEvent.click(screen.getByText("Pharmacology"));
+    fireEvent.click(screen.getByText("24 cards · 6 ready"));
     fireEvent.click(screen.getByRole("button", { name: "Open Pharmacology" }));
-    expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, [
-      { id: pharmacology.id, revision: pharmacology.revision },
-    ]);
+    expect(onOpenDeck).toHaveBeenCalledTimes(3);
+    for (const call of onOpenDeck.mock.calls) {
+      expect(call).toEqual([
+        pharmacology.id,
+        [{ id: pharmacology.id, revision: pharmacology.revision }],
+      ]);
+    }
     expect((checkbox as HTMLInputElement).checked).toBe(true);
+    expect(article?.getAttribute("data-selected")).toBe("true");
   });
 
   it("selects visible rows without collapsed content, selects the full lifecycle scope, and clears", async () => {

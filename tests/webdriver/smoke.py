@@ -1037,7 +1037,7 @@ def verify_persistence_after_restart(
     deck_button = find_element(
         session_id,
         "xpath",
-        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        f"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     click(session_id, deck_button)

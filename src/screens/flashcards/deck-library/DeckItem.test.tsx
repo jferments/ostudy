@@ -74,6 +74,38 @@ describe("DeckItem", () => {
     },
   );
 
+  it.each(["wide", "medium", "compact"] as const)(
+    "opens from short clicks on the broad title and copy while controls stay isolated in %s layout",
+    (layoutMode) => {
+      setLayoutMode(layoutMode);
+      const onOpen = vi.fn();
+      const onToggleSelected = vi.fn();
+      renderDeckItem({ onOpen, onToggleSelected });
+
+      const title = screen.getByText("Anatomy");
+      const copy = screen.getByText("12 cards · 4 ready");
+      const dragSurface = title.closest("[data-library-pointer-drag-source='true']");
+      const selection = screen.getByRole("checkbox", { name: "Select Anatomy" });
+
+      expect(dragSurface?.tagName).toBe("DIV");
+      expect(dragSurface?.hasAttribute("role")).toBe(false);
+      expect(dragSurface?.hasAttribute("tabindex")).toBe(false);
+
+      fireEvent.click(title);
+      fireEvent.click(copy);
+      fireEvent.click(screen.getByRole("button", { name: "Open Anatomy" }));
+
+      expect(onOpen).toHaveBeenCalledTimes(3);
+      expect(onToggleSelected).not.toHaveBeenCalled();
+      expect((selection as HTMLInputElement).checked).toBe(false);
+
+      fireEvent.click(selection);
+
+      expect(onOpen).toHaveBeenCalledTimes(3);
+      expect(onToggleSelected).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("leaves default prevention to the validated adapter and preserves opening", () => {
     const onOpen = vi.fn();
     const reorder = makeReorder();

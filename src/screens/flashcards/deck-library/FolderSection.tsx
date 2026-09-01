@@ -84,6 +84,7 @@ export const FolderSection = memo(function FolderSection({
         <div
           className={styles.summary}
           data-library-pointer-drag-source="true"
+          onClick={onToggleCollapsed}
           onPointerDown={(event) =>
             reorder.beginPointerDrag(
               event,

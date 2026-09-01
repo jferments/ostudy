@@ -158,6 +158,70 @@ describe("DeckLibraryView render isolation", () => {
       expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
     },
   );
+
+  it.each([
+    { collapsed: false, layoutMode: "wide", toggleName: "Collapse Nursing folder" },
+    { collapsed: true, layoutMode: "wide", toggleName: "Expand Nursing folder" },
+    { collapsed: false, layoutMode: "medium", toggleName: "Collapse Nursing folder" },
+    { collapsed: true, layoutMode: "medium", toggleName: "Expand Nursing folder" },
+    { collapsed: false, layoutMode: "compact", toggleName: "Collapse Nursing folder" },
+    { collapsed: true, layoutMode: "compact", toggleName: "Expand Nursing folder" },
+  ])(
+    "toggles a folder from short summary clicks and its explicit control when collapsed is $collapsed in $layoutMode layout",
+    ({ collapsed, layoutMode, toggleName }) => {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches:
+          (query === "(max-width: 760px)" && layoutMode === "compact") ||
+          (query === "(max-width: 1180px)" && layoutMode !== "wide"),
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+      const toggleFolder = vi.fn();
+      const folderSnapshot = createDeckLibrarySnapshot([deck(0)], {
+        revision: 12,
+        folders: [folder],
+        placements: [{ deckId: deck(0).id, folderId: folder.id, sortOrder: 1_000 }],
+      });
+      const folderController = {
+        ...controller,
+        snapshot: folderSnapshot,
+        collapsedFolderIds: collapsed ? new Set([folder.id]) : new Set<string>(),
+        toggleFolder,
+      } as DeckLibraryController;
+
+      render(
+        <LayoutModeProvider>
+          <DeckLibraryView
+            controller={folderController}
+            reorder={reorder}
+            libraryRef={{ current: null }}
+            onPracticeDeck={onPracticeDeck}
+          />
+        </LayoutModeProvider>,
+      );
+
+      const title = screen.getByRole("heading", { name: folder.name });
+      const copy = screen.getByText("1 deck · 1 ready");
+      const dragSurface = title.closest("[data-library-pointer-drag-source='true']");
+
+      expect(dragSurface?.tagName).toBe("DIV");
+      expect(dragSurface?.hasAttribute("role")).toBe(false);
+      expect(dragSurface?.hasAttribute("tabindex")).toBe(false);
+
+      fireEvent.click(title);
+      fireEvent.click(copy);
+      fireEvent.click(screen.getByRole("button", { name: toggleName }));
+
+      expect(toggleFolder).toHaveBeenCalledTimes(3);
+      expect(toggleFolder).toHaveBeenNthCalledWith(1, folder.id);
+      expect(toggleFolder).toHaveBeenNthCalledWith(2, folder.id);
+      expect(toggleFolder).toHaveBeenNthCalledWith(3, folder.id);
+    },
+  );
 });
 
 function Harness() {

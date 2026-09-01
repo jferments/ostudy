@@ -65,6 +65,7 @@ export const DeckItem = memo(function DeckItem({
       <div
         className={styles.main}
         data-library-pointer-drag-source={archived ? undefined : "true"}
+        onClick={onOpen}
         onPointerDown={
           archived
             ? undefined

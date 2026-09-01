@@ -388,6 +388,16 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("Native smoke tag", harness)
         self.assertIn("verify_analytics_tag_search(session_id, question, tag_name, deadline)", harness)
 
+    def test_persistence_restart_uses_explicit_accessible_deck_open_control(self) -> None:
+        harness = SMOKE_PATH.read_text(encoding="utf-8")
+        start = harness.index("def verify_persistence_after_restart(")
+        end = harness.index("\ndef main()", start)
+        persistence = harness[start:end]
+
+        self.assertIn("//main//button[@aria-label=", persistence)
+        self.assertIn("Open {deck_name}", persistence)
+        self.assertNotIn("button[.//strong", persistence)
+
     def test_tag_filtered_search_contract_requires_selected_tab_filter_and_card(self) -> None:
         with patch.object(self.smoke, "wait_for_main_heading") as heading, patch.object(
             self.smoke,
