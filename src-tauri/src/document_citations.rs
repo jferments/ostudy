@@ -7,11 +7,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    document_domain::SourceLocator,
-    error::CommandError,
-    util::validate_entity_id,
-};
+use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
 
 pub(crate) const SOURCE_CITATION_SCHEMA_VERSION: i64 = 1;
 
@@ -478,8 +474,7 @@ mod tests {
         let deck_id = "b".repeat(32);
         let note_id = "c".repeat(32);
         let locator =
-            SourceLocator::new(SourceUnitKind::Page, vec![2, 3], Some("Evidence".into()))
-                .unwrap();
+            SourceLocator::new(SourceUnitKind::Page, vec![2, 3], Some("Evidence".into())).unwrap();
         let locator_json = serde_json::to_string(&locator).unwrap();
         connection
             .execute(
@@ -531,7 +526,10 @@ mod tests {
             }
         );
         connection
-            .execute("DELETE FROM documents WHERE id = ?1", [document_id.as_str()])
+            .execute(
+                "DELETE FROM documents WHERE id = ?1",
+                [document_id.as_str()],
+            )
             .unwrap();
 
         let description: String = connection
@@ -590,7 +588,10 @@ mod tests {
 
         preserve_document_citations_before_delete(&connection, &document_id, 2).unwrap();
         connection
-            .execute("DELETE FROM documents WHERE id = ?1", [document_id.as_str()])
+            .execute(
+                "DELETE FROM documents WHERE id = ?1",
+                [document_id.as_str()],
+            )
             .unwrap();
         assert_eq!(delete_orphaned_removed_citations(&connection).unwrap(), 0);
 
