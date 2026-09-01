@@ -34,25 +34,22 @@ Use the repository tiers in increasing order:
 
 `check-fast.sh` adds the complete frontend test suite, locked Rust compilation, warning-free Rust linting, and high-return document/platform contracts.
 
-`check.sh` is the authoritative Linux/shared core suite. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests. The exact-head Actions `linux-full` job is the composed merge gate because it additionally requires the deterministic UI performance qualification described below.
+`check.sh` is the authoritative Linux/shared correctness suite. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
 
-For `linux-full` and `all-full`, the `Check` workflow follows a successful
-`check.sh` run with `check-ui-performance-candidate.sh`. This host-side gate
-requires a new absolute runner-temporary output directory, captures the Stage 4
-large-library deck-drag candidate with the real profiling Tauri build, and then
-compares it with the immutable Stage 0 drag budgets. Before collecting those
-deterministic samples, a separate disposable driver/application session injects
-a real X11 mouse drag through XTEST and
-requires WebKit to report trusted mouse Pointer Events at the calibrated deck
-row, show the production drag preview, clear it on trusted Escape while the
-button remains held, and then observe native button release.
-That process is stopped before the measurement process begins, and the
-candidate manifest must contain the exact trusted-input attestation.
-It does not run in `fast`,
-`static`, `preflight`, or `android-full`. The candidate capture itself requires
-the exact clean checked-out `QUALIFIED_SHA`; a green Linux-full result therefore
-cannot be composed without deterministic performance evidence and the trusted
-Linux mouse-input smoke for that head.
+Wall-clock UI/WebKit performance is advisory evidence collected manually outside
+the required `Check` workflow. The retained
+`check-ui-performance-candidate.sh` tooling requires a new absolute
+runner-temporary output directory, captures the Stage 4 large-library deck-drag
+candidate with the real profiling Tauri build, and compares it with the
+immutable Stage 0 drag budgets. Before collecting those samples, a separate
+disposable driver/application session injects a real X11 mouse drag through
+XTEST and requires WebKit to report trusted mouse Pointer Events at the
+calibrated deck row, show the production drag preview, clear it on trusted
+Escape while the button remains held, and then observe native button release.
+That process is stopped before measurement begins, and the candidate manifest
+must contain the exact trusted-input attestation. A timing or trusted-input
+performance capture failure cannot block Linux/shared correctness or prevent
+Android correctness qualification from running.
 
 The repeatable performance samples measure deterministic DOM `PointerEvent` dispatch through
 the production React drag adapter, preview, cancellation, Profiler, User Timing,
@@ -153,6 +150,10 @@ Automatic gates are intentionally conservative:
 - non-draft reopened/synchronized pull request: `all-full`;
 - push to `main`: `all-full`.
 
+Pull-request description edits do not start product qualification. Automatic and manual runs use separate concurrency groups and check contexts so neither can evict or replace the other's pending result. A newer source/lifecycle event for the same PR or ref cancels obsolete automatic work; closing a PR enters that automatic group but skips the qualification job. A newer manual dispatch supersedes only older manual work and publishes `manual-check` diagnostic/exact-head evidence rather than the required automatic PR `check`. Dispatch manual qualification only after the automatic run is complete; if source changes afterward, cancel or disregard the now-obsolete manual run and qualify the new exact SHA.
+
+Draft source qualification does not depend on the compatibility PR acceptance snapshot. The snapshot is validated strictly only after the PR is marked ready, so malformed draft metadata cannot suppress fast source feedback.
+
 Every non-`preflight` run executes **static qualification first** as the first substantive qualification boundary, before KVM/runner preflight, dependency-graph validation, fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
 
 `all-full` runs, in order:
@@ -165,14 +166,13 @@ check-static.sh
    → fast qualification (reusing the static stamp)
    → built-binary final-v26 data-preserving adoption smoke
    → native WebDriver persistence/UI smoke
-→ check-ui-performance-candidate.sh
-   → capture-candidate at the exact clean QUALIFIED_SHA
-   → compare-candidate against immutable Stage 0 drag budgets
 → android-test.sh
 → android-emulator-smoke.sh
 ```
 
 The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
+
+Wall-clock UI/WebKit performance measurements are diagnostic evidence, not required correctness gates. They run manually or as advisory work outside `Check`; a timing regression must never prevent Linux or Android correctness qualification from running.
 
 The workflow uses the minimum normal permission:
 
@@ -220,7 +220,7 @@ The former automatic `android-check.yml` split workflow is retired. On a single 
 
 ## Shadow and runner-health qualification
 
-`.github/workflows/unified-runner-qualification.yml` remains an opt-in runner-health/shadow workflow. It targets only `ostudy-unified` and can execute:
+`.github/workflows/unified-runner-qualification.yml` is a manual-only runner-health workflow. It targets only `ostudy-unified` and can execute:
 
 ```text
 preflight
@@ -230,7 +230,7 @@ android-full
 all-full
 ```
 
-During infrastructure work, one explicit PR-body marker may activate a lane. Normal product pull requests do not need a marker and the shadow job does not replace the authoritative `Check` result.
+Choose the branch or exact ref and lane explicitly through `workflow_dispatch`. Pull-request body edits and persistent markers never start this workflow, and its result does not replace the authoritative `Check` result.
 
 ## Packaging and releases
 
@@ -241,6 +241,8 @@ During infrastructure work, one explicit PR-body marker may activate a lane. Nor
 ## Failure evidence
 
 Qualification failures preserve bounded diagnostics rather than user study data.
+
+Long-running captured commands emit a metadata-only heartbeat every 60 seconds with the phase, elapsed time, total log bytes, and byte growth. Complete command output remains in the raw artifact; the heartbeat provides liveness without flooding Actions or Connector responses.
 
 Nested qualification wrappers share one failure-capture token, so the innermost precise failure wins and outer `initialization` traps do not create duplicate evidence. Each failing script writes its authoritative capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
 
@@ -259,12 +261,10 @@ The Actions summary parses application JSONL and structured Android Logcat recor
 
 Small structured diagnostic captures are uploaded with 7-day retention even when they contain only a recovered transient failure. Full failure wrapper logs, Gradle reports, emulator Logcat, screenshot, and UI hierarchy evidence use 14-day retention. A clean run with no capture does not produce a diagnostic artifact.
 
-Deterministic UI performance and trusted-mouse qualification records its step outcome in
-`ostudy-qualification-result.json`. The bounded diagnostic artifact retains the
-final 32 KiB log tail and, when capture installed them, the candidate manifest
-and `deck-drag-v1` measurement. A failed run additionally uploads the full
-captured wrapper log; candidate evidence is never overwritten or removed merely
-because comparison failed.
+Manual/advisory deterministic UI performance and trusted-mouse captures retain
+their candidate manifest, `deck-drag-v1` measurement, and bounded logs. Candidate
+evidence is never overwritten or removed merely because comparison failed, but
+it is separate from the required exact-head correctness result.
 
 Diagnostics must not contain the SQLite learner library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts/responses, credentials, Keystore plaintext, or Authorization headers.
 

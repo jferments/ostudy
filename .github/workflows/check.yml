@@ -3,7 +3,7 @@ name: Check
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed]
   push:
     branches: [main]
   workflow_dispatch:
@@ -22,21 +22,25 @@ on:
           - all-full
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # A source synchronization should supersede qualification of the older tree,
-  # but metadata-only PR edits must not abort an exact-head run already in flight.
-  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  # Automatic and manual runs use separate pending slots. New source/lifecycle
+  # events supersede automatic work; duplicate manual runs supersede manual work.
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 # Source-writing maintenance is deliberately isolated in
 # maintain-generated-candidates.yml and is never performed by Check.
-# A draft can request exact-head terminal qualification by adding the explicit
-# `<!-- ostudy-check:all-full -->` marker to its PR body; ordinary drafts stay fast.
+# Draft source updates stay fast. Ready pull requests and explicit manual
+# dispatches are the only paths to terminal full qualification.
 
 jobs:
   check:
+    # A closed event exists only to enter this concurrency group and cancel
+    # obsolete work for the abandoned PR.
+    if: github.event.action != 'closed'
+    name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 300
 
@@ -79,7 +83,6 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_GATE: ${{ inputs.gate || 'all-full' }}
           PR_DRAFT: ${{ github.event.pull_request.draft || false }}
-          PR_BODY: ${{ github.event.pull_request.body || '' }}
         run: |
           gate="$(node ./scripts/select-check-gate.mjs)"
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
@@ -87,7 +90,7 @@ jobs:
 
       - name: Verify pull-request execution contract
         id: pr_contract
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
         run: |
           node ./scripts/verify-pr-contract.mjs \
             --event "$GITHUB_EVENT_PATH" \
@@ -132,21 +135,6 @@ jobs:
             "$RUNNER_TEMP/ostudy-full-check.log" \
             bash ./scripts/check.sh
 
-      - name: Run deterministic UI performance and trusted mouse qualification
-        id: ui_performance
-        if: success() && steps.linux_full.outcome == 'success' && (steps.gate.outputs.gate == 'linux-full' || steps.gate.outputs.gate == 'all-full')
-        run: |
-          status=0
-          bash ./scripts/run-ci-captured.sh \
-            "$RUNNER_TEMP/ostudy-ui-performance-check.log" \
-            bash ./scripts/check-ui-performance-candidate.sh \
-              "$RUNNER_TEMP/ostudy-ui-performance-candidate-$QUALIFIED_SHA" \
-            || status=$?
-          tail -c 32768 \
-            "$RUNNER_TEMP/ostudy-ui-performance-check.log" \
-            > "$RUNNER_TEMP/ostudy-ui-performance-check-tail.log"
-          exit "$status"
-
       - name: Run authoritative Android compile and package qualification
         id: android_compile
         if: steps.gate.outputs.gate == 'android-full' || steps.gate.outputs.gate == 'all-full'
@@ -176,7 +164,6 @@ jobs:
           DEPENDENCY_STATUS: ${{ steps.dependency_graph.outcome }}
           FAST_STATUS: ${{ steps.fast.outcome }}
           LINUX_STATUS: ${{ steps.linux_full.outcome }}
-          UI_PERFORMANCE_STATUS: ${{ steps.ui_performance.outcome }}
           ANDROID_COMPILE_STATUS: ${{ steps.android_compile.outcome }}
           ANDROID_SMOKE_STATUS: ${{ steps.android_smoke.outcome }}
         run: |
@@ -190,7 +177,6 @@ jobs:
             --step "dependency-graph=${DEPENDENCY_STATUS:-skipped}" \
             --step "fast=${FAST_STATUS:-skipped}" \
             --step "linux-full=${LINUX_STATUS:-skipped}" \
-            --step "ui-performance=${UI_PERFORMANCE_STATUS:-skipped}" \
             --step "android-compile=${ANDROID_COMPILE_STATUS:-skipped}" \
             --step "android-smoke=${ANDROID_SMOKE_STATUS:-skipped}" \
             --diagnostics "$RUNNER_TEMP/ostudy-diagnostics" \
@@ -198,7 +184,6 @@ jobs:
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
-            "$RUNNER_TEMP/ostudy-ui-performance-check.log" \
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             >> "$GITHUB_STEP_SUMMARY"
@@ -232,7 +217,6 @@ jobs:
             "$RUNNER_TEMP/ostudy-static-check.log" \
             "$RUNNER_TEMP/ostudy-fast-check.log" \
             "$RUNNER_TEMP/ostudy-full-check.log" \
-            "$RUNNER_TEMP/ostudy-ui-performance-check.log" \
             "$RUNNER_TEMP/ostudy-android-test.log" \
             "$RUNNER_TEMP/ostudy-android-smoke.log" \
             > "$summary"
@@ -254,9 +238,6 @@ jobs:
             ${{ runner.temp }}/ostudy-agent-handoff.md
             ${{ runner.temp }}/ostudy-failure-summary.md
             ${{ runner.temp }}/ostudy-diagnostics/**
-            ${{ runner.temp }}/ostudy-ui-performance-check-tail.log
-            ${{ runner.temp }}/ostudy-ui-performance-candidate-${{ env.QUALIFIED_SHA }}/manifest.json
-            ${{ runner.temp }}/ostudy-ui-performance-candidate-${{ env.QUALIFIED_SHA }}/measurements/deck-drag-v1.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -271,7 +252,6 @@ jobs:
             ${{ runner.temp }}/ostudy-static-check.log
             ${{ runner.temp }}/ostudy-fast-check.log
             ${{ runner.temp }}/ostudy-full-check.log
-            ${{ runner.temp }}/ostudy-ui-performance-check.log
             ${{ runner.temp }}/ostudy-android-test.log
             ${{ runner.temp }}/ostudy-android-smoke.log
             ${{ runner.temp }}/android-smoke/**

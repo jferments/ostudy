@@ -1,9 +1,6 @@
 name: Unified runner qualification
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       lane:
@@ -19,29 +16,20 @@ on:
           - all-full
 
 concurrency:
-  group: unified-runner-${{ github.event.pull_request.number || github.ref }}
-  # Source changes supersede obsolete qualification, but PR metadata edits must
-  # not abort an exact-head runner qualification already in flight.
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   qualify:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.body || '', '<!-- unified-runner:preflight -->') ||
-      contains(github.event.pull_request.body || '', '<!-- unified-runner:linux-fast -->') ||
-      contains(github.event.pull_request.body || '', '<!-- unified-runner:linux-full -->') ||
-      contains(github.event.pull_request.body || '', '<!-- unified-runner:android-full -->') ||
-      contains(github.event.pull_request.body || '', '<!-- unified-runner:all-full -->')
     runs-on: [self-hosted, linux, x64, ostudy-unified]
     timeout-minutes: 240
     env:
       CI: "true"
       CARGO_TERM_COLOR: always
-      QUALIFIED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      QUALIFIED_SHA: ${{ github.sha }}
 
     steps:
       - name: Check out exact source head
@@ -65,37 +53,20 @@ jobs:
       - name: Verify exact checkout
         run: test "$(git rev-parse HEAD)" = "$QUALIFIED_SHA"
 
-      - name: Enforce runner-infrastructure-only pull-request scope
-        env:
-          INFRA_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-          INFRA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Enforce runner-infrastructure-only scope
         run: |
+          base_sha="$(git rev-parse refs/remotes/origin/main)"
           bash ./scripts/runner/verify-infrastructure-scope.sh \
-            "$INFRA_BASE_SHA" \
-            "$INFRA_HEAD_SHA"
+            "$base_sha" \
+            "$QUALIFIED_SHA"
 
-      - name: Select shadow qualification lane
+      - name: Select qualification lane
         id: lane
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          DISPATCH_LANE: ${{ inputs.lane || 'preflight' }}
-          PR_BODY: ${{ github.event.pull_request.body || '' }}
+          DISPATCH_LANE: ${{ inputs.lane }}
         run: |
-          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            lane="$DISPATCH_LANE"
-          elif [[ "$PR_BODY" == *'<!-- unified-runner:all-full -->'* ]]; then
-            lane=all-full
-          elif [[ "$PR_BODY" == *'<!-- unified-runner:android-full -->'* ]]; then
-            lane=android-full
-          elif [[ "$PR_BODY" == *'<!-- unified-runner:linux-full -->'* ]]; then
-            lane=linux-full
-          elif [[ "$PR_BODY" == *'<!-- unified-runner:linux-fast -->'* ]]; then
-            lane=linux-fast
-          else
-            lane=preflight
-          fi
-          printf 'lane=%s\n' "$lane" >> "$GITHUB_OUTPUT"
-          printf 'Selected unified-runner lane: %s\n' "$lane"
+          printf 'lane=%s\n' "$DISPATCH_LANE" >> "$GITHUB_OUTPUT"
+          printf 'Selected unified-runner lane: %s\n' "$DISPATCH_LANE"
 
       - name: Verify isolated unified runner resources and nested KVM
         run: bash ./scripts/runner/guest-preflight.sh

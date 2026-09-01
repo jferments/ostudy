@@ -197,44 +197,49 @@ jobs:
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("task-specific applicator", completed.stderr)
 
-    def test_check_workflow_cannot_omit_native_performance_after_linux_full(self) -> None:
+    def test_required_check_workflow_is_source_driven(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
-        linux_offset = workflow.index("id: linux_full")
-        performance_offset = workflow.index("id: ui_performance")
-        android_offset = workflow.index("id: android_compile")
-        self.assertLess(linux_offset, performance_offset)
-        self.assertLess(performance_offset, android_offset)
+        selector = (ROOT / "scripts" / "select-check-gate.mjs").read_text(encoding="utf-8")
 
-        performance_step = workflow[performance_offset:android_offset]
         self.assertIn(
-            "if: success() && steps.linux_full.outcome == 'success' && "
-            "(steps.gate.outputs.gate == 'linux-full' || "
-            "steps.gate.outputs.gate == 'all-full')",
-            performance_step,
+            "types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, closed]",
+            workflow,
         )
-        self.assertIn("bash ./scripts/run-ci-captured.sh", performance_step)
-        self.assertIn("$RUNNER_TEMP/ostudy-ui-performance-check.log", performance_step)
-        self.assertIn("bash ./scripts/check-ui-performance-candidate.sh", performance_step)
-        self.assertIn(
-            "$RUNNER_TEMP/ostudy-ui-performance-candidate-$QUALIFIED_SHA",
-            performance_step,
-        )
-        self.assertIn("ostudy-ui-performance-check-tail.log", performance_step)
+        self.assertNotIn("edited", workflow)
+        self.assertNotIn("PR_BODY", workflow)
+        self.assertNotIn("ostudy-check:all-full", workflow)
+        self.assertIn("DISPATCH_GATE: ${{ inputs.gate || 'all-full' }}", workflow)
 
-        evidence = workflow[workflow.index("id: qualification_evidence"):]
-        self.assertIn("UI_PERFORMANCE_STATUS: ${{ steps.ui_performance.outcome }}", evidence)
-        self.assertIn('--step "ui-performance=${UI_PERFORMANCE_STATUS:-skipped}"', evidence)
-        self.assertGreaterEqual(evidence.count("ostudy-ui-performance-check.log"), 3)
+        self.assertIn("if (eventName === \"workflow_dispatch\")", selector)
+        self.assertIn("gate = dispatchGate", selector)
+        self.assertIn('eventName === "pull_request" && pullRequestDraft', selector)
+        self.assertIn('gate = "fast"', selector)
+        self.assertIn('gate = "all-full"', selector)
+
         self.assertIn(
-            "ostudy-ui-performance-candidate-${{ env.QUALIFIED_SHA }}/manifest.json",
-            evidence,
+            "github.event_name == 'workflow_dispatch' && 'manual' || 'automatic'",
+            workflow,
         )
         self.assertIn(
-            "ostudy-ui-performance-candidate-${{ env.QUALIFIED_SHA }}/measurements/deck-drag-v1.json",
-            evidence,
+            "name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}",
+            workflow,
         )
+        self.assertIn("if: github.event.action != 'closed'", workflow)
+        self.assertIn(
+            "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false",
+            workflow,
+        )
+        self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+
+    def test_required_check_workflow_keeps_performance_advisory(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("id: ui_performance", workflow)
+        self.assertNotIn("check-ui-performance-candidate.sh", workflow)
+        self.assertTrue((ROOT / "scripts" / "check-ui-performance-candidate.sh").is_file())
+        self.assertTrue((ROOT / "tests" / "performance-baselines").is_dir())
 
 
 if __name__ == "__main__":
     unittest.main()
-

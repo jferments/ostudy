@@ -8,18 +8,14 @@ const VALID_GATES = new Set([
   "android-full",
   "all-full",
 ]);
-const DRAFT_FULL_MARKER = "<!-- ostudy-check:all-full -->";
 
 const eventName = process.env.EVENT_NAME ?? "";
 const dispatchGate = process.env.DISPATCH_GATE ?? "all-full";
 const pullRequestDraft = (process.env.PR_DRAFT ?? "false") === "true";
-const pullRequestBody = process.env.PR_BODY ?? "";
 
 let gate;
 if (eventName === "workflow_dispatch") {
   gate = dispatchGate;
-} else if (eventName === "pull_request" && pullRequestBody.includes(DRAFT_FULL_MARKER)) {
-  gate = "all-full";
 } else if (eventName === "pull_request" && pullRequestDraft) {
   gate = "fast";
 } else {

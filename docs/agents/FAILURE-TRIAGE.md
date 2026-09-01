@@ -18,37 +18,37 @@ Normal response:
 4. add or strengthen a regression;
 5. rerun the focused boundary before escalating.
 
-State-ledger classification: `product`.
+Compatibility-snapshot classification: `product`.
 
 ### Test-contract defect
 
 Evidence shows that a test encodes behavior that conflicts with an accepted requirement or current durable invariant. A failing test is not automatically a bad test. Explain the contract change before editing the assertion, and never delete, skip, focus, or weaken coverage merely to obtain green CI.
 
-State-ledger classification: `testContract`.
+Compatibility-snapshot classification: `testContract`.
 
 ### Runner or environment defect
 
 Evidence identifies a toolchain, resource, KVM/emulator, filesystem, native dependency, or network-provisioning failure independent of product semantics. Record the exact command and environment evidence. Do not change application behavior, increase product timeouts, or weaken tests to compensate for a runner defect.
 
-State-ledger classification: `runnerEnvironment`.
+Compatibility-snapshot classification: `runnerEnvironment`.
 
 ### Connector boundary
 
 Only an actual connector operation and its exact rejection establish a connector capability or authorization failure. A missing tool action, an unavailable Actions endpoint, no approval prompt, or an unrelated local checkout is not evidence that repository writes are unavailable.
 
-State-ledger classification: `connector`.
+Compatibility-snapshot classification: `connector`.
 
 ### GitHub incident
 
 Broad `5xx`, webhook, Actions, pull-request, archive, or API failures across unrelated operations require control-plane classification and an official GitHub Status check. Preserve the exact head and avoid no-op commits, workflow rewrites, PR-state toggles, or permission expansion merely to trigger another run.
 
-State-ledger classification: `githubIncident`.
+Compatibility-snapshot classification: `githubIncident`.
 
 ### External manual boundary
 
 Physical cameras/devices, private credentials, live provider routing, hardware-specific behavior, and subjective visual acceptance can remain human-only when deterministic automation cannot reproduce them. Record the exact workflow still required; do not infer success from unit, mocked, or emulator coverage.
 
-State-ledger classification: `externalManualBoundary`.
+Compatibility-snapshot classification: `externalManualBoundary`.
 
 Use `unknown` only while evidence is genuinely insufficient. The next action must gather evidence, not guess.
 
@@ -72,7 +72,7 @@ A fingerprint excludes commit SHAs, durations, and incidental numbers so the sam
 
 ## CI log transport and Connector triage
 
-The `Check` workflow intentionally separates **complete raw command logs** from **bounded live Actions output**. Qualification commands run through `scripts/run-ci-captured.sh`: stdout/stderr are written in full to the corresponding `ostudy-*-check.log`, while the live job log receives only a byte-bounded tail. On failure, `scripts/summarize-check-failure.mjs` also writes `ostudy-failure-summary.md`, which is printed to the live job log and uploaded with the exact-head diagnostic artifacts.
+The `Check` workflow intentionally separates **complete raw command logs** from **bounded live Actions output**. Qualification commands run through `scripts/run-ci-captured.sh`: stdout/stderr are written in full to the corresponding `ostudy-*-check.log`, while the live job log receives a metadata-only liveness heartbeat every 60 seconds and a byte-bounded tail. The heartbeat reports phase, elapsed time, total log bytes, and byte growth without streaming command output. On failure, `scripts/summarize-check-failure.mjs` also writes `ostudy-failure-summary.md`, which is printed to the live job log and uploaded with the exact-head diagnostic artifacts.
 
 This separation prevents a very large Rust/Vitest/Android transcript from consuming a Connector response budget before the useful failure tail is reached. For Connector-backed triage, use this order:
 
@@ -80,6 +80,8 @@ This separation prevents a very large Rust/Vitest/Android transcript from consum
 2. read the machine-readable qualification result and `ostudy-failure-summary.md` first;
 3. use the focused reproduction named there;
 4. open the complete raw `ostudy-*-check.log` artifact only when the bounded evidence is insufficient.
+
+A continuing heartbeat means the wrapper and command are still live; zero byte growth is a diagnostic clue, not proof of a hang. Wait for the bounded command timeout or inspect the named job before restarting work. Heartbeats never constitute pass/fail evidence.
 
 Do not restore `2>&1 | tee` for static/fast/full/platform qualification in `check.yml`; that duplicates every raw line into the live Actions stream and defeats the bounded evidence design. Full raw logs remain available in failure artifacts for deep inspection.
 
@@ -96,7 +98,7 @@ After a failed qualification:
 7. Publish and verify the new head.
 8. Run the focused boundary first.
 9. Escalate to static, fast, full, and platform qualification only after the narrower boundary passes.
-10. Update the state ledger and known-failure attempts.
+10. Update the compatibility acceptance snapshot and known-failure attempts.
 
 Do not ask the human to reproduce a failure that the current CI artifacts already identify and that the agent can inspect through GitHub.
 
@@ -130,7 +132,7 @@ Stop broad iteration and report a concrete partial handoff when:
 - the branch contains generated/applicator scaffolding instead of directly reviewable source;
 - the next required step is a human-only boundary;
 - GitHub is degraded and exact-head qualification cannot be established;
-- or the acceptance ledger shows that the current scope must be decomposed before it can be reviewed safely.
+- or the acceptance snapshot shows that the current scope must be decomposed before it can be reviewed safely.
 
 Stopping a bad strategy is not abandonment. Preserve the branch, evidence, and acceptance state, then correct the approach transparently.
 

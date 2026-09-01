@@ -170,7 +170,7 @@ run_smoke() {
     XDG_CONFIG_HOME="$attempt_home/config" \
     XDG_CACHE_HOME="$attempt_home/cache" \
     XDG_STATE_HOME="$attempt_home/state" \
-      timeout --signal=INT 300s \
+      timeout --signal=INT --kill-after=30s 300s \
         python3 -u "$script" --application "$OSTUDY_BINARY" 2>&1 | tee "$log_file"
     status="${PIPESTATUS[0]}"
     set -e

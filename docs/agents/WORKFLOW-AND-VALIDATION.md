@@ -2,7 +2,7 @@
 
 Agents work as reviewable contributors, not as autonomous maintainers of `main`. The durable implementation is the published source branch and pull request—not a plan, local patch, source applicator, transient runner tree, or promise to publish later.
 
-Read [`EXECUTION-STATE.md`](EXECUTION-STATE.md) for the completion predicate and state-ledger schema, [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) for failure/retry rules, and [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) when operating through the authenticated connector.
+Read [`EXECUTION-STATE.md`](EXECUTION-STATE.md) for the completion predicate and compatibility-snapshot schema, [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) for failure/retry rules, and [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) when operating through the authenticated connector.
 
 ## 1. Restore or establish the exact task state
 
@@ -33,7 +33,7 @@ At the first intended mutation, invoke the real Connector operation and let its 
 
 Before editing:
 
-1. read the open task PR and its `ostudy-agent-state` ledger;
+1. read the open task PR and its `ostudy-agent-state` compatibility snapshot;
 2. verify the actual remote base, branch, and head;
 3. inspect exact-head CI and unresolved review threads;
 4. enumerate non-terminal acceptance criteria and known failures;
@@ -98,7 +98,7 @@ The exact sequence depends on the change. Each commit has one understandable pur
 - Add regression coverage with the behavior.
 - Avoid dependency changes and broad refactors unless they are part of the accepted scope.
 - Update affected documentation and ADRs in the same branch.
-- Update the PR state ledger after each meaningful publication checkpoint.
+- Update the PR compatibility acceptance snapshot after each meaningful publication checkpoint.
 - When changing a shared Rust struct, enum, serialized shape, migration schema, or other cross-module contract, search the entire repository for constructors, struct literals, deserializers, compatibility projections, tests, and documentation before declaring the increment complete. Do not rely on production call sites alone; stale test literals are compile failures too.
 - Treat a migration file and its registered checksum as one atomic contract. If migration bytes change before release, update the checksum in the same coherent increment and immediately qualify the manifest/static boundary before moving on.
 - For an architecture or monolith-removal refactor, publish the final ownership topology together with every required manifest, verifier, fixture, and regression-test update. Removing a required source path without registering its explicit replacement paths is an actionable static failure; do not weaken or delete the check merely to make the tree pass. A temporary compatibility module must be private, clearly documented, short-lived, and removed before terminal acceptance.
@@ -184,16 +184,16 @@ git log --oneline origin/main..HEAD
 
 In Connector mode, verify the corresponding remote branch/PR diff and record the current remote head.
 
-## 8. Maintain the pull-request state ledger
+## 8. Maintain the pull-request acceptance snapshot
 
-The ledger is machine-validated on PR events.
+The compatibility snapshot is strictly machine-validated for non-draft PR events; draft source checks do not depend on it.
 
-For draft work it may contain incomplete criteria and pending gates. A synchronize event may briefly make its recorded head stale; draft verification reports that as a warning so implementation can proceed. Reconcile it at the next checkpoint. Before requesting or interpreting a final qualification run, re-fetch the actual PR head and synchronize the ledger to that SHA.
+For draft work it may contain incomplete criteria and pending gates. A synchronize event may briefly make its recorded head stale. Reconcile it at the next checkpoint. Before requesting or interpreting a final qualification run, re-fetch the actual PR head and synchronize the snapshot to that SHA.
 
 Before review readiness:
 
 - `currentState` is `readyForReview`;
-- actual base, branch, and head exactly match the ledger;
+- actual base, branch, and head exactly match the snapshot;
 - every acceptance criterion is terminal and has evidence;
 - static, fast, and full passed on the current head;
 - Android passed or is explicitly `notRequired` for a non-Android change;
@@ -216,7 +216,7 @@ Open or update one pull request against `main`. The description records:
 - manual workflows actually exercised or still human-required;
 - migration, compatibility, backup, rollback, known limitations, and residual risks.
 
-Mark ready only after the ledger and exact-head evidence satisfy the readiness contract. A human reviews, accepts, and squash-merges. Additional fixes stay on the same branch and PR.
+Mark ready only after the compatibility snapshot and exact-head evidence satisfy the readiness contract. A human reviews, accepts, and squash-merges. Additional fixes stay on the same branch and PR.
 
 ## Validation language
 

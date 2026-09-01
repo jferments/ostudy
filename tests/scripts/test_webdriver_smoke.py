@@ -504,7 +504,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
     def test_native_smoke_pins_x11_software_rendering_before_driver_launch(self) -> None:
         source = NATIVE_SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
-        launch = source.index("timeout --signal=INT 300s")
+        launch = source.index("timeout --signal=INT --kill-after=30s 300s")
 
         for assignment in (
             "export GDK_BACKEND=x11",
@@ -517,6 +517,11 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
                 self.assertLess(source.index(assignment), launch)
         self.assertIn("Native smoke is an X11/WebKit automation contract", source)
         self.assertIn("can reset WebKitWebDriver mid-session", source)
+
+    def test_native_smoke_timeout_retains_hard_kill_fallback(self) -> None:
+        source = NATIVE_SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
+        self.assertIn("timeout --signal=INT --kill-after=30s 300s", source)
+        self.assertNotIn("timeout --signal=INT 300s", source)
 
     def test_deck_detail_smoke_retains_visual_geometry_contract(self) -> None:
         source = UI_PLATFORM_SMOKE_PATH.read_text(encoding="utf-8")

@@ -18,6 +18,8 @@ const summary = await readFile(join(root, "scripts", "summarize-check-failure.mj
 const resultWriter = await readFile(join(root, "scripts", "write-qualification-result.mjs"), "utf8");
 const handoffRenderer = await readFile(join(root, "scripts", "render-agent-handoff.mjs"), "utf8");
 const ciCapture = await readFile(join(root, "scripts", "run-ci-captured.sh"), "utf8");
+const nativeSmoke = await readFile(join(root, "scripts", "smoke-native.sh"), "utf8");
+const androidSmoke = await readFile(join(root, "scripts", "android-emulator-smoke.sh"), "utf8");
 
 const failures = [];
 
@@ -62,20 +64,78 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
-const checkSourceAwareCancellation =
-  "cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
-if (!workflow.includes(checkSourceAwareCancellation)) {
+if (!workflow.includes("cancel-in-progress: true")) {
   failures.push(
-    "check.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
+    "check.yml must cancel obsolete work within each qualification lane",
   );
 }
 
-const unifiedSourceAwareCancellation =
-  "cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
-if (!unifiedRunnerWorkflow.includes(unifiedSourceAwareCancellation)) {
+if (!unifiedRunnerWorkflow.includes("cancel-in-progress: true")) {
   failures.push(
-    "unified-runner-qualification.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
+    "unified-runner-qualification.yml must cancel obsolete manual qualification for the same ref",
   );
+}
+
+const checkBranchConcurrency =
+  "group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}";
+if (!workflow.includes(checkBranchConcurrency)) {
+  failures.push(
+    "check.yml must isolate automatic and manual pending slots while keying each lane by head repository and branch",
+  );
+}
+
+const manualCheckContext =
+  "name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}";
+if (!workflow.includes(manualCheckContext)) {
+  failures.push(
+    "check.yml must keep manual diagnostic results from replacing the automatic PR check context",
+  );
+}
+
+if (!workflow.includes("if: github.event.action != 'closed'")) {
+  failures.push(
+    "check.yml must use a cancellation-only closed event without starting qualification",
+  );
+}
+
+const readyOnlyContract =
+  "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false";
+if (!workflow.includes(readyOnlyContract)) {
+  failures.push(
+    "check.yml must not let compatibility snapshot errors block draft source qualification",
+  );
+}
+
+for (const forbidden of [
+  "edited]",
+  "PR_BODY:",
+  "ostudy-check:all-full",
+]) {
+  if (workflow.includes(forbidden)) {
+    failures.push(`check.yml must not use PR-body edits or markers to control product qualification: ${forbidden}`);
+  }
+}
+
+for (const forbidden of ["id: ui_performance", "check-ui-performance"]) {
+  if (workflow.includes(forbidden)) {
+    failures.push(
+      `check.yml must keep wall-clock UI performance outside required correctness qualification: ${forbidden}`,
+    );
+  }
+}
+
+for (const forbidden of [
+  "pull_request:",
+  "PR_BODY:",
+  "unified-runner:preflight",
+  "unified-runner:linux-fast",
+  "unified-runner:linux-full",
+  "unified-runner:android-full",
+  "unified-runner:all-full",
+]) {
+  if (unifiedRunnerWorkflow.includes(forbidden)) {
+    failures.push(`unified-runner-qualification.yml must remain manual-only and marker-free: ${forbidden}`);
+  }
 }
 
 if (/2>&1\s*\|\s*tee\s+"\$RUNNER_TEMP\/ostudy-(?:static|fast|full|android)/u.test(workflow)) {
@@ -87,11 +147,20 @@ if (/2>&1\s*\|\s*tee\s+"\$RUNNER_TEMP\/ostudy-(?:static|fast|full|android)/u.tes
 for (const required of [
   "OSTUDY_CI_SUCCESS_TAIL_BYTES",
   "OSTUDY_CI_FAILURE_TAIL_BYTES",
+  "OSTUDY_CI_HEARTBEAT_SECONDS",
+  "Qualification still running",
   "tail -c",
   "full output retained",
   "exit \"$status\"",
 ]) {
   if (!ciCapture.includes(required)) failures.push(`CI log capture helper missing ${required}`);
+}
+
+if (!nativeSmoke.includes("timeout --signal=INT --kill-after=30s 300s")) {
+  failures.push("native WebDriver smoke must retain a hard-kill fallback");
+}
+if (!androidSmoke.includes("timeout --signal=INT --kill-after=30s 180s")) {
+  failures.push("Android instrumentation smoke must retain a per-case hard timeout");
 }
 
 for (const required of [
@@ -147,5 +216,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, source synchronizations supersede obsolete qualification without metadata edits aborting exact-head work in either qualification workflow, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, exact-head JSON and Markdown handoff evidence are retained, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
 );

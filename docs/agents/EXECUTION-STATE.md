@@ -57,9 +57,9 @@ When one term is missing, report the narrower state instead:
 - `Automated qualification passed; physical camera acceptance remains.`
 - `Five of seven acceptance criteria are implemented.`
 
-## Pull-request state ledger
+## Pull-request acceptance snapshot
 
-Substantial pull requests keep one machine-readable ledger in the pull-request body between these markers:
+For compatibility with current validation and handoff tooling, substantial pull requests keep one machine-readable acceptance snapshot in the pull-request body between these markers:
 
 ````markdown
 <!-- ostudy-agent-state:start -->
@@ -110,9 +110,11 @@ Substantial pull requests keep one machine-readable ledger in the pull-request b
 <!-- ostudy-agent-state:end -->
 ````
 
+This snapshot is not a source of truth for the branch head, an Actions run, runner health, or active task ownership. It must never be used as a CI trigger or branch lock. GitHub and exact-SHA workflow evidence remain authoritative.
+
 `scripts/verify-pr-contract.mjs` validates the JSON shape and, for a non-draft pull request, requires exact agreement with the current GitHub base, head, and branch.
 
-Draft synchronize events can race the human-readable ledger update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity; the verifier reports that drift as a warning. Before review readiness, the ledger must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
+Draft synchronize events can race the human-readable snapshot update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity without blocking source qualification. Before review readiness, the snapshot must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
 
 Acceptance statuses are:
 
@@ -186,7 +188,7 @@ The classification vocabulary is defined in [Failure triage](FAILURE-TRIAGE.md).
 
 ## Evidence-derived handoff
 
-Every `Check` run writes `ostudy-qualification-result.json`. Pull-request runs also write `ostudy-pr-contract.json`. `scripts/render-agent-handoff.mjs` combines those validated records with the exact Git diff into `ostudy-agent-handoff.md`.
+Every `Check` run writes `ostudy-qualification-result.json`. Non-draft pull-request runs also write `ostudy-pr-contract.json`; draft handoffs remain qualification-only so compatibility snapshot errors cannot block fast source feedback. `scripts/render-agent-handoff.mjs` combines the available validated records with the exact Git diff into `ostudy-agent-handoff.md`.
 
 The renderer includes:
 
@@ -194,13 +196,13 @@ The renderer includes:
 - acceptance status and implementation/test evidence;
 - changed files grouped by purpose;
 - non-goals, compatibility effects, rollback notes, and residual risks;
-- validation ledger and the commands represented by the run;
+- validation evidence and the commands represented by the run;
 - exact workflow/run/step state;
 - manual acceptance and known failures;
 - requested merge method;
 - evidence-integrity warnings or errors.
 
-It never silently combines mismatched SHAs. A qualification/PR-head mismatch produces an artifact marked `invalid` and a nonzero exit. Draft ledger drift remains visible as a warning while the actual GitHub head remains the publication authority.
+It never silently combines mismatched SHAs. A qualification/PR-head mismatch produces an artifact marked `invalid` and a nonzero exit. When a draft snapshot is supplied, its drift remains visible as a warning while the actual GitHub head remains the publication authority.
 
 The generated handoff is the factual starting point for the final response and PR review record. It does not replace human review or allow an agent to claim manual behavior it did not exercise.
 
@@ -209,14 +211,14 @@ The generated handoff is the factual starting point for the final response and P
 When work resumes in another conversation or after interruption, do not reconstruct task state from memory:
 
 1. Read the repository and intended base through the active repository-access mode.
-2. Read the open task pull request and its state ledger.
+2. Read the open task pull request and its acceptance snapshot.
 3. Verify the actual remote branch and head SHA.
 4. Read exact-head CI state separately from publication state.
 5. Enumerate acceptance criteria that are not terminal.
 6. Read unresolved review threads and known failures.
 7. Continue from that verified state.
 
-If the ledger and repository disagree, the repository is authoritative and the ledger must be corrected before another completion claim.
+If the acceptance snapshot and repository disagree, the repository is authoritative and the snapshot must be corrected before another completion claim.
 
 ## Progress checkpoints
 
