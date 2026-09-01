@@ -6,5 +6,5 @@ use super::{contracts::DocumentDto, repository};
 
 #[tauri::command]
 pub fn list_documents(database: State<'_, Database>) -> Result<Vec<DocumentDto>, CommandError> {
-    database.with_connection(repository::list_document_rows)
+    database.with_connection(|connection| repository::list_document_rows(connection))
 }
