@@ -390,13 +390,24 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
     def test_persistence_restart_uses_explicit_accessible_deck_open_control(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
-        start = harness.index("def verify_persistence_after_restart(")
-        end = harness.index("\ndef main()", start)
-        persistence = harness[start:end]
+        durable_harness = DURABLE_LIBRARY_SMOKE_PATH.read_text(encoding="utf-8")
+        harness_start = harness.index("def verify_persistence_after_restart(")
+        harness_end = harness.index("\ndef main()", harness_start)
+        durable_start = durable_harness.index("def verify_persistence_after_restart(")
+        durable_end = durable_harness.index("\n\nif __name__", durable_start)
+        restart_implementations = {
+            "generic": harness[harness_start:harness_end],
+            "durable": durable_harness[durable_start:durable_end],
+        }
+        open_deck_selector = (
+            "f\"//main//button[@aria-label="
+            "{json.dumps(f'Open {deck_name}')}]\""
+        )
 
-        self.assertIn("//main//button[@aria-label=", persistence)
-        self.assertIn("Open {deck_name}", persistence)
-        self.assertNotIn("button[.//strong", persistence)
+        for implementation, persistence in restart_implementations.items():
+            with self.subTest(implementation=implementation):
+                self.assertIn(open_deck_selector, persistence)
+                self.assertNotIn("button[.//strong", persistence)
 
     def test_tag_filtered_search_contract_requires_selected_tab_filter_and_card(self) -> None:
         with patch.object(self.smoke, "wait_for_main_heading") as heading, patch.object(

@@ -43,7 +43,7 @@ def verify_persistence_after_restart(
     deck_button = webdriver.find_element(
         session_id,
         "xpath",
-        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        f"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     webdriver.click(session_id, deck_button)
