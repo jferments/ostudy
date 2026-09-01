@@ -139,7 +139,6 @@ export interface StudyGuideLibraryItem {
   sourceUnitCount: number;
   guideRevision: number;
   publishedAt: number;
-  archived: boolean;
 }
 
 export type DocumentArtifactKind = "study_guide" | "flashcards";
@@ -217,10 +216,12 @@ export async function getDocumentStudyGuide(
   });
 }
 
-export async function listDocumentStudyGuides(
-  includeArchived = true,
-): Promise<StudyGuideLibraryItem[]> {
-  return invoke<StudyGuideLibraryItem[]>("list_document_study_guides", { includeArchived });
+export async function listDocumentStudyGuides(): Promise<StudyGuideLibraryItem[]> {
+  // Released native builds retain a private compatibility flag, but document
+  // archive state is no longer part of the application-facing contract.
+  return invoke<StudyGuideLibraryItem[]>("list_document_study_guides", {
+    includeArchived: false,
+  });
 }
 
 export async function getDocumentLearningPlan(
