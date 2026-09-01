@@ -34,7 +34,29 @@ Use the repository tiers in increasing order:
 
 `check-fast.sh` adds the complete frontend test suite, locked Rust compilation, warning-free Rust linting, and high-return document/platform contracts.
 
-`check.sh` is the authoritative Linux/shared merge gate. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
+`check.sh` is the authoritative Linux/shared correctness suite. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
+
+Wall-clock UI/WebKit performance is advisory evidence collected manually outside
+the required `Check` workflow. The retained
+`check-ui-performance-candidate.sh` tooling requires a new absolute
+runner-temporary output directory, captures the Stage 4 large-library deck-drag
+candidate with the real profiling Tauri build, and compares it with the
+immutable Stage 0 drag budgets. Before collecting those samples, a separate
+disposable driver/application session injects a real X11 mouse drag through
+XTEST and requires WebKit to report trusted mouse Pointer Events at the
+calibrated deck row, show the production drag preview, clear it on trusted
+Escape while the button remains held, and then observe native button release.
+That process is stopped before measurement begins, and the candidate manifest
+must contain the exact trusted-input attestation. A timing or trusted-input
+performance capture failure cannot block Linux/shared correctness or prevent
+Android correctness qualification from running.
+
+The repeatable performance samples measure deterministic DOM `PointerEvent` dispatch through
+the production React drag adapter, preview, cancellation, Profiler, User Timing,
+and pointer-frame instrumentation. The preceding XTEST smoke separately
+qualifies X11-to-WebKit trusted mouse translation without contaminating those
+timings. Physical touch/pen behavior and subjective drag feel remain manual
+acceptance boundaries.
 
 The adoption smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The adoption smoke instead creates a real on-disk database with the exact final development lineage: all 26 immutable migration identities/checksums, all 3 repair identities/checksums, the terminal v26 schema, the historical SQLite `user_version = 0` marker, and representative deck/card/review/analytics rows. The old migration runner never assigned `PRAGMA user_version`; the immutable ledgers are therefore the authoritative version record. A separate unit test also accepts an explicitly stamped `user_version = 26` copy when every other exact-lineage check matches. The smoke launches the exact built binary and requires ostudy to:
 
@@ -49,6 +71,41 @@ The adoption smoke is intentionally different from the ordinary WebDriver tests.
 This directly covers the state that fresh WebDriver homes cannot exercise. Separate unit tests verify that unsupported pre-public databases are not modified or backed up automatically.
 
 Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
+
+The durable-library smoke owns the native persistence path and the integrated
+Practice return contract. It creates a deck/card, launches deck-context Practice
+as an internal workflow, requires every primary destination to remain
+unselected, ends early, verifies the exact deck detail is restored, then starts
+again and completes a review before checking Analytics and restart persistence.
+`card_listing_followup_smoke.py` separately pins the complete labeled medium
+navigation order while exercising shared Deck/Search listing and authoring.
+These scenarios use fresh isolated application data and do not change scheduler
+or database policy.
+
+The UI-platform smoke waits for the shared layout mode and two animation frames
+before measuring responsive geometry. At compact, medium, and wide sizes it
+asserts the complete navigation, current Study Guides workspace, one loaded
+responsive mascot lockup, removed-motto absence, and fresh-profile IBM Plex
+interface/card variables. The shell, main scroll owner, route-transition layer,
+and selected maintained route must consume their allocated viewport without
+document-level horizontal overflow after explicit resize and separately after
+maximize, restore, full-screen, and exit-full-screen. Every native-state
+measurement waits until the window controller exposes the expected pressed
+state; dimensions are never used to infer maximize or full-screen state. Dialog
+checks measure viewport containment and confirm that the shared dialog body
+remains the vertical scroll owner.
+
+Stage 2 compatibility evidence remains split across its owning focused layers:
+the brand script contract pins the exact supplied PNG/import and removed motto;
+route/smoke verification binds the five visible destinations and internal
+Practice to executable runners; Rust tests own v1 compatibility and canonical
+v2 checkpoint files; controller/App tests own lifecycle snapshots, fresh return
+identities, contextual launches, and Back/exit guards; appearance/settings/font
+tests own explicit user choices and missing-font fallback; window contracts own
+desktop adapter authority plus truthful unavailable mobile capabilities; and
+Android instrumentation owns Back/process restoration. The native wrapper is
+the integrated Linux/Tauri smoke, not a replacement for those narrower
+contracts or for later Stage 8/9 Study Guide behavior.
 
 Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
 
@@ -203,6 +260,11 @@ The built-binary adoption smoke also uses isolated XDG state, but deliberately s
 The Actions summary parses application JSONL and structured Android Logcat records, showing the final warning/error timeline next to the ordinary test/compiler excerpt. Vitest failures are narrowed to the identified test file; Rust failures are narrowed to the exact failed test when possible.
 
 Small structured diagnostic captures are uploaded with 7-day retention even when they contain only a recovered transient failure. Full failure wrapper logs, Gradle reports, emulator Logcat, screenshot, and UI hierarchy evidence use 14-day retention. A clean run with no capture does not produce a diagnostic artifact.
+
+Manual/advisory deterministic UI performance and trusted-mouse captures retain
+their candidate manifest, `deck-drag-v1` measurement, and bounded logs. Candidate
+evidence is never overwritten or removed merely because comparison failed, but
+it is separate from the required exact-head correctness result.
 
 Diagnostics must not contain the SQLite learner library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts/responses, credentials, Keystore plaintext, or Authorization headers.
 

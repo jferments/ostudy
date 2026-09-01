@@ -11,6 +11,15 @@ source "$SCRIPT_DIR/build-state.sh"
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
+# Native smoke is an X11/WebKit automation contract, not a GPU qualification.
+# The unified guest has no DRI3 device, and letting WebKit probe accelerated
+# compositing there can reset WebKitWebDriver mid-session. Pin deterministic
+# software rendering for every application/driver attempt.
+export GDK_BACKEND=x11
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export LIBGL_ALWAYS_SOFTWARE=1
+
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   printf 'Usage: ./scripts/smoke-native.sh [diagnostic options]\n' >&2
@@ -31,18 +40,101 @@ command -v timeout >/dev/null 2>&1 || {
   printf 'ERROR: GNU timeout is required to bound native smoke tests.\n' >&2
   exit 1
 }
+command -v openbox >/dev/null 2>&1 || {
+  printf 'ERROR: openbox is required for native maximize/full-screen smoke tests. Re-run ./scripts/setup-ubuntu.sh.\n' >&2
+  exit 1
+}
+command -v xprop >/dev/null 2>&1 || {
+  printf 'ERROR: xprop is required to verify the headless window manager. Re-run ./scripts/setup-ubuntu.sh.\n' >&2
+  exit 1
+}
 
 if [[ -z "${DISPLAY:-}" && "${OSTUDY_IN_XVFB:-0}" != "1" ]]; then
   command -v xvfb-run >/dev/null 2>&1 || {
     printf 'ERROR: xvfb-run is required for a headless native smoke test.\n' >&2
     exit 1
   }
-  exec env OSTUDY_IN_XVFB=1 xvfb-run -a "$0"
+  exec env OSTUDY_IN_XVFB=1 xvfb-run -a "$0" "$@"
 fi
 
 TEMP_HOME="$(mktemp -d -t ostudy-smoke.XXXXXXXX)"
-cleanup() { rm -rf -- "$TEMP_HOME"; }
+WINDOW_MANAGER_PID=""
+WINDOW_MANAGER_LOG="$TEMP_HOME/openbox.log"
+
+cleanup() {
+  if [[ -n "$WINDOW_MANAGER_PID" ]] && kill -0 "$WINDOW_MANAGER_PID" 2>/dev/null; then
+    kill "$WINDOW_MANAGER_PID" 2>/dev/null || true
+    wait "$WINDOW_MANAGER_PID" 2>/dev/null || true
+  fi
+  rm -rf -- "$TEMP_HOME"
+}
 trap cleanup EXIT
+
+window_manager_ready() {
+  xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null |
+    grep -Eq 'window id # 0x[1-9a-fA-F][0-9a-fA-F]*'
+}
+
+start_headless_window_manager() {
+  local attempt
+  mkdir -p "$TEMP_HOME/openbox-config" "$TEMP_HOME/openbox-cache"
+  XDG_CONFIG_HOME="$TEMP_HOME/openbox-config" \
+  XDG_CACHE_HOME="$TEMP_HOME/openbox-cache" \
+    openbox --sm-disable >"$WINDOW_MANAGER_LOG" 2>&1 &
+  WINDOW_MANAGER_PID="$!"
+
+  for attempt in $(seq 1 100); do
+    if ! kill -0 "$WINDOW_MANAGER_PID" 2>/dev/null; then
+      printf 'ERROR: openbox exited before claiming the X11 window-manager selection.\n' >&2
+      sed -n '1,160p' "$WINDOW_MANAGER_LOG" >&2 || true
+      exit 1
+    fi
+    if window_manager_ready; then
+      printf 'Verified EWMH window manager for native smoke: %s\n' "$(
+        xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null
+      )"
+      return 0
+    fi
+    sleep 0.05
+  done
+
+  printf 'ERROR: openbox did not publish _NET_SUPPORTING_WM_CHECK on %s.\n' "${DISPLAY:-unset}" >&2
+  sed -n '1,160p' "$WINDOW_MANAGER_LOG" >&2 || true
+  exit 1
+}
+
+append_window_manager_diagnostics() {
+  local log_file="$1"
+  {
+    printf '\n--- headless window-manager diagnostics ---\n'
+    printf 'display=%s pid=%s alive=%s\n' \
+      "${DISPLAY:-unset}" \
+      "${WINDOW_MANAGER_PID:-external}" \
+      "$(
+        if [[ -n "$WINDOW_MANAGER_PID" ]] && kill -0 "$WINDOW_MANAGER_PID" 2>/dev/null; then
+          printf true
+        elif [[ -z "$WINDOW_MANAGER_PID" ]] && window_manager_ready; then
+          printf external
+        else
+          printf false
+        fi
+      )"
+    xprop -root _NET_SUPPORTING_WM_CHECK 2>&1 || true
+    if [[ -s "$WINDOW_MANAGER_LOG" ]]; then
+      sed -n '1,160p' "$WINDOW_MANAGER_LOG"
+    fi
+  } >> "$log_file"
+}
+
+if ! window_manager_ready; then
+  if [[ "${OSTUDY_IN_XVFB:-0}" == "1" ]]; then
+    start_headless_window_manager
+  else
+    printf 'ERROR: DISPLAY=%s has no EWMH window manager; native window-state smoke cannot be qualified.\n' \
+      "${DISPLAY:-unset}" >&2
+    exit 1
+  fi
+fi
 
 is_retryable_driver_failure() {
   local log_file="$1"
@@ -87,6 +179,7 @@ run_smoke() {
       return 0
     fi
     if [[ "$attempt" -eq 1 ]] && is_retryable_driver_failure "$log_file"; then
+      append_window_manager_diagnostics "$log_file"
       ostudy_capture_transient_artifacts \
         "$label (recovered WebDriver transport failure)" \
         "$status" \
@@ -95,6 +188,7 @@ run_smoke() {
       printf 'WARN: WebDriver transport disconnected; retrying once with isolated application state.\n' >&2
       continue
     fi
+    append_window_manager_diagnostics "$log_file"
     ostudy_capture_failure_artifacts "$label" "$status" "$log_file" "$application_log"
     return "$status"
   done

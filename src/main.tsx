@@ -5,6 +5,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { installGlobalWebviewDiagnostics, queueFrontendDiagnostic } from "./ipc/diagnostics";
 import { PlatformProvider } from "./platform/PlatformProvider";
+import { installUiPerformanceBridge } from "./testing/uiPerformanceBridge";
 import { ExperienceProvider } from "./ui/feedback/ExperienceProvider";
 import "./ui/foundations/index.css";
 import { HelpProvider } from "./ui/help/HelpProvider";
@@ -90,6 +91,13 @@ if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
         },
       });
     });
+}
+
+if (
+  typeof __OSTUDY_UI_PERFORMANCE_CAPTURE__ !== "undefined" &&
+  __OSTUDY_UI_PERFORMANCE_CAPTURE__
+) {
+  installUiPerformanceBridge();
 }
 
 createRoot(root).render(

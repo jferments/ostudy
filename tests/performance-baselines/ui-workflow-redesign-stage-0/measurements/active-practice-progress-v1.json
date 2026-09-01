@@ -1,0 +1,671 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "fixtureVersion": "ui-performance-fixture-v1",
+  "scenarioId": "active-practice-progress-v1",
+  "scenarioVersion": "active-practice-progress-v1",
+  "samples": [
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 178
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 178
+      },
+      "userTiming": {
+        "visibleTimeMs": 24844,
+        "startTimeMs": 24666,
+        "readyTimeMs": 24844
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 7.000000000007276,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 24666,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 24666,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 6.000000000003638,
+            "startTimeMs": 24670,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 24676.000000000004,
+            "actualDurationMs": 6.000000000003638
+          },
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 24681,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 24682.000000000004,
+            "actualDurationMs": 1.000000000003638
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 1
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 21
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 30
+      },
+      "userTiming": {
+        "visibleTimeMs": 25128,
+        "startTimeMs": 25107,
+        "readyTimeMs": 25137
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 7,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 25108,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25108,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 7,
+            "startTimeMs": 25113,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25120,
+            "actualDurationMs": 7
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 25126,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25126,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 2
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 26
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 26
+      },
+      "userTiming": {
+        "visibleTimeMs": 25408,
+        "startTimeMs": 25382,
+        "readyTimeMs": 25408
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 8.000000000003638,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 25382,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25383,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 6,
+            "startTimeMs": 25387,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25393,
+            "actualDurationMs": 6
+          },
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 25399,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25400.000000000004,
+            "actualDurationMs": 1.000000000003638
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 3
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 16
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 28
+      },
+      "userTiming": {
+        "visibleTimeMs": 25694,
+        "startTimeMs": 25678,
+        "readyTimeMs": 25706
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 6.000000000003638,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 25678,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25679.000000000004,
+            "actualDurationMs": 1.000000000003638
+          },
+          {
+            "baseDurationMs": 5,
+            "startTimeMs": 25683,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25688,
+            "actualDurationMs": 5
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 25693,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25693,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 4
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 17.000000000003638
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 28
+      },
+      "userTiming": {
+        "visibleTimeMs": 25987.000000000004,
+        "startTimeMs": 25970,
+        "readyTimeMs": 25998
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 6,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 2,
+            "startTimeMs": 25970,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25971,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 5,
+            "startTimeMs": 25975,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25980,
+            "actualDurationMs": 5
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 25986,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 25986,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 5
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 33.99999999999636
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 33.99999999999636
+      },
+      "userTiming": {
+        "visibleTimeMs": 26280,
+        "startTimeMs": 26246.000000000004,
+        "readyTimeMs": 26280
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 6,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 26247,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26247,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 5,
+            "startTimeMs": 26254,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26259,
+            "actualDurationMs": 5
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 26264,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26265,
+            "actualDurationMs": 1
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 6
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 3
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 28
+      },
+      "userTiming": {
+        "visibleTimeMs": 26559,
+        "startTimeMs": 26556,
+        "readyTimeMs": 26584
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 6.000000000003638,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 26556,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26557.000000000004,
+            "actualDurationMs": 1.000000000003638
+          },
+          {
+            "baseDurationMs": 5,
+            "startTimeMs": 26566,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26571,
+            "actualDurationMs": 5
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 26576,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26576,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 7
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 37.00000000000364
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 43.00000000000364
+      },
+      "userTiming": {
+        "visibleTimeMs": 26865.000000000004,
+        "startTimeMs": 26828,
+        "readyTimeMs": 26871.000000000004
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 4.999999999996362,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 26829,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26829,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 4.999999999996362,
+            "startTimeMs": 26833.000000000004,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26838,
+            "actualDurationMs": 4.999999999996362
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 26844,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 26844,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 8
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 18
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 113
+      },
+      "userTiming": {
+        "visibleTimeMs": 27291,
+        "startTimeMs": 27273,
+        "readyTimeMs": 27386
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 5.999999999996362,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 27273,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27274,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 4.999999999996362,
+            "startTimeMs": 27368.000000000004,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27373,
+            "actualDurationMs": 4.999999999996362
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 27379,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27379,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 9
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 10
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 40
+      },
+      "userTiming": {
+        "visibleTimeMs": 27680,
+        "startTimeMs": 27670,
+        "readyTimeMs": 27710
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 7,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 27671,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27671,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 7,
+            "startTimeMs": 27689,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27696,
+            "actualDurationMs": 7
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 27702,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27703,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 10
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 74.00000000000364
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 74.00000000000364
+      },
+      "userTiming": {
+        "visibleTimeMs": 28060.000000000004,
+        "startTimeMs": 27986,
+        "readyTimeMs": 28060.000000000004
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 6.000000000003638,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1.000000000003638,
+            "startTimeMs": 27986,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 27987.000000000004,
+            "actualDurationMs": 1.000000000003638
+          },
+          {
+            "baseDurationMs": 4,
+            "startTimeMs": 28006,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 28011,
+            "actualDurationMs": 5
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 28015,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 28015,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 11
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 13
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 34.00000000000364
+      },
+      "userTiming": {
+        "visibleTimeMs": 28350,
+        "startTimeMs": 28337,
+        "readyTimeMs": 28371.000000000004
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 5,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 28339.000000000004,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 28339.000000000004,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 5,
+            "startTimeMs": 28356,
+            "phase": "update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 28361,
+            "actualDurationMs": 5
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 28366,
+            "phase": "nested-update",
+            "boundaryId": "active-practice",
+            "commitTimeMs": 28366,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 12
+    }
+  ]
+}

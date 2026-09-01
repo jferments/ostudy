@@ -13,6 +13,7 @@ describe("PracticeComplete", () => {
         ratedCount={10}
         confidenceCounts={confidenceCounts}
         isStarting={false}
+        canRestart
         errorMessage={null}
         onViewAnalytics={vi.fn()}
         onChooseDecks={vi.fn()}
@@ -37,6 +38,7 @@ describe("PracticeComplete", () => {
         ratedCount={10}
         confidenceCounts={confidenceCounts}
         isStarting={false}
+        canRestart
         errorMessage={null}
         onViewAnalytics={onViewAnalytics}
         onChooseDecks={onChooseDecks}
@@ -45,7 +47,7 @@ describe("PracticeComplete", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "View analytics" }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to practice" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose decks" }));
     fireEvent.click(screen.getByRole("button", { name: "Practice this scope again" }));
     expect(onViewAnalytics).toHaveBeenCalledTimes(1);
     expect(onChooseDecks).toHaveBeenCalledTimes(1);

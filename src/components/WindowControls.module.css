@@ -1,0 +1,9 @@
+@layer components {
+  .group {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-1);
+  }
+}

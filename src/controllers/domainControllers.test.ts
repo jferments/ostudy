@@ -10,7 +10,7 @@ import { AnalyticsController } from "./analyticsController";
 import { CardEditorController } from "./cardEditorController";
 import { CardsController } from "./cardsController";
 import { DecksController } from "./decksController";
-import { PracticeController } from "./practiceController";
+import { PracticeSetupController } from "./practiceSetupController";
 
 vi.mock("../ipc/analytics", () => ({
   getAnalytics: vi.fn(),
@@ -106,7 +106,10 @@ describe("domain controllers ignore obsolete read completions", () => {
   });
 
   it("prevents an older Practice workload from replacing a newer scope", async () => {
-    const controller = new PracticeController();
+    const controller = new PracticeSetupController({
+      getWorkload: practiceIpc.getPracticeWorkload,
+      getTags: async () => [],
+    });
     const older = deferred<practiceIpc.PracticeWorkloadOverview>();
     const newer = deferred<practiceIpc.PracticeWorkloadOverview>();
     vi.mocked(practiceIpc.getPracticeWorkload)

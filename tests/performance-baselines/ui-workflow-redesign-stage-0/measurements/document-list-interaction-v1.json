@@ -1,0 +1,671 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "fixtureVersion": "ui-performance-fixture-v1",
+  "scenarioId": "document-list-interaction-v1",
+  "scenarioVersion": "document-list-interaction-v1",
+  "samples": [
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 15.00000000000091
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 15.00000000000091
+      },
+      "userTiming": {
+        "visibleTimeMs": 6145.000000000001,
+        "startTimeMs": 6130,
+        "readyTimeMs": 6145.000000000001
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 6130,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6131,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6132.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6132.000000000001,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6133,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6133,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 1
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "userTiming": {
+        "visibleTimeMs": 6387,
+        "startTimeMs": 6372,
+        "readyTimeMs": 6387
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0.9999999999990905,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6372,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6372,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6373,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6373,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0.9999999999990905,
+            "startTimeMs": 6374.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6375,
+            "actualDurationMs": 0.9999999999990905
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 2
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 16
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 16
+      },
+      "userTiming": {
+        "visibleTimeMs": 6629,
+        "startTimeMs": 6613,
+        "readyTimeMs": 6629
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6613,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6613,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6615,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6615,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6617,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6617,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 3
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 11.99999999999909
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 11.99999999999909
+      },
+      "userTiming": {
+        "visibleTimeMs": 6870,
+        "startTimeMs": 6858.000000000001,
+        "readyTimeMs": 6870
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1.9999999999990905,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0.9999999999990905,
+            "startTimeMs": 6858.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6859,
+            "actualDurationMs": 0.9999999999990905
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 6860,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6860,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 6860,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 6861,
+            "actualDurationMs": 1
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 4
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 3.9999999999990905
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 5.9999999999990905
+      },
+      "userTiming": {
+        "visibleTimeMs": 7096,
+        "startTimeMs": 7092.000000000001,
+        "readyTimeMs": 7098
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0.9999999999990905,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0.9999999999990905,
+            "startTimeMs": 7092.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7093,
+            "actualDurationMs": 0.9999999999990905
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7093,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7093,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7094,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7094,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 2
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 5
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 6
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "userTiming": {
+        "visibleTimeMs": 7354,
+        "startTimeMs": 7348,
+        "readyTimeMs": 7363
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7349,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7349,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7350.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7350.000000000001,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7351,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7351,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 6
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 11.99999999999909
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 16.99999999999909
+      },
+      "userTiming": {
+        "visibleTimeMs": 7612,
+        "startTimeMs": 7600.000000000001,
+        "readyTimeMs": 7617
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7600.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7600.000000000001,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7601,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7601,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 7602,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7603,
+            "actualDurationMs": 1
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 7
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 14
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 14
+      },
+      "userTiming": {
+        "visibleTimeMs": 7878,
+        "startTimeMs": 7864,
+        "readyTimeMs": 7878
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1.9999999999990905,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 7864,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7865,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 7865,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7865,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0.9999999999990905,
+            "startTimeMs": 7866.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 7867,
+            "actualDurationMs": 0.9999999999990905
+          }
+        ],
+        "commitCount": 2
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 8
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 14.00000000000091
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 17.00000000000091
+      },
+      "userTiming": {
+        "visibleTimeMs": 8146.000000000001,
+        "startTimeMs": 8132,
+        "readyTimeMs": 8149.000000000001
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 3,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 1.0000000000009095,
+            "startTimeMs": 8132,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8133.000000000001,
+            "actualDurationMs": 1.0000000000009095
+          },
+          {
+            "baseDurationMs": 0.9999999999990905,
+            "startTimeMs": 8133.000000000001,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8134,
+            "actualDurationMs": 0.9999999999990905
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 8134,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8135,
+            "actualDurationMs": 1
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 9
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 12
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 17
+      },
+      "userTiming": {
+        "visibleTimeMs": 8412,
+        "startTimeMs": 8400,
+        "readyTimeMs": 8417
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8400,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8400,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8401,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8401,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8402.000000000002,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8402.000000000002,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 10
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 12.999999999998181
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 13.999999999998181
+      },
+      "userTiming": {
+        "visibleTimeMs": 8678,
+        "startTimeMs": 8665.000000000002,
+        "readyTimeMs": 8679
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 2,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0.999999999998181,
+            "startTimeMs": 8665.000000000002,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8666,
+            "actualDurationMs": 0.999999999998181
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8666,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8666,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1.000000000001819,
+            "startTimeMs": 8667,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8668.000000000002,
+            "actualDurationMs": 1.000000000001819
+          }
+        ],
+        "commitCount": 2
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 11
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "userTiming": {
+        "visibleTimeMs": 8945,
+        "startTimeMs": 8930,
+        "readyTimeMs": 8945
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 0,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8931.000000000002,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8931.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8932,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8932,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 8933,
+            "phase": "update",
+            "boundaryId": "documents",
+            "commitTimeMs": 8933,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 12
+    }
+  ]
+}

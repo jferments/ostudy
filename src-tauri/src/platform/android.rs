@@ -82,11 +82,17 @@ impl CapabilityProvider for AndroidCapabilityProvider {
             ServiceCapability::unavailable("android_ml_kit_ocr_unavailable")
         };
         PlatformCapabilitySnapshot {
-            schema_version: 1,
+            schema_version: 2,
             runtime_family: "mobile".to_string(),
             operating_system: "android".to_string(),
             hardware_back_available: true,
             services: NativeServiceCapabilities {
+                window_maximize_restore: ServiceCapability::unavailable(
+                    "android_native_window_controls_not_supported",
+                ),
+                window_full_screen: ServiceCapability::unavailable(
+                    "android_native_window_controls_not_supported",
+                ),
                 external_file_import: ServiceCapability::available(),
                 external_file_export: ServiceCapability::available(),
                 secure_secrets: if secrets_available {

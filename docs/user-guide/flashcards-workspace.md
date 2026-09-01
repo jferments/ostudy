@@ -13,7 +13,15 @@ On compact mobile layouts the tabs form a two-by-two grid. They do not require h
 
 Selecting a workspace tab always opens that workspace's root. Selecting **Decks** while a deck is open therefore returns to the main deck listing. Selecting the primary **Flashcards** navigation destination has the same effect. Unsaved card or template changes still receive the normal discard confirmation before navigation proceeds.
 
-The active workspace and an explicitly open deck are stored in the local presentation checkpoint so ostudy can restore the destination after restart. Card content, review history, and credentials are not stored in that checkpoint. Older checkpoints that named the removed Create Cards workspace return safely to the Decks root.
+Opening one deck from a selected library does not discard the process-local
+selection. Returning through **All decks** restores entries that still match the
+current active deck revision and lifecycle; changed or archived entries are
+removed. A matching deck remains selected if its generated-card count reaches
+zero: **Practice** is unavailable, while **Move**, **Archive**, and **Delete**
+remain valid organization actions. This transient selection is not part of the
+local presentation checkpoint.
+
+The active workspace and an explicitly open deck are stored in the local presentation checkpoint so ostudy can restore the destination after restart. Card content, review history, credentials, and runtime transition IDs are not stored in that checkpoint. Older checkpoints that named the removed Create Cards workspace return safely to the Decks root. A resumable Practice session can reopen over this logical Flashcards destination and returns with a newly created route transition; if a saved deck no longer exists, the session remains resumable and its destination falls back to the Decks root.
 
 ## Decks
 
@@ -27,21 +35,27 @@ Folders do not own cards and do not change scheduling or analytics. Deleting a f
 
 ### Dragging and keyboard organization
 
-Use the dedicated drag handle to:
+Start a pointer drag from any open, non-interactive part of an active deck or
+folder row to:
 
 - reorder a folder;
 - reorder a deck within its current group;
 - move a deck into another folder;
 - move a deck into **Unsorted decks**.
 
-Touch dragging uses the same durable organization command as mouse dragging. A highlighted drop target shows where the folder or deck will be placed.
+Buttons, checkboxes, menus, links, editable content, and selected text remain
+ordinary interactions. Touch, pen, and mouse dragging use the same validated
+organization path. The preview and highlighted target identify the destination;
+a separate line identifies the exact before, end, or empty insertion boundary
+before a move is saved.
 
-Dragging is not required. Focus a folder handle and use:
+Dragging is not required. Focus a folder’s keyboard reorder control and use:
 
 - **Up** or **Down** to move one position;
 - **Home** or **End** to move to the beginning or end.
 
-Focus a deck handle and use:
+Screen-reader move actions and the selected-deck **Move selected** sheet remain
+available for deck movement. Keyboard movement retains:
 
 - **Up**, **Down**, **Home**, or **End** within the current group;
 - **Left** or **Right** to move between folder groups and Unsorted decks.
@@ -56,13 +70,37 @@ Collapse state is presentational only. It does not alter folder membership, deck
 
 ### Compact deck rows
 
-Deck rows use one compact presentation on desktop, tablet, and mobile. There is no Comfortable/Compact preference. The compact visual spacing does not reduce keyboard focus, drag handles, or coarse-pointer touch targets.
-
-The drag handle is identified by its grip icon, focus ring, pointer feedback, and accessible instructions; it does not use a permanent vertical separator.
+Deck rows use one compact presentation on desktop, tablet, and mobile. There is no Comfortable/Compact preference. The compact visual spacing does not reduce keyboard focus, pointer movement surfaces, or coarse-pointer touch targets.
 
 ### Practice buttons
 
 Every active deck with generated cards has a **Practice** button. Starting from a deck is an explicit request to study that deck, so the session follows the deck-practice workload rules rather than merely opening its editor.
+
+Practice opens as an internal workflow, not another primary navigation
+destination. Ending early returns to the same logical Flashcards context: the
+Decks root for a library launch or the exact deck detail for a detail launch.
+
+While a session is active, its thicker progress track contains both
+**studied · remaining** at the start and the rounded completion percentage at
+the end. Assistive technology receives the current-card position, studied and
+remaining counts, and percentage as one complete progress value. Cards that
+need more practice still affect scheduling and later summaries, but the active
+header does not add a separate weak-card badge.
+
+### Open deck header and actions
+
+An open deck presents one vertical header flow: **All decks**, the full-width
+deck title and edit control, the description, then deck actions. **Practice** is
+always the visible primary action. **Export** remains visible on wide and
+tablet/medium layouts, while **Archive** remains visible only on wide layouts.
+On compact layouts, **More actions** contains Export, Archive, and Delete;
+Delete is always in More actions and still requires explicit confirmation with
+the existing Undo window after deletion.
+
+An archived deck detail keeps **Practice** visible but disabled with an
+explanation that the deck must be restored first. Its lifecycle action is
+**Restore** and uses the current deck revision. Active deck action placement and
+Archive behavior remain unchanged.
 
 ### Adding cards inside a deck
 
@@ -94,7 +132,19 @@ The common controls stay visible:
 
 Open **All filters** for availability, scheduling status, last-studied date, individual decks, folders, and tags. Applied criteria appear as removable chips above the results.
 
+In **Analytics**, current tag names attached to recent reviews are buttons. Use
+one to open Search with that exact tag already applied. Tags retained only as
+historical review evidence stay readable but are not links because they no
+longer identify a current library filter. If a selected current tag disappears
+or cannot be verified before Search opens, ostudy does not show unfiltered
+results; choose **Clear unavailable tag filter** to search without it.
+
 **Select visible** selects only the loaded rows. **Select all matching** resolves the complete filtered result set before a bulk action.
+
+Choose **Practice selected** to start an exact-card session for the selected
+results. Ending that contextual session early returns to the Search workspace
+with a fresh route transition rather than selecting a standing Practice
+destination.
 
 ## Import/Export
 

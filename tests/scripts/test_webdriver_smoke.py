@@ -9,7 +9,10 @@ from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE_PATH = ROOT / "tests" / "webdriver" / "smoke.py"
-SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
+DURABLE_LIBRARY_SMOKE_PATH = ROOT / "tests" / "webdriver" / "durable_library_smoke.py"
+UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
+NATIVE_SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
+PROGRESS_STYLES_PATH = ROOT / "src" / "ui" / "primitives" / "Progress.module.css"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
 DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
 CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
@@ -157,6 +160,104 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             )
         self.assertEqual(element, "element-1")
 
+    def test_click_retries_transient_ack_arm_disconnect_once_before_one_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=[
+                self.smoke.http.client.RemoteDisconnected("lost arm response"),
+                True,
+                None,
+            ]
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_wait_for_click_ack",
+            return_value=True,
+        ), patch.object(self.smoke, "request", request), patch.object(
+            self.smoke.time,
+            "sleep",
+        ):
+            self.smoke.click("session-1", "element-1")
+
+        self.assertEqual(request.call_count, 3)
+        first_arm, second_arm, click = request.call_args_list
+        self.assertEqual(first_arm, second_arm)
+        self.assertEqual(first_arm.args[0:2], ("POST", "/session/session-1/execute/sync"))
+        self.assertEqual(first_arm.args[2]["args"][0], {self.smoke.ELEMENT_KEY: "element-1"})
+        self.assertEqual(first_arm.args[2]["args"][1], second_arm.args[2]["args"][1])
+        self.assertEqual(
+            click.args,
+            ("POST", "/session/session-1/element/element-1/click", {}),
+        )
+
+    def test_click_stops_after_second_transient_ack_arm_disconnect(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=[
+                self.smoke.http.client.RemoteDisconnected("lost first arm response"),
+                self.smoke.http.client.RemoteDisconnected("lost second arm response"),
+            ]
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(
+                self.smoke.http.client.RemoteDisconnected,
+                "lost second arm response",
+            ):
+                self.smoke.click("session-1", "element-1")
+
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0], request.call_args_list[1])
+        self.assertTrue(
+            all(call.args[1] == "/session/session-1/execute/sync" for call in request.call_args_list)
+        )
+
+    def test_click_does_not_retry_nontransient_ack_arm_transport_error(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(side_effect=OSError("arm failed"))
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(OSError, "arm failed"):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/session-1/execute/sync")
+
+    def test_click_does_not_retry_ack_arm_protocol_error(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        protocol_error = self.smoke.WebDriverProtocolError(500, "unknown error", "arm failed")
+        request = MagicMock(side_effect=protocol_error)
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaises(self.smoke.WebDriverProtocolError):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/session-1/execute/sync")
+
+    def test_click_rejects_false_ack_arm_result_before_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(return_value=False)
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "Could not arm DOM acknowledgement"):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once()
+        self.assertEqual(request.call_args.args[1], "/session/session-1/execute/sync")
+
     def test_click_requires_stable_hit_target_and_dom_ack(self) -> None:
         hits = [
             {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}},
@@ -172,6 +273,84 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             request,
         ), patch.object(self.smoke.time, "sleep"):
             self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
+    def test_click_recovers_read_only_hit_test_disconnect_without_replaying_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        hit_test = MagicMock(
+            side_effect=[
+                self.smoke.http.client.RemoteDisconnected("lost hit-test response"),
+                hit,
+                hit,
+            ]
+        )
+        request = MagicMock(return_value=None)
+        with patch.object(self.smoke, "_element_hit_test", hit_test), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=True), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            self.smoke.click("session-1", "element-1")
+
+        self.assertEqual(hit_test.call_count, 3)
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
+    def test_click_propagates_nontransient_hit_test_failure_before_click(self) -> None:
+        hit_test_error = OSError("hit-test failed")
+        request = MagicMock(return_value=None)
+        with patch.object(
+            self.smoke,
+            "_element_hit_test",
+            side_effect=hit_test_error,
+        ), patch.object(self.smoke, "request", request), patch.object(
+            self.smoke.time,
+            "sleep",
+        ) as sleep:
+            with self.assertRaisesRegex(OSError, "hit-test failed"):
+                self.smoke.click("session-1", "element-1")
+
+        request.assert_not_called()
+        sleep.assert_not_called()
+
+    def test_click_accepts_acknowledged_disconnect_without_replaying_click(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=self.smoke.http.client.RemoteDisconnected("lost click response")
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=True), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            self.smoke.click("session-1", "element-1")
+
+        request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
+
+    def test_click_propagates_unacknowledged_disconnect_without_replay(self) -> None:
+        hit = {"ready": True, "rect": {"left": 1, "top": 2, "width": 10, "height": 12}}
+        request = MagicMock(
+            side_effect=self.smoke.http.client.RemoteDisconnected("lost click response")
+        )
+        with patch.object(self.smoke, "_element_hit_test", return_value=hit), patch.object(
+            self.smoke,
+            "_arm_click_ack",
+        ), patch.object(self.smoke, "_wait_for_click_ack", return_value=False), patch.object(
+            self.smoke,
+            "request",
+            request,
+        ), patch.object(self.smoke.time, "sleep"):
+            with self.assertRaisesRegex(
+                self.smoke.http.client.RemoteDisconnected,
+                "lost click response",
+            ):
+                self.smoke.click("session-1", "element-1")
 
         request.assert_called_once_with("POST", "/session/session-1/element/element-1/click", {})
 
@@ -191,16 +370,99 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
 
         self.assertEqual(request.call_count, 2)
 
-    def test_native_smoke_timeout_has_a_hard_kill_fallback(self) -> None:
-        runner = SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
-        self.assertIn("timeout --signal=INT --kill-after=30s 300s", runner)
-
     def test_native_smoke_uses_structural_practice_completion_contract(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
         completion = PRACTICE_COMPLETE_PATH.read_text(encoding="utf-8")
         self.assertIn('data-testid="practice-complete"', completion)
         self.assertIn("PRACTICE_COMPLETE_SELECTOR", harness)
         self.assertNotIn('"Session complete"', harness)
+
+    def test_native_smoke_verifies_analytics_recent_tag_search(self) -> None:
+        harness = SMOKE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("def verify_search_workspace_selected", harness)
+        self.assertIn("def verify_tag_filtered_search", harness)
+        self.assertIn("def verify_analytics_tag_search", harness)
+        self.assertIn("Search cards tagged {tag_name}", harness)
+        self.assertIn("Tag: {tag_name}", harness)
+        self.assertIn("Native smoke tag", harness)
+        self.assertIn("verify_analytics_tag_search(session_id, question, tag_name, deadline)", harness)
+
+    def test_persistence_restart_uses_explicit_accessible_deck_open_control(self) -> None:
+        harness = SMOKE_PATH.read_text(encoding="utf-8")
+        durable_harness = DURABLE_LIBRARY_SMOKE_PATH.read_text(encoding="utf-8")
+        harness_start = harness.index("def verify_persistence_after_restart(")
+        harness_end = harness.index("\ndef main()", harness_start)
+        durable_start = durable_harness.index("def verify_persistence_after_restart(")
+        durable_end = durable_harness.index("\n\nif __name__", durable_start)
+        restart_implementations = {
+            "generic": harness[harness_start:harness_end],
+            "durable": durable_harness[durable_start:durable_end],
+        }
+        open_deck_selector = (
+            "f\"//main//button[@aria-label="
+            "{json.dumps(f'Open {deck_name}')}]\""
+        )
+
+        for implementation, persistence in restart_implementations.items():
+            with self.subTest(implementation=implementation):
+                self.assertIn(open_deck_selector, persistence)
+                self.assertNotIn("button[.//strong", persistence)
+
+    def test_tag_filtered_search_contract_requires_selected_tab_filter_and_card(self) -> None:
+        with patch.object(self.smoke, "wait_for_main_heading") as heading, patch.object(
+            self.smoke,
+            "find_element",
+            side_effect=["search-tab", "tag-filter", "reviewed-card"],
+        ) as find_element:
+            self.smoke.verify_tag_filtered_search(
+                "session-1",
+                "What persisted?",
+                "Native smoke tag",
+                42.0,
+            )
+
+        heading.assert_called_once_with("session-1", "Flashcards", 42.0)
+        self.assertEqual(3, find_element.call_count)
+        selectors = [call.args[2] for call in find_element.call_args_list]
+        self.assertIn("@aria-selected='true'", selectors[0])
+        self.assertIn("Search", selectors[0])
+        self.assertIn("Remove Tag: Native smoke tag filter", selectors[1])
+        self.assertIn("What persisted?", selectors[2])
+
+    def test_durable_smoke_restores_stage_five_search_workspace_checkpoint(self) -> None:
+        source = DURABLE_LIBRARY_SMOKE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("Verifying restored Search workspace checkpoint after restart", source)
+        self.assertIn("webdriver.verify_search_workspace_selected(", source)
+        self.assertNotIn("webdriver.verify_tag_filtered_search(", source)
+        self.assertNotIn("Verifying restored Analytics checkpoint after restart", source)
+
+    def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:
+        state = {
+            "selectedPrimary": [],
+            "practiceDestinations": 0,
+            "heading": "Cardiology",
+            "progressValueText": (
+                "Card 1 of 1, 0 studied, 1 remaining, 0% complete"
+            ),
+            "formerHeaderProgressCount": 0,
+        }
+        with patch.object(self.smoke, "request", return_value=state):
+            self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
+
+        for key, invalid_value in (
+            ("progressValueText", "0 of 1"),
+            ("formerHeaderProgressCount", 1),
+        ):
+            invalid = {**state, key: invalid_value}
+            with self.subTest(key=key), patch.object(
+                self.smoke,
+                "request",
+                return_value=invalid,
+            ):
+                with self.assertRaises(AssertionError):
+                    self.smoke.assert_internal_practice_shell("session-1", "Cardiology")
 
     def test_deck_and_search_delegate_to_one_card_browser(self) -> None:
         decks = DECKS_SCREEN_PATH.read_text(encoding="utf-8")
@@ -239,6 +501,68 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         )
         self.assertIn("Q:", browser)
         self.assertIn("A:", browser)
+
+    def test_native_smoke_pins_x11_software_rendering_before_driver_launch(self) -> None:
+        source = NATIVE_SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
+        launch = source.index("timeout --signal=INT --kill-after=30s 300s")
+
+        for assignment in (
+            "export GDK_BACKEND=x11",
+            "export WEBKIT_DISABLE_COMPOSITING_MODE=1",
+            "export WEBKIT_DISABLE_DMABUF_RENDERER=1",
+            "export LIBGL_ALWAYS_SOFTWARE=1",
+        ):
+            with self.subTest(assignment=assignment):
+                self.assertIn(assignment, source)
+                self.assertLess(source.index(assignment), launch)
+        self.assertIn("Native smoke is an X11/WebKit automation contract", source)
+        self.assertIn("can reset WebKitWebDriver mid-session", source)
+
+    def test_native_smoke_timeout_retains_hard_kill_fallback(self) -> None:
+        source = NATIVE_SMOKE_RUNNER_PATH.read_text(encoding="utf-8")
+        self.assertIn("timeout --signal=INT --kill-after=30s 300s", source)
+        self.assertNotIn("timeout --signal=INT 300s", source)
+
+    def test_deck_detail_smoke_retains_visual_geometry_contract(self) -> None:
+        source = UI_PLATFORM_SMOKE_PATH.read_text(encoding="utf-8")
+
+        for rectangle in (
+            "header: rect(header)",
+            "back: rect(back)",
+            "titleRow: rect(titleRow)",
+            "heading: rect(heading)",
+            "description: rect(description)",
+            "actions: rect(actions)",
+        ):
+            with self.subTest(rectangle=rectangle):
+                self.assertIn(rectangle, source)
+        self.assertIn("upper.bottom <= lower.top + 1", source)
+        self.assertIn("above(geometry.back, geometry.titleRow)", source)
+        self.assertIn("above(geometry.heading, geometry.description)", source)
+        self.assertIn("above(geometry.description, geometry.actions)", source)
+        self.assertIn("Math.abs(geometry.titleRow.left - headerRect.left) <= 1", source)
+        self.assertIn("Math.abs(geometry.titleRow.right - headerRect.right) <= 1", source)
+        self.assertIn("geometry.titleRow.width >= headerRect.width - 2", source)
+        self.assertIn('snapshot.get("visuallyOrdered") is True', source)
+        self.assertIn('snapshot.get("titleRowFullWidth") is True', source)
+
+    def test_progress_filled_content_retains_all_four_tone_colors(self) -> None:
+        source = PROGRESS_STYLES_PATH.read_text(encoding="utf-8")
+        expected_colors = {
+            "accent": "--progress-filled-content-color: var(--ostudy-color-accent-on)",
+            "success": "--progress-filled-content-color: var(--ostudy-color-text-inverse)",
+            "warning": "--progress-filled-content-color: var(--ostudy-color-neutral-950)",
+            "danger": "--progress-filled-content-color: var(--ostudy-color-status-danger-on)",
+        }
+
+        for tone, color in expected_colors.items():
+            with self.subTest(tone=tone):
+                start = source.index(f".{tone} {{")
+                end = source.index("}", start)
+                self.assertIn(color, source[start:end])
+        warning_start = source.index(".warning {")
+        warning_end = source.index("}", warning_start)
+        self.assertNotIn("--ostudy-color-accent-on", source[warning_start:warning_end])
 
     def test_android_smoke_entry_point_installs_test_bridge_only_when_requested(self) -> None:
         source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")

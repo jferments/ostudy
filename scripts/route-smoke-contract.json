@@ -1,0 +1,366 @@
+{
+  "schemaVersion": 1,
+  "contractRole": "expected-inventory-only",
+  "authoritativeSources": {
+    "applicationSections": "src/controllers/useAppController.ts",
+    "applicationWorkflows": "src/controllers/useAppController.ts",
+    "applicationShell": "src/App.tsx",
+    "checkpointGateway": "src/ipc/uiCheckpoint.ts",
+    "primaryNavigation": "src/components/NavigationSidebar.tsx",
+    "compactNavigation": "src/components/NavigationSidebar.tsx",
+    "flashcardsRoutes": "src/navigation/flashcardsRoutes.ts",
+    "flashcardsTabs": "src/screens/flashcards/FlashcardsWorkspace.tsx",
+    "nativeSmokeRunner": "scripts/smoke-native.sh",
+    "androidSmokeRunner": "scripts/android-emulator-smoke.sh"
+  },
+  "applicationSections": [
+    {
+      "id": "decks",
+      "role": "primary-destination"
+    },
+    {
+      "id": "study-guides",
+      "role": "primary-destination"
+    },
+    {
+      "id": "documents",
+      "role": "primary-destination"
+    },
+    {
+      "id": "cards",
+      "role": "compatibility-alias",
+      "target": "decks/search"
+    },
+    {
+      "id": "templates",
+      "role": "compatibility-alias",
+      "target": "decks/templates"
+    },
+    {
+      "id": "analytics",
+      "role": "primary-destination"
+    },
+    {
+      "id": "settings",
+      "role": "primary-destination"
+    }
+  ],
+  "applicationWorkflows": [
+    {
+      "id": "practice",
+      "protectedWorkflow": "active-practice"
+    }
+  ],
+  "checkpointDestinations": [
+    "decks",
+    "study-guides",
+    "documents",
+    "analytics",
+    "settings"
+  ],
+  "primaryDestinations": [
+    {
+      "section": "decks",
+      "label": "Flashcards",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "button[data-testid='nav-decks']",
+              "webdriver.click(session_id, flashcards)"
+            ],
+            "assertionFragments": [
+              "main [role='tablist'][aria-label='Flashcards workspaces']",
+              "assert_flashcards_tabs(session_id, deadline)"
+            ]
+          },
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/card_listing_followup_smoke.py",
+            "entrypoint": "tests/webdriver/card_listing_followup_smoke.py",
+            "entryFragments": [
+              "EXPECTED_NAVIGATION = [\"Flashcards\", \"Study Guides\", \"Documents\", \"Analytics\", \"Settings\"]",
+              "assert_medium_navigation(session_id, deadline)"
+            ],
+            "assertionFragments": [
+              "measurement.get(\"labels\") != EXPECTED_NAVIGATION",
+              "Medium navigation did not expose complete labels"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "section": "study-guides",
+      "label": "Study Guides",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "button[data-testid='nav-study-guides']",
+              "webdriver.click(session_id, study_guides)",
+              "session_id = verify_study_guides_checkpoint_after_restart(application, session_id)"
+            ],
+            "assertionFragments": [
+              "Study Guides",
+              "wide Study Guides destination",
+              "verify_study_guides_checkpoint_after_restart",
+              "Study Guides checkpoint restart"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "e_processRestartKeepsInterruptedPracticeSession"
+            },
+            "entryFragments": [
+              "fun e_processRestartKeepsInterruptedPracticeSession()",
+              "End session"
+            ],
+            "assertionFragments": [
+              "nav-study-guides",
+              "aria-current",
+              "Study Guides"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "section": "documents",
+      "label": "Documents",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "c_documentsStubAndAndroidBackReturnToFlashcardsDecks"
+            },
+            "entryFragments": [
+              "fun c_documentsStubAndAndroidBackReturnToFlashcardsDecks()",
+              "nav-documents"
+            ],
+            "assertionFragments": [
+              "=== 'Documents'",
+              "Upload document"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "section": "analytics",
+      "label": "Analytics",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/durable_library_smoke.py",
+            "entrypoint": "tests/webdriver/durable_library_smoke.py",
+            "entryFragments": [
+              "button[data-testid='nav-analytics']",
+              "webdriver.click(session_id, analytics_button)"
+            ],
+            "assertionFragments": [
+              "webdriver.ANALYTICS_SCREEN_SELECTOR",
+              "Recent reviews"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "section": "settings",
+      "label": "Settings",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "button[data-testid='nav-settings']",
+              "webdriver.click(session_id, settings)"
+            ],
+            "assertionFragments": [
+              "main h1",
+              "compact Settings assertions"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "compactNavigation": {
+    "primary": [
+      "decks",
+      "study-guides",
+      "analytics"
+    ],
+    "more": [
+      "documents",
+      "settings"
+    ]
+  },
+  "protectedWorkflows": [
+    {
+      "id": "active-practice",
+      "workflow": "practice",
+      "label": "Active practice",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/smoke.py",
+            "entrypoint": "tests/webdriver/durable_library_smoke.py",
+            "executionChain": [
+              {
+                "from": "tests/webdriver/durable_library_smoke.py",
+                "to": "tests/webdriver/smoke.py",
+                "fragments": [
+                  "import smoke as webdriver",
+                  "webdriver.main()"
+                ]
+              }
+            ],
+            "entryFragments": [
+              "Opening and dismissing selected-deck Practice setup",
+              "f\"//input[@aria-label={json.dumps(f'Select {deck_name}')}]\"",
+              "click_text_button(session_id, \"Practice\", deadline)",
+              "row_practice_button = find_element(",
+              "click(session_id, row_practice_button)",
+              "//main//button[normalize-space(.)='Practice']",
+              "click(session_id, practice_button)"
+            ],
+            "assertionFragments": [
+              "Practice selected decks",
+              "dialog button[aria-label='Close dialog']",
+              "Verifying one-step row Practice returns to the library",
+              "Verifying deck-detail Practice returns to that exact deck",
+              "//button[normalize-space(.)='Show answer']",
+              "assert_internal_practice_shell(session_id, deck_name)",
+              "click_text_button(session_id, \"End session\", deadline)",
+              "button[data-testid='nav-decks'][aria-current='page']",
+              "PRACTICE_COMPLETE_SELECTOR"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "e_processRestartKeepsInterruptedPracticeSession"
+            },
+            "entryFragments": [
+              "fun e_processRestartKeepsInterruptedPracticeSession()",
+              "End session"
+            ],
+            "assertionFragments": [
+              "nav-study-guides",
+              "aria-current",
+              "Study Guides"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "flashcardsWorkspaces": [
+    {
+      "id": "decks",
+      "label": "Decks",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "button[data-testid='nav-decks']",
+              "webdriver.click(session_id, flashcards)"
+            ],
+            "assertionFragments": [
+              "main [role='tablist'][aria-label='Flashcards workspaces']",
+              "assert_flashcards_tabs(session_id, deadline)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "templates",
+      "label": "Templates",
+      "smoke": {
+        "coverage": "presence",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "presenceFragments": [
+              "for label in (\"Decks\", \"Templates\", \"Search\", \"Import/Export\"):",
+              "find_workspace_tab(session_id, label, deadline)"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "search",
+      "label": "Search",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "entryFragments": [
+              "search = find_workspace_tab(session_id, \"Search\", deadline)",
+              "webdriver.click(session_id, search)"
+            ],
+            "assertionFragments": [
+              "main section[aria-label='Card filters']",
+              "medium Search workspace"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "transfer",
+      "label": "Import/Export",
+      "smoke": {
+        "coverage": "presence",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/ui_platform_smoke.py",
+            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
+            "presenceFragments": [
+              "for label in (\"Decks\", \"Templates\", \"Search\", \"Import/Export\"):",
+              "find_workspace_tab(session_id, label, deadline)"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

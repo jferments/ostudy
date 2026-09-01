@@ -1,5 +1,6 @@
 import type { ShowToast } from "../components/Toast";
 import type { DeckSummary } from "../ipc/decks";
+import type { AnalyticsSearchLaunch } from "../navigation/flashcardsRoutes";
 import { CardBrowserWorkspace } from "./cards/CardBrowserWorkspace";
 
 interface CardsScreenProps {
@@ -9,6 +10,7 @@ interface CardsScreenProps {
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
   embedded?: boolean;
+  analyticsSearchLaunch?: AnalyticsSearchLaunch;
 }
 
 /**
@@ -24,6 +26,7 @@ export function CardsScreen({
   onDirtyChange,
   showToast,
   embedded = false,
+  analyticsSearchLaunch,
 }: CardsScreenProps) {
   return (
     <CardBrowserWorkspace
@@ -34,6 +37,7 @@ export function CardsScreen({
       showToast={showToast}
       controls="search"
       showPageHeader={!embedded}
+      analyticsSearchLaunch={analyticsSearchLaunch}
     />
   );
 }

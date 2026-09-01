@@ -14,22 +14,10 @@ def verify_persistence_after_restart(
     question: str,
 ) -> None:
     """Verify A2 UI restoration, then navigate explicitly to durable library state."""
-    webdriver.progress("Verifying restored Analytics checkpoint after restart")
+    webdriver.progress("Verifying restored Search workspace checkpoint after restart")
     deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
     webdriver.verify_shell(session_id, deadline)
-    webdriver.find_element(
-        session_id,
-        "css selector",
-        webdriver.ANALYTICS_SCREEN_SELECTOR,
-        deadline,
-    )
-    webdriver.find_element(
-        session_id,
-        "xpath",
-        "//main//section[.//h2[normalize-space(.)='Recent reviews']]"
-        f"//strong[normalize-space(.)={json.dumps(question)}]",
-        deadline,
-    )
+    webdriver.verify_search_workspace_selected(session_id, deadline)
 
     webdriver.progress("Navigating to Flashcards > Decks to verify deck and card persistence")
     deadline = webdriver.deadline_after()
@@ -55,7 +43,7 @@ def verify_persistence_after_restart(
     deck_button = webdriver.find_element(
         session_id,
         "xpath",
-        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        f"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     webdriver.click(session_id, deck_button)

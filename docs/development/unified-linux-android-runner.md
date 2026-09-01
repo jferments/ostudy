@@ -92,6 +92,14 @@ Guest bootstrap installs repository-pinned:
 
 Persistent reproducible caches live under the runner home rather than inside the clean Actions checkout. Checkout cleaning must never delete runner registration state, Android SDK/AVD state, or the pre-registration snapshot.
 
+Native WebDriver smoke is an X11 functional contract, not a GPU-acceleration
+benchmark. The guest intentionally has no DRI3 device, so `smoke-native.sh`
+pins the X11 backend, disables WebKit accelerated/DMABUF compositing, and forces
+Mesa software rendering before every isolated driver/application attempt. This
+prevents WebKitWebDriver transport resets caused by probing unavailable graphics
+hardware. The separate UI performance gate records its own fixed rendering
+environment and retains the immutable Stage 0 comparison contract.
+
 ## CI architecture
 
 One runner can execute only one Actions job at a time, so authoritative CI is deliberately serialized.

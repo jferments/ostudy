@@ -1,0 +1,43 @@
+@layer patterns {
+  .toolbar {
+    position: sticky;
+    z-index: var(--ostudy-layer-sticky);
+    inset-block-start: calc(var(--safe-top) + var(--ostudy-space-2));
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ostudy-space-3);
+    margin-block-end: var(--ostudy-space-4);
+    border: 1px solid var(--ostudy-color-border-accent);
+    border-radius: var(--ostudy-radius-medium);
+    padding: var(--ostudy-space-3) var(--ostudy-space-4);
+    background: var(--ostudy-color-surface-chrome);
+    box-shadow: var(--ostudy-shadow-level-2);
+  }
+  .count { min-width: max-content; font-variant-numeric: tabular-nums; }
+  .actions {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+  @media (max-width: 760px) {
+    .toolbar {
+      inset-block-start: auto;
+      inset-block-end: calc(var(--safe-bottom) + var(--android-ime-bottom));
+      flex-direction: column;
+      align-items: stretch;
+      padding-inline: max(var(--ostudy-space-3), env(safe-area-inset-left)) max(var(--ostudy-space-3), env(safe-area-inset-right));
+      padding-block-end: max(var(--ostudy-space-3), env(safe-area-inset-bottom));
+    }
+    .actions { width: 100%; justify-content: space-between; }
+  }
+  @media (forced-colors: active) {
+    .toolbar { border-color: Highlight; }
+  }
+}

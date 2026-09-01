@@ -43,6 +43,24 @@ class AndroidSmokeSemanticSelectorTests(unittest.TestCase):
 
         self.assertEqual([], failures, "\n" + "\n".join(failures))
 
+    def test_nested_deck_back_stack_uses_accessible_open_control(self) -> None:
+        source = ANDROID_SMOKE.read_text(encoding="utf-8")
+        start = source.index("fun c_nestedDeckAndEditorBackReturnThroughTheStack()")
+        end = source.index("\n    @Test\n    fun d_reloadsIntoInterruptedPracticeSession()", start)
+        scenario = source[start:end]
+        open_selector = (
+            'button[aria-label=\\"Open Android Emulator Smoke Deck\\"]'
+        )
+
+        self.assertNotIn("button.querySelector('strong')", scenario)
+        self.assertEqual(3, scenario.count(open_selector))
+        self.assertIn(
+            "document.querySelector('main "
+            + open_selector
+            + "')?.click(); true",
+            scenario,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

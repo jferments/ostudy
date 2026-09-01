@@ -1,23 +1,5 @@
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: var(--ostudy-layer-dialog);
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  background: var(--ostudy-color-overlay-scrim);
-}
-
-.dialog {
-  display: flex;
-  flex-direction: column;
-  width: min(1180px, 100%);
-  max-height: calc(100vh - 2rem);
-  overflow: auto;
-  border: 1px solid var(--ostudy-color-border-subtle);
-  border-radius: 1rem;
-  background: var(--ostudy-color-surface-base);
-  box-shadow: var(--ostudy-shadow-level-4);
+.workspace {
+  container-type: inline-size;
 }
 
 .header {
@@ -32,6 +14,13 @@
   border-bottom: 1px solid var(--ostudy-color-border-strong);
   background: var(--ostudy-color-surface-base);
   box-shadow: var(--ostudy-shadow-level-2);
+}
+
+.header > *,
+.headerActions > *,
+.layout,
+.contents {
+  min-width: 0;
 }
 
 .header h1,
@@ -96,7 +85,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  max-height: calc(100vh - 9rem);
+  max-height: calc(100dvh - 9rem);
   overflow: auto;
   padding: 1rem;
   border: 1px solid var(--ostudy-color-border-strong);
@@ -113,6 +102,7 @@
   border-radius: 0.45rem;
   color: var(--ostudy-color-text-secondary);
   font-weight: 650;
+  overflow-wrap: anywhere;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--ostudy-color-accent-base) 38%, transparent);
   text-decoration-thickness: 1px;
@@ -137,6 +127,7 @@
   min-width: 0;
   max-width: 52rem;
   margin: 0 auto;
+  overflow-wrap: anywhere;
 }
 
 .overview,
@@ -233,7 +224,7 @@
   position: sticky;
   bottom: 0;
   z-index: var(--ostudy-layer-sticky);
-  padding: 1rem 1.5rem;
+  padding: 1rem 1.5rem max(1rem, calc(var(--safe-bottom) + var(--android-ime-bottom)));
   border-top: 1px solid var(--ostudy-color-border-subtle);
   background: var(--ostudy-color-surface-base);
   box-shadow: var(--ostudy-shadow-level-2);
@@ -256,19 +247,7 @@
   font-size: 0.9rem;
 }
 
-@media (max-width: 760px) {
-  .backdrop {
-    padding: 0;
-  }
-
-  .dialog {
-    width: 100%;
-    max-height: 100vh;
-    min-height: 100vh;
-    border: 0;
-    border-radius: 0;
-  }
-
+@container (max-width: 760px) {
   .header,
   .sectionHeader {
     flex-direction: column;

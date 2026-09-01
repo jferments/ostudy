@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import re
@@ -334,24 +335,29 @@ def _hit_signature(hit: dict[str, Any]) -> tuple[float, float, float, float] | N
 
 def _arm_click_ack(session_id: str, element_id: str, token: str) -> None:
     """Install a one-shot capture listener that proves the DOM received the click."""
-    armed = request(
-        "POST",
-        f"/session/{session_id}/execute/sync",
-        {
-            "script": """
-                const element = arguments[0];
-                const token = arguments[1];
-                if (!(element instanceof Element)) return false;
-                element.addEventListener(
-                  'click',
-                  () => { window.__OSTUDY_WEBDRIVER_CLICK_ACK__ = token; },
-                  { once: true, capture: true }
-                );
-                return true;
-            """,
-            "args": [{ELEMENT_KEY: element_id}, token],
-        },
-    )
+    path = f"/session/{session_id}/execute/sync"
+    payload = {
+        "script": """
+            const element = arguments[0];
+            const token = arguments[1];
+            if (!(element instanceof Element)) return false;
+            element.addEventListener(
+              'click',
+              () => { window.__OSTUDY_WEBDRIVER_CLICK_ACK__ = token; },
+              { once: true, capture: true }
+            );
+            return true;
+        """,
+        "args": [{ELEMENT_KEY: element_id}, token],
+    }
+    try:
+        armed = request("POST", path, payload)
+    except (OSError, urllib.error.URLError) as error:
+        if not _is_transient_disconnect(error):
+            raise
+        # The measured click has not been sent, and duplicate listeners using the
+        # same token preserve the acknowledgement postcondition.
+        armed = request("POST", path, payload)
     if armed is not True:
         raise RuntimeError("Could not arm DOM acknowledgement for WebDriver click")
 
@@ -373,6 +379,15 @@ def _wait_for_click_ack(session_id: str, token: str, deadline: float) -> bool:
     return False
 
 
+def _is_transient_disconnect(error: BaseException) -> bool:
+    if isinstance(error, (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError)):
+        return True
+    return isinstance(error, urllib.error.URLError) and isinstance(
+        error.reason,
+        (http.client.RemoteDisconnected, ConnectionResetError, BrokenPipeError),
+    )
+
+
 def click(session_id: str, element_id: str) -> None:
     """Click a stable target and require proof that WebKit dispatched the DOM event."""
     deadline = time.monotonic() + 5
@@ -383,7 +398,15 @@ def click(session_id: str, element_id: str) -> None:
     unacknowledged_clicks = 0
 
     while time.monotonic() < deadline:
-        hit = _element_hit_test(session_id, element_id)
+        try:
+            hit = _element_hit_test(session_id, element_id)
+        except (OSError, urllib.error.URLError) as error:
+            if not _is_transient_disconnect(error):
+                raise
+            stable_signature = None
+            stable_samples = 0
+            time.sleep(0.1)
+            continue
         last_hit = hit
         if hit.get("ready") is not True:
             stable_signature = None
@@ -410,6 +433,13 @@ def click(session_id: str, element_id: str) -> None:
         _arm_click_ack(session_id, element_id, token)
         try:
             request("POST", f"/session/{session_id}/element/{element_id}/click", {})
+        except (OSError, urllib.error.URLError) as error:
+            if not _is_transient_disconnect(error):
+                raise
+            ack_deadline = min(deadline, time.monotonic() + 0.5)
+            if _wait_for_click_ack(session_id, token, ack_deadline):
+                return
+            raise
         except WebDriverProtocolError as error:
             if error.error not in TRANSIENT_CLICK_ERRORS:
                 raise
@@ -628,10 +658,107 @@ def verify_shell(session_id: str, deadline: float) -> None:
     )
 
 
+def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
+    state = request(
+        "POST",
+        f"/session/{session_id}/execute/sync",
+        {
+            "script": """
+                const primary = [...document.querySelectorAll("nav[aria-label='Main navigation'] button")];
+                return {
+                  selectedPrimary: primary
+                    .filter((button) => button.getAttribute('aria-current') === 'page')
+                    .map((button) => (button.textContent || '').trim()),
+                  practiceDestinations: primary
+                    .filter((button) => button.dataset.testid === 'nav-practice').length,
+                  heading: (document.querySelector('main h1')?.textContent || '').trim(),
+                  progressValueText: document.querySelector(
+                    "main [role='progressbar'][aria-label='Practice session progress']",
+                  )?.getAttribute('aria-valuetext') || '',
+                  formerHeaderProgressCount: document.querySelectorAll(
+                    "main header [aria-label*=' studied, '][aria-label*=' remaining']",
+                  ).length,
+                };
+            """,
+            "args": [],
+        },
+    )
+    if not isinstance(state, dict):
+        raise AssertionError(f"Could not inspect the internal Practice workflow: {state!r}")
+    if state.get("selectedPrimary") != []:
+        raise AssertionError(
+            f"Internal Practice selected a primary destination: {state!r}"
+        )
+    if int(state.get("practiceDestinations", -1)) != 0:
+        raise AssertionError(f"Practice returned to standing navigation: {state!r}")
+    if state.get("heading") != deck_name:
+        raise AssertionError(
+            f"Contextual Practice lost the launching deck identity: {state!r}"
+        )
+    if state.get("progressValueText") != (
+        "Card 1 of 1, 0 studied, 1 remaining, 0% complete"
+    ):
+        raise AssertionError(
+            f"Active Practice progress lost its accessible value text: {state!r}"
+        )
+    if int(state.get("formerHeaderProgressCount", -1)) != 0:
+        raise AssertionError(
+            f"Active Practice retained its former header progress chip: {state!r}"
+        )
+
+
+def verify_search_workspace_selected(session_id: str, deadline: float) -> None:
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tab' and @aria-selected='true']"
+        "[contains(normalize-space(.), 'Search')]",
+        deadline,
+    )
+
+
+def verify_tag_filtered_search(
+    session_id: str,
+    question: str,
+    tag_name: str,
+    deadline: float,
+) -> None:
+    verify_search_workspace_selected(session_id, deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//button[@aria-label={json.dumps(f'Remove Tag: {tag_name} filter')}]",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+
+def verify_analytics_tag_search(
+    session_id: str,
+    question: str,
+    tag_name: str,
+    deadline: float,
+) -> None:
+    tag_action = find_element(
+        session_id,
+        "xpath",
+        f"//main//button[@aria-label={json.dumps(f'Search cards tagged {tag_name}')}]",
+        deadline,
+    )
+    click(session_id, tag_action)
+    verify_tag_filtered_search(session_id, question, tag_name, deadline)
+
 def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_name = "Native smoke deck"
     question = "What does the native smoke test persist?"
     answer = "A deck, a card, and one accepted review."
+    tag_name = "Native smoke tag"
 
     progress("Creating a deck")
     deadline = deadline_after()
@@ -657,6 +784,19 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     click_text_button(session_id, "Add flashcard", deadline)
     set_rich_editor_text(session_id, 0, question, deadline)
     set_rich_editor_text(session_id, 1, answer, deadline)
+    tag_input = find_element(
+        session_id,
+        "css selector",
+        "main input[aria-label='Tags']",
+        deadline,
+    )
+    send_keys(session_id, tag_input, f"{tag_name},")
+    find_element(
+        session_id,
+        "css selector",
+        f"main button[aria-label={json.dumps(f'Remove {tag_name} tag')}]",
+        deadline,
+    )
     save_button = wait_for_enabled_element(
         session_id,
         "xpath",
@@ -672,7 +812,156 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         deadline,
     )
 
-    progress("Completing one review")
+    progress("Opening and dismissing selected-deck Practice setup")
+    deadline = deadline_after()
+    decks_button = find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks']",
+        deadline,
+    )
+    click(session_id, decks_button)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    selection = find_element(
+        session_id,
+        "xpath",
+        f"//input[@aria-label={json.dumps(f'Select {deck_name}')}]",
+        deadline,
+    )
+    click(session_id, selection)
+    click_text_button(session_id, "Practice", deadline)
+    find_element(
+        session_id,
+        "xpath",
+        "//*[@role='dialog'][.//h2[normalize-space(.)='Practice selected decks']]",
+        deadline,
+    )
+    original_rect = request("GET", f"/session/{session_id}/window/rect")
+    if not isinstance(original_rect, dict):
+        raise AssertionError(f"Practice setup viewport could not be recorded: {original_rect!r}")
+    try:
+        for expected_mode, width, height in (
+            ("wide", 1280, 800),
+            ("medium", 900, 760),
+            ("compact", 390, 700),
+        ):
+            request(
+                "POST",
+                f"/session/{session_id}/window/rect",
+                {"width": width, "height": height},
+            )
+            layout = None
+            layout_deadline = deadline_after()
+            while time.monotonic() < layout_deadline:
+                layout = request(
+                    "POST",
+                    f"/session/{session_id}/execute/sync",
+                    {
+                        "script": """
+                            const content = document.querySelector(
+                              "dialog [data-layout-mode]",
+                            );
+                            return content ? {
+                              mode: content.dataset.layoutMode,
+                              contained: content.scrollWidth <= content.clientWidth,
+                            } : null;
+                        """,
+                        "args": [],
+                    },
+                )
+                if layout == {"mode": expected_mode, "contained": True}:
+                    break
+                time.sleep(0.1)
+            else:
+                raise AssertionError(
+                    f"Practice setup {expected_mode} layout was not contained: {layout!r}"
+                )
+    finally:
+        request(
+            "POST",
+            f"/session/{session_id}/window/rect",
+            {
+                "x": original_rect.get("x"),
+                "y": original_rect.get("y"),
+                "width": original_rect.get("width"),
+                "height": original_rect.get("height"),
+            },
+        )
+    close_setup = find_element(
+        session_id,
+        "css selector",
+        "dialog button[aria-label='Close dialog']",
+        deadline,
+    )
+    click(session_id, close_setup)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+
+    progress("Verifying one-step row Practice returns to the library")
+    deadline = deadline_after()
+    row_practice_button = find_element(
+        session_id,
+        "xpath",
+        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]"
+        "//button[normalize-space(.)='Practice']",
+        deadline,
+    )
+    click(session_id, row_practice_button)
+    show_answer = find_element(
+        session_id,
+        "xpath",
+        "//button[normalize-space(.)='Show answer']",
+        deadline,
+    )
+    assert_internal_practice_shell(session_id, deck_name)
+    click_text_button(session_id, "End session", deadline)
+    wait_for_main_heading(session_id, "Flashcards", deadline)
+    find_element(
+        session_id,
+        "css selector",
+        "button[data-testid='nav-decks'][aria-current='page']",
+        deadline,
+    )
+    find_element(
+        session_id,
+        "xpath",
+        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        deadline,
+    )
+
+    progress("Verifying deck-detail Practice returns to that exact deck")
+    deadline = deadline_after()
+    deck_row = find_element(
+        session_id,
+        "xpath",
+        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        deadline,
+    )
+    click(session_id, deck_row)
+    wait_for_main_heading(session_id, deck_name, deadline)
+    practice_button = find_element(
+        session_id,
+        "xpath",
+        "//main//button[normalize-space(.)='Practice']",
+        deadline,
+    )
+    click(session_id, practice_button)
+    show_answer = find_element(
+        session_id,
+        "xpath",
+        "//button[normalize-space(.)='Show answer']",
+        deadline,
+    )
+    assert_internal_practice_shell(session_id, deck_name)
+    click_text_button(session_id, "End session", deadline)
+    wait_for_main_heading(session_id, deck_name, deadline)
+    find_element(
+        session_id,
+        "xpath",
+        f"//strong[normalize-space(.)={json.dumps(question)}]",
+        deadline,
+    )
+
+    progress("Completing one review after the exact detail return")
     deadline = deadline_after()
     practice_button = find_element(
         session_id,
@@ -687,6 +976,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
         "//button[normalize-space(.)='Show answer']",
         deadline,
     )
+    assert_internal_practice_shell(session_id, deck_name)
     click(session_id, show_answer)
     medium = find_element(
         session_id,
@@ -722,6 +1012,8 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     )
     click(session_id, chart_data_button)
     find_element(session_id, "css selector", CHART_DATA_SELECTOR, deadline)
+    progress("Opening Search from the current recent-review tag")
+    verify_analytics_tag_search(session_id, question, tag_name, deadline)
     progress("Analytics verification completed")
     return deck_name, question
 
@@ -745,7 +1037,7 @@ def verify_persistence_after_restart(
     deck_button = find_element(
         session_id,
         "xpath",
-        f"//main//button[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        f"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     click(session_id, deck_button)
@@ -821,8 +1113,9 @@ def main() -> int:
         verify_persistence_after_restart(session_id, deck_name, question)
 
         print(
-            "Native smoke test passed: created a deck and card, accepted a review, "
-            "restarted ostudy, and verified durable content and analytics."
+            "Native smoke test passed: created a deck and card, verified accessible "
+            "inline Practice progress, accepted a review, restarted ostudy, and verified "
+            "durable content and analytics."
         )
         return 0
     except Exception:

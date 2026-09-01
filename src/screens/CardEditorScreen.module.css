@@ -2,9 +2,8 @@
 @layer features {
   /* Migrated from src/styles/base/application.css. */
   .card-editor-screen {
-    width: min(1680px, 100%);
+    width: 100%;
       min-height: 100%;
-      margin: 0 auto;
       padding: 32px clamp(24px, 3vw, 52px) 60px;
   }
   .card-editor-header {

@@ -34,6 +34,7 @@ interface AnalyticsScreenProps {
   launchRequest: AnalyticsLaunchRequest | null;
   onLaunchConsumed: () => void;
   onPracticeScope: (deckIds: string[], tagIds: string[]) => void;
+  onSearchTag: (tagId: string) => void | Promise<void>;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
@@ -54,6 +55,7 @@ export function AnalyticsScreen({
   launchRequest,
   onLaunchConsumed,
   onPracticeScope,
+  onSearchTag,
   showToast,
 }: AnalyticsScreenProps) {
   const [range, setRange] = useState<AnalyticsRange>("7d");
@@ -449,7 +451,30 @@ export function AnalyticsScreen({
                       {review.capturedDeckName !== review.deckName ? (
                         <small>Reviewed while named “{review.capturedDeckName}”</small>
                       ) : null}
-                      {review.tags.length > 0 ? <small>{review.tags.join(" · ")}</small> : null}
+                      {review.tags.length > 0 ? (
+                        <small className={ownedClassNames(ownedStyleMaps, "recent-review-tags")}>
+                          {review.tags.map((tag, index) => (
+                            <span key={tag.tagId}>
+                              {index > 0 ? " · " : null}
+                              {tag.isCurrent ? (
+                                <button
+                                  type="button"
+                                  className={ownedClassNames(
+                                    ownedStyleMaps,
+                                    "recent-review-tag-action",
+                                  )}
+                                  aria-label={`Search cards tagged ${tag.tagName}`}
+                                  onClick={() => void onSearchTag(tag.tagId)}
+                                >
+                                  {tag.tagName}
+                                </button>
+                              ) : (
+                                tag.tagName
+                              )}
+                            </span>
+                          ))}
+                        </small>
+                      ) : null}
                     </div>
                     <div className={ownedClassNames(ownedStyleMaps, "recent-review-meta")}>
                       <strong>{formatDuration(review.responseTimeMs)}</strong>
@@ -556,7 +581,7 @@ function StatusBadge({ status }: { status: TagAnalytics["status"] }) {
 }
 function workloadMessage(analytics: Analytics): string {
   if (analytics.dailyLimits.reviewsRemaining === 0) {
-    return "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from Practice.";
+    return "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from a deck’s Practice action in Flashcards.";
   }
   if (analytics.currentInventory.studyableDueCount > analytics.dailyLimits.reviewsRemaining) {
     return `${

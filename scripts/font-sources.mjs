@@ -3,6 +3,12 @@ export const localFontSources = Object.freeze([
     id: "plex",
     family: "IBM Plex Sans",
     googleWeights: "300..700",
+    license: {
+      spdx: "OFL-1.1",
+      noticePath: "public/licenses/IBM-Plex-Sans-OFL-1.1.txt",
+      copyright:
+        "Copyright 2017 The IBM Plex Project Authors (https://github.com/IBM/plex)",
+    },
     faces: [
       {
         googleWeight: "300 700",

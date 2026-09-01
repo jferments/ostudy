@@ -1,8 +1,6 @@
-import { getRecentPracticeReviews, type RecentReview } from "../ipc/analytics";
 import {
   completePracticeSession,
   getPracticeCardWindow,
-  getPracticeWorkload,
   markPracticeCardRevealed,
   markPracticeCardViewed,
   refreshPracticeAfterCardEdit,
@@ -14,7 +12,6 @@ import {
   type PracticeCardWindowInput,
   type PracticeEditRefresh,
   type PracticeSession,
-  type PracticeWorkloadOverview,
   type RefreshPracticeAfterCardEditInput,
   type ResumedPracticeSession,
   type ReviewPreviewSet,
@@ -30,14 +27,12 @@ import {
 } from "../ipc/scheduling";
 import { latestResult, RequestLane } from "./requestLane";
 
-export class PracticeController {
-  readonly #workload = new RequestLane();
-  readonly #window = new RequestLane();
-  readonly #recent = new RequestLane();
+export type PracticeStartRequest =
+  | ({ kind: "selected" } & StartPracticeInput)
+  | ({ kind: "cards" } & StartCardPracticeInput);
 
-  workload(deckIds: string[], tagIds: string[]): Promise<PracticeWorkloadOverview | undefined> {
-    return latestResult(this.#workload, () => getPracticeWorkload(deckIds, tagIds));
-  }
+export class PracticeController {
+  readonly #window = new RequestLane();
 
   window(input: PracticeCardWindowInput): Promise<PracticeCardWindow | undefined> {
     return latestResult(this.#window, () => getPracticeCardWindow(input));
@@ -47,16 +42,13 @@ export class PracticeController {
     return refreshPracticeAfterCardEdit(input);
   }
 
-  recentReviews(): Promise<RecentReview[] | undefined> {
-    return latestResult(this.#recent, getRecentPracticeReviews);
-  }
-
-  startSelected(input: StartPracticeInput): Promise<PracticeSession> {
+  start(request: PracticeStartRequest): Promise<PracticeSession> {
+    if (request.kind === "cards") {
+      const { kind: _kind, ...input } = request;
+      return startCardPractice(input);
+    }
+    const { kind: _kind, ...input } = request;
     return startSelectedPractice(input);
-  }
-
-  startCards(input: StartCardPracticeInput): Promise<PracticeSession> {
-    return startCardPractice(input);
   }
 
   resume(sessionId: string): Promise<ResumedPracticeSession> {
@@ -83,17 +75,11 @@ export class PracticeController {
     return completePracticeSession(sessionId);
   }
 
-  invalidateWorkload(): void {
-    this.#workload.invalidate();
-  }
-
   invalidateWindow(): void {
     this.#window.invalidate();
   }
 
   invalidate(): void {
-    this.#workload.invalidate();
     this.#window.invalidate();
-    this.#recent.invalidate();
   }
 }

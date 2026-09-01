@@ -237,6 +237,11 @@ describe("StudyGuideDialog", () => {
     );
 
     expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeTruthy();
+    const dialog = screen.getByRole("dialog", { name: "Study guide · Physiology" });
+    expect(dialog.getAttribute("data-presentation")).toBe("fullscreen");
+    expect(dialog.firstElementChild?.className).toContain("workspace");
+    expect(screen.getByRole("navigation", { name: "Study guide contents" })).toBeTruthy();
+    expect(screen.getByRole("article")).toBeTruthy();
     expect(screen.getByText("Page 2–3")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Export PDF" }));
 

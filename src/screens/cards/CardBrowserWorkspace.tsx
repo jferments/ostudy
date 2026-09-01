@@ -18,6 +18,7 @@ import {
 } from "../../ipc/cards";
 import { createMutationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
+import type { AnalyticsSearchLaunch } from "../../navigation/flashcardsRoutes";
 import type { ScheduleAction } from "../../ipc/scheduling";
 import type { CardTemplate, GenerateTemplateCardsResult } from "../../ipc/templates";
 import { CardEditorScreen } from "../CardEditorScreen";
@@ -29,6 +30,7 @@ import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 import { ScheduleActionModal } from "./ScheduleActionModal";
 import { scheduleActionNotice } from "./scheduleActionResult";
+import { SelectionToolbar } from "../../ui/patterns/SelectionToolbar";
 import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 import ownershipStyles from "./CardBrowserWorkspace.module.css";
 
@@ -49,6 +51,7 @@ interface CardBrowserWorkspaceProps {
   showFilters?: boolean;
   showPageHeader?: boolean;
   onViewChange?: (view: CardBrowserView) => void;
+  analyticsSearchLaunch?: AnalyticsSearchLaunch;
 }
 
 type SelectionAction =
@@ -89,6 +92,7 @@ export function CardBrowserWorkspace({
   showFilters,
   showPageHeader = fixedDeckId === undefined,
   onViewChange,
+  analyticsSearchLaunch,
 }: CardBrowserWorkspaceProps) {
   const controlMode: CardBrowserControls =
     controls ??
@@ -112,7 +116,12 @@ export function CardBrowserWorkspace({
   );
   const [reviewedFilter, setReviewedFilter] = useState<ReviewedFilter>("all");
   const [sort, setSort] = useState<CardSort>("updated_desc");
-  const [tagIds, setTagIds] = useState<Set<string>>(new Set());
+  const [tagIds, setTagIds] = useState<Set<string>>(
+    () => new Set(analyticsSearchLaunch?.tagIds ?? []),
+  );
+  const [searchGate, setSearchGate] = useState<"open" | "pending" | "blocked">(
+    analyticsSearchLaunch ? "pending" : "open",
+  );
   const [tags, setTags] = useState<TagSummary[]>([]);
   const [page, setPage] = useState<CardSearchPage>({ cards: [], totalCount: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -129,6 +138,7 @@ export function CardBrowserWorkspace({
   const [moveCopyCards, setMoveCopyCards] = useState<TransferableCard[]>([]);
   const [practiceCards, setPracticeCards] = useState<SelectionCard[] | null>(null);
   const pendingScheduleMutationRef = useRef<PendingScheduleMutation | null>(null);
+  const requestedTagClearedRef = useRef(false);
   const controllerRef = useRef<CardsController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new CardsController();
   const controller = controllerRef.current;
@@ -189,6 +199,7 @@ export function CardBrowserWorkspace({
 
   const loadCards = useCallback(
     async (offset = 0, append = false): Promise<void> => {
+      if (searchGate !== "open") return;
       if (append) setIsLoadingMore(true);
       else {
         setIsLoading(true);
@@ -210,7 +221,7 @@ export function CardBrowserWorkspace({
         setIsLoadingMore(false);
       }
     },
-    [controller, searchInput],
+    [controller, searchGate, searchInput],
   );
 
   useEffect(() => () => controller.invalidate(), [controller]);
@@ -228,8 +239,45 @@ export function CardBrowserWorkspace({
   }, [activeDecks, fixedDeckId]);
 
   useEffect(() => {
+    if (!analyticsSearchLaunch) return;
+    let active = true;
+    void controller
+      .tags([])
+      .then((loaded) => {
+        if (!active || !loaded || requestedTagClearedRef.current) return;
+        setTags(loaded);
+        const availableIds = new Set(loaded.map((tag) => tag.id));
+        const requestedTagsExist = analyticsSearchLaunch.tagIds.every((tagId) =>
+          availableIds.has(tagId),
+        );
+        if (requestedTagsExist) {
+          setSearchGate("open");
+          return;
+        }
+        setIsLoading(false);
+        setSearchGate("blocked");
+        setErrorMessage(
+          "The Analytics tag is no longer available. Clear the unavailable tag filter to search all cards.",
+        );
+      })
+      .catch((error: unknown) => {
+        if (!active || requestedTagClearedRef.current) return;
+        setIsLoading(false);
+        setSearchGate("blocked");
+        setErrorMessage(
+          `The Analytics tag could not be verified: ${getErrorMessage(error)} Clear the unavailable tag filter to search all cards.`,
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [analyticsSearchLaunch, controller]);
+
+  useEffect(() => {
+    if (searchGate !== "open") return;
+    if (analyticsSearchLaunch && !requestedTagClearedRef.current) return;
     void loadTags();
-  }, [loadTags]);
+  }, [analyticsSearchLaunch, loadTags, searchGate]);
 
   useEffect(() => {
     if (query.trim() === "" && sort === "relevance") setSort("updated_desc");
@@ -250,6 +298,14 @@ export function CardBrowserWorkspace({
   function changeQuery(value: string): void {
     setQuery(value);
     if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
+  }
+
+  function changeTagIds(next: Set<string>): void {
+    if (analyticsSearchLaunch && next.size === 0) {
+      requestedTagClearedRef.current = true;
+      setSearchGate("open");
+    }
+    setTagIds(next);
   }
 
   async function refreshAfterMutation(): Promise<void> {
@@ -314,7 +370,7 @@ export function CardBrowserWorkspace({
   }
 
   async function selectAllMatching(): Promise<void> {
-    if (page.totalCount === 0 || isSelectingAll) return;
+    if (searchGate !== "open" || page.totalCount === 0 || isSelectingAll) return;
     setIsSelectingAll(true);
     setErrorMessage(null);
     try {
@@ -535,7 +591,7 @@ export function CardBrowserWorkspace({
           onStatusFilterChange={setStatusFilter}
           onReviewedFilterChange={setReviewedFilter}
           onSortChange={setSort}
-          onTagIdsChange={setTagIds}
+          onTagIdsChange={changeTagIds}
         />
       ) : (
         <section className={ownedClassNames(ownedStyleMaps, "deck-card-search")} aria-label="Search this deck">
@@ -552,36 +608,47 @@ export function CardBrowserWorkspace({
       )}
 
       {selectedCards.size > 0 ? (
-        <section className={ownedClassNames(ownedStyleMaps, "card-selection-bar")} aria-live="polite">
-          <strong>{selectedCards.size} selected</strong>
-          <select
-            aria-label="Actions for selected cards"
-            value=""
-            disabled={isApplyingSchedule}
-            onChange={(event) => {
-              const action = event.currentTarget.value as SelectionAction | "";
-              if (action !== "") chooseSelectionAction(action);
-            }}
-          >
-            <option value="">Actions…</option>
-            <option value="move_copy">Move / copy cards</option>
-            <option value="add_tags">Add tags</option>
-            <option value="remove_tags">Remove tags</option>
-            <option value="suspend">Suspend cards</option>
-            <option value="resume">Resume cards</option>
-            <option value="bury">Bury until tomorrow</option>
-            <option value="unbury">Unbury cards</option>
-            <option value="reschedule">Reschedule cards</option>
-            <option value="reset">Reset schedules</option>
-            <option value="delete">Delete cards</option>
-          </select>
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "text-button")} onClick={() => setSelectedCards(new Map())}>
-            Deselect all
-          </button>
-        </section>
+        <SelectionToolbar
+          selectedCount={selectedCards.size}
+          primaryAction={{
+            id: "practice-selected",
+            label: "Practice selected",
+            onSelect: () => setPracticeCards(selected),
+          }}
+          secondaryActions={[
+            ["move_copy", "Move / copy cards"],
+            ["add_tags", "Add tags"],
+            ["remove_tags", "Remove tags"],
+            ["suspend", "Suspend cards"],
+            ["resume", "Resume cards"],
+            ["bury", "Bury until tomorrow"],
+            ["unbury", "Unbury cards"],
+            ["reschedule", "Reschedule cards"],
+            ["reset", "Reset schedules"],
+            ["delete", "Delete cards"],
+          ].map(([id, label]) => ({
+            id,
+            label,
+            placement: "overflow-only" as const,
+            disabled: isApplyingSchedule,
+            destructive: id === "delete" || id === "reset",
+            onSelect: () => chooseSelectionAction(id as SelectionAction),
+          }))}
+          clearLabel="Deselect all"
+          onClearSelection={() => setSelectedCards(new Map())}
+        />
       ) : null}
 
       {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
+      {searchGate === "blocked" ? (
+        <button
+          type="button"
+          className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+          onClick={() => changeTagIds(new Set())}
+        >
+          Clear unavailable tag filter
+        </button>
+      ) : null}
       {isOpeningCard ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening card…</div> : null}
       {isLoading ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Searching cards…</div> : null}
 
@@ -639,23 +706,7 @@ export function CardBrowserWorkspace({
               >
                 {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
               </button>
-              <button
-                type="button"
-                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                disabled={selectedCards.size === 0}
-                onClick={() => setSelectedCards(new Map())}
-              >
-                Deselect all
-              </button>
             </div>
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "primary-button")}
-              disabled={selectedCards.size === 0}
-              onClick={() => setPracticeCards(selected)}
-            >
-              Practice selected
-            </button>
           </div>
         ) : null}
 

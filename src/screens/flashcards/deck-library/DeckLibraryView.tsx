@@ -1,3 +1,5 @@
+import { memo, type RefObject } from "react";
+
 import type { DeckSummary } from "../../../ipc/decks";
 import { HelpTrigger } from "../../../ui/help/HelpProvider";
 import { Icon } from "../../../ui/icons/Icon";
@@ -15,19 +17,21 @@ import { UNSORTED_DATA_VALUE } from "./useDeckLibraryReorder";
 interface DeckLibraryViewProps {
   controller: DeckLibraryController;
   reorder: DeckLibraryReorderAdapter;
+  libraryRef: RefObject<HTMLDivElement | null>;
   onPracticeDeck(deckId: string): void | Promise<void>;
 }
 
-export function DeckLibraryView({
+export const DeckLibraryView = memo(function DeckLibraryView({
   controller,
   reorder,
+  libraryRef,
   onPracticeDeck,
 }: DeckLibraryViewProps) {
   const snapshot = controller.snapshot;
   if (!snapshot) return null;
 
   return (
-    <div className={styles.library}>
+    <div ref={libraryRef} className={styles.library} data-deck-library-pointer-surface="true">
       <section className={styles.folderArea} aria-labelledby="folders-heading">
         <div className={styles.sectionHeading}>
           <div>
@@ -74,16 +78,10 @@ export function DeckLibraryView({
                 onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
                 onRename={() => controller.openFolderRenamer(folder.id)}
                 onDelete={() => void controller.removeFolder(folder.id)}
+                selectedIds={controller.selectedIds}
+                onToggleDeckSelected={controller.toggleDeckSelected}
               />
             ))}
-            <div
-              className={styles.folderDropTail}
-              data-library-drop="folder-tail"
-              data-folder-index={Math.max(0, snapshot.folders.length - 1)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={reorder.dropFolderTail}
-              aria-hidden="true"
-            />
           </div>
         )}
       </section>
@@ -91,11 +89,11 @@ export function DeckLibraryView({
       <section
         className={styles.unsortedArea}
         aria-labelledby="unsorted-heading"
-        data-library-drop="unsorted"
+        data-library-folder-surface="true"
+        data-geometry-key="destination:unsorted"
         data-folder-id={UNSORTED_DATA_VALUE}
-        data-target-index={snapshot.unsortedDecks.length}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => reorder.dropDeck(event, null, snapshot.unsortedDecks.length)}
+        data-destination-name="Unsorted decks"
+        data-collapsed="false"
       >
         <div className={styles.sectionHeading}>
           <div>
@@ -136,10 +134,12 @@ export function DeckLibraryView({
         onToggle={controller.toggleArchived}
         onOpenDeck={controller.openDeck}
         onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
+        selectedIds={controller.selectedIds}
+        onToggleDeckSelected={controller.toggleDeckSelected}
       />
     </div>
   );
-}
+});
 
 function UnsortedDeckItem({
   deck,
@@ -163,10 +163,12 @@ function UnsortedDeckItem({
       index={index}
       count={count}
       disabled={controller.isMutating}
+      selected={controller.selectedIds.has(deck.id)}
       reorder={reorder}
       onOpen={() => controller.openDeck(deck.id)}
       onPractice={() => void onPracticeDeck(deck.id)}
       onDelete={() => void controller.removeDeck(deck.id)}
+      onToggleSelected={() => controller.toggleDeckSelected(deck)}
     />
   );
 }

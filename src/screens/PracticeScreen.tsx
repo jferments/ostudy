@@ -14,31 +14,35 @@ import {
 import { type DeckSummary } from "../ipc/decks";
 import {
   type PracticeCard,
+  type CardPracticeRequest,
   type PracticeSession,
-  type PracticeWorkloadOverview,
+  type SelectedPracticeRequest,
   type ReviewPreviewSet,
   type SubmitReviewInput,
 } from "../ipc/practice";
 import { type RescheduleIntent, type ScheduleAction } from "../ipc/scheduling";
 import { type AppSettings } from "../ipc/settings";
-import { saveUiCheckpoint, type PracticeCheckpoint } from "../ipc/uiCheckpoint";
+import {
+  type PracticeCheckpoint,
+  type PracticeCursorCheckpoint,
+} from "../ipc/uiCheckpoint";
 import { useExperience } from "../ui/feedback/ExperienceProvider";
 import { Icon } from "../ui/icons/Icon";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import { Button } from "../ui/primitives/Button";
+import { LoadingState } from "../ui/primitives/EmptyState";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { ActivePractice } from "./practice/ActivePractice";
 import {
   outcomeForScore,
-  summarizeRecentDecks,
   type ConfidenceCounts,
   type ConfidenceScore,
-  type RecentDeckSummary,
 } from "./practice/confidence";
 import { PracticeComplete } from "./practice/PracticeComplete";
-import { PracticeSetup, type PracticeWorkloadStatus } from "./practice/PracticeSetup";
-import { StudyGuideLibrarySection } from "./StudyGuideLibrarySection";
 import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 import ownershipStyles from "./practice/Practice.module.css";
+import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
 
@@ -50,8 +54,11 @@ interface PracticeScreenProps {
   onLaunchConsumed: () => void;
   restoreCheckpoint?: PracticeCheckpoint | null;
   onRestoreConsumed?: () => void;
+  onCheckpointChange?: (checkpoint: PracticeCursorCheckpoint | null) => void;
+  returnTarget: PracticeReturnTarget | null;
   onViewAnalytics: (sessionId: string, deckIds: string[]) => void;
-  onEndEarly: (target: PracticeReturnTarget) => void;
+  onEndEarly: (target: PracticeReturnTarget) => void | Promise<void>;
+  onChooseDecks: () => void | Promise<void>;
   showToast: (kind: "success" | "error" | "info", text: string) => void;
 }
 
@@ -67,6 +74,14 @@ interface PendingReviewOperation {
   input: SubmitReviewInput;
 }
 
+type CanonicalPracticeRequest =
+  | ({ kind: "selected" } & SelectedPracticeRequest)
+  | ({ kind: "cards" } & CardPracticeRequest);
+
+type PracticeRecovery =
+  | { kind: "start"; request: CanonicalPracticeRequest }
+  | { kind: "restore"; checkpoint: PracticeCheckpoint };
+
 const COMMITTED_START_RETRY_CODE = "committed_practice_session_unavailable";
 const PRACTICE_WINDOW_SIZE = 50;
 const NOOP = (): void => undefined;
@@ -78,24 +93,22 @@ export function PracticeScreen({
   onLaunchConsumed,
   restoreCheckpoint = null,
   onRestoreConsumed = NOOP,
+  onCheckpointChange = NOOP,
+  returnTarget,
   onViewAnalytics,
   onEndEarly,
+  onChooseDecks,
   showToast,
 }: PracticeScreenProps) {
   const activeDecks = decks.filter((deck) => deck.archivedAt === null);
-  const [selectedDeckIds, setSelectedDeckIds] = useState<Set<string>>(new Set());
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
-  const [temporaryCardIds, setTemporaryCardIds] = useState<string[]>([]);
-  const [shuffle, setShuffle] = useState(settings.practiceShuffle);
+  const [practiceRequest, setPracticeRequest] = useState<CanonicalPracticeRequest | null>(null);
+  const [recovery, setRecovery] = useState<PracticeRecovery | null>(null);
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [sessionCards, setSessionCards] = useState<PracticeCard[]>([]);
   const [sessionWindowStart, setSessionWindowStart] = useState(0);
   const [position, setPosition] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [previewSet, setPreviewSet] = useState<ReviewPreviewSet | null>(null);
-  const [workload, setWorkload] = useState<PracticeWorkloadOverview | null>(null);
-  const [workloadStatus, setWorkloadStatus] = useState<PracticeWorkloadStatus>("idle");
-  const [workloadError, setWorkloadError] = useState<string | null>(null);
   const [isLoadingWindow, setIsLoadingWindow] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -107,8 +120,6 @@ export function PracticeScreen({
   const [completed, setCompleted] = useState(false);
   const [ratedCount, setRatedCount] = useState(0);
   const [confidenceCounts, setConfidenceCounts] = useState<ConfidenceCounts>([0, 0, 0, 0]);
-  const [recentDecks, setRecentDecks] = useState<RecentDeckSummary[]>([]);
-  const [returnTarget, setReturnTarget] = useState<PracticeReturnTarget | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const startingRef = useRef(false);
@@ -129,6 +140,9 @@ export function PracticeScreen({
   const experience = useExperience();
 
   useEffect(() => {
+    if (isStarting) {
+      return registerPracticeExitHandler(async () => false);
+    }
     if (!session || completed) return registerPracticeExitHandler(null);
     const activeSessionId = session.id;
     return registerPracticeExitHandler(async () => {
@@ -153,72 +167,35 @@ export function PracticeScreen({
         setIsEnding(false);
       }
     });
-  }, [completed, controller, session]);
+  }, [completed, controller, isStarting, session]);
 
   useEffect(() => () => controller.invalidate(), [controller]);
 
-  const loadRecentPractice = useCallback(async (): Promise<void> => {
-    try {
-      const reviews = await controller.recentReviews();
-      if (reviews) setRecentDecks(summarizeRecentDecks(reviews));
-    } catch (error: unknown) {
-      console.error("Unable to load recent practice results:", getErrorMessage(error));
-      setRecentDecks([]);
-    }
-  }, [controller]);
-
-  const loadWorkload = useCallback(async (deckIds: string[], tagIds: string[]): Promise<void> => {
-    if (deckIds.length === 0 && tagIds.length === 0) {
-      controller.invalidateWorkload();
-      setWorkload(null);
-      setWorkloadError(null);
-      setWorkloadStatus("empty");
-      return;
-    }
-    setWorkload(null);
-    setWorkloadError(null);
-    setWorkloadStatus("loading");
-    try {
-      const loaded = await controller.workload(deckIds, tagIds);
-      if (!loaded) return;
-      setWorkload(loaded);
-      setWorkloadStatus("ready");
-    } catch (error: unknown) {
-      setWorkload(null);
-      setWorkloadError(getErrorMessage(error));
-      setWorkloadStatus("error");
-    }
-  }, [controller]);
-
-  const beginSession = useCallback(
-    async (
-      deckIds: string[],
-      tagIds: string[],
-      requestedShuffle: boolean,
-      mode: "scheduled" | "extra",
-    ): Promise<void> => {
-      if (startingRef.current || (deckIds.length === 0 && tagIds.length === 0)) return;
-      const key = selectedStartKey(deckIds, tagIds, requestedShuffle, mode);
+  const beginPractice = useCallback(
+    async (request: CanonicalPracticeRequest): Promise<void> => {
+      if (startingRef.current || !practiceRequestHasScope(request)) return;
+      const key = practiceStartKey(request);
       const operationId = operationIdForStart(pendingStartRef, key);
       startingRef.current = true;
       setIsStarting(true);
-      setTemporaryCardIds([]);
+      setPracticeRequest(request);
+      setRecovery(null);
       setErrorMessage(null);
       try {
-        initializeSession(
-          await controller.startSelected({
-            operationId,
-            deckIds,
-            tagIds,
-            shuffle: requestedShuffle,
-            mode,
-          }),
-        );
+        initializeSession(await controller.start({ ...request, operationId }));
       } catch (error: unknown) {
         setSession(null);
         setSessionCards([]);
         setSessionWindowStart(0);
-        handleStartFailure(error, key);
+        setRecovery({ kind: "start", request });
+        const ambiguity =
+          getErrorCode(error) === null ||
+          getErrorCode(error) === COMMITTED_START_RETRY_CODE;
+        setErrorMessage(
+          ambiguity
+            ? `${getErrorMessage(error)} Retry uses the same operation identity, so it cannot create a duplicate session.`
+            : getErrorMessage(error),
+        );
       } finally {
         startingRef.current = false;
         setIsStarting(false);
@@ -226,44 +203,6 @@ export function PracticeScreen({
     },
     [controller],
   );
-
-  const beginCardSession = useCallback(
-    async (cardIds: string[], requestedShuffle: boolean): Promise<void> => {
-      if (startingRef.current || cardIds.length === 0) return;
-      const key = cardStartKey(cardIds, requestedShuffle);
-      const operationId = operationIdForStart(pendingStartRef, key);
-      startingRef.current = true;
-      setIsStarting(true);
-      setTemporaryCardIds(cardIds);
-      setErrorMessage(null);
-      try {
-        initializeSession(
-          await controller.startCards({ operationId, cardIds, shuffle: requestedShuffle }),
-        );
-      } catch (error: unknown) {
-        setSession(null);
-        setSessionCards([]);
-        setSessionWindowStart(0);
-        handleStartFailure(error, key);
-      } finally {
-        startingRef.current = false;
-        setIsStarting(false);
-      }
-    },
-    [controller],
-  );
-
-  function handleStartFailure(error: unknown, key: string): void {
-    const code = getErrorCode(error);
-    if (code !== null && code !== COMMITTED_START_RETRY_CODE) {
-      if (pendingStartRef.current?.key === key) pendingStartRef.current = null;
-      setErrorMessage(getErrorMessage(error));
-      return;
-    }
-    setErrorMessage(
-      `${getErrorMessage(error)} Retry the same start action to safely resume it without creating a duplicate session.`,
-    );
-  }
 
   function initializeSession(started: PracticeSession): void {
     pendingStartRef.current = null;
@@ -277,6 +216,7 @@ export function PracticeScreen({
     setCompleted(false);
     setRatedCount(0);
     setConfidenceCounts([0, 0, 0, 0]);
+    setRecovery(null);
     questionShownAtRef.current = Date.now();
   }
 
@@ -307,14 +247,6 @@ export function PracticeScreen({
   }, [controller, session, sessionCards.length, sessionWindowStart]);
 
   useEffect(() => {
-    void loadRecentPractice();
-  }, [loadRecentPractice]);
-
-  useEffect(() => {
-    void loadWorkload([...selectedDeckIds], [...selectedTagIds]);
-  }, [loadWorkload, selectedDeckIds, selectedTagIds]);
-
-  useEffect(() => {
     if (!session || sessionWindowStart + sessionCards.length >= session.cardCount) return;
     if (position + 5 >= sessionCards.length) void loadNextWindow();
   }, [loadNextWindow, position, session, sessionCards.length, sessionWindowStart]);
@@ -324,59 +256,28 @@ export function PracticeScreen({
     handledLaunchRequestRef.current = launchRequest.requestId;
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
-    setReturnTarget(launchRequest.returnTarget);
     setSession(null);
     setSessionCards([]);
     setSessionWindowStart(0);
     setCompleted(false);
     setErrorMessage(null);
-    if (launchRequest.cardIds.length > 0) {
-      setSelectedDeckIds(new Set());
-      setSelectedTagIds(new Set());
-      setTemporaryCardIds(launchRequest.cardIds);
-      onLaunchConsumed();
-      if (launchRequest.autoStart) {
-        void beginCardSession(launchRequest.cardIds, settings.practiceShuffle);
-      }
-      return;
-    }
-    const eligible = launchRequest.deckIds.filter((deckId) =>
-      activeDecks.some((deck) => deck.id === deckId && deck.generatedCardCount > 0),
-    );
-    setTemporaryCardIds([]);
-    setSelectedDeckIds(new Set(eligible));
-    setSelectedTagIds(new Set(launchRequest.tagIds));
+    const request = canonicalLaunchRequest(launchRequest);
     onLaunchConsumed();
-    if (launchRequest.autoStart && (eligible.length > 0 || launchRequest.tagIds.length > 0)) {
-      void beginSession(
-        eligible,
-        launchRequest.tagIds,
-        settings.practiceShuffle,
-        launchRequest.mode,
-      );
-    }
-  }, [
-    activeDecks,
-    beginCardSession,
-    beginSession,
-    launchRequest,
-    onLaunchConsumed,
-    settings.practiceShuffle,
-  ]);
+    void beginPractice(request);
+  }, [beginPractice, launchRequest, onLaunchConsumed]);
 
-  useEffect(() => {
-    if (!restoreCheckpoint) return;
-    let active = true;
-    onRestoreConsumed();
-    pendingStartRef.current = null;
-    pendingReviewRef.current = null;
-    setReturnTarget(null);
-    setErrorMessage(null);
-    setIsStarting(true);
-    void controller
-      .resume(restoreCheckpoint.sessionId)
-      .then(async (restored) => {
-        if (!active) return;
+  const resumeCheckpoint = useCallback(
+    async (checkpoint: PracticeCheckpoint): Promise<void> => {
+      if (startingRef.current) return;
+      startingRef.current = true;
+      pendingStartRef.current = null;
+      pendingReviewRef.current = null;
+      setPracticeRequest(null);
+      setRecovery({ kind: "restore", checkpoint });
+      setErrorMessage(null);
+      setIsStarting(true);
+      try {
+        const restored = await controller.resume(checkpoint.sessionId);
         setSession(restored.session);
         setSessionCards(restored.session.firstWindow.cards);
         setSessionWindowStart(restored.resumePosition);
@@ -386,48 +287,57 @@ export function PracticeScreen({
         setCompleted(restored.completed);
         setRevealed(restored.revealed);
         setPreviewSet(null);
-        setTemporaryCardIds([]);
         const first = restored.session.firstWindow.cards[0];
         if (restored.revealed && first && !restored.completed) {
           setPreviewSet(
             await controller.reveal(restored.session.id, first.presentation.cardId),
           );
         }
+        setRecovery(null);
         questionShownAtRef.current = Date.now();
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
+      } catch (error: unknown) {
         setErrorMessage(
           `The interrupted practice session could not be restored: ${getErrorMessage(error)}`,
         );
         setSession(null);
         setSessionCards([]);
         setSessionWindowStart(0);
-      })
-      .finally(() => {
-        if (active) setIsStarting(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [controller, onRestoreConsumed, restoreCheckpoint]);
+        setRecovery({ kind: "restore", checkpoint });
+      } finally {
+        startingRef.current = false;
+        setIsStarting(false);
+      }
+    },
+    [controller],
+  );
 
   useEffect(() => {
-    if (!session || completed) return;
-    const timer = window.setTimeout(() => {
-      void saveUiCheckpoint({
-        section: "practice",
-        practice: {
-          sessionId: session.id,
-          position: sessionWindowStart + position,
-          revealed,
-        },
-      }).catch((error: unknown) => {
-        console.error("Unable to save the practice restoration checkpoint:", getErrorMessage(error));
-      });
-    }, 150);
-    return () => window.clearTimeout(timer);
-  }, [completed, position, revealed, session, sessionWindowStart]);
+    if (!restoreCheckpoint) return;
+    onRestoreConsumed();
+    void resumeCheckpoint(restoreCheckpoint);
+  }, [onRestoreConsumed, restoreCheckpoint, resumeCheckpoint]);
+
+  useEffect(() => {
+    if (!session && (restoreCheckpoint || isStarting)) return;
+    if (!session || completed) {
+      onCheckpointChange(null);
+      return;
+    }
+    onCheckpointChange({
+      sessionId: session.id,
+      position: sessionWindowStart + position,
+      revealed,
+    });
+  }, [
+    completed,
+    isStarting,
+    onCheckpointChange,
+    position,
+    restoreCheckpoint,
+    revealed,
+    session,
+    sessionWindowStart,
+  ]);
 
   useEffect(() => {
     if (!session || !current || completed) return;
@@ -627,7 +537,6 @@ export function PracticeScreen({
     ) {
       setCompleted(true);
       experience.emit({ type: "session_completed" });
-      void loadRecentPractice();
       return;
     }
     const nextPosition = position + 1;
@@ -652,37 +561,16 @@ export function PracticeScreen({
     try {
       await controller.complete(session.id);
       if (returnTarget) {
-        onEndEarly(returnTarget);
+        await onEndEarly(returnTarget);
         return;
       }
-      resetToSetup();
+      await onChooseDecks();
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
       endingRef.current = false;
       setIsEnding(false);
     }
-  }
-
-  function resetToSetup(): void {
-    pendingStartRef.current = null;
-    pendingReviewRef.current = null;
-    setSession(null);
-    setSessionCards([]);
-    setSessionWindowStart(0);
-    setPosition(0);
-    setRevealed(false);
-    setPreviewSet(null);
-    setCompleted(false);
-    setRatedCount(0);
-    setConfidenceCounts([0, 0, 0, 0]);
-    setTemporaryCardIds([]);
-    setEditingCard(null);
-    setReturnTarget(null);
-    setSelectedTagIds(new Set());
-    setErrorMessage(null);
-    void saveUiCheckpoint({ section: "practice" });
-    void loadRecentPractice();
   }
 
   if (session && editingCard) {
@@ -704,26 +592,27 @@ export function PracticeScreen({
   }
 
   if (session && completed) {
-    const sessionDeckIds = [...new Set(sessionCards.map((card) => card.presentation.deckId))];
+    const sessionDeckIds =
+      practiceRequest?.kind === "selected"
+        ? practiceRequest.deckIds
+        : practiceRequest?.kind === "cards"
+          ? [...new Set(sessionCards.map((card) => card.presentation.deckId))]
+          : [];
     return (
       <PracticeComplete
         ratedCount={ratedCount}
         confidenceCounts={confidenceCounts}
         isStarting={isStarting}
+        canRestart={practiceRequest !== null}
         errorMessage={errorMessage}
-        onViewAnalytics={() => onViewAnalytics(session.id, sessionDeckIds)}
-        onChooseDecks={resetToSetup}
+        onViewAnalytics={() => {
+          if (!startingRef.current) onViewAnalytics(session.id, sessionDeckIds);
+        }}
+        onChooseDecks={() => {
+          if (!startingRef.current) void onChooseDecks();
+        }}
         onRestart={() => {
-          if (temporaryCardIds.length > 0) {
-            void beginCardSession(temporaryCardIds, shuffle);
-          } else {
-            void beginSession(
-              [...selectedDeckIds],
-              [...selectedTagIds],
-              shuffle,
-              session.mode === "extra" ? "extra" : "scheduled",
-            );
-          }
+          if (practiceRequest) void beginPractice(practiceRequest);
         }}
       />
     );
@@ -731,7 +620,8 @@ export function PracticeScreen({
 
   if (session && current) {
     return (
-      <ActivePractice
+      <PerformanceProfiler id="active-practice">
+        <ActivePractice
         session={session}
         current={current}
         position={sessionWindowStart + position}
@@ -750,8 +640,13 @@ export function PracticeScreen({
         onScheduleAction={(action, intent) => void manageCurrent(action, intent)}
         onEnd={() => void endSession()}
         onLinkError={setErrorMessage}
-      />
+        />
+      </PerformanceProfiler>
     );
+  }
+
+  if (isStarting && !session) {
+    return <LoadingState label={recovery?.kind === "restore" ? "Restoring practice…" : "Starting practice…"} />;
   }
 
   return (
@@ -762,41 +657,31 @@ export function PracticeScreen({
             <Icon name="brain" size={22} />
           </span>
           <h1>Practice</h1>
-          <p>
-            Scheduled sessions protect ready reviews and daily workload limits. Extra study is
-            always an explicit choice.
-          </p>
+          <p>The requested session could not be opened safely.</p>
         </div>
       </header>
-      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
-      {selectedTagIds.size > 0 ? (
-        <div className={ownedClassNames(ownedStyleMaps, "inline-alert info-alert")}>
-          This launch is scoped to {selectedTagIds.size} selected tag
-          {selectedTagIds.size === 1 ? "" : "s"}.
-        </div>
-      ) : null}
-      <PracticeSetup
-        decks={activeDecks}
-        selectedDeckIds={selectedDeckIds}
-        shuffle={shuffle}
-        isStarting={isStarting}
-        workloadStatus={workloadStatus}
-        workload={workload}
-        workloadError={workloadError}
-        recentDecks={recentDecks}
-        onSelectedDeckIdsChange={(next) => {
-          setSelectedDeckIds(next);
-          setSelectedTagIds(new Set());
-        }}
-        onShuffleChange={setShuffle}
-        onStart={(deckIds, requestedShuffle, mode) =>
-          void beginSession(deckIds, [...selectedTagIds], requestedShuffle, mode)
-        }
-      />
-      <StudyGuideLibrarySection
-        showToast={showToast}
-        onPracticeCards={(cardIds) => beginCardSession(cardIds, settings.practiceShuffle)}
-      />
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      <div className={ownedClassNames(ownedStyleMaps, "practice-recovery-actions")}>
+        <Button
+          variant="primary"
+          disabled={!recovery || isStarting}
+          onClick={() => {
+            if (recovery?.kind === "start") void beginPractice(recovery.request);
+            if (recovery?.kind === "restore") void resumeCheckpoint(recovery.checkpoint);
+          }}
+        >
+          Retry
+        </Button>
+        <Button
+          disabled={isStarting}
+          onClick={() => {
+            if (returnTarget) void onEndEarly(returnTarget);
+            else void onChooseDecks();
+          }}
+        >
+          Return
+        </Button>
+      </div>
     </div>
   );
 }
@@ -811,29 +696,31 @@ function operationIdForStart(
   return operationId;
 }
 
-function selectedStartKey(
-  deckIds: string[],
-  tagIds: string[],
-  shuffle: boolean,
-  mode: "scheduled" | "extra",
-): string {
-  const canonicalDeckIds = [...new Set(deckIds)].sort();
-  const canonicalTagIds = [...new Set(tagIds)].sort();
-  return JSON.stringify({
-    kind: "selected",
-    deckIds: canonicalDeckIds,
-    tagIds: canonicalTagIds,
-    shuffle,
-    mode,
-  });
-}
-
-function cardStartKey(cardIds: string[], shuffle: boolean): string {
+function canonicalLaunchRequest(request: PracticeLaunchRequest): CanonicalPracticeRequest {
+  if (request.kind === "selected") {
+    return {
+      kind: "selected",
+      deckIds: [...new Set(request.deckIds)],
+      tagIds: [...new Set(request.tagIds)],
+      shuffle: request.shuffle,
+      mode: request.mode,
+    };
+  }
   const seen = new Set<string>();
-  const canonicalCardIds = cardIds.filter((cardId) => {
+  const cardIds = request.cardIds.filter((cardId) => {
     if (seen.has(cardId)) return false;
     seen.add(cardId);
     return true;
   });
-  return JSON.stringify({ kind: "cards", cardIds: canonicalCardIds, shuffle });
+  return { kind: "cards", cardIds, shuffle: request.shuffle };
+}
+
+function practiceRequestHasScope(request: CanonicalPracticeRequest): boolean {
+  return request.kind === "cards"
+    ? request.cardIds.length > 0
+    : request.deckIds.length > 0 || request.tagIds.length > 0;
+}
+
+function practiceStartKey(request: CanonicalPracticeRequest): string {
+  return JSON.stringify(request);
 }

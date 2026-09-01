@@ -179,7 +179,7 @@ describe("TemplatesScreen", () => {
 
     expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
     expect(templatesIpc.getCardTemplate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Concept review" }));
 
     expect(await screen.findByRole("heading", { name: "Edit card template" })).toBeTruthy();
     expect(templatesIpc.getCardTemplate).toHaveBeenCalledWith(template.id);
@@ -189,7 +189,9 @@ describe("TemplatesScreen", () => {
     const showToast = renderTemplates();
 
     expect(await screen.findByText("Reusable concept cards")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const deleteButton = screen.getByRole("button", { name: "Delete Concept review" });
+    expect(deleteButton.getAttribute("data-tone")).toBe("danger");
+    fireEvent.click(deleteButton);
     expect(
       await screen.findByRole("alertdialog", { name: "Delete “Concept review”?" }),
     ).toBeTruthy();

@@ -5,6 +5,7 @@ import * as cardsIpc from "../ipc/cards";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
 import * as schedulingIpc from "../ipc/scheduling";
+import type { AnalyticsSearchLaunch } from "../navigation/flashcardsRoutes";
 import { CardsScreen } from "./CardsScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
@@ -138,7 +139,10 @@ function actionResult(
   };
 }
 
-function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck]) {
+function renderScreen(
+  decks: decksIpc.DeckSummary[] = [deck, secondDeck],
+  analyticsSearchLaunch?: AnalyticsSearchLaunch,
+) {
   const showToast = vi.fn();
   const view = render(
     <CardsScreen
@@ -147,9 +151,25 @@ function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck]) {
       onPracticeCards={vi.fn()}
       onDirtyChange={vi.fn()}
       showToast={showToast}
+      analyticsSearchLaunch={analyticsSearchLaunch}
     />,
   );
   return { ...view, showToast };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+function chooseSelectedAction(label: string): void {
+  fireEvent.click(screen.getByRole("button", { name: "More selection actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: label }));
 }
 
 describe("CardsScreen", () => {
@@ -187,6 +207,136 @@ describe("CardsScreen", () => {
     );
   });
 
+  it("gates an Analytics launch until its exact stable tag ID is verified", async () => {
+    const tagId = "d".repeat(32);
+    const lookup = deferred<cardsIpc.TagSummary[]>();
+    vi.mocked(cardsIpc.listTags).mockReturnValueOnce(lookup.promise);
+    renderScreen(undefined, {
+      requestId: 41,
+      source: "analytics",
+      tagIds: [tagId],
+    });
+
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
+    expect(cardsIpc.searchCards).not.toHaveBeenCalled();
+    lookup.resolve([
+      {
+        id: tagId,
+        name: "Anticoagulants",
+        sourceNoteCount: 1,
+        generatedCardCount: 1,
+        studyableDueCount: 1,
+      },
+    ]);
+
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([tagId]);
+    expect(
+      vi.mocked(cardsIpc.searchCards).mock.calls.every(
+        ([input]) => input.tagIds.length === 1 && input.tagIds[0] === tagId,
+      ),
+    ).toBe(true);
+  });
+
+  it("blocks a missing Analytics tag until the user explicitly clears it", async () => {
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
+    renderScreen(undefined, {
+      requestId: 42,
+      source: "analytics",
+      tagIds: ["9".repeat(32)],
+    });
+
+    const clearButton = await screen.findByRole("button", {
+      name: "Clear unavailable tag filter",
+    });
+    expect(cardsIpc.searchCards).not.toHaveBeenCalled();
+    fireEvent.click(clearButton);
+
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
+  });
+
+  it("blocks a rejected Analytics tag lookup until the user explicitly clears it", async () => {
+    vi.mocked(cardsIpc.listTags)
+      .mockRejectedValueOnce(new Error("Tag lookup failed"))
+      .mockResolvedValueOnce([]);
+    renderScreen(undefined, {
+      requestId: 43,
+      source: "analytics",
+      tagIds: ["8".repeat(32)],
+    });
+
+    expect(await screen.findByText(/Tag lookup failed/u)).toBeTruthy();
+    expect(cardsIpc.searchCards).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear unavailable tag filter" }),
+    );
+
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
+  });
+
+  it("keeps an explicit clear while verification is pending despite late completion", async () => {
+    const tagId = "7".repeat(32);
+    const lookup = deferred<cardsIpc.TagSummary[]>();
+    vi.mocked(cardsIpc.listTags)
+      .mockReturnValueOnce(lookup.promise)
+      .mockResolvedValueOnce([]);
+    renderScreen(undefined, {
+      requestId: 44,
+      source: "analytics",
+      tagIds: [tagId],
+    });
+
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
+
+    lookup.resolve([
+      {
+        id: tagId,
+        name: "Late tag",
+        sourceNoteCount: 1,
+        generatedCardCount: 1,
+        studyableDueCount: 1,
+      },
+    ]);
+    await Promise.resolve();
+    expect(
+      vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0),
+    ).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Clear unavailable tag filter" }),
+    ).toBeNull();
+  });
+
+  it("keeps an explicit clear while verification is pending despite late rejection", async () => {
+    const lookup = deferred<cardsIpc.TagSummary[]>();
+    vi.mocked(cardsIpc.listTags)
+      .mockReturnValueOnce(lookup.promise)
+      .mockResolvedValueOnce([]);
+    renderScreen(undefined, {
+      requestId: 45,
+      source: "analytics",
+      tagIds: ["6".repeat(32)],
+    });
+
+    await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
+    lookup.reject(new Error("Late tag failure"));
+    await Promise.resolve();
+
+    expect(
+      vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0),
+    ).toBe(true);
+    expect(screen.queryByText(/Late tag failure/u)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Clear unavailable tag filter" }),
+    ).toBeNull();
+  });
+
   it("applies an exact-card suspend action from the selection menu", async () => {
     renderScreen();
     fireEvent.click(
@@ -194,10 +344,7 @@ describe("CardsScreen", () => {
         name: "Select What reverses warfarin?",
       }),
     );
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Actions for selected cards" }),
-      { target: { value: "suspend" } },
-    );
+    chooseSelectedAction("Suspend cards");
     await waitFor(() =>
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
         mutationId: "f".repeat(32),
@@ -216,10 +363,7 @@ describe("CardsScreen", () => {
     const { showToast } = renderScreen();
 
     fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Actions for selected cards" }),
-      { target: { value: "suspend" } },
-    );
+    chooseSelectedAction("Suspend cards");
 
     await waitFor(() => {
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledOnce();
@@ -245,13 +389,9 @@ describe("CardsScreen", () => {
         name: "Select What reverses warfarin?",
       }),
     );
-    const actions = screen.getByRole("combobox", {
-      name: "Actions for selected cards",
-    });
-
-    fireEvent.change(actions, { target: { value: "suspend" } });
+    chooseSelectedAction("Suspend cards");
     expect(await screen.findByText(/safely retry the complete selection/u)).toBeTruthy();
-    fireEvent.change(actions, { target: { value: "suspend" } });
+    chooseSelectedAction("Suspend cards");
 
     await waitFor(() => {
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledTimes(2);
@@ -269,7 +409,7 @@ describe("CardsScreen", () => {
     });
     renderScreen();
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Vitamin K" }));
-    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(screen.getByText("1 item selected")).toBeTruthy();
     expect(
       (
         screen.getByRole("checkbox", {
@@ -299,14 +439,14 @@ describe("CardsScreen", () => {
     expect(screen.queryByRole("button", { name: "Practice results" })).toBeNull();
     expect(within(table).queryByText("Ready now")).toBeNull();
 
-    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
-    expect((practiceSelected as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Practice selected" })).toBeNull();
 
     fireEvent.click(
       screen.getByRole("checkbox", {
         name: "Select What reverses warfarin?",
       }),
     );
+    const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
     expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(practiceSelected);

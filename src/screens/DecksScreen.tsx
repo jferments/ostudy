@@ -9,7 +9,9 @@ import type { CreateDeckInput, DeckSummary } from "../ipc/decks";
 import type { AppSettings } from "../ipc/settings";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { publishExport, selectExternalImport } from "../platform/files";
+import { IconButton } from "../ui/icons/IconButton";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import { ResponsiveActionGroup } from "../ui/patterns/ResponsiveActionGroup";
 import {
   CardBrowserWorkspace,
   type CardBrowserView,
@@ -25,7 +27,7 @@ interface DecksScreenProps {
   decks: DeckSummary[];
   settings: AppSettings;
   refreshDecks: () => Promise<DeckSummary[]>;
-  onPracticeDeck: (deckId: string, origin: "library" | "detail") => void | Promise<void>;
+  onPracticeDeck: (deckId: string) => void | Promise<void>;
   openDeckRequest?: DeckOpenRequest | null;
   onOpenDeckRequestConsumed?: () => void;
   onManageTemplates?: () => void | Promise<void>;
@@ -429,7 +431,7 @@ export function DecksScreen({
                       {!archived ? (
                         <button
                           type="button"
-                          onClick={() => void onPracticeDeck(deck.id, "library")}
+                          onClick={() => void onPracticeDeck(deck.id)}
                           disabled={deck.generatedCardCount === 0}
                           title={practiceTitle(deck)}
                         >
@@ -529,60 +531,69 @@ export function DecksScreen({
         <>
           {view === "detail" ? (
             <header className={ownedClassNames(ownedStyleMaps, "screen-header deck-detail-header")} key="deck-detail-header">
-              <div>
-                <button type="button" className={ownedClassNames(ownedStyleMaps, "back-button")} onClick={() => setView("library")}>
-                  ← All decks
-                </button>
-                <div className={ownedClassNames(ownedStyleMaps, "deck-title-row")}>
-                  <div>
-                    <h1>{selectedDeck.name}</h1>
-                    {selectedDeck.description ? <p>{selectedDeck.description}</p> : null}
-                  </div>
-                  <button
-                    type="button"
-                    className={ownedClassNames(ownedStyleMaps, "icon-button deck-edit-button")}
-                    aria-label="Edit deck name and description"
-                    title="Edit deck"
+              <button type="button" className={ownedClassNames(ownedStyleMaps, "back-button")} onClick={() => setView("library")}>
+                ← All decks
+              </button>
+              <div className={ownedClassNames(ownedStyleMaps, "deck-title-row")}>
+                <div className={ownershipStyles["deck-title-line"]}>
+                  <h1>{selectedDeck.name}</h1>
+                  <IconButton
+                    icon="edit"
+                    label="Edit deck name and description"
+                    tooltip="Edit deck"
+                    className={ownershipStyles["deck-edit-button"]}
                     onClick={() => setDeckDialog("edit")}
-                  >
-                    ✎
-                  </button>
+                  />
                 </div>
+                {selectedDeck.description ? <p>{selectedDeck.description}</p> : null}
               </div>
-              <div className={ownedClassNames(ownedStyleMaps, "header-actions wrap-actions")}>
-                <button
-                  type="button"
-                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                  onClick={() => void onPracticeDeck(selectedDeck.id, "detail")}
-                  disabled={selectedDeck.generatedCardCount === 0}
-                  title={practiceTitle(selectedDeck)}
-                >
-                  Practice
-                </button>
-                <button
-                  type="button"
-                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                  disabled={isTransferring}
-                  onClick={() => void handleExport(selectedDeck)}
-                >
-                  Export
-                </button>
-                <button
-                  type="button"
-                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                  onClick={() => void handleArchiveDeck(selectedDeck, true)}
-                >
-                  Archive
-                </button>
-                <button
-                  type="button"
-                  className={ownedClassNames(ownedStyleMaps, "secondary-button danger-text")}
-                  aria-label={`Delete ${selectedDeck.name}`}
-                  onClick={() => void handleDeleteDeck(selectedDeck)}
-                >
-                  Delete deck
-                </button>
-              </div>
+              <ResponsiveActionGroup
+                label={`${selectedDeck.name} actions`}
+                className={ownershipStyles["deck-detail-actions"]}
+                actions={[
+                  {
+                    id: "practice",
+                    label: "Practice",
+                    placement: "always-visible",
+                    variant: "primary",
+                    description: practiceTitle(selectedDeck),
+                    disabled:
+                      selectedDeck.archivedAt !== null ||
+                      selectedDeck.generatedCardCount === 0,
+                    onSelect: () => void onPracticeDeck(selectedDeck.id),
+                  },
+                  {
+                    id: "export",
+                    label: "Export",
+                    placement: "wide-and-medium",
+                    loading: isTransferring,
+                    onSelect: () => void handleExport(selectedDeck),
+                  },
+                  {
+                    id: selectedDeck.archivedAt === null ? "archive" : "restore",
+                    label:
+                      selectedDeck.archivedAt === null
+                        ? `Archive ${selectedDeck.name}`
+                        : `Restore ${selectedDeck.name}`,
+                    placement: "wide-only",
+                    ...(selectedDeck.archivedAt === null
+                      ? { presentation: "icon" as const, icon: "archive" as const }
+                      : {}),
+                    onSelect: () =>
+                      void handleArchiveDeck(
+                        selectedDeck,
+                        selectedDeck.archivedAt === null,
+                      ),
+                  },
+                  {
+                    id: "delete",
+                    label: `Delete ${selectedDeck.name}`,
+                    placement: "overflow-only",
+                    destructive: true,
+                    onSelect: () => void handleDeleteDeck(selectedDeck),
+                  },
+                ]}
+              />
             </header>
           ) : null}
 

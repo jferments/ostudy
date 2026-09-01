@@ -203,7 +203,7 @@ export function DocumentsScreen({
       await refreshDocuments();
       showToast(
         "success",
-        `Study guide revision ${guide.revision} created. Open it from the Practice screen.`,
+        `Study guide revision ${guide.revision} created. Open it from Study Guides.`,
       );
     } catch (error: unknown) {
       const code = getErrorCode(error);

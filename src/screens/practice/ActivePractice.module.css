@@ -1,15 +1,4 @@
 @layer components {
-  .progressRow {
-    display: grid;
-    min-width: 0;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--ostudy-space-3);
-    color: var(--ostudy-color-text-muted);
-    font-size: .75rem;
-    font-variant-numeric: tabular-nums;
-  }
-
   .stack {
     position: relative;
     display: flex;
@@ -74,7 +63,6 @@
   :root[data-motion="none"] .stack > .cardSurface { animation: none; }
 
   @media (max-width: 760px) {
-    .progressRow { gap: var(--ostudy-space-2); }
     .stack { min-height: clamp(190px, 42vh, 430px); margin-block: var(--ostudy-space-2); }
     .stack::before { transform: translate3d(0, 4px, -1px) scale(.994); }
     .stack::after { transform: translate3d(0, 8px, -2px) scale(.988); }

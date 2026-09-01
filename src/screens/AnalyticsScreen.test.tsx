@@ -170,7 +170,10 @@ function analyticsForRange(
         cardId: "d".repeat(32),
         cardLabel: "Basic",
         questionExcerpt: "What rhythm has no P waves?",
-        tags: ["Arrhythmias"],
+        tags: [
+          { tagId: "f".repeat(32), tagName: "Shared name", isCurrent: true },
+          { tagId: "0".repeat(32), tagName: "Shared name", isCurrent: false },
+        ],
         outcome: "somewhat_confident",
         rating: 3,
         responseTimeMs: 4000,
@@ -222,7 +225,7 @@ function analyticsForRange(
   };
 }
 
-function renderAnalytics(onPracticeScope = vi.fn()) {
+function renderAnalytics(onPracticeScope = vi.fn(), onSearchTag = vi.fn()) {
   render(
     <AnalyticsScreen
       decks={[deck]}
@@ -230,6 +233,7 @@ function renderAnalytics(onPracticeScope = vi.fn()) {
       launchRequest={null}
       onLaunchConsumed={vi.fn()}
       onPracticeScope={onPracticeScope}
+      onSearchTag={onSearchTag}
       showToast={vi.fn()}
     />,
   );
@@ -263,6 +267,8 @@ describe("AnalyticsScreen", () => {
     expect(screen.getByRole("img", { name: "Learning progress chart" })).toBeTruthy();
     expect(screen.getAllByText("Arrhythmias").length).toBeGreaterThan(0);
     expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.getAllByText(/Shared name/)).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Shared name" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "View chart data" }));
     expect(
@@ -285,6 +291,69 @@ describe("AnalyticsScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Practice ready" }));
     expect(onPracticeScope).toHaveBeenCalledWith([], [tagId]);
+  });
+
+  it.each([
+    {
+      label: "reached review limit",
+      reviewsRemaining: 0,
+      dueCount: 4,
+      expected:
+        "Today's review limit is reached. Ready cards remain scheduled; extra study is still available from a deck’s Practice action in Flashcards.",
+    },
+    {
+      label: "ready work exceeds capacity",
+      reviewsRemaining: 2,
+      dueCount: 5,
+      expected: "3 ready cards exceed today's remaining review capacity.",
+    },
+    {
+      label: "work remains within limits",
+      reviewsRemaining: 190,
+      dueCount: 4,
+      expected: "190 reviews and 17 new cards remain in today's limits.",
+    },
+  ])("renders the $label workload branch", async ({ reviewsRemaining, dueCount, expected }) => {
+    const analytics = analyticsForRange("7d");
+    analytics.dailyLimits.reviewsRemaining = reviewsRemaining;
+    analytics.currentInventory.studyableDueCount = dueCount;
+    vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
+
+    renderAnalytics();
+
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
+  it("routes current recent-review tags by stable ID and leaves historical tags as text", async () => {
+    const onSearchTag = vi.fn();
+    const analytics = analyticsForRange("7d");
+    const recent = analytics.recentReviews[0];
+    if (!recent) throw new Error("Expected a recent review fixture.");
+    recent.tags = [
+      { tagId: "f".repeat(32), tagName: "Shared name", isCurrent: true },
+      { tagId: "e".repeat(32), tagName: "Shared name", isCurrent: true },
+      { tagId: "0".repeat(32), tagName: "Shared name", isCurrent: false },
+    ];
+    vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
+    renderAnalytics(vi.fn(), onSearchTag);
+
+    const actions = await screen.findAllByRole("button", {
+      name: "Search cards tagged Shared name",
+    });
+    expect(actions).toHaveLength(2);
+    actions[0]?.focus();
+    expect(document.activeElement).toBe(actions[0]);
+    expect(actions[0]?.tagName).toBe("BUTTON");
+    fireEvent.click(actions[0]!);
+    fireEvent.click(actions[1]!);
+
+    expect(onSearchTag.mock.calls).toEqual([
+      ["f".repeat(32)],
+      ["e".repeat(32)],
+    ]);
+    const tagGroup = actions[0]?.closest("small");
+    expect(tagGroup?.querySelectorAll("button")).toHaveLength(2);
+    expect(tagGroup?.textContent?.match(/Shared name/gu)).toHaveLength(3);
   });
 
   it("submits an exact custom local date range", async () => {

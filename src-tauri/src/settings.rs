@@ -40,6 +40,9 @@ const AI_REASONING_EFFORTS: &[&str] = &[
     "max",
 ];
 const DEFAULT_AI_REASONING_EFFORT: &str = "low";
+const DEFAULT_FONT_PRESET: &str = "plex";
+const LEGACY_SYSTEM_FONT_PRESET: &str = "system";
+const LEGACY_UNTOUCHED_SETTINGS_TIMESTAMP: i64 = 0;
 const MAX_DAILY_LIMIT: i64 = 10_000;
 
 static ACTIVE_AI_REASONING_EFFORT: LazyLock<RwLock<String>> =
@@ -198,16 +201,20 @@ fn get_font_setting(connection: &Connection, key: &str) -> Result<String, Comman
         .optional()
         .map_err(CommandError::database)?;
     let Some((serialized, updated_at)) = row else {
-        return Ok("plex".to_string());
+        return Ok(DEFAULT_FONT_PRESET.to_string());
     };
     let value: String = serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
-    // Migration 0002 seeded system fonts at timestamp zero. That sentinel lets
-    // the new default become Plex without overwriting an explicit user choice:
-    // every real settings save writes a nonzero wall-clock timestamp.
-    if updated_at == 0 && value == "system" {
-        Ok("plex".to_string())
+    Ok(resolve_font_compatibility(value, updated_at))
+}
+
+fn resolve_font_compatibility(value: String, updated_at: i64) -> String {
+    // Released migration 0002 seeded system fonts at timestamp zero. That
+    // sentinel is the only compatibility evidence that the old default was
+    // untouched: every real settings save writes a nonzero wall-clock time.
+    if updated_at == LEGACY_UNTOUCHED_SETTINGS_TIMESTAMP && value == LEGACY_SYSTEM_FONT_PRESET {
+        DEFAULT_FONT_PRESET.to_string()
     } else {
-        Ok(value)
+        value
     }
 }
 
@@ -435,7 +442,30 @@ mod tests {
     }
 
     #[test]
-    fn explicit_system_font_choice_survives_the_new_default() {
+    fn fresh_and_legacy_untouched_fonts_resolve_to_plex() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                let loaded = load_settings(connection)?;
+                assert_eq!(loaded.ui_font, DEFAULT_FONT_PRESET);
+                assert_eq!(loaded.card_font, DEFAULT_FONT_PRESET);
+
+                connection
+                    .execute(
+                        "DELETE FROM app_settings WHERE key IN ('uiFont', 'cardFont')",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                let missing = load_settings(connection)?;
+                assert_eq!(missing.ui_font, DEFAULT_FONT_PRESET);
+                assert_eq!(missing.card_font, DEFAULT_FONT_PRESET);
+                Ok(())
+            })
+            .expect("fresh font defaults should resolve");
+    }
+
+    #[test]
+    fn explicit_system_font_choices_survive_the_new_default_independently() {
         let database = Database::open_in_memory().expect("database should open");
         let mut settings = database
             .with_connection(load_settings)
@@ -452,6 +482,58 @@ mod tests {
             .expect("settings should reload");
         assert_eq!(loaded.ui_font, "system");
         assert_eq!(loaded.card_font, "system");
+        database
+            .with_connection(|connection| {
+                for key in ["uiFont", "cardFont"] {
+                    let updated_at: i64 = connection
+                        .query_row(
+                            "SELECT updated_at FROM app_settings WHERE key = ?1",
+                            [key],
+                            |row| row.get(0),
+                        )
+                        .map_err(CommandError::database)?;
+                    assert!(updated_at > LEGACY_UNTOUCHED_SETTINGS_TIMESTAMP);
+                }
+                Ok(())
+            })
+            .expect("explicit font timestamps should be durable");
+    }
+
+    #[test]
+    fn legacy_font_compatibility_preserves_mixed_explicit_choices() {
+        let database = Database::open_in_memory().expect("database should open");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute_batch(
+                        "UPDATE app_settings
+                         SET value_json = '\"system\"', updated_at = 0
+                         WHERE key = 'uiFont';
+                         UPDATE app_settings
+                         SET value_json = '\"custom:Reader Sans\"', updated_at = 41
+                         WHERE key = 'cardFont';",
+                    )
+                    .map_err(CommandError::database)?;
+                let mixed = load_settings(connection)?;
+                assert_eq!(mixed.ui_font, DEFAULT_FONT_PRESET);
+                assert_eq!(mixed.card_font, "custom:Reader Sans");
+
+                connection
+                    .execute_batch(
+                        "UPDATE app_settings
+                         SET value_json = '\"serif\"', updated_at = 0
+                         WHERE key = 'uiFont';
+                         UPDATE app_settings
+                         SET value_json = '\"system\"', updated_at = 52
+                         WHERE key = 'cardFont';",
+                    )
+                    .map_err(CommandError::database)?;
+                let explicit = load_settings(connection)?;
+                assert_eq!(explicit.ui_font, "serif");
+                assert_eq!(explicit.card_font, "system");
+                Ok(())
+            })
+            .expect("only untouched system defaults should migrate");
     }
 
     #[test]

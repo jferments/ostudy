@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "updatedAt": 1724800000002,
+  "section": "study-guides",
+  "flashcardsWorkspace": null,
+  "deckId": null,
+  "editorDraftId": null,
+  "practice": {
+    "sessionId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "position": 7,
+    "revealed": false,
+    "returnTarget": {
+      "section": "study-guides",
+      "flashcardsWorkspace": null,
+      "deckId": null
+    }
+  },
+  "analytics": null
+}

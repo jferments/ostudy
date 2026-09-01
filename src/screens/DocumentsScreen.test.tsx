@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as documentIpc from "../ipc/documents";
+import * as studyGuideIpc from "../ipc/studyGuides";
 import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
@@ -17,6 +18,10 @@ vi.mock("../ipc/documents", () => ({
   openDocumentSource: vi.fn(),
   deletePdfDocument: vi.fn(),
   setDocumentArchived: vi.fn(),
+}));
+vi.mock("../ipc/studyGuides", () => ({
+  generateDocumentStudyGuide: vi.fn(),
+  cancelDocumentStudyGuideGeneration: vi.fn(),
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
@@ -123,6 +128,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
     vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
+    vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
   });
 
   it("shows a simple upload-first empty state", async () => {
@@ -382,6 +388,24 @@ describe("DocumentsScreen", () => {
     expect(screen.queryByRole("button", { name: "Generate more cards" })).toBeNull();
     expect(screen.getByText(/previous generated deck was deleted/u)).toBeTruthy();
     expect(screen.getByText(/retained document/u)).toBeTruthy();
+  });
+
+  it("directs generated guides to the Study Guides destination", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockResolvedValue({
+      revision: 4,
+    } as studyGuideIpc.DocumentStudyGuide);
+    const { showToast } = renderDocuments();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate study guide" }));
+
+    await waitFor(() => {
+      expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId);
+      expect(showToast).toHaveBeenCalledWith(
+        "success",
+        "Study guide revision 4 created. Open it from Study Guides.",
+      );
+    });
   });
 
   it("opens the managed source through the native document command", async () => {

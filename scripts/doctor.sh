@@ -58,7 +58,7 @@ else
 fi
 
 if (( CHECK_NATIVE_SMOKE == 1 )); then
-  for command_name in xvfb-run WebKitWebDriver tauri-driver; do
+  for command_name in xvfb-run openbox xprop WebKitWebDriver tauri-driver; do
     require_command "$command_name"
   done
 fi

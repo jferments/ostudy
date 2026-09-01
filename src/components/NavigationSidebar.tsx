@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
-import type { AppSection } from "../controllers/useAppController";
+import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 import { Icon, type IconName } from "../ui/icons/Icon";
 import { Sheet } from "../ui/overlays/Dialog";
@@ -9,27 +9,44 @@ import styles from "./NavigationSidebar.module.css";
 
 interface NavigationSidebarProps {
   section: AppSection;
+  activeWorkflow: AppWorkflow | null;
   onNavigate: (section: AppSection) => void | Promise<void>;
+  windowControls?: ReactNode;
 }
 
 const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string }> = [
   { section: "decks", icon: "cards", label: "Flashcards" },
+  { section: "study-guides", icon: "study-guide", label: "Study Guides" },
   { section: "documents", icon: "document", label: "Documents" },
-  { section: "practice", icon: "practice", label: "Practice" },
   { section: "analytics", icon: "analytics", label: "Analytics" },
   { section: "settings", icon: "settings", label: "Settings" },
 ];
 
-const COMPACT_SECTIONS = new Set<AppSection>(["decks", "practice", "analytics"]);
+const COMPACT_PRIMARY_SECTIONS = ["decks", "study-guides", "analytics"] as const;
+const COMPACT_PRIMARY_SET = new Set<AppSection>(COMPACT_PRIMARY_SECTIONS);
+const COMPACT_MORE_SECTIONS = ITEMS.filter(
+  (item) => !COMPACT_PRIMARY_SET.has(item.section),
+).map((item) => item.section);
+const COMPACT_MORE_SET = new Set<AppSection>(COMPACT_MORE_SECTIONS);
 
-function isActive(item: AppSection, current: AppSection): boolean {
+function isActive(
+  item: AppSection,
+  current: AppSection,
+  activeWorkflow: AppWorkflow | null,
+): boolean {
+  if (activeWorkflow) return false;
   if (item === "decks") {
     return current === "decks" || current === "cards" || current === "templates";
   }
   return item === current;
 }
 
-export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProps) {
+export function NavigationSidebar({
+  section,
+  activeWorkflow,
+  onNavigate,
+  windowControls,
+}: NavigationSidebarProps) {
   const { layoutMode } = useLayoutMode();
   const compact = layoutMode === "compact";
   const medium = layoutMode === "medium";
@@ -41,7 +58,13 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
   }
 
   if (compact) {
-    const primary = ITEMS.filter((item) => COMPACT_SECTIONS.has(item.section));
+    const primary = COMPACT_PRIMARY_SECTIONS.map((primarySection) =>
+      ITEMS.find((item) => item.section === primarySection),
+    ).filter((item): item is (typeof ITEMS)[number] => item !== undefined);
+    const more = COMPACT_MORE_SECTIONS.map((moreSection) =>
+      ITEMS.find((item) => item.section === moreSection),
+    ).filter((item): item is (typeof ITEMS)[number] => item !== undefined);
+    const moreActive = activeWorkflow === null && COMPACT_MORE_SET.has(section);
     return (
       <>
         <nav
@@ -55,8 +78,10 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
               type="button"
               className={styles.compactButton}
               data-testid={`nav-${item.section}`}
-              data-active={isActive(item.section, section)}
-              aria-current={isActive(item.section, section) ? "page" : undefined}
+              data-active={isActive(item.section, section, activeWorkflow)}
+              aria-current={
+                isActive(item.section, section, activeWorkflow) ? "page" : undefined
+              }
               onClick={() => navigate(item.section)}
             >
               <Icon name={item.icon} size={20} />
@@ -67,8 +92,10 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
             type="button"
             className={styles.compactButton}
             data-testid="nav-more"
-            data-active={!COMPACT_SECTIONS.has(section) && !isActive("decks", section)}
+            data-active={moreActive}
+            aria-current={moreActive ? "page" : undefined}
             aria-expanded={moreOpen}
+            aria-haspopup="dialog"
             onClick={() => setMoreOpen(true)}
           >
             <Icon name="menu" size={20} />
@@ -82,11 +109,14 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
             onClose={() => setMoreOpen(false)}
           >
             <div className={styles.moreList}>
-              {ITEMS.filter((item) => !COMPACT_SECTIONS.has(item.section)).map((item) => (
+              {more.map((item) => (
                 <button
                   key={item.section}
                   type="button"
                   data-testid={`nav-${item.section}`}
+                  aria-current={
+                    isActive(item.section, section, activeWorkflow) ? "page" : undefined
+                  }
                   onClick={() => navigate(item.section)}
                 >
                   <Icon name={item.icon} size={22} />
@@ -109,7 +139,7 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
         data-tour-anchor="app.navigation"
       >
         {ITEMS.map((item) => {
-          const active = isActive(item.section, section);
+          const active = isActive(item.section, section, activeWorkflow);
           return (
             <button
               key={item.section}
@@ -127,6 +157,9 @@ export function NavigationSidebar({ section, onNavigate }: NavigationSidebarProp
           );
         })}
       </nav>
+      {windowControls ? (
+        <div className={styles.windowControls}>{windowControls}</div>
+      ) : null}
     </aside>
   );
 }

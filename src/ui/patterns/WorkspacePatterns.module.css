@@ -27,15 +27,10 @@
 
   .commandBar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ostudy-space-3); padding: var(--ostudy-space-3) var(--ostudy-space-4); }
   .sticky { position: sticky; z-index: var(--ostudy-layer-sticky); inset-block-start: calc(var(--safe-top) + var(--ostudy-space-2)); }
-  .selectionBar { border-color: var(--ostudy-color-border-accent); }
-  .commandActions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--ostudy-space-2); }
 
   .filterSummary { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--ostudy-space-2); }
   .clearFilters { min-height: 30px; border: 0; padding-inline: var(--ostudy-space-2); background: transparent; color: var(--ostudy-color-text-accent); font-weight: 720; }
 
-  .responsiveActions { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: var(--ostudy-space-3); }
-  .primaryActions,
-  .secondaryActions { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: var(--ostudy-space-2); }
   .statPill { justify-content: space-between; gap: var(--ostudy-space-2); }
   .statPill strong { color: var(--ostudy-color-text-primary); font-variant-numeric: tabular-nums; }
 
@@ -49,10 +44,5 @@
     .compact .pageTitle { align-items: center; }
     .compact .pageIcon { width: 34px; height: 34px; }
     .compact h1 { font-size: 1.75rem; }
-    .responsiveActions { position: sticky; z-index: var(--ostudy-layer-sticky); inset-block-end: calc(var(--safe-bottom) + var(--android-ime-bottom)); width: 100%; flex-direction: column-reverse; align-items: stretch; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-large); padding: var(--ostudy-space-3); background: var(--ostudy-color-surface-chrome); box-shadow: var(--ostudy-shadow-level-3); backdrop-filter: blur(var(--ostudy-material-blur-medium)); }
-    .primaryActions,
-    .secondaryActions { width: 100%; }
-    .primaryActions > *,
-    .secondaryActions > * { flex: 1 1 auto; }
   }
 }

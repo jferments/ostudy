@@ -58,18 +58,24 @@ export interface PracticeWorkloadOverview {
   extraAvailable: number;
 }
 
-export interface StartPracticeInput {
-  operationId: string;
+export interface SelectedPracticeRequest {
   deckIds: string[];
   tagIds: string[];
   shuffle: boolean;
   mode: "scheduled" | "extra";
 }
 
-export interface StartCardPracticeInput {
-  operationId: string;
+export interface CardPracticeRequest {
   cardIds: string[];
   shuffle: boolean;
+}
+
+export interface StartPracticeInput extends SelectedPracticeRequest {
+  operationId: string;
+}
+
+export interface StartCardPracticeInput extends CardPracticeRequest {
+  operationId: string;
 }
 
 export interface PracticeCardWindowInput {

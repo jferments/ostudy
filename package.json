@@ -14,6 +14,7 @@
     "prebuild": "node ./scripts/install-local-fonts.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "postbuild": "node ./scripts/verify-local-fonts.mjs --packaged",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:watch": "vitest",

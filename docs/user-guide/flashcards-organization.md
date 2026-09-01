@@ -7,7 +7,7 @@ The user-facing Flashcards area contains four independently mounted workspaces:
 - **Search** finds cards across decks and supports bulk management.
 - **Import/Export** groups deck transfer and complete-library backup tasks.
 
-Activating a workspace always opens its root, even when the same tab is already selected. Activating the primary Flashcards navigation destination opens the Decks library root. The active workspace and an explicitly open deck are stored in the device-local UI checkpoint so the app can restore a useful destination without putting card content or credentials into that checkpoint.
+Activating a workspace always opens its root, even when the same tab is already selected. Activating the primary Flashcards navigation destination opens the Decks library root. The active workspace and an explicitly open deck are stored in the device-local UI checkpoint so the app can restore a useful destination without putting card content, credentials, or runtime request identities into that checkpoint. When a resumable Practice session was launched from Search or deck detail, that logical destination is restored with a fresh route transition after the session ends.
 
 ## Deck folders
 
@@ -19,22 +19,44 @@ Deleting a folder moves its decks to Unsorted decks. It never deletes those deck
 
 Deck creation, archive changes, restoration, soft deletion, and permanent purge also advance the shared organization revision. The Decks workspace refreshes organization state when those lifecycle changes appear in the deck list, including after returning from nested deck editing or using Undo. This prevents an apparently unrelated deck operation from leaving a stale drag or reorder operation eligible to commit.
 
+Deck selection is process-local. Opening a deck and returning to the library
+preserves unchanged active selections across the route remount, but entries
+whose revision or lifecycle changed are removed. An unchanged empty deck remains
+selected so it can still be moved, archived, or deleted even though Practice is
+unavailable. Selection is never written to the device UI checkpoint.
+
 ## Moving and ordering
 
-Pointer users can drag a deck or folder by its dedicated handle. Dragging is an enhancement rather than a required input method. The same focused handle provides a keyboard alternative:
+On a pointer device, start moving an active deck or folder from any open part of
+its row. Buttons, checkboxes, menus, links, editable content, and selected text
+continue to behave normally. A short movement remains an ordinary click; after
+the drag activates, the preview names the destination. Destination highlighting
+shows whether the move is valid, while a separate line marks the exact before,
+end, or empty insertion boundary.
+Folders accept a deck across their complete visible surface and can expand after
+a brief hover.
+
+Dragging is an enhancement rather than a required input method. The focused
+keyboard reorder control retains these shortcuts:
 
 - **Up**, **Down**, **Home**, and **End** reorder within the current group;
 - **Left** and **Right** move a deck between folders and Unsorted decks.
 
-The visible arrow and Move controls are not duplicated in each row. Screen-reader-only move actions remain available, and successful operations are announced through the live region.
+The compact **Move selected** sheet and screen-reader-only move actions remain
+available. Valid, invalid, and unchanged destinations are identified before a
+move is saved, and meaningful target changes and completion are announced.
 
-Nested drop targets stop propagation once a deck row or folder accepts a drop, so one pointer gesture can issue at most one revisioned move. The native command receives the target folder, target index, and expected organization revision. It rewrites the affected sequence to stable spaced sort values inside one immediate transaction. If the operation fails, the optimistic presentation is replaced with the authoritative native snapshot before the interface accepts another organization mutation.
+One completed pointer gesture can issue at most one validated revisioned move;
+hovering, scrolling, cancellation, invalid destinations, and unchanged
+positions issue none. The native command receives the target folder, target
+index, and expected organization revision. It rewrites the affected sequence
+to stable spaced sort values inside one immediate transaction. If the operation
+fails, the optimistic presentation is replaced with the authoritative native
+snapshot before the interface accepts another organization mutation.
 
 ## Compact deck presentation
 
-Decks use one compact row presentation on every platform. The removed Comfortable/Compact preference no longer creates divergent layout states or persists an obsolete setting. Compact spacing preserves deck name, card count, ready count, movement handle, and study actions while coarse-pointer controls retain full touch targets.
-
-The drag handle no longer uses a permanent vertical separator. Its icon, focus state, hover state, cursor, accessible instructions, and touch target identify the interaction without adding visual clutter.
+Decks use one compact row presentation on every platform. The removed Comfortable/Compact preference no longer creates divergent layout states or persists an obsolete setting. Compact spacing preserves deck name, card count, ready count, keyboard movement, and study actions while coarse-pointer controls retain full touch targets.
 
 ## Search and progressive disclosure
 
@@ -49,11 +71,27 @@ The filter sheet contains less frequently changed criteria: availability, curren
 
 A folder scope expands to its current active deck identifiers. It does not create a temporary deck and does not change folder membership. Archived decks remain available through their dedicated library area but are excluded from ordinary active Search scope unless the underlying Search status explicitly includes them.
 
+Current tag names in **Analytics → Recent reviews** open Search with that exact
+stable tag selected. Historical tags remain plain text. Search verifies the
+current tag before loading results, so a renamed tag continues to select the
+same identity while a removed or unavailable tag cannot briefly expose an
+unfiltered list. Clear the unavailable filter explicitly if you want to
+continue with an unfiltered Search.
+
 ## Practice ownership
 
 Review history and scheduling belong to generated cards, not folders. Moving a deck between folders has no effect on its cards. Moving a card between decks transfers that card and its review evidence according to the existing card-ownership rules; the folder containing either deck does not become an analytics owner.
 
-The practice screen presents a decorative card stack based on cards remaining in the session. Only the current card is exposed to assistive technology. Submitted reviews are durable before the completion screen appears, and the completion summary reports cards studied, average confidence, remembered percentage, difficult answers, and the fully labeled confidence distribution.
+The practice screen presents a decorative card stack based on cards remaining
+in the session. Only the current card is exposed to assistive technology. A
+thicker progress track displays the studied/remaining counts and rounded
+percentage inside the track; its single accessible progressbar value also names
+the current-card position. The active header does not duplicate that progress
+or show a weak-card badge. Submitted reviews are durable before the completion
+screen appears, and weak-card outcomes remain available to scheduling, Search,
+completion, and Analytics. The completion summary reports cards studied,
+average confidence, remembered percentage, difficult answers, and the fully
+labeled confidence distribution.
 
 ## Backup and restoration
 

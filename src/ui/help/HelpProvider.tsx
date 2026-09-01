@@ -8,11 +8,10 @@ import {
   useState,
 } from "react";
 
-import { Icon } from "../icons/Icon";
+import { IconButton } from "../icons/IconButton";
 import { Sheet } from "../overlays/Dialog";
 import { Button } from "../primitives/Button";
 import { startTutorial } from "../tutorials/TourProvider";
-import { Tooltip } from "./Tooltip";
 import { helpRegistry, type HelpTopicId } from "./helpRegistry";
 import styles from "./Help.module.css";
 
@@ -91,17 +90,13 @@ export function HelpTrigger({
   const help = useContext(HelpContext);
   const topic = helpRegistry[topicId];
   return (
-    <Tooltip content={topic.summary}>
-      <button
-        type="button"
-        className={styles.helpButton}
-        aria-label={label ?? `Help: ${topic.title}`}
-        title={topic.summary}
-        onClick={() => help.open(topicId)}
-      >
-        <Icon name="help" size={16} />
-      </button>
-    </Tooltip>
+    <IconButton
+      icon="information"
+      iconSize={16}
+      label={label ?? `Help: ${topic.title}`}
+      tooltip={topic.summary}
+      onClick={() => help.open(topicId)}
+    />
   );
 }
 

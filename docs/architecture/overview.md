@@ -39,7 +39,17 @@ The direction is deliberate. Screens express user intent and render state. Contr
 
 ### Feature screens
 
-`src/screens/` contains product workspaces such as Decks, Search/Filter, Practice, Analytics, Templates, Documents, and Settings. Screens compose domain controllers and shared UI primitives; they do not execute SQL, calculate authoritative schedules, or contact an AI provider.
+`src/screens/` contains product workspaces such as Decks, Search/Filter, Study Guides, Analytics, Templates, Documents, and Settings. Study Guides is a visible feature route. Practice remains a separately rendered internal session workflow entered through typed contextual launch requests, so restoration, exit guards, completion, and return targets stay isolated from standing navigation. Screens compose domain controllers and shared UI primitives; they do not execute SQL, calculate authoritative schedules, or contact an AI provider.
+
+Visible destination state and active Practice state are separate frontend
+contracts. The application controller captures a logical launch origin (a
+Flashcards workspace or deck detail, Study Guides, Documents, or Analytics),
+normalizes deck requests to extra practice and selected deck/tag scopes to
+scheduled practice, and passes exact card IDs to the custom-session path.
+`PracticeController.start` is the single discriminated frontend start boundary;
+it delegates to the existing typed native commands without merging or
+reimplementing native scheduling policy. Consuming an asynchronous launch
+payload does not clear the workflow container or unmount the active screen.
 
 ### Controllers
 
@@ -64,7 +74,7 @@ The AI gateway exposed to React remains task-specific. There is no generic “se
 
 `src/ui/` provides accessibility and interaction primitives: overlays, confirmation, tabs, menus, buttons, fields, panels, notices, loading/empty states, semantic feedback, and design foundations. Shared UI cannot import IPC, feature controllers, or Tauri APIs.
 
-`src/platform/` isolates operating-system and WebView capabilities such as file selection, external links, platform Back, pointer/capability detection, audio, and haptics. This allows a future Android content-URI adapter or mobile feedback implementation to replace a platform service without rewriting the Decks or Settings workflow.
+`src/platform/` isolates operating-system and WebView capabilities such as file selection, external links, platform Back, native desktop maximize/restore and full-screen state, pointer/capability detection, audio, and haptics. The window-controls adapter is the only frontend owner of direct Tauri window access; a focused controller reconciles native resize events before shell components render the controls. This allows a future Android content-URI adapter or mobile feedback implementation to replace a platform service without rewriting the Decks or Settings workflow.
 
 See [UI architecture](ui.md) for overlay lifecycle, responsive layouts, accessibility, themes, and styling rules.
 
@@ -133,6 +143,15 @@ Released migrations and release fixtures are immutable evidence. Current code ad
 - operation and submission IDs make ambiguous retries idempotent;
 - session-card snapshots keep the practiced identity and cloze variant stable;
 - studyability is determined by archive, suspension, burial, and due rules before a timestamp is treated as ready.
+
+The device-local schema-v2 UI checkpoint stores a visible destination separately
+from an optional resumable Practice hint and logical return target. Rust reads
+released schema-v1 files, normalizes a real Practice session without losing its
+identity/cursor, and sends setup-only legacy Practice state to Flashcards. The
+frontend reconstructs restored routes with new transition/request identities;
+SQLite remains authoritative for session progress, reviews, and scheduling.
+The checkpoint is outside SQLite, backup, and synchronization. See
+[ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
 
 Local-calendar behavior is owned natively so “today,” “tomorrow,” and longer date windows respect time zones, daylight-saving transitions, leap days, and calendar semantics rather than fixed browser-duration arithmetic.
 

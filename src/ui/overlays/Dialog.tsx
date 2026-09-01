@@ -24,7 +24,7 @@ export interface DialogProps {
   description?: string;
   children: ReactNode;
   onClose: (reason: OverlayCloseReason) => void;
-  width?: "small" | "medium" | "large";
+  width?: "small" | "medium" | "large" | "workspace";
   presentation?: "dialog" | "sheet" | "fullscreen";
   role?: "dialog" | "alertdialog";
   dismissible?: boolean;

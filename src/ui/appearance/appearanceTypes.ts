@@ -5,6 +5,9 @@ export type MaterialPreference = "automatic" | "rich" | "simple";
 export type ResolvedMotion = "full" | "reduced" | "none";
 export type ResolvedMaterial = "rich" | "standard" | "simple";
 
+export const DEFAULT_FONT_PRESET = "plex";
+export const DEFAULT_FONT_FAMILY = "'IBM Plex Sans', var(--ostudy-font-family-system)";
+
 export const FONT_PRESET_OPTIONS = [
   { value: "plex", label: "IBM Plex Sans", group: "bundled" },
   { value: "albert", label: "Albert Sans", group: "bundled" },
@@ -126,7 +129,7 @@ export function resolveFontFamily(value: string, theme: ThemeName): string {
   const presets: Record<string, string> = {
     system: "var(--ostudy-font-family-system)",
     atkinson: "var(--ostudy-font-family-study)",
-    plex: "'IBM Plex Sans', var(--ostudy-font-family-system)",
+    plex: DEFAULT_FONT_FAMILY,
     albert: "'Albert Sans', var(--ostudy-font-family-system)",
     "space-grotesk": "'Space Grotesk', var(--ostudy-font-family-system)",
     "spline-sans": "'Spline Sans', var(--ostudy-font-family-system)",

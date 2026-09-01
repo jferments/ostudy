@@ -16,6 +16,28 @@ Layout behavior never depends on a device name or user-agent string. Portrait an
 
 Compact visual spacing does not reduce interaction targets. Coarse-pointer drag handles, checkboxes, and destructive or primary actions retain touch-sized controls.
 
+## Desktop window controls
+
+Supported desktop builds provide native **Maximize window** / **Restore window**
+and **Enter full screen** / **Exit full screen** buttons. They appear at the
+bottom of the sidebar in wide and medium layouts and move into the app bar when
+the same desktop window becomes compact. The buttons can be reached and
+activated with the keyboard, and their names and pressed state follow the real
+native window state, including changes made through the operating system.
+
+Android, other mobile builds, and browser-only previews do not show these
+controls. ostudy does not imitate them by resizing browser content or invoking a
+browser-only full-screen mode. Full viewport use by every route and dialog is
+not simulated: after resize, maximize, or full screen, the shell and maintained
+workspaces expand to the available application viewport. Dialogs stay within
+the safe dynamic viewport, and workspace-style dialogs can use the full canvas
+while keeping their content independently scrollable.
+
+Study Guides use that workspace presentation while keeping the guide text at a
+comfortable reading width. On compact layouts the guide becomes full-screen,
+its contents and article stack vertically, and sticky editing actions remain
+above safe areas and the on-screen keyboard.
+
 ## Themes
 
 The built-in themes are **Light**, **Dark**, **Console**, and **Synthwave**. Every theme implements the same semantic roles for canvas, surfaces, text, borders, accent, status, focus, elevation, and materials. Feature screens do not select theme-specific colors or branch their behavior by theme name.
@@ -25,6 +47,18 @@ Every layout mode preserves explicit text and border contrast rather than depend
 ## Typography and scale
 
 The interface font and default card font can be selected independently. Interface scale and card text size are also separate so navigation can remain compact while study material stays comfortable to read.
+
+New installations use **IBM Plex Sans** for both choices. An existing explicit
+font selection is preserved, including an explicit choice of the system font;
+only the untouched system defaults from older installations are updated to IBM
+Plex Sans. Choosing **Restore appearance defaults** returns both font choices
+to IBM Plex Sans without resetting review, backup, or AI settings.
+
+IBM Plex Sans is included in installed application packages and does not need a
+network connection while ostudy runs. If its local font file is missing or
+unreadable, ostudy uses the device's sans-serif system stack so the interface
+and cards remain usable. The exact fallback glyph metrics can vary by operating
+system.
 
 Installed custom font-family names are accepted as local preferences. Font files are not copied into the library or included in exports.
 

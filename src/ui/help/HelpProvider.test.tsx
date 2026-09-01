@@ -18,7 +18,9 @@ describe("HelpProvider", () => {
   it("keeps concise help on the trigger and detailed help in an explicit sheet", async () => {
     renderHelp();
     const trigger = screen.getByRole("button", { name: "Help: Deck folders" });
-    expect(trigger.getAttribute("title")).toContain("Folders organize decks");
+    expect(trigger.hasAttribute("title")).toBe(false);
+    fireEvent.focus(trigger);
+    expect(screen.getByRole("tooltip").textContent).toContain("Folders organize decks");
 
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "Deck folders" });

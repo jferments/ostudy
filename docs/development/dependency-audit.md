@@ -19,6 +19,47 @@ pnpm rejects unreviewed dependency lifecycle scripts. Only the exact esbuild ins
 
 No OpenAI, DeepSeek, Ollama, Anthropic, Gemini, or PDF JavaScript SDK is installed. Provider networking and PDF parsing/rendering are not available to the WebView.
 
+### Linux qualification display stack
+
+Ubuntu native qualification uses distribution-provided Xvfb, Openbox, and
+`x11-utils` only as host-side test infrastructure. Xvfb owns the isolated X11
+display, Openbox supplies the EWMH window-management behavior required to
+qualify maximize/restore and full-screen, and `x11-utils` supplies `xprop` for
+the fail-closed `_NET_SUPPORTING_WM_CHECK` readiness probe. The unprivileged
+runner starts Openbox only for the disposable Xvfb session; these packages are
+not linked into or packaged with ostudy and add no host mounts, control sockets,
+or elevated application privilege.
+
+Openbox is distributed under the GPL-2.0-or-later family. X.Org server and
+utility sources carry the MIT/X11-family and other component notices enumerated
+by the Ubuntu package copyright files. The canonical Ubuntu 24.04 runner
+snapshot and repository provisioning scripts own the installed package
+versions and their `/usr/share/doc/*/copyright` records.
+
+### Local font assets
+
+IBM Plex Sans is the default interface and card family for new installations.
+It is not a package-manager dependency: `scripts/font-sources.mjs` records the
+Google Fonts provisioning source, requested Latin variable face, audited
+`OFL-1.1` metadata, and shipped notice. `scripts/install-local-fonts.mjs`
+downloads missing WOFF2 assets into the ignored source cache after validating
+the HTTPS host, response size, and WOFF2 signature. A pristine source checkout
+therefore needs provisioning network access once unless that cache is already
+present.
+
+Vite packages locally referenced faces as hashed frontend assets and copies
+`public/licenses/IBM-Plex-Sans-OFL-1.1.txt` into the distribution. The
+post-build verifier requires every declared hashed WOFF2 asset, its CSS
+reference, the matching IBM Plex notice, and the absence of a Google Fonts or
+other runtime font import. Installed desktop and Android frontend packages use
+those local bytes offline. If the IBM face cannot be read, the semantic family
+resolves through the operating-system sans-serif stack; the fallback contract
+does not claim identical glyph metrics across platforms.
+
+This audit covers browser UI/card packaging only. IBM Plex faces for the native
+Study Guide PDF renderer, including print-specific styles and embedding, remain
+Stage 9 work.
+
 ## Rust and local data
 
 - Tauri `2.11.5` and build helper `2.6.3`

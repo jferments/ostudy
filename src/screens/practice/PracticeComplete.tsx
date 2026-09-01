@@ -21,6 +21,7 @@ interface PracticeCompleteProps {
   ratedCount: number;
   confidenceCounts: ConfidenceCounts;
   isStarting: boolean;
+  canRestart: boolean;
   errorMessage: string | null;
   onViewAnalytics: () => void;
   onChooseDecks: () => void;
@@ -31,6 +32,7 @@ export function PracticeComplete({
   ratedCount,
   confidenceCounts,
   isStarting,
+  canRestart,
   errorMessage,
   onViewAnalytics,
   onChooseDecks,
@@ -120,22 +122,27 @@ export function PracticeComplete({
       </section>
 
       <div className={styles.actions}>
-        <Button type="button" variant="primary" onClick={onViewAnalytics}>
+        <Button type="button" variant="primary" disabled={isStarting} onClick={onViewAnalytics}>
           View analytics
         </Button>
-        <Button type="button" variant="secondary" onClick={onChooseDecks}>
-          Back to practice
+        <Button type="button" variant="secondary" disabled={isStarting} onClick={onChooseDecks}>
+          Choose decks
         </Button>
         <Button
           type="button"
           variant="text"
-          disabled={isStarting}
+          disabled={isStarting || !canRestart}
           onClick={onRestart}
         >
           {isStarting ? "Starting…" : "Practice this scope again"}
         </Button>
       </div>
 
+      {!canRestart ? (
+        <InlineNotice kind="info">
+          This restored session does not retain a repeatable launch request. Choose decks to start a new session.
+        </InlineNotice>
+      ) : null}
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
     </div>
   );

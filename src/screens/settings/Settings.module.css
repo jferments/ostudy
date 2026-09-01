@@ -29,6 +29,15 @@
   font-size: 1.05rem;
 }
 
+.storageHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ostudy-space-3);
+}
+
+.storageHeading h2 { margin: 0; }
+
 .fullWidth,
 .fullWidthCard {
   grid-column: 1 / -1;
@@ -292,33 +301,6 @@
   margin-top: 16px;
 }
 
-.pathList {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-}
-
-.pathList > div {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 12px;
-  border-bottom: 1px solid var(--ostudy-color-border-subtle);
-  padding-bottom: 9px;
-}
-
-.pathList dt {
-  color: var(--ostudy-color-text-muted);
-  font-size: 0.84rem;
-  font-weight: 720;
-}
-
-.pathList dd {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .aiLayout {
   display: grid;
@@ -715,11 +697,6 @@
 
   .sectionHeading {
     align-items: flex-start;
-  }
-
-  .pathList > div {
-    grid-template-columns: 1fr;
-    gap: 3px;
   }
 
   .phaseList article {

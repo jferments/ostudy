@@ -1,7 +1,7 @@
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckFolder } from "../../../ipc/deckFolders";
 
-export type LibraryMoveSource = "keyboard" | "html-drag" | "pointer" | "fallback";
+export type LibraryMoveSource = "keyboard" | "pointer" | "fallback";
 
 export type LibraryMoveIntent =
   | {
@@ -25,7 +25,9 @@ export type LibraryDragPayload =
 export type LibrarySheetState =
   | { kind: "create-deck" }
   | { kind: "create-folder"; name: string }
-  | { kind: "rename-folder"; folder: DeckFolder; name: string };
+  | { kind: "rename-folder"; folder: DeckFolder; name: string }
+  | { kind: "move-selection" }
+  | { kind: "practice-setup"; scope: import("./practiceSetupModel").PracticeDeckScope };
 
 export interface DeckLifecyclePartition {
   active: DeckSummary[];

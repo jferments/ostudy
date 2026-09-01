@@ -1,0 +1,18 @@
+@layer patterns {
+  .group {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  :global(:root[data-input-mode="coarse"]) .group button {
+    min-height: var(--ostudy-size-touch-target);
+  }
+
+  @media (pointer: coarse) {
+    .group button { min-height: var(--ostudy-size-touch-target); }
+  }
+}

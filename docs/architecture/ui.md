@@ -57,6 +57,12 @@ A modal overlay:
 - refuses dismissal while a critical operation is busy or explicitly non-dismissible;
 - presents as a safe-area-aware sheet on compact screens when appropriate.
 
+The shared `Dialog` sizing contract includes a viewport workspace for workflows
+that need the available desktop canvas. Its card fills the safe dynamic
+viewport while the shared body remains the scroll owner. Small, medium, and
+large dialogs retain readable bounded measures; compact dialog/sheet/full-screen
+presentations retain safe-area and virtual-keyboard padding.
+
 Features use `Dialog`, `Sheet`, `Menu`, the compatibility `Modal` wrapper, or the asynchronous confirmation service. They do not hand-write backdrops, focus traps, `role="dialog"`, or ordinary `window.confirm()` calls.
 
 Browser-native `beforeunload` remains an exception because a custom React overlay cannot reliably finish while the WebView is closing. Long-running document close protection is also enforced natively, where application shutdown can actually be prevented.
@@ -68,6 +74,7 @@ Browser-native `beforeunload` remains an exception because a custom React overla
 - file open/save selection;
 - external URL opening;
 - platform Back dispatch;
+- native desktop maximize/restore and full-screen operations and state observation;
 - pointer, hover, and hardware capability detection;
 - optional local audio feedback;
 - optional haptic feedback.
@@ -75,6 +82,8 @@ Browser-native `beforeunload` remains an exception because a custom React overla
 Desktop file selection currently returns native filesystem paths. A future Android adapter may stage a content URI into application-owned cache and return an ostudy-owned reference without changing Decks, Settings, Documents, or import controllers.
 
 Provider networking and credential storage are native security boundaries, not frontend platform adapters. A feature cannot use the platform layer to bypass the typed AI task surface.
+
+The native capability snapshot independently reports maximize/restore and full-screen availability. Current desktop adapters expose both; Android and other mobile adapters report them unavailable and render no controls. `src/platform/windowControls.ts` alone imports Tauri's window module. `useWindowControlsController` serializes mutations, ignores obsolete state reads, and reconciles operating-system title-bar or full-screen changes from native resize events. The shell then renders one labelled button group in the wide/medium sidebar or compact app bar. It does not call the browser Fullscreen API, infer native state from viewport dimensions, or store replacement window geometry.
 
 ## Styling and themes
 
@@ -99,6 +108,25 @@ Global foundations are limited to:
 Themes change token values, not feature selectors. Current themes are Light, Dark, Console, and Synthwave. A feature should use semantic tokens such as surface, text, border, emphasis, success, warning, and danger rather than hard-coding a theme-specific color.
 
 Shared UI does not use arbitrary numeric z-index values. Named layer tokens keep toasts, navigation, effects, menus, sheets, and dialogs in one reviewable ordering model.
+
+### Interface and card typography
+
+New installations use the application-owned `plex` preset for both interface
+and card typography. `AppearanceProvider` resolves the independently persisted
+`uiFont` and `cardFont` values into the semantic `--ui-font-family` and
+`--card-font-family` variables; interface and rich-card consumers use those
+variables rather than selecting a family directly.
+
+IBM Plex Sans is provisioned as a local WOFF2 asset and packaged with the
+frontend. Its family stack ends in the semantic system sans-serif stack, so a
+missing or unreadable face degrades deterministically without a runtime font
+request. A pristine source checkout needs the maintained provisioning command
+to download uncached font assets before its first build, while an installed
+package remains offline-capable. Explicit user-selected bundled, system,
+accessibility, or installed custom families remain authoritative.
+
+This browser/interface contract does not define Study Guide PDF typography or
+font embedding. The native print design remains owned by Stage 9.
 
 ## Responsive layout modes
 
@@ -129,6 +157,72 @@ Layout responds to available space and input capability rather than assuming tha
 
 The desktop Tauri window allows compact widths so responsive behavior can be exercised before mobile projects exist.
 
+On supported desktop builds, compact width changes the placement of native
+window controls, not their policy. Maximizing or entering full screen changes
+the native window, and the shell, main scroll owner, route-transition layer,
+and maintained route roots consume that resulting CSS viewport. Route content
+may still bound headings, forms, or reading columns where unlimited line length
+would reduce usability.
+
+The current Study Guide uses the shared viewport workspace. Its contents rail
+and article adapt to the workspace container rather than platform identity,
+while the article keeps a readable `52rem` maximum measure. Compact layouts use
+the full-screen overlay contract and keep sticky editing actions above safe-area
+and IME insets. Guide route/controller lifecycle and deletion remain Stage 8;
+reader semantics and native PDF design remain Stage 9.
+
+### Application destinations
+
+Visible application destinations use one typed route catalog. Wide and medium
+navigation is ordered **Flashcards**, **Study Guides**, **Documents**,
+**Analytics**, and **Settings**. Practice is an internal rendered workflow
+entered through contextual study actions; it is not a standing navigation
+destination and therefore does not select an unrelated visible destination
+while a session is active.
+
+The application controller keeps that workflow separate from the visible
+destination. It captures logical Flashcards root/Search/deck-detail or explicit
+Study Guides/Documents/Analytics return identity, reconstructs Flashcards routes
+with fresh transition request IDs, and runs the Practice exit guard before
+same-destination navigation short-circuits. The mobile app bar may label the
+active workflow **Practice**, while primary and More navigation remain
+unselected. Shared navigation components receive only typed shell state; they
+do not own launch or scheduling policy.
+
+Compact navigation is a deterministic partition of the same visible catalog.
+**Flashcards**, **Study Guides**, and **Analytics** are direct destinations;
+**Documents** and **Settings** appear exactly once in **More**. The direct and
+More groups preserve their relative visible order, are disjoint, and together
+cover every visible destination. More is active only for one of its actual
+destinations. Shared overlay behavior owns the More sheet's focus, dismissal,
+and restoration semantics.
+
+The Study Guides destination participates in the schema-v2 device-local UI
+checkpoint. The checkpoint restores the route itself; route-owned guide detail,
+reader, and deletion state remain later workspace work. Active Practice stores
+its latest cursor independently with a logical Study Guides, Analytics, or
+Flashcards return target. Restoration allocates new route/request identities,
+and lifecycle saves flush the same controller-owned snapshot used by ordinary
+navigation saves.
+
+Analytics current recent-review tags use a separate process-local Search
+launch. The application controller allocates a fresh route request ID and
+carries `source = "analytics"` plus a statically non-empty tuple of stable tag
+IDs through the existing keyed Flashcards remount boundary. Display names are
+never route identity. Historical tags remain readable evidence without a
+Search action.
+
+This transient launch is deliberately projected out of the device UI
+checkpoint: only the visible Search workspace is saved, and restored Search
+starts as an ordinary route. Top-level navigation, Flashcards tab changes,
+platform Back, deck opening, and library return also construct plain routes.
+Before the first launched query, the card browser synchronously installs the
+requested IDs and verifies them with the unscoped tag list. It issues no card
+search while verification is pending or unsuccessful. A missing or
+unverifiable tag stays blocked until the learner explicitly clears it; clearing
+permits an ordinary unfiltered search, and a late lookup cannot restore or
+re-block the cleared launch.
+
 ## Shared primitives
 
 The common layer includes:
@@ -142,9 +236,88 @@ The common layer includes:
 - `SegmentedControl`;
 - tabs with roving keyboard focus;
 - `Dialog`, `Sheet`, `Menu`, and asynchronous confirmation;
+- `OverflowMenu`, `ResponsiveActionGroup`, `SelectionToolbar`, and
+  `MetadataDialog` / `InfoButton`;
 - interaction-safe, safe-area-aware toast feedback.
 
 Use a shared primitive when it owns the behavior being solved. Domain-specific rules remain in the feature. A reusable Button may know how to render loading and disabled state; it must not know how a card review commits.
+
+### Action priority
+
+Action density follows one shared priority contract. Responsive presentation may change an action's placement, but it must not change its meaning, accessible name, authorization, or domain callback.
+
+1. **Primary text action.** The ordinary next step for the current surface remains a visible text action. A compact layout or overflow menu must not hide the primary path or require menu exploration before a learner can continue.
+2. **Familiar icon action.** A standard, unambiguous action such as edit, delete, information, schedule, or full-screen may use `IconButton`. It requires a nonblank accessible label, visible keyboard focus, and a hover/focus tooltip; tooltip text is supplemental and never the only accessible name. Disabled controls keep a complete accessible label even though native disabled buttons cannot receive keyboard focus.
+3. **Contextual selection action.** A bulk action appears only while a selection is active. Its container identifies the selected count, keeps the valid primary bulk action direct, and provides an explicit keyboard- and touch-accessible way to clear the selection. Selection actions must not alter ordinary row activation or become the only path to a single-item operation.
+4. **Overflow-only action.** A low-frequency secondary action may move to overflow when space is constrained. Overflow never contains the sole ordinary primary path, preserves destructive grouping and labels, and uses the shared menu/sheet lifecycle for roving focus, Escape/outside dismissal, and focus restoration.
+
+All four priorities preserve native keyboard activation and coarse-pointer touch targets. A compact destructive icon uses the danger treatment and still opens the same explicit confirmation flow as its text equivalent; icon density never bypasses confirmation or mutation guards.
+
+### Responsive action placement
+
+`ResponsiveActionGroup` accepts stable, unique action IDs and one explicit
+placement for every action. It resolves placement from `LayoutModeProvider`;
+feature code does not reproduce the viewport breakpoints.
+
+| Placement | Wide | Medium | Compact |
+| --- | --- | --- | --- |
+| `always-visible` | direct | direct | direct |
+| `wide-and-medium` | direct | direct | overflow |
+| `wide-only` | direct | overflow | overflow |
+| `overflow-only` | overflow | overflow | overflow |
+
+Every group keeps its primary action `always-visible`. Direct familiar actions
+may use `IconButton`; primary and unfamiliar actions retain text. Placement
+never changes the action ID, label, disabled/loading guard, destructive status,
+or callback. Collapsed actions use the canonical `OverflowMenu`, and a group
+with no collapsed actions does not render an empty overflow trigger.
+
+Deck detail applies this contract after its Back control, full-width title, and
+description. Practice is the always-visible primary action, Export is direct at
+wide and medium widths, Archive is direct only at wide width, and Delete is
+always destructive overflow. The header remains one vertical semantic flow;
+layout mode changes action placement without compressing the heading into a
+second column or creating feature-owned breakpoint logic.
+
+`OverflowMenu` owns one interaction contract for direct consumers and the thin
+legacy `Menu` presentation:
+
+- enabled items use roving `tabindex`; Arrow Up/Down wrap, Home/End move to the
+  boundary, and Enter/Space activate the current item;
+- disabled items remain labelled native disabled buttons, are skipped by
+  roving focus, and cannot activate;
+- destructive items are moved to a final group separated from ordinary items;
+- Escape, platform Back, outside pointer dismissal, and compact backdrop
+  dismissal close only the top overlay and restore the trigger;
+- selection closes and restores the menu before invoking the feature callback,
+  so a callback that opens another overlay records the correct opener; and
+- wide/medium layouts use the anchored menu, while compact layout uses the
+  shared safe-area-aware `Sheet` lifecycle.
+
+`SelectionToolbar` exists only while a selection is active. It is a labelled
+region with a polite, atomic selected-item count, one always-direct primary bulk
+action, responsive secondary actions, and a separately named clear-selection
+`IconButton`. Compact presentation is sticky above safe areas and the virtual
+keyboard; all controls retain semantic coarse-pointer target sizes. Selection
+state and bulk-operation policy remain feature/controller concerns.
+
+`MetadataDialog` is a controlled composition over `Dialog`; `InfoButton` is the
+self-contained disclosure composition for an information icon and that dialog.
+Callers supply the title, optional description, and domain-neutral React
+content. `MetadataList` / `MetadataItem` provide semantic `dl` rows when useful.
+Wide and medium layouts use a centred dialog and compact layout uses a sheet.
+Labelling, initial focus, focus containment/restoration, Escape, backdrop,
+platform Back, reduced-motion, forced-colors, and safe-area behavior remain the
+shared overlay and CSS-Module contract. Operational reads stay in their owning
+controller or feature and are never initiated by shared UI.
+
+`Progress` retains its standard thin-track rendering and optional text above the
+track. Its opt-in inline-content variant uses a thicker track with start/end
+content rendered in separate clipped filled and unfilled visual layers. Those
+layers are `aria-hidden`; the progressbar remains the sole accessible value
+owner through `aria-valuemin`, `aria-valuemax`, `aria-valuenow`, and an explicit
+equivalent `aria-valuetext`. Clamping, semantic tones, reduced/no-motion, and
+forced-colors behavior are shared rather than reimplemented by Practice.
 
 ## Semantic feedback
 
@@ -170,13 +343,32 @@ The effects layer is pointer-transparent, does not affect layout, uses named UI 
 - Keyboard shortcuts do not fire while an overlay is active or focus is inside an interactive editor/control.
 - Core actions do not require hover or long-press.
 - Drag-and-drop enhancements retain button and keyboard alternatives.
+- Deck-library pointer movement is transient presentation state. One thresholded
+  fine/coarse pointer session owns capture, cached geometry, bounded hover
+  expansion and edge scrolling, and semantic feedback; only its final validated
+  `LibraryMoveIntent` crosses into the existing controller mutation path.
+- Interactive descendants never start that pointer session, including deck-open
+  and folder-toggle buttons. Rows and folders retain broad non-interactive
+  movement space plus the keyboard and compact Move paths.
+- Destination validity and insertion position are separate drag presentation
+  states. The destination surface shows valid/no-op/invalid state while a
+  distinct marker anchors the exact before, end, or empty boundary; both clear
+  when the candidate changes or the session ends.
+- Profiling capture starts deck-drag timing inside the production
+  threshold-crossing pointer-move handler before capture and synchronous preview
+  activation. The activation counts as one pointer event. Pointer-frame work
+  includes that activation and the animation-frame geometry, candidate, and
+  preview work without treating animation-frame production work as another
+  pointer event; a later target listener is not the timing authority. Corrected
+  candidate capture uses its own versioned scenario identity rather than
+  relabeling this work as the immutable Stage 0 drag distribution.
 - Loading, empty, error, success, and committed-but-not-reconciled states remain explicit.
 - A busy operation explains what is happening and whether cancellation or dismissal is safe.
 - Dense tables and charts retain semantic text or table equivalents.
 
 ## Testing
 
-Component tests cover overlay stacking, initial focus, focus containment and restoration, Escape/Back precedence, menu dismissal, tab keyboard behavior, responsive navigation, toast interaction, and feature use of shared primitives.
+Component tests cover overlay stacking, initial focus, focus containment and restoration, Escape/Back precedence, menu dismissal, tab keyboard behavior, responsive navigation, viewport workspace presentation, toast interaction, and feature use of shared primitives. Native UI smoke measures shell, main, route, and dialog bounds after compact/medium/wide resize and while native maximize and full-screen states are active.
 
 Representative manual widths include:
 

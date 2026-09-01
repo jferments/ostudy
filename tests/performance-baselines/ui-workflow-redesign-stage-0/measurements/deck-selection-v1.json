@@ -1,0 +1,959 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "sourceSha": "02f55218217d12ebc90824f93f69f3e4dcb5c792",
+  "instrumentationVersion": "ui-performance-v1",
+  "fixtureVersion": "ui-performance-fixture-v1",
+  "scenarioId": "deck-selection-v1",
+  "scenarioVersion": "deck-selection-v1",
+  "samples": [
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 8.000000000001819
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 8.000000000001819
+      },
+      "userTiming": {
+        "visibleTimeMs": 13780.000000000002,
+        "startTimeMs": 13772,
+        "readyTimeMs": 13780.000000000002
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 13772,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 13772,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 13772,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 13772,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 13774,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 13774,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 13774,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 13774,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 13775,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 13775,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 13775,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 13775,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 1
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 7
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 7
+      },
+      "userTiming": {
+        "visibleTimeMs": 14023,
+        "startTimeMs": 14016,
+        "readyTimeMs": 14023
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14017,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14017,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14017,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14017,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14018,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14018,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14018,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14018,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14019,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14019,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14019,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14019,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 2
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 4.999999999998181
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 5.999999999998181
+      },
+      "userTiming": {
+        "visibleTimeMs": 14266,
+        "startTimeMs": 14261.000000000002,
+        "readyTimeMs": 14267
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0.999999999998181,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0.999999999998181,
+            "startTimeMs": 14261.000000000002,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14262,
+            "actualDurationMs": 0.999999999998181
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14262,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14262,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14263,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14263,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14263,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14263,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14264.000000000002,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14264.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14264.000000000002,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14264.000000000002,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 3
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 9.999999999998181
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 9.999999999998181
+      },
+      "userTiming": {
+        "visibleTimeMs": 14508,
+        "startTimeMs": 14498.000000000002,
+        "readyTimeMs": 14508
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14499,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14499,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14499,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14499,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14500,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14500,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14500,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14500,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14501,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14501,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14501,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14501,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 4
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 5
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 6
+      },
+      "userTiming": {
+        "visibleTimeMs": 14751,
+        "startTimeMs": 14746,
+        "readyTimeMs": 14752
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14746,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14747,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14746,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14747,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14748.000000000002,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14748.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14748.000000000002,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14748.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14749,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 14749,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 14749,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 14749,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 5
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 10
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 14.000000000001819
+      },
+      "userTiming": {
+        "visibleTimeMs": 15026,
+        "startTimeMs": 15016,
+        "readyTimeMs": 15030.000000000002
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15016,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15016,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15016,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15016,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15018,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15018,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15018,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15018,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15019,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15019,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15019,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15019,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 6
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 13.999999999998181
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 13.999999999998181
+      },
+      "userTiming": {
+        "visibleTimeMs": 15310,
+        "startTimeMs": 15296.000000000002,
+        "readyTimeMs": 15310
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15296.000000000002,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15296.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15296.000000000002,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15296.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15297,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15298,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15297,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15298,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 15298,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15299,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15299,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15299,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 7
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 13
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 17
+      },
+      "userTiming": {
+        "visibleTimeMs": 15579,
+        "startTimeMs": 15566,
+        "readyTimeMs": 15583
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15567,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15567,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15567,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15567,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15568,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15568,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15568,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15568,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15569,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15569,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15569,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15569,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 8
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 4.000000000001819
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 15
+      },
+      "userTiming": {
+        "visibleTimeMs": 15838.000000000002,
+        "startTimeMs": 15834,
+        "readyTimeMs": 15849
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15834,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15834,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15834,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15834,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15836,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15836,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15836,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15836,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15837,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 15837,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 15837,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 15837,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 9
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 12.999999999998181
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 12.999999999998181
+      },
+      "userTiming": {
+        "visibleTimeMs": 16128,
+        "startTimeMs": 16115.000000000002,
+        "readyTimeMs": 16128
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16115.000000000002,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16115.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16115.000000000002,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16115.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16116,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16117,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16117,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16117,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16118.000000000002,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16118.000000000002,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16118.000000000002,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16118.000000000002,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 10
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 4
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 14.000000000003638
+      },
+      "userTiming": {
+        "visibleTimeMs": 16387,
+        "startTimeMs": 16383,
+        "readyTimeMs": 16397.000000000004
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 0,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16383,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16383,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16383,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16383,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16384,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16384,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16384,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16384,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16386,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16386,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16386,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16386,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 11
+    },
+    {
+      "interactionToVisible": {
+        "state": "available",
+        "valueMs": 9
+      },
+      "interactionToReady": {
+        "state": "available",
+        "valueMs": 16
+      },
+      "userTiming": {
+        "visibleTimeMs": 16662,
+        "startTimeMs": 16653,
+        "readyTimeMs": 16669
+      },
+      "react": {
+        "state": "available",
+        "totalRenderDurationMs": 1,
+        "avoidableCommitCount": 3,
+        "commits": [
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16653,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16653,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16653,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16653,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16654,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16655,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 1,
+            "startTimeMs": 16654,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16655,
+            "actualDurationMs": 1
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16656,
+            "phase": "update",
+            "boundaryId": "practice-setup",
+            "commitTimeMs": 16656,
+            "actualDurationMs": 0
+          },
+          {
+            "baseDurationMs": 0,
+            "startTimeMs": 16656,
+            "phase": "update",
+            "boundaryId": "guide-library",
+            "commitTimeMs": 16656,
+            "actualDurationMs": 0
+          }
+        ],
+        "commitCount": 3
+      },
+      "pointer": {
+        "eventCount": null,
+        "maxFrameIntervalMs": null,
+        "frameCount": null,
+        "state": "notApplicable",
+        "maxFrameWorkMs": null
+      },
+      "ordinal": 12
+    }
+  ]
+}

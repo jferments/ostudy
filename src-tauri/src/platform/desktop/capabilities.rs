@@ -7,11 +7,13 @@ pub(super) struct DesktopCapabilityProvider;
 impl CapabilityProvider for DesktopCapabilityProvider {
     fn snapshot(&self) -> PlatformCapabilitySnapshot {
         PlatformCapabilitySnapshot {
-            schema_version: 1,
+            schema_version: 2,
             runtime_family: "desktop".to_string(),
             operating_system: std::env::consts::OS.to_string(),
             hardware_back_available: false,
             services: NativeServiceCapabilities {
+                window_maximize_restore: ServiceCapability::available(),
+                window_full_screen: ServiceCapability::available(),
                 external_file_import: ServiceCapability::available(),
                 external_file_export: ServiceCapability::available(),
                 secure_secrets: ServiceCapability::available(),
@@ -31,5 +33,27 @@ impl CapabilityProvider for DesktopCapabilityProvider {
                 ),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform::CapabilityState;
+
+    #[test]
+    fn desktop_reports_native_window_controls() {
+        let snapshot = DesktopCapabilityProvider.snapshot();
+
+        assert_eq!(snapshot.schema_version, 2);
+        assert_eq!(snapshot.runtime_family, "desktop");
+        assert_eq!(
+            snapshot.services.window_maximize_restore.state,
+            CapabilityState::Available
+        );
+        assert_eq!(
+            snapshot.services.window_full_screen.state,
+            CapabilityState::Available
+        );
     }
 }

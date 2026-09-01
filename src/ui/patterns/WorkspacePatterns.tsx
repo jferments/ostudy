@@ -83,15 +83,6 @@ export function CommandBar({
   );
 }
 
-export function SelectionBar({ count, children }: { count: number; children: ReactNode }) {
-  return (
-    <CommandBar label="Selection actions" sticky className={styles.selectionBar}>
-      <strong>{count} selected</strong>
-      <div className={styles.commandActions}>{children}</div>
-    </CommandBar>
-  );
-}
-
 export interface ActiveFilter {
   id: string;
   label: string;
@@ -122,21 +113,6 @@ export function FilterSummary({
       <button type="button" className={styles.clearFilters} onClick={onClear}>
         Clear all
       </button>
-    </div>
-  );
-}
-
-export function ResponsiveActions({
-  primary,
-  secondary,
-}: {
-  primary: ReactNode;
-  secondary?: ReactNode;
-}) {
-  return (
-    <div className={styles.responsiveActions}>
-      {secondary ? <div className={styles.secondaryActions}>{secondary}</div> : null}
-      <div className={styles.primaryActions}>{primary}</div>
     </div>
   );
 }

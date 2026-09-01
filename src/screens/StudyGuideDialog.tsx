@@ -274,8 +274,9 @@ export function StudyGuideDialog({
       title={`Study guide · ${documentTitle}`}
       description="Source-grounded sections, learner notes, and topic-linked flashcards."
       onClose={() => onClose()}
-      width="large"
+      width="workspace"
       presentation="fullscreen"
+      className={styles.workspace}
       dismissible={!isGenerating && !isSaving && !isExporting}
       busy={isSaving || isExporting}
     >

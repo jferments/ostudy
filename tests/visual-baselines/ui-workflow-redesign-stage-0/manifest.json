@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "ui-workflow-redesign-stage-0",
+  "baselineSourceSha": "d8e723c1cbc1a60f92881ca4e92b44268a418309",
+  "scenario": {
+    "id": "flashcards-library",
+    "version": "flashcards-library-v1",
+    "fixtureBoundary": "fresh-temporary-xdg-ui-seeded",
+    "description": "Flashcards > Decks with one named folder and one unsorted deck containing one Basic card, created only through existing native UI workflows."
+  },
+  "matrix": {
+    "themes": [
+      "light",
+      "dark",
+      "console",
+      "synthwave"
+    ],
+    "viewports": [
+      {
+        "layoutClass": "wide",
+        "width": 1440,
+        "height": 900
+      },
+      {
+        "layoutClass": "medium",
+        "width": 1024,
+        "height": 768
+      },
+      {
+        "layoutClass": "compact",
+        "width": 390,
+        "height": 844
+      }
+    ]
+  },
+  "captureEnvironment": {
+    "applicationSha256": "b5378e99ebba1338eb0f3045522dcad1aeb99cd1e27f2b9e3227acb5c1d3eedc",
+    "python": "3.12.3",
+    "platform": "Linux-6.8.0-137-generic-x86_64-with-glibc2.39",
+    "tauriDriver": "tauri-driver 2.0.6",
+    "webkitWebDriver": "Usage: WebKitWebDriver options -h, --help Prints this help message -p <port>, --port=<port> Port number the driver will use --host=<host> Host IP the driver will use, or either 'local' or 'all' (default: 'local') -t <ip:port> --target=<ip:port> Target IP and port --replace-on-new-session Replace the existing session on new session request",
+    "xvfb": "Unrecognized option: -version use: X [:<display>] [option] -a # default pointer acceleration (factor) -ac disable access control restrictions -audit int set audit trail level -auth file select authorization file -br create root window with black background +bs enable any backing store support -bs disable any backing store support +byteswappedclients Allow clients with endianess different to that of the server -byteswappedclients Prohibit clients with endianess different to that of the server -c ",
+    "display": {
+      "width": 1920,
+      "height": 1200,
+      "depth": 24,
+      "dpi": 96
+    }
+  },
+  "captures": [
+    {
+      "theme": "light",
+      "resolvedTheme": "light",
+      "layoutClass": "wide",
+      "requestedViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "actualViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "rootViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1440,
+        "height": 900
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1440,
+        "height": 900
+      },
+      "path": "flashcards-library-v1--light--wide-1440x900.png",
+      "sha256": "ab31129423e96a8c950010eb44e38e1f61f61b06ca7dc2999d757928d52f9296"
+    },
+    {
+      "theme": "light",
+      "resolvedTheme": "light",
+      "layoutClass": "medium",
+      "requestedViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "actualViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "rootViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1024,
+        "height": 768
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1024,
+        "height": 768
+      },
+      "path": "flashcards-library-v1--light--medium-1024x768.png",
+      "sha256": "0d0114a2b942c589d2fc55e69dd6893db0f6cabefa3e42eee0d0077eb4d1de71"
+    },
+    {
+      "theme": "light",
+      "resolvedTheme": "light",
+      "layoutClass": "compact",
+      "requestedViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "actualViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "rootViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 390,
+        "height": 844
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 390,
+        "height": 844
+      },
+      "path": "flashcards-library-v1--light--compact-390x844.png",
+      "sha256": "74d9e91d2e58dab5e4c7acc7981c294c8c5f57b158bc570d3441e850d05d66b1"
+    },
+    {
+      "theme": "dark",
+      "resolvedTheme": "dark",
+      "layoutClass": "wide",
+      "requestedViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "actualViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "rootViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1440,
+        "height": 900
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1440,
+        "height": 900
+      },
+      "path": "flashcards-library-v1--dark--wide-1440x900.png",
+      "sha256": "236062a99293883e514055443387be6d23085e9c9b3882cdb529b9fb99c73f5f"
+    },
+    {
+      "theme": "dark",
+      "resolvedTheme": "dark",
+      "layoutClass": "medium",
+      "requestedViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "actualViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "rootViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1024,
+        "height": 768
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1024,
+        "height": 768
+      },
+      "path": "flashcards-library-v1--dark--medium-1024x768.png",
+      "sha256": "28dd8218efe6ffc62da51a128f44b6b5fcb5767d19b512aa9811ed52e316360c"
+    },
+    {
+      "theme": "dark",
+      "resolvedTheme": "dark",
+      "layoutClass": "compact",
+      "requestedViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "actualViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "rootViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 390,
+        "height": 844
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 390,
+        "height": 844
+      },
+      "path": "flashcards-library-v1--dark--compact-390x844.png",
+      "sha256": "1e538a7a7854b2baae23b29bb2c3e534e5ae1b6930080be6c453f9984161d426"
+    },
+    {
+      "theme": "console",
+      "resolvedTheme": "console",
+      "layoutClass": "wide",
+      "requestedViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "actualViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "rootViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1440,
+        "height": 900
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1440,
+        "height": 900
+      },
+      "path": "flashcards-library-v1--console--wide-1440x900.png",
+      "sha256": "7aae961eb97981d9c65594aabf3ee8d38b1a7d906b06881b787e5f2b799b9920"
+    },
+    {
+      "theme": "console",
+      "resolvedTheme": "console",
+      "layoutClass": "medium",
+      "requestedViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "actualViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "rootViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1024,
+        "height": 768
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1024,
+        "height": 768
+      },
+      "path": "flashcards-library-v1--console--medium-1024x768.png",
+      "sha256": "65eba27341b7acd4efe5ced96df6c35d93722a52639792bb7e74c7c8dd49b007"
+    },
+    {
+      "theme": "console",
+      "resolvedTheme": "console",
+      "layoutClass": "compact",
+      "requestedViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "actualViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "rootViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 390,
+        "height": 844
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 390,
+        "height": 844
+      },
+      "path": "flashcards-library-v1--console--compact-390x844.png",
+      "sha256": "216c75caefafe058500516c723480062fffbb426a15bc972a98f1b16b9c34e87"
+    },
+    {
+      "theme": "synthwave",
+      "resolvedTheme": "synthwave",
+      "layoutClass": "wide",
+      "requestedViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "actualViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "rootViewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1440,
+        "height": 900
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1440,
+        "height": 900
+      },
+      "path": "flashcards-library-v1--synthwave--wide-1440x900.png",
+      "sha256": "55690fe368053566b6d3826467d0de3c8634166cfa62651f47fa5022aaefec53"
+    },
+    {
+      "theme": "synthwave",
+      "resolvedTheme": "synthwave",
+      "layoutClass": "medium",
+      "requestedViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "actualViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "rootViewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 1024,
+        "height": 768
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 1024,
+        "height": 768
+      },
+      "path": "flashcards-library-v1--synthwave--medium-1024x768.png",
+      "sha256": "192def5380277c683d2a03fc98a6af562407cde0b85be9252a54e96e3a086292"
+    },
+    {
+      "theme": "synthwave",
+      "resolvedTheme": "synthwave",
+      "layoutClass": "compact",
+      "requestedViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "actualViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "rootViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "outerWindowRect": {
+        "x": 320,
+        "y": 220,
+        "width": 390,
+        "height": 844
+      },
+      "devicePixelRatio": 1,
+      "pngDimensions": {
+        "width": 390,
+        "height": 844
+      },
+      "path": "flashcards-library-v1--synthwave--compact-390x844.png",
+      "sha256": "91f0abc4273077e49a13594f77a493131a5c32ebbb62fb22c106a66e5b8d7018"
+    }
+  ]
+}

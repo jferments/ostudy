@@ -53,23 +53,6 @@
     width: 100%;
       min-width: 0;
   }
-  .card-selection-bar {
-    display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
-      border: 1px solid var(--ostudy-color-accent-base);
-      border-radius: 10px;
-      padding: 10px 13px;
-      background: var(--ostudy-color-accent-soft);
-  }
-  .card-selection-bar select {
-    min-width: 170px;
-  }
-  .card-selection-bar .text-button {
-    margin-left: auto;
-  }
   .card-library-panel {
     min-width: 0;
       overflow: hidden;
@@ -425,18 +408,12 @@
     }
   }
   @media (max-width: 560px) {
-    .card-selection-bar,
     .selection-buttons {
       align-items: stretch;
           flex-direction: column;
     }
-    .card-selection-bar select,
-    .card-selection-bar button,
     .selection-buttons button {
       width: 100%;
-    }
-    .card-selection-bar .text-button {
-      margin-left: 0;
     }
     .card-library-summary {
       align-items: stretch;

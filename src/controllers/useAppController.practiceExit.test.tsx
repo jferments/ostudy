@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as decksIpc from "../ipc/decks";
 import * as settingsIpc from "../ipc/settings";
+import { dispatchPlatformBack } from "../platform/backNavigation";
 import { makeDeck, makeSettings } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import {
@@ -32,7 +33,7 @@ vi.mock("../ipc/uiCheckpoint", async (importOriginal) => {
     getUiCheckpoint: vi.fn().mockResolvedValue(null),
     saveUiCheckpoint: vi.fn().mockImplementation(
       async (input: import("../ipc/uiCheckpoint").SaveUiCheckpointInput) => ({
-        schemaVersion: 1 as const,
+        schemaVersion: 2 as const,
         updatedAt: 0,
         section: input.section,
         deckId: input.deckId ?? null,
@@ -48,15 +49,16 @@ function Harness({ terminate }: { terminate: () => Promise<boolean> }) {
   const controller = useAppController();
 
   useEffect(() => {
-    if (controller.section !== "practice") return registerPracticeExitHandler(null);
+    if (controller.activeWorkflow !== "practice") return registerPracticeExitHandler(null);
     return registerPracticeExitHandler(terminate);
-  }, [controller.section, terminate]);
+  }, [controller.activeWorkflow, terminate]);
 
   if (controller.isLoading) return <span>Loading</span>;
   return (
     <div>
       <output aria-label="section">{controller.section}</output>
-      <button type="button" onClick={() => void controller.navigate("practice")}>
+      <output aria-label="workflow">{controller.activeWorkflow ?? "none"}</output>
+      <button type="button" onClick={() => void controller.practiceDeck("deck-practice")}>
         Go practice
       </button>
       <button type="button" onClick={() => void controller.navigate("decks")}>
@@ -76,8 +78,8 @@ function renderHarness(terminate: () => Promise<boolean>) {
 
 async function enterPractice(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "Go practice" }));
-  await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("practice"));
-  // The practice section is committed during render, while the session-exit
+  await waitFor(() => expect(screen.getByLabelText("workflow").textContent).toBe("practice"));
+  // The practice workflow is committed during render, while the session-exit
   // handler is registered by the following effect. Navigation is only guarded
   // once that handler is active, so the test must wait for the real precondition
   // instead of racing React's effect flush on a loaded test worker.
@@ -98,7 +100,7 @@ describe("active practice navigation", () => {
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
     await enterPractice();
 
-    fireEvent.click(screen.getByRole("button", { name: "Go decks" }));
+    expect(dispatchPlatformBack()).toBe(true);
     const dialog = await screen.findByRole("alertdialog", {
       name: "Terminate this practice session?",
     });
@@ -107,7 +109,8 @@ describe("active practice navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(terminate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("section").textContent).toBe("practice");
+    expect(screen.getByLabelText("section").textContent).toBe("decks");
+    expect(screen.getByLabelText("workflow").textContent).toBe("practice");
   });
 
   it("completes the active session before navigating away when confirmed", async () => {
@@ -116,11 +119,12 @@ describe("active practice navigation", () => {
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
     await enterPractice();
 
-    fireEvent.click(screen.getByRole("button", { name: "Go decks" }));
+    expect(dispatchPlatformBack()).toBe(true);
     await screen.findByRole("alertdialog", { name: "Terminate this practice session?" });
     fireEvent.click(screen.getByRole("button", { name: "Yes, terminate" }));
 
     await waitFor(() => expect(terminate).toHaveBeenCalledOnce());
     await waitFor(() => expect(screen.getByLabelText("section").textContent).toBe("decks"));
+    expect(screen.getByLabelText("workflow").textContent).toBe("none");
   });
 });

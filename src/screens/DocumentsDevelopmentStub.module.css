@@ -1,7 +1,9 @@
 @layer components {
   .page {
     display: grid;
-    max-width: 880px;
+    width: 100%;
+    min-height: 100%;
+    align-content: start;
     gap: var(--ostudy-space-6);
     padding: max(var(--ostudy-space-6), var(--safe-top)) max(var(--ostudy-space-5), var(--safe-right))
       max(var(--ostudy-space-7), var(--safe-bottom)) max(var(--ostudy-space-5), var(--safe-left));

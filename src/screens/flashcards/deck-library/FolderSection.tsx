@@ -1,9 +1,13 @@
+import { memo } from "react";
+
 import type { DeckSummary } from "../../../ipc/decks";
 import type { DeckFolder } from "../../../ipc/deckFolders";
 import { Artwork } from "../../../ui/artwork/Artwork";
 import { Icon } from "../../../ui/icons/Icon";
 import { Surface } from "../../../ui/primitives/Surface";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
+import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
+import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { DeckItem } from "./DeckItem";
 import listStyles from "./DeckList.module.css";
 import styles from "./FolderSection.module.css";
@@ -23,9 +27,11 @@ interface FolderSectionProps {
   onDeleteDeck(deckId: string): void;
   onRename(): void;
   onDelete(): void;
+  selectedIds: ReadonlySet<string>;
+  onToggleDeckSelected(deck: DeckSummary): void;
 }
 
-export function FolderSection({
+export const FolderSection = memo(function FolderSection({
   folder,
   decks,
   folderIndex,
@@ -39,7 +45,10 @@ export function FolderSection({
   onDeleteDeck,
   onRename,
   onDelete,
+  selectedIds,
+  onToggleDeckSelected,
 }: FolderSectionProps) {
+  const { layoutMode } = useLayoutMode();
   const due = decks.reduce((sum, deck) => sum + deck.studyableDueCount, 0);
   const contentId = `deck-folder-${folder.id}`;
   return (
@@ -47,43 +56,42 @@ export function FolderSection({
       as="section"
       level={2}
       className={styles.folder}
-      data-library-drop="folder"
+      data-library-row="folder"
+      data-library-folder-surface="true"
+      data-geometry-key={`folder:${folder.id}`}
+      data-item-id={folder.id}
+      data-item-index={folderIndex}
+      data-item-name={folder.name}
       data-folder-id={folder.id}
       data-folder-index={folderIndex}
-      data-target-index={decks.length}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => reorder.dropFolder(event, folder.id, folderIndex, decks.length)}
+      data-destination-name={folder.name}
+      data-collapsed={collapsed ? "true" : "false"}
     >
       <header className={styles.header}>
-        <span
-          className={styles.dragHandle}
-          draggable={!disabled}
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          className={styles.keyboardReorder}
+          disabled={disabled}
           aria-label={`Reorder ${folder.name} folder. Use Up and Down arrow keys.`}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
-          title="Drag to reorder folder"
-          onDragStart={(event) => reorder.startFolderDrag(event, folder.id)}
+          title="Reorder folder with keyboard"
           onKeyDown={(event) =>
             reorder.moveFolderWithKeyboard(event, folder.id, folderIndex)
           }
-          onPointerDown={(event) =>
-            reorder.beginPointerDrag(event, { kind: "folder", id: folder.id })
-          }
-          onPointerMove={reorder.updatePointerDrag}
-          onPointerUp={reorder.finishPointerDrag}
-          onPointerCancel={reorder.cancelPointerDrag}
         >
           <Icon name="move" size={16} />
-        </span>
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-expanded={!collapsed}
-          aria-controls={contentId}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
-          title={collapsed ? "Expand folder" : "Collapse folder"}
+        </button>
+        <div
+          className={styles.summary}
+          data-library-pointer-drag-source="true"
           onClick={onToggleCollapsed}
+          onPointerDown={(event) =>
+            reorder.beginPointerDrag(
+              event,
+              { kind: "folder", id: folder.id },
+              `${folder.name} folder`,
+            )
+          }
         >
           <span className={styles.icon}>
             <Icon name={collapsed ? "folder" : "folder-open"} size={22} />
@@ -94,22 +102,51 @@ export function FolderSection({
               {decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready
             </span>
           </span>
+        </div>
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
+          title={collapsed ? "Expand folder" : "Collapse folder"}
+          onClick={onToggleCollapsed}
+        >
+          <span>{collapsed ? "Expand" : "Collapse"}</span>
           <span className={styles.chevron} aria-hidden="true">
             <Icon name={collapsed ? "chevron-right" : "chevron-down"} size={18} />
           </span>
         </button>
         <div className={styles.actions}>
-          <button type="button" disabled={disabled} onClick={onRename}>
-            Rename
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            className={styles.danger}
-            onClick={onDelete}
-          >
-            Delete
-          </button>
+          {layoutMode === "compact" ? (
+            <OverflowMenu
+              label={`${folder.name} folder actions`}
+              disabled={disabled}
+              items={[
+                { id: "rename", label: `Rename ${folder.name} folder`, onSelect: onRename },
+                {
+                  id: "delete",
+                  label: `Delete ${folder.name} folder`,
+                  destructive: true,
+                  onSelect: onDelete,
+                },
+              ]}
+            />
+          ) : (
+            <>
+              <button type="button" disabled={disabled} onClick={onRename}>
+                Rename
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                className={styles.danger}
+                onClick={onDelete}
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       </header>
       {!collapsed ? (
@@ -128,10 +165,12 @@ export function FolderSection({
                 index={index}
                 count={decks.length}
                 disabled={disabled}
+                selected={selectedIds.has(deck.id)}
                 reorder={reorder}
                 onOpen={() => onOpenDeck(deck.id)}
                 onPractice={() => onPracticeDeck(deck.id)}
                 onDelete={() => onDeleteDeck(deck.id)}
+                onToggleSelected={() => onToggleDeckSelected(deck)}
               />
             ))}
           </div>
@@ -142,4 +181,4 @@ export function FolderSection({
       </VisuallyHidden>
     </Surface>
   );
-}
+});

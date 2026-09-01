@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { AppSettings } from "../../ipc/settings";
 import {
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_FONT_PRESET,
   FONT_PRESET_OPTIONS,
   resolveAppearanceProfile,
   resolveFontFamily,
@@ -36,6 +38,14 @@ const environment = {
 };
 
 describe("appearance resolution", () => {
+  it("uses IBM Plex Sans with the system stack as the shared new-install default", () => {
+    expect(DEFAULT_FONT_PRESET).toBe("plex");
+    expect(DEFAULT_FONT_FAMILY).toBe(
+      "'IBM Plex Sans', var(--ostudy-font-family-system)",
+    );
+    expect(resolveFontFamily(DEFAULT_FONT_PRESET, "dark")).toBe(DEFAULT_FONT_FAMILY);
+  });
+
   it("follows operating-system motion when requested", () => {
     expect(resolveMotion("system", false)).toBe("full");
     expect(resolveMotion("system", true)).toBe("reduced");
@@ -89,7 +99,7 @@ describe("appearance resolution", () => {
       "lato",
       "ubuntu",
     ]);
-    expect(resolveFontFamily("plex", "dark")).toContain("'IBM Plex Sans'");
+    expect(resolveFontFamily("plex", "dark")).toBe(DEFAULT_FONT_FAMILY);
     expect(resolveFontFamily("albert", "dark")).toContain("'Albert Sans'");
     expect(resolveFontFamily("space-grotesk", "dark")).toContain("'Space Grotesk'");
     expect(resolveFontFamily("spline-sans", "dark")).toContain("'Spline Sans'");
