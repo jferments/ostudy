@@ -707,12 +707,7 @@ def assert_internal_practice_shell(session_id: str, deck_name: str) -> None:
         )
 
 
-def verify_tag_filtered_search(
-    session_id: str,
-    question: str,
-    tag_name: str,
-    deadline: float,
-) -> None:
+def verify_search_workspace_selected(session_id: str, deadline: float) -> None:
     wait_for_main_heading(session_id, "Flashcards", deadline)
     find_element(
         session_id,
@@ -721,6 +716,15 @@ def verify_tag_filtered_search(
         "[contains(normalize-space(.), 'Search')]",
         deadline,
     )
+
+
+def verify_tag_filtered_search(
+    session_id: str,
+    question: str,
+    tag_name: str,
+    deadline: float,
+) -> None:
+    verify_search_workspace_selected(session_id, deadline)
     find_element(
         session_id,
         "xpath",

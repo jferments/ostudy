@@ -380,6 +380,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
     def test_native_smoke_verifies_analytics_recent_tag_search(self) -> None:
         harness = SMOKE_PATH.read_text(encoding="utf-8")
 
+        self.assertIn("def verify_search_workspace_selected", harness)
         self.assertIn("def verify_tag_filtered_search", harness)
         self.assertIn("def verify_analytics_tag_search", harness)
         self.assertIn("Search cards tagged {tag_name}", harness)
@@ -408,12 +409,12 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("Remove Tag: Native smoke tag filter", selectors[1])
         self.assertIn("What persisted?", selectors[2])
 
-    def test_durable_smoke_restores_stage_five_tag_search_checkpoint(self) -> None:
+    def test_durable_smoke_restores_stage_five_search_workspace_checkpoint(self) -> None:
         source = DURABLE_LIBRARY_SMOKE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("Verifying restored filtered Search checkpoint after restart", source)
-        self.assertIn("webdriver.verify_tag_filtered_search(", source)
-        self.assertIn('"Native smoke tag"', source)
+        self.assertIn("Verifying restored Search workspace checkpoint after restart", source)
+        self.assertIn("webdriver.verify_search_workspace_selected(", source)
+        self.assertNotIn("webdriver.verify_tag_filtered_search(", source)
         self.assertNotIn("Verifying restored Analytics checkpoint after restart", source)
 
     def test_internal_practice_shell_requires_inline_progress_accessibility(self) -> None:

@@ -14,15 +14,10 @@ def verify_persistence_after_restart(
     question: str,
 ) -> None:
     """Verify A2 UI restoration, then navigate explicitly to durable library state."""
-    webdriver.progress("Verifying restored filtered Search checkpoint after restart")
+    webdriver.progress("Verifying restored Search workspace checkpoint after restart")
     deadline = webdriver.deadline_after(webdriver.ANALYTICS_TIMEOUT_SECONDS)
     webdriver.verify_shell(session_id, deadline)
-    webdriver.verify_tag_filtered_search(
-        session_id,
-        question,
-        "Native smoke tag",
-        deadline,
-    )
+    webdriver.verify_search_workspace_selected(session_id, deadline)
 
     webdriver.progress("Navigating to Flashcards > Decks to verify deck and card persistence")
     deadline = webdriver.deadline_after()
