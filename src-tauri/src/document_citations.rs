@@ -690,11 +690,9 @@ mod tests {
                 .len(),
             1
         );
-        assert!(
-            load_deck_citations(&connection, &destination_deck_id)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(load_deck_citations(&connection, &destination_deck_id)
+            .unwrap()
+            .is_empty());
 
         connection
             .execute(
@@ -703,11 +701,9 @@ mod tests {
             )
             .unwrap();
 
-        assert!(
-            load_deck_citations(&connection, &source_deck_id)
-                .unwrap()
-                .is_empty()
-        );
+        assert!(load_deck_citations(&connection, &source_deck_id)
+            .unwrap()
+            .is_empty());
         let destination = load_deck_citations(&connection, &destination_deck_id).unwrap();
         assert_eq!(destination.len(), 1);
         assert_eq!(destination[0].source_locator, None);
