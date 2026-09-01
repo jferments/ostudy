@@ -34,6 +34,7 @@ class CiLogCaptureTests(unittest.TestCase):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
+                timeout=10,
             )
             self.assertEqual(log_path.exists(), expect_log)
             raw_log = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
