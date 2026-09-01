@@ -6,56 +6,22 @@
   min-height: 100%;
 }
 
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.5rem;
-}
-
 .header h1,
 .card h2,
 .empty h2 {
   margin: 0;
 }
 
-.eyebrow {
-  margin: 0 0 0.3rem;
-  color: var(--ostudy-color-text-muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.intro {
-  max-width: 72ch;
-  margin: 0.5rem 0 0;
-  color: var(--ostudy-color-text-muted);
-  line-height: 1.55;
-}
-
 .toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
   min-height: 2.5rem;
-}
-
-.archiveToggle {
-  display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-}
-
-.archiveToggle input {
-  width: 1.1rem;
-  height: 1.1rem;
+  justify-content: flex-end;
 }
 
 .count,
 .filename,
+.cardCount,
 .deckNote {
   color: var(--ostudy-color-text-muted);
 }
@@ -86,13 +52,13 @@
 
 .card {
   display: grid;
-  grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 36rem);
+  grid-template-columns: minmax(16rem, 1fr) auto;
   align-items: start;
-  gap: 1.25rem;
+  gap: 1rem;
   border: 1px solid var(--ostudy-color-border-subtle);
   border-radius: 0.85rem;
   background: var(--ostudy-color-surface-base);
-  padding: 1.1rem;
+  padding: 1rem;
 }
 
 .cardMain {
@@ -103,7 +69,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .titleRow h2 {
@@ -138,33 +104,29 @@
   letter-spacing: 0.01em;
 }
 
+.metadataButton {
+  margin-inline-start: auto;
+}
+
+.sourceSummary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.35rem;
+}
+
 .filename {
-  margin: 0.35rem 0 0;
+  min-width: 0;
   overflow-wrap: anywhere;
   font-size: 0.88rem;
 }
 
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(6rem, 1fr));
-  gap: 0.75rem;
-  margin: 1rem 0 0;
-}
-
-.metrics div {
-  min-width: 0;
-}
-
-.metrics dt {
-  color: var(--ostudy-color-text-muted);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.metrics dd {
-  margin: 0.2rem 0 0;
-  overflow-wrap: anywhere;
+.cardCount {
+  font-size: 0.82rem;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .deckNote {
@@ -173,37 +135,18 @@
 }
 
 .actions {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  align-self: center;
   justify-content: flex-end;
-  gap: 0.55rem;
-}
-
-.actions button {
-  max-width: 100%;
 }
 
 @media (max-width: 780px) {
-  .header,
   .card {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .header > button,
-  .actions,
-  .actions button {
-    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .actions {
-    align-items: stretch;
-  }
-
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
@@ -213,11 +156,10 @@
   }
 
   .toolbar {
-    align-items: flex-start;
-    flex-direction: column;
+    justify-content: flex-start;
   }
 
-  .metrics {
-    grid-template-columns: 1fr;
+  .metadataButton {
+    margin-inline-start: 0;
   }
 }
