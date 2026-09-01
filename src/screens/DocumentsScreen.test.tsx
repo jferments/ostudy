@@ -332,7 +332,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(screen.getAllByText("Rendering pages 4/11").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Rendering pages 4/11")).length).toBeGreaterThan(0);
   });
 
   it("offers an exact stop action while a document generation task is processing", async () => {
