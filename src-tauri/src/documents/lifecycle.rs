@@ -1,10 +1,6 @@
 use rusqlite::{params, Connection, TransactionBehavior};
 
-use crate::{
-    database::Database,
-    error::CommandError,
-    util::unix_time_millis,
-};
+use crate::{database::Database, error::CommandError, util::unix_time_millis};
 
 use super::repository;
 
