@@ -241,6 +241,45 @@ class PerformanceBaselineContractTests(unittest.TestCase):
             baseline.CANDIDATE_SENSITIVE_PATHS,
         )
 
+    def test_candidate_sensitivity_includes_every_drag_layout_stylesheet(self) -> None:
+        drag_layout_stylesheets = {
+            "src/screens/flashcards/deck-library/DeckItem.module.css",
+            "src/screens/flashcards/deck-library/FolderSection.module.css",
+            "src/screens/flashcards/deck-library/DeckLibraryView.module.css",
+            "src/screens/flashcards/deck-library/DeckList.module.css",
+            "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css",
+        }
+
+        self.assertLessEqual(
+            drag_layout_stylesheets,
+            set(baseline.CANDIDATE_SENSITIVE_PATHS),
+        )
+
+    def test_candidate_sensitivity_fails_closed_when_drag_layout_css_drifts(self) -> None:
+        drag_layout_stylesheets = (
+            "src/screens/flashcards/deck-library/DeckItem.module.css",
+            "src/screens/flashcards/deck-library/FolderSection.module.css",
+            "src/screens/flashcards/deck-library/DeckLibraryView.module.css",
+            "src/screens/flashcards/deck-library/DeckList.module.css",
+            "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css",
+        )
+        committed_source = mock.Mock(returncode=0, stdout=b"stale css", stderr=b"")
+
+        for stylesheet in drag_layout_stylesheets:
+            with self.subTest(stylesheet=stylesheet), mock.patch.object(
+                baseline.subprocess,
+                "run",
+                return_value=committed_source,
+            ):
+                with self.assertRaisesRegex(
+                    baseline.PerformanceBaselineError,
+                    f"Measurement-sensitive source drifted after capture: {stylesheet}",
+                ):
+                    baseline.assert_measurement_sources_unchanged(
+                        SOURCE_SHA,
+                        (stylesheet,),
+                    )
+
     def test_duplicate_json_key_is_rejected(self) -> None:
         path = self.root / "manifest.json"; path.write_text('{"schemaVersion":1,"schemaVersion":1}', encoding="utf-8")
         with self.assertRaisesRegex(baseline.PerformanceBaselineError, "Duplicate JSON key"):

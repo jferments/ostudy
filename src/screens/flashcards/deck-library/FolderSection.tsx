@@ -58,7 +58,6 @@ export const FolderSection = memo(function FolderSection({
       className={styles.folder}
       data-library-row="folder"
       data-library-folder-surface="true"
-      data-library-pointer-drag-source="true"
       data-geometry-key={`folder:${folder.id}`}
       data-item-id={folder.id}
       data-item-index={folderIndex}
@@ -67,13 +66,6 @@ export const FolderSection = memo(function FolderSection({
       data-folder-index={folderIndex}
       data-destination-name={folder.name}
       data-collapsed={collapsed ? "true" : "false"}
-      onPointerDown={(event) =>
-        reorder.beginPointerDrag(
-          event,
-          { kind: "folder", id: folder.id },
-          `${folder.name} folder`,
-        )
-      }
     >
       <header className={styles.header}>
         <button
@@ -89,14 +81,16 @@ export const FolderSection = memo(function FolderSection({
         >
           <Icon name="move" size={16} />
         </button>
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-expanded={!collapsed}
-          aria-controls={contentId}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
-          title={collapsed ? "Expand folder" : "Collapse folder"}
-          onClick={onToggleCollapsed}
+        <div
+          className={styles.summary}
+          data-library-pointer-drag-source="true"
+          onPointerDown={(event) =>
+            reorder.beginPointerDrag(
+              event,
+              { kind: "folder", id: folder.id },
+              `${folder.name} folder`,
+            )
+          }
         >
           <span className={styles.icon}>
             <Icon name={collapsed ? "folder" : "folder-open"} size={22} />
@@ -107,6 +101,17 @@ export const FolderSection = memo(function FolderSection({
               {decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready
             </span>
           </span>
+        </div>
+        <button
+          type="button"
+          className={styles.toggle}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
+          title={collapsed ? "Expand folder" : "Collapse folder"}
+          onClick={onToggleCollapsed}
+        >
+          <span>{collapsed ? "Expand" : "Collapse"}</span>
           <span className={styles.chevron} aria-hidden="true">
             <Icon name={collapsed ? "chevron-right" : "chevron-down"} size={18} />
           </span>

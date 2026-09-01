@@ -142,6 +142,11 @@ CANDIDATE_SENSITIVE_PATHS = (
     "src/screens/flashcards/deck-library/FolderSection.tsx",
     "src/screens/flashcards/deck-library/DeckLibraryView.tsx",
     "src/screens/flashcards/deck-library/LibraryDragFeedback.tsx",
+    "src/screens/flashcards/deck-library/DeckItem.module.css",
+    "src/screens/flashcards/deck-library/FolderSection.module.css",
+    "src/screens/flashcards/deck-library/DeckLibraryView.module.css",
+    "src/screens/flashcards/deck-library/DeckList.module.css",
+    "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css",
 )
 
 

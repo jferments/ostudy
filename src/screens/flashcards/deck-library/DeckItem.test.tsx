@@ -13,15 +13,7 @@ const folderId = "f".repeat(32);
 
 describe("DeckItem", () => {
   beforeEach(() => {
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }));
+    setLayoutMode("wide");
   });
 
   afterEach(() => {
@@ -29,11 +21,11 @@ describe("DeckItem", () => {
   });
 
   it.each(["ArrowUp", "ArrowDown", "Home", "End", "ArrowLeft", "ArrowRight"])(
-    "routes %s from the primary deck control through the reorder adapter",
+    "routes %s from the explicit Open control through the reorder adapter",
     (key) => {
       const reorder = makeReorder();
       renderDeckItem({ reorder });
-      const openControl = screen.getByRole("button", { name: /Anatomy.*cards.*ready/ });
+      const openControl = screen.getByRole("button", { name: "Open Anatomy" });
 
       fireEvent.keyDown(openControl, { key });
 
@@ -48,10 +40,37 @@ describe("DeckItem", () => {
       expect(openControl.getAttribute("aria-keyshortcuts")).toBe(
         "ArrowUp ArrowDown Home End ArrowLeft ArrowRight",
       );
-      expect(openControl.hasAttribute("data-library-drag-surface")).toBe(false);
-      expect(
-        openControl.closest("[data-library-pointer-drag-source='true']"),
-      ).not.toBeNull();
+      expect(openControl.closest("[data-library-pointer-drag-source='true']")).toBeNull();
+    },
+  );
+
+  it.each(["wide", "medium", "compact"] as const)(
+    "starts pointer drag from the broad title and copy surface but not controls in %s layout",
+    (layoutMode) => {
+      setLayoutMode(layoutMode);
+      const reorder = makeReorder();
+      renderDeckItem({ reorder });
+
+      fireEvent.pointerDown(screen.getByText("Anatomy"));
+      fireEvent.pointerDown(screen.getByText("12 cards · 4 ready"));
+
+      expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
+      expect(reorder.beginPointerDrag).toHaveBeenLastCalledWith(
+        expect.anything(),
+        { kind: "deck", id: deck.id },
+        deck.name,
+      );
+
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Open Anatomy" }));
+      fireEvent.pointerDown(screen.getByRole("checkbox", { name: "Select Anatomy" }));
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Practice" }));
+      fireEvent.pointerDown(
+        screen.getByRole("button", {
+          name: layoutMode === "compact" ? "Anatomy actions" : "Delete Anatomy",
+        }),
+      );
+
+      expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
     },
   );
 
@@ -62,7 +81,7 @@ describe("DeckItem", () => {
       if (event.key === "ArrowDown") event.preventDefault();
     });
     const { container } = renderDeckItem({ reorder, onOpen });
-    const openControl = screen.getByRole("button", { name: /Anatomy.*cards.*ready/ });
+    const openControl = screen.getByRole("button", { name: "Open Anatomy" });
     const movement = keyboardEvent("ArrowDown");
     const enter = keyboardEvent("Enter");
     const space = keyboardEvent(" ");
@@ -122,6 +141,20 @@ function keyboardEvent(key: string): globalThis.KeyboardEvent {
     bubbles: true,
     cancelable: true,
   });
+}
+
+function setLayoutMode(layoutMode: "wide" | "medium" | "compact"): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches:
+      (query === "(max-width: 760px)" && layoutMode === "compact") ||
+      (query === "(max-width: 1180px)" && layoutMode !== "wide"),
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
 }
 
 function makeDeck(seed: string, name: string): DeckSummary {

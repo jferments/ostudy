@@ -52,16 +52,6 @@ export const DeckItem = memo(function DeckItem({
       data-item-index={archived ? undefined : index}
       data-item-name={archived ? undefined : deck.name}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
-      onPointerDown={
-        archived
-          ? undefined
-          : (event) =>
-              reorder.beginPointerDrag(
-                event,
-                { kind: "deck", id: deck.id },
-                deck.name,
-              )
-      }
     >
       <label className={styles.selection}>
         <input
@@ -75,32 +65,44 @@ export const DeckItem = memo(function DeckItem({
       <div
         className={styles.main}
         data-library-pointer-drag-source={archived ? undefined : "true"}
+        onPointerDown={
+          archived
+            ? undefined
+            : (event) =>
+                reorder.beginPointerDrag(
+                  event,
+                  { kind: "deck", id: deck.id },
+                  deck.name,
+                )
+        }
       >
         <span className={styles.mark}>
           <Icon name="cards" size={20} />
         </span>
-        <button
-          type="button"
-          className={styles.open}
-          aria-keyshortcuts={
-            archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
-          }
-          onKeyDown={
-            archived
-              ? undefined
-              : (event) =>
-                  reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
-          }
-          onClick={onOpen}
-        >
-          <span className={styles.copy}>
-            <strong>{deck.name}</strong>
-            <small>
-              {deck.generatedCardCount} cards · {deck.studyableDueCount} ready
-            </small>
-          </span>
-        </button>
+        <span className={styles.copy}>
+          <strong>{deck.name}</strong>
+          <small>
+            {deck.generatedCardCount} cards · {deck.studyableDueCount} ready
+          </small>
+        </span>
       </div>
+      <button
+        type="button"
+        className={styles.open}
+        aria-label={`Open ${deck.name}`}
+        aria-keyshortcuts={
+          archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
+        }
+        onKeyDown={
+          archived
+            ? undefined
+            : (event) =>
+                reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
+        }
+        onClick={onOpen}
+      >
+        Open
+      </button>
       <div className={styles.actions}>
         {!archived ? (
           <ResponsiveActionGroup

@@ -232,9 +232,8 @@ describe("DeckLibraryWorkspace", () => {
     const onOpenDeck = vi.fn();
     renderLibrary({ onOpenDeck });
 
-    const deckButton = (await screen.findByText("Pharmacology")).closest("button");
-    expect(deckButton).not.toBeNull();
-    fireEvent.click(deckButton as HTMLButtonElement);
+    const openButton = await screen.findByRole("button", { name: "Open Pharmacology" });
+    fireEvent.click(openButton);
 
     expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, []);
   });
@@ -250,8 +249,7 @@ describe("DeckLibraryWorkspace", () => {
     expect((checkbox as HTMLInputElement).checked).toBe(true);
     expect(article?.getAttribute("data-selected")).toBe("true");
 
-    const rowButton = screen.getByText("Pharmacology").closest("button");
-    fireEvent.click(rowButton as HTMLButtonElement);
+    fireEvent.click(screen.getByRole("button", { name: "Open Pharmacology" }));
     expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, [
       { id: pharmacology.id, revision: pharmacology.revision },
     ]);
