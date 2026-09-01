@@ -6,14 +6,18 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use tauri::State;
 
-use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
+use crate::{
+    database::Database, document_domain::SourceLocator, error::CommandError,
+    util::validate_entity_id,
+};
 
 pub(crate) const SOURCE_CITATION_SCHEMA_VERSION: i64 = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SourceCitationDto {
+pub struct SourceCitationDto {
     pub citation_id: String,
     pub schema_version: i64,
     pub source_document_id: String,
@@ -93,63 +97,6 @@ pub(crate) fn upsert_document_snapshot(
     Ok(document_id.to_string())
 }
 
-pub(crate) fn link_deck_to_document(
-    connection: &Connection,
-    document_id: &str,
-    deck_id: &str,
-    now: i64,
-) -> Result<(), CommandError> {
-    validate_entity_id(deck_id, "deck")?;
-    let citation_id = upsert_document_snapshot(connection, document_id, now)?;
-    connection
-        .execute(
-            "INSERT OR IGNORE INTO deck_source_citations (
-                 deck_id, citation_id, created_at
-             ) VALUES (?1, ?2, ?3)",
-            params![deck_id, citation_id, now],
-        )
-        .map_err(|error| {
-            CommandError::database_at(
-                "deck_source_citation_write_failed",
-                format!("document={document_id} deck={deck_id}"),
-                error,
-            )
-        })?;
-    Ok(())
-}
-
-pub(crate) fn link_note_to_document(
-    connection: &Connection,
-    document_id: &str,
-    note_id: &str,
-    source_locator: &SourceLocator,
-    now: i64,
-) -> Result<(), CommandError> {
-    validate_entity_id(note_id, "note")?;
-    let citation_id = upsert_document_snapshot(connection, document_id, now)?;
-    let locator_json =
-        serde_json::to_string(source_locator).map_err(CommandError::serialization)?;
-    connection
-        .execute(
-            "INSERT INTO note_source_citations (
-                 note_id, citation_id, source_locator_json, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?4)
-             ON CONFLICT(note_id) DO UPDATE SET
-                 citation_id = excluded.citation_id,
-                 source_locator_json = excluded.source_locator_json,
-                 updated_at = excluded.updated_at",
-            params![note_id, citation_id, locator_json, now],
-        )
-        .map_err(|error| {
-            CommandError::database_at(
-                "note_source_citation_write_failed",
-                format!("document={document_id} note={note_id}"),
-                error,
-            )
-        })?;
-    Ok(())
-}
-
 /// Materialize every surviving deck/note relationship and mark the source
 /// unavailable in the same transaction that will delete the document row.
 pub(crate) fn preserve_document_citations_before_delete(
@@ -173,6 +120,12 @@ pub(crate) fn preserve_document_citations_before_delete(
                  SELECT generated_deck_id
                  FROM documents
                  WHERE id = ?1 AND generated_deck_id IS NOT NULL
+                 UNION
+                 SELECT note.deck_id
+                 FROM document_note_topics AS topic
+                 JOIN notes AS note
+                   ON note.id = topic.note_id AND note.deleted_at IS NULL
+                 WHERE topic.document_id = ?1
              ) AS relation
              JOIN decks AS deck ON deck.id = relation.deck_id",
             params![document_id, citation_id, now],
@@ -252,78 +205,195 @@ pub(crate) fn preserve_document_citations_before_delete(
     })
 }
 
-pub(crate) fn load_deck_citations(
+#[tauri::command]
+pub fn list_deck_source_citations(
+    database: State<'_, Database>,
+    deck_id: String,
+) -> Result<Vec<SourceCitationDto>, CommandError> {
+    database.with_connection(|connection| load_deck_citations(connection, &deck_id))
+}
+
+#[tauri::command]
+pub fn get_note_source_citation(
+    database: State<'_, Database>,
+    note_id: String,
+) -> Result<Option<SourceCitationDto>, CommandError> {
+    database.with_connection(|connection| load_note_citation(connection, &note_id))
+}
+
+/// Resolve both live provenance and durable post-deletion snapshots.
+///
+/// Deck citations follow notes when cards are moved between decks. An explicit
+/// `deck_source_citations` row additionally preserves the generated-deck
+/// relationship when no source-grounded notes remain.
+fn load_deck_citations(
     connection: &Connection,
     deck_id: &str,
 ) -> Result<Vec<SourceCitationDto>, CommandError> {
     validate_entity_id(deck_id, "deck")?;
     let mut statement = connection
         .prepare(
-            "SELECT snapshot.id, snapshot.schema_version,
-                    snapshot.source_document_id, snapshot.source_identity,
-                    snapshot.source_fingerprint_sha256, snapshot.source_title,
-                    snapshot.original_filename, snapshot.source_format,
-                    snapshot.source_media_type, snapshot.source_unit_kind,
-                    snapshot.source_unit_count, snapshot.source_removed, NULL
-             FROM deck_source_citations AS relation
-             JOIN source_citation_snapshots AS snapshot
-               ON snapshot.id = relation.citation_id
-             WHERE relation.deck_id = ?1
-             ORDER BY relation.created_at, snapshot.id",
+            "WITH source_ids(source_document_id) AS (
+                 SELECT snapshot.source_document_id
+                 FROM deck_source_citations AS relation
+                 JOIN source_citation_snapshots AS snapshot
+                   ON snapshot.id = relation.citation_id
+                 WHERE relation.deck_id = ?1
+                 UNION
+                 SELECT relation.document_id
+                 FROM document_decks AS relation
+                 JOIN documents AS document ON document.id = relation.document_id
+                 WHERE relation.deck_id = ?1
+                 UNION
+                 SELECT relation.document_id
+                 FROM document_note_topics AS relation
+                 JOIN notes AS note
+                   ON note.id = relation.note_id AND note.deleted_at IS NULL
+                 JOIN documents AS document ON document.id = relation.document_id
+                 WHERE note.deck_id = ?1
+                 UNION
+                 SELECT snapshot.source_document_id
+                 FROM note_source_citations AS relation
+                 JOIN notes AS note
+                   ON note.id = relation.note_id AND note.deleted_at IS NULL
+                 JOIN source_citation_snapshots AS snapshot
+                   ON snapshot.id = relation.citation_id
+                 WHERE note.deck_id = ?1
+             )
+             SELECT
+                 COALESCE(snapshot.id, document.id),
+                 COALESCE(snapshot.schema_version, ?2),
+                 source_ids.source_document_id,
+                 COALESCE(
+                     CASE
+                         WHEN document.id IS NOT NULL
+                         THEN 'sha256:' || document.sha256
+                     END,
+                     snapshot.source_identity
+                 ),
+                 COALESCE(
+                     document.sha256,
+                     snapshot.source_fingerprint_sha256
+                 ),
+                 COALESCE(document.title, snapshot.source_title),
+                 COALESCE(
+                     document.original_filename,
+                     snapshot.original_filename
+                 ),
+                 COALESCE(document.source_format, snapshot.source_format),
+                 COALESCE(
+                     document.source_media_type,
+                     snapshot.source_media_type
+                 ),
+                 COALESCE(
+                     document.source_unit_kind,
+                     snapshot.source_unit_kind
+                 ),
+                 COALESCE(
+                     document.source_unit_count,
+                     snapshot.source_unit_count
+                 ),
+                 CASE WHEN document.id IS NULL THEN 1 ELSE 0 END,
+                 NULL
+             FROM source_ids
+             LEFT JOIN documents AS document
+               ON document.id = source_ids.source_document_id
+             LEFT JOIN source_citation_snapshots AS snapshot
+               ON snapshot.source_document_id = source_ids.source_document_id
+             WHERE document.id IS NOT NULL OR snapshot.id IS NOT NULL
+             ORDER BY
+                 COALESCE(document.title, snapshot.source_title)
+                    COLLATE NOCASE,
+                 source_ids.source_document_id",
         )
         .map_err(CommandError::database)?;
     let rows = statement
-        .query_map([deck_id], citation_row)
+        .query_map(
+            params![deck_id, SOURCE_CITATION_SCHEMA_VERSION],
+            citation_row,
+        )
         .map_err(CommandError::database)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
         .and_then(validate_citation_locators)
 }
 
-pub(crate) fn load_note_citation(
+fn load_note_citation(
     connection: &Connection,
     note_id: &str,
 ) -> Result<Option<SourceCitationDto>, CommandError> {
     validate_entity_id(note_id, "note")?;
     let citation = connection
         .query_row(
-            "SELECT snapshot.id, snapshot.schema_version,
-                    snapshot.source_document_id, snapshot.source_identity,
-                    snapshot.source_fingerprint_sha256, snapshot.source_title,
-                    snapshot.original_filename, snapshot.source_format,
-                    snapshot.source_media_type, snapshot.source_unit_kind,
-                    snapshot.source_unit_count, snapshot.source_removed,
-                    relation.source_locator_json
-             FROM note_source_citations AS relation
-             JOIN source_citation_snapshots AS snapshot
-               ON snapshot.id = relation.citation_id
-             WHERE relation.note_id = ?1",
-            [note_id],
+            "WITH candidates(
+                 precedence, source_document_id, source_locator_json
+             ) AS (
+                 SELECT
+                     0,
+                     snapshot.source_document_id,
+                     relation.source_locator_json
+                 FROM note_source_citations AS relation
+                 JOIN source_citation_snapshots AS snapshot
+                   ON snapshot.id = relation.citation_id
+                 WHERE relation.note_id = ?1
+                 UNION ALL
+                 SELECT
+                     1,
+                     relation.document_id,
+                     relation.source_locator_json
+                 FROM document_note_topics AS relation
+                 WHERE relation.note_id = ?1
+                   AND relation.relationship_kind = 'primary'
+             )
+             SELECT
+                 COALESCE(snapshot.id, document.id),
+                 COALESCE(snapshot.schema_version, ?2),
+                 candidates.source_document_id,
+                 COALESCE(
+                     CASE
+                         WHEN document.id IS NOT NULL
+                         THEN 'sha256:' || document.sha256
+                     END,
+                     snapshot.source_identity
+                 ),
+                 COALESCE(
+                     document.sha256,
+                     snapshot.source_fingerprint_sha256
+                 ),
+                 COALESCE(document.title, snapshot.source_title),
+                 COALESCE(
+                     document.original_filename,
+                     snapshot.original_filename
+                 ),
+                 COALESCE(document.source_format, snapshot.source_format),
+                 COALESCE(
+                     document.source_media_type,
+                     snapshot.source_media_type
+                 ),
+                 COALESCE(
+                     document.source_unit_kind,
+                     snapshot.source_unit_kind
+                 ),
+                 COALESCE(
+                     document.source_unit_count,
+                     snapshot.source_unit_count
+                 ),
+                 CASE WHEN document.id IS NULL THEN 1 ELSE 0 END,
+                 candidates.source_locator_json
+             FROM candidates
+             LEFT JOIN documents AS document
+               ON document.id = candidates.source_document_id
+             LEFT JOIN source_citation_snapshots AS snapshot
+               ON snapshot.source_document_id = candidates.source_document_id
+             WHERE document.id IS NOT NULL OR snapshot.id IS NOT NULL
+             ORDER BY candidates.precedence
+             LIMIT 1",
+            params![note_id, SOURCE_CITATION_SCHEMA_VERSION],
             citation_row,
         )
         .optional()
         .map_err(CommandError::database)?;
     citation.map(validate_citation_locator).transpose()
-}
-
-pub(crate) fn delete_orphaned_removed_citations(
-    connection: &Connection,
-) -> Result<usize, CommandError> {
-    connection
-        .execute(
-            "DELETE FROM source_citation_snapshots
-             WHERE source_removed = 1
-               AND NOT EXISTS (
-                   SELECT 1 FROM deck_source_citations
-                   WHERE citation_id = source_citation_snapshots.id
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM note_source_citations
-                   WHERE citation_id = source_citation_snapshots.id
-               )",
-            [],
-        )
-        .map_err(CommandError::database)
 }
 
 fn citation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SourceCitationDto> {
@@ -418,14 +488,18 @@ mod tests {
                      deleted_at INTEGER
                  );
                  CREATE TABLE notes (
-                     id TEXT PRIMARY KEY
+                     id TEXT PRIMARY KEY,
+                     deck_id TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+                     deleted_at INTEGER
                  );
                  CREATE TABLE document_decks (
-                     document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                     document_id TEXT NOT NULL
+                         REFERENCES documents(id) ON DELETE CASCADE,
                      deck_id TEXT NOT NULL REFERENCES decks(id) ON DELETE CASCADE
                  );
                  CREATE TABLE document_note_topics (
-                     document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                     document_id TEXT NOT NULL
+                         REFERENCES documents(id) ON DELETE CASCADE,
                      note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
                      relationship_kind TEXT NOT NULL,
                      source_locator_json TEXT NOT NULL,
@@ -467,15 +541,7 @@ mod tests {
         connection
     }
 
-    #[test]
-    fn source_deletion_preserves_structured_deck_and_note_citations() {
-        let connection = fixture();
-        let document_id = "a".repeat(32);
-        let deck_id = "b".repeat(32);
-        let note_id = "c".repeat(32);
-        let locator =
-            SourceLocator::new(SourceUnitKind::Page, vec![2, 3], Some("Evidence".into())).unwrap();
-        let locator_json = serde_json::to_string(&locator).unwrap();
+    fn insert_document(connection: &Connection, document_id: &str, deck_id: &str) {
         connection
             .execute(
                 "INSERT INTO documents (
@@ -489,6 +555,18 @@ mod tests {
                 params![document_id, "d".repeat(64), deck_id],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn source_deletion_preserves_structured_deck_and_note_citations() {
+        let connection = fixture();
+        let document_id = "a".repeat(32);
+        let deck_id = "b".repeat(32);
+        let note_id = "c".repeat(32);
+        let locator =
+            SourceLocator::new(SourceUnitKind::Page, vec![2, 3], Some("Evidence".into())).unwrap();
+        let locator_json = serde_json::to_string(&locator).unwrap();
+        insert_document(&connection, &document_id, &deck_id);
         connection
             .execute(
                 "INSERT INTO decks (id, description, deleted_at)
@@ -497,7 +575,11 @@ mod tests {
             )
             .unwrap();
         connection
-            .execute("INSERT INTO notes (id) VALUES (?1)", [note_id.as_str()])
+            .execute(
+                "INSERT INTO notes (id, deck_id, deleted_at)
+                 VALUES (?1, ?2, NULL)",
+                params![note_id, deck_id],
+            )
             .unwrap();
         connection
             .execute(
@@ -515,6 +597,11 @@ mod tests {
                 params![document_id, note_id, locator_json],
             )
             .unwrap();
+
+        let live_deck_citations = load_deck_citations(&connection, &deck_id).unwrap();
+        assert_eq!(live_deck_citations.len(), 1);
+        assert!(!live_deck_citations[0].source_removed);
+        assert_eq!(live_deck_citations[0].source_title, "Renal physiology");
 
         let preserved =
             preserve_document_citations_before_delete(&connection, &document_id, 10).unwrap();
@@ -561,43 +648,68 @@ mod tests {
     }
 
     #[test]
-    fn removed_snapshot_is_collected_only_after_all_artifact_links_are_gone() {
+    fn live_note_citation_follows_a_note_between_decks() {
         let connection = fixture();
         let document_id = "1".repeat(32);
-        let deck_id = "2".repeat(32);
+        let source_deck_id = "2".repeat(32);
+        let destination_deck_id = "3".repeat(32);
+        let note_id = "4".repeat(32);
+        let locator = SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap();
+        let locator_json = serde_json::to_string(&locator).unwrap();
+
+        for deck_id in [&source_deck_id, &destination_deck_id] {
+            connection
+                .execute(
+                    "INSERT INTO decks (id, description, deleted_at)
+                     VALUES (?1, '', NULL)",
+                    [deck_id.as_str()],
+                )
+                .unwrap();
+        }
+        insert_document(&connection, &document_id, &source_deck_id);
         connection
             .execute(
-                "INSERT INTO documents (
-                     id, title, original_filename, source_format,
-                     source_media_type, source_unit_kind, source_unit_count,
-                     sha256, generated_deck_id, created_at, updated_at
-                 ) VALUES (
-                     ?1, 'Source', 'source.pdf', 'pdf', 'application/pdf',
-                     'page', 1, ?2, ?3, 1, 1
-                 )",
-                params![document_id, "3".repeat(64), deck_id],
+                "INSERT INTO notes (id, deck_id, deleted_at)
+                 VALUES (?1, ?2, NULL)",
+                params![note_id, source_deck_id],
             )
             .unwrap();
         connection
             .execute(
-                "INSERT INTO decks (id, description, deleted_at)
-                 VALUES (?1, '', NULL)",
-                [deck_id.as_str()],
+                "INSERT INTO document_note_topics (
+                     document_id, note_id, relationship_kind,
+                     source_locator_json, created_at
+                 ) VALUES (?1, ?2, 'primary', ?3, 2)",
+                params![document_id, note_id, locator_json],
             )
             .unwrap();
 
-        preserve_document_citations_before_delete(&connection, &document_id, 2).unwrap();
-        connection
-            .execute(
-                "DELETE FROM documents WHERE id = ?1",
-                [document_id.as_str()],
-            )
-            .unwrap();
-        assert_eq!(delete_orphaned_removed_citations(&connection).unwrap(), 0);
+        assert_eq!(
+            load_deck_citations(&connection, &source_deck_id)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            load_deck_citations(&connection, &destination_deck_id)
+                .unwrap()
+                .is_empty()
+        );
 
         connection
-            .execute("DELETE FROM decks WHERE id = ?1", [deck_id.as_str()])
+            .execute(
+                "UPDATE notes SET deck_id = ?1 WHERE id = ?2",
+                params![destination_deck_id, note_id],
+            )
             .unwrap();
-        assert_eq!(delete_orphaned_removed_citations(&connection).unwrap(), 1);
+
+        assert!(
+            load_deck_citations(&connection, &source_deck_id)
+                .unwrap()
+                .is_empty()
+        );
+        let destination = load_deck_citations(&connection, &destination_deck_id).unwrap();
+        assert_eq!(destination.len(), 1);
+        assert_eq!(destination[0].source_locator, None);
     }
 }
