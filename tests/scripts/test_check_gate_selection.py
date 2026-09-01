@@ -1,10 +1,12 @@
 import os
+import re
 import subprocess
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "select-check-gate.mjs"
+WORKFLOW = ROOT / ".github" / "workflows" / "check.yml"
 
 
 class CheckGateSelectionTests(unittest.TestCase):
@@ -25,25 +27,15 @@ class CheckGateSelectionTests(unittest.TestCase):
         completed = self.select(
             EVENT_NAME="pull_request",
             PR_DRAFT="true",
-            PR_BODY="ordinary draft",
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "fast")
 
-    def test_exact_marker_requests_all_full_while_draft(self) -> None:
+    def test_pr_body_marker_cannot_force_full_while_draft(self) -> None:
         completed = self.select(
             EVENT_NAME="pull_request",
             PR_DRAFT="true",
             PR_BODY="before\n<!-- ostudy-check:all-full -->\nafter",
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(completed.stdout.strip(), "all-full")
-
-    def test_similar_text_does_not_trigger_expensive_gate(self) -> None:
-        completed = self.select(
-            EVENT_NAME="pull_request",
-            PR_DRAFT="true",
-            PR_BODY="Please run ostudy-check all-full eventually.",
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "fast")
@@ -52,7 +44,6 @@ class CheckGateSelectionTests(unittest.TestCase):
         completed = self.select(
             EVENT_NAME="pull_request",
             PR_DRAFT="false",
-            PR_BODY="",
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "all-full")
@@ -62,7 +53,6 @@ class CheckGateSelectionTests(unittest.TestCase):
             EVENT_NAME="workflow_dispatch",
             DISPATCH_GATE="linux-full",
             PR_DRAFT="true",
-            PR_BODY="<!-- ostudy-check:all-full -->",
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "linux-full")
@@ -74,6 +64,28 @@ class CheckGateSelectionTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 2)
         self.assertIn("Invalid qualification gate", completed.stderr)
+
+    def test_product_ci_does_not_run_for_pr_body_edits(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        match = re.search(
+            r"pull_request:\n\s+branches:\s*\[main\]\n\s+types:\s*\[([^]]+)\]",
+            workflow,
+        )
+        self.assertIsNotNone(match)
+        assert match is not None
+        event_types = {value.strip() for value in match.group(1).split(",")}
+        self.assertEqual(
+            event_types,
+            {
+                "opened",
+                "synchronize",
+                "reopened",
+                "ready_for_review",
+                "converted_to_draft",
+            },
+        )
+        self.assertNotIn("PR_BODY:", workflow)
+        self.assertNotIn("ostudy-check:all-full", workflow)
 
 
 if __name__ == "__main__":

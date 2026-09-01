@@ -157,7 +157,7 @@ The former automatic `android-check.yml` split workflow is retired. On a single 
 
 ## Shadow and runner-health qualification
 
-`.github/workflows/unified-runner-qualification.yml` remains an opt-in runner-health/shadow workflow. It targets only `ostudy-unified` and can execute:
+`.github/workflows/unified-runner-qualification.yml` is a manual-only runner-health workflow. It targets only `ostudy-unified` and can execute:
 
 ```text
 preflight
@@ -167,7 +167,7 @@ android-full
 all-full
 ```
 
-During infrastructure work, one explicit PR-body marker may activate a lane. Normal product pull requests do not need a marker and the shadow job does not replace the authoritative `Check` result.
+Choose the branch or exact ref and lane explicitly through `workflow_dispatch`. Pull-request body edits and persistent markers never start this workflow, and its result does not replace the authoritative `Check` result.
 
 ## Packaging and releases
 

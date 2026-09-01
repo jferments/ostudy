@@ -62,20 +62,37 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
-const checkSourceAwareCancellation =
-  "cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
-if (!workflow.includes(checkSourceAwareCancellation)) {
-  failures.push(
-    "check.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
-  );
+for (const [path, content] of [
+  [".github/workflows/check.yml", workflow],
+  [".github/workflows/unified-runner-qualification.yml", unifiedRunnerWorkflow],
+]) {
+  if (!content.includes("cancel-in-progress: true")) {
+    failures.push(`${path} must cancel obsolete work for the same PR/ref`);
+  }
 }
 
-const unifiedSourceAwareCancellation =
-  "cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'synchronize') }}";
-if (!unifiedRunnerWorkflow.includes(unifiedSourceAwareCancellation)) {
-  failures.push(
-    "unified-runner-qualification.yml must cancel obsolete source qualifications without letting metadata-only PR edits abort an exact-head run",
-  );
+for (const forbidden of [
+  "edited]",
+  "PR_BODY:",
+  "ostudy-check:all-full",
+]) {
+  if (workflow.includes(forbidden)) {
+    failures.push(`check.yml must not use PR-body edits or markers to control product qualification: ${forbidden}`);
+  }
+}
+
+for (const forbidden of [
+  "pull_request:",
+  "PR_BODY:",
+  "unified-runner:preflight",
+  "unified-runner:linux-fast",
+  "unified-runner:linux-full",
+  "unified-runner:android-full",
+  "unified-runner:all-full",
+]) {
+  if (unifiedRunnerWorkflow.includes(forbidden)) {
+    failures.push(`unified-runner-qualification.yml must remain manual-only and marker-free: ${forbidden}`);
+  }
 }
 
 if (/2>&1\s*\|\s*tee\s+"\$RUNNER_TEMP\/ostudy-(?:static|fast|full|android)/u.test(workflow)) {
