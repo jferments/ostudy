@@ -185,6 +185,17 @@ describe("ActivePractice", () => {
     ).toBe(true);
   });
 
+  it("places the timer-style Schedule control before Edit card", () => {
+    renderActive();
+    const schedule = screen.getByRole("button", { name: "Schedule" });
+    const edit = screen.getByRole("button", { name: "Edit card" });
+
+    expect(
+      Boolean(schedule.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(schedule.querySelector("svg")).not.toBeNull();
+  });
+
   it("opens the card editor from an active session", () => {
     const { props } = renderActive();
     fireEvent.click(screen.getByRole("button", { name: "Edit card" }));

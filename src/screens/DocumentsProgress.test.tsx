@@ -58,7 +58,6 @@ const document: DocumentSummary = {
   createdAt: Date.now() - 60_000,
   updatedAt: Date.now(),
   completedAt: null,
-  archivedAt: null,
   revision: 2,
   processingDurationMs: null,
   apiTokenCount: null,

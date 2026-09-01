@@ -131,17 +131,17 @@ function renderLibrary({
     <LayoutModeProvider>
       <OverlayProvider>
         <DeckLibraryWorkspace
-        decks={decks}
-        settings={settings}
-        refreshDecks={refreshDecks}
-        onPracticeDeck={onPracticeDeck}
-        onPracticeSelected={onPracticeSelected}
-        openDeckRequest={openDeckRequest}
-        onOpenDeck={onOpenDeck}
-        onReturnToLibrary={onReturnToLibrary}
-        onManageTemplates={vi.fn()}
-        onCardDirtyChange={vi.fn()}
-        showToast={showToast}
+          decks={decks}
+          settings={settings}
+          refreshDecks={refreshDecks}
+          onPracticeDeck={onPracticeDeck}
+          onPracticeSelected={onPracticeSelected}
+          openDeckRequest={openDeckRequest}
+          onOpenDeck={onOpenDeck}
+          onReturnToLibrary={onReturnToLibrary}
+          onManageTemplates={vi.fn()}
+          onCardDirtyChange={vi.fn()}
+          showToast={showToast}
         />
       </OverlayProvider>
     </LayoutModeProvider>,
@@ -207,15 +207,13 @@ describe("DeckLibraryWorkspace", () => {
     expect(screen.queryByText("Organize what you study")).toBeNull();
   });
 
-  it("keeps the compact toolbar in the same visual, DOM, and keyboard order", async () => {
+  it("keeps the compact selection and create actions in visual, DOM, and keyboard order", async () => {
     renderLibrary({ layout: "compact" });
 
-    const selectVisible = await screen.findByRole("button", { name: "Select visible" });
-    const selectScope = screen.getByRole("button", { name: /Select all in current scope/u });
+    const selectAll = await screen.findByRole("button", { name: "Select all (2)" });
     const newDeck = screen.getByRole("button", { name: "New deck" });
-    expect(selectVisible.compareDocumentPosition(selectScope) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy();
-    expect(selectScope.compareDocumentPosition(newDeck) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(screen.queryByRole("button", { name: "Select visible" })).toBeNull();
+    expect(selectAll.compareDocumentPosition(newDeck) & Node.DOCUMENT_POSITION_FOLLOWING)
       .toBeTruthy();
   });
 
@@ -263,32 +261,26 @@ describe("DeckLibraryWorkspace", () => {
     expect(article?.getAttribute("data-selected")).toBe("true");
   });
 
-  it("selects visible rows without collapsed content, selects the full lifecycle scope, and clears", async () => {
+  it("selects and clearly deselects every deck in the current lifecycle scope", async () => {
     renderLibrary();
     await screen.findByRole("checkbox", { name: "Select Pharmacology" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
-    fireEvent.click(screen.getByRole("button", { name: "Select visible" }));
-    expect(screen.getByText("1 item selected")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Expand Nursing folder" }));
-    expect(
-      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
-        .checked,
-    ).toBe(false);
-    expect(
-      (screen.getByRole("checkbox", { name: "Select Anatomy" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Select all in current scope (2)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all (2)" }));
     expect(screen.getByText("2 items selected")).toBeTruthy();
     expect(
       (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
         .checked,
     ).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(
+      (screen.getByRole("checkbox", { name: "Select Anatomy" }) as HTMLInputElement).checked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deselect all (2)" }));
     expect(screen.queryByRole("region", { name: "Selected deck actions" })).toBeNull();
+    expect(
+      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
   });
 
   it("treats archived expansion as lifecycle scope without coupling folder collapse to selection", async () => {
@@ -296,10 +288,10 @@ describe("DeckLibraryWorkspace", () => {
     renderLibrary({ decks: [pharmacology, anatomy, archived] });
     await screen.findByRole("button", { name: /Archived decks/u });
 
-    expect(screen.getByRole("button", { name: "Select all in current scope (2)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Select all (2)" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Archived decks/u }));
-    expect(screen.getByRole("button", { name: "Select all in current scope (3)" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Select all in current scope (3)" }));
+    expect(screen.getByRole("button", { name: "Select all (3)" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Select all (3)" }));
     expect(screen.getByText("3 items selected")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Archived decks/u }));

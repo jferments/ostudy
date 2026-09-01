@@ -14,7 +14,6 @@ vi.mock("../ipc/documents", () => ({
   cancelPdfFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
   deletePdfDocument: vi.fn(),
-  setDocumentArchived: vi.fn(),
 }));
 
 const documentId = "c".repeat(32);
@@ -53,7 +52,6 @@ function failedOcrDocument(): documentIpc.DocumentSummary {
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
     completedAt: null,
-    archivedAt: null,
     revision: 3,
     processingDurationMs: 12_345,
     apiTokenCount: 45_678,

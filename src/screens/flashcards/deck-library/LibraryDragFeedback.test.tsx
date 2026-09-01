@@ -7,6 +7,7 @@ describe("LibraryDragFeedback", () => {
   it.each(["valid", "noop", "invalid"] as const)(
     "renders distinct %s feedback with destination and insertion copy",
     (status) => {
+      const bindPreview = vi.fn();
       const { container } = render(
         <LibraryDragFeedback
           feedback={{
@@ -25,10 +26,13 @@ describe("LibraryDragFeedback", () => {
               announcement: `Nursing, position 2. ${status}.`,
             },
           }}
-          bindPreview={vi.fn()}
+          bindPreview={bindPreview}
         />,
       );
-      expect(container.querySelector(`[data-status="${status}"]`)).not.toBeNull();
+      const preview = container.querySelector<HTMLElement>(`[data-status="${status}"]`);
+      expect(preview).not.toBeNull();
+      expect(preview?.style.transform).toContain("translate3d(");
+      expect(bindPreview).toHaveBeenCalledWith(preview);
       expect(screen.getByText("Biology")).not.toBeNull();
       expect(screen.getByText("Nursing")).not.toBeNull();
       expect(screen.getByText("position 2")).not.toBeNull();

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
+import type { IconName } from "../icons/Icon";
 import { IconButton } from "../icons/IconButton";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { Sheet } from "./Dialog";
@@ -28,6 +29,7 @@ export interface OverflowMenuProps {
   disabled?: boolean;
   className?: string;
   triggerPresentation?: "icon" | "text";
+  triggerIcon?: IconName;
 }
 
 export function OverflowMenu({
@@ -36,6 +38,7 @@ export function OverflowMenu({
   disabled = false,
   className = "",
   triggerPresentation = "icon",
+  triggerIcon = "overflow",
 }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -165,7 +168,7 @@ export function OverflowMenu({
   const trigger = triggerPresentation === "icon" ? (
     <IconButton
       ref={triggerRef}
-      icon="overflow"
+      icon={triggerIcon}
       label={label}
       className={className}
       aria-haspopup="menu"
@@ -225,6 +228,7 @@ export function OverflowMenu({
 }
 
 function findItemButton(root: HTMLDivElement | null, id: string): HTMLButtonElement | undefined {
-  return [...(root?.querySelectorAll<HTMLButtonElement>("[data-overflow-item-id]") ?? [])]
-    .find((button) => button.dataset.overflowItemId === id);
+  return [...(root?.querySelectorAll<HTMLButtonElement>("[data-overflow-item-id]") ?? [])].find(
+    (button) => button.dataset.overflowItemId === id,
+  );
 }

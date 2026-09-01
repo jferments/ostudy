@@ -1,22 +1,22 @@
 import { useMemo, useRef } from "react";
 
+import type { DeckSummary } from "../../../ipc/decks";
+import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import { Icon } from "../../../ui/icons/Icon";
-import { Button } from "../../../ui/primitives/Button";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
+import { Button } from "../../../ui/primitives/Button";
 import { SelectionToolbar } from "../../../ui/patterns/SelectionToolbar";
 import { DeckLibrarySheets } from "./DeckLibrarySheets";
 import { DeckLibraryView } from "./DeckLibraryView";
 import styles from "./DeckLibraryView.module.css";
-import type { DeckLibrarySnapshot } from "./organizationModel";
-import type { DeckLibraryController } from "./useDeckLibraryController";
-import { useDeckLibraryReorder } from "./useDeckLibraryReorder";
-import type { DeckSummary } from "../../../ipc/decks";
-import type { SelectedPracticeRequest } from "../../../ipc/practice";
-import { practiceSelectionValidation } from "./practiceSetupModel";
 import { LibraryDragFeedback } from "./LibraryDragFeedback";
+import type { DeckLibrarySnapshot } from "./organizationModel";
+import { practiceSelectionValidation } from "./practiceSetupModel";
+import type { DeckLibraryController } from "./useDeckLibraryController";
 import { useDeckLibraryPointerSession } from "./useDeckLibraryPointerSession";
+import { useDeckLibraryReorder } from "./useDeckLibraryReorder";
 
 interface DeckLibraryRootProps {
   controller: DeckLibraryController;
@@ -38,6 +38,13 @@ export function DeckLibraryRoot({
   const selectionUnavailable =
     controller.selectionAnalysis.staleIds.length > 0 ||
     controller.selectionAnalysis.missingIds.length > 0;
+  const allCurrentScopeSelected =
+    controller.currentScopeDeckCount > 0 &&
+    controller.selectedIds.size === controller.currentScopeDeckCount;
+  const selectionLabel = allCurrentScopeSelected
+    ? `Deselect all (${controller.currentScopeDeckCount})`
+    : `Select all (${controller.currentScopeDeckCount})`;
+
   return (
     <div className={styles.root} aria-busy={controller.isLoading || controller.isMutating}>
       <div className={styles.toolbar} aria-label="Deck library controls">
@@ -45,18 +52,12 @@ export function DeckLibraryRoot({
           <Button
             size="small"
             variant="secondary"
-            disabled={controller.visibleDeckCount === 0 || controller.isMutating}
-            onClick={controller.selectVisible}
-          >
-            Select visible
-          </Button>
-          <Button
-            size="small"
-            variant="secondary"
             disabled={controller.currentScopeDeckCount === 0 || controller.isMutating}
-            onClick={controller.selectCurrentScope}
+            onClick={
+              allCurrentScopeSelected ? controller.clearSelection : controller.selectCurrentScope
+            }
           >
-            Select all in current scope ({controller.currentScopeDeckCount})
+            {selectionLabel}
           </Button>
         </div>
         <div className={styles.toolbarActions}>
@@ -72,9 +73,7 @@ export function DeckLibraryRoot({
         primaryAction={{
           id: "practice",
           label: "Practice",
-          disabled:
-            !practiceValidation.valid ||
-            controller.isMutating,
+          disabled: !practiceValidation.valid || controller.isMutating,
           onSelect: controller.openPracticeSetup,
         }}
         secondaryActions={[
@@ -90,26 +89,30 @@ export function DeckLibraryRoot({
             onSelect: controller.openSelectionMover,
           },
           ...(controller.selectionAnalysis.activeIds.length > 0
-            ? [{
-                id: "archive",
-                label: controller.selectionAnalysis.isMixedLifecycle
-                  ? "Archive active selected"
-                  : "Archive selected",
-                placement: "wide-only" as const,
-                disabled: selectionUnavailable || controller.isMutating,
-                onSelect: () => void controller.setSelectionArchived(true),
-              }]
+            ? [
+                {
+                  id: "archive",
+                  label: controller.selectionAnalysis.isMixedLifecycle
+                    ? "Archive active selected"
+                    : "Archive selected",
+                  placement: "wide-only" as const,
+                  disabled: selectionUnavailable || controller.isMutating,
+                  onSelect: () => void controller.setSelectionArchived(true),
+                },
+              ]
             : []),
           ...(controller.selectionAnalysis.archivedIds.length > 0
-            ? [{
-                id: "restore",
-                label: controller.selectionAnalysis.isMixedLifecycle
-                  ? "Restore archived selected"
-                  : "Restore selected",
-                placement: "wide-only" as const,
-                disabled: selectionUnavailable || controller.isMutating,
-                onSelect: () => void controller.setSelectionArchived(false),
-              }]
+            ? [
+                {
+                  id: "restore",
+                  label: controller.selectionAnalysis.isMixedLifecycle
+                    ? "Restore archived selected"
+                    : "Restore selected",
+                  placement: "wide-only" as const,
+                  disabled: selectionUnavailable || controller.isMutating,
+                  onSelect: () => void controller.setSelectionArchived(false),
+                },
+              ]
             : []),
           {
             id: "delete",

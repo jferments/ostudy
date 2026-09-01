@@ -39,6 +39,7 @@ export const ICON_NAMES = [
   "sparkles",
   "study-guide",
   "template",
+  "timer",
   "upload",
   "warning",
 ] as const;
@@ -278,6 +279,13 @@ function iconPath(name: IconName): ReactNode {
         <>
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <path d="M3 9h18M9 9v12" />
+        </>
+      );
+    case "timer":
+      return (
+        <>
+          <circle cx="12" cy="13" r="8" />
+          <path d="M12 9v4l3 2M9 2h6M12 2v3M5 4 3 6M19 4l2 2" />
         </>
       );
     case "upload":
