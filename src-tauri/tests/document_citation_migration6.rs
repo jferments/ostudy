@@ -73,12 +73,7 @@ fn migration_restores_documents_and_backfills_durable_citations() {
     );
     insert_archived_document(&connection, &empty_document_id, &"2".repeat(64), None);
     insert_archived_document(&connection, &guide_document_id, &"3".repeat(64), None);
-    insert_archived_document(
-        &connection,
-        &provenance_document_id,
-        &"4".repeat(64),
-        None,
-    );
+    insert_archived_document(&connection, &provenance_document_id, &"4".repeat(64), None);
 
     let plan_id = "c".repeat(32);
     connection
@@ -89,12 +84,7 @@ fn migration_restores_documents_and_backfills_durable_citations() {
                  key_concepts_json, state, created_at, updated_at
              ) VALUES (?1, ?2, 1, 1, ?3, ?4, 'Summary', '[]', '[]',
                        'active', 1, 1)",
-            params![
-                plan_id,
-                guide_document_id,
-                "5".repeat(64),
-                "6".repeat(64),
-            ],
+            params![plan_id, guide_document_id, "5".repeat(64), "6".repeat(64),],
         )
         .expect("learning-plan fixture should insert");
     connection
@@ -148,8 +138,7 @@ fn migration_restores_documents_and_backfills_durable_citations() {
             params![topic_id, provenance_document_id, "8".repeat(64)],
         )
         .expect("topic fixture should insert");
-    let locator =
-        r#"{"unitKind":"page","unitNumbers":[2],"sectionLabel":"Evidence","assetIds":[],"timeRangeMs":null}"#;
+    let locator = r#"{"unitKind":"page","unitNumbers":[2],"sectionLabel":"Evidence","assetIds":[],"timeRangeMs":null}"#;
     connection
         .execute(
             "INSERT INTO document_note_topics (
@@ -228,7 +217,10 @@ fn migration_restores_documents_and_backfills_durable_citations() {
     assert_eq!(stored_locator, locator);
 
     connection
-        .execute("DELETE FROM documents WHERE id = ?1", [&provenance_document_id])
+        .execute(
+            "DELETE FROM documents WHERE id = ?1",
+            [&provenance_document_id],
+        )
         .expect("source document should delete");
     let surviving_links: (i64, i64, i64) = connection
         .query_row(
