@@ -133,7 +133,7 @@ When operating through an authenticated GitHub Connector on this private reposit
 - do not change the Connector to permanent or unrestricted write access merely to bypass per-change authorization;
 - at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
 - only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
-- treat the selected task execution mode as the branch's only source writer until explicit handoff;
+- treat the concrete named session or workspace as the branch's only source writer until explicit handoff, and before starting or resuming confirm the prior writer released ownership with no unpublished source or active task job;
 - immediately before publication, verify the expected remote head and use a non-force update; stop if it changed;
 - after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
 - keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
@@ -200,7 +200,7 @@ Draft pull requests run the fast tier; ready pull requests run the full tier on 
 
 The full Rust tier includes generated `.ostudy.json` conformance, migrations, package/backup behavior, scheduling and analytics invariants, provider contracts, document-processing tests, and native WebDriver persistence. Manually exercise every affected user workflow. Static inspection or a successful frontend build must never be reported as a successful native Tauri test.
 
-The `Check` workflow validates the PR acceptance snapshot before qualification and always uploads a machine-readable exact-head result. Static, fast, and full must pass on the current head before a PR can truthfully record `readyForReview`; Android may be `notRequired` only when the change does not affect Android qualification surfaces.
+For non-draft pull requests, the `Check` workflow validates the PR acceptance snapshot before qualification and always uploads a machine-readable exact-head result. Draft fast qualification does not depend on compatibility snapshot metadata. Static, fast, and full must pass on the current head before a PR can truthfully record `readyForReview`; Android may be `notRequired` only when the change does not affect Android qualification surfaces.
 
 See `docs/development/testing-and-ci.md` for authoritative mechanics.
 
@@ -209,6 +209,8 @@ See `docs/development/testing-and-ci.md` for authoritative mechanics.
 Every completed change must report:
 
 - exact base commit SHA, branch, head SHA, and pull-request number;
+- selected source writer/execution mode and its last expected remote SHA;
+- unpublished workspace clean/dirty state and any active PID/job;
 - acceptance criteria and non-goals addressed;
 - changed files grouped by purpose;
 - tests and documentation added or updated;
@@ -218,6 +220,7 @@ Every completed change must report:
 - manual behavior actually exercised or still required;
 - known limitations, migration/compatibility effects, rollback concerns, and residual risks;
 - the requested merge method.
+- explicit release or transfer of task-branch writer ownership.
 
 For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
 

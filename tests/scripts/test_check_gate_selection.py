@@ -86,6 +86,14 @@ class CheckGateSelectionTests(unittest.TestCase):
         )
         self.assertNotIn("PR_BODY:", workflow)
         self.assertNotIn("ostudy-check:all-full", workflow)
+        self.assertIn(
+            "group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}",
+            workflow,
+        )
+        self.assertIn(
+            "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false",
+            workflow,
+        )
 
 
 if __name__ == "__main__":

@@ -95,6 +95,8 @@ Automatic gates are intentionally conservative:
 
 Pull-request description edits do not start product qualification. A newer source/lifecycle event for the same PR or ref cancels obsolete work before it can consume the serialized runner.
 
+Draft source qualification does not depend on the compatibility PR acceptance snapshot. The snapshot is validated strictly only after the PR is marked ready, so malformed draft metadata cannot suppress fast source feedback.
+
 Every non-`preflight` run executes **static qualification first** as the first substantive qualification boundary, before KVM/runner preflight, dependency-graph validation, fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
 
 `all-full` runs, in order:

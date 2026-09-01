@@ -51,7 +51,7 @@ Before editing, use Connector reads to:
 2. confirm the default branch and repository permissions exposed by the Connector;
 3. fetch the intended base, normally current `main`;
 4. record the exact base commit SHA;
-5. inspect the relevant files, active pull request, state ledger, and branch state.
+5. inspect the relevant files, active pull request, compatibility acceptance snapshot, and branch state.
 
 When resuming work, also read the actual PR head, exact-head workflow state, unresolved review threads, and incomplete acceptance criteria before changing source.
 
@@ -108,7 +108,7 @@ For a normal change:
 2. make the first meaningful source/test/ADR commit through Connector file or Git-data operations;
 3. verify the remote branch head;
 4. open one draft pull request against `main`;
-5. initialize the state ledger with stable `AC-##` criteria and truthful current status;
+5. initialize the compatibility acceptance snapshot with stable `AC-##` criteria and truthful current status;
 6. continue direct source changes on the same branch and PR;
 7. verify the new remote head after every meaningful publication step.
 
@@ -123,6 +123,8 @@ The selected Connector session or execution workspace is the branch's only sourc
 5. read the remote head again and record the confirmed SHA.
 
 If step 2 or 4 fails, stop. Do not force-update, replay an unreviewed local tree, or let another chat independently repair the same branch. Read the competing head and explicitly resume or hand off from it.
+
+For subsequent task-branch publication, use Git-data operations that name the expected parent (`create_tree` → `create_commit(parent_sha=expected)` → non-force `update_ref`). A Contents API file update binds a file blob, not the branch head, so it cannot satisfy this stop-on-branch-mismatch protocol.
 
 A generated patch, proposed commit message, transient execution workspace, task-specific applicator, or CI-generated product tree is not delivery. The branch must contain the actual reviewable source before qualification.
 
@@ -203,6 +205,8 @@ In addition to the normal handoff requirements, report:
 - the base SHA read through GitHub;
 - the task branch name;
 - the current remote head SHA;
+- the selected writer/execution mode and last expected remote SHA;
+- any execution-workspace dirty state or active PID/job;
 - the pull-request number and draft/ready state;
 - whether each claimed mutation was verified remotely;
 - any Connector operation that failed and its exact error;
@@ -210,6 +214,7 @@ In addition to the normal handoff requirements, report:
 - CI state separately from publication state;
 - the exact head SHA that passed each required gate;
 - manual acceptance performed or still assigned to the human.
+- explicit release or transfer of task-branch writer ownership.
 
 ## Non-negotiable reasoning rules
 

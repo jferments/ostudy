@@ -73,6 +73,22 @@ for (const [path, content] of [
   }
 }
 
+const checkBranchConcurrency =
+  "group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}";
+if (!workflow.includes(checkBranchConcurrency)) {
+  failures.push(
+    "check.yml must give automatic and manual qualification for the same branch one cancellation key",
+  );
+}
+
+const readyOnlyContract =
+  "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false";
+if (!workflow.includes(readyOnlyContract)) {
+  failures.push(
+    "check.yml must not let compatibility snapshot errors block draft source qualification",
+  );
+}
+
 for (const forbidden of [
   "edited]",
   "PR_BODY:",

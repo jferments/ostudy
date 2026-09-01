@@ -22,7 +22,7 @@ on:
           - all-full
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   # Only source/lifecycle events reach this workflow, so a newer invocation for
   # the same PR/ref always supersedes obsolete work.
   cancel-in-progress: true
@@ -86,7 +86,7 @@ jobs:
 
       - name: Verify pull-request execution contract
         id: pr_contract
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
         run: |
           node ./scripts/verify-pr-contract.mjs \
             --event "$GITHUB_EVENT_PATH" \

@@ -77,9 +77,9 @@ The PR branch contains the actual source under review. The following are not del
 
 Automatic PR qualification is read-only. It may not persist write credentials, stage/commit/push source, or change PR readiness. Explicit manual maintenance workflows are separate and narrowly scoped.
 
-### Pull-request state ledger
+### Pull-request acceptance snapshot
 
-The PR template includes one machine-readable JSON ledger. Keep it synchronized with:
+The PR template includes one machine-readable compatibility acceptance snapshot. It records scope and evidence for current handoff tooling, but GitHub's remote branch and exact-head Actions results remain authoritative. Keep it synchronized with:
 
 - exact base, branch, and current head;
 - `currentState`;
@@ -88,7 +88,7 @@ The PR template includes one machine-readable JSON ledger. Keep it synchronized 
 - manual/human-only boundaries;
 - known failure fingerprints and focused reproductions.
 
-Draft metadata can briefly lag a synchronize event and will warn. Before readiness, the ledger must exactly match GitHub; all acceptance criteria must be terminal; static, fast, and full must pass on the current head; platform/manual requirements must be terminal; and known failures must be empty.
+Draft source qualification does not depend on this snapshot, so draft metadata can briefly lag a synchronize event. Before readiness, the snapshot must exactly match GitHub; all acceptance criteria must be terminal; static, fast, and full must pass on the current head; platform/manual requirements must be terminal; and known failures must be empty.
 
 See [Agent execution state](docs/agents/EXECUTION-STATE.md).
 
@@ -121,7 +121,7 @@ Use the cheapest useful tier, then complete merge qualification:
 
 A documentation-only change still runs documentation/repository checks. Parse, TypeScript build, or mocked frontend tests do not substitute for native Tauri qualification when native behavior changed.
 
-The automatic `Check` workflow validates the PR ledger, checks out the exact head, runs static first, and uploads `ostudy-qualification-result.json` on success or failure. The artifact records step outcomes and, on failure, a stable fingerprint and focused reproduction.
+The automatic `Check` workflow validates the compatibility snapshot for non-draft PRs, checks out the exact head, runs static first, and uploads `ostudy-qualification-result.json` on success or failure. Draft source qualification does not depend on snapshot metadata. The artifact records step outcomes and, on failure, a stable fingerprint and focused reproduction.
 
 When a gate fails:
 

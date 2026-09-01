@@ -114,7 +114,7 @@ This snapshot is not a source of truth for the branch head, an Actions run, runn
 
 `scripts/verify-pr-contract.mjs` validates the JSON shape and, for a non-draft pull request, requires exact agreement with the current GitHub base, head, and branch.
 
-Draft synchronize events can race the human-readable ledger update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity; the verifier reports that drift as a warning. Before review readiness, the ledger must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
+Draft synchronize events can race the human-readable snapshot update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity without blocking source qualification. Before review readiness, the snapshot must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
 
 Acceptance statuses are:
 
@@ -188,7 +188,7 @@ The classification vocabulary is defined in [Failure triage](FAILURE-TRIAGE.md).
 
 ## Evidence-derived handoff
 
-Every `Check` run writes `ostudy-qualification-result.json`. Pull-request runs also write `ostudy-pr-contract.json`. `scripts/render-agent-handoff.mjs` combines those validated records with the exact Git diff into `ostudy-agent-handoff.md`.
+Every `Check` run writes `ostudy-qualification-result.json`. Non-draft pull-request runs also write `ostudy-pr-contract.json`; draft handoffs remain qualification-only so compatibility snapshot errors cannot block fast source feedback. `scripts/render-agent-handoff.mjs` combines the available validated records with the exact Git diff into `ostudy-agent-handoff.md`.
 
 The renderer includes:
 
@@ -196,13 +196,13 @@ The renderer includes:
 - acceptance status and implementation/test evidence;
 - changed files grouped by purpose;
 - non-goals, compatibility effects, rollback notes, and residual risks;
-- validation ledger and the commands represented by the run;
+- validation evidence and the commands represented by the run;
 - exact workflow/run/step state;
 - manual acceptance and known failures;
 - requested merge method;
 - evidence-integrity warnings or errors.
 
-It never silently combines mismatched SHAs. A qualification/PR-head mismatch produces an artifact marked `invalid` and a nonzero exit. Draft ledger drift remains visible as a warning while the actual GitHub head remains the publication authority.
+It never silently combines mismatched SHAs. A qualification/PR-head mismatch produces an artifact marked `invalid` and a nonzero exit. When a draft snapshot is supplied, its drift remains visible as a warning while the actual GitHub head remains the publication authority.
 
 The generated handoff is the factual starting point for the final response and PR review record. It does not replace human review or allow an agent to claim manual behavior it did not exercise.
 

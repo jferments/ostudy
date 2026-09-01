@@ -6,14 +6,14 @@ These files provide operational instructions for automated maintainers of **ostu
 
 For a substantial task, read these in order:
 
-1. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — the acceptance ledger, completion predicate, exact-head evidence vocabulary, progress checkpoints, and session-resumption protocol.
+1. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — the compatibility acceptance snapshot, completion predicate, exact-head evidence vocabulary, progress checkpoints, and session-resumption protocol.
 2. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable fingerprints, focused reproduction, retry budget, and stopping rules.
 3. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope, publish, implement, test, review, and hand off a change.
 4. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete write authorization, remote verification, and connector/service failure diagnosis.
 5. [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) — the canonical short build/test/install commands. Read this before giving shell instructions instead of reconstructing commands from memory.
 6. The architecture and code standards relevant to the requested subsystem.
 
-When resuming existing work, do not begin from conversational memory. Read the open pull request's state ledger, verify its actual remote head, inspect exact-head qualification evidence, and enumerate incomplete acceptance criteria first.
+When resuming existing work, do not begin from conversational memory. Read the open pull request's compatibility acceptance snapshot, then verify its actual remote head and exact-head qualification evidence as the authorities and enumerate incomplete acceptance criteria first.
 
 ## Documents
 

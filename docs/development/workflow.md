@@ -8,15 +8,17 @@ This process applies to human contributors and automated maintainers. The reposi
 
 | Concern | Authority | Allowed writer |
 |---|---|---|
-| Published source and PR head | GitHub remote task branch and exact SHA | The selected task execution mode only |
+| Requested scope | Current human request and explicitly approved stable acceptance criteria | Human and active task owner by explicit agreement |
+| Unpublished source | HEAD and status of the selected writer workspace | The selected branch writer only |
+| Published source and PR head | GitHub remote task branch and exact SHA | The concrete named session or workspace holding writer ownership |
 | Automated qualification | GitHub Actions run/check attached to the exact tested SHA | Actions records results but remains source-read-only |
-| Active task/job state | The selected execution workspace or orchestrator observation | The active task owner |
-| Acceptance scope and evidence snapshot | Stable PR acceptance criteria, non-goals, and named evidence | The active task owner |
+| Active task/job state | PID/job verified in the selected execution workspace; an orchestrator is a projection unless it launched and owns that job | The selected execution workspace |
+| Compatibility acceptance snapshot | No independent authority; it projects scope, publication, and evidence | The active task owner |
 | Manual acceptance | The concrete report from the person who exercised the workflow | That tester |
 
-PR descriptions, comments, summaries, runner observations, and generated artifacts may project these facts, but they do not override their authority. In particular, PR-body text is not a CI control plane or a branch lock.
+PR descriptions, comments, summaries, runner observations, and generated artifacts may project these facts, but they do not override their authority. In particular, PR-body text is not a qualification trigger, lane selector, or branch lock. Non-draft readiness validation may consume the compatibility snapshot as acceptance evidence.
 
-Exactly one source writer owns a task branch at a time. Before each publication, that writer re-reads the remote head, uses it as the expected parent, and performs a non-force update. A mismatch means another writer moved the branch: stop, inspect, and hand off or reconcile explicitly. This compare-and-stop rule is the complete coordination mechanism; do not add a second state service or distributed lock.
+Exactly one source writer owns a task branch at a time. Before starting or resuming, confirm the prior writer explicitly released or transferred ownership, its workspace has no unpublished source, and it has no active task job. Before each publication, the current writer re-reads the remote head, uses it as the expected parent, and performs a non-force update. A mismatch means another writer moved the branch: stop, inspect, and hand off or reconcile explicitly. This compare-and-stop rule is the complete coordination mechanism; do not add a second state service or distributed lock.
 
 ## 1. Establish or restore the exact task state
 
@@ -76,7 +78,7 @@ Record:
 
 The acceptance identifiers remain stable throughout implementation. Change a requirement only when the human changes the intended behavior; do not rewrite criteria after the fact to fit an incomplete implementation.
 
-The state ledger schema and completion predicate are documented in [`../agents/EXECUTION-STATE.md`](../agents/EXECUTION-STATE.md).
+The compatibility acceptance snapshot schema and completion predicate are documented in [`../agents/EXECUTION-STATE.md`](../agents/EXECUTION-STATE.md).
 
 ## 3. Publish one focused branch
 
@@ -164,7 +166,9 @@ Use increasingly expensive checks:
 ./scripts/check-fast.sh
 ```
 
-The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification. Every run checks out and verifies the exact PR head. PR-body edits do not trigger product CI, and a newer source event cancels obsolete qualification for the same PR.
+The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification and do not depend on the compatibility acceptance snapshot; non-draft PRs validate that snapshot before qualification. Every run checks out and verifies the exact PR head. PR-body edits do not trigger product CI, and a newer source event cancels obsolete qualification for the same branch, including an overlapping manual run.
+
+`.github/workflows/orchestrator-pr-ledger.yml` may compare-and-swap checklist metadata after a successful `Check`. It is retained as a nonauthoritative compatibility projector: it never owns source, branch, or active-job state, and its body edits do not start product qualification.
 
 When CI fails:
 
@@ -224,7 +228,7 @@ A newer push invalidates an older green result.
 A PR may be marked ready only when:
 
 - `currentState` is `readyForReview`;
-- the ledger base, branch, and head exactly match GitHub;
+- the compatibility snapshot's base, branch, and head exactly match GitHub;
 - every acceptance criterion is terminal and has evidence;
 - static, fast, and full passed on the current head;
 - Android passed or is explicitly `notRequired` for a non-Android change;
@@ -316,6 +320,8 @@ If an implementation direction is unsound, stop adding code, preserve the publis
 A handoff identifies:
 
 - base SHA, branch, head SHA, and PR number;
+- selected source writer/execution mode and its last expected remote SHA;
+- unpublished workspace clean/dirty state and any active PID/job;
 - acceptance status and non-goals;
 - files/migrations changed;
 - tests/documentation added;
@@ -323,5 +329,6 @@ A handoff identifies:
 - exact-head CI state and qualification artifact;
 - manual acceptance performed or still human-required;
 - known failures, limitations, compatibility effects, rollback concerns, and merge method.
+- explicit release or transfer of task-branch writer ownership.
 
 The durable result is the published branch and PR. Completion is a conjunction of acceptance, publication, exact-head validation, manual boundaries, and no unresolved failure—not a narrative impression that substantial work occurred.

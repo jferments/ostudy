@@ -103,7 +103,7 @@ pnpm android:diagnostics
 
 ## CI / pull-request workflow
 
-The PR state ledger and exact-head qualification evidence introduced by PR #60 are authoritative.
+The GitHub remote head and exact-head qualification evidence are authoritative. The PR JSON is a compatibility acceptance snapshot, not an independent state owner.
 
 - Keep the PR draft while implementation or acceptance criteria are incomplete.
 - Automatic `Check` is read-only; it must not author or push product source.
