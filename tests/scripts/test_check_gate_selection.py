@@ -88,13 +88,10 @@ class CheckGateSelectionTests(unittest.TestCase):
         self.assertNotIn("PR_BODY:", workflow)
         self.assertNotIn("ostudy-check:all-full", workflow)
         self.assertIn(
-            "group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}",
+            "group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}",
             workflow,
         )
-        self.assertIn(
-            "cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}",
-            workflow,
-        )
+        self.assertIn("cancel-in-progress: true", workflow)
         self.assertIn(
             "name: ${{ github.event_name == 'workflow_dispatch' && 'manual-check' || 'check' }}",
             workflow,

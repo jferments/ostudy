@@ -22,10 +22,10 @@ on:
           - all-full
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  # Source/lifecycle events supersede older same-branch work. Manual diagnostics
-  # share the group but queue instead of cancelling automatic qualification.
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  # Automatic and manual runs use separate pending slots. New source/lifecycle
+  # events supersede automatic work; duplicate manual runs supersede manual work.
+  cancel-in-progress: true
 
 permissions:
   contents: read

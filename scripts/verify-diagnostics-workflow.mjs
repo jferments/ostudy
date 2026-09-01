@@ -64,11 +64,9 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
-const checkCancellationPolicy =
-  "cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}";
-if (!workflow.includes(checkCancellationPolicy)) {
+if (!workflow.includes("cancel-in-progress: true")) {
   failures.push(
-    "check.yml must let source events cancel obsolete work without letting manual diagnostics cancel automatic qualification",
+    "check.yml must cancel obsolete work within each qualification lane",
   );
 }
 
@@ -79,10 +77,10 @@ if (!unifiedRunnerWorkflow.includes("cancel-in-progress: true")) {
 }
 
 const checkBranchConcurrency =
-  "group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}";
+  "group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}";
 if (!workflow.includes(checkBranchConcurrency)) {
   failures.push(
-    "check.yml must give automatic and manual qualification for the same branch one cancellation key",
+    "check.yml must isolate automatic and manual pending slots while keying each lane by head repository and branch",
   );
 }
 
