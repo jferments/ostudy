@@ -72,7 +72,7 @@ A fingerprint excludes commit SHAs, durations, and incidental numbers so the sam
 
 ## CI log transport and Connector triage
 
-The `Check` workflow intentionally separates **complete raw command logs** from **bounded live Actions output**. Qualification commands run through `scripts/run-ci-captured.sh`: stdout/stderr are written in full to the corresponding `ostudy-*-check.log`, while the live job log receives only a byte-bounded tail. On failure, `scripts/summarize-check-failure.mjs` also writes `ostudy-failure-summary.md`, which is printed to the live job log and uploaded with the exact-head diagnostic artifacts.
+The `Check` workflow intentionally separates **complete raw command logs** from **bounded live Actions output**. Qualification commands run through `scripts/run-ci-captured.sh`: stdout/stderr are written in full to the corresponding `ostudy-*-check.log`, while the live job log receives a metadata-only liveness heartbeat every 60 seconds and a byte-bounded tail. The heartbeat reports phase, elapsed time, total log bytes, and byte growth without streaming command output. On failure, `scripts/summarize-check-failure.mjs` also writes `ostudy-failure-summary.md`, which is printed to the live job log and uploaded with the exact-head diagnostic artifacts.
 
 This separation prevents a very large Rust/Vitest/Android transcript from consuming a Connector response budget before the useful failure tail is reached. For Connector-backed triage, use this order:
 
@@ -80,6 +80,8 @@ This separation prevents a very large Rust/Vitest/Android transcript from consum
 2. read the machine-readable qualification result and `ostudy-failure-summary.md` first;
 3. use the focused reproduction named there;
 4. open the complete raw `ostudy-*-check.log` artifact only when the bounded evidence is insufficient.
+
+A continuing heartbeat means the wrapper and command are still live; zero byte growth is a diagnostic clue, not proof of a hang. Wait for the bounded command timeout or inspect the named job before restarting work. Heartbeats never constitute pass/fail evidence.
 
 Do not restore `2>&1 | tee` for static/fast/full/platform qualification in `check.yml`; that duplicates every raw line into the live Actions stream and defeats the bounded evidence design. Full raw logs remain available in failure artifacts for deep inspection.
 

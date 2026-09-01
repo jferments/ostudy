@@ -1,8 +1,22 @@
 # Git and pull-request workflow
 
-ostudy uses a publication-first, evidence-driven workflow: one focused branch, one draft pull request, directly reviewable source, a durable acceptance ledger, and exact-head qualification. Planning supports delivery, but a code task is not represented by an unpublished patch, task-specific applicator, transient CI tree, or description of changes that exist only in a temporary environment.
+ostudy uses a publication-first, evidence-driven workflow: one focused branch, one draft pull request, directly reviewable source, a durable acceptance snapshot, and exact-head qualification. Planning supports delivery, but a code task is not represented by an unpublished patch, task-specific applicator, transient CI tree, or description of changes that exist only in a temporary environment.
 
 This process applies to human contributors and automated maintainers. The repository access mechanism may differ, but the invariants do not.
+
+## Authority and writer boundaries
+
+| Concern | Authority | Allowed writer |
+|---|---|---|
+| Published source and PR head | GitHub remote task branch and exact SHA | The selected task execution mode only |
+| Automated qualification | GitHub Actions run/check attached to the exact tested SHA | Actions records results but remains source-read-only |
+| Active task/job state | The selected execution workspace or orchestrator observation | The active task owner |
+| Acceptance scope and evidence snapshot | Stable PR acceptance criteria, non-goals, and named evidence | The active task owner |
+| Manual acceptance | The concrete report from the person who exercised the workflow | That tester |
+
+PR descriptions, comments, summaries, runner observations, and generated artifacts may project these facts, but they do not override their authority. In particular, PR-body text is not a CI control plane or a branch lock.
+
+Exactly one source writer owns a task branch at a time. Before each publication, that writer re-reads the remote head, uses it as the expected parent, and performs a non-force update. A mismatch means another writer moved the branch: stop, inspect, and hand off or reconcile explicitly. This compare-and-stop rule is the complete coordination mechanism; do not add a second state service or distributed lock.
 
 ## 1. Establish or restore the exact task state
 
@@ -41,7 +55,7 @@ See [`../agents/GITHUB-CONNECTOR.md`](../agents/GITHUB-CONNECTOR.md).
 
 Before editing:
 
-1. read the open PR and its machine-readable `ostudy-agent-state` ledger;
+1. read the open PR and its machine-readable `ostudy-agent-state` acceptance snapshot;
 2. verify the actual remote base, branch, and head;
 3. inspect exact-head workflow evidence and unresolved review threads;
 4. enumerate non-terminal `AC-##` criteria and known failures;
@@ -78,7 +92,7 @@ In a local checkout:
 git push -u origin HEAD
 ```
 
-In Connector mode, create the branch from the recorded base SHA and verify the remote branch state.
+In Connector mode, create the branch from the recorded base SHA and verify the remote branch state. For every later commit, re-read the current remote head and refuse a non-fast-forward update instead of force-pushing or guessing which writer should win.
 
 Do not develop directly on `main`. Do not create competing replacement branches for ordinary failures. A new branch is appropriate only when the existing branch is genuinely unrecoverable or the scope is a separate reviewable change.
 
@@ -99,7 +113,7 @@ In Connector mode, create/update the intended source paths and verify the result
 
 A generated local patch, task-specific source applicator, finalizer, CI-generated product tree, or proposed commit message is not publication. Automatic PR CI may validate source but may not author, stage, commit, push, or change PR readiness.
 
-## 5. Open a draft pull request and initialize its ledger
+## 5. Open a draft pull request and initialize its acceptance snapshot
 
 Open one draft PR into `main` as soon as the branch has a meaningful commit. Record:
 
@@ -112,7 +126,7 @@ Open one draft PR into `main` as soon as the branch has a meaningful commit. Rec
 - current implementation state;
 - known failures.
 
-The PR template includes one JSON ledger between the `ostudy-agent-state` markers. Drafts may record incomplete criteria and pending gates. A synchronize event may briefly make the recorded draft head stale; the verifier warns rather than fails. Reconcile the ledger at the next checkpoint and require exact identity before review readiness.
+The PR template retains one JSON acceptance snapshot between the `ostudy-agent-state` markers for compatibility with current verification and handoff tooling. Drafts may record incomplete criteria and pending gates. The snapshot is evidence, not authority for the branch, runner, or Actions job, and editing it never starts qualification. A synchronize event may briefly make the recorded draft head stale; the verifier warns rather than fails. Reconcile the snapshot at the next checkpoint and require exact identity before review readiness.
 
 Target scope is not current-state evidence. A PR that contains only an ADR or scaffold must say so explicitly.
 
@@ -150,7 +164,7 @@ Use increasingly expensive checks:
 ./scripts/check-fast.sh
 ```
 
-The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification. Every run checks out and verifies the exact PR head.
+The `Check` workflow runs static first, then the selected gate. Draft PRs use fast qualification. Every run checks out and verifies the exact PR head. PR-body edits do not trigger product CI, and a newer source event cancels obsolete qualification for the same PR.
 
 When CI fails:
 
@@ -190,6 +204,8 @@ Android-affecting work also runs:
 ```
 
 Physical camera/device paths, live providers, private credentials, or hardware-specific behavior remain explicitly human-required where deterministic CI cannot perform them.
+
+Wall-clock UI/WebKit timing is advisory or manual diagnostic evidence. It must not sit in the required `Check` path or suppress later Linux/Android correctness gates.
 
 Inspect exactly what the PR proposes:
 

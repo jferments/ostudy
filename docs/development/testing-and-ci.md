@@ -93,6 +93,8 @@ Automatic gates are intentionally conservative:
 - non-draft reopened/synchronized pull request: `all-full`;
 - push to `main`: `all-full`.
 
+Pull-request description edits do not start product qualification. A newer source/lifecycle event for the same PR or ref cancels obsolete work before it can consume the serialized runner.
+
 Every non-`preflight` run executes **static qualification first** as the first substantive qualification boundary, before KVM/runner preflight, dependency-graph validation, fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
 
 `all-full` runs, in order:
@@ -110,6 +112,8 @@ check-static.sh
 ```
 
 The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
+
+Wall-clock UI/WebKit performance measurements are diagnostic evidence, not required correctness gates. They run manually or as advisory work outside `Check`; a timing regression must never prevent Linux or Android correctness qualification from running.
 
 The workflow uses the minimum normal permission:
 
@@ -178,6 +182,8 @@ Choose the branch or exact ref and lane explicitly through `workflow_dispatch`. 
 ## Failure evidence
 
 Qualification failures preserve bounded diagnostics rather than user study data.
+
+Long-running captured commands emit a metadata-only heartbeat every 60 seconds with the phase, elapsed time, total log bytes, and byte growth. Complete command output remains in the raw artifact; the heartbeat provides liveness without flooding Actions or Connector responses.
 
 Nested qualification wrappers share one failure-capture token, so the innermost precise failure wins and outer `initialization` traps do not create duplicate evidence. Each failing script writes its authoritative capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
 

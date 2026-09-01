@@ -18,6 +18,8 @@ const summary = await readFile(join(root, "scripts", "summarize-check-failure.mj
 const resultWriter = await readFile(join(root, "scripts", "write-qualification-result.mjs"), "utf8");
 const handoffRenderer = await readFile(join(root, "scripts", "render-agent-handoff.mjs"), "utf8");
 const ciCapture = await readFile(join(root, "scripts", "run-ci-captured.sh"), "utf8");
+const nativeSmoke = await readFile(join(root, "scripts", "smoke-native.sh"), "utf8");
+const androidSmoke = await readFile(join(root, "scripts", "android-emulator-smoke.sh"), "utf8");
 
 const failures = [];
 
@@ -81,6 +83,14 @@ for (const forbidden of [
   }
 }
 
+for (const forbidden of ["id: ui_performance", "check-ui-performance"]) {
+  if (workflow.includes(forbidden)) {
+    failures.push(
+      `check.yml must keep wall-clock UI performance outside required correctness qualification: ${forbidden}`,
+    );
+  }
+}
+
 for (const forbidden of [
   "pull_request:",
   "PR_BODY:",
@@ -104,11 +114,20 @@ if (/2>&1\s*\|\s*tee\s+"\$RUNNER_TEMP\/ostudy-(?:static|fast|full|android)/u.tes
 for (const required of [
   "OSTUDY_CI_SUCCESS_TAIL_BYTES",
   "OSTUDY_CI_FAILURE_TAIL_BYTES",
+  "OSTUDY_CI_HEARTBEAT_SECONDS",
+  "Qualification still running",
   "tail -c",
   "full output retained",
   "exit \"$status\"",
 ]) {
   if (!ciCapture.includes(required)) failures.push(`CI log capture helper missing ${required}`);
+}
+
+if (!nativeSmoke.includes("timeout --signal=INT --kill-after=30s 300s")) {
+  failures.push("native WebDriver smoke must retain a hard-kill fallback");
+}
+if (!androidSmoke.includes("timeout --signal=INT --kill-after=30s 180s")) {
+  failures.push("Android instrumentation smoke must retain a per-case hard timeout");
 }
 
 for (const required of [
@@ -164,5 +183,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs without flooding live output, exact-head JSON and Markdown handoff evidence are retained, source synchronizations supersede obsolete qualification without metadata edits aborting exact-head work in either qualification workflow, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, exact-head JSON and Markdown handoff evidence are retained, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
 );

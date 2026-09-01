@@ -19,7 +19,7 @@ Do not substitute:
 
 Those mechanisms do not establish whether the Connector can read or write the private repository.
 
-Record `executionMode: githubConnector` in the pull-request state ledger. Use `githubConnectorWithExecutionWorkspace` only when a separate workspace can execute the exact published source; that workspace is never the sole location of the implementation.
+Record `executionMode: githubConnector` in the pull-request acceptance snapshot. Use `githubConnectorWithExecutionWorkspace` only when a separate workspace can execute the exact published source; that workspace is never the sole location of the implementation.
 
 ## 2. Model GitHub state as separate dimensions
 
@@ -112,11 +112,23 @@ For a normal change:
 6. continue direct source changes on the same branch and PR;
 7. verify the new remote head after every meaningful publication step.
 
+### Expected-head publication protocol
+
+The selected Connector session or execution workspace is the branch's only source writer until handoff. Immediately before a commit/ref mutation:
+
+1. fetch the remote branch head;
+2. require it to equal the last verified expected head;
+3. create the new commit with that head as its parent;
+4. update the ref without force;
+5. read the remote head again and record the confirmed SHA.
+
+If step 2 or 4 fails, stop. Do not force-update, replay an unreviewed local tree, or let another chat independently repair the same branch. Read the competing head and explicitly resume or hand off from it.
+
 A generated patch, proposed commit message, transient execution workspace, task-specific applicator, or CI-generated product tree is not delivery. The branch must contain the actual reviewable source before qualification.
 
 Automatic pull-request CI is read-only and may not author commits, push source, persist write credentials, or change PR readiness. Explicit manual maintenance workflows are separate from ordinary qualification and may never push directly to `main`.
 
-## 6. Keep the PR state ledger current
+## 6. Keep the PR acceptance snapshot current
 
 After each coherent publication checkpoint:
 
@@ -127,7 +139,7 @@ After each coherent publication checkpoint:
 - record only validation that actually passed, with the exact tested SHA;
 - preserve pending human-only boundaries explicitly.
 
-A draft synchronize event can race a PR-body edit, so the verifier warns rather than fails when a draft ledger temporarily lags the actual head. Before readiness, the ledger must exactly match the GitHub base, branch, and head, and static, fast, and full must pass on that head.
+A draft synchronize event can race a PR-body edit, so the verifier warns rather than fails when the compatibility snapshot temporarily lags the actual head. The snapshot records acceptance evidence but does not own branch, runner, or workflow state. Before readiness, it must exactly match the GitHub base, branch, and head, and static, fast, and full must pass on that head.
 
 ## 7. Keep CI and repository access independent
 

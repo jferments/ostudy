@@ -112,8 +112,8 @@ jobs:
           {
             echo '# Unified runner qualification'
             echo
-            echo "- Head: `$QUALIFIED_SHA`"
-            echo "- Runner: `$RUNNER_NAME`"
-            echo "- Lane: `$LANE`"
+            echo "- Head: \`$QUALIFIED_SHA\`"
+            echo "- Runner: \`$RUNNER_NAME\`"
+            echo "- Lane: \`$LANE\`"
             echo "- Status: **$JOB_STATUS**"
           } >> "$GITHUB_STEP_SUMMARY"

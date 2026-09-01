@@ -57,9 +57,9 @@ When one term is missing, report the narrower state instead:
 - `Automated qualification passed; physical camera acceptance remains.`
 - `Five of seven acceptance criteria are implemented.`
 
-## Pull-request state ledger
+## Pull-request acceptance snapshot
 
-Substantial pull requests keep one machine-readable ledger in the pull-request body between these markers:
+For compatibility with current validation and handoff tooling, substantial pull requests keep one machine-readable acceptance snapshot in the pull-request body between these markers:
 
 ````markdown
 <!-- ostudy-agent-state:start -->
@@ -109,6 +109,8 @@ Substantial pull requests keep one machine-readable ledger in the pull-request b
 ```
 <!-- ostudy-agent-state:end -->
 ````
+
+This snapshot is not a source of truth for the branch head, an Actions run, runner health, or active task ownership. It must never be used as a CI trigger or branch lock. GitHub and exact-SHA workflow evidence remain authoritative.
 
 `scripts/verify-pr-contract.mjs` validates the JSON shape and, for a non-draft pull request, requires exact agreement with the current GitHub base, head, and branch.
 
@@ -209,14 +211,14 @@ The generated handoff is the factual starting point for the final response and P
 When work resumes in another conversation or after interruption, do not reconstruct task state from memory:
 
 1. Read the repository and intended base through the active repository-access mode.
-2. Read the open task pull request and its state ledger.
+2. Read the open task pull request and its acceptance snapshot.
 3. Verify the actual remote branch and head SHA.
 4. Read exact-head CI state separately from publication state.
 5. Enumerate acceptance criteria that are not terminal.
 6. Read unresolved review threads and known failures.
 7. Continue from that verified state.
 
-If the ledger and repository disagree, the repository is authoritative and the ledger must be corrected before another completion claim.
+If the acceptance snapshot and repository disagree, the repository is authoritative and the snapshot must be corrected before another completion claim.
 
 ## Progress checkpoints
 
