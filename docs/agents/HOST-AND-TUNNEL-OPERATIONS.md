@@ -71,29 +71,41 @@ repository's collision-free listener policy.
 
 The direct-workspace installer performs activation in this order:
 
-1. replace the local tunnel profile;
-2. run `tunnel-client doctor`;
-3. persist the runtime API key in a root-only environment file;
-4. install and start the systemd service.
+1. verify that the installed tunnel client supports the required listener and
+   health-probe operations;
+2. replace the local tunnel profile;
+3. run `tunnel-client doctor`;
+4. persist the runtime API key in a root-only environment file;
+5. install, enable, and restart the systemd service;
+6. require the service to pass `/healthz`, `/readyz`, and one successful
+   control-plane command poll.
 
-A failure during step 2 can therefore leave the profile file present while no
+A failure during step 3 can therefore leave the profile file present while no
 API key or systemd service has been installed. That is a recoverable partial
 state. Re-run the corrected idempotent activation with the same tunnel ID and a
 runtime API key after updating to a qualified installer SHA. Do not delete
 persistent worktrees or state, and do not stop unrelated services.
 
-After successful activation, verify all of the following separately:
+The installer does not report activation success after merely issuing
+`systemctl`. It waits for the live daemon and prints structured health evidence.
+The same proof can be repeated later through the exact installer path:
+
+```bash
+sudo -n -- /absolute/path/to/install-direct-workspace-runtime.sh verify
+```
+
+Successful verification requires all of the following:
 
 ```text
 systemd unit enabled
 systemd unit active/running
-no restart loop
 private health URL file present
 /healthz reachable
-/readyz reports ready
-ChatGPT exposes the exact expected MCP tool contract
+/readyz ready
+at least one successful control-plane poll
 ```
 
+Then separately verify that ChatGPT exposes the exact expected MCP tool contract.
 A local health-listener failure is not evidence that GitHub authentication,
 oStudy source, the MCP tool schema, or another tunnel failed.
 
