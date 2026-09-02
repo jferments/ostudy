@@ -78,7 +78,7 @@ pub(super) fn exact_source_deck_title(
     }
     let stem = source_stem(original_filename, source_format);
     let normalized_stem = normalize_metadata(
-        &stem.replace('_', " ").replace('-', " "),
+        &stem.replace(['_', '-'], " "),
         ARTIFACT_TITLE_MAX_CHARS,
     );
     let normalized = normalized_key(value);

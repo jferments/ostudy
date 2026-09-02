@@ -2,7 +2,7 @@
   .item {
     display: grid;
     min-width: 0;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: stretch;
     border: 1px solid var(--ostudy-color-border-subtle);
     border-radius: var(--ostudy-radius-medium);
@@ -89,33 +89,17 @@
     align-items: center;
     gap: var(--ostudy-space-2);
     border: 0;
+    border-radius: var(--ostudy-radius-small);
     padding: 8px var(--ostudy-space-3);
     background: transparent;
     color: var(--ostudy-color-text-primary);
+    cursor: pointer;
     text-align: start;
   }
 
-  .open {
-    align-self: center;
-    min-height: 34px;
-    border: 1px solid var(--ostudy-color-border-subtle);
-    border-radius: var(--ostudy-radius-small);
-    padding: 0 var(--ostudy-space-3);
-    background: var(--ostudy-color-surface-soft);
-    color: var(--ostudy-color-text-secondary);
-    font: inherit;
-    font-size: 0.76rem;
-    font-weight: 700;
-  }
-
-  .open:hover:not(:disabled) {
-    border-color: var(--ostudy-color-border-strong);
-    color: var(--ostudy-color-text-primary);
-  }
-
-  .open:focus-visible {
+  .main:focus-visible {
     outline: none;
-    box-shadow: var(--ostudy-shadow-focus);
+    box-shadow: inset 0 0 0 2px var(--ostudy-color-border-accent);
   }
 
   .mark {
@@ -165,7 +149,7 @@
   }
 
   .item[data-archived="true"] .actions {
-    grid-column: 4;
+    grid-column: 3;
   }
 
   :global(:root[data-motion="reduced"]) .item,
@@ -212,7 +196,7 @@
     }
   }
 
-  :global(:root[data-input-mode="coarse"]) .open {
+  :global(:root[data-input-mode="coarse"]) .main {
     min-height: var(--ostudy-size-touch-target);
   }
 

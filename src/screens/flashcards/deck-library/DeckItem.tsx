@@ -64,8 +64,26 @@ export const DeckItem = memo(function DeckItem({
       </label>
       <div
         className={styles.main}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${deck.name}`}
+        aria-keyshortcuts={
+          archived
+            ? "Enter Space"
+            : "Enter Space ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
+        }
         data-library-pointer-drag-source={archived ? undefined : "true"}
         onClick={onOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen();
+            return;
+          }
+          if (!archived) {
+            reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count);
+          }
+        }}
         onPointerDown={
           archived
             ? undefined
@@ -87,23 +105,6 @@ export const DeckItem = memo(function DeckItem({
           </small>
         </span>
       </div>
-      <button
-        type="button"
-        className={styles.open}
-        aria-label={`Open ${deck.name}`}
-        aria-keyshortcuts={
-          archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
-        }
-        onKeyDown={
-          archived
-            ? undefined
-            : (event) =>
-                reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
-        }
-        onClick={onOpen}
-      >
-        Open
-      </button>
       <div className={styles.actions}>
         {!archived ? (
           <ResponsiveActionGroup
