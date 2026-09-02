@@ -17,16 +17,19 @@ For an implementation task, read these in order:
 3. [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) — canonical short build, test,
    run, Android, and installation commands. Read this before reconstructing
    commands from memory.
-4. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — compatibility acceptance
+4. [`HOST-AND-TUNNEL-OPERATIONS.md`](HOST-AND-TUNNEL-OPERATIONS.md) — the
+   `codex-dev` noninteractive sudo boundary, secret-input rules, concurrent
+   Secure MCP Tunnel listener isolation, and partial-activation recovery.
+5. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — compatibility acceptance
    snapshot, completion predicate, exact-head evidence vocabulary, and session
    resumption protocol.
-5. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable
+6. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable
    fingerprints, focused reproduction, retry budget, and stopping rules.
-6. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope,
+7. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope,
    publish, implement, test, review, and hand off a change.
-7. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete
+8. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete
    write authorization, remote verification, and connector/service diagnosis.
-8. The architecture and code standards relevant to the requested subsystem.
+9. The architecture and code standards relevant to the requested subsystem.
 
 The direct workspace is the normal implementation path when its exact seven-tool
 contract is healthy, including when Codex credits are available. Codex is
@@ -53,6 +56,9 @@ facts without replacing them.
 - [`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md) defines the default writer,
   optional Codex roles, full-orchestrator threshold, one-writer invariant, and
   component decision table.
+- [`HOST-AND-TUNNEL-OPERATIONS.md`](HOST-AND-TUNNEL-OPERATIONS.md) prevents
+  password-prompt assumptions, secret-to-sudo pipe hazards, and fixed-port
+  collisions between multiple tunnel daemons on `codex-dev`.
 - [`EXECUTION-STATE.md`](EXECUTION-STATE.md) prevents planning, implementation,
   publication, validation, manual acceptance, and completion from being
   collapsed into one vague state.
@@ -104,6 +110,11 @@ superseded audits. They are not current implementation instructions.
   author commits, persist write credentials, or change review readiness.
 - Use CI to qualify a published SHA, not as the normal formatter, editor, or first
   compiler.
+- Treat host administration as a separate capability boundary. On `codex-dev`,
+  never run `sudo -v`; use only the exact permitted command with `sudo -n`, and
+  follow `HOST-AND-TUNNEL-OPERATIONS.md` before asking for or piping a secret.
+- Every repository-managed tunnel profile sharing the VM uses an independent
+  loopback health listener rather than the fixed default port.
 - Update the PR compatibility snapshot at meaningful checkpoints and before
   readiness rather than after every local edit.
 - Consume machine-readable exact-head qualification before asking the human to
