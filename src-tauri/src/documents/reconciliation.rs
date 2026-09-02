@@ -1,5 +1,3 @@
-use std::fs;
-
 use rusqlite::{params, Connection};
 
 use crate::{database::Database, error::CommandError, paths::AppPaths, util::unix_time_millis};
@@ -126,19 +124,4 @@ fn managed_document_sources(
         .map_err(CommandError::database)?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)
-}
-
-pub(crate) fn remove_empty_document_staging(paths: &AppPaths) -> Result<(), CommandError> {
-    let staging = paths.app_data_dir().join("documents").join("staging");
-    if !staging.is_dir() {
-        return Ok(());
-    }
-    for entry in fs::read_dir(&staging).map_err(CommandError::io)? {
-        let entry = entry.map_err(CommandError::io)?;
-        let path = entry.path();
-        if path.is_file() {
-            fs::remove_file(path).map_err(CommandError::io)?;
-        }
-    }
-    Ok(())
 }

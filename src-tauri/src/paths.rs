@@ -8,7 +8,6 @@ pub struct AppPaths {
     asset_staging_dir: PathBuf,
     asset_quarantine_dir: PathBuf,
     documents_dir: PathBuf,
-    document_staging_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -37,7 +36,6 @@ impl AppPaths {
             asset_staging_dir,
             asset_quarantine_dir,
             documents_dir,
-            document_staging_dir,
         })
     }
 
@@ -59,10 +57,6 @@ impl AppPaths {
 
     pub fn asset_quarantine_dir(&self) -> &Path {
         &self.asset_quarantine_dir
-    }
-
-    pub fn document_staging_dir(&self) -> &Path {
-        &self.document_staging_dir
     }
 
     pub fn document_directory(&self, document_id: &str) -> PathBuf {
