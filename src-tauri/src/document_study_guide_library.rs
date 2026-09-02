@@ -169,9 +169,7 @@ pub(crate) fn list_study_guides(
              ORDER BY {order}
              LIMIT ?3 OFFSET ?4"
         );
-        let mut statement = connection
-            .prepare(&sql)
-            .map_err(CommandError::database)?;
+        let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
         let rows = statement
             .query_map(
                 params![normalized_query, pattern, input.limit, input.offset],
