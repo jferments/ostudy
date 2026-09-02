@@ -15,6 +15,7 @@ use crate::{
 
 use super::AiRuntimeState;
 
+mod artifact_metadata;
 mod context;
 mod contracts;
 mod curation;
@@ -25,6 +26,11 @@ mod study_guide;
 mod support;
 mod transport;
 
+pub(crate) use artifact_metadata::{
+    DocumentArtifactMetadataCandidate, ARTIFACT_DESCRIPTION_MAX_CHARS,
+    ARTIFACT_METADATA_GENERATOR_VERSION, ARTIFACT_METADATA_PROMPT_VERSION,
+    ARTIFACT_METADATA_SCHEMA_VERSION, ARTIFACT_TITLE_MAX_CHARS,
+};
 pub(crate) use context::{load_document_task_context, DocumentTaskContext};
 pub(crate) use contracts::{DocumentOutline, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
@@ -36,6 +42,17 @@ pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 pub(crate) use study_guide::generate_study_guide_topic_section;
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
+
+/// Generate optional subject-centered metadata from the validated global
+/// learning outline. Callers treat failure as recoverable and apply the
+/// deterministic local fallback from the same outline.
+pub(crate) async fn generate_document_artifact_metadata(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    outline: &DocumentOutline,
+) -> Result<DocumentArtifactMetadataCandidate, CommandError> {
+    artifact_metadata::request_document_artifact_metadata(runtime, task, outline).await
+}
 
 /// Build the reusable global outline used by later learning-artifact windows.
 ///
