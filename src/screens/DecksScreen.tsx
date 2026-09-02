@@ -588,7 +588,10 @@ export function DecksScreen({
                   {
                     id: "delete",
                     label: `Delete ${selectedDeck.name}`,
-                    placement: "overflow-only",
+                    placement: "always-visible",
+                    presentation: "icon",
+                    icon: "delete",
+                    description: "Delete deck",
                     destructive: true,
                     onSelect: () => void handleDeleteDeck(selectedDeck),
                   },

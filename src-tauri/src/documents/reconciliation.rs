@@ -3,20 +3,13 @@ use std::fs;
 use rusqlite::{params, Connection};
 
 use crate::{
-    database::Database,
-    document_delete_reconciliation,
-    document_operations,
-    error::CommandError,
-    paths::AppPaths,
-    util::unix_time_millis,
+    database::Database, document_delete_reconciliation, document_operations, error::CommandError,
+    paths::AppPaths, util::unix_time_millis,
 };
 
 use super::lifecycle;
 
-pub(crate) fn reconcile_startup(
-    database: &Database,
-    paths: &AppPaths,
-) -> Result<(), CommandError> {
+pub(crate) fn reconcile_startup(database: &Database, paths: &AppPaths) -> Result<(), CommandError> {
     document_operations::reconcile_deleted_document_trash(paths)?;
     document_delete_reconciliation::reconcile_document_trash(database, paths)?;
     let now = unix_time_millis()?;

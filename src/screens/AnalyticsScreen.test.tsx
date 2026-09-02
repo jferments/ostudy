@@ -289,7 +289,7 @@ describe("AnalyticsScreen", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Practice ready" }));
+    fireEvent.click(screen.getByRole("button", { name: "Practice" }));
     expect(onPracticeScope).toHaveBeenCalledWith([], [tagId]);
   });
 

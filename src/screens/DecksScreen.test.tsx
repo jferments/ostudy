@@ -251,7 +251,7 @@ describe("DecksScreen", () => {
       .toBe("Dog facts");
   });
 
-  it("keeps zero-card Practice direct and explains why the primary action is disabled", async () => {
+  it("keeps zero-card Practice and the destructive trash action direct", async () => {
     const emptyDeck = { ...deck, generatedCardCount: 0 };
     vi.mocked(decksIpc.getDeck).mockResolvedValue(emptyDeck);
     const { onPracticeDeck } = renderDecks(vi.fn(), vi.fn(), "compact", [emptyDeck]);
@@ -273,10 +273,15 @@ describe("DecksScreen", () => {
     fireEvent.click(practice);
     expect(onPracticeDeck).not.toHaveBeenCalled();
 
+    const deleteButton = within(group).getByRole("button", { name: "Delete Dog facts" });
+    expect(deleteButton.getAttribute("data-tone")).toBe("danger");
+    fireEvent.focus(deleteButton);
+    expect(screen.getByRole("tooltip").textContent).toBe("Delete deck");
+
     fireEvent.click(within(group).getByRole("button", { name: "More actions" }));
     expect(screen.getByRole("menuitem", { name: "Export" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Archive Dog facts" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Delete Dog facts" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Delete Dog facts" })).toBeNull();
   });
 
   it("routes the shared archive icon through the existing revision-checked handler", async () => {
@@ -396,20 +401,20 @@ describe("DecksScreen", () => {
   it.each([
     {
       mode: "wide",
-      direct: ["Practice", "Export", "Archive Dog facts"],
-      overflow: ["Delete Dog facts"],
+      direct: ["Practice", "Export", "Archive Dog facts", "Delete Dog facts"],
+      overflow: [],
     },
     {
       mode: "medium",
-      direct: ["Practice", "Export"],
-      overflow: ["Archive Dog facts", "Delete Dog facts"],
+      direct: ["Practice", "Export", "Delete Dog facts"],
+      overflow: ["Archive Dog facts"],
     },
     {
       mode: "compact",
-      direct: ["Practice"],
-      overflow: ["Export", "Archive Dog facts", "Delete Dog facts"],
+      direct: ["Practice", "Delete Dog facts"],
+      overflow: ["Export", "Archive Dog facts"],
     },
-  ] as const)("uses shared $mode deck-action placement", async ({ mode, direct, overflow }) => {
+  ] as const)("keeps the trash action direct in the shared $mode placement", async ({ mode, direct, overflow }) => {
     renderDecks(vi.fn(), vi.fn(), mode);
     await openDeckDetail();
     const group = screen.getByRole("group", { name: "Dog facts actions" });
@@ -421,13 +426,20 @@ describe("DecksScreen", () => {
       expect(within(group).queryByRole("button", { name: label })).toBeNull();
     }
 
-    fireEvent.click(within(group).getByRole("button", { name: "More actions" }));
-    for (const label of overflow) {
-      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    const deleteButton = within(group).getByRole("button", { name: "Delete Dog facts" });
+    expect(deleteButton.getAttribute("data-tone")).toBe("danger");
+
+    const overflowTrigger = within(group).queryByRole("button", { name: "More actions" });
+    if (overflow.length === 0) {
+      expect(overflowTrigger).toBeNull();
+    } else {
+      expect(overflowTrigger).toBeTruthy();
+      fireEvent.click(overflowTrigger as HTMLButtonElement);
+      for (const label of overflow) {
+        expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+      }
+      expect(screen.queryByRole("menuitem", { name: "Delete Dog facts" })).toBeNull();
     }
-    expect(screen.getByRole("menuitem", { name: "Delete Dog facts" }).className).toContain(
-      "destructive",
-    );
   });
 
   it("imports generated JSON through the ordinary Import deck button", async () => {

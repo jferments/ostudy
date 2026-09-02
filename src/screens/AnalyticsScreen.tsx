@@ -332,7 +332,7 @@ export function AnalyticsScreen({
                             disabled={tag.studyableDueCount === 0 || practicingTagId !== null}
                             onClick={() => practiceReadyTag(tag)}
                           >
-                            {practicingTagId === tag.tagId ? "Starting…" : "Practice ready"}
+                            {practicingTagId === tag.tagId ? "Starting…" : "Practice"}
                           </button>
                         </td>
                       </tr>
