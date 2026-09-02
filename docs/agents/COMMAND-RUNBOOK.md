@@ -5,9 +5,11 @@ maintained repository wrappers over ad-hoc `cargo`, `tauri`, Gradle, ADB, or Vit
 command lines. If a wrapper fails, diagnose and fix the wrapper or underlying
 defect; do not silently invent a parallel workflow.
 
-Read [`DIRECT-WORKSPACE.md`](DIRECT-WORKSPACE.md) for normal ChatGPT execution
-and [`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md) before selecting Codex or
-the full orchestrator.
+Read [`DIRECT-WORKSPACE.md`](DIRECT-WORKSPACE.md) for normal ChatGPT execution,
+[`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md) before selecting Codex or the
+full orchestrator, and
+[`HOST-AND-TUNNEL-OPERATIONS.md`](HOST-AND-TUNNEL-OPERATIONS.md) before any
+`codex-dev` administrator or Secure MCP Tunnel operation.
 
 ## Direct-workspace command mapping
 
@@ -31,6 +33,32 @@ validation evidence. Validations must leave the worktree unchanged. Run `static`
 and `fast` against the exact current head and diff before publication.
 
 The corresponding human/local shell commands are below.
+
+## `codex-dev` host and tunnel rules
+
+The `ubuntu` account must not be assumed to have a sudo password. For every
+repository-maintained host installer:
+
+```text
+never: sudo -v
+never: interactive sudo while a secret is on stdin
+always: exact authorized command through sudo -n
+always: privilege preflight before asking for a secret
+always: secret read from /dev/tty and unset on exit
+```
+
+A failed `sudo -n` call means the exact command is not authorized
+noninteractively. It is not an instruction to enter or create an Ubuntu password.
+
+Several Secure MCP Tunnel services may run on the same VM. Newly generated
+repository-managed profiles use `127.0.0.1:0` and a service-owned
+`HEALTH_URL_FILE`; they do not compete for the tunnel-client default
+`127.0.0.1:8080`. Do not stop an unrelated observer, worker, or exact-head
+service to free that port.
+
+Use only the current qualified installer and source SHA from
+`jferments/dev-orchestrator`. Do not reconstruct installation commands from an
+older chat response after that repository has advanced.
 
 ## First-time / refreshed checkout
 
