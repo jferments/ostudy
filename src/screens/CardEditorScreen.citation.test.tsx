@@ -22,7 +22,7 @@ function props(card: { noteId: string } | null): ComponentProps<typeof CardEdito
     onSaved: vi.fn(),
     onTemplateGenerated: vi.fn(),
     onDirtyChange: vi.fn(),
-  } as ComponentProps<typeof CardEditorScreen>;
+  } as unknown as ComponentProps<typeof CardEditorScreen>;
 }
 
 describe("CardEditorScreen source provenance shell", () => {
