@@ -1,48 +1,48 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { LayoutModeProvider } from "../ui/layout/LayoutModeProvider";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
+import * as studyGuides from "../ipc/studyGuides";
 import { StudyGuidesRoute } from "./StudyGuidesRoute";
 
-vi.mock("./StudyGuideLibrarySection", () => ({
-  StudyGuideLibrarySection: ({
-    heading,
-    showToast,
-    onPracticeCards,
-  }: {
-    heading: string;
-    showToast: (kind: "success", text: string) => void;
-    onPracticeCards: (cardIds: string[]) => Promise<void>;
-  }) => (
-    <section aria-label="Guide library mock">
-      <h2>{heading}</h2>
-      <button type="button" onClick={() => showToast("success", "Guide opened")}>
-        Show toast
-      </button>
-      <button type="button" onClick={() => void onPracticeCards(["linked-card"])}>
-        Study linked cards
-      </button>
-    </section>
-  ),
+vi.mock("../ipc/studyGuides", async () => {
+  const actual = await vi.importActual<typeof import("../ipc/studyGuides")>(
+    "../ipc/studyGuides",
+  );
+  return {
+    ...actual,
+    listDocumentStudyGuidePage: vi.fn().mockResolvedValue({
+      items: [],
+      totalCount: 0,
+      offset: 0,
+      limit: 40,
+    }),
+    deleteDocumentStudyGuide: vi.fn(),
+  };
+});
+
+vi.mock("./StudyGuideDialog", () => ({
+  StudyGuideDialog: () => null,
 }));
 
 describe("StudyGuidesRoute", () => {
-  it("renders one route heading and delegates existing guide behavior", () => {
-    const showToast = vi.fn();
-    const onPracticeCards = vi.fn().mockResolvedValue(undefined);
-
-    const { container } = render(
-      <StudyGuidesRoute showToast={showToast} onPracticeCards={onPracticeCards} />,
+  it("renders the first-class lazy route workspace", async () => {
+    render(
+      <OverlayProvider>
+        <LayoutModeProvider>
+          <StudyGuidesRoute showToast={vi.fn()} onPracticeCards={vi.fn()} />
+        </LayoutModeProvider>
+      </OverlayProvider>,
     );
 
-    expect(container.firstElementChild?.getAttribute("aria-label")).toBe("Study Guides");
-    expect(container.firstElementChild?.className).toContain("full");
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1, name: "Study Guides" })).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 2, name: "Generated guides" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
-    fireEvent.click(screen.getByRole("button", { name: "Study linked cards" }));
-    expect(showToast).toHaveBeenCalledWith("success", "Guide opened");
-    expect(onPracticeCards).toHaveBeenCalledWith(["linked-card"]);
+    expect(await screen.findByRole("heading", { name: "Study Guides" })).toBeTruthy();
+    expect(screen.getByRole("search")).toBeTruthy();
+    expect(studyGuides.listDocumentStudyGuidePage).toHaveBeenCalledWith({
+      query: "",
+      sort: "recent",
+      offset: 0,
+      limit: 40,
+    });
   });
 });

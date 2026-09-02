@@ -130,6 +130,7 @@ export interface DocumentStudyGuide {
   publishedAt: number;
 }
 
+/** Compatibility projection retained until the old inline library is removed. */
 export interface StudyGuideLibraryItem {
   documentId: string;
   documentTitle: string;
@@ -139,6 +140,44 @@ export interface StudyGuideLibraryItem {
   sourceUnitCount: number;
   guideRevision: number;
   publishedAt: number;
+}
+
+export type StudyGuideLibrarySort =
+  | "recent"
+  | "oldest"
+  | "title_asc"
+  | "title_desc";
+
+export interface ListStudyGuidesInput {
+  query: string;
+  sort: StudyGuideLibrarySort;
+  offset: number;
+  limit: number;
+}
+
+export interface StudyGuidePageItem extends StudyGuideLibraryItem {
+  guideId: string;
+  sectionCount: number;
+  noteCount: number;
+}
+
+export interface StudyGuideLibraryPage {
+  items: StudyGuidePageItem[];
+  totalCount: number;
+  offset: number;
+  limit: number;
+}
+
+export interface DeleteDocumentStudyGuideResult {
+  documentId: string;
+  guideId: string;
+  deletedGuideRevision: number;
+  removedRevisionCount: number;
+  removedOverrideCount: number;
+  removedCheckpointCount: number;
+  removedExportCount: number;
+  removedJobCount: number;
+  replayed: boolean;
 }
 
 export type DocumentArtifactKind = "study_guide" | "flashcards";
@@ -217,10 +256,32 @@ export async function getDocumentStudyGuide(
 }
 
 export async function listDocumentStudyGuides(): Promise<StudyGuideLibraryItem[]> {
-  // Released native builds retain a private compatibility flag, but document
-  // archive state is no longer part of the application-facing contract.
   return invoke<StudyGuideLibraryItem[]>("list_document_study_guides", {
     includeArchived: false,
+  });
+}
+
+export async function listDocumentStudyGuidePage(
+  input: Partial<ListStudyGuidesInput> = {},
+): Promise<StudyGuideLibraryPage> {
+  return invoke<StudyGuideLibraryPage>("list_document_study_guide_page", {
+    input: {
+      query: input.query ?? "",
+      sort: input.sort ?? "recent",
+      offset: input.offset ?? 0,
+      limit: input.limit ?? 40,
+    },
+  });
+}
+
+export async function deleteDocumentStudyGuide(
+  documentId: string,
+  guideId: string,
+  expectedRevision: number,
+  operationId = createOperationId(),
+): Promise<DeleteDocumentStudyGuideResult> {
+  return invoke<DeleteDocumentStudyGuideResult>("delete_document_study_guide", {
+    input: { documentId, guideId, expectedRevision, operationId },
   });
 }
 
