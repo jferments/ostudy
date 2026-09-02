@@ -46,6 +46,26 @@ printf '%s' "$CONTROL_PLANE_API_KEY" |
 The installer path, SHA, tunnel ID, and supported arguments must come from the
 qualified repository documentation rather than from memory.
 
+## Prepared versus activated state
+
+`prepare` installs and qualifies an immutable runtime, but it deliberately does
+not install the direct-workspace systemd unit. Before the first successful
+`activate`, a raw status probe may therefore print:
+
+```text
+Unit dev-orchestrator-direct-workspace-tunnel.service could not be found.
+```
+
+That message describes the expected pre-activation state; it is not evidence
+that `prepare`, Git authentication, the MCP registry, or noninteractive sudo
+failed. Do not use visible `status` output as the pre-activation success test.
+A completed `sudo -n ... prepare` already proves that the exact installer is
+authorized. When an additional authorization-only probe is needed, redirect both
+stdout and stderr as in the safe pattern above.
+
+Use `status` for diagnostics after activation. Use `verify` only after activation,
+where an absent unit is correctly treated as a failure.
+
 ## Multiple tunnel daemons on one VM
 
 `codex-dev` may run several independent Secure MCP Tunnel daemons at once,
