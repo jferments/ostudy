@@ -8,9 +8,8 @@ use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 
 use crate::{
     ai::document_intelligence::{
-        DocumentArtifactMetadataCandidate, DocumentOutline,
-        ARTIFACT_METADATA_GENERATOR_VERSION, ARTIFACT_METADATA_PROMPT_VERSION,
-        ARTIFACT_METADATA_SCHEMA_VERSION,
+        DocumentArtifactMetadataCandidate, DocumentOutline, ARTIFACT_METADATA_GENERATOR_VERSION,
+        ARTIFACT_METADATA_PROMPT_VERSION, ARTIFACT_METADATA_SCHEMA_VERSION,
     },
     database::Database,
     document_citations,
@@ -76,8 +75,7 @@ pub(super) fn ensure_document_artifact_metadata(
             .as_ref()
             .filter(|metadata| {
                 provider_candidate.is_none()
-                    && metadata.source_fingerprint_sha256
-                        == source.source_fingerprint_sha256
+                    && metadata.source_fingerprint_sha256 == source.source_fingerprint_sha256
                     && metadata.generator_version == ARTIFACT_METADATA_GENERATOR_VERSION
                     && metadata.schema_version == ARTIFACT_METADATA_SCHEMA_VERSION
                     && metadata.prompt_version == ARTIFACT_METADATA_PROMPT_VERSION
@@ -348,8 +346,7 @@ fn apply_deck_metadata(
         return Ok(());
     };
 
-    let name_is_generated = existing
-        .and_then(|value| value.applied_deck_title.as_deref())
+    let name_is_generated = existing.and_then(|value| value.applied_deck_title.as_deref())
         == Some(current_name.as_str())
         || exact_source_deck_title(
             &current_name,

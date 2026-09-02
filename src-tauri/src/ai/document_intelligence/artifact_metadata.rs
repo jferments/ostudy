@@ -51,8 +51,7 @@ pub(super) async fn request_document_artifact_metadata(
             system_prompt: &system,
             user_text: &user,
             schema: &schema,
-            max_tokens: task
-                .completion_token_ceiling(ARTIFACT_METADATA_VISIBLE_COMPLETION_TOKENS),
+            max_tokens: task.completion_token_ceiling(ARTIFACT_METADATA_VISIBLE_COMPLETION_TOKENS),
             images: &[],
         },
     )

@@ -22,26 +22,20 @@ pub(super) fn derive_desired_metadata(
 ) -> DesiredMetadata {
     let fallback_title = deterministic_title(outline, original_filename, source_format);
     let provider_document_title = provider_candidate.and_then(|candidate| {
-        accepted_title(
-            &candidate.document_title,
-            original_filename,
-            source_format,
-        )
+        accepted_title(&candidate.document_title, original_filename, source_format)
     });
     let provider_deck_title = provider_candidate.and_then(|candidate| {
         accepted_title(&candidate.deck_title, original_filename, source_format)
     });
-    let provider_description = provider_candidate.and_then(|candidate| {
-        accepted_description(&candidate.deck_description, original_filename)
-    });
+    let provider_description = provider_candidate
+        .and_then(|candidate| accepted_description(&candidate.deck_description, original_filename));
     let used_provider = provider_document_title.is_some()
         || provider_deck_title.is_some()
         || provider_description.is_some();
     let document_title = provider_document_title.unwrap_or_else(|| fallback_title.clone());
     let deck_title = provider_deck_title.unwrap_or_else(|| fallback_title.clone());
-    let deck_description = provider_description.unwrap_or_else(|| {
-        deterministic_description(outline, &document_title, original_filename)
-    });
+    let deck_description = provider_description
+        .unwrap_or_else(|| deterministic_description(outline, &document_title, original_filename));
     DesiredMetadata {
         metadata_origin: if used_provider {
             "provider"
@@ -143,11 +137,7 @@ fn deterministic_description(
     normalize_metadata(&candidate, ARTIFACT_DESCRIPTION_MAX_CHARS)
 }
 
-fn accepted_title(
-    value: &str,
-    original_filename: &str,
-    source_format: &str,
-) -> Option<String> {
+fn accepted_title(value: &str, original_filename: &str, source_format: &str) -> Option<String> {
     let normalized = normalize_metadata(value, ARTIFACT_TITLE_MAX_CHARS);
     if normalized.is_empty()
         || contains_generator_boilerplate(&normalized)

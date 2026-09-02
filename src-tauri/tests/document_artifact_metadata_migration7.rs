@@ -163,7 +163,9 @@ fn migration_repairs_only_exact_generated_values_and_preserves_source_identity()
         .expect("repaired deck should load");
     assert_eq!(repaired_title, "Distributive shock physiology");
     assert_eq!(repaired_deck.0, "Distributive shock physiology");
-    assert!(repaired_deck.1.starts_with("Review Distributive shock physiology"));
+    assert!(repaired_deck
+        .1
+        .starts_with("Review Distributive shock physiology"));
 
     let user_title: String = connection
         .query_row(

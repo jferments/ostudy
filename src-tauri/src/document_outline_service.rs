@@ -145,29 +145,30 @@ pub(crate) async fn ensure_document_outline(
 
     match generated {
         Ok(outline) => {
-            let provider_metadata = match document_intelligence::generate_document_artifact_metadata(
-                input.runtime,
-                input.task,
-                &outline,
-            )
-            .await
-            {
-                Ok(metadata) => Some(metadata),
-                Err(error) if error.code == "ai_request_canceled" => return Err(error),
-                Err(error) => {
-                    crate::logging::warn_target(
-                        "ai.document.artifact_metadata",
-                        "document_artifact_metadata_native_fallback",
-                        "Provider artifact metadata was unavailable or invalid; ostudy used the deterministic validated-outline fallback.",
-                        serde_json::json!({
-                            "provider": input.task.provider_kind.as_str(),
-                            "model": input.task.model_id.as_str(),
-                            "code": error.code.as_str(),
-                        }),
-                    );
-                    None
-                }
-            };
+            let provider_metadata =
+                match document_intelligence::generate_document_artifact_metadata(
+                    input.runtime,
+                    input.task,
+                    &outline,
+                )
+                .await
+                {
+                    Ok(metadata) => Some(metadata),
+                    Err(error) if error.code == "ai_request_canceled" => return Err(error),
+                    Err(error) => {
+                        crate::logging::warn_target(
+                            "ai.document.artifact_metadata",
+                            "document_artifact_metadata_native_fallback",
+                            "Provider artifact metadata was unavailable or invalid; ostudy used the deterministic validated-outline fallback.",
+                            serde_json::json!({
+                                "provider": input.task.provider_kind.as_str(),
+                                "model": input.task.model_id.as_str(),
+                                "code": error.code.as_str(),
+                            }),
+                        );
+                        None
+                    }
+                };
             persist_final_outline(
                 input.database,
                 input.document_id,
