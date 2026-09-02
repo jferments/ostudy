@@ -6,11 +6,11 @@ import {
   listDocumentStudyGuides,
   type StudyGuideLibraryItem,
 } from "../ipc/studyGuides";
+import { Button } from "../ui/primitives/Button";
 import { Surface } from "../ui/primitives/Surface";
+import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 import styles from "./StudyGuideLibrarySection.module.css";
-import { Button } from "../ui/primitives/Button";
-import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 
 interface StudyGuideLibrarySectionProps {
   showToast: ShowToast;
@@ -29,7 +29,7 @@ export function StudyGuideLibrarySection({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
-    const loaded = await listDocumentStudyGuides(true);
+    const loaded = await listDocumentStudyGuides();
     setGuides(loaded);
     setErrorMessage(null);
   }, []);
@@ -52,62 +52,66 @@ export function StudyGuideLibrarySection({
   return (
     <>
       <PerformanceProfiler id="guide-library">
-        <Surface as="section" level={2} className={styles.section} aria-labelledby="study-guides-heading">
-        <div className={styles.headingRow}>
-          <div>
-            <h2 id="study-guides-heading">{heading}</h2>
-            <p>Open generated document outlines, add notes, or study the flashcards linked to a topic.</p>
+        <Surface
+          as="section"
+          level={2}
+          className={styles.section}
+          aria-labelledby="study-guides-heading"
+        >
+          <div className={styles.headingRow}>
+            <div>
+              <h2 id="study-guides-heading">{heading}</h2>
+              <p>Open generated document outlines, add notes, or study the flashcards linked to a topic.</p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isLoading}
+              onClick={() => {
+                setIsLoading(true);
+                void refresh()
+                  .catch((error: unknown) => setErrorMessage(getErrorMessage(error)))
+                  .finally(() => setIsLoading(false));
+              }}
+            >
+              Refresh
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isLoading}
-            onClick={() => {
-              setIsLoading(true);
-              void refresh()
-                .catch((error: unknown) => setErrorMessage(getErrorMessage(error)))
-                .finally(() => setIsLoading(false));
-            }}
-          >
-            Refresh
-          </Button>
-        </div>
 
-        {errorMessage ? (
-          <div className={styles.error} role="alert">
-            {errorMessage}
-          </div>
-        ) : isLoading ? (
-          <div className={styles.status} aria-live="polite">
-            Loading study guides…
-          </div>
-        ) : guides.length === 0 ? (
-          <div className={styles.empty}>
-            <strong>No study guides yet</strong>
-            <span>Generate one from the Documents screen, then it will appear here.</span>
-          </div>
-        ) : (
-          <div className={styles.list}>
-            {guides.map((guide) => (
-              <article key={guide.documentId} className={styles.row}>
-                <div>
-                  <strong>{guide.documentTitle}</strong>
-                  <small>
-                    {formatSource(guide)} · revision {guide.guideRevision}
-                    {guide.archived ? " · archived source" : ""}
-                  </small>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setSelected(guide)}
-                >
-                  Open study guide
-                </Button>
-              </article>
-            ))}
-          </div>
-        )}
+          {errorMessage ? (
+            <div className={styles.error} role="alert">
+              {errorMessage}
+            </div>
+          ) : isLoading ? (
+            <div className={styles.status} aria-live="polite">
+              Loading study guides…
+            </div>
+          ) : guides.length === 0 ? (
+            <div className={styles.empty}>
+              <strong>No study guides yet</strong>
+              <span>Generate one from the Documents screen, then it will appear here.</span>
+            </div>
+          ) : (
+            <div className={styles.list}>
+              {guides.map((guide) => (
+                <article key={guide.documentId} className={styles.row}>
+                  <div>
+                    <strong>{guide.documentTitle}</strong>
+                    <small>
+                      {formatSource(guide)} · revision {guide.guideRevision}
+                    </small>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setSelected(guide)}
+                  >
+                    Open study guide
+                  </Button>
+                </article>
+              ))}
+            </div>
+          )}
         </Surface>
       </PerformanceProfiler>
 
@@ -131,7 +135,10 @@ export function StudyGuideLibrarySection({
 
 function formatSource(guide: StudyGuideLibraryItem): string {
   const format = guide.sourceFormat.replaceAll("_", " ").toUpperCase();
-  const unit = guide.sourceUnitCount === 1 ? singularUnit(guide.sourceUnitKind) : pluralUnit(guide.sourceUnitKind);
+  const unit =
+    guide.sourceUnitCount === 1
+      ? singularUnit(guide.sourceUnitKind)
+      : pluralUnit(guide.sourceUnitKind);
   return `${format} · ${guide.sourceUnitCount.toLocaleString()} ${unit} · ${guide.originalFilename}`;
 }
 
