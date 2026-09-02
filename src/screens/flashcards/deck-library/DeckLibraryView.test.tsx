@@ -86,7 +86,7 @@ describe("DeckLibraryView render isolation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change drag target" }));
 
     expect(rowRender).toHaveBeenCalledTimes(240);
-    expect(screen.getByText("Clinical")).not.toBeNull();
+    expect(screen.getByText("Clinical · position 1")).not.toBeNull();
   });
 
   it.each([
