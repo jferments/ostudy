@@ -257,9 +257,10 @@ jobs:
 
         self.assertIn("no custom or developer MCP dependency", direct)
         self.assertIn("Developer-MCP circuit breaker", direct)
-        self.assertIn("create_blob", direct)
-        self.assertIn("create_tree", direct)
-        self.assertIn("create_commit", direct)
+        self.assertIn("Create one blob", direct)
+        self.assertIn("Create one tree", direct)
+        self.assertIn("Create one commit", direct)
+        self.assertIn("update_ref", direct)
         self.assertIn("non-force", direct)
 
 
