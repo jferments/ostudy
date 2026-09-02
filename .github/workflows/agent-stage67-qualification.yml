@@ -1,0 +1,270 @@
+name: Agent Stage 6 and 7 exact-head qualification
+
+on:
+  push:
+    branches:
+      - agent/ui-workflow-redesign-stages-6-13
+    paths:
+      - .github/workflows/agent-stage67-qualification.yml
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: agent-stage67-final-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 180
+    steps:
+      - name: Check out latest branch head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/ui-workflow-redesign-stages-6-13
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Complete any interrupted Stage 6/7 patch
+        run: |
+          if [[ -f ./scripts/agent-stage67-polish.py ]]; then
+            python3 ./scripts/agent-stage67-polish.py
+          elif [[ ! -f ./src-tauri/migrations/0007_document_artifact_metadata.sql ]]; then
+            echo "Stage 7 migration is absent and no bounded patch helper remains." >&2
+            exit 1
+          fi
+
+      - name: Remove one-shot machinery before validation
+        run: |
+          rm -f ./scripts/agent-stage6-complete.py
+          rm -f ./scripts/agent-stage7-complete.py
+          rm -f ./scripts/agent-stage7-finalize.py
+          rm -f ./scripts/agent-stage67-polish.py
+          rm -f ./.github/workflows/agent-stage6-complete.yml
+          rm -f ./.github/workflows/agent-stage7-complete.yml
+          rm -f ./.github/workflows/agent-stage67-polish.yml
+          rm -f ./.github/workflows/agent-stage67-qualification.yml
+          rm -f ./tmp-test-do-not-keep.txt ./tmp-test2-do-not-keep.txt ./tmp-test3-do-not-keep.txt
+
+      - name: Record Stage 6 and 7 architecture boundary
+        run: |
+          cat > ./docs/development/stage-6-7-completion.md <<'EOF'
+          # UI workflow redesign — Stages 6 and 7 completion
+
+          ## Stage 6: document lifecycle and durable provenance
+
+          Document archive/restore interaction state is retired. Existing archived rows are normalized by migration and startup reconciliation, while active processing continues to expose progress, elapsed/provider activity, cancellation, and safe retry behavior. Completed document cards keep common learning actions direct and place diagnostic metadata in the information dialog.
+
+          A versioned source-citation snapshot is independent of the managed `documents` row. It preserves source identity, fingerprint, title, original filename, format, unit information, available note locator, and source-removal state. Deleting the managed source preserves generated decks/cards and their deck/note citation rows. Deck detail, card detail, and card-search rows render that provenance; database-image and table-driven transfer paths include the citation tables.
+
+          Transient import staging cleanup runs only after top-level interrupted-deletion recovery, so startup cannot erase material needed to roll an interrupted document deletion back.
+
+          ## Stage 7: subject-centered generated metadata
+
+          Learning-plan metadata has a strict optional provider payload plus a deterministic field-by-field fallback derived from validated topic headings, key concepts, and summary text. Titles and descriptions are whitespace/control normalized, bounded, and filtered for filename echoes and generator boilerplate.
+
+          `document_artifact_metadata` records source fingerprint, provider/fallback origin, generator version, prompt version, desired display values, and the exact values last applied by ostudy. Later learning-plan revisions update only values that still equal ostudy’s previous generated values. Any user-edited document title, deck title, or deck description is authoritative and is never overwritten.
+
+          Legacy repair recognizes only exact source-title, filename/stem, `Flashcards from <source>`, and `<source> flashcards` templates. Ambiguous values are left untouched. Source-facing names stay in immutable citation provenance; Generate more and study-guide regeneration reuse current user-facing deck metadata.
+
+          ## Qualification boundary
+
+          This document is created before validation. The committed tree contains no one-shot agent scripts or temporary workflows. `scripts/check-static.sh` and `scripts/check-fast.sh` must both pass before the completion commit is pushed, after which the repository’s ordinary `check.yml` workflow is explicitly dispatched on the exact final SHA. PR #81 remains draft because Stages 8–13 and their final acceptance matrix are separate work.
+          EOF
+
+      - name: Normalize Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Validate the exact commit tree
+        env:
+          CI: "true"
+          OSTUDY_FORCE_CHECK: "1"
+          OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+        run: |
+          bash ./scripts/check-static.sh
+          bash ./scripts/check-fast.sh
+
+      - name: Commit and push the validated tree without force
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            final_sha="$(git rev-parse HEAD)"
+          else
+            git commit -m "feat(documents): complete UI redesign stages 6 and 7"
+            git push origin HEAD:agent/ui-workflow-redesign-stages-6-13
+            final_sha="$(git rev-parse HEAD)"
+          fi
+          echo "sha=$final_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Reconcile PR description after the earlier workflow interruption
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          sha = os.environ["FINAL_SHA"]
+          body = f"""## Purpose
+
+          Continue the UI workflow redesign while auditing and correcting scope drift from PR #77. Current `main` was integrated with an ordinary two-parent merge; branch history has not been forced or rewritten.
+
+          ## Corrective review work
+
+          - removed application-level fullscreen/maximize controls that were not part of the requested learning workflow;
+          - restored a visible panel-like drag ghost and destination/insertion feedback;
+          - made deck deletion a direct destructive trash action instead of hiding it under `...`;
+          - renamed Analytics topic action from **Practice ready** to **Practice**;
+          - reconciled Study Guide archive-contract drift and preserved safe startup deletion-recovery ordering.
+
+          ## Stage 6 — complete
+
+          - archived-document interaction state retired and existing rows normalized;
+          - compact document actions/metadata treatment retained with active-job progress and cancellation;
+          - durable versioned source-citation snapshots survive managed source deletion;
+          - deck, card-detail, and card-search provenance surfaces added;
+          - citation tables included in maintained transfer/backup boundaries;
+          - deletion and transient-staging reconciliation preserve generated learning artifacts safely.
+
+          ## Stage 7 — complete
+
+          - strict optional provider metadata contract plus deterministic validated-plan fallback;
+          - subject-centered document/deck titles and educational descriptions;
+          - filename and generator-boilerplate rejection with bounded normalization;
+          - source fingerprint, origin, generator/prompt versions, desired values, and last-applied values persisted;
+          - exact legacy-template repair only;
+          - user-edited titles/descriptions protected from every later regeneration.
+
+          ## Validation
+
+          The implementation tree was required to pass `scripts/check-static.sh` and `scripts/check-fast.sh` before commit. The repository’s ordinary exact-head `check.yml` workflow is being dispatched for `{sha}` by the qualification job.
+
+          PR #81 remains **draft**. Stages 8–13 and the final human/platform acceptance matrix are not claimed complete here.
+          """
+          payload = json.dumps({"body": body}).encode()
+          request = urllib.request.Request(
+              "https://api.github.com/repos/jferments/ostudy/pulls/81",
+              data=payload,
+              method="PATCH",
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              if response.status != 200:
+                  raise SystemExit(f"PR update failed: HTTP {response.status}")
+          PY
+
+      - name: Dispatch and require ordinary exact-head check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+
+          repository = "jferments/ostudy"
+          branch = "agent/ui-workflow-redesign-stages-6-13"
+          sha = os.environ["FINAL_SHA"]
+          token = os.environ["GH_TOKEN"]
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "Content-Type": "application/json",
+          }
+
+          dispatch = urllib.request.Request(
+              f"https://api.github.com/repos/{repository}/actions/workflows/check.yml/dispatches",
+              data=json.dumps({"ref": branch}).encode(),
+              method="POST",
+              headers=headers,
+          )
+          try:
+              with urllib.request.urlopen(dispatch, timeout=30) as response:
+                  if response.status != 204:
+                      raise SystemExit(f"check dispatch failed: HTTP {response.status}")
+          except urllib.error.HTTPError as error:
+              detail = error.read().decode("utf-8", "replace")
+              raise SystemExit(f"check dispatch failed: HTTP {error.code}: {detail}") from error
+
+          api = f"https://api.github.com/repos/{repository}/commits/{sha}/check-runs"
+          observed = False
+          for _ in range(1080):
+              request = urllib.request.Request(api, headers=headers)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  runs = json.load(response).get("check_runs", [])
+              matching = [run for run in runs if run.get("name") == "check"]
+              if matching:
+                  observed = True
+                  run = max(matching, key=lambda value: value.get("started_at") or "")
+                  if run.get("status") == "completed":
+                      conclusion = run.get("conclusion")
+                      print(json.dumps({
+                          "sha": sha,
+                          "checkRunId": run.get("id"),
+                          "conclusion": conclusion,
+                          "detailsUrl": run.get("details_url"),
+                      }, indent=2))
+                      if conclusion != "success":
+                          raise SystemExit(f"exact-head check concluded {conclusion}")
+                      break
+              time.sleep(5)
+          else:
+              state = "appeared but did not complete" if observed else "never appeared"
+              raise SystemExit(f"exact-head check {state} for {sha}")
+          PY
+
+      - name: Record successful exact-head qualification in PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          sha = os.environ["FINAL_SHA"]
+          payload = json.dumps({
+              "body": (
+                  "Stages 6 and 7 are implemented and exact-head qualified.\n\n"
+                  f"- Exact head: `{sha}`\n"
+                  "- Pre-commit gates: `scripts/check-static.sh`, `scripts/check-fast.sh`\n"
+                  "- Ordinary GitHub Actions `check` on the exact final SHA: **passed**\n"
+                  "- Branch update: ordinary non-force push\n\n"
+                  "PR #81 remains draft for Stages 8–13."
+              )
+          }).encode()
+          request = urllib.request.Request(
+              "https://api.github.com/repos/jferments/ostudy/issues/81/comments",
+              data=payload,
+              method="POST",
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              if response.status != 201:
+                  raise SystemExit(f"PR comment failed: HTTP {response.status}")
+          PY
