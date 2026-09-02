@@ -1,0 +1,53 @@
+name: Agent Stage 6 completion
+
+on:
+  push:
+    branches:
+      - agent/ui-workflow-redesign-stages-6-13
+    paths:
+      - scripts/agent-stage6-complete.py
+      - .github/workflows/agent-stage6-complete.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/ui-workflow-redesign-stages-6-13
+          fetch-depth: 0
+          clean: true
+          persist-credentials: true
+
+      - name: Apply bounded Stage 6 patch
+        run: python3 ./scripts/agent-stage6-complete.py
+
+      - name: Install and validate
+        env:
+          CI: "true"
+          OSTUDY_FORCE_CHECK: "1"
+        run: |
+          bash ./scripts/check-static.sh
+          bash ./scripts/check-fast.sh
+
+      - name: Remove one-shot agent files
+        run: |
+          rm -f ./scripts/agent-stage6-complete.py
+          rm -f ./.github/workflows/agent-stage6-complete.yml
+
+      - name: Commit validated Stage 6 source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No Stage 6 changes remained to commit."
+            exit 0
+          fi
+          git commit -m "feat(documents): complete Stage 6 citation surfaces"
+          git push origin HEAD:agent/ui-workflow-redesign-stages-6-13
