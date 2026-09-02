@@ -41,14 +41,18 @@ Start with the project [README](../README.md) for a concise introduction. The gu
 ## Develop and maintain ostudy
 
 - [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
-- [Git and pull-request workflow](development/workflow.md) defines direct-source publication, the PR acceptance ledger, exact-head review readiness, merge, release, and rollback.
+- [Git and pull-request workflow](development/workflow.md) defines the preferred direct-workspace loop, one-writer branch ownership, optional Codex roles, exact-source publication, review readiness, merge, release, and rollback.
 - [Testing and CI](development/testing-and-ci.md) defines validation tiers, read-only automatic qualification, machine-readable exact-head evidence, failure fingerprints, Android gates, and GitHub incident handling.
 - [UI workflow redesign performance baseline](development/ui-workflow-redesign-performance-baseline.md) defines the local-only Stage 0 timing/profiling scenarios, strict evidence contract, and distribution-derived budgets.
 - [AI infrastructure testing](development/ai-infrastructure-testing.md) gives focused gateway, profile, probe, provider-contract, static-boundary, frontend-compatibility, and manual acceptance commands.
 - [Automated-maintainer index](agents/README.md) is the operational entry point for agents and LLM maintenance tools.
-- [Agent execution state](agents/EXECUTION-STATE.md) defines the multidimensional task state, completion predicate, PR ledger, and resumption protocol.
-- [Agent failure triage](agents/FAILURE-TRIAGE.md) defines classification, focused reproduction, retry budgets, and stopping rules.
-- [GitHub Connector workflow](agents/GITHUB-CONNECTOR.md) separates repository visibility, concrete write authorization, publication, CI, and service incidents.
+- [Direct workspace development](agents/DIRECT-WORKSPACE.md) defines the normal persistent ChatGPT read/edit/format/test/diff/commit workflow and seven-tool contract.
+- [Executor selection and branch ownership](agents/EXECUTOR-SELECTION.md) defines when direct workspace, advisory or exclusive Codex, the full orchestrator, observer, exact-head validation, and Connector fallback are appropriate.
+- [Agent execution state](agents/EXECUTION-STATE.md) defines workspace, publication, validation, manual acceptance, writer release, completion, PR ledger, and resumption evidence.
+- [Agent failure triage](agents/FAILURE-TRIAGE.md) defines product, test-contract, workspace, Codex/executor, runner, Connector, and service-incident classifications plus focused reproduction and retry budgets.
+- [GitHub Connector workflow](agents/GITHUB-CONNECTOR.md) separates remote repository authority, direct-workspace publication, fallback write authorization, CI, and service incidents.
+- [Agent workflow and validation](agents/WORKFLOW-AND-VALIDATION.md) defines one-writer implementation, layered local checks, exact publication, CI qualification, and handoff.
+- [Canonical command runbook](agents/COMMAND-RUNBOOK.md) maps direct-workspace symbolic jobs to maintained shell wrappers and platform commands.
 - [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
 - [Android build and install](development/android-build-and-install.md) gives the exact debug/release build, APK install, artifact, and qualification commands.
 - [Unified Linux/Android runner](development/unified-linux-android-runner.md) documents the isolated single-VM CI architecture, security boundary, nested-KVM qualification, workflow model, recovery, and rollback.
