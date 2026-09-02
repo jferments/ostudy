@@ -20,19 +20,21 @@ Do not silently reinterpret a requirement to make implementation easier. Report 
 For every substantial code task:
 
 1. Turn the human request into stable `AC-##` acceptance criteria and explicit non-goals.
-2. Select one execution mode: local checkout, authenticated GitHub Connector, or Connector with a separate execution workspace.
-3. Read and record the exact base SHA.
-4. Create one short-lived `agent/<description>` branch, publish a meaningful first commit, and open one draft pull request.
-5. Keep the PR's machine-readable acceptance snapshot current for compatibility. It records evidence but does not own source, job, or runner state.
-6. Publish the actual reviewed source directly. CI must not be the only place where product source exists and must not author the PR branch.
-7. Implement in coherent vertical commits; update acceptance evidence and tests as each criterion becomes real.
+2. Read [`docs/agents/DIRECT-WORKSPACE.md`](docs/agents/DIRECT-WORKSPACE.md) and [`docs/agents/EXECUTOR-SELECTION.md`](docs/agents/EXECUTOR-SELECTION.md). Use ChatGPT plus `dev-workspace-v1` as the default writer, including when Codex credits are available.
+3. Use GitHub to read and record the exact base or existing task-branch SHA, then perform one bounded writer-workspace capability preflight.
+4. Create or resume one short-lived `agent/<description>` branch and one persistent task worktree. Exactly one implementation executor owns the branch.
+5. Implement coherent vertical increments, format and run focused checks locally, inspect the exact diff, then publish ordinary non-force commits.
+6. Open one draft pull request after the first meaningful source checkpoint. Keep its machine-readable acceptance snapshot current at meaningful checkpoints and before readiness; it records evidence but does not own source, job, or runner state.
+7. Publish the actual reviewed source directly. CI must not be the only place where product source exists and must not author the PR branch.
 8. Consume exact failure evidence and use focused reproduction before another broad qualification run.
 9. Escalate through `check-changed`, static, fast, full, platform, and manual acceptance. A green result qualifies only the exact SHA it tested.
-10. Report publication, automated validation, and manual acceptance as separate states. Never say complete until the completion predicate in [`docs/agents/EXECUTION-STATE.md`](docs/agents/EXECUTION-STATE.md) holds.
+10. Report implementation, publication, automated validation, manual acceptance, review, and merge as separate states. Never say complete until the completion predicate in [`docs/agents/EXECUTION-STATE.md`](docs/agents/EXECUTION-STATE.md) holds.
 
-Exactly one source writer owns the task branch at a time. Before every publication, re-read the remote head, require it as the expected parent, and update without force. A mismatch is a stop-and-handoff boundary, not permission to overwrite or start a competing repair.
+Codex is optional. It may advise read-only while direct workspace remains the sole writer, or it may exclusively own a separate deliberately assigned bounded branch. Do not alternate Codex, direct workspace, and low-level Connector writes on one live branch. Writer transfer requires a stopped boundary, exact remote head, no active job, a clean or fully accounted-for worktree, and explicit ownership release.
 
-When work resumes after interruption or in another conversation, first read the open PR acceptance snapshot, verify the actual remote head, inspect exact-head CI, enumerate incomplete criteria, and continue from that evidence. Do not reconstruct task state from conversational memory.
+Use the full orchestrator only for genuinely autonomous multi-checkpoint work whose approvals, bounded retry/replan loop, repair budget, or deliberate executor handoff must survive chat turns. The observer is read-only diagnostics; exact-head validation is isolated published-SHA qualification. Neither is a normal source writer.
+
+When work resumes after interruption or in another conversation, first read the open PR acceptance snapshot, verify the actual remote head, inspect the selected writer workspace and active job, inspect exact-head CI, enumerate incomplete criteria, and continue from that evidence. Do not reconstruct task state from conversational memory.
 
 ## Required reading
 
@@ -40,12 +42,14 @@ Before editing code, read:
 
 - `docs/README.md`;
 - `docs/agents/README.md`;
+- `docs/agents/DIRECT-WORKSPACE.md`;
+- `docs/agents/EXECUTOR-SELECTION.md`;
 - `docs/agents/EXECUTION-STATE.md`;
 - `docs/agents/FAILURE-TRIAGE.md`;
 - `docs/agents/ARCHITECTURE-GUARDRAILS.md`;
 - `docs/agents/CODE-STANDARDS.md`;
 - `docs/agents/WORKFLOW-AND-VALIDATION.md`;
-- `docs/agents/GITHUB-CONNECTOR.md` when operating through an authenticated GitHub Connector;
+- `docs/agents/GITHUB-CONNECTOR.md` when using GitHub repository, PR, review, CI, or fallback-write operations;
 - the active architecture, development, reference, testing, and ADR documents relevant to the requested change.
 
 Documents under `docs/history/` are project archaeology, not current instructions.
@@ -93,9 +97,10 @@ Documents under `docs/history/` are project archaeology, not current instruction
 
 - Never develop directly on `main`.
 - Start from a named current base commit and use one short-lived `agent/<description>` branch and one pull request for the task.
-- Publish a meaningful first commit and open a draft pull request before substantial implementation.
+- Exactly one implementation writer owns that branch. Advisory tools, observers, validators, reviewers, and CI do not acquire writer ownership.
+- Publish a meaningful first commit and open a draft pull request before substantial implementation becomes difficult to review, but use the persistent worktree for coherent local iteration instead of publishing transport scaffolds.
 - Write stable acceptance IDs, concrete acceptance criteria, non-goals, expected tests, and manual boundaries.
-- Keep the PR's `currentState`, per-criterion status, known failures, and validation evidence truthful as the branch changes.
+- Keep the PR's `currentState`, per-criterion status, known failures, writer identity, and validation evidence truthful as the branch changes.
 - A planning ADR, scaffold, generated patch, or source-rewriting script is not the product implementation.
 - Product source must be committed directly to the task branch. Do not create task-specific applicators, finalizers, source-generating Actions workflows, or transient runner-only product trees.
 - Automatic PR qualification is read-only. It may not persist write credentials, push, create commits, stage a generated tree, or change PR draft/readiness state.
@@ -110,30 +115,33 @@ Documents under `docs/history/` are project archaeology, not current instruction
 - Update affected documentation and add an ADR for durable cross-module decisions.
 - Generated-import, backup, and document tests must use isolated temporary storage and must never point at the user's live ostudy data directory.
 - Do not describe planned providers, platforms, sync, tutoring, quizzes, or study guides as shipped.
+- Do not force-push, replace a branch, or bounce a branch between Codex, direct workspace, and Connector to recover from an ordinary failure.
 
 ## Failure discipline
 
 Follow [`docs/agents/FAILURE-TRIAGE.md`](docs/agents/FAILURE-TRIAGE.md).
 
-- Classify product, test-contract, runner/environment, Connector, GitHub-incident, and external-manual failures separately.
-- Read the exact-head machine-readable qualification result and bounded logs before changing source.
+- Classify product, test-contract, runner/environment, workspace, Connector, Codex/executor, GitHub-incident, and external-manual failures separately.
+- Read local workspace logs for pre-publication failures and exact-head machine-readable qualification for CI failures before changing source.
 - Use the focused reproduction and repair all independent actionable failures exposed by the run in one coherent batch.
 - An unchanged head may be rerun once only when evidence supports a transient external cause.
 - The same failure fingerprint twice requires a strategy change before another broad run.
 - Do not create no-op commits, toggle PR state, expand permissions, increase timeouts, add sleeps, skip tests, or weaken assertions merely to obtain another run or a green result.
+- A protected-branch host guard blocking a synthetic test fixture is a test-contract defect; use a non-protected fixture ref and retain the production guard rather than bypassing it.
 
 ## GitHub Connector discipline
 
 When operating through an authenticated GitHub Connector on this private repository:
 
-- use Connector reads as the source of truth for the repository, intended base, branch, pull request, and remote head state;
+- use Connector reads as the source of truth for the repository, intended base, branch, pull request, remote head, reviews, and CI state;
+- use `dev-workspace-v1` as the normal source writer and local command environment; low-level Connector source writes are an emergency fallback only when no persistent writer is available;
 - do not use `gh`, anonymous HTTP, scraping, temporary transfer repositories, an unrelated local checkout, or CI runner availability to infer Connector access;
 - treat repository visibility, repository-level permission, exposure of a particular connector action, authorization for a concrete mutation, remote publication, and CI validation as separate states;
 - do not infer that writes are unavailable merely because an approval prompt has not appeared or a write action has not yet been invoked;
 - do not change the Connector to permanent or unrestricted write access merely to bypass per-change authorization;
-- at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
+- at the first intended fallback mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
 - only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
-- treat the concrete named session or workspace as the branch's only source writer until explicit handoff, and before starting or resuming confirm the prior writer released ownership with no unpublished source or active task job;
+- treat the concrete selected workspace or fallback Connector session as the branch's only source writer until explicit handoff;
 - immediately before publication, verify the expected remote head and use a non-force update; stop if it changed;
 - after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
 - keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
@@ -141,14 +149,16 @@ When operating through an authenticated GitHub Connector on this private reposit
 Good status language:
 
 ```text
-Authenticated repository reads succeed and GitHub reports push permission.
-No mutation has been attempted in this session, so concrete write authorization is untested.
+Authenticated repository reads succeed. dev-workspace-v1 owns the branch at
+<exact SHA>; its local command and publication capabilities are reported
+separately from GitHub CI.
 ```
 
-Or, after a failure:
+Or, after a fallback failure:
 
 ```text
-create_file on agent/example was rejected with <exact connector error>.
+create_commit/update_ref on agent/example was rejected with <exact connector error>.
+Repository reads still succeed; this does not establish a general GitHub outage.
 ```
 
 Bad language:
@@ -159,7 +169,7 @@ I do not have GitHub access.
 
 unless the relevant operation was actually attempted and the exact failure supports that narrow statement.
 
-A local patch, generated diff, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-CONNECTOR.md` for the complete connector-mode workflow.
+A local patch, generated diff, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-CONNECTOR.md` for the complete connector-backed workflow.
 
 ## Documentation discipline
 
@@ -196,7 +206,7 @@ Use the repository's tiered model instead of repeatedly running the most expensi
 ./scripts/check.sh          # authoritative full merge qualification
 ```
 
-Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. PR-body edits do not trigger product qualification, and wall-clock performance measurements remain manual/advisory rather than required correctness gates. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
+In direct-workspace mode, run the corresponding symbolic `format`, `changed`, `static`, and `fast` jobs before publication. Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. PR-body edits do not trigger product qualification, and wall-clock performance measurements remain manual/advisory rather than required correctness gates. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
 
 The full Rust tier includes generated `.ostudy.json` conformance, migrations, package/backup behavior, scheduling and analytics invariants, provider contracts, document-processing tests, and native WebDriver persistence. Manually exercise every affected user workflow. Static inspection or a successful frontend build must never be reported as a successful native Tauri test.
 
@@ -211,6 +221,7 @@ Every completed change must report:
 - exact base commit SHA, branch, head SHA, and pull-request number;
 - selected source writer/execution mode and its last expected remote SHA;
 - unpublished workspace clean/dirty state and any active PID/job;
+- explicit release or transfer of task-branch writer ownership;
 - acceptance criteria and non-goals addressed;
 - changed files grouped by purpose;
 - tests and documentation added or updated;
@@ -220,8 +231,7 @@ Every completed change must report:
 - manual behavior actually exercised or still required;
 - known limitations, migration/compatibility effects, rollback concerns, and residual risks;
 - the requested merge method.
-- explicit release or transfer of task-branch writer ownership.
 
-For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
+For Connector-backed work, verify every claimed remote mutation through GitHub and report workspace, publication, CI, and manual acceptance as separate states.
 
 An agent's work is a proposal until a human reviews and merges it.
