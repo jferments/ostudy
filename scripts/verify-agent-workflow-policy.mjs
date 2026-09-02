@@ -91,10 +91,6 @@ function validateWorkflow(name, rawText, output) {
       "workflows may not stage a generated product tree",
     ],
     [
-      /\b(?:cargo\s+fmt(?![^\n]*--check)|cargo\s+fix|eslint\b[^\n]*--fix|prettier\b[^\n]*--write)\b/iu,
-      "workflows may not rewrite maintained source; use check-only formatter modes",
-    ],
-    [
       /\bgh\s+api\b[^\n]*(?:--method|-X)\s+(?:POST|PUT|PATCH|DELETE)\b[^\n]*(?:\/contents\b|\/git\/(?:refs|blobs|trees|commits)\b)/iu,
       "workflows may not write repository contents or Git data through the GitHub API",
     ],
@@ -110,6 +106,12 @@ function validateWorkflow(name, rawText, output) {
 
   for (const [pattern, message] of prohibitedForEveryWorkflow) {
     if (pattern.test(text)) output.push(`${name}: ${message}.`);
+  }
+
+  if (hasWriteModeFormatter(text)) {
+    output.push(
+      `${name}: workflows may not rewrite maintained source; use check-only formatter modes.`,
+    );
   }
 
   if (
@@ -151,6 +153,26 @@ function stripYamlComments(text) {
       return line;
     })
     .join("\n");
+}
+
+function hasWriteModeFormatter(text) {
+  const lines = text.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/\b(?:cargo\s+(?:fmt|fix)|eslint\b|prettier\b)/iu.test(line)) continue;
+
+    let command = line.trim();
+    while (/\\\s*$/u.test(lines[index]) && index + 1 < lines.length) {
+      index += 1;
+      command += ` ${lines[index].trim()}`;
+    }
+
+    if (/\bcargo\s+fix\b/iu.test(command)) return true;
+    if (/\bcargo\s+fmt\b/iu.test(command) && !/--check\b/iu.test(command)) return true;
+    if (/\beslint\b/iu.test(command) && /--fix\b/iu.test(command)) return true;
+    if (/\bprettier\b/iu.test(command) && /--write\b/iu.test(command)) return true;
+  }
+  return false;
 }
 
 function hasContentsWritePermissions(text) {
