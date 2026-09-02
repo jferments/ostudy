@@ -17,14 +17,18 @@ Do not silently reinterpret a requirement to make implementation easier. Report 
 
 ## Execution hot path
 
+For ChatGPT, the authenticated GitHub Connector is the default repository reader, source publisher, pull-request interface, and CI-inspection interface. Read [`docs/agents/GITHUB-DIRECT-DEVELOPMENT.md`](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md) before introducing any custom developer MCP, Secure MCP Tunnel, workspace service, Codex worker, observer, exact-head service, or full orchestrator into an ordinary task.
+
+A custom developer MCP is optional acceleration only. It is never required to start, publish, repair, or complete ordinary oStudy work. If the ChatGPT gateway returns `FORBIDDEN: This conversation does not support developer MCPs`, an installed developer app disappears from the callable registry, or a developer-MCP write returns no usable result and later calls are rejected, trip the conversation-local circuit breaker immediately: stop retrying that MCP path, verify the actual GitHub state, and continue through GitHub-direct mode when the required GitHub actions are present. Do not send the human through repeated reconnect, redeploy, or replacement-chat attempts.
+
 For every substantial code task:
 
 1. Turn the human request into stable `AC-##` acceptance criteria and explicit non-goals.
-2. Select one execution mode: local checkout, authenticated GitHub Connector, or Connector with a separate execution workspace.
+2. Use the authenticated GitHub Connector as the default ChatGPT execution mode. A human/local checkout or optional execution workspace may accelerate local checks when it is genuinely available, but neither is a prerequisite for source publication.
 3. Read and record the exact base SHA.
 4. Create one short-lived `agent/<description>` branch, publish a meaningful first commit, and open one draft pull request.
 5. Keep the PR's machine-readable acceptance snapshot current for compatibility. It records evidence but does not own source, job, or runner state.
-6. Publish the actual reviewed source directly. CI must not be the only place where product source exists and must not author the PR branch.
+6. Publish actual reviewable source directly. For coherent multi-file Connector changes, bind the commit to the exact expected parent and update the task ref without force. CI must not be the only place where product source exists and must not author the PR branch.
 7. Implement in coherent vertical commits; update acceptance evidence and tests as each criterion becomes real.
 8. Consume exact failure evidence and use focused reproduction before another broad qualification run.
 9. Escalate through `check-changed`, static, fast, full, platform, and manual acceptance. A green result qualifies only the exact SHA it tested.
@@ -40,6 +44,7 @@ Before editing code, read:
 
 - `docs/README.md`;
 - `docs/agents/README.md`;
+- `docs/agents/GITHUB-DIRECT-DEVELOPMENT.md` when ChatGPT is the active implementation agent;
 - `docs/agents/EXECUTION-STATE.md`;
 - `docs/agents/FAILURE-TRIAGE.md`;
 - `docs/agents/ARCHITECTURE-GUARDRAILS.md`;
@@ -116,6 +121,7 @@ Documents under `docs/history/` are project archaeology, not current instruction
 Follow [`docs/agents/FAILURE-TRIAGE.md`](docs/agents/FAILURE-TRIAGE.md).
 
 - Classify product, test-contract, runner/environment, Connector, GitHub-incident, and external-manual failures separately.
+- Treat a developer-MCP `FORBIDDEN` response or disappearing custom-app namespace as a ChatGPT tool-gateway failure, not as a repository or VM failure. Trip the circuit breaker and continue GitHub-direct when possible.
 - Read the exact-head machine-readable qualification result and bounded logs before changing source.
 - Use the focused reproduction and repair all independent actionable failures exposed by the run in one coherent batch.
 - An unchanged head may be rerun once only when evidence supports a transient external cause.
@@ -127,6 +133,7 @@ Follow [`docs/agents/FAILURE-TRIAGE.md`](docs/agents/FAILURE-TRIAGE.md).
 When operating through an authenticated GitHub Connector on this private repository:
 
 - use Connector reads as the source of truth for the repository, intended base, branch, pull request, and remote head state;
+- use expected-parent Git-data publication as the normal ChatGPT path for coherent multi-file source changes;
 - do not use `gh`, anonymous HTTP, scraping, temporary transfer repositories, an unrelated local checkout, or CI runner availability to infer Connector access;
 - treat repository visibility, repository-level permission, exposure of a particular connector action, authorization for a concrete mutation, remote publication, and CI validation as separate states;
 - do not infer that writes are unavailable merely because an approval prompt has not appeared or a write action has not yet been invoked;
@@ -159,7 +166,7 @@ I do not have GitHub access.
 
 unless the relevant operation was actually attempted and the exact failure supports that narrow statement.
 
-A local patch, generated diff, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-CONNECTOR.md` for the complete connector-mode workflow.
+A local patch, generated diff, custom-MCP worktree edit, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-DIRECT-DEVELOPMENT.md` and `docs/agents/GITHUB-CONNECTOR.md` for the complete Connector-backed workflow.
 
 ## Documentation discipline
 
@@ -219,7 +226,7 @@ Every completed change must report:
 - exact-head CI state;
 - manual behavior actually exercised or still required;
 - known limitations, migration/compatibility effects, rollback concerns, and residual risks;
-- the requested merge method.
+- the requested merge method;
 - explicit release or transfer of task-branch writer ownership.
 
 For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
