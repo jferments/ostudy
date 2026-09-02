@@ -240,6 +240,29 @@ jobs:
         self.assertTrue((ROOT / "scripts" / "check-ui-performance-candidate.sh").is_file())
         self.assertTrue((ROOT / "tests" / "performance-baselines").is_dir())
 
+    def test_chatgpt_default_is_github_direct_and_mcp_is_optional(self) -> None:
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        index = (ROOT / "docs" / "agents" / "README.md").read_text(encoding="utf-8")
+        direct = (ROOT / "docs" / "agents" / "GITHUB-DIRECT-DEVELOPMENT.md").read_text(encoding="utf-8")
+
+        self.assertIn("authenticated GitHub Connector is the default", agents)
+        self.assertIn("GITHUB-DIRECT-DEVELOPMENT.md", agents)
+        self.assertIn("FORBIDDEN: This conversation does not support developer MCPs", agents)
+        self.assertIn("expected-parent Git-data publication", agents)
+        self.assertIn("update without force", agents)
+
+        self.assertIn("authenticated GitHub Connector is the default source-publication", index)
+        self.assertIn("custom developer MCP is optional acceleration only", index)
+        self.assertIn("Do not send the human through repeated reconnect, redeploy, or new-chat attempts", index)
+
+        self.assertIn("no custom or developer MCP dependency", direct)
+        self.assertIn("Developer-MCP circuit breaker", direct)
+        self.assertIn("Create one blob", direct)
+        self.assertIn("Create one tree", direct)
+        self.assertIn("Create one commit", direct)
+        self.assertIn("update_ref", direct)
+        self.assertIn("non-force", direct)
+
 
 if __name__ == "__main__":
     unittest.main()
