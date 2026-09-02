@@ -2,7 +2,8 @@
 
 Use the `dev-workspace-v1` / `dev-direct-workspace-mcp` runtime as the preferred
 implementation path whenever it is connected and its seven-tool server contract
-matches. It restores the ordinary development loop that earlier oStudy work used
+matches. This remains the default even when Codex credits are available. It
+restores the ordinary development loop that earlier oStudy work used
 successfully:
 
 ```text
@@ -19,6 +20,34 @@ The direct workspace does not invoke Codex. ChatGPT is the coding agent; the MCP
 runtime supplies only persistent filesystem, Git, allowlisted command, logging,
 cancellation, and publication boundaries. Codex credits, rate limits, or worker
 availability therefore do not block normal development.
+
+Read [`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md) for the authoritative
+cross-runtime decision policy.
+
+## Codex integration policy
+
+Codex is optional rather than abandoned.
+
+- **Advisory Codex** may perform read-only planning, architecture analysis, code
+  review, test design, or second-opinion diagnosis. The direct workspace remains
+  the sole branch writer.
+- **Implementation Codex** may own a separate, deliberately assigned bounded
+  branch when credits and the complete worker contract are healthy, scope and
+  allowed paths are explicit, and no direct-workspace session owns that branch.
+- Do not alternate Codex and direct workspace as writers on one live branch. A
+  transfer requires a stopped boundary, exact remote head, no active job, a clean
+  or fully accounted-for worktree, and explicit ownership release.
+- The current direct-workspace contract has no arbitrary external-commit import
+  or branch-sync action. Writer ping-pong is therefore prohibited rather than
+  used as an iteration technique.
+- A Codex quota, rate-limit, or transport failure never blocks direct-workspace
+  development. Preserve any Codex-owned unpublished diff through the bounded
+  handoff path before changing executors.
+
+Use the full orchestrator only for genuinely autonomous multi-checkpoint work
+that needs durable approvals, bounded repair/replan loops, or explicit executor
+handoff across chat turns. Do not create a durable goal merely to edit files,
+format source, run focused tests, inspect a diff, or publish one checkpoint.
 
 ## Capability preflight
 
@@ -40,12 +69,14 @@ Workspace read/write: available or unavailable
 Local symbolic commands: available or unavailable
 Git commit/non-force push: available or unavailable
 GitHub repository/PR/CI reads: available or unavailable
+Optional Codex executor: available or unavailable only when selected
 ```
 
 Do not repeatedly rediscover integrations after this preflight. A missing tool is
 a client/server tool-contract problem; a rejected workspace edit is a workspace
 problem; a rejected push is a Git authentication or remote-head problem; a CI
-failure is a validation problem. None proves that the other capabilities failed.
+failure is a validation problem; a Codex quota failure is a Codex-only problem.
+None proves that the other capabilities failed.
 
 ## Seven-tool workflow
 
@@ -177,10 +208,9 @@ authorities; the PR ledger is only a projection.
 
 ### Full orchestrator and Codex worker own
 
-Only work that genuinely needs autonomous multi-checkpoint goal state,
-plan/publication approvals, bounded repair loops, or a deliberately selected
-Codex implementation executor. They are not prerequisites for normal interactive
-coding.
+Only work that genuinely meets the thresholds in
+[`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md). They are not prerequisites for
+normal interactive coding.
 
 ## Failure and fallback rules
 
@@ -215,15 +245,16 @@ do not create another control plane.
 Exactly one writer owns a task branch. Before moving an existing PR such as
 `agent/ui-workflow-redesign-stages-6-13` into the direct workspace:
 
-1. verify that no Codex worker, orchestrator goal, or other ChatGPT session is
-   still writing the branch;
+1. verify that no Codex worker, orchestrator goal, Connector writer, or other
+   direct-workspace session is still writing the branch;
 2. record the current exact remote HEAD;
-3. inspect any existing worktree for unpublished changes;
+3. inspect every existing worktree for unpublished changes;
 4. explicitly transfer writer ownership;
 5. call `workspace_open` with the current branch HEAD;
 6. continue on the same branch and PR.
 
-Do not discard a dirty worktree, replace the branch, or replay an unreviewed tree.
+Do not discard a dirty worktree, replace the branch, replay an unreviewed tree,
+or use force push.
 
 ## Non-negotiable retained protections
 
