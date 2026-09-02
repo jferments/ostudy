@@ -11,24 +11,33 @@ For an implementation task, read these in order:
 1. [`DIRECT-WORKSPACE.md`](DIRECT-WORKSPACE.md) — the preferred persistent
    read/edit/format/test/commit workflow, capability preflight, tool contract,
    writer handoff, and precise fallback rules.
-2. [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) — canonical short build, test,
+2. [`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md) — when direct workspace,
+   advisory or exclusive Codex, the full orchestrator, observer, exact-head
+   validation, and GitHub should be used.
+3. [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) — canonical short build, test,
    run, Android, and installation commands. Read this before reconstructing
    commands from memory.
-3. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — compatibility acceptance
+4. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — compatibility acceptance
    snapshot, completion predicate, exact-head evidence vocabulary, and session
    resumption protocol.
-4. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable
+5. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable
    fingerprints, focused reproduction, retry budget, and stopping rules.
-5. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope,
+6. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope,
    publish, implement, test, review, and hand off a change.
-6. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete
+7. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete
    write authorization, remote verification, and connector/service diagnosis.
-7. The architecture and code standards relevant to the requested subsystem.
+8. The architecture and code standards relevant to the requested subsystem.
 
 The direct workspace is the normal implementation path when its exact seven-tool
-contract is healthy. The observer, full orchestrator, exact-head validator,
-Codex worker, and GitHub low-level Git-data writer remain useful specialized or
-fallback mechanisms; they are not prerequisites for ordinary coding.
+contract is healthy, including when Codex credits are available. Codex is
+optional: use it either as a read-only adviser while direct workspace retains
+writer ownership, or as the exclusive writer of a separate deliberately assigned
+bounded branch. Never alternate Codex and direct workspace as writers on one live
+branch.
+
+The observer, full orchestrator, exact-head validator, Codex worker, and GitHub
+low-level Git-data writer remain useful specialized or fallback mechanisms; they
+are not prerequisites for ordinary coding.
 
 When resuming existing work, do not begin from conversational memory. Read the
 actual PR and remote head, then call the selected writer workspace's status. The
@@ -41,6 +50,9 @@ facts without replacing them.
 - [`DIRECT-WORKSPACE.md`](DIRECT-WORKSPACE.md) restores the persistent
   development loop and prevents repeated integration discovery, CI-as-editor,
   and read-only observer dead ends.
+- [`EXECUTOR-SELECTION.md`](EXECUTOR-SELECTION.md) defines the default writer,
+  optional Codex roles, full-orchestrator threshold, one-writer invariant, and
+  component decision table.
 - [`EXECUTION-STATE.md`](EXECUTION-STATE.md) prevents planning, implementation,
   publication, validation, manual acceptance, and completion from being
   collapsed into one vague state.
@@ -82,6 +94,9 @@ superseded audits. They are not current implementation instructions.
 - For normal coding, perform one direct-workspace capability preflight, then use
   the persistent worktree for source edits and local checks. Do not repeatedly
   rediscover integrations during the task.
+- Codex is never selected merely because credits exist. Advisory Codex does not
+  own source; implementation Codex owns a separate branch exclusively until an
+  explicit stopped handoff.
 - Publish the first coherent checkpoint to one task branch and open one draft
   pull request. A plan, local patch, task-specific applicator, or transient
   CI-generated tree is not delivery.
