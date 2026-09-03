@@ -4,6 +4,8 @@
     min-width: 0;
     gap: var(--ostudy-space-3);
     padding: var(--ostudy-space-3);
+    user-select: none;
+    -webkit-user-drag: none;
     transition:
       border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
       box-shadow var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
@@ -24,10 +26,7 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ostudy-color-status-danger) 30%, transparent);
   }
 
-  .folder[data-drag-insertion] {
-    position: relative;
-  }
-
+  .folder[data-drag-insertion] { position: relative; }
   .folder[data-drag-insertion="before"]::before,
   .folder[data-drag-insertion="after"]::after,
   .folder[data-drag-insertion="empty"]::after {
@@ -39,20 +38,14 @@
     background: var(--ostudy-color-border-accent);
     content: "";
   }
-
-  .folder[data-drag-insertion="before"]::before {
-    inset-block-start: -4px;
-  }
-
+  .folder[data-drag-insertion="before"]::before { inset-block-start: -4px; }
   .folder[data-drag-insertion="after"]::after,
-  .folder[data-drag-insertion="empty"]::after {
-    inset-block-end: -4px;
-  }
+  .folder[data-drag-insertion="empty"]::after { inset-block-end: -4px; }
 
   .header {
     display: grid;
     min-width: 0;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--ostudy-space-2);
   }
@@ -63,21 +56,16 @@
     height: 42px;
     flex: none;
     place-items: center;
-    border-radius: var(--ostudy-radius-small);
-    color: var(--ostudy-color-text-muted);
     border: 0;
+    border-radius: var(--ostudy-radius-small);
     background: transparent;
+    color: var(--ostudy-color-text-muted);
   }
-
   .keyboardReorder:hover:not(:disabled) {
     background: var(--ostudy-color-surface-soft);
     color: var(--ostudy-color-text-primary);
   }
-
-  .keyboardReorder:focus-visible {
-    outline: none;
-    box-shadow: var(--ostudy-shadow-focus);
-  }
+  .keyboardReorder:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
 
   .summary {
     display: grid;
@@ -86,40 +74,10 @@
     align-items: center;
     gap: var(--ostudy-space-3);
     padding-block: 2px;
+    cursor: grab;
+    touch-action: pan-y;
   }
-
-  .toggle {
-    display: flex;
-    min-height: 38px;
-    align-items: center;
-    gap: var(--ostudy-space-1);
-    border: 0;
-    border-radius: var(--ostudy-radius-small);
-    padding: 0 var(--ostudy-space-2);
-    background: transparent;
-    color: var(--ostudy-color-text-secondary);
-    font: inherit;
-    font-size: 0.76rem;
-    font-weight: 700;
-  }
-
-  .toggle:hover {
-    background: color-mix(in srgb, var(--ostudy-color-surface-soft) 70%, transparent);
-  }
-
-  .toggle:focus-visible {
-    outline: none;
-    box-shadow: var(--ostudy-shadow-focus);
-  }
-
-  .chevron {
-    display: grid;
-    width: 30px;
-    height: 30px;
-    place-items: center;
-    border-radius: var(--ostudy-radius-small);
-    color: var(--ostudy-color-text-muted);
-  }
+  .summary:active { cursor: grabbing; }
 
   .icon {
     display: grid;
@@ -131,26 +89,42 @@
     color: var(--ostudy-color-text-accent);
   }
 
-  .title {
+  .title { min-width: 0; }
+  .titleLine {
+    display: flex;
     min-width: 0;
+    align-items: center;
+    gap: var(--ostudy-space-1);
   }
-
   .title h3,
-  .title span {
-    margin: 0;
-  }
-
+  .title > span { margin: 0; }
   .title h3 {
+    min-width: 0;
     overflow: hidden;
     font-size: 1rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .title > span { color: var(--ostudy-color-text-muted); font-size: 0.76rem; }
 
-  .title span {
-    color: var(--ostudy-color-text-muted);
-    font-size: 0.76rem;
+  .toggle {
+    display: grid;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 0;
+    border-radius: var(--ostudy-radius-small);
+    padding: 0;
+    background: transparent;
+    color: var(--ostudy-color-text-secondary);
   }
+  .toggle:hover { background: var(--ostudy-color-surface-soft); }
+  .toggle:focus-visible { outline: none; box-shadow: var(--ostudy-shadow-focus); }
+  .toggle svg {
+    transition: transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
+  }
+  .toggle[data-collapsed="true"] svg { transform: rotate(180deg); }
 
   .actions {
     display: flex;
@@ -159,7 +133,6 @@
     justify-content: flex-end;
     gap: 2px;
   }
-
   .actions button {
     min-height: 34px;
     border: 0;
@@ -171,15 +144,11 @@
     font-size: 0.76rem;
     font-weight: 700;
   }
-
   .actions button:hover:not(:disabled) {
     background: var(--ostudy-color-surface-soft);
     color: var(--ostudy-color-text-primary);
   }
-
-  .actions .danger {
-    color: var(--ostudy-color-status-danger);
-  }
+  .actions .danger { color: var(--ostudy-color-status-danger); }
 
   .empty {
     display: grid;
@@ -193,52 +162,27 @@
     color: var(--ostudy-color-text-muted);
     text-align: center;
   }
-
-  .empty [data-artwork-slot] {
-    --ostudy-artwork-max: 112px;
-  }
-
-  .empty p {
-    margin: 0;
-  }
+  .empty [data-artwork-slot] { --ostudy-artwork-max: 112px; }
+  .empty p { margin: 0; }
 
   :global(:root[data-motion="reduced"]) .folder,
-  :global(:root[data-motion="none"]) .folder {
-    transition: none;
-  }
+  :global(:root[data-motion="none"]) .folder,
+  :global(:root[data-motion="reduced"]) .toggle svg,
+  :global(:root[data-motion="none"]) .toggle svg { transition: none; }
 
   @container deck-library (max-width: 860px) {
-    .header {
-      grid-template-columns: auto minmax(0, 1fr) auto;
-    }
-
-    .actions {
-      grid-column: 2 / -1;
-      justify-content: flex-start;
-    }
+    .actions { grid-column: 2 / -1; justify-content: flex-start; }
   }
-
   @container deck-library (max-width: 620px) {
-    .header {
-      grid-template-columns: 34px minmax(0, 1fr) auto;
-    }
-
-    .actions {
-      grid-column: 1 / -1;
-      justify-content: flex-end;
-    }
-
-    .icon {
-      width: 34px;
-      height: 34px;
-    }
+    .header { grid-template-columns: 34px minmax(0, 1fr) auto; }
+    .actions { grid-column: 1 / -1; justify-content: flex-end; }
+    .icon { width: 34px; height: 34px; }
   }
 
   :global(:root[data-input-mode="coarse"]) .actions button,
   :global(:root[data-input-mode="coarse"]) .toggle {
     min-height: var(--ostudy-size-touch-target);
   }
-
   :global(:root[data-input-mode="coarse"]) .keyboardReorder {
     width: var(--ostudy-size-touch-target);
     min-width: var(--ostudy-size-touch-target);
