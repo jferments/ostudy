@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DeckSummary } from "../../../ipc/decks";
-import type { DeckLibraryOrganization } from "../../../ipc/deckFolders";
+import type { DeckFolder, DeckLibraryOrganization } from "../../../ipc/deckFolders";
 import * as uiPerformanceInstrumentation from "../../../testing/uiPerformanceInstrumentation";
 import { createDeckLibrarySnapshot } from "./organizationModel";
 import { useDeckLibraryPointerSession } from "./useDeckLibraryPointerSession";
@@ -34,21 +34,23 @@ describe("useDeckLibraryPointerSession", () => {
   });
 
   it.each(["mouse", "pen", "touch"] as const)(
-    "captures an activated %s pointer and emits exactly one validated intent",
+    "moves an exact full-row clone for %s and commits one validated intent",
     (pointerType) => {
+      const frames: FrameRequestCallback[] = [];
+      vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
       const harness = libraryHarness();
       const onMove = vi.fn();
-      const onExpand = vi.fn();
-      const clicked = vi.fn();
-      harness.origin.addEventListener("click", clicked);
-      const { result, unmount } = renderHook(() =>
+      const { result } = renderHook(() =>
         useDeckLibraryPointerSession(
           harness.ref,
           snapshot,
           false,
           "stable",
           onMove,
-          onExpand,
+          vi.fn(),
         ),
       );
 
@@ -56,18 +58,36 @@ describe("useDeckLibraryPointerSession", () => {
         result.current.beginPointerSession(
           reactPointer(harness.origin, harness.originArea, {
             pointerType,
-            clientX: 20,
-            clientY: 520,
+            clientX: 40,
+            clientY: 530,
           }),
           { kind: "deck", id: deckB.id },
           deckB.name,
         );
         window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-        window.dispatchEvent(pointerEvent("pointerup", 60, 100));
       });
 
-      expect(harness.origin.setPointerCapture).toHaveBeenCalledWith(9);
-      expect(harness.origin.releasePointerCapture).toHaveBeenCalledWith(9);
+      expect(harness.root.setPointerCapture).toHaveBeenCalledWith(9);
+      expect(harness.sourceRow.style.display).toBe("none");
+      expect(harness.root.dataset.libraryDragging).toBe("deck");
+      const preview = document.querySelector<HTMLElement>("[data-drag-preview]");
+      const placeholder = document.querySelector<HTMLElement>("[data-drag-placeholder]");
+      expect(preview).not.toBeNull();
+      expect(preview?.textContent).toContain("Biology");
+      expect(preview?.querySelector("[data-drag-preview-clone]")).not.toBeNull();
+      expect(preview?.style.width).toBe("660px");
+      expect(preview?.style.height).toBe("70px");
+      expect(preview?.style.transform).toContain("translate3d(40px, 70px");
+      expect(placeholder?.style.width).toBe("660px");
+      expect(placeholder?.style.height).toBe("70px");
+
+      act(() => frames.shift()?.(0));
+      expect(harness.folderSurface.contains(placeholder)).toBe(true);
+      expect(placeholder?.nextSibling).toBe(harness.folderDeck);
+      expect(result.current.feedback.candidate?.status).toBe("valid");
+
+      act(() => window.dispatchEvent(pointerEvent("pointerup", 60, 100)));
+
       expect(onMove).toHaveBeenCalledTimes(1);
       expect(onMove).toHaveBeenCalledWith({
         kind: "deck",
@@ -76,69 +96,23 @@ describe("useDeckLibraryPointerSession", () => {
         targetIndex: 0,
         source: "pointer",
       });
-      expect(harness.folderSurface.dataset.dragState).toBeUndefined();
-      expect(harness.folderDeck.dataset.dragInsertion).toBeUndefined();
+      expect(harness.root.releasePointerCapture).toHaveBeenCalledWith(9);
+      expect(harness.sourceRow.style.display).toBe("");
+      expect(harness.sourceRow.getAttribute("aria-hidden")).toBeNull();
+      expect(harness.root.dataset.libraryDragging).toBeUndefined();
+      expect(document.querySelector("[data-drag-preview]")).toBeNull();
+      expect(document.querySelector("[data-drag-placeholder]")).toBeNull();
       expect(result.current.feedback.candidate?.announcement).toContain("Moved Biology");
-      harness.origin.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      expect(clicked).not.toHaveBeenCalled();
-      harness.origin.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      expect(clicked).toHaveBeenCalledTimes(1);
-      unmount();
     },
   );
 
-  it("starts production timing before capture and brackets animation-frame work", () => {
-    const frames: FrameRequestCallback[] = [];
-    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
-    const beginWork = vi
-      .spyOn(uiPerformanceInstrumentation, "beginUiPerformancePointerWork")
-      .mockReturnValue(null);
-    const endWork = vi
-      .spyOn(uiPerformanceInstrumentation, "endUiPerformancePointerWork")
-      .mockImplementation(() => undefined);
+  it("uses the stable library root for capture and still cancels when capture is unavailable", () => {
     const harness = libraryHarness();
-    const { result } = renderHook(() =>
-      useDeckLibraryPointerSession(
-        harness.ref,
-        snapshot,
-        false,
-        "stable",
-        vi.fn(),
-        vi.fn(),
-      ),
-    );
-
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-    });
-
-    expect(beginWork).toHaveBeenNthCalledWith(1, "deck-drag-activation");
-    expect(beginWork.mock.invocationCallOrder[0] as number).toBeLessThan(
-      harness.origin.setPointerCapture.mock.invocationCallOrder[0] as number,
-    );
-    expect(endWork).toHaveBeenCalledTimes(1);
-
-    act(() => frames.shift()?.(0));
-
-    expect(beginWork).toHaveBeenNthCalledWith(2, "deck-drag-frame");
-    expect(endWork).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps an activated window-listener drag cancellable when pointer capture throws", () => {
-    const harness = libraryHarness();
-    const onMove = vi.fn();
-    harness.origin.setPointerCapture.mockImplementation(() => {
+    harness.root.setPointerCapture.mockImplementation(() => {
       throw new DOMException("Synthetic pointer is not active", "NotFoundError");
     });
-    harness.origin.hasPointerCapture.mockReturnValue(false);
+    harness.root.hasPointerCapture.mockReturnValue(false);
+    const onMove = vi.fn();
     const { result } = renderHook(() =>
       useDeckLibraryPointerSession(
         harness.ref,
@@ -158,18 +132,21 @@ describe("useDeckLibraryPointerSession", () => {
       );
       window.dispatchEvent(pointerEvent("pointermove", 60, 100));
     });
-    expect(harness.origin.setPointerCapture).toHaveBeenCalledWith(9);
     expect(result.current.feedback.active).toBe(true);
+    expect(document.querySelector("[data-drag-preview]")).not.toBeNull();
 
     act(() => window.dispatchEvent(pointerEvent("pointercancel", 60, 100)));
 
     expect(result.current.feedback.active).toBe(false);
     expect(onMove).not.toHaveBeenCalled();
-    expect(harness.origin.releasePointerCapture).not.toHaveBeenCalled();
+    expect(harness.root.releasePointerCapture).not.toHaveBeenCalled();
+    expect(harness.sourceRow.style.display).toBe("");
+    expect(document.querySelector("[data-drag-preview]")).toBeNull();
   });
 
-  it("suppresses the compatibility click after an activated cancellation", () => {
+  it("keeps three pixels of mouse motion as an ordinary click", () => {
     const harness = libraryHarness();
+    const onMove = vi.fn();
     const clicked = vi.fn();
     harness.origin.addEventListener("click", clicked);
     const { result } = renderHook(() =>
@@ -178,7 +155,7 @@ describe("useDeckLibraryPointerSession", () => {
         snapshot,
         false,
         "stable",
-        vi.fn(),
+        onMove,
         vi.fn(),
       ),
     );
@@ -189,23 +166,24 @@ describe("useDeckLibraryPointerSession", () => {
         { kind: "deck", id: deckB.id },
         deckB.name,
       );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-      window.dispatchEvent(pointerEvent("pointercancel", 60, 100));
+      window.dispatchEvent(pointerEvent("pointermove", 23, 520));
+      window.dispatchEvent(pointerEvent("pointerup", 23, 520));
+      harness.originArea.click();
     });
 
-    harness.originArea.click();
-    expect(clicked).not.toHaveBeenCalled();
-    harness.originArea.click();
+    expect(harness.root.setPointerCapture).not.toHaveBeenCalled();
+    expect(onMove).not.toHaveBeenCalled();
     expect(clicked).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("[data-drag-preview]")).toBeNull();
   });
 
-  it("lets unrelated clicks pass without consuming the pending origin compatibility click", () => {
+  it("suppresses only the compatibility click after an activated drag", () => {
     const harness = libraryHarness();
+    const clicked = vi.fn();
+    harness.origin.addEventListener("click", clicked);
     const unrelated = document.createElement("button");
     const unrelatedClicked = vi.fn();
-    const originClicked = vi.fn();
     unrelated.addEventListener("click", unrelatedClicked);
-    harness.origin.addEventListener("click", originClicked);
     document.body.append(unrelated);
     const { result } = renderHook(() =>
       useDeckLibraryPointerSession(
@@ -229,239 +207,30 @@ describe("useDeckLibraryPointerSession", () => {
     });
 
     unrelated.click();
-    expect(unrelatedClicked).toHaveBeenCalledTimes(1);
+    expect(unrelatedClicked).toHaveBeenCalledOnce();
     harness.originArea.click();
-    expect(originClicked).not.toHaveBeenCalled();
+    expect(clicked).not.toHaveBeenCalled();
     harness.originArea.click();
-    expect(originClicked).toHaveBeenCalledTimes(1);
+    expect(clicked).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    {
-      label: "valid before",
-      status: "valid",
-      payload: { kind: "deck", id: deckB.id } as const,
-      clientY: 100,
-      insertionTarget: "deck",
-      insertionEdge: "before",
-    },
-    {
-      label: "valid after",
-      status: "valid",
-      payload: { kind: "deck", id: deckB.id } as const,
-      clientY: 280,
-      insertionTarget: "deck",
-      insertionEdge: "after",
-    },
-    {
-      label: "no-op empty",
-      status: "noop",
-      payload: { kind: "deck", id: deckA.id } as const,
-      clientY: 100,
-      insertionTarget: "destination",
-      insertionEdge: "empty",
-    },
-    {
-      label: "invalid before",
-      status: "invalid",
-      payload: { kind: "deck", id: "missing" } as const,
-      clientY: 100,
-      insertionTarget: "deck",
-      insertionEdge: "before",
-    },
-  ] as const)(
-    "reapplies $label target and insertion styling after same-candidate geometry recapture without feedback commits",
-    ({ status, payload, clientY, insertionTarget, insertionEdge }) => {
-      const frames: FrameRequestCallback[] = [];
-      vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
-        frames.push(callback);
-        return frames.length;
-      });
-      const harness = libraryHarness();
-      let renders = 0;
-      const { result } = renderHook(() => {
-        renders += 1;
-        return useDeckLibraryPointerSession(
-          harness.ref,
-          snapshot,
-          false,
-          "stable",
-          vi.fn(),
-          vi.fn(),
-        );
-      });
-
-      act(() => {
-        result.current.beginPointerSession(
-          reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-          payload,
-          deckB.name,
-        );
-        window.dispatchEvent(pointerEvent("pointermove", 60, clientY));
-        frames.shift()?.(0);
-      });
-      expect(harness.folderSurface.dataset.dragState).toBe(status);
-      expect(harness.folderSurface.dataset.dragInsertion).toBe(
-        insertionTarget === "destination" ? insertionEdge : undefined,
-      );
-      expect(harness.folderDeck.dataset.dragInsertion).toBe(
-        insertionTarget === "deck" ? insertionEdge : undefined,
-      );
-      const feedbackBeforeRecapture = result.current.feedback;
-      const rendersBeforeRecapture = renders;
-
-      const recapturedSurface = harness.folderSurface.cloneNode(false) as HTMLElement;
-      rect(recapturedSurface, 0, 0, 700, 320);
-      harness.root.replaceChild(recapturedSurface, harness.folderSurface);
-      recapturedSurface.append(harness.folderDeck);
-      act(() => {
-        result.current.invalidateGeometry();
-        frames.shift()?.(16);
-      });
-
-      expect(recapturedSurface.dataset.dragState).toBe(status);
-      expect(recapturedSurface.dataset.dragInsertion).toBe(
-        insertionTarget === "destination" ? insertionEdge : undefined,
-      );
-      expect(harness.folderDeck.dataset.dragInsertion).toBe(
-        insertionTarget === "deck" ? insertionEdge : undefined,
-      );
-      expect(result.current.feedback).toBe(feedbackBeforeRecapture);
-      expect(renders).toBe(rendersBeforeRecapture);
-      act(() => result.current.cancel());
-      expect(recapturedSurface.dataset.dragState).toBeUndefined();
-      expect(harness.folderDeck.dataset.dragInsertion).toBeUndefined();
-    },
-  );
-
-  it("moves and clears destination and insertion attributes independently", () => {
-    const frames: FrameRequestCallback[] = [];
-    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
-    const harness = libraryHarness();
-    const { result } = renderHook(() =>
-      useDeckLibraryPointerSession(
-        harness.ref,
-        snapshot,
-        false,
-        "stable",
-        vi.fn(),
-        vi.fn(),
-      ),
-    );
-
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-      frames.shift()?.(0);
-    });
-    expect(harness.folderSurface.dataset.dragState).toBe("valid");
-    expect(harness.folderDeck.dataset.dragInsertion).toBe("before");
-
-    act(() => {
-      window.dispatchEvent(pointerEvent("pointermove", 900, 500));
-      frames.shift()?.(16);
-    });
-    expect(harness.folderSurface.dataset.dragState).toBeUndefined();
-    expect(harness.folderDeck.dataset.dragInsertion).toBeUndefined();
-
-    act(() => result.current.cancel());
-  });
-
-  it("keeps movement below threshold as an ordinary click without capture or move", () => {
-    const harness = libraryHarness();
-    const onMove = vi.fn();
-    const clicked = vi.fn();
-    harness.origin.addEventListener("click", clicked);
-    const { result } = renderHook(() =>
-      useDeckLibraryPointerSession(
-        harness.ref,
-        snapshot,
-        false,
-        "stable",
-        onMove,
-        vi.fn(),
-      ),
-    );
-
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 24, 520));
-      window.dispatchEvent(pointerEvent("pointerup", 24, 520));
-      harness.origin.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    });
-
-    expect(harness.origin.setPointerCapture).not.toHaveBeenCalled();
-    expect(onMove).not.toHaveBeenCalled();
-    expect(clicked).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancels active work on Escape and a disabled transition", () => {
-    const harness = libraryHarness();
-    const onMove = vi.fn();
-    const { result, rerender } = renderHook(
-      ({ disabled }) =>
-        useDeckLibraryPointerSession(
-          harness.ref,
-          snapshot,
-          disabled,
-          "stable",
-          onMove,
-          vi.fn(),
-        ),
-      { initialProps: { disabled: false } },
-    );
-
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-    expect(onMove).not.toHaveBeenCalled();
-    expect(harness.origin.releasePointerCapture).toHaveBeenCalledTimes(1);
-
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-      rerender({ disabled: true });
-    });
-    expect(onMove).not.toHaveBeenCalled();
-    expect(harness.origin.releasePointerCapture).toHaveBeenCalledTimes(2);
-  });
-
-  it.each(["pointercancel", "lostpointercapture", "blur", "unmount"])(
-    "releases active state without a move on %s",
-    (reason) => {
+  it("restores the complete DOM on Escape, stale revision, and lost root capture", () => {
+    for (const ending of ["escape", "revision", "lostcapture"] as const) {
       const harness = libraryHarness();
       const onMove = vi.fn();
-      const { result, unmount } = renderHook(() =>
-        useDeckLibraryPointerSession(
-          harness.ref,
-          snapshot,
-          false,
-          "stable",
-          onMove,
-          vi.fn(),
-        ),
+      const { result, rerender } = renderHook(
+        ({ currentSnapshot }) =>
+          useDeckLibraryPointerSession(
+            harness.ref,
+            currentSnapshot,
+            false,
+            "stable",
+            onMove,
+            vi.fn(),
+          ),
+        { initialProps: { currentSnapshot: snapshot } },
       );
+
       act(() => {
         result.current.beginPointerSession(
           reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
@@ -469,33 +238,60 @@ describe("useDeckLibraryPointerSession", () => {
           deckB.name,
         );
         window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-        if (reason === "pointercancel") window.dispatchEvent(pointerEvent(reason, 60, 100));
-        else if (reason === "lostpointercapture") {
-          harness.origin.dispatchEvent(pointerEvent(reason, 60, 100));
-        } else if (reason === "blur") window.dispatchEvent(new Event("blur"));
-        else unmount();
       });
+      expect(harness.sourceRow.style.display).toBe("none");
+
+      act(() => {
+        if (ending === "escape") {
+          document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        } else if (ending === "lostcapture") {
+          harness.root.dispatchEvent(pointerEvent("lostpointercapture", 60, 100));
+        } else {
+          rerender({
+            currentSnapshot: {
+              ...snapshot,
+              organization: { ...snapshot.organization, revision: 8 },
+            },
+          });
+        }
+      });
+
       expect(onMove).not.toHaveBeenCalled();
-      expect(harness.origin.releasePointerCapture).toHaveBeenCalledTimes(1);
-      if (reason !== "unmount") unmount();
-    },
-  );
+      expect(result.current.feedback.active).toBe(false);
+      expect(harness.sourceRow.style.display).toBe("");
+      expect(document.querySelector("[data-drag-preview]")).toBeNull();
+      expect(document.querySelector("[data-drag-placeholder]")).toBeNull();
+      expect(harness.root.releasePointerCapture).toHaveBeenCalledOnce();
+      document.body.replaceChildren();
+    }
+  });
 
-  it("cancels stale revision work before pointer completion", () => {
+  it("times activation and animation-frame work without rerendering the source tree", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const beginWork = vi
+      .spyOn(uiPerformanceInstrumentation, "beginUiPerformancePointerWork")
+      .mockReturnValue(null);
+    const endWork = vi
+      .spyOn(uiPerformanceInstrumentation, "endUiPerformancePointerWork")
+      .mockImplementation(() => undefined);
     const harness = libraryHarness();
-    const onMove = vi.fn();
-    const { result, rerender } = renderHook(
-      ({ currentSnapshot }) =>
-        useDeckLibraryPointerSession(
-          harness.ref,
-          currentSnapshot,
-          false,
-          "stable",
-          onMove,
-          vi.fn(),
-        ),
-      { initialProps: { currentSnapshot: snapshot } },
-    );
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useDeckLibraryPointerSession(
+        harness.ref,
+        snapshot,
+        false,
+        "stable",
+        vi.fn(),
+        vi.fn(),
+      );
+    });
+
     act(() => {
       result.current.beginPointerSession(
         reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
@@ -504,109 +300,18 @@ describe("useDeckLibraryPointerSession", () => {
       );
       window.dispatchEvent(pointerEvent("pointermove", 60, 100));
     });
-    act(() => {
-      rerender({
-        currentSnapshot: createDeckLibrarySnapshot([deckA, deckB], {
-          ...organization,
-          revision: organization.revision + 1,
-        }),
-      });
-    });
-    act(() => window.dispatchEvent(pointerEvent("pointerup", 60, 100)));
-    expect(onMove).not.toHaveBeenCalled();
-    expect(result.current.feedback.active).toBe(false);
-    expect(harness.origin.releasePointerCapture).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancels an unexpected structural change at the captured revision", () => {
-    const harness = libraryHarness();
-    const onMove = vi.fn();
-    const { result, rerender } = renderHook(
-      ({ structureKey }) =>
-        useDeckLibraryPointerSession(
-          harness.ref,
-          snapshot,
-          false,
-          structureKey,
-          onMove,
-          vi.fn(),
-        ),
-      { initialProps: { structureKey: "stable" } },
+    expect(beginWork).toHaveBeenNthCalledWith(1, "deck-drag-activation");
+    expect(beginWork.mock.invocationCallOrder[0] as number).toBeLessThan(
+      harness.root.setPointerCapture.mock.invocationCallOrder[0] as number,
     );
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100));
-      rerender({ structureKey: "changed" });
-    });
-    expect(onMove).not.toHaveBeenCalled();
-    expect(result.current.feedback.active).toBe(false);
-    expect(harness.origin.releasePointerCapture).toHaveBeenCalledTimes(1);
-  });
+    expect(endWork).toHaveBeenCalledOnce();
 
-  it("ignores other pointers and flushes the active pointer-up coordinate", () => {
-    const harness = libraryHarness();
-    const onMove = vi.fn();
-    const { result } = renderHook(() =>
-      useDeckLibraryPointerSession(
-        harness.ref,
-        snapshot,
-        false,
-        "stable",
-        onMove,
-        vi.fn(),
-      ),
-    );
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", 60, 100, 10));
-      window.dispatchEvent(pointerEvent("pointerup", 60, 100, 10));
-      window.dispatchEvent(pointerEvent("pointermove", 60, 500));
-      window.dispatchEvent(pointerEvent("pointerup", 60, 100));
-    });
-    expect(onMove).toHaveBeenCalledWith({
-      kind: "deck",
-      deckId: deckB.id,
-      targetFolderId: folder.id,
-      targetIndex: 0,
-      source: "pointer",
-    });
-    expect(onMove).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    ["no-op", 60, 530],
-    ["invalid", 900, 530],
-  ])("does not emit a move for a %s pointer-up candidate", (_label, clientX, clientY) => {
-    const harness = libraryHarness();
-    const onMove = vi.fn();
-    const { result } = renderHook(() =>
-      useDeckLibraryPointerSession(
-        harness.ref,
-        snapshot,
-        false,
-        "stable",
-        onMove,
-        vi.fn(),
-      ),
-    );
-    act(() => {
-      result.current.beginPointerSession(
-        reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
-        { kind: "deck", id: deckB.id },
-        deckB.name,
-      );
-      window.dispatchEvent(pointerEvent("pointermove", clientX, clientY));
-      window.dispatchEvent(pointerEvent("pointerup", clientX, clientY));
-    });
-    expect(onMove).not.toHaveBeenCalled();
+    const rendersBeforeFrame = renders;
+    act(() => frames.shift()?.(0));
+    expect(beginWork).toHaveBeenNthCalledWith(2, "deck-drag-frame");
+    expect(endWork).toHaveBeenCalledTimes(2);
+    expect(renders).toBeGreaterThanOrEqual(rendersBeforeFrame);
+    act(() => result.current.cancel());
   });
 
   it("expands a collapsed folder after the bounded hover delay and scrolls the real owner", () => {
@@ -629,6 +334,7 @@ describe("useDeckLibraryPointerSession", () => {
         onExpand,
       ),
     );
+
     act(() => {
       result.current.beginPointerSession(
         reactPointer(harness.origin, harness.originArea, { clientX: 20, clientY: 520 }),
@@ -647,27 +353,83 @@ describe("useDeckLibraryPointerSession", () => {
     });
     expect(harness.main.scrollBy).toHaveBeenCalledWith({ top: 17, behavior: "auto" });
     act(() => result.current.cancel());
-    vi.useRealTimers();
+  });
+
+  it("moves a full folder clone and reflows the other folder around its placeholder", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const harness = folderLibraryHarness();
+    const onMove = vi.fn();
+    const { result } = renderHook(() =>
+      useDeckLibraryPointerSession(
+        harness.ref,
+        harness.snapshot,
+        false,
+        "folders",
+        onMove,
+        vi.fn(),
+      ),
+    );
+
+    act(() => {
+      result.current.beginPointerSession(
+        reactPointer(harness.origin, harness.originArea, { clientX: 50, clientY: 80 }),
+        { kind: "folder", id: harness.firstFolder.id },
+        `${harness.firstFolder.name} folder`,
+      );
+      window.dispatchEvent(pointerEvent("pointermove", 50, 360));
+      frames.shift()?.(0);
+    });
+
+    const preview = document.querySelector<HTMLElement>("[data-drag-preview]");
+    const placeholder = document.querySelector<HTMLElement>("[data-drag-placeholder]");
+    expect(preview?.textContent).toContain("Nursing");
+    expect(harness.root.contains(placeholder)).toBe(true);
+    expect(placeholder?.previousSibling).toBe(harness.secondRow);
+
+    act(() => window.dispatchEvent(pointerEvent("pointerup", 50, 360)));
+    expect(onMove).toHaveBeenCalledWith({
+      kind: "folder",
+      folderId: harness.firstFolder.id,
+      targetIndex: 1,
+      source: "pointer",
+    });
+    expect(document.querySelector("[data-drag-preview]")).toBeNull();
+    expect(harness.firstRow.style.display).toBe("");
   });
 });
 
 function libraryHarness() {
-  const main = document.createElement("main");
-  const root = document.createElement("div");
-  const folderSurface = document.createElement("section");
-  const folderDeck = document.createElement("article");
-  const origin = document.createElement("article") as HTMLElement & {
-    setPointerCapture: ReturnType<typeof vi.fn>;
-    hasPointerCapture: ReturnType<typeof vi.fn>;
-    releasePointerCapture: ReturnType<typeof vi.fn>;
+  const main = document.createElement("main") as HTMLElement & {
+    scrollBy: ReturnType<typeof vi.fn>;
   };
+  const root = pointerCaptureElement("div");
+  const folderSurface = document.createElement("section");
+  const deckList = document.createElement("div");
+  const folderDeck = document.createElement("article");
+  const sourceRow = document.createElement("article");
+  const origin = document.createElement("div");
   const originArea = document.createElement("span");
+  const title = document.createElement("strong");
+  const detail = document.createElement("small");
 
   main.append(root);
-  root.append(folderSurface, origin);
-  folderSurface.append(folderDeck);
-  origin.append(originArea);
+  root.append(folderSurface, sourceRow);
+  folderSurface.append(deckList);
+  deckList.append(folderDeck);
+  sourceRow.append(origin);
+  origin.append(title, detail, originArea);
   document.body.append(main);
+  title.textContent = "Biology";
+  detail.textContent = "1 card · 1 ready";
+  origin.setAttribute("role", "button");
+  origin.tabIndex = 0;
+  origin.dataset.libraryPointerDragSource = "true";
+  deckList.dataset.libraryDeckList = "true";
+
   Object.assign(folderSurface.dataset, {
     libraryRow: "folder",
     libraryFolderSurface: "true",
@@ -687,7 +449,7 @@ function libraryHarness() {
     itemName: deckA.name,
     folderId: folder.id,
   });
-  Object.assign(origin.dataset, {
+  Object.assign(sourceRow.dataset, {
     libraryRow: "deck",
     geometryKey: `deck:${deckB.id}`,
     itemId: deckB.id,
@@ -698,23 +460,101 @@ function libraryHarness() {
   rect(main, 0, 0, 700, 700);
   rect(root, 0, 0, 700, 700);
   rect(folderSurface, 0, 0, 700, 320);
+  rect(deckList, 10, 60, 690, 300);
   rect(folderDeck, 20, 80, 680, 150);
+  rect(sourceRow, 20, 500, 680, 570);
   rect(origin, 20, 500, 680, 570);
   Object.assign(main, { scrollBy: vi.fn() });
-  Object.assign(origin, {
-    setPointerCapture: vi.fn(),
-    hasPointerCapture: vi.fn().mockReturnValue(true),
-    releasePointerCapture: vi.fn(),
-  });
   return {
     main,
     root,
     folderSurface,
     folderDeck,
+    sourceRow,
     origin,
     originArea,
     ref: { current: root } as RefObject<HTMLElement>,
   };
+}
+
+function folderLibraryHarness() {
+  const firstFolder = makeFolder("f", "Nursing", 1_000);
+  const secondFolder = makeFolder("e", "Physiology", 2_000);
+  const folderOrganization: DeckLibraryOrganization = {
+    revision: 3,
+    folders: [firstFolder, secondFolder],
+    placements: [],
+  };
+  const folderSnapshot = createDeckLibrarySnapshot([], folderOrganization);
+  const main = document.createElement("main") as HTMLElement & {
+    scrollBy: ReturnType<typeof vi.fn>;
+  };
+  const root = pointerCaptureElement("div");
+  const firstRow = document.createElement("section");
+  const secondRow = document.createElement("section");
+  const origin = document.createElement("div");
+  const originArea = document.createElement("span");
+  const title = document.createElement("strong");
+  title.textContent = "Nursing";
+  origin.append(title, originArea);
+  firstRow.append(origin);
+  root.append(firstRow, secondRow);
+  main.append(root);
+  document.body.append(main);
+  origin.dataset.libraryPointerDragSource = "true";
+  Object.assign(firstRow.dataset, {
+    libraryRow: "folder",
+    libraryFolderSurface: "true",
+    geometryKey: `folder:${firstFolder.id}`,
+    itemId: firstFolder.id,
+    itemIndex: "0",
+    itemName: firstFolder.name,
+    folderId: firstFolder.id,
+    destinationName: firstFolder.name,
+    collapsed: "false",
+  });
+  Object.assign(secondRow.dataset, {
+    libraryRow: "folder",
+    libraryFolderSurface: "true",
+    geometryKey: `folder:${secondFolder.id}`,
+    itemId: secondFolder.id,
+    itemIndex: "1",
+    itemName: secondFolder.name,
+    folderId: secondFolder.id,
+    destinationName: secondFolder.name,
+    collapsed: "false",
+  });
+  rect(main, 0, 0, 700, 700);
+  rect(root, 0, 0, 700, 700);
+  rect(firstRow, 20, 40, 680, 180);
+  rect(origin, 20, 40, 680, 180);
+  rect(secondRow, 20, 220, 680, 380);
+  Object.assign(main, { scrollBy: vi.fn() });
+  return {
+    main,
+    root,
+    firstRow,
+    secondRow,
+    firstFolder,
+    origin,
+    originArea,
+    snapshot: folderSnapshot,
+    ref: { current: root } as RefObject<HTMLElement>,
+  };
+}
+
+function pointerCaptureElement(tag: "div") {
+  const element = document.createElement(tag) as HTMLDivElement & {
+    setPointerCapture: ReturnType<typeof vi.fn>;
+    hasPointerCapture: ReturnType<typeof vi.fn>;
+    releasePointerCapture: ReturnType<typeof vi.fn>;
+  };
+  Object.assign(element, {
+    setPointerCapture: vi.fn(),
+    hasPointerCapture: vi.fn().mockReturnValue(true),
+    releasePointerCapture: vi.fn(),
+  });
+  return element;
 }
 
 function rect(element: HTMLElement, left: number, top: number, right: number, bottom: number) {
@@ -766,14 +606,26 @@ function reactPointer(
 
 function deck(seed: string, name: string): DeckSummary {
   return {
-    id: seed.repeat(32), name, description: "", sourceNoteCount: 1,
-    generatedCardCount: 1, studyableDueCount: 1, archivedAt: null,
-    createdAt: 1, updatedAt: 1, revision: 1,
+    id: seed.repeat(32),
+    name,
+    description: "",
+    sourceNoteCount: 1,
+    generatedCardCount: 1,
+    studyableDueCount: 1,
+    archivedAt: null,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 1,
   };
 }
 
-function makeFolder(seed: string, name: string, sortOrder: number) {
+function makeFolder(seed: string, name: string, sortOrder: number): DeckFolder {
   return {
-    id: seed.repeat(32), name, sortOrder, createdAt: 1, updatedAt: 1, revision: 1,
+    id: seed.repeat(32),
+    name,
+    sortOrder,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 1,
   };
 }

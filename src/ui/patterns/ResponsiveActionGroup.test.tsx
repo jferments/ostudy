@@ -12,9 +12,17 @@ afterEach(() => {
 
 function setLayout(mode: "wide" | "medium" | "compact") {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("760") ? mode === "compact" : query.includes("1180") ? mode !== "wide" : false,
+    matches: query.includes("760")
+      ? mode === "compact"
+      : query.includes("1180")
+        ? mode !== "wide"
+        : false,
     media: query,
-    addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
   }));
 }
 
@@ -27,14 +35,31 @@ const actions: ResponsiveAction[] = [
     variant: "primary",
     onSelect: vi.fn(),
   },
-  { id: "edit", label: "Edit", placement: "wide-and-medium", icon: "edit", presentation: "icon", onSelect: vi.fn() },
+  {
+    id: "edit",
+    label: "Edit",
+    placement: "wide-and-medium",
+    icon: "edit",
+    presentation: "icon",
+    onSelect: vi.fn(),
+  },
   { id: "export", label: "Export", placement: "wide-only", onSelect: vi.fn() },
-  { id: "delete", label: "Delete", placement: "overflow-only", destructive: true, onSelect: vi.fn() },
+  {
+    id: "delete",
+    label: "Delete",
+    placement: "overflow-only",
+    destructive: true,
+    onSelect: vi.fn(),
+  },
 ];
 
 function renderGroup(mode: "wide" | "medium" | "compact") {
   setLayout(mode);
-  render(<LayoutModeProvider><ResponsiveActionGroup label="Example actions" actions={actions} /></LayoutModeProvider>);
+  render(
+    <LayoutModeProvider>
+      <ResponsiveActionGroup label="Example actions" actions={actions} />
+    </LayoutModeProvider>,
+  );
 }
 
 describe("ResponsiveActionGroup", () => {
@@ -53,21 +78,65 @@ describe("ResponsiveActionGroup", () => {
   });
 
   it.each([
-    ["wide", ["Continue", "Edit", "Export"], ["Delete"]],
+    ["wide", ["Continue", "Edit", "Export", "Delete"], []],
     ["medium", ["Continue", "Edit"], ["Export", "Delete"]],
     ["compact", ["Continue"], ["Edit", "Export", "Delete"]],
-  ] as const)("applies the %s placement contract", (mode, direct, collapsed) => {
+  ] as const)("applies the %s placement contract without a one-item overflow", (mode, direct, collapsed) => {
     renderGroup(mode);
-    for (const label of direct) expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    for (const label of direct) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
+    if (collapsed.length === 0) {
+      expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+      expect(screen.queryByRole("menu")).toBeNull();
+      return;
+    }
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
-    for (const label of collapsed) expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    for (const label of collapsed) {
+      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+    }
+  });
+
+  it("promotes a sole overflow action while retaining its requested icon presentation", () => {
+    setLayout("compact");
+    render(
+      <LayoutModeProvider>
+        <ResponsiveActionGroup
+          label="Direct destructive action"
+          actions={[
+            {
+              id: "continue",
+              label: "Continue",
+              placement: "always-visible",
+              onSelect: vi.fn(),
+            },
+            {
+              id: "delete",
+              label: "Delete item",
+              placement: "wide-only",
+              presentation: "icon",
+              icon: "delete",
+              destructive: true,
+              onSelect: vi.fn(),
+            },
+          ]}
+        />
+      </LayoutModeProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "Delete item" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   });
 
   it("rejects unstable duplicate IDs", () => {
     setLayout("wide");
-    expect(() => render(<LayoutModeProvider><ResponsiveActionGroup label="Bad" actions={[actions[0], actions[0]]} /></LayoutModeProvider>)).toThrow(
-      "ResponsiveActionGroup requires unique, nonblank action IDs.",
-    );
+    expect(() =>
+      render(
+        <LayoutModeProvider>
+          <ResponsiveActionGroup label="Bad" actions={[actions[0], actions[0]]} />
+        </LayoutModeProvider>,
+      ),
+    ).toThrow("ResponsiveActionGroup requires unique, nonblank action IDs.");
   });
 
   it("rejects a group that could hide every action", () => {
@@ -77,7 +146,14 @@ describe("ResponsiveActionGroup", () => {
         <LayoutModeProvider>
           <ResponsiveActionGroup
             label="Bad"
-            actions={[{ id: "hidden", label: "Hidden", placement: "wide-only", onSelect: vi.fn() }]}
+            actions={[
+              {
+                id: "hidden",
+                label: "Hidden",
+                placement: "wide-only",
+                onSelect: vi.fn(),
+              },
+            ]}
           />
         </LayoutModeProvider>,
       ),

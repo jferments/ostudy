@@ -63,11 +63,7 @@ describe("DeckItem", () => {
 
       fireEvent.pointerDown(screen.getByRole("checkbox", { name: "Select Anatomy" }));
       fireEvent.pointerDown(screen.getByRole("button", { name: "Practice" }));
-      fireEvent.pointerDown(
-        screen.getByRole("button", {
-          name: layoutMode === "compact" ? "Anatomy actions" : "Delete Anatomy",
-        }),
-      );
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Delete Anatomy" }));
 
       expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
     },
@@ -105,6 +101,18 @@ describe("DeckItem", () => {
     },
   );
 
+  it("keeps the trash action direct in compact layout instead of creating a one-item menu", () => {
+    setLayoutMode("compact");
+    const onDelete = vi.fn();
+    renderDeckItem({ onDelete });
+
+    expect(screen.queryByRole("button", { name: "Anatomy actions" })).toBeNull();
+    const trash = screen.getByRole("button", { name: "Delete Anatomy" });
+    expect(trash.getAttribute("data-tone")).toBe("danger");
+    fireEvent.click(trash);
+    expect(onDelete).toHaveBeenCalledOnce();
+  });
+
   it("opens with Enter and Space while leaving movement prevention to the reorder adapter", () => {
     const onOpen = vi.fn();
     const reorder = makeReorder();
@@ -133,9 +141,7 @@ describe("DeckItem", () => {
   });
 });
 
-function renderDeckItem(
-  overrides: Partial<ComponentProps<typeof DeckItem>> = {},
-) {
+function renderDeckItem(overrides: Partial<ComponentProps<typeof DeckItem>> = {}) {
   const props: ComponentProps<typeof DeckItem> = {
     deck,
     folderId,
