@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 
 import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
@@ -8,11 +8,9 @@ import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { PerformanceProfiler } from "../../testing/PerformanceProfiler";
-import { LoadingState } from "../../ui/primitives/EmptyState";
-import { DecksScreen } from "../DecksScreen";
+import { DeckDetailRoute } from "./DeckDetailRoute";
 import { DeckLibraryRoot } from "./deck-library/DeckLibraryRoot";
 import { useDeckLibraryController } from "./deck-library/useDeckLibraryController";
-import styles from "./DeckLibraryWorkspace.module.css";
 
 interface DeckLibraryWorkspaceProps {
   decks: DeckSummary[];
@@ -45,12 +43,9 @@ export function DeckLibraryWorkspace({
   openDeckRequest,
   onOpenDeck,
   onReturnToLibrary,
-  onManageTemplates,
   onCardDirtyChange,
   showToast,
 }: DeckLibraryWorkspaceProps) {
-  const detailOpenedRef = useRef(false);
-  const [detailReady, setDetailReady] = useState(false);
   const controllerSelectionRef = useRef<TransientDeckSelectionEntry[]>([]);
   const confirm = useConfirm();
   const controller = useDeckLibraryController({
@@ -65,37 +60,16 @@ export function DeckLibraryWorkspace({
 
   if (openDeckRequest) {
     return (
-      <div className={styles.detailRoute} aria-busy={!detailReady}>
-        {!detailReady ? (
-          <div className={styles.detailLoading}>
-            <LoadingState label="Opening deck cards…" />
-          </div>
-        ) : null}
-        <div className={styles.detailContent} data-ready={detailReady ? "true" : "false"}>
-          <DecksScreen
-            key={openDeckRequest.requestId}
-            decks={decks}
-            settings={settings}
-            refreshDecks={refreshDecks}
-            onPracticeDeck={onPracticeDeck}
-            openDeckRequest={openDeckRequest}
-            onOpenDeckRequestConsumed={() => undefined}
-            onManageTemplates={onManageTemplates}
-            onViewChange={(view) => {
-              if (view === "detail" || view === "editor") {
-                detailOpenedRef.current = true;
-                setDetailReady(true);
-              }
-              if (view === "library" && detailOpenedRef.current) {
-                detailOpenedRef.current = false;
-                void onReturnToLibrary();
-              }
-            }}
-            onDirtyChange={onCardDirtyChange}
-            showToast={showToast}
-          />
-        </div>
-      </div>
+      <DeckDetailRoute
+        key={openDeckRequest.requestId}
+        decks={decks}
+        refreshDecks={refreshDecks}
+        onPracticeDeck={onPracticeDeck}
+        openRequest={openDeckRequest}
+        onReturnToLibrary={onReturnToLibrary}
+        onDirtyChange={onCardDirtyChange}
+        showToast={showToast}
+      />
     );
   }
 
