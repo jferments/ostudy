@@ -213,7 +213,7 @@ export async function updateAiProviderProfile(
       allowInsecureHttp: input.allowInsecureHttp,
       requireZeroDataRetention: input.requireZeroDataRetention ?? false,
       requestTimeoutMs: input.requestTimeoutMs,
-      editorDraft: input.editorDraft,
+      ...(input.editorDraft ? { editorDraft: input.editorDraft } : {}),
     },
   });
 }

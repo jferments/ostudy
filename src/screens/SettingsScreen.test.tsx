@@ -293,7 +293,9 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("heading", { name: "Planned providers" })).toBeNull();
     expect(screen.queryByRole("option", { name: /planned/u })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Default task profile" })).toBeNull();
-    expect(screen.getAllByRole("combobox", { name: "Flashcard generation" })).toHaveLength(1);
+    expect(
+      screen.getAllByRole("combobox", { name: "Flashcard and study-guide generation" }),
+    ).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Add model" }));
     const provider = await screen.findByRole("combobox", { name: "Provider" });
