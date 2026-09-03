@@ -48,11 +48,11 @@ vi.mock("./DeckDetailRoute", () => ({
     onReturnToLibrary,
   }: {
     openRequest: { requestId: number; deckId: string };
-    onReturnToLibrary: () => void | Promise<void>;
+    onReturnToLibrary: () => void;
   }) => (
     <div data-testid="deck-detail-workspace">
       <span>Deck card list for {openRequest.deckId}</span>
-      <button type="button" onClick={() => void onReturnToLibrary()}>
+      <button type="button" onClick={onReturnToLibrary}>
         Return to deck library
       </button>
     </div>
@@ -224,12 +224,15 @@ describe("DeckLibraryWorkspace", () => {
     ).toBe(true);
   });
 
-  it("mounts the route-owned card list immediately without a blocking loader", () => {
+  it("mounts the route-owned card workspace immediately without a loading gate", async () => {
     renderLibrary({
       openDeckRequest: { requestId: 7, deckId: pharmacology.id },
     });
 
-    expect(screen.getByText(`Deck card list for ${pharmacology.id}`)).toBeTruthy();
+    expect(
+      await screen.findByText(`Deck card list for ${pharmacology.id}`),
+    ).toBeTruthy();
+    expect(screen.getByTestId("deck-detail-workspace")).toBeTruthy();
     expect(screen.queryByText("Opening deck cards…")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Decks" })).toBeNull();
     expect(screen.queryByText("Pharmacology study deck")).toBeNull();
@@ -339,7 +342,7 @@ describe("DeckLibraryWorkspace", () => {
     await waitFor(() => expect(refreshDecks).toHaveBeenCalled());
   });
 
-  it("returns nested deck work through the explicit library-root callback", () => {
+  it("returns nested deck work through the explicit library-root callback", async () => {
     const onReturnToLibrary = vi.fn();
     renderLibrary({
       openDeckRequest: { requestId: 7, deckId: pharmacology.id },

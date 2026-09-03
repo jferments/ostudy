@@ -48,6 +48,8 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let resource_directory = app.path().resource_dir().ok();
     let paths = AppPaths::new(app_data_directory).map_err(io::Error::other)?;
     logging::initialize(paths.app_data_dir());
+    #[cfg(desktop)]
+    apply_main_window_icon(app);
     let pending_restore =
         library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
     let database = open_database_with_pre_public_adoption(&paths)?;
@@ -122,6 +124,36 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // keeps early diagnostic evidence available even after abrupt termination.
     let _ = logging::flush(Duration::from_millis(500));
     Ok(())
+}
+
+#[cfg(desktop)]
+fn apply_main_window_icon(app: &tauri::App) {
+    let Some(window) = app.get_webview_window("main") else {
+        logging::warn_target(
+            "app.startup",
+            "main_window_icon_skipped",
+            "The main window was unavailable while applying the packaged application icon.",
+            serde_json::json!({ "window": "main" }),
+        );
+        return;
+    };
+    let Some(icon) = app.default_window_icon().cloned() else {
+        logging::warn_target(
+            "app.startup",
+            "default_window_icon_missing",
+            "The packaged application icon was unavailable at startup.",
+            serde_json::json!({ "window": "main" }),
+        );
+        return;
+    };
+    if let Err(error) = window.set_icon(icon) {
+        logging::warn_target(
+            "app.startup",
+            "main_window_icon_failed",
+            "The desktop environment rejected the packaged application icon.",
+            serde_json::json!({ "window": "main", "error": error.to_string() }),
+        );
+    }
 }
 
 fn open_database_with_pre_public_adoption(

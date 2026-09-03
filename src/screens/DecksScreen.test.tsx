@@ -406,8 +406,8 @@ describe("DecksScreen", () => {
     },
     {
       mode: "medium",
-      direct: ["Practice", "Export", "Delete Dog facts"],
-      overflow: ["Archive Dog facts"],
+      direct: ["Practice", "Export", "Archive Dog facts", "Delete Dog facts"],
+      overflow: [],
     },
     {
       mode: "compact",

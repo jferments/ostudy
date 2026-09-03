@@ -263,7 +263,7 @@ export function InlineWorkspace({
           icon="close"
           iconSize={24}
           label={closeLabel}
-          tooltip={closeLabel}
+          tooltip={false}
           className={inlineStyles.inlineClose}
           disabled={!dismissible || busy}
           onClick={onClose}
