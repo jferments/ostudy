@@ -18,12 +18,12 @@ import {
   type StudyGuideOverlay,
   type TopicCardProjection,
 } from "../ipc/studyGuides";
-import { Dialog } from "../ui/overlays/Dialog";
-import styles from "./StudyGuideDialog.module.css";
+import { Icon } from "../ui/icons/Icon";
+import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import styles from "./StudyGuideDialog.module.css";
 
 const ownedStyleMaps = sharedClassMaps;
-
 
 interface StudyGuideDialogProps {
   documentId: string;
@@ -122,7 +122,10 @@ export function StudyGuideDialog({
       const code = getErrorCode(error);
       if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
         setErrorMessage(null);
-        showToast("info", "Study-guide generation stopped. Saved topic checkpoints can be reused on retry.");
+        showToast(
+          "info",
+          "Study-guide generation stopped. Saved topic checkpoints can be reused on retry.",
+        );
       } else {
         const message = getErrorMessage(error);
         setErrorMessage(message);
@@ -178,7 +181,10 @@ export function StudyGuideDialog({
     }
   }
 
-  async function discardOverlay(overlay: StudyGuideOverlay, successMessage: string): Promise<void> {
+  async function discardOverlay(
+    overlay: StudyGuideOverlay,
+    successMessage: string,
+  ): Promise<void> {
     if (isSaving) return;
     setIsSaving(true);
     try {
@@ -198,7 +204,12 @@ export function StudyGuideDialog({
     const topic = editing.topicId
       ? guide.sections.find((section) => section.topicId === editing.topicId) ?? null
       : null;
-    const existing = findEditingOverlay(guide.overlays, editing.topicId, editing.mode, guide.id);
+    const existing = findEditingOverlay(
+      guide.overlays,
+      editing.topicId,
+      editing.mode,
+      guide.id,
+    );
     const isBlank = editing.value.trim().length === 0;
     setIsSaving(true);
     try {
@@ -206,7 +217,10 @@ export function StudyGuideDialog({
         if (existing) {
           await discardDocumentStudyGuideOverlay(existing.id, existing.revision);
           await refresh();
-          showToast("success", editing.mode === "override" ? "Section edit reset." : "Note removed.");
+          showToast(
+            "success",
+            editing.mode === "override" ? "Section edit reset." : "Note removed.",
+          );
         }
         setEditing(null);
         return;
@@ -230,7 +244,10 @@ export function StudyGuideDialog({
       });
       await refresh();
       setEditing(null);
-      showToast("success", editing.mode === "override" ? "Section edit saved." : "Note saved.");
+      showToast(
+        "success",
+        editing.mode === "override" ? "Section edit saved." : "Note saved.",
+      );
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     } finally {
@@ -256,12 +273,22 @@ export function StudyGuideDialog({
   }
 
   function beginTopicNote(section: DocumentStudyGuideSection): void {
-    const overlay = findEditingOverlay(guide?.overlays ?? [], section.topicId, "note", guide?.id);
+    const overlay = findEditingOverlay(
+      guide?.overlays ?? [],
+      section.topicId,
+      "note",
+      guide?.id,
+    );
     setEditing({ topicId: section.topicId, mode: "note", value: overlay?.plainText ?? "" });
   }
 
   function beginSectionOverride(section: DocumentStudyGuideSection): void {
-    const overlay = findEditingOverlay(guide?.overlays ?? [], section.topicId, "override", guide?.id);
+    const overlay = findEditingOverlay(
+      guide?.overlays ?? [],
+      section.topicId,
+      "override",
+      guide?.id,
+    );
     setEditing({
       topicId: section.topicId,
       mode: "override",
@@ -270,12 +297,11 @@ export function StudyGuideDialog({
   }
 
   return (
-    <Dialog
+    <InlineWorkspace
       title={`Study guide · ${documentTitle}`}
       description="Source-grounded sections, learner notes, and topic-linked flashcards."
-      onClose={() => onClose()}
-      width="workspace"
-      presentation="fullscreen"
+      onClose={onClose}
+      closeLabel="Close study guide"
       className={styles.workspace}
       dismissible={!isGenerating && !isSaving && !isExporting}
       busy={isSaving || isExporting}
@@ -307,26 +333,41 @@ export function StudyGuideDialog({
               {isExporting ? "Exporting…" : "Export PDF"}
             </button>
           ) : null}
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={() => void openSource()}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={() => void openSource()}
+          >
             Open source
           </button>
           {isGenerating ? (
             <button
               type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+              className={`${ownedClassNames(ownedStyleMaps, "secondary-button")} ${styles.generationButton}`}
               disabled={isCanceling}
+              aria-label={
+                isCanceling
+                  ? "Stopping study guide generation"
+                  : "Generating study guide; click to stop"
+              }
               onClick={() => void stopGeneration()}
             >
-              {isCanceling ? "Stopping…" : "Stop generation"}
+              <span className={styles.stopSign} aria-hidden="true">
+                <Icon name="stop" size={18} />
+              </span>
+              {isCanceling ? "Stopping study guide…" : "Generating study guide…"}
             </button>
           ) : (
             <button
               type="button"
-              className={ownedClassNames(ownedStyleMaps, guide ? "secondary-button" : "primary-button")}
+              className={ownedClassNames(
+                ownedStyleMaps,
+                guide ? "secondary-button" : "primary-button",
+              )}
               disabled={isSaving || isExporting}
               onClick={() => void generate()}
             >
-              {guide ? "Regenerate" : "Create study guide"}
+              {guide ? "Regenerate study guide" : "Generate study guide"}
             </button>
           )}
         </div>
@@ -375,7 +416,11 @@ export function StudyGuideDialog({
                 </aside>
               ) : null}
               <div className={styles.editorActions}>
-                <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={beginGuideNote}>
+                <button
+                  type="button"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                  onClick={beginGuideNote}
+                >
                   {guideNote ? "Edit guide note" : "Add guide note"}
                 </button>
                 {guideNote ? (
@@ -413,7 +458,9 @@ export function StudyGuideDialog({
       {editing ? (
         <div className={styles.editor}>
           <label>
-            <strong>{editing.mode === "override" ? "Edit generated section" : "Personal note"}</strong>
+            <strong>
+              {editing.mode === "override" ? "Edit generated section" : "Personal note"}
+            </strong>
             <textarea
               value={editing.value}
               rows={10}
@@ -448,7 +495,7 @@ export function StudyGuideDialog({
           </div>
         </div>
       ) : null}
-    </Dialog>
+    </InlineWorkspace>
   );
 }
 
@@ -495,10 +542,18 @@ function StudyGuideSectionView({
           <h2>{section.title}</h2>
         </div>
         <div className={styles.sectionActions}>
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onOpenSource}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={onOpenSource}
+          >
             Open source
           </button>
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onEditNote}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={onEditNote}
+          >
             {note ? "Edit note" : "Add note"}
           </button>
           {note ? (
@@ -511,7 +566,11 @@ function StudyGuideSectionView({
               Remove note
             </button>
           ) : null}
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onEditSection}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={onEditSection}
+          >
             {override ? "Edit override" : "Edit section"}
           </button>
           {override ? (

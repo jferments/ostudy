@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { IconButton } from "../icons/IconButton";
 import { Button } from "../primitives/Button";
 import {
   type OverlayCloseReason,
@@ -17,6 +18,7 @@ import {
   useOverlayContext,
   useOverlayParentId,
 } from "./overlayContext";
+import inlineStyles from "./Dialog.module.css";
 import styles from "./overlays.module.css";
 
 export interface DialogProps {
@@ -31,6 +33,17 @@ export interface DialogProps {
   busy?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
   className?: string;
+}
+
+export interface InlineWorkspaceProps {
+  title: string;
+  description?: string;
+  children: ReactNode;
+  onClose: () => void;
+  dismissible?: boolean;
+  busy?: boolean;
+  className?: string;
+  closeLabel?: string;
 }
 
 const FOCUSABLE = [
@@ -187,6 +200,77 @@ export function Dialog({
       </section>
     </dialog>,
     document.body,
+  );
+}
+
+/**
+ * Route-owned workspace presentation for substantial content that must keep
+ * the application navigation visible and usable. Unlike Dialog, this does not
+ * use a portal, modal top layer, inert background, or focus trap.
+ */
+export function InlineWorkspace({
+  title,
+  description,
+  children,
+  onClose,
+  dismissible = true,
+  busy = false,
+  className = "",
+  closeLabel = "Close workspace",
+}: InlineWorkspaceProps) {
+  const reactId = useId().replaceAll(":", "");
+  const titleId = `inline-workspace-${reactId}-title`;
+  const descriptionId = `inline-workspace-${reactId}-description`;
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    queueMicrotask(() => closeRef.current?.focus());
+    return () => {
+      const opener = openerRef.current;
+      if (opener?.isConnected) queueMicrotask(() => opener.focus());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dismissible || busy) return;
+    function handleEscape(event: globalThis.KeyboardEvent): void {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      onClose();
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [busy, dismissible, onClose]);
+
+  return (
+    <section
+      className={`${inlineStyles.inlineWorkspace} ${className}`.trim()}
+      role="region"
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
+      aria-busy={busy || undefined}
+      data-inline-workspace="true"
+    >
+      <header className={inlineStyles.inlineHeader}>
+        <div className={inlineStyles.heading}>
+          <h2 id={titleId}>{title}</h2>
+          {description ? <p id={descriptionId}>{description}</p> : null}
+        </div>
+        <IconButton
+          ref={closeRef}
+          icon="close"
+          iconSize={24}
+          label={closeLabel}
+          tooltip={closeLabel}
+          className={inlineStyles.inlineClose}
+          disabled={!dismissible || busy}
+          onClick={onClose}
+        />
+      </header>
+      <div className={inlineStyles.inlineBody}>{children}</div>
+    </section>
   );
 }
 
