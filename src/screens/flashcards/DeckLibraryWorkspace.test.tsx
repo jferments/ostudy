@@ -42,26 +42,17 @@ vi.mock("../../ipc/deckFolders", () => ({
   moveDeckFolder: vi.fn(),
 }));
 
-vi.mock("../DecksScreen", () => ({
-  DecksScreen: ({
-    openDeckRequest,
-    onViewChange,
+vi.mock("./DeckDetailRoute", () => ({
+  DeckDetailRoute: ({
+    openRequest,
+    onReturnToLibrary,
   }: {
-    openDeckRequest?: { requestId: number; deckId: string } | null;
-    onViewChange?: (view: "library" | "detail" | "editor") => void;
+    openRequest: { requestId: number; deckId: string };
+    onReturnToLibrary: () => void | Promise<void>;
   }) => (
     <div data-testid="deck-detail-workspace">
-      <span>Deck card list for {openDeckRequest?.deckId}</span>
-      <button type="button" onClick={() => onViewChange?.("detail")}>
-        Reveal deck card list
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          onViewChange?.("detail");
-          onViewChange?.("library");
-        }}
-      >
+      <span>Deck card list for {openRequest.deckId}</span>
+      <button type="button" onClick={() => void onReturnToLibrary()}>
         Return to deck library
       </button>
     </div>
@@ -233,20 +224,15 @@ describe("DeckLibraryWorkspace", () => {
     ).toBe(true);
   });
 
-  it("never exposes the legacy tiled library while a deck-detail route is loading", async () => {
+  it("mounts the route-owned card list immediately without a blocking loader", () => {
     renderLibrary({
       openDeckRequest: { requestId: 7, deckId: pharmacology.id },
     });
 
-    expect(await screen.findByText("Opening deck cards…")).toBeTruthy();
+    expect(screen.getByText(`Deck card list for ${pharmacology.id}`)).toBeTruthy();
+    expect(screen.queryByText("Opening deck cards…")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Decks" })).toBeNull();
     expect(screen.queryByText("Pharmacology study deck")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Reveal deck card list" }));
-    expect(
-      await screen.findByText(`Deck card list for ${pharmacology.id}`),
-    ).toBeTruthy();
-    expect(screen.queryByText("Opening deck cards…")).toBeNull();
   });
 
   it("uses exact direct bulk labels and icons without a one-item ellipsis menu", async () => {
@@ -353,7 +339,7 @@ describe("DeckLibraryWorkspace", () => {
     await waitFor(() => expect(refreshDecks).toHaveBeenCalled());
   });
 
-  it("returns nested deck work through the explicit library-root callback", async () => {
+  it("returns nested deck work through the explicit library-root callback", () => {
     const onReturnToLibrary = vi.fn();
     renderLibrary({
       openDeckRequest: { requestId: 7, deckId: pharmacology.id },
