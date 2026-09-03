@@ -66,7 +66,6 @@ export const FolderSection = memo(function FolderSection({
       data-folder-index={folderIndex}
       data-destination-name={folder.name}
       data-collapsed={collapsed ? "true" : "false"}
-      onDragStart={(event) => event.preventDefault()}
     >
       <header className={styles.header}>
         <button

@@ -49,8 +49,6 @@ export const DeckItem = memo(function DeckItem({
       data-item-index={archived ? undefined : index}
       data-item-name={archived ? undefined : deck.name}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
-      draggable={false}
-      onDragStart={(event) => event.preventDefault()}
     >
       <label className={styles.selection} data-library-no-pointer-drag="true">
         <input
