@@ -374,12 +374,6 @@ fn render_study_guide_pdf(
         BODY_LINE_HEIGHT,
         false,
     )?;
-    writer.paragraph(
-        &format!("Guide revision: {}", export.guide_revision),
-        BODY_SIZE,
-        BODY_LINE_HEIGHT,
-        false,
-    )?;
     writer.spacer(10.0)?;
 
     writer.heading("Overview", 16.0, 21.0)?;
@@ -765,6 +759,24 @@ mod tests {
         let second = wrap_text(text, 100.0, 10.0);
         assert_eq!(first, second);
         assert!(first.len() > 1);
+    }
+
+    #[test]
+    fn rendered_pdf_omits_internal_guide_revision() {
+        let export = test_export();
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-study-guide-no-revision-{}.pdf",
+            std::process::id()
+        ));
+        render_study_guide_pdf(&export, &root).unwrap();
+        let bytes = fs::read(&root).unwrap();
+        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
+        let parsed = PdfDocument::new(reader);
+        let text = parsed.extract_text_from_page(0).unwrap().text;
+        assert!(text.contains("Cardiovascular Physiology"));
+        assert!(!text.contains("Guide revision"));
+        assert!(!text.contains("Revision 2"));
+        fs::remove_file(root).unwrap();
     }
 
     #[test]

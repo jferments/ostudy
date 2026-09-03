@@ -73,4 +73,12 @@ describe("DeckDetailRoute", () => {
     expect(screen.queryByRole("heading", { name: "Decks" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Deck library" })).toBeNull();
   });
+
+  it("places source provenance after the card listing", () => {
+    renderRoute();
+
+    const cards = screen.getByRole("region", { name: "Deck cards" });
+    const source = screen.getByText("Source citation");
+    expect(cards.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

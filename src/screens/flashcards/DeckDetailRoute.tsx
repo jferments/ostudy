@@ -19,6 +19,7 @@ import {
   type CardBrowserView,
 } from "../cards/CardBrowserWorkspace";
 import { useCardPracticeLauncher } from "../cards/CardPracticeContext";
+import polishStyles from "./DeckDetailRoute.module.css";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
 
@@ -176,10 +177,10 @@ export function DeckDetailRoute({
 
   return (
     <div
-      className={ownedClassNames(
+      className={`${ownedClassNames(
         ownedStyleMaps,
         browserView === "editor" ? "deck-card-browser-editor-host" : "screen decks-screen",
-      )}
+      )} ${polishStyles.route}`}
     >
       {browserView === "list" ? (
         <>
@@ -241,7 +242,6 @@ export function DeckDetailRoute({
               ]}
             />
           </header>
-          <SourceCitationPanel deckId={deck.id} />
           {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
         </>
       ) : null}
@@ -258,6 +258,12 @@ export function DeckDetailRoute({
         onViewChange={setBrowserView}
         showToast={showToast}
       />
+
+      {browserView === "list" ? (
+        <footer className={polishStyles.sourceFooter}>
+          <SourceCitationPanel deckId={deck.id} />
+        </footer>
+      ) : null}
     </div>
   );
 }

@@ -233,7 +233,6 @@ function GuideRow({
             <span>
               {item.noteCount} note{item.noteCount === 1 ? "" : "s"}
             </span>
-            <span>Revision {item.guideRevision}</span>
             <span>{formatDate(item.publishedAt)}</span>
           </span>
         </span>

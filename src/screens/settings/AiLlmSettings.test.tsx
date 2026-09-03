@@ -2,7 +2,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
-import type { AiProviderCatalogEntry, AiProviderProfileDetail } from "../../ipc/aiProfiles";
+import type {
+  AiProviderCatalogEntry,
+  AiProviderModel,
+  AiProviderProfileDetail,
+} from "../../ipc/aiProfiles";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { AiLlmSettings } from "./AiLlmSettings";
 
@@ -58,19 +62,20 @@ function profile(): AiProviderProfileDetail {
 
 function controller(): AiProfilesController {
   const selected = profile();
-  const models = Array.from({ length: 411 }, (_, index) => ({
+  const models: AiProviderModel[] = Array.from({ length: 411 }, (_, index) => ({
     id: `provider/model-${String(index).padStart(3, "0")}`,
     displayName: `Provider Model ${String(index).padStart(3, "0")}`,
     ownedBy: "provider",
-    reasoning: index === 0
-      ? {
-          supportedEfforts: ["low", "medium", "high"] as const,
-          defaultEffort: "medium" as const,
-          defaultEnabled: true,
-          supportsMaxTokens: true,
-          mandatory: false,
-        }
-      : null,
+    reasoning:
+      index === 0
+        ? {
+            supportedEfforts: ["low", "medium", "high"],
+            defaultEffort: "medium",
+            defaultEnabled: true,
+            supportsMaxTokens: true,
+            mandatory: false,
+          }
+        : null,
   }));
   models.push({
     id: "zeta/final-model",

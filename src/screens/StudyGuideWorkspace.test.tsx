@@ -58,7 +58,7 @@ describe("StudyGuideWorkspace", () => {
     vi.mocked(studyGuides.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
   });
 
-  it("keeps application navigation usable and presents a visible close action", async () => {
+  it("keeps application navigation usable and presents a tooltip-free close action", async () => {
     const onClose = vi.fn();
     render(
       <>
@@ -78,14 +78,18 @@ describe("StudyGuideWorkspace", () => {
     expect(await screen.findByRole("heading", { name: "Shock physiology" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Primary navigation" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("Revision 4")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Regenerate study guide" })).toBeNull();
     const close = screen.getByRole("button", { name: "Close study guide" });
-    expect(close.className).toMatch(/closeButton/u);
+    fireEvent.focus(close);
+    expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(close);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("turns the generating button itself into the stop control", async () => {
+  it("turns initial generation into the stop control without exposing regeneration", async () => {
     const generation = pending<DocumentStudyGuide>();
+    vi.mocked(studyGuides.getDocumentStudyGuide).mockResolvedValue(null);
     vi.mocked(studyGuides.generateDocumentStudyGuide).mockReturnValue(generation.promise);
     render(
       <StudyGuideWorkspace
@@ -97,13 +101,12 @@ describe("StudyGuideWorkspace", () => {
       />,
     );
 
-    await screen.findByRole("heading", { name: "Shock physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "Regenerate study guide" }));
+    await screen.findByRole("heading", { name: "No study guide yet" });
+    fireEvent.click(screen.getByRole("button", { name: "Generate study guide" }));
 
     const stop = await screen.findByRole("button", { name: "Stop study guide generation" });
     expect(stop.textContent).toContain("Generating study guide");
     expect(stop.querySelector("span span")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Stop generation/u })).toBeNull();
 
     fireEvent.click(stop);
     await waitFor(() =>
@@ -112,5 +115,8 @@ describe("StudyGuideWorkspace", () => {
       ),
     );
     generation.resolve(guide);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Regenerate study guide" })).toBeNull(),
+    );
   });
 });

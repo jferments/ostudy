@@ -110,14 +110,14 @@ export function StudyGuideWorkspace({
       }
       return;
     }
-    if (isSaving || isExporting) return;
+    if (guide || isSaving || isExporting) return;
     setIsGenerating(true);
     setErrorMessage(null);
     try {
       const generated = await generateDocumentStudyGuide(documentId);
       setGuide(generated);
       setEditing(null);
-      showToast("success", guide ? "Study guide regenerated." : "Study guide created.");
+      showToast("success", "Study guide created.");
     } catch (error: unknown) {
       const code = getErrorCode(error);
       if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
@@ -146,9 +146,15 @@ export function StudyGuideWorkspace({
       preparedExportId = prepared.preparedExport.id;
       const receipt = await publishPreparedExport(prepared.preparedExport.id);
       if (receipt) {
+        const annotationSummary =
+          prepared.annotationCount > 0
+            ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}`
+            : "";
         showToast(
           "success",
-          `Exported study guide revision ${prepared.guideRevision} with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}.`,
+          `Exported study guide with ${prepared.sectionCount} section${
+            prepared.sectionCount === 1 ? "" : "s"
+          }${annotationSummary}.`,
         );
       }
     } catch (error: unknown) {
@@ -284,7 +290,6 @@ export function StudyGuideWorkspace({
         <div className={styles.heading}>
           <p className={styles.eyebrow}>Study guide</p>
           <h1>{documentTitle}</h1>
-          <span>{guide ? `Revision ${guide.revision}` : "Not generated yet"}</span>
         </div>
         <div className={styles.headerActions}>
           {guide ? (
@@ -312,39 +317,37 @@ export function StudyGuideWorkspace({
           <Button type="button" variant="secondary" onClick={() => void openSource()}>
             Open source
           </Button>
-          <button
-            type="button"
-            className={`${styles.generateButton} ${isGenerating ? styles.generating : ""}`.trim()}
-            disabled={isSaving || isExporting || isCanceling}
-            aria-label={
-              isGenerating
-                ? isCanceling
-                  ? "Stopping study guide generation"
-                  : "Stop study guide generation"
-                : guide
-                  ? "Regenerate study guide"
+          {!isLoading && (!guide || isGenerating) ? (
+            <button
+              type="button"
+              className={`${styles.generateButton} ${isGenerating ? styles.generating : ""}`.trim()}
+              disabled={isSaving || isExporting || isCanceling}
+              aria-label={
+                isGenerating
+                  ? isCanceling
+                    ? "Stopping study guide generation"
+                    : "Stop study guide generation"
                   : "Generate study guide"
-            }
-            onClick={() => void generateOrStop()}
-          >
-            {isGenerating ? (
-              <span className={styles.stopSign} aria-hidden="true">
-                <span />
-              </span>
-            ) : null}
-            {isCanceling
-              ? "Stopping study guide…"
-              : isGenerating
-                ? "Generating study guide"
-                : guide
-                  ? "Regenerate"
+              }
+              onClick={() => void generateOrStop()}
+            >
+              {isGenerating ? (
+                <span className={styles.stopSign} aria-hidden="true">
+                  <span />
+                </span>
+              ) : null}
+              {isCanceling
+                ? "Stopping study guide…"
+                : isGenerating
+                  ? "Generating study guide"
                   : "Generate study guide"}
-          </button>
+            </button>
+          ) : null}
           <IconButton
             icon="close"
             iconSize={24}
             label="Close study guide"
-            tooltip="Close study guide"
+            tooltip={false}
             className={styles.closeButton}
             disabled={isGenerating || isSaving || isExporting}
             onClick={onClose}
@@ -485,7 +488,7 @@ export function StudyGuideWorkspace({
             </Button>
             <p>
               Generated sections remain connected to the source document and linked flashcards.
-              Personal notes remain stable across regeneration.
+              Personal notes remain stable when a guide is generated again from Documents.
             </p>
           </aside>
         </div>
@@ -507,7 +510,7 @@ export function StudyGuideWorkspace({
           <p>
             {editing.mode === "override"
               ? "This non-destructive edit is tied to the generated base. Clear the text and save to reset it."
-              : "Personal notes attach to the document or stable topic and remain across regeneration."}
+              : "Personal notes attach to the document or stable topic and remain across later generation."}
           </p>
           <div className={styles.sectionActions}>
             <Button type="button" variant="primary" disabled={isSaving} onClick={() => void saveEditing()}>

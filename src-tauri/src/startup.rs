@@ -14,6 +14,10 @@ mod pre_public_transition;
 
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 
+#[cfg(desktop)]
+const MAIN_WINDOW_ICON: tauri::image::Image<'static> =
+    tauri::include_image!("./icons/128x128.png");
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StartupFailureKind {
     PrePublicDatabase,
@@ -132,25 +136,16 @@ fn apply_main_window_icon(app: &tauri::App) {
         logging::warn_target(
             "app.startup",
             "main_window_icon_skipped",
-            "The main window was unavailable while applying the packaged application icon.",
+            "The main window was unavailable while applying the embedded application icon.",
             serde_json::json!({ "window": "main" }),
         );
         return;
     };
-    let Some(icon) = app.default_window_icon().cloned() else {
-        logging::warn_target(
-            "app.startup",
-            "default_window_icon_missing",
-            "The packaged application icon was unavailable at startup.",
-            serde_json::json!({ "window": "main" }),
-        );
-        return;
-    };
-    if let Err(error) = window.set_icon(icon) {
+    if let Err(error) = window.set_icon(MAIN_WINDOW_ICON.clone()) {
         logging::warn_target(
             "app.startup",
             "main_window_icon_failed",
-            "The desktop environment rejected the packaged application icon.",
+            "The desktop environment rejected the embedded application icon.",
             serde_json::json!({ "window": "main", "error": error.to_string() }),
         );
     }

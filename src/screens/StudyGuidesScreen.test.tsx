@@ -106,6 +106,7 @@ describe("StudyGuidesScreen", () => {
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
     expect(screen.getByText("6 sections")).toBeTruthy();
     expect(screen.getByText("2 notes")).toBeTruthy();
+    expect(screen.queryByText("Revision 3")).toBeNull();
     expect(studyGuides.listDocumentStudyGuidePage).toHaveBeenCalledWith({
       query: "",
       sort: "recent",
