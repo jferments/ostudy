@@ -54,6 +54,22 @@ export function StudyGuidesScreen({
     controller.submitSearch();
   }
 
+  if (controller.selected) {
+    return (
+      <PageScaffold width="full" aria-label="Study Guides">
+        <PerformanceProfiler id="guide-dialog">
+          <StudyGuideDialog
+            documentId={controller.selected.documentId}
+            documentTitle={controller.selected.documentTitle}
+            showToast={showToast}
+            onPracticeCards={onPracticeCards}
+            onClose={controller.closeGuide}
+          />
+        </PerformanceProfiler>
+      </PageScaffold>
+    );
+  }
+
   return (
     <PageScaffold width="full" aria-label="Study Guides">
       <PageHeader
@@ -186,18 +202,6 @@ export function StudyGuidesScreen({
           ) : null}
         </Surface>
       </PerformanceProfiler>
-
-      {controller.selected ? (
-        <PerformanceProfiler id="guide-dialog">
-          <StudyGuideDialog
-            documentId={controller.selected.documentId}
-            documentTitle={controller.selected.documentTitle}
-            showToast={showToast}
-            onPracticeCards={onPracticeCards}
-            onClose={controller.closeGuide}
-          />
-        </PerformanceProfiler>
-      ) : null}
     </PageScaffold>
   );
 }
