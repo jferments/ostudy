@@ -248,7 +248,7 @@ impl SecretManager {
             }
             CredentialPersistence::Session => {
                 // Install the usable in-memory credential first. An unavailable
-                // keyring must never block the explicitly selected session-only
+                // secure store must never block the explicitly selected session-only
                 // fallback. Any old secure entry becomes unreferenced and is
                 // removed on a best-effort basis without logging credential data.
                 self.insert_session(profile_id, credential.into_bytes())?;
@@ -438,7 +438,7 @@ mod tests {
                 CredentialPersistence::Session,
                 CredentialStorage::Secure,
             )
-            .expect("unavailable keyring must not block session fallback");
+            .expect("unavailable secure store must not block session fallback");
 
         let status = manager
             .status(profile_id, AuthMode::Bearer, CredentialStorage::Secure)
