@@ -282,6 +282,8 @@ impl SecretManager {
             let reason = match error {
                 SecretStoreError::Unavailable => "unavailable",
                 SecretStoreError::Locked => "locked",
+                SecretStoreError::PermissionDenied => "permission_denied",
+                SecretStoreError::Invalidated => "invalidated",
                 SecretStoreError::Failed => "failed",
             };
             logging::warn_target(
