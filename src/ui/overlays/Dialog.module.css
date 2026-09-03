@@ -1,0 +1,164 @@
+@layer overlays {
+  .backdrop {
+    position: fixed;
+    z-index: var(--ostudy-layer-dialog);
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: auto;
+    padding: max(var(--ostudy-space-4), var(--safe-top)) max(var(--ostudy-space-4), var(--safe-right)) max(var(--ostudy-space-4), calc(var(--safe-bottom) + var(--android-ime-bottom))) max(var(--ostudy-space-4), var(--safe-left));
+    background: var(--ostudy-color-backdrop);
+    backdrop-filter: blur(var(--ostudy-material-backdrop-blur));
+  }
+
+  .dialog {
+    display: flex;
+    width: min(100%, 40rem);
+    max-height: min(90dvh, 52rem);
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-xl);
+    background: color-mix(in srgb, var(--ostudy-color-surface-raised) var(--ostudy-material-panel-opacity), transparent);
+    box-shadow: var(--ostudy-shadow-level-4);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .dialog[data-width="small"] { width: min(100%, 30rem); }
+  .dialog[data-width="medium"] { width: min(100%, 40rem); }
+  .dialog[data-width="large"] { width: min(100%, 58rem); }
+  .dialog[data-width="workspace"] { width: min(100%, 76rem); }
+
+  .header,
+  .inlineHeader {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ostudy-space-4);
+    border-bottom: 1px solid var(--ostudy-color-border-subtle);
+    padding: var(--ostudy-space-5);
+  }
+
+  .heading { min-width: 0; }
+  .heading h2 { margin: 0; font-size: 1.2rem; }
+  .heading p {
+    margin: var(--ostudy-space-2) 0 0;
+    color: var(--ostudy-color-text-muted);
+    line-height: 1.5;
+  }
+
+  .body,
+  .inlineBody {
+    min-width: 0;
+    overflow: auto;
+    padding: var(--ostudy-space-5);
+  }
+
+  .inlineWorkspace {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-xl);
+    background: color-mix(in srgb, var(--ostudy-color-surface-raised) var(--ostudy-material-panel-opacity), transparent);
+    box-shadow: var(--ostudy-shadow-level-2);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .inlineHeader {
+    position: sticky;
+    z-index: var(--ostudy-layer-sticky);
+    inset-block-start: 0;
+    flex: 0 0 auto;
+    background: var(--ostudy-color-surface-raised);
+  }
+
+  .inlineBody {
+    flex: 1 1 auto;
+    padding: 0;
+  }
+
+  .inlineClose {
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    border-color: color-mix(in srgb, var(--ostudy-color-status-danger) 70%, var(--ostudy-color-border-strong)) !important;
+    background: var(--ostudy-color-status-danger-soft) !important;
+    color: var(--ostudy-color-status-danger) !important;
+    box-shadow: var(--ostudy-shadow-level-1);
+  }
+
+  .inlineClose:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ostudy-color-status-danger-soft) 72%, var(--ostudy-color-status-danger)) !important;
+    color: var(--ostudy-color-status-danger-on) !important;
+  }
+
+  .dialog[data-presentation="fullscreen"] {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .backdrop[data-presentation="fullscreen"] {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .dialog[data-presentation="fullscreen"] .header {
+    padding-block-start: max(var(--ostudy-space-4), var(--dialog-safe-top, var(--safe-top)));
+    padding-inline-end: max(var(--ostudy-space-4), var(--safe-right));
+    padding-inline-start: max(var(--ostudy-space-4), var(--safe-left));
+  }
+
+  .dialog[data-presentation="fullscreen"] .body {
+    padding-inline-end: max(var(--ostudy-space-4), var(--safe-right));
+    padding-block-end: max(var(--ostudy-space-4), calc(var(--safe-bottom) + var(--android-ime-bottom)));
+    padding-inline-start: max(var(--ostudy-space-4), var(--safe-left));
+  }
+
+  :global(:root[data-motion="reduced"]) .backdrop,
+  :global(:root[data-motion="none"]) .backdrop {
+    backdrop-filter: none;
+  }
+
+  @media (max-width: 760px) {
+    .backdrop {
+      place-items: end stretch;
+      padding: max(var(--ostudy-space-2), var(--safe-top)) max(var(--ostudy-space-2), var(--safe-right)) max(var(--ostudy-space-2), calc(var(--safe-bottom) + var(--android-ime-bottom))) max(var(--ostudy-space-2), var(--safe-left));
+    }
+
+    .dialog:not([data-presentation="fullscreen"]) {
+      width: 100%;
+      max-height: min(92dvh, 52rem);
+      border-end-end-radius: 0;
+      border-end-start-radius: 0;
+    }
+
+    .header,
+    .inlineHeader { padding: var(--ostudy-space-4); }
+    .body { padding: var(--ostudy-space-4); }
+    .inlineWorkspace { border-radius: var(--ostudy-radius-large); }
+  }
+
+  @media (forced-colors: active) {
+    .dialog,
+    .inlineWorkspace {
+      border: 2px solid CanvasText;
+      background: Canvas;
+      color: CanvasText;
+      forced-color-adjust: auto;
+    }
+
+    .backdrop { background: Canvas; backdrop-filter: none; }
+    .header,
+    .inlineHeader { border-color: CanvasText; }
+    .inlineClose { border-color: LinkText !important; color: LinkText !important; }
+  }
+}
