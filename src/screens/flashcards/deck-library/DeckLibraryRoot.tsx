@@ -79,8 +79,8 @@ export function DeckLibraryRoot({
         secondaryActions={[
           {
             id: "move",
-            label: "Move selected",
-            placement: "wide-and-medium",
+            label: "Move",
+            placement: "always-visible",
             disabled:
               controller.selectionAnalysis.activeIds.length === 0 ||
               controller.selectionAnalysis.archivedIds.length > 0 ||
@@ -95,7 +95,10 @@ export function DeckLibraryRoot({
                   label: controller.selectionAnalysis.isMixedLifecycle
                     ? "Archive active selected"
                     : "Archive selected",
-                  placement: "wide-only" as const,
+                  description: "Archive selected decks",
+                  placement: "always-visible" as const,
+                  presentation: "icon" as const,
+                  icon: "archive" as const,
                   disabled: selectionUnavailable || controller.isMutating,
                   onSelect: () => void controller.setSelectionArchived(true),
                 },
@@ -108,7 +111,10 @@ export function DeckLibraryRoot({
                   label: controller.selectionAnalysis.isMixedLifecycle
                     ? "Restore archived selected"
                     : "Restore selected",
-                  placement: "wide-only" as const,
+                  description: "Restore selected decks",
+                  placement: "always-visible" as const,
+                  presentation: "icon" as const,
+                  icon: "restore" as const,
                   disabled: selectionUnavailable || controller.isMutating,
                   onSelect: () => void controller.setSelectionArchived(false),
                 },
@@ -117,7 +123,10 @@ export function DeckLibraryRoot({
           {
             id: "delete",
             label: "Delete selected",
-            placement: "overflow-only",
+            description: "Delete selected decks",
+            placement: "always-visible",
+            presentation: "icon",
+            icon: "delete",
             destructive: true,
             disabled: selectionUnavailable || controller.isMutating,
             onSelect: () => void controller.deleteSelection(),
@@ -212,7 +221,7 @@ function ReadyDeckLibrary({
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
       />
-      <LibraryDragFeedback feedback={pointer.feedback} bindPreview={pointer.bindPreview} />
+      <LibraryDragFeedback feedback={pointer.feedback} />
     </>
   );
 }
