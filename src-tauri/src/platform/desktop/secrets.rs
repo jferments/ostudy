@@ -17,10 +17,11 @@ impl SecureSecretStore for KeyringSecretStore {
         match entry.get_secret() {
             Ok(_) | Err(KeyringError::NoEntry) => SecretStoreAvailability::Available,
             Err(error) => match classify_error(error) {
-                SecretStoreError::Unavailable | SecretStoreError::Locked => {
-                    SecretStoreAvailability::Unavailable
-                }
-                SecretStoreError::Failed => SecretStoreAvailability::Unavailable,
+                SecretStoreError::Locked => SecretStoreAvailability::Locked,
+                SecretStoreError::Unavailable
+                | SecretStoreError::PermissionDenied
+                | SecretStoreError::Invalidated
+                | SecretStoreError::Failed => SecretStoreAvailability::Unavailable,
             },
         }
     }
