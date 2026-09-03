@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { DeckSummary } from "../../ipc/decks";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
-import { OverlayProvider } from "../../ui/overlays/overlayContext";
+import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { CardPracticeProvider } from "../cards/CardPracticeContext";
 import { DeckDetailRoute } from "./DeckDetailRoute";
 
