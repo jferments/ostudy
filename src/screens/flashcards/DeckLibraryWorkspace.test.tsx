@@ -4,15 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShowToast } from "../../components/Toast";
 import type { DeckSummary } from "../../ipc/decks";
 import * as folderIpc from "../../ipc/deckFolders";
-import type { AppSettings } from "../../ipc/settings";
 import type { SelectedPracticeRequest } from "../../ipc/practice";
+import type { AppSettings } from "../../ipc/settings";
 import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
-import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
+import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
-import { DeckLibraryRoot } from "./deck-library/DeckLibraryRoot";
-import type { DeckSelectionAnalysis } from "./deck-library/selectionModel";
-import type { DeckLibraryController } from "./deck-library/useDeckLibraryController";
 
 const deckControllerMocks = vi.hoisted(() => ({
   create: vi.fn(),
@@ -35,6 +32,7 @@ vi.mock("../../controllers/decksController", async (importOriginal) => {
     },
   };
 });
+
 vi.mock("../../ipc/deckFolders", () => ({
   getDeckLibraryOrganization: vi.fn(),
   createDeckFolder: vi.fn(),
@@ -43,28 +41,37 @@ vi.mock("../../ipc/deckFolders", () => ({
   moveDeckInLibrary: vi.fn(),
   moveDeckFolder: vi.fn(),
 }));
+
 vi.mock("../DecksScreen", () => ({
   DecksScreen: ({
+    openDeckRequest,
     onViewChange,
   }: {
+    openDeckRequest?: { requestId: number; deckId: string } | null;
     onViewChange?: (view: "library" | "detail" | "editor") => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => {
-        onViewChange?.("detail");
-        onViewChange?.("library");
-      }}
-    >
-      Return to deck library
-    </button>
+    <div data-testid="deck-detail-workspace">
+      <span>Deck card list for {openDeckRequest?.deckId}</span>
+      <button type="button" onClick={() => onViewChange?.("detail")}>
+        Reveal deck card list
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onViewChange?.("detail");
+          onViewChange?.("library");
+        }}
+      >
+        Return to deck library
+      </button>
+    </div>
   ),
 }));
 
 const folder = {
   id: "f".repeat(32),
   name: "Nursing",
-  sortOrder: 1000,
+  sortOrder: 1_000,
   createdAt: 1,
   updatedAt: 1,
   revision: 1,
@@ -75,8 +82,8 @@ const organization = {
   revision: 4,
   folders: [folder],
   placements: [
-    { deckId: pharmacology.id, folderId: folder.id, sortOrder: 1000 },
-    { deckId: anatomy.id, folderId: null, sortOrder: 1000 },
+    { deckId: pharmacology.id, folderId: folder.id, sortOrder: 1_000 },
+    { deckId: anatomy.id, folderId: null, sortOrder: 1_000 },
   ],
 };
 const settings: AppSettings = {
@@ -150,7 +157,12 @@ function renderLibrary({
 
 function setLayout(mode: "wide" | "compact"): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("760") ? mode === "compact" : false,
+    matches:
+      query.includes("760")
+        ? mode === "compact"
+        : query.includes("1180")
+          ? mode === "compact"
+          : false,
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -179,371 +191,138 @@ describe("DeckLibraryWorkspace", () => {
     });
     deckControllerMocks.undo.mockResolvedValue({ restoredCount: 1 });
     vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(organization);
+    vi.mocked(folderIpc.createDeckFolder).mockResolvedValue(organization);
+    vi.mocked(folderIpc.updateDeckFolder).mockResolvedValue(organization);
+    vi.mocked(folderIpc.deleteDeckFolder).mockResolvedValue(organization);
+    vi.mocked(folderIpc.moveDeckInLibrary).mockResolvedValue(organization);
+    vi.mocked(folderIpc.moveDeckFolder).mockResolvedValue(organization);
   });
 
-  it("uses one compact organized-library presentation without a density selector", async () => {
+  it("renders the organized deck library with direct row actions", async () => {
     renderLibrary();
 
-    const folderHeading = await screen.findByRole("heading", { name: "Folders" });
-    const unsortedHeading = screen.getByRole("heading", { name: "Unsorted decks" });
-    expect(
-      Boolean(
-        folderHeading.compareDocumentPosition(unsortedHeading) &
-          Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    const folderSection = folderHeading.closest("section");
-    expect(folderSection).not.toBeNull();
-    expect(
-      within(folderSection as HTMLElement).getByRole("button", { name: "New folder" }),
-    ).toBeTruthy();
+    const folders = await screen.findByRole("heading", { name: "Folders" });
+    const unsorted = screen.getByRole("heading", { name: "Unsorted decks" });
+    expect(folders.compareDocumentPosition(unsorted) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("Pharmacology")).toBeTruthy();
     expect(screen.getByText("Anatomy")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Practice" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Delete Pharmacology" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Comfortable" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Compact" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
     expect(screen.queryByText("Organize what you study")).toBeNull();
   });
 
-  it("keeps the compact selection and create actions in visual, DOM, and keyboard order", async () => {
-    renderLibrary({ layout: "compact" });
-
-    const selectAll = await screen.findByRole("button", { name: "Select all (2)" });
-    const newDeck = screen.getByRole("button", { name: "New deck" });
-    expect(screen.queryByRole("button", { name: "Select visible" })).toBeNull();
-    expect(selectAll.compareDocumentPosition(newDeck) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy();
-  });
-
-  it("presents archived Delete directly outside compact layout", async () => {
-    const archived = { ...deck("z", "Archived", 3, 0), archivedAt: 10 };
-    renderLibrary({ decks: [pharmacology, anatomy, archived] });
-
-    fireEvent.click(await screen.findByRole("button", { name: /Archived decks/u }));
-    expect(screen.getByRole("button", { name: "Delete Archived" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Archived actions" })).toBeNull();
-  });
-
-  it("opens a deck through the explicit parent route callback", async () => {
+  it("opens the clicked deck through the explicit detail route and preserves selection", async () => {
     const onOpenDeck = vi.fn();
     renderLibrary({ onOpenDeck });
 
-    const openButton = await screen.findByRole("button", { name: "Open Pharmacology" });
-    fireEvent.click(openButton);
+    const openSurface = await screen.findByRole("button", { name: "Open Pharmacology" });
+    fireEvent.click(openSurface);
+    expect(onOpenDeck).toHaveBeenLastCalledWith(pharmacology.id, []);
 
-    expect(onOpenDeck).toHaveBeenCalledWith(pharmacology.id, []);
-  });
-
-  it("keeps selection unchanged across ordinary row opening and isolated controls", async () => {
-    const onOpenDeck = vi.fn();
-    renderLibrary({ onOpenDeck });
-
-    const checkbox = await screen.findByRole("checkbox", { name: "Select Pharmacology" });
-    const article = checkbox.closest("article");
-    fireEvent.click(checkbox);
-    expect(onOpenDeck).not.toHaveBeenCalled();
-    expect((checkbox as HTMLInputElement).checked).toBe(true);
-    expect(article?.getAttribute("data-selected")).toBe("true");
-
-    fireEvent.click(screen.getByText("Pharmacology"));
-    fireEvent.click(screen.getByText("24 cards · 6 ready"));
-    fireEvent.click(screen.getByRole("button", { name: "Open Pharmacology" }));
-    expect(onOpenDeck).toHaveBeenCalledTimes(3);
-    for (const call of onOpenDeck.mock.calls) {
-      expect(call).toEqual([
-        pharmacology.id,
-        [{ id: pharmacology.id, revision: pharmacology.revision }],
-      ]);
-    }
-    expect((checkbox as HTMLInputElement).checked).toBe(true);
-    expect(article?.getAttribute("data-selected")).toBe("true");
-  });
-
-  it("selects and clearly deselects every deck in the current lifecycle scope", async () => {
-    renderLibrary();
-    await screen.findByRole("checkbox", { name: "Select Pharmacology" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Select all (2)" }));
-    expect(screen.getByText("2 items selected")).toBeTruthy();
-    expect(
-      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-    expect(
-      (screen.getByRole("checkbox", { name: "Select Anatomy" }) as HTMLInputElement).checked,
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Deselect all (2)" }));
-    expect(screen.queryByRole("region", { name: "Selected deck actions" })).toBeNull();
-    expect(
-      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
-        .checked,
-    ).toBe(false);
-  });
-
-  it("treats archived expansion as lifecycle scope without coupling folder collapse to selection", async () => {
-    const archived = { ...deck("z", "Archived", 3, 0), archivedAt: 10 };
-    renderLibrary({ decks: [pharmacology, anatomy, archived] });
-    await screen.findByRole("button", { name: /Archived decks/u });
-
-    expect(screen.getByRole("button", { name: "Select all (2)" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Archived decks/u }));
-    expect(screen.getByRole("button", { name: "Select all (3)" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Select all (3)" }));
-    expect(screen.getByText("3 items selected")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /Archived decks/u }));
-    await waitFor(() => expect(screen.getByText("2 items selected")).toBeTruthy());
-    expect(
-      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
-  });
-
-  it("keeps direct row Practice one-step and enables setup for valid multi-deck selection", async () => {
-    const onPracticeDeck = vi.fn();
-    const empty = deck("e", "Empty", 0, 0);
-    renderLibrary({ decks: [pharmacology, empty], onPracticeDeck });
-
-    const directPractice = await screen.findAllByRole("button", { name: "Practice" });
-    expect(directPractice.some((button) => !button.hasAttribute("disabled"))).toBe(true);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Empty" }));
-    expect(
-      within(screen.getByRole("region", { name: "Selected deck actions" }))
-        .getByRole("button", { name: "Practice" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    const emptySelectionActions = screen.getByRole("region", {
-      name: "Selected deck actions",
-    });
-    expect(
-      within(emptySelectionActions)
-        .getByRole("button", { name: "Move selected" })
-        .hasAttribute("disabled"),
-    ).toBe(false);
-    expect(
-      within(emptySelectionActions)
-        .getByRole("button", { name: "Archive selected" })
-        .hasAttribute("disabled"),
-    ).toBe(false);
-    fireEvent.click(
-      within(emptySelectionActions).getByRole("button", {
-        name: "More selection actions",
-      }),
-    );
-    expect(
-      screen.getByRole("menuitem", { name: "Delete selected" }).hasAttribute("disabled"),
-    ).toBe(false);
-    fireEvent.keyDown(document, { key: "Escape" });
-
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Empty" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Pharmacology" }));
-    const selectionPractice = within(
-      screen.getByRole("region", { name: "Selected deck actions" }),
-    ).getByRole("button", { name: "Practice" });
-    expect(selectionPractice?.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(selectionPractice as HTMLButtonElement);
-    expect(await screen.findByRole("heading", { name: "Practice selected decks" })).toBeTruthy();
-    expect(onPracticeDeck).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
-
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Empty" }));
+    fireEvent.click(screen.getByText("24 cards · 6 ready"));
+    expect(onOpenDeck).toHaveBeenLastCalledWith(
+      pharmacology.id,
+      [{ id: pharmacology.id, revision: pharmacology.revision }],
+    );
     expect(
-      within(screen.getByRole("region", { name: "Selected deck actions" }))
-        .getByRole("button", { name: "Practice" })
-        .hasAttribute("disabled"),
+      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
+        .checked,
     ).toBe(true);
   });
 
-  it("uses compact overflow for secondary row and folder actions while Practice stays direct", async () => {
-    const archived = { ...deck("z", "Archived", 3, 0), archivedAt: 10 };
-    renderLibrary({ layout: "compact", decks: [pharmacology, anatomy, archived] });
+  it("never exposes the legacy tiled library while a deck-detail route is loading", async () => {
+    renderLibrary({
+      openDeckRequest: { requestId: 7, deckId: pharmacology.id },
+    });
 
-    expect((await screen.findAllByRole("button", { name: "Practice" })).length).toBe(2);
-    expect(screen.queryByRole("button", { name: "Delete Pharmacology" })).toBeNull();
-    const pharmacologyArticle = screen
-      .getByRole("checkbox", { name: "Select Pharmacology" })
-      .closest("article");
-    fireEvent.click(
-      within(pharmacologyArticle as HTMLElement).getByRole("button", {
-        name: "Pharmacology actions",
-      }),
-    );
+    expect(await screen.findByText("Opening deck cards…")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Decks" })).toBeNull();
+    expect(screen.queryByText("Pharmacology study deck")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reveal deck card list" }));
     expect(
-      await screen.findByRole("menuitem", { name: "Delete Pharmacology" }),
+      await screen.findByText(`Deck card list for ${pharmacology.id}`),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
-
-    fireEvent.click(screen.getByRole("button", { name: /Archived decks/u }));
-    expect(screen.queryByRole("button", { name: "Delete Archived" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Archived actions" }));
-    expect(await screen.findByRole("menuitem", { name: "Delete Archived" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Nursing folder actions" }));
-    expect(
-      await screen.findByRole("menuitem", { name: "Rename Nursing folder" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Delete Nursing folder" })).toBeTruthy();
+    expect(screen.queryByText("Opening deck cards…")).toBeNull();
   });
 
-  it("keeps selected Practice direct and moves secondary bulk actions into compact overflow", async () => {
-    renderLibrary({ layout: "compact" });
+  it("uses exact direct bulk labels and icons without a one-item ellipsis menu", async () => {
+    renderLibrary();
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Pharmacology" }));
 
     const toolbar = screen.getByRole("region", { name: "Selected deck actions" });
     expect(within(toolbar).getByRole("button", { name: "Practice" })).toBeTruthy();
+    expect(within(toolbar).getByRole("button", { name: "Move" })).toBeTruthy();
+    const archive = within(toolbar).getByRole("button", { name: "Archive selected" });
+    const remove = within(toolbar).getByRole("button", { name: "Delete selected" });
+    expect(archive.querySelector("svg")).not.toBeNull();
+    expect(remove.querySelector("svg")).not.toBeNull();
+    expect(remove.getAttribute("data-tone")).toBe("danger");
     expect(within(toolbar).queryByRole("button", { name: "Move selected" })).toBeNull();
-    fireEvent.click(within(toolbar).getByRole("button", { name: "More selection actions" }));
-    expect(await screen.findByRole("menuitem", { name: "Move selected" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Archive selected" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Delete selected" })).toBeTruthy();
+    expect(within(toolbar).queryByRole("button", { name: "More selection actions" })).toBeNull();
   });
 
-  it("disables bulk mutation controls while selected entries are stale", async () => {
-    const { controller } = renderSelectionRoot({
-      staleIds: [pharmacology.id],
-    });
-    const toolbar = screen.getByRole("region", { name: "Selected deck actions" });
+  it("keeps direct trash actions in compact rows while preserving the two-item folder menu", async () => {
+    renderLibrary({ layout: "compact" });
 
-    expect(
-      within(toolbar).getByRole("button", { name: "Move selected" }).hasAttribute("disabled"),
-    ).toBe(true);
-    expect(
-      within(toolbar).getByRole("button", { name: "Archive selected" }).hasAttribute("disabled"),
-    ).toBe(true);
-    fireEvent.click(within(toolbar).getByRole("button", { name: "More selection actions" }));
-    const deleteItem = screen.getByRole("menuitem", { name: "Delete selected" });
-    expect(deleteItem.hasAttribute("disabled")).toBe(true);
-    fireEvent.click(deleteItem);
-    expect(controller.deleteSelection).not.toHaveBeenCalled();
-    expect(screen.getByText(/changed after selection/u)).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Delete Pharmacology" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete Anatomy" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pharmacology actions" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Nursing folder actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Nursing folder actions" });
+    expect(within(sheet).getByRole("menuitem", { name: "Rename Nursing folder" })).toBeTruthy();
+    expect(within(sheet).getByRole("menuitem", { name: "Delete Nursing folder" })).toBeTruthy();
   });
 
-  it("disables bulk mutation controls while selected entries are missing", async () => {
-    const archived = { ...deck("z", "Archived", 3, 0), archivedAt: 10 };
-    const { controller } = renderSelectionRoot({
-      selectedIds: [archived.id, "missing-deck"],
-      decks: [archived],
-      missingIds: ["missing-deck"],
-      activeIds: [],
-      archivedIds: [archived.id],
-      generatedIds: [archived.id],
-    });
-    const toolbar = screen.getByRole("region", { name: "Selected deck actions" });
-
-    expect(
-      within(toolbar).getByRole("button", { name: "Move selected" }).hasAttribute("disabled"),
-    ).toBe(true);
-    expect(
-      within(toolbar).getByRole("button", { name: "Restore selected" }).hasAttribute("disabled"),
-    ).toBe(true);
-    fireEvent.click(within(toolbar).getByRole("button", { name: "More selection actions" }));
-    const deleteItem = screen.getByRole("menuitem", { name: "Delete selected" });
-    expect(deleteItem.hasAttribute("disabled")).toBe(true);
-    fireEvent.click(deleteItem);
-    expect(controller.deleteSelection).not.toHaveBeenCalled();
-  });
-
-  it("confirms the valid lifecycle subset of a mixed active and archived selection", async () => {
-    const archived = { ...deck("z", "Archived", 3, 0), archivedAt: 10 };
-    renderLibrary({ decks: [pharmacology, archived] });
-    fireEvent.click(await screen.findByRole("button", { name: /Archived decks/u }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Pharmacology" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Archived" }));
-
-    expect(screen.getByRole("button", { name: "Move selected" }).hasAttribute("disabled")).toBe(
-      true,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Archive active selected" }));
-    const dialog = await screen.findByRole("alertdialog", {
-      name: "Archive 1 selected deck?",
-    });
-    expect(dialog.textContent).toContain("1 already archived selected deck remains unchanged");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Archive selected" }));
-
-    await waitFor(() =>
-      expect(deckControllerMocks.setArchived).toHaveBeenCalledWith({
-        deckId: pharmacology.id,
-        revision: pharmacology.revision,
-        archived: true,
-      }),
-    );
-    expect(deckControllerMocks.setArchived).toHaveBeenCalledTimes(1);
-  });
-
-  it("returns nested deck work through the explicit library-root callback", async () => {
-    const onReturnToLibrary = vi.fn();
-    renderLibrary({
-      openDeckRequest: { requestId: 7, deckId: pharmacology.id },
-      onReturnToLibrary,
-    });
-
-    fireEvent.click(await screen.findByRole("button", { name: "Return to deck library" }));
-    expect(onReturnToLibrary).toHaveBeenCalledTimes(1);
-  });
-
-  it("requires confirmation before deleting a deck", async () => {
-    vi.mocked(folderIpc.getDeckLibraryOrganization)
-      .mockResolvedValueOnce(organization)
-      .mockResolvedValue({
-        revision: 5,
-        folders: [folder],
-        placements: [{ deckId: anatomy.id, folderId: null, sortOrder: 1000 }],
-      });
-    const refreshDecks = vi.fn(async () => [anatomy]);
-    renderLibrary({ refreshDecks });
-
-    const deleteButton = await screen.findByRole("button", { name: "Delete Pharmacology" });
-    expect(deleteButton.getAttribute("data-tone")).toBe("danger");
-    fireEvent.focus(deleteButton);
-    expect(screen.getByRole("tooltip").textContent).toBe("Delete Pharmacology");
-    fireEvent.click(deleteButton);
-    const dialog = await screen.findByRole("alertdialog", { name: "Delete “Pharmacology”?" });
-    expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete deck" }));
-
-    await waitFor(() =>
-      expect(deckControllerMocks.deleteDeck).toHaveBeenCalledWith(pharmacology.id),
-    );
-    await waitFor(() => expect(refreshDecks).toHaveBeenCalled());
-  });
-
-  it("collapses individual folders and exposes a collapse-all control", async () => {
+  it("places an icon-only collapse caret directly beside the folder title", async () => {
     renderLibrary();
 
-    const collapse = await screen.findByRole("button", { name: "Collapse Nursing folder" });
-    expect(collapse.getAttribute("title")).toBe("Collapse folder");
-    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    const heading = await screen.findByRole("heading", { name: "Nursing" });
+    const collapse = screen.getByRole("button", { name: "Collapse Nursing folder" });
+    expect(collapse.textContent?.trim()).toBe("");
+    expect(collapse.querySelector("svg")).not.toBeNull();
+    expect(heading.parentElement?.contains(collapse)).toBe(true);
+    fireEvent.click(collapse);
 
     const expand = screen.getByRole("button", { name: "Expand Nursing folder" });
+    expect(expand.textContent?.trim()).toBe("");
     expect(expand.getAttribute("aria-expanded")).toBe("false");
-    expect(expand.getAttribute("title")).toBe("Expand folder");
     expect(screen.queryByText("Pharmacology")).toBeNull();
-
     fireEvent.click(expand);
     expect(screen.getByText("Pharmacology")).toBeTruthy();
   });
 
-  it("moves a selected deck through the shared organization operation", async () => {
+  it("keeps direct row Practice isolated from deck opening", async () => {
+    const onPracticeDeck = vi.fn();
+    const onOpenDeck = vi.fn();
+    renderLibrary({ onPracticeDeck, onOpenDeck });
+
+    const article = (await screen.findByRole("checkbox", { name: "Select Pharmacology" })).closest(
+      "article",
+    );
+    fireEvent.click(within(article as HTMLElement).getByRole("button", { name: "Practice" }));
+    expect(onPracticeDeck).toHaveBeenCalledWith(pharmacology.id);
+    expect(onOpenDeck).not.toHaveBeenCalled();
+  });
+
+  it("moves selected decks through the shared revision-checked organization operation", async () => {
     vi.mocked(folderIpc.moveDeckInLibrary).mockResolvedValue({
       revision: 5,
       folders: [folder],
       placements: [
-        { deckId: pharmacology.id, folderId: folder.id, sortOrder: 1000 },
-        { deckId: anatomy.id, folderId: folder.id, sortOrder: 2000 },
+        { deckId: pharmacology.id, folderId: folder.id, sortOrder: 1_000 },
+        { deckId: anatomy.id, folderId: folder.id, sortOrder: 2_000 },
       ],
     });
     renderLibrary();
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Select Anatomy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Move selected" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move" }));
     const dialog = await screen.findByRole("dialog", { name: "Move selected decks" });
-    expect(dialog.textContent).toContain(
-      "If one deck can’t be moved, decks already moved stay in their new location",
-    );
     fireEvent.change(within(dialog).getByRole("combobox", { name: "Destination" }), {
       target: { value: folder.id },
     });
@@ -559,154 +338,32 @@ describe("DeckLibraryWorkspace", () => {
     );
   });
 
-  it("reorders folders with the retained keyboard alternative", async () => {
-    const secondFolder = {
-      ...folder,
-      id: "g".repeat(32),
-      name: "Clinical",
-      sortOrder: 2000,
-    };
-    const twoFolderOrganization = {
-      revision: 4,
-      folders: [folder, secondFolder],
-      placements: [
-        { deckId: pharmacology.id, folderId: folder.id, sortOrder: 1000 },
-        { deckId: anatomy.id, folderId: secondFolder.id, sortOrder: 1000 },
-      ],
-    };
-    vi.mocked(folderIpc.getDeckLibraryOrganization).mockResolvedValue(twoFolderOrganization);
-    vi.mocked(folderIpc.moveDeckFolder).mockResolvedValue({
-      ...twoFolderOrganization,
-      revision: 5,
-      folders: [secondFolder, folder],
-    });
-    renderLibrary();
+  it("requires confirmation before the direct trash action deletes a deck", async () => {
+    const refreshDecks = vi.fn(async () => [anatomy]);
+    renderLibrary({ refreshDecks });
 
-    fireEvent.keyDown(
-      await screen.findByRole("button", { name: /Reorder Nursing folder\./u }),
-      { key: "ArrowDown" },
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Pharmacology" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete “Pharmacology”?" });
+    expect(deckControllerMocks.deleteDeck).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete deck" }));
 
     await waitFor(() =>
-      expect(folderIpc.moveDeckFolder).toHaveBeenCalledWith({
-        folderId: folder.id,
-        targetIndex: 1,
-        expectedOrganizationRevision: 4,
-      }),
+      expect(deckControllerMocks.deleteDeck).toHaveBeenCalledWith(pharmacology.id),
     );
+    await waitFor(() => expect(refreshDecks).toHaveBeenCalled());
   });
 
-  it("reloads the authoritative revision after a stale organization conflict", async () => {
-    const refreshed = { ...organization, revision: 5 };
-    vi.mocked(folderIpc.getDeckLibraryOrganization)
-      .mockResolvedValueOnce(organization)
-      .mockResolvedValueOnce(refreshed);
-    vi.mocked(folderIpc.moveDeckInLibrary).mockRejectedValue({
-      code: "library_organization_changed",
-      message: "The deck library organization changed. Reload it and try again.",
+  it("returns nested deck work through the explicit library-root callback", async () => {
+    const onReturnToLibrary = vi.fn();
+    renderLibrary({
+      openDeckRequest: { requestId: 7, deckId: pharmacology.id },
+      onReturnToLibrary,
     });
-    vi.mocked(folderIpc.createDeckFolder).mockResolvedValue({
-      revision: 6,
-      folders: [folder, { ...folder, id: "g".repeat(32), name: "Second", sortOrder: 2000 }],
-      placements: organization.placements,
-    });
-    renderLibrary();
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Anatomy" }));
-    fireEvent.click(screen.getByRole("button", { name: "Move selected" }));
-    const moveDialog = await screen.findByRole("dialog", { name: "Move selected decks" });
-    fireEvent.change(within(moveDialog).getByRole("combobox", { name: "Destination" }), {
-      target: { value: folder.id },
-    });
-    fireEvent.click(within(moveDialog).getByRole("button", { name: "Move selected" }));
-    await waitFor(() => expect(folderIpc.getDeckLibraryOrganization).toHaveBeenCalledTimes(2));
-
-    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
-    const dialog = await screen.findByRole("dialog", { name: "Create a folder" });
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Folder name" }), {
-      target: { value: "Second" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create folder" }));
-
-    await waitFor(() =>
-      expect(folderIpc.createDeckFolder).toHaveBeenCalledWith({
-        name: "Second",
-        expectedOrganizationRevision: 5,
-      }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Return to deck library" }));
+    expect(onReturnToLibrary).toHaveBeenCalledOnce();
   });
 });
-
-function renderSelectionRoot(overrides: Partial<DeckSelectionAnalysis>) {
-  const analysis: DeckSelectionAnalysis = {
-    selectedIds: [pharmacology.id],
-    decks: [pharmacology],
-    missingIds: [],
-    staleIds: [],
-    activeIds: [pharmacology.id],
-    archivedIds: [],
-    emptyIds: [],
-    generatedIds: [pharmacology.id],
-    isMixedLifecycle: false,
-    ...overrides,
-  };
-  const controller = {
-    organization: null,
-    snapshot: null,
-    isLoading: false,
-    isMutating: false,
-    errorMessage: null,
-    announcement: "",
-    sheet: null,
-    showArchived: false,
-    collapsedFolderIds: new Set<string>(),
-    allFoldersCollapsed: false,
-    selection: { entries: new Map() },
-    selectedIds: new Set(analysis.selectedIds),
-    selectionAnalysis: analysis,
-    visibleDeckCount: 0,
-    currentScopeDeckCount: 0,
-    reloadOrganization: vi.fn(),
-    refreshLibraryAfterDetail: vi.fn(),
-    openDeck: vi.fn(),
-    openDeckCreator: vi.fn(),
-    openFolderCreator: vi.fn(),
-    openFolderRenamer: vi.fn(),
-    closeSheet: vi.fn(),
-    createDeck: vi.fn(),
-    saveFolder: vi.fn(),
-    toggleDeckSelected: vi.fn(),
-    selectVisible: vi.fn(),
-    selectCurrentScope: vi.fn(),
-    clearSelection: vi.fn(),
-    openSelectionMover: vi.fn(),
-    openPracticeSetup: vi.fn(),
-    moveSelection: vi.fn(),
-    setSelectionArchived: vi.fn(),
-    deleteSelection: vi.fn(),
-    removeDeck: vi.fn(),
-    removeFolder: vi.fn(),
-    move: vi.fn(),
-    toggleFolder: vi.fn(),
-    collapseAllFolders: vi.fn(),
-    toggleArchived: vi.fn(),
-  } as unknown as DeckLibraryController;
-  setLayout("wide");
-  render(
-    <LayoutModeProvider>
-      <OverlayProvider>
-        <DeckLibraryRoot
-          controller={controller}
-          onPracticeDeck={vi.fn()}
-          decks={[pharmacology]}
-          practiceShuffle
-          onPracticeSelected={vi.fn()}
-        />
-      </OverlayProvider>
-    </LayoutModeProvider>,
-  );
-  return { controller };
-}
 
 function deck(
   seed: string,

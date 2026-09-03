@@ -88,6 +88,6 @@ describe("SelectionToolbar", () => {
         />
       </LayoutModeProvider>,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(container.childElementCount).toBe(0);
   });
 });
