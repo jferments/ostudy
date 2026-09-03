@@ -8,12 +8,14 @@
     min-height: var(--ostudy-size-control);
     flex: none;
     place-items: center;
+    box-sizing: border-box;
     overflow: hidden;
     border: 1px solid transparent;
     border-radius: var(--ostudy-radius-small);
-    padding: 0;
+    padding: 0 !important;
     background: transparent;
     color: var(--ostudy-color-text-accent);
+    line-height: 1;
     cursor: pointer;
     isolation: isolate;
     transition:
