@@ -25,7 +25,15 @@ export type AiProbeOverallStatus = "verified" | "partial" | "failed";
 export type AiProbePhaseStatus = "passed" | "failed" | "skipped";
 export type AiCapabilityStatus = "supported" | "unsupported" | "unknown";
 export type AiCapabilitySource = "declared" | "probed";
-export type AiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type AiReasoningEffort =
+  | "automatic"
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 
 export interface AiProviderCatalogEntry {
   providerKind: AiProviderKind;
@@ -54,6 +62,7 @@ export interface AiProviderProfileSummary {
   providerKind: AiProviderKind;
   providerLabel: string;
   modelId: string;
+  reasoningEffort: AiReasoningEffort;
   enabled: boolean;
   networkScope: AiNetworkScope;
   credentialStatus: AiCredentialStatusInfo;
@@ -78,6 +87,7 @@ export interface AiProfileDraft {
   providerKind: AiProviderKind;
   baseUrl: string;
   modelId: string;
+  reasoningEffort: AiReasoningEffort;
   authMode: AiAuthMode;
   enabled: boolean;
   allowInsecureHttp: boolean;
@@ -94,8 +104,8 @@ export interface AiTaskDefaults {
 }
 
 export interface AiProviderModelReasoning {
-  supportedEfforts: AiReasoningEffort[] | null;
-  defaultEffort: AiReasoningEffort | null;
+  supportedEfforts: Exclude<AiReasoningEffort, "automatic">[] | null;
+  defaultEffort: Exclude<AiReasoningEffort, "automatic"> | null;
   defaultEnabled: boolean | null;
   supportsMaxTokens: boolean;
   mandatory: boolean;
@@ -105,7 +115,6 @@ export interface AiProviderModel {
   id: string;
   displayName: string;
   ownedBy: string | null;
-  /** Native OpenRouter catalogs return these; optional keeps older test fixtures source-compatible. */
   contextWindowTokens?: number | null;
   reasoning?: AiProviderModelReasoning | null;
 }
@@ -196,6 +205,7 @@ export async function updateAiProviderProfile(
       displayName: input.displayName,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
+      reasoningEffort: input.reasoningEffort,
       authMode: input.authMode,
       enabled: input.enabled,
       allowInsecureHttp: input.allowInsecureHttp,

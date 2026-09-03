@@ -13,6 +13,7 @@ mod endpoint_policy;
 mod gateway;
 pub(crate) mod probes;
 pub(crate) mod profiles;
+pub(crate) mod reasoning;
 mod providers;
 mod secrets;
 

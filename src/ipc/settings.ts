@@ -1,16 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { AiReasoningEffort } from "./aiProfiles";
+
 export type MotionPreference = "system" | "full" | "reduced" | "none";
 export type MaterialPreference = "automatic" | "rich" | "simple";
-export type AiReasoningEffort =
-  | "automatic"
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
 
 export interface AppSettings {
   theme: "light" | "dark" | "console" | "synthwave";
@@ -32,7 +25,11 @@ export interface AppSettings {
   desiredRetention: number;
   dailyNewLimit: number;
   dailyReviewLimit: number;
-  /** Native settings always return this; optional keeps older fixture/build callers source-compatible. */
+  /**
+   * Transitional source compatibility for pre-Stage-11 fixtures only.
+   * Native settings no longer return or persist this value; saveSettings strips
+   * it before crossing IPC. Reasoning belongs to each AI profile.
+   */
   aiReasoningEffort?: AiReasoningEffort;
 }
 
@@ -50,7 +47,8 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function saveSettings(input: AppSettings): Promise<AppSettings> {
-  return invoke<AppSettings>("save_settings", { input });
+  const { aiReasoningEffort: _legacyReasoning, ...persisted } = input;
+  return invoke<AppSettings>("save_settings", { input: persisted });
 }
 
 export async function getAppInfo(): Promise<AppInfo> {

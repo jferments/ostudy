@@ -19,7 +19,6 @@ import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 
 const ownedStyleMaps = sharedClassMaps;
 
-
 interface SettingsScreenProps {
   settings: AppSettings;
   onPreviewSettings: (settings: AppSettings) => void;
@@ -46,7 +45,6 @@ const DEFAULTS: AppSettings = {
   desiredRetention: 0.9,
   dailyNewLimit: 20,
   dailyReviewLimit: 200,
-  aiReasoningEffort: "low",
 };
 
 export function SettingsScreen({
@@ -108,7 +106,6 @@ export function SettingsScreen({
       });
     }
     if (activeTab === "storage") update({ confirmDeletions: DEFAULTS.confirmDeletions });
-    if (activeTab === "ai") update({ aiReasoningEffort: DEFAULTS.aiReasoningEffort });
   }
 
   async function persist(): Promise<void> {
@@ -117,10 +114,7 @@ export function SettingsScreen({
     setIsSaving(true);
     setErrorMessage(null);
     try {
-      const saved = await saveSettings({
-        ...draft,
-        aiReasoningEffort: draft.aiReasoningEffort ?? "low",
-      });
+      const saved = await saveSettings(draft);
       onSavedSettings(saved);
       setDraft(saved);
       setSavedBaseline(saved);
@@ -150,9 +144,7 @@ export function SettingsScreen({
       panel: (
         <AiLlmSettings
           controller={aiController}
-          sidebarTop={
-            <DefaultAiModelSettings controller={aiController} settings={draft} update={update} />
-          }
+          defaultBlock={<DefaultAiModelSettings controller={aiController} />}
         />
       ),
     },
@@ -173,17 +165,15 @@ export function SettingsScreen({
       ? "appearance"
       : activeTab === "review"
         ? "scheduling"
-        : activeTab === "ai"
-          ? "AI"
-          : "safety";
+        : "safety";
   const canRestoreDefaults =
-    activeTab === "appearance" ||
-    activeTab === "review" ||
-    activeTab === "storage" ||
-    activeTab === "ai";
+    activeTab === "appearance" || activeTab === "review" || activeTab === "storage";
 
   return (
-    <div className={ownedClassNames(ownedStyleMaps, "screen")} aria-busy={isSaving || aiController.mutating}>
+    <div
+      className={ownedClassNames(ownedStyleMaps, "screen")}
+      aria-busy={isSaving || aiController.mutating}
+    >
       <PageHeader
         title="Settings"
         icon="settings"

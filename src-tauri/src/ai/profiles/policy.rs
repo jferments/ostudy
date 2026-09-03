@@ -4,6 +4,7 @@ use super::{
     super::{
         catalog::{AuthMode, ProviderKind, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS},
         endpoint_policy::{endpoint_origin_from_str, validate_endpoint, ValidatedEndpoint},
+        reasoning::validate_reasoning_effort,
         secrets::CredentialStorage,
     },
     contracts::{CreateAiProviderProfileInput, StoredProfile, UpdateAiProviderProfileInput},
@@ -18,6 +19,7 @@ pub(super) struct ValidatedProfileFields {
     pub display_name: String,
     pub normalized_name: String,
     pub model_id: String,
+    pub reasoning_effort: String,
     pub endpoint: ValidatedEndpoint,
 }
 
@@ -31,6 +33,7 @@ pub(super) fn validate_create_profile(
         &input.display_name,
         &input.base_url,
         &input.model_id,
+        &input.reasoning_effort,
         input.allow_insecure_http,
         input.request_timeout_ms,
     )
@@ -47,6 +50,7 @@ pub(super) fn validate_update_profile(
         &input.display_name,
         &input.base_url,
         &input.model_id,
+        &input.reasoning_effort,
         input.allow_insecure_http,
         input.request_timeout_ms,
     )
@@ -57,18 +61,21 @@ fn validate_fields(
     display_name: &str,
     base_url: &str,
     model_id: &str,
+    reasoning_effort: &str,
     allow_insecure_http: bool,
     request_timeout_ms: i64,
 ) -> Result<ValidatedProfileFields, CommandError> {
     let display_name = validate_display_name(display_name)?;
     let normalized_name = normalize_name(&display_name);
     let model_id = validate_model_id(model_id)?;
+    let reasoning_effort = validate_reasoning_effort(reasoning_effort)?;
     validate_timeout(request_timeout_ms)?;
     let endpoint = validate_endpoint(provider_kind, base_url, allow_insecure_http)?;
     Ok(ValidatedProfileFields {
         display_name,
         normalized_name,
         model_id,
+        reasoning_effort,
         endpoint,
     })
 }

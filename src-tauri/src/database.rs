@@ -69,9 +69,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "285343736d2a69d4351093555485b8e37970901237e88de6cfd96e8843b51616",
         sql: include_str!("../migrations/0007_document_artifact_metadata.sql"),
     },
+    Migration {
+        version: 8,
+        name: "ai_profile_reasoning",
+        checksum: "2f0f9e010842ab62f1f9896441974f792fd621bf152d38ad11b129aa848ecc9d",
+        sql: include_str!("../migrations/0008_ai_profile_reasoning.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 7;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 8;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -311,7 +317,12 @@ fn apply_transactional_migration(
     transaction
         .execute(
             "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?1, ?2, ?3, ?4)",
-            params![migration.version, migration.name, migration.checksum, applied_at],
+            params![
+                migration.version,
+                migration.name,
+                migration.checksum,
+                applied_at
+            ],
         )
         .map_err(|error| format!("Could not record migration {}: {error}", migration.version))?;
     transaction
@@ -480,6 +491,63 @@ mod tests {
         )
         .expect("public baseline objects should serialize");
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn reasoning_migration_copies_the_legacy_global_value_to_every_profile() {
+        let mut connection = public_baseline_connection().expect("baseline database should open");
+        for migration in &MIGRATIONS[1..7] {
+            apply_transactional_migration(&mut connection, migration)
+                .expect("pre-reasoning migrations should apply");
+        }
+        connection
+            .execute(
+                "INSERT INTO app_settings (key, value_json, updated_at)
+                 VALUES ('aiReasoningEffort', '\"high\"', 1)",
+                [],
+            )
+            .expect("legacy global reasoning should be stored");
+        for (id, name) in [
+            ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "First"),
+            ("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "Second"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO ai_provider_profiles (
+                         id, display_name, normalized_name, provider_kind, base_url,
+                         model_id, auth_mode, enabled, allow_insecure_http,
+                         request_timeout_ms, credential_storage, credential_epoch,
+                         revision, created_at, updated_at
+                     ) VALUES (?1, ?2, lower(?2), 'llama_cpp',
+                               'http://127.0.0.1:8080/', 'local-model',
+                               'none', 1, 0, 60000, 'none', 0, 1, 1, 1)",
+                    params![id, name],
+                )
+                .expect("profile fixture should be inserted");
+        }
+
+        apply_transactional_migration(&mut connection, &MIGRATIONS[7])
+            .expect("reasoning migration should apply");
+
+        let efforts: Vec<String> = {
+            let mut statement = connection
+                .prepare("SELECT reasoning_effort FROM ai_provider_profiles ORDER BY id")
+                .unwrap();
+            statement
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert_eq!(efforts, vec!["high", "high"]);
+        let legacy_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM app_settings WHERE key = 'aiReasoningEffort'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy_count, 0);
     }
 
     #[test]

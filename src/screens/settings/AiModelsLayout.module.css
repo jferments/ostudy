@@ -1,0 +1,90 @@
+.layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.modelListSection {
+  min-width: 0;
+  border: 1px solid var(--ostudy-color-border-subtle);
+  border-radius: 14px;
+  padding: 18px;
+  background: var(--ostudy-color-surface-base);
+  box-shadow: var(--ostudy-shadow-level-4);
+}
+
+.profileList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+}
+
+.profileListItem {
+  display: grid;
+  min-width: 0;
+  min-height: 112px;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid var(--ostudy-color-border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--ostudy-color-surface-raised);
+  color: var(--ostudy-color-text-primary);
+  text-align: left;
+}
+
+.profileListItem:hover {
+  border-color: var(--ostudy-color-border-strong);
+}
+
+.profileListItem[data-selected="true"] {
+  border-color: var(--ostudy-color-accent-base);
+  background: var(--ostudy-color-accent-soft);
+  box-shadow: 0 0 0 1px var(--ostudy-color-accent-base);
+}
+
+.profileListItem small {
+  overflow: hidden;
+  color: var(--ostudy-color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusText {
+  margin-top: auto;
+  color: var(--ostudy-color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.statusText[data-status="ready"] {
+  color: var(--ostudy-color-status-success);
+}
+
+.statusText[data-status="incomplete"] {
+  color: var(--ostudy-color-status-warning);
+}
+
+.statusText[data-status="disabled"],
+.statusText[data-status="planned"] {
+  color: var(--ostudy-color-text-muted);
+}
+
+.detail {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+@media (max-width: 520px) {
+  .modelListSection {
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .profileList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

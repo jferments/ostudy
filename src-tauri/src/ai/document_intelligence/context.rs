@@ -51,10 +51,11 @@ impl DocumentTaskContext {
         crate::logging::debug_target(
             "ai.document.reasoning",
             "document_reasoning_resolved",
-            "Resolved the document reasoning preference against current model metadata.",
+            "Resolved the profile's reasoning preference against current model metadata.",
             json!({
                 "provider": self.provider_kind.as_str(),
                 "model": self.model_id.as_str(),
+                "profileId": self.profile_id.as_str(),
                 "requestedEffort": self.requested_reasoning_effort.as_str(),
                 "effectiveEffort": self.reasoning_effort.as_str(),
                 "recordedEffort": recorded_reasoning_effort.as_deref(),
@@ -112,17 +113,12 @@ pub(crate) fn load_document_task_context(
     )?;
     let evidence = load_document_probe_evidence(database, &profile)?;
 
-    // Preserve OpenRouter's existing requirement for a current representative
-    // contract probe because routing can select different upstream providers.
     if profile.provider_kind == ProviderKind::Openrouter && !evidence.probe_matches {
         return Err(CommandError::new(
             "ai_document_model_not_verified",
             "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative document structured-output contract.",
         ));
     }
-    // Once any provider has current probe evidence, a known failure of the exact
-    // document wire contract must not be ignored. llama.cpp and DeepSeek remain
-    // backward-compatible for profiles that have not yet been re-probed.
     if evidence.probe_matches && !evidence.document_generation_schema_supported {
         return Err(CommandError::new(
             "ai_document_model_not_verified",
@@ -133,7 +129,7 @@ pub(crate) fn load_document_task_context(
     let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
         && evidence.probe_matches
         && evidence.image_input_supported;
-    let requested_reasoning_effort = crate::settings::current_ai_reasoning_effort();
+    let requested_reasoning_effort = profile.reasoning_effort.clone();
     let capabilities = DocumentProviderCapabilities::conservative(
         profile.provider_kind.as_str(),
         &profile.model_id,
@@ -179,6 +175,7 @@ mod tests {
             provider_kind: ProviderKind::Openrouter,
             base_url: "https://openrouter.ai/api/v1/".to_string(),
             model_id: "openai/example".to_string(),
+            reasoning_effort: "high".to_string(),
             auth_mode: AuthMode::Bearer,
             enabled: true,
             allow_insecure_http: false,
@@ -195,7 +192,7 @@ mod tests {
             credential_epoch: 0,
             network_scope: "cloud".to_string(),
             include_page_images: false,
-            requested_reasoning_effort: "high".to_string(),
+            requested_reasoning_effort: profile.reasoning_effort.clone(),
             reasoning_effort: "none".to_string(),
             credential_storage: CredentialStorage::None,
             capabilities: DocumentProviderCapabilities::conservative(
@@ -220,6 +217,7 @@ mod tests {
                 mandatory: false,
             }),
         });
+        assert_eq!(task.requested_reasoning_effort, "high");
         assert_eq!(task.reasoning_effort, "high");
         assert_eq!(task.completion_token_ceiling(2_000), 10_000);
     }

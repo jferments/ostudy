@@ -25,6 +25,7 @@ struct RawProfileRow {
     provider_kind: String,
     base_url: String,
     model_id: String,
+    reasoning_effort: String,
     auth_mode: String,
     enabled: i64,
     allow_insecure_http: i64,
@@ -47,6 +48,7 @@ impl TryFrom<RawProfileRow> for StoredProfile {
             provider_kind: ProviderKind::from_db(&row.provider_kind)?,
             base_url: row.base_url,
             model_id: row.model_id,
+            reasoning_effort: row.reasoning_effort,
             auth_mode: AuthMode::from_db(&row.auth_mode)?,
             enabled: row.enabled != 0,
             allow_insecure_http: row.allow_insecure_http != 0,
@@ -67,10 +69,10 @@ pub(super) fn list_profiles(
     let mut statement = connection
         .prepare(
             "SELECT id, display_name, provider_kind, base_url,
-                    model_id, auth_mode, enabled, allow_insecure_http,
-                    require_zero_data_retention, request_timeout_ms,
-                    credential_storage, credential_epoch, revision,
-                    created_at, updated_at
+                    model_id, reasoning_effort, auth_mode, enabled,
+                    allow_insecure_http, require_zero_data_retention,
+                    request_timeout_ms, credential_storage, credential_epoch,
+                    revision, created_at, updated_at
              FROM ai_provider_profiles
              WHERE deleted_at IS NULL
              ORDER BY updated_at DESC, id
@@ -102,10 +104,10 @@ pub(super) fn load_profile(
     let raw = connection
         .query_row(
             "SELECT id, display_name, provider_kind, base_url,
-                    model_id, auth_mode, enabled, allow_insecure_http,
-                    require_zero_data_retention, request_timeout_ms,
-                    credential_storage, credential_epoch, revision,
-                    created_at, updated_at
+                    model_id, reasoning_effort, auth_mode, enabled,
+                    allow_insecure_http, require_zero_data_retention,
+                    request_timeout_ms, credential_storage, credential_epoch,
+                    revision, created_at, updated_at
              FROM ai_provider_profiles
              WHERE id = ?1 AND deleted_at IS NULL",
             [profile_id],
@@ -146,15 +148,15 @@ pub(super) fn create_profile(
         .execute(
             "INSERT INTO ai_provider_profiles (
                  id, display_name, normalized_name, provider_kind, base_url,
-                 model_id, auth_mode, enabled, allow_insecure_http,
-                 require_zero_data_retention, request_timeout_ms,
-                 credential_storage, credential_epoch, revision,
-                 created_at, updated_at, deleted_at
+                 model_id, reasoning_effort, auth_mode, enabled,
+                 allow_insecure_http, require_zero_data_retention,
+                 request_timeout_ms, credential_storage, credential_epoch,
+                 revision, created_at, updated_at, deleted_at
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5,
                  ?6, ?7, ?8, ?9,
-                 ?10, ?11, 'none', 0, 1,
-                 ?12, ?12, NULL
+                 ?10, ?11, ?12, 'none', 0,
+                 1, ?13, ?13, NULL
              )",
             params![
                 id,
@@ -163,6 +165,7 @@ pub(super) fn create_profile(
                 input.provider_kind.as_str(),
                 fields.endpoint.normalized_url,
                 fields.model_id,
+                fields.reasoning_effort,
                 input.auth_mode.as_str(),
                 bool_to_integer(input.enabled),
                 bool_to_integer(input.allow_insecure_http),
@@ -209,19 +212,21 @@ pub(super) fn update_profile(
                  normalized_name = ?2,
                  base_url = ?3,
                  model_id = ?4,
-                 auth_mode = ?5,
-                 enabled = ?6,
-                 allow_insecure_http = ?7,
-                 require_zero_data_retention = ?8,
-                 request_timeout_ms = ?9,
-                 updated_at = ?10,
+                 reasoning_effort = ?5,
+                 auth_mode = ?6,
+                 enabled = ?7,
+                 allow_insecure_http = ?8,
+                 require_zero_data_retention = ?9,
+                 request_timeout_ms = ?10,
+                 updated_at = ?11,
                  revision = revision + 1
-             WHERE id = ?11 AND revision = ?12 AND deleted_at IS NULL",
+             WHERE id = ?12 AND revision = ?13 AND deleted_at IS NULL",
             params![
                 fields.display_name,
                 fields.normalized_name,
                 fields.endpoint.normalized_url,
                 fields.model_id,
+                fields.reasoning_effort,
                 input.auth_mode.as_str(),
                 bool_to_integer(input.enabled),
                 bool_to_integer(input.allow_insecure_http),
@@ -451,15 +456,16 @@ fn raw_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawProfileRow> {
         provider_kind: row.get(2)?,
         base_url: row.get(3)?,
         model_id: row.get(4)?,
-        auth_mode: row.get(5)?,
-        enabled: row.get(6)?,
-        allow_insecure_http: row.get(7)?,
-        require_zero_data_retention: row.get(8)?,
-        request_timeout_ms: row.get(9)?,
-        credential_storage: row.get(10)?,
-        credential_epoch: row.get(11)?,
-        revision: row.get(12)?,
-        created_at: row.get(13)?,
-        updated_at: row.get(14)?,
+        reasoning_effort: row.get(5)?,
+        auth_mode: row.get(6)?,
+        enabled: row.get(7)?,
+        allow_insecure_http: row.get(8)?,
+        require_zero_data_retention: row.get(9)?,
+        request_timeout_ms: row.get(10)?,
+        credential_storage: row.get(11)?,
+        credential_epoch: row.get(12)?,
+        revision: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
