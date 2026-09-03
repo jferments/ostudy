@@ -62,7 +62,8 @@ export interface AiProviderProfileSummary {
   providerKind: AiProviderKind;
   providerLabel: string;
   modelId: string;
-  reasoningEffort: AiReasoningEffort;
+  /** Current native responses always include this; optionality preserves old test/import fixtures. */
+  reasoningEffort?: AiReasoningEffort;
   enabled: boolean;
   networkScope: AiNetworkScope;
   credentialStatus: AiCredentialStatusInfo;
@@ -95,9 +96,10 @@ export interface AiProfileDraft {
   requestTimeoutMs: number;
 }
 
-export interface AiProfileWriteInput extends AiProfileDraft {
+export type AiProfileWriteInput = Omit<AiProfileDraft, "reasoningEffort"> & {
+  reasoningEffort?: AiReasoningEffort;
   editorDraft?: EditorDraftCommitRef;
-}
+};
 
 export interface AiTaskDefaults {
   flashcardGenerationProfileId: string | null;
@@ -187,7 +189,7 @@ export async function createAiProviderProfile(
   operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("create_ai_provider_profile", {
-    input: { ...input, operationId },
+    input: { ...input, reasoningEffort: input.reasoningEffort ?? "low", operationId },
   });
 }
 
@@ -205,7 +207,7 @@ export async function updateAiProviderProfile(
       displayName: input.displayName,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
-      reasoningEffort: input.reasoningEffort,
+      reasoningEffort: input.reasoningEffort ?? "low",
       authMode: input.authMode,
       enabled: input.enabled,
       allowInsecureHttp: input.allowInsecureHttp,

@@ -544,7 +544,7 @@ function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
     providerKind: profile.providerKind,
     baseUrl: profile.baseUrl,
     modelId: profile.modelId,
-    reasoningEffort: profile.reasoningEffort,
+    reasoningEffort: profile.reasoningEffort ?? "low",
     authMode: profile.authMode,
     enabled: profile.enabled,
     allowInsecureHttp: profile.allowInsecureHttp,
@@ -556,12 +556,13 @@ function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
 function compatibleReasoningEffort(
   current: AiProfileDraft["reasoningEffort"],
   model: AiProviderModel | null,
-): AiProfileDraft["reasoningEffort"] {
-  if (current === "automatic") return current;
+): NonNullable<AiProfileDraft["reasoningEffort"]> {
+  const normalized = current ?? "low";
+  if (normalized === "automatic") return normalized;
   const reasoning = model?.reasoning;
-  if (!reasoning) return current;
-  if (reasoning.mandatory && current === "none") return "automatic";
+  if (!reasoning) return normalized;
+  if (reasoning.mandatory && normalized === "none") return "automatic";
   const supported = reasoning.supportedEfforts;
-  if (supported && !supported.includes(current)) return "automatic";
-  return current;
+  if (supported && !supported.includes(normalized)) return "automatic";
+  return normalized;
 }
