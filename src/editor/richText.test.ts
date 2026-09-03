@@ -156,7 +156,7 @@ describe("rich document helpers", () => {
     expect(clone).toEqual(paragraphDocument("Changed"));
   });
 
-  it("copies answer-key checklists with stable matching item identities", () => {
+  it("copies the marked answer key while clearing persisted question boxes", () => {
     const first = "1".repeat(32);
     const second = "2".repeat(32);
     const question = answerChecklist([
@@ -168,6 +168,9 @@ describe("rich document helpers", () => {
 
     expect(hasAnswerKeyChecklist(copied.question)).toBe(true);
     expect(validateAnswerChecklistPair(copied.question, copied.answer)).toBeNull();
+    expect(extractRichDocumentText(copied.question)).toContain("[ ] Check blood pressure");
+    expect(extractRichDocumentText(copied.question)).toContain("[ ] Give a contraindicated drug");
+    expect(extractRichDocumentText(copied.question)).not.toContain("[x]");
     expect(extractRichDocumentText(copied.answer)).toContain("[x] Check blood pressure");
     expect(extractRichDocumentText(copied.answer)).toContain("[ ] Give a contraindicated drug");
   });
@@ -182,6 +185,26 @@ describe("rich document helpers", () => {
 
     const copied = copyAnswerKeyChecklistsToAnswer(question, paragraphDocument(""));
     expect(validateAnswerChecklistPair(copied.question, copied.answer)).toBeNull();
+  });
+
+  it("rejects checked questions and answers without a correct option", () => {
+    const identity = "5".repeat(32);
+    const markedQuestion = answerChecklist([
+      { id: identity, text: "Correct", correct: true },
+    ]);
+    expect(validateAnswerChecklistPair(markedQuestion, markedQuestion)).toMatch(
+      /Question answer-checklist boxes must be empty/u,
+    );
+
+    const emptyQuestion = answerChecklist([
+      { id: identity, text: "Correct", correct: false },
+    ]);
+    const emptyAnswer = answerChecklist([
+      { id: identity, text: "Correct", correct: false },
+    ]);
+    expect(validateAnswerChecklistPair(emptyQuestion, emptyAnswer)).toMatch(
+      /Mark at least one correct answer/u,
+    );
   });
 
   it("conceals answer-key state on questions and preserves ordinary task state", () => {

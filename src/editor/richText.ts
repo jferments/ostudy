@@ -112,8 +112,10 @@ export function hasAnswerKeyChecklist(document: RichDocument): boolean {
 
 /**
  * Copies every answer-key list from the question into the answer while keeping
- * stable item identities. Existing answer-key lists are replaced, not appended,
- * so the action is safe to repeat.
+ * stable item identities. The marked key is copied first, then the persisted
+ * question is cleared so practice can conceal correctness without relying on a
+ * presentation-only mutation. Existing answer-key lists are replaced rather
+ * than appended, which makes repeated use idempotent.
  */
 export function copyAnswerKeyChecklistsToAnswer(
   questionDocument: RichDocument,
@@ -134,7 +136,15 @@ export function copyAnswerKeyChecklistsToAnswer(
       seen.add(itemId);
       item.attrs = { ...attrs, itemId };
     }
+
+    // Preserve the author's marked key on the answer before clearing the
+    // question-side boxes required by the durable schema contract.
     lists.push(cloneRecord(node));
+    for (const item of nodeContent(node)) {
+      if (!isRecord(item) || item.type !== "taskItem") continue;
+      const attrs = isRecord(item.attrs) ? item.attrs : {};
+      item.attrs = { ...attrs, checked: false };
+    }
   });
 
   const answer = canonicalizeDocument(answerDocument);
@@ -168,6 +178,9 @@ export function validateAnswerChecklistPair(
     if (list.duplicate) {
       return "Answer-checklist item identities must be unique. Use Copy checklist to answer to repair them.";
     }
+    if (list.checked.some(Boolean)) {
+      return "Question answer-checklist boxes must be empty. Use Copy checklist to answer after marking the key.";
+    }
   }
   if (answerLists.length !== questionLists.length) {
     return "Copy the question checklist to the answer before saving this card.";
@@ -180,6 +193,9 @@ export function validateAnswerChecklistPair(
     }
     if (answer.missing || answer.duplicate) {
       return "The answer checklist has invalid item identities. Copy the checklist to the answer again.";
+    }
+    if (!answer.checked.some(Boolean)) {
+      return "Mark at least one correct answer before copying the checklist to the answer.";
     }
   }
   return null;
@@ -261,6 +277,7 @@ function extract(value: unknown, parts: string[], parentType: string | null): vo
 
 interface ChecklistIdentity {
   ids: string[];
+  checked: boolean[];
   missing: boolean;
   duplicate: boolean;
 }
@@ -268,6 +285,7 @@ interface ChecklistIdentity {
 function checklistIdentities(document: RichDocument): ChecklistIdentity[] {
   return answerKeyLists(document).map((list) => {
     const ids: string[] = [];
+    const checked: boolean[] = [];
     let missing = false;
     let duplicate = false;
     const seen = new Set<string>();
@@ -279,8 +297,9 @@ function checklistIdentities(document: RichDocument): ChecklistIdentity[] {
       if (id !== "" && seen.has(id)) duplicate = true;
       if (id !== "") seen.add(id);
       ids.push(id);
+      checked.push(attrs.checked === true);
     }
-    return { ids, missing, duplicate };
+    return { ids, checked, missing, duplicate };
   });
 }
 
