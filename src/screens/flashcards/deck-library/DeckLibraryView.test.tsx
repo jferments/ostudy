@@ -96,7 +96,7 @@ describe("DeckLibraryView render isolation", () => {
     { collapsed: true, layoutMode: "medium", toggleName: "Expand Nursing folder" },
     { collapsed: false, layoutMode: "compact", toggleName: "Collapse Nursing folder" },
     { collapsed: true, layoutMode: "compact", toggleName: "Expand Nursing folder" },
-  ])(
+  ] as const)(
     "starts folder drag from the summary but not explicit controls when collapsed is $collapsed in $layoutMode layout",
     ({ collapsed, layoutMode, toggleName }) => {
       setLayoutMode(layoutMode);
@@ -115,8 +115,6 @@ describe("DeckLibraryView render isolation", () => {
         <LayoutModeProvider>
           <DeckLibraryView
             controller={folderController}
-            snapshot={folderSnapshot}
-            dragging={null}
             reorder={reorder}
             libraryRef={{ current: null }}
             onPracticeDeck={onPracticeDeck}
@@ -158,7 +156,7 @@ describe("DeckLibraryView render isolation", () => {
     { collapsed: true, layoutMode: "medium", toggleName: "Expand Nursing folder" },
     { collapsed: false, layoutMode: "compact", toggleName: "Collapse Nursing folder" },
     { collapsed: true, layoutMode: "compact", toggleName: "Expand Nursing folder" },
-  ])(
+  ] as const)(
     "uses only the explicit caret to toggle when collapsed is $collapsed in $layoutMode layout",
     ({ collapsed, layoutMode, toggleName }) => {
       setLayoutMode(layoutMode);
@@ -179,8 +177,6 @@ describe("DeckLibraryView render isolation", () => {
         <LayoutModeProvider>
           <DeckLibraryView
             controller={folderController}
-            snapshot={folderSnapshot}
-            dragging={null}
             reorder={reorder}
             libraryRef={{ current: null }}
             onPracticeDeck={onPracticeDeck}
@@ -208,8 +204,6 @@ function Harness() {
       </button>
       <DeckLibraryView
         controller={controller}
-        snapshot={snapshot}
-        dragging={null}
         reorder={reorder}
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
@@ -226,7 +220,6 @@ function dragFeedback(
   return {
     active: true,
     sourceName: "Large library drag source",
-    payload: { kind: "deck", id: deck(0).id },
     candidate: {
       key: `${status}:${destinationName}`,
       status,
