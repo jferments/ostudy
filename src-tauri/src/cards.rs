@@ -110,7 +110,10 @@ fn validate_plain_text_snapshot(value: &str, label: &str) -> Result<(), CommandE
 
 pub(crate) fn validate_document(document: &Value) -> Result<(), CommandError> {
     let root = document.as_object().ok_or_else(|| {
-        CommandError::new("invalid_card_document", "The card editor content is invalid.")
+        CommandError::new(
+            "invalid_card_document",
+            "The card editor content is invalid.",
+        )
     })?;
     if root.get("type").and_then(Value::as_str) != Some("doc") {
         return Err(CommandError::new(
@@ -263,7 +266,10 @@ fn validate_node_keys(
     object: &serde_json::Map<String, Value>,
 ) -> Result<(), CommandError> {
     for key in object.keys() {
-        if !matches!(key.as_str(), "type" | "attrs" | "content" | "marks" | "text") {
+        if !matches!(
+            key.as_str(),
+            "type" | "attrs" | "content" | "marks" | "text"
+        ) {
             return Err(CommandError::new(
                 "invalid_card_document",
                 format!("The {node_type} node contains an unsupported property: {key}."),
@@ -280,7 +286,12 @@ fn validate_child_structure(
     let child_types = content
         .into_iter()
         .flat_map(|children| children.iter())
-        .map(|child| child.get("type").and_then(Value::as_str).unwrap_or_default())
+        .map(|child| {
+            child
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        })
         .collect::<Vec<_>>();
 
     let valid = match node_type {
@@ -302,9 +313,7 @@ fn validate_child_structure(
                 && child_types.first() == Some(&"paragraph")
                 && child_types.iter().all(|child| is_block_node(child))
         }
-        "table" => {
-            !child_types.is_empty() && child_types.iter().all(|child| *child == "tableRow")
-        }
+        "table" => !child_types.is_empty() && child_types.iter().all(|child| *child == "tableRow"),
         "tableRow" => {
             !child_types.is_empty()
                 && child_types
@@ -466,7 +475,10 @@ fn validate_node_attributes(node_type: &str, attrs: Option<&Value>) -> Result<()
         validate_column_widths(attrs.get("colwidth"))?;
     }
     if node_type == "taskList" {
-        let mode = attrs.get("mode").and_then(Value::as_str).unwrap_or("ordinary");
+        let mode = attrs
+            .get("mode")
+            .and_then(Value::as_str)
+            .unwrap_or("ordinary");
         if !matches!(mode, "ordinary" | "answer_key") {
             return Err(CommandError::new(
                 "invalid_card_document",
@@ -509,8 +521,12 @@ fn validate_table_span(value: Option<&Value>, label: &str) -> Result<(), Command
 }
 
 fn validate_column_widths(value: Option<&Value>) -> Result<(), CommandError> {
-    let Some(value) = value else { return Ok(()); };
-    if value.is_null() { return Ok(()); }
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.is_null() {
+        return Ok(());
+    }
     let widths = value.as_array().ok_or_else(|| {
         CommandError::new(
             "invalid_card_document",
@@ -518,9 +534,11 @@ fn validate_column_widths(value: Option<&Value>) -> Result<(), CommandError> {
         )
     })?;
     if widths.len() > 64
-        || widths
-            .iter()
-            .any(|width| !width.as_i64().is_some_and(|width| (1..=10_000).contains(&width)))
+        || widths.iter().any(|width| {
+            !width
+                .as_i64()
+                .is_some_and(|width| (1..=10_000).contains(&width))
+        })
     {
         return Err(CommandError::new(
             "invalid_card_document",
@@ -530,9 +548,16 @@ fn validate_column_widths(value: Option<&Value>) -> Result<(), CommandError> {
     Ok(())
 }
 
-fn validate_optional_image_dimension(value: Option<&Value>, label: &str) -> Result<(), CommandError> {
-    let Some(value) = value else { return Ok(()); };
-    if value.is_null() { return Ok(()); }
+fn validate_optional_image_dimension(
+    value: Option<&Value>,
+    label: &str,
+) -> Result<(), CommandError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.is_null() {
+        return Ok(());
+    }
     let dimension = value.as_f64().ok_or_else(|| {
         CommandError::new(
             "invalid_card_style",
@@ -621,7 +646,9 @@ fn validate_mark(value: &Value) -> Result<String, CommandError> {
             .and_then(Value::as_str)
             .ok_or_else(|| CommandError::new("invalid_link", "The card link has no address."))?;
         validate_link(href)?;
-        if let Some(target) = optional_string(attrs.and_then(|value| value.get("target")), "link target")? {
+        if let Some(target) =
+            optional_string(attrs.and_then(|value| value.get("target")), "link target")?
+        {
             if target != "_blank" {
                 return Err(CommandError::new(
                     "invalid_link",
@@ -629,11 +656,22 @@ fn validate_mark(value: &Value) -> Result<String, CommandError> {
                 ));
             }
         }
-        validate_optional_attribute_text(attrs.and_then(|value| value.get("rel")), 200, "link relationship")?;
-        validate_optional_attribute_text(attrs.and_then(|value| value.get("class")), 200, "link class")?;
+        validate_optional_attribute_text(
+            attrs.and_then(|value| value.get("rel")),
+            200,
+            "link relationship",
+        )?;
+        validate_optional_attribute_text(
+            attrs.and_then(|value| value.get("class")),
+            200,
+            "link class",
+        )?;
     }
     if mark_type == "highlight" {
-        if let Some(color) = optional_string(attrs.and_then(|value| value.get("color")), "highlight color")? {
+        if let Some(color) = optional_string(
+            attrs.and_then(|value| value.get("color")),
+            "highlight color",
+        )? {
             validate_css_color(color, "highlight color")?;
         }
     }
@@ -648,7 +686,9 @@ fn validate_mark(value: &Value) -> Result<String, CommandError> {
             if let Some(color) = optional_string(attrs.get("color"), "text color")? {
                 validate_css_color(color, "text color")?;
             }
-            if let Some(background) = optional_string(attrs.get("backgroundColor"), "background color")? {
+            if let Some(background) =
+                optional_string(attrs.get("backgroundColor"), "background color")?
+            {
                 validate_css_color(background, "background color")?;
             }
             if let Some(line_height) = optional_string(attrs.get("lineHeight"), "line height")? {
@@ -667,7 +707,13 @@ fn validate_mark_attribute_keys(
     let allowed: &[&str] = match mark_type {
         "link" => &["href", "target", "rel", "class"],
         "highlight" => &["color"],
-        "textStyle" => &["fontFamily", "fontSize", "color", "backgroundColor", "lineHeight"],
+        "textStyle" => &[
+            "fontFamily",
+            "fontSize",
+            "color",
+            "backgroundColor",
+            "lineHeight",
+        ],
         _ => &[],
     };
     if let Some(attrs) = attrs {
@@ -675,7 +721,9 @@ fn validate_mark_attribute_keys(
             if !allowed.contains(&key.as_str()) {
                 return Err(CommandError::new(
                     "invalid_card_document",
-                    format!("The {mark_type} formatting mark contains an unsupported attribute: {key}."),
+                    format!(
+                        "The {mark_type} formatting mark contains an unsupported attribute: {key}."
+                    ),
                 ));
             }
         }
@@ -683,7 +731,10 @@ fn validate_mark_attribute_keys(
     Ok(())
 }
 
-fn optional_string<'a>(value: Option<&'a Value>, label: &str) -> Result<Option<&'a str>, CommandError> {
+fn optional_string<'a>(
+    value: Option<&'a Value>,
+    label: &str,
+) -> Result<Option<&'a str>, CommandError> {
     match value {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => Ok(Some(value)),
@@ -694,11 +745,22 @@ fn optional_string<'a>(value: Option<&'a Value>, label: &str) -> Result<Option<&
     }
 }
 
-fn validate_optional_attribute_text(value: Option<&Value>, max_chars: usize, label: &str) -> Result<(), CommandError> {
-    let Some(value) = value else { return Ok(()); };
-    if value.is_null() { return Ok(()); }
+fn validate_optional_attribute_text(
+    value: Option<&Value>,
+    max_chars: usize,
+    label: &str,
+) -> Result<(), CommandError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if value.is_null() {
+        return Ok(());
+    }
     let text = value.as_str().ok_or_else(|| {
-        CommandError::new("invalid_card_document", format!("The {label} must be text."))
+        CommandError::new(
+            "invalid_card_document",
+            format!("The {label} must be text."),
+        )
     })?;
     if text.chars().count() > max_chars || text.chars().any(char::is_control) {
         return Err(CommandError::new(
@@ -712,7 +774,9 @@ fn validate_optional_attribute_text(value: Option<&Value>, max_chars: usize, lab
 fn validate_font_family(value: &str) -> Result<(), CommandError> {
     if value.is_empty()
         || value.len() > 200
-        || value.chars().any(|character| matches!(character, ';' | '{' | '}' | '<' | '>' | '\n' | '\r' | '\0'))
+        || value
+            .chars()
+            .any(|character| matches!(character, ';' | '{' | '}' | '<' | '>' | '\n' | '\r' | '\0'))
     {
         return Err(CommandError::new(
             "invalid_card_style",
@@ -730,7 +794,10 @@ fn validate_font_size(value: &str) -> Result<(), CommandError> {
         ));
     };
     let parsed = number.parse::<u16>().map_err(|_| {
-        CommandError::new("invalid_card_style", "The selected card font size is invalid.")
+        CommandError::new(
+            "invalid_card_style",
+            "The selected card font size is invalid.",
+        )
     })?;
     if !(8..=96).contains(&parsed) {
         return Err(CommandError::new(
@@ -816,7 +883,9 @@ fn collect_answer_checklists_from_value(
     output: &mut Vec<AnswerChecklist>,
     all_ids: &mut BTreeSet<String>,
 ) -> Result<(), CommandError> {
-    let Some(object) = value.as_object() else { return Ok(()); };
+    let Some(object) = value.as_object() else {
+        return Ok(());
+    };
     if object.get("type").and_then(Value::as_str) == Some("taskList")
         && object
             .get("attrs")
@@ -827,10 +896,18 @@ fn collect_answer_checklists_from_value(
     {
         let mut ids = Vec::new();
         let mut checked = Vec::new();
-        for item in object.get("content").and_then(Value::as_array).into_iter().flatten() {
-            let attrs = item.get("attrs").and_then(Value::as_object).ok_or_else(|| {
-                invalid_answer_checklist("Every answer-checklist item needs attributes.")
-            })?;
+        for item in object
+            .get("content")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let attrs = item
+                .get("attrs")
+                .and_then(Value::as_object)
+                .ok_or_else(|| {
+                    invalid_answer_checklist("Every answer-checklist item needs attributes.")
+                })?;
             let id = attrs.get("itemId").and_then(Value::as_str).ok_or_else(|| {
                 invalid_answer_checklist("Every answer-checklist item needs a stable identity.")
             })?;
@@ -841,7 +918,12 @@ fn collect_answer_checklists_from_value(
                 ));
             }
             ids.push(id.to_string());
-            checked.push(attrs.get("checked").and_then(Value::as_bool).unwrap_or(false));
+            checked.push(
+                attrs
+                    .get("checked")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            );
         }
         output.push(AnswerChecklist { ids, checked });
         return Ok(());
@@ -878,13 +960,23 @@ fn extract_plain_text(document: &Value, label: &str) -> Result<String, CommandEr
 }
 
 fn collect_plain_text(value: &Value, output: &mut String) {
-    let Some(object) = value.as_object() else { return; };
-    let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    let node_type = object
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if node_type == "text" {
-        if let Some(text) = object.get("text").and_then(Value::as_str) { output.push_str(text); }
+        if let Some(text) = object.get("text").and_then(Value::as_str) {
+            output.push_str(text);
+        }
         return;
     }
-    if node_type == "hardBreak" { output.push('\n'); return; }
+    if node_type == "hardBreak" {
+        output.push('\n');
+        return;
+    }
     if node_type == "taskItem" {
         let checked = object
             .get("attrs")
@@ -898,7 +990,10 @@ fn collect_plain_text(value: &Value, output: &mut String) {
     if let Some(content) = object.get("content").and_then(Value::as_array) {
         for (index, child) in content.iter().enumerate() {
             collect_plain_text(child, output);
-            if matches!(node_type, "tableRow") && index + 1 < content.len() && !output.ends_with('\t') {
+            if matches!(node_type, "tableRow")
+                && index + 1 < content.len()
+                && !output.ends_with('\t')
+            {
                 output.push('\t');
             }
         }
@@ -906,8 +1001,16 @@ fn collect_plain_text(value: &Value, output: &mut String) {
 
     if matches!(
         node_type,
-        "paragraph" | "heading" | "blockquote" | "listItem" | "taskItem" | "codeBlock" | "tableRow" | "table"
-    ) && !output.ends_with('\n') {
+        "paragraph"
+            | "heading"
+            | "blockquote"
+            | "listItem"
+            | "taskItem"
+            | "codeBlock"
+            | "tableRow"
+            | "table"
+    ) && !output.ends_with('\n')
+    {
         output.push('\n');
     }
 }
@@ -916,7 +1019,9 @@ fn validate_link(href: &str) -> Result<(), CommandError> {
     if href.is_empty()
         || href != href.trim()
         || href.len() > 2_000
-        || href.chars().any(|character| character.is_control() || character.is_whitespace())
+        || href
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
     {
         return Err(invalid_link());
     }
@@ -933,7 +1038,9 @@ fn validate_link(href: &str) -> Result<(), CommandError> {
     } else {
         false
     };
-    if !valid { return Err(invalid_link()); }
+    if !valid {
+        return Err(invalid_link());
+    }
     Ok(())
 }
 
@@ -956,10 +1063,15 @@ pub(crate) fn collect_asset_ids(document: &Value) -> Result<Vec<String>, Command
     Ok(ids.into_iter().collect())
 }
 
-fn collect_asset_ids_from_value(value: &Value, ids: &mut BTreeSet<String>) -> Result<(), CommandError> {
+fn collect_asset_ids_from_value(
+    value: &Value,
+    ids: &mut BTreeSet<String>,
+) -> Result<(), CommandError> {
     match value {
         Value::Array(values) => {
-            for item in values { collect_asset_ids_from_value(item, ids)?; }
+            for item in values {
+                collect_asset_ids_from_value(item, ids)?;
+            }
         }
         Value::Object(object) => {
             if object.get("type").and_then(Value::as_str) == Some("image") {
@@ -977,7 +1089,9 @@ fn collect_asset_ids_from_value(value: &Value, ids: &mut BTreeSet<String>) -> Re
                 validate_entity_id(id, "asset")?;
                 ids.insert(id.to_string());
             }
-            for nested in object.values() { collect_asset_ids_from_value(nested, ids)?; }
+            for nested in object.values() {
+                collect_asset_ids_from_value(nested, ids)?;
+            }
         }
         _ => {}
     }
@@ -1013,9 +1127,16 @@ mod tests {
     #[test]
     fn rejects_incomplete_or_unsafe_links() {
         for href in [
-            "", " https://example.org", "https://example.org ", "https://",
-            "http:///missing-host", "https://example .org", "mailto:", "tel:",
-            "javascript:alert(1)", "file:///tmp/private",
+            "",
+            " https://example.org",
+            "https://example.org ",
+            "https://",
+            "http:///missing-host",
+            "https://example .org",
+            "mailto:",
+            "tel:",
+            "javascript:alert(1)",
+            "file:///tmp/private",
         ] {
             assert!(validate_link(href).is_err(), "{href} should be rejected");
         }
@@ -1066,18 +1187,20 @@ mod tests {
     fn validates_matching_answer_checklists() {
         let item_a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         let item_b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-        let make = |first_checked: bool, second_checked: bool| serde_json::json!({
-            "type": "doc",
-            "attrs": {"schemaVersion": 2},
-            "content": [{
-                "type": "taskList",
-                "attrs": {"mode": "answer_key"},
-                "content": [
-                    {"type": "taskItem", "attrs": {"checked": first_checked, "itemId": item_a}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "First"}]}]},
-                    {"type": "taskItem", "attrs": {"checked": second_checked, "itemId": item_b}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Second"}]}]}
-                ]
-            }]
-        });
+        let make = |first_checked: bool, second_checked: bool| {
+            serde_json::json!({
+                "type": "doc",
+                "attrs": {"schemaVersion": 2},
+                "content": [{
+                    "type": "taskList",
+                    "attrs": {"mode": "answer_key"},
+                    "content": [
+                        {"type": "taskItem", "attrs": {"checked": first_checked, "itemId": item_a}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "First"}]}]},
+                        {"type": "taskItem", "attrs": {"checked": second_checked, "itemId": item_b}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Second"}]}]}
+                    ]
+                }]
+            })
+        };
         validate_content(
             make(false, false),
             make(true, false),
@@ -1098,8 +1221,13 @@ mod tests {
             }]
         });
         let back = paragraph("Different answer");
-        let error = validate_content(front, back, "First".to_string(), "Different answer".to_string())
-            .expect_err("unsynchronized checklist should fail");
+        let error = validate_content(
+            front,
+            back,
+            "First".to_string(),
+            "Different answer".to_string(),
+        )
+        .expect_err("unsynchronized checklist should fail");
         assert_eq!(error.code, "invalid_answer_checklist");
     }
 
@@ -1110,7 +1238,10 @@ mod tests {
             .with_connection(|connection| {
                 crate::decks::create_deck_in_connection(
                     connection,
-                    crate::decks::CreateDeckInput { name: "Biology".to_string(), description: None },
+                    crate::decks::CreateDeckInput {
+                        name: "Biology".to_string(),
+                        description: None,
+                    },
                 )
             })
             .expect("deck should be created");
@@ -1144,23 +1275,37 @@ mod tests {
             })
             .expect("card fixture should be created");
 
-        let deletion = database.with_connection(|connection| {
-            crate::deletion::delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())
-        }).expect("card should delete");
+        let deletion = database
+            .with_connection(|connection| {
+                crate::deletion::delete_cards(
+                    connection,
+                    vec![note_id.clone()],
+                    "Flashcard".to_string(),
+                )
+            })
+            .expect("card should delete");
         assert_eq!(deletion.affected_count, 1);
-        database.with_connection(|connection| {
-            let active_note: i64 = connection.query_row(
-                "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NULL",
-                [note_id.as_str()], |row| row.get(0),
-            ).map_err(CommandError::database)?;
-            let active_card: i64 = connection.query_row(
-                "SELECT COUNT(*) FROM cards WHERE id = ?1 AND deleted_at IS NULL",
-                [card_id.as_str()], |row| row.get(0),
-            ).map_err(CommandError::database)?;
-            assert_eq!(active_note, 0);
-            assert_eq!(active_card, 0);
-            Ok(())
-        }).expect("deletion tombstones should be readable");
+        database
+            .with_connection(|connection| {
+                let active_note: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                        [note_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                let active_card: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM cards WHERE id = ?1 AND deleted_at IS NULL",
+                        [card_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(active_note, 0);
+                assert_eq!(active_card, 0);
+                Ok(())
+            })
+            .expect("deletion tombstones should be readable");
     }
 
     #[test]
@@ -1178,9 +1323,12 @@ mod tests {
     #[test]
     fn derives_search_text_from_the_validated_document() {
         let validated = validate_content(
-            paragraph("Visible question"), paragraph("Visible answer"),
-            "spoofed question".to_string(), "spoofed answer".to_string(),
-        ).expect("valid card should be accepted");
+            paragraph("Visible question"),
+            paragraph("Visible answer"),
+            "spoofed question".to_string(),
+            "spoofed answer".to_string(),
+        )
+        .expect("valid card should be accepted");
         assert_eq!(validated.front_text, "Visible question");
         assert_eq!(validated.back_text, "Visible answer");
     }
