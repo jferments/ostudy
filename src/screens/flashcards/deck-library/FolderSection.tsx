@@ -66,11 +66,13 @@ export const FolderSection = memo(function FolderSection({
       data-folder-index={folderIndex}
       data-destination-name={folder.name}
       data-collapsed={collapsed ? "true" : "false"}
+      onDragStart={(event) => event.preventDefault()}
     >
       <header className={styles.header}>
         <button
           type="button"
           className={styles.keyboardReorder}
+          data-library-no-pointer-drag="true"
           disabled={disabled}
           aria-label={`Reorder ${folder.name} folder. Use Up and Down arrow keys.`}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
@@ -96,28 +98,33 @@ export const FolderSection = memo(function FolderSection({
           <span className={styles.icon}>
             <Icon name={collapsed ? "folder" : "folder-open"} size={22} />
           </span>
-          <span className={styles.title}>
-            <h3>{folder.name}</h3>
+          <div className={styles.title}>
+            <div className={styles.titleLine}>
+              <h3>{folder.name}</h3>
+              <button
+                type="button"
+                className={styles.toggle}
+                data-collapsed={collapsed ? "true" : "false"}
+                data-library-no-pointer-drag="true"
+                aria-expanded={!collapsed}
+                aria-controls={contentId}
+                aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
+                title={collapsed ? "Expand folder" : "Collapse folder"}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleCollapsed();
+                }}
+              >
+                <Icon name="chevron-down" size={18} />
+              </button>
+            </div>
             <span>
               {decks.length} {decks.length === 1 ? "deck" : "decks"} · {due} ready
             </span>
-          </span>
+          </div>
         </div>
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-expanded={!collapsed}
-          aria-controls={contentId}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${folder.name} folder`}
-          title={collapsed ? "Expand folder" : "Collapse folder"}
-          onClick={onToggleCollapsed}
-        >
-          <span>{collapsed ? "Expand" : "Collapse"}</span>
-          <span className={styles.chevron} aria-hidden="true">
-            <Icon name={collapsed ? "chevron-right" : "chevron-down"} size={18} />
-          </span>
-        </button>
-        <div className={styles.actions}>
+        <div className={styles.actions} data-library-no-pointer-drag="true">
           {layoutMode === "compact" ? (
             <OverflowMenu
               label={`${folder.name} folder actions`}
@@ -151,12 +158,12 @@ export const FolderSection = memo(function FolderSection({
       </header>
       {!collapsed ? (
         decks.length === 0 ? (
-          <div id={contentId} className={styles.empty}>
+          <div id={contentId} className={styles.empty} data-library-deck-list="true">
             <Artwork slot="empty.folder" />
             <p>Drag a deck here.</p>
           </div>
         ) : (
-          <div id={contentId} className={listStyles.list}>
+          <div id={contentId} className={listStyles.list} data-library-deck-list="true">
             {decks.map((deck, index) => (
               <DeckItem
                 key={deck.id}
