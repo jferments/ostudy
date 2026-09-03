@@ -1,36 +1,7 @@
-import Highlight from "@tiptap/extension-highlight";
-import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
-import { TextStyle } from "@tiptap/extension-text-style";
-import Underline from "@tiptap/extension-underline";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useMemo } from "react";
-
-import {
-  type Asset,
-} from "../ipc/assets";
-import {
-  type RichDocument,
-} from "../ipc/common";
-import { managedAssetUrl } from "../platform/assets";
-import { InlineProgress } from "../ui/primitives/InlineNotice";
-import contentStyles from "./RichContent.module.css";
-import editorStyles from "./RichTextEditor.module.css";
-
-const ManagedImage = Image.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      assetId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-asset-id"),
-        renderHTML: (attributes) =>
-          attributes.assetId ? { "data-asset-id": attributes.assetId } : {},
-      },
-    };
-  },
-});
+import type { Asset } from "../ipc/assets";
+import type { RichDocument } from "../ipc/common";
+import { RichTextEditor } from "./RichTextEditor";
+import { extractRichDocumentText } from "./richText";
 
 interface StudyRichEditorProps {
   value: RichDocument;
@@ -41,6 +12,7 @@ interface StudyRichEditorProps {
   onRequestImage?: () => Promise<Asset | null>;
 }
 
+/** Compact study-artifact editor using the editor-neutral public surface. */
 export function StudyRichEditor({
   value,
   assets,
@@ -49,169 +21,31 @@ export function StudyRichEditor({
   onChange,
   onRequestImage,
 }: StudyRichEditorProps) {
-  const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
-  const editorValue = useMemo(() => documentForEditor(value, assetById), [assetById, value]);
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      Highlight,
-      TextStyle,
-      Link.configure({ openOnClick: false, autolink: false }),
-      ManagedImage.configure({
-        inline: false,
-        allowBase64: false,
-        HTMLAttributes: { class: contentStyles.image },
-      }),
-    ],
-    content: editorValue,
-    editable: !disabled,
-    editorProps: {
-      attributes: {
-        class: `${contentStyles.content} ${editorStyles.studyContent}`,
-        "aria-label": label,
-      },
-    },
-    onUpdate({ editor: current }) {
-      const canonical = canonicalDocument(current.getJSON());
-      onChange(canonical, extractText(canonical));
-    },
-  });
-
-  useEffect(() => {
-    editor?.setEditable(!disabled);
-  }, [disabled, editor]);
-
-  useEffect(() => {
-    if (!editor) return;
-    const current = JSON.stringify(canonicalDocument(editor.getJSON()));
-    const incoming = JSON.stringify(canonicalDocument(value));
-    if (current !== incoming) editor.commands.setContent(editorValue, { emitUpdate: false });
-  }, [editor, editorValue, value]);
-
-  if (!editor) return <InlineProgress>Opening editor…</InlineProgress>;
-
-  async function addImage(): Promise<void> {
-    if (!onRequestImage) return;
-    const asset = await onRequestImage();
-    if (!asset) return;
-    editor
-      .chain()
-      .focus()
-      .setImage({
-        src: managedAssetUrl(asset.id),
-        alt: asset.originalFilename,
-        assetId: asset.id,
-      } as never)
-      .run();
-  }
-
   return (
-    <div className={editorStyles.studyEditor} aria-label={label}>
-      <div
-        className={`${editorStyles.toolbar} ${editorStyles.studyToolbar}`}
-        role="toolbar"
-        aria-label={`${label} formatting`}
-      >
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("bold"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("bold")}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        >
-          <strong>B</strong>
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("italic"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("italic")}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <em>I</em>
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("underline"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("underline")}
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
-        >
-          <u>U</u>
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("bulletList"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("bulletList")}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          • List
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("orderedList"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("orderedList")}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          1. List
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("blockquote"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("blockquote")}
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        >
-          Quote
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("codeBlock"))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("codeBlock")}
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        >
-          Code
-        </button>
-        <button
-          type="button"
-          className={studyToolbarButtonClass(editor.isActive("heading", { level: 2 }))}
-          disabled={disabled}
-          aria-pressed={editor.isActive("heading", { level: 2 })}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        >
-          Heading
-        </button>
-        {onRequestImage ? (
-          <button
-            type="button"
-            className={editorStyles.toolbarButton}
-            disabled={disabled}
-            onClick={() => void addImage()}
-          >
-            Image
-          </button>
-        ) : null}
-      </div>
-      <EditorContent editor={editor} />
-    </div>
+    <RichTextEditor
+      label={label}
+      document={value}
+      assets={assets}
+      disabled={disabled}
+      minHeight={128}
+      onChange={onChange}
+      onRequestImage={onRequestImage}
+    />
   );
 }
 
-function studyToolbarButtonClass(active: boolean): string {
-  return `${editorStyles.toolbarButton} ${active ? editorStyles.toolbarButtonActive : ""}`.trim();
-}
-
 export function emptyRichDocument(): RichDocument {
-  return { type: "doc", content: [{ type: "paragraph" }] };
+  return {
+    type: "doc",
+    attrs: { schemaVersion: 2 },
+    content: [{ type: "paragraph" }],
+  };
 }
 
 export function plainTextDocument(value: string): RichDocument {
   return {
     type: "doc",
+    attrs: { schemaVersion: 2 },
     content: value.split("\n").map((line) => ({
       type: "paragraph",
       content: line ? [{ type: "text", text: line }] : undefined,
@@ -220,71 +54,5 @@ export function plainTextDocument(value: string): RichDocument {
 }
 
 export function extractText(value: RichDocument): string {
-  const parts: string[] = [];
-  visit(value, (node) => {
-    if (node.type === "text" && typeof node.text === "string") parts.push(node.text);
-    else if (node.type === "hardBreak") parts.push("\n");
-    else if (
-      ["paragraph", "heading", "blockquote", "listItem", "codeBlock"].includes(
-        typeof node.type === "string" ? node.type : "",
-      )
-    ) {
-      if (parts.length > 0 && parts[parts.length - 1] !== "\n") parts.push("\n");
-    }
-  });
-  return parts.join("").replace(/\n{3,}/gu, "\n\n").trim();
-}
-
-function documentForEditor(value: RichDocument, assets: Map<string, Asset>): RichDocument {
-  return mapDocument(value, (node) => {
-    if (node.type !== "image") return node;
-    const attrs = asRecord(node.attrs);
-    const assetId = typeof attrs.assetId === "string" ? attrs.assetId : null;
-    const asset = assetId ? assets.get(assetId) : undefined;
-    return {
-      ...node,
-      attrs: {
-        ...attrs,
-        src: asset ? managedAssetUrl(asset.id) : attrs.src,
-        alt: attrs.alt ?? asset?.originalFilename ?? "Image",
-      },
-    };
-  });
-}
-
-function canonicalDocument(value: RichDocument): RichDocument {
-  return mapDocument(value, (node) => {
-    if (node.type !== "image") return node;
-    const attrs = asRecord(node.attrs);
-    const { src: _src, ...rest } = attrs;
-    return { ...node, attrs: rest };
-  });
-}
-
-function mapDocument(
-  value: RichDocument,
-  transform: (node: Record<string, unknown>) => Record<string, unknown>,
-): RichDocument {
-  const mapNode = (unknownNode: unknown): unknown => {
-    if (!unknownNode || typeof unknownNode !== "object" || Array.isArray(unknownNode)) {
-      return unknownNode;
-    }
-    const node = unknownNode as Record<string, unknown>;
-    const content = Array.isArray(node.content) ? node.content.map(mapNode) : node.content;
-    return transform(content === undefined ? { ...node } : { ...node, content });
-  };
-  return mapNode(value) as RichDocument;
-}
-
-function visit(value: unknown, visitor: (node: Record<string, unknown>) => void): void {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return;
-  const node = value as Record<string, unknown>;
-  visitor(node);
-  if (Array.isArray(node.content)) for (const child of node.content) visit(child, visitor);
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  return extractRichDocumentText(value);
 }

@@ -1,10 +1,9 @@
 //! Shared card-presentation transport and rich-text validation.
 //!
-//! The React/Tiptap editor sends JSON documents across the Tauri IPC boundary.
-//! This module treats those documents as untrusted input, validates the supported
-//! schema, and derives authoritative plain text in Rust. The authoring module owns
-//! card creation and updates so there is one write path for tags, duplicate
-//! fingerprints, assets, deck changes, and scheduling invariants.
+//! The frontend editor sends canonical JSON documents across the Tauri IPC
+//! boundary. This module treats those documents as untrusted input, validates
+//! every supported node/mark/attribute, and derives authoritative plain text in
+//! Rust for search, duplicate detection, import, export, and backup behavior.
 
 use std::collections::BTreeSet;
 
@@ -20,6 +19,8 @@ use crate::{database::Database, util::unix_time_millis};
 
 const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
+const MAX_DOCUMENT_DEPTH: usize = 128;
+const MAX_RICH_SCHEMA_VERSION: i64 = 2;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,15 +56,11 @@ pub(crate) fn validate_content(
     front_text_snapshot: String,
     back_text_snapshot: String,
 ) -> Result<ValidatedContent, CommandError> {
-    // The frontend sends a plain-text snapshot for responsive UI updates, but
-    // durable search text is derived from the validated JSON document below.
-    // This prevents imported or compromised frontend code from storing text
-    // that does not match what the card actually renders.
     validate_plain_text_snapshot(&front_text_snapshot, "question")?;
     validate_plain_text_snapshot(&back_text_snapshot, "answer")?;
-
     validate_document(&front_doc)?;
     validate_document(&back_doc)?;
+    validate_answer_checklist_pair(&front_doc, &back_doc)?;
 
     let front_doc_json = serde_json::to_string(&front_doc).map_err(CommandError::serialization)?;
     let back_doc_json = serde_json::to_string(&back_doc).map_err(CommandError::serialization)?;
@@ -111,18 +108,9 @@ fn validate_plain_text_snapshot(value: &str, label: &str) -> Result<(), CommandE
     Ok(())
 }
 
-/// Validates one canonical Tiptap/ProseMirror card document.
-///
-/// Error codes intentionally distinguish *unsupported* schema elements from
-/// malformed uses of schema elements that the application already knows. That
-/// distinction lets imports report "created by a newer/unsupported editor"
-/// separately from "damaged or invalid document."
 pub(crate) fn validate_document(document: &Value) -> Result<(), CommandError> {
     let root = document.as_object().ok_or_else(|| {
-        CommandError::new(
-            "invalid_card_document",
-            "The card editor content is invalid.",
-        )
+        CommandError::new("invalid_card_document", "The card editor content is invalid.")
     })?;
     if root.get("type").and_then(Value::as_str) != Some("doc") {
         return Err(CommandError::new(
@@ -130,11 +118,9 @@ pub(crate) fn validate_document(document: &Value) -> Result<(), CommandError> {
             "The card editor content is missing its document root.",
         ));
     }
-
     validate_document_node(document, 0)
 }
 
-const MAX_DOCUMENT_DEPTH: usize = 128;
 const ALLOWED_NODE_TYPES: &[&str] = &[
     "doc",
     "paragraph",
@@ -144,6 +130,12 @@ const ALLOWED_NODE_TYPES: &[&str] = &[
     "bulletList",
     "orderedList",
     "listItem",
+    "taskList",
+    "taskItem",
+    "table",
+    "tableRow",
+    "tableHeader",
+    "tableCell",
     "codeBlock",
     "horizontalRule",
     "hardBreak",
@@ -158,6 +150,8 @@ const ALLOWED_MARK_TYPES: &[&str] = &[
     "underline",
     "highlight",
     "textStyle",
+    "subscript",
+    "superscript",
 ];
 
 fn validate_document_node(value: &Value, depth: usize) -> Result<(), CommandError> {
@@ -167,7 +161,6 @@ fn validate_document_node(value: &Value, depth: usize) -> Result<(), CommandErro
             "The card document is nested too deeply.",
         ));
     }
-
     let object = value.as_object().ok_or_else(|| {
         CommandError::new(
             "invalid_card_document",
@@ -232,12 +225,18 @@ fn validate_document_node(value: &Value, depth: usize) -> Result<(), CommandErro
         let mut mark_types = BTreeSet::new();
         for mark in marks {
             let mark_type = validate_mark(mark)?;
-            if !mark_types.insert(mark_type) {
+            if !mark_types.insert(mark_type.clone()) {
                 return Err(CommandError::new(
                     "invalid_card_document",
                     "A text node contains the same formatting mark more than once.",
                 ));
             }
+        }
+        if mark_types.contains("subscript") && mark_types.contains("superscript") {
+            return Err(CommandError::new(
+                "invalid_card_style",
+                "Text cannot be both subscript and superscript.",
+            ));
         }
     }
 
@@ -250,18 +249,12 @@ fn validate_document_node(value: &Value, depth: usize) -> Result<(), CommandErro
         })?),
         None => None,
     };
-    // Validate each child before validating the parent/child relationship.
-    // This ordering is deliberate: an unknown child node should be classified
-    // as unsupported content, while a known node in an illegal position should
-    // be classified as a malformed document. Validating the parent first would
-    // collapse both cases into `invalid_card_document`.
     if let Some(children) = content {
         for child in children {
             validate_document_node(child, depth + 1)?;
         }
     }
     validate_child_structure(node_type, content)?;
-
     Ok(())
 }
 
@@ -270,10 +263,7 @@ fn validate_node_keys(
     object: &serde_json::Map<String, Value>,
 ) -> Result<(), CommandError> {
     for key in object.keys() {
-        if !matches!(
-            key.as_str(),
-            "type" | "attrs" | "content" | "marks" | "text"
-        ) {
+        if !matches!(key.as_str(), "type" | "attrs" | "content" | "marks" | "text") {
             return Err(CommandError::new(
                 "invalid_card_document",
                 format!("The {node_type} node contains an unsupported property: {key}."),
@@ -290,12 +280,7 @@ fn validate_child_structure(
     let child_types = content
         .into_iter()
         .flat_map(|children| children.iter())
-        .map(|child| {
-            child
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-        })
+        .map(|child| child.get("type").and_then(Value::as_str).unwrap_or_default())
         .collect::<Vec<_>>();
 
     let valid = match node_type {
@@ -303,16 +288,28 @@ fn validate_child_structure(
         "paragraph" | "heading" => child_types
             .iter()
             .all(|child| matches!(*child, "text" | "hardBreak")),
-        "blockquote" => {
+        "blockquote" | "tableCell" | "tableHeader" => {
             !child_types.is_empty() && child_types.iter().all(|child| is_block_node(child))
         }
         "bulletList" | "orderedList" => {
             !child_types.is_empty() && child_types.iter().all(|child| *child == "listItem")
         }
-        "listItem" => {
+        "taskList" => {
+            !child_types.is_empty() && child_types.iter().all(|child| *child == "taskItem")
+        }
+        "listItem" | "taskItem" => {
             !child_types.is_empty()
                 && child_types.first() == Some(&"paragraph")
                 && child_types.iter().all(|child| is_block_node(child))
+        }
+        "table" => {
+            !child_types.is_empty() && child_types.iter().all(|child| *child == "tableRow")
+        }
+        "tableRow" => {
+            !child_types.is_empty()
+                && child_types
+                    .iter()
+                    .all(|child| matches!(*child, "tableHeader" | "tableCell"))
         }
         "codeBlock" => child_types.iter().all(|child| *child == "text"),
         "text" | "horizontalRule" | "hardBreak" | "image" => content.is_none(),
@@ -336,6 +333,8 @@ fn is_block_node(node_type: &str) -> bool {
             | "blockquote"
             | "bulletList"
             | "orderedList"
+            | "taskList"
+            | "table"
             | "codeBlock"
             | "horizontalRule"
             | "image"
@@ -360,6 +359,23 @@ fn validate_node_attributes(node_type: &str, attrs: Option<&Value>) -> Result<()
         )
     })?;
     validate_node_attribute_keys(node_type, attrs)?;
+
+    if node_type == "doc" {
+        if let Some(version) = attrs.get("schemaVersion") {
+            let version = version.as_i64().ok_or_else(|| {
+                CommandError::new(
+                    "invalid_card_document",
+                    "The rich-document schema version is invalid.",
+                )
+            })?;
+            if !(1..=MAX_RICH_SCHEMA_VERSION).contains(&version) {
+                return Err(CommandError::new(
+                    "unsupported_card_content",
+                    "The card was created by a newer rich-document schema.",
+                ));
+            }
+        }
+    }
 
     if node_type == "image" {
         let asset_id = attrs
@@ -444,20 +460,79 @@ fn validate_node_attributes(node_type: &str, attrs: Option<&Value>) -> Result<()
     if node_type == "codeBlock" {
         validate_optional_attribute_text(attrs.get("language"), 100, "code language")?;
     }
+    if matches!(node_type, "tableCell" | "tableHeader") {
+        validate_table_span(attrs.get("colspan"), "column span")?;
+        validate_table_span(attrs.get("rowspan"), "row span")?;
+        validate_column_widths(attrs.get("colwidth"))?;
+    }
+    if node_type == "taskList" {
+        let mode = attrs.get("mode").and_then(Value::as_str).unwrap_or("ordinary");
+        if !matches!(mode, "ordinary" | "answer_key") {
+            return Err(CommandError::new(
+                "invalid_card_document",
+                "The checklist mode is invalid.",
+            ));
+        }
+    }
+    if node_type == "taskItem" {
+        if !attrs.get("checked").is_some_and(Value::is_boolean) {
+            return Err(CommandError::new(
+                "invalid_card_document",
+                "Every checklist item must have a checked state.",
+            ));
+        }
+        if let Some(item_id) = attrs.get("itemId") {
+            if !item_id.is_null() {
+                let item_id = item_id.as_str().ok_or_else(|| {
+                    CommandError::new(
+                        "invalid_card_document",
+                        "The checklist item identity is invalid.",
+                    )
+                })?;
+                validate_entity_id(item_id, "checklist item")?;
+            }
+        }
+    }
 
     Ok(())
 }
 
-fn validate_optional_image_dimension(
-    value: Option<&Value>,
-    label: &str,
-) -> Result<(), CommandError> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    if value.is_null() {
-        return Ok(());
+fn validate_table_span(value: Option<&Value>, label: &str) -> Result<(), CommandError> {
+    let span = value.and_then(Value::as_i64).unwrap_or(1);
+    if !(1..=64).contains(&span) {
+        return Err(CommandError::new(
+            "invalid_card_document",
+            format!("The table {label} must be between one and 64."),
+        ));
     }
+    Ok(())
+}
+
+fn validate_column_widths(value: Option<&Value>) -> Result<(), CommandError> {
+    let Some(value) = value else { return Ok(()); };
+    if value.is_null() { return Ok(()); }
+    let widths = value.as_array().ok_or_else(|| {
+        CommandError::new(
+            "invalid_card_document",
+            "Table column widths must be a list or null.",
+        )
+    })?;
+    if widths.len() > 64
+        || widths
+            .iter()
+            .any(|width| !width.as_i64().is_some_and(|width| (1..=10_000).contains(&width)))
+    {
+        return Err(CommandError::new(
+            "invalid_card_document",
+            "A table column width is outside the supported range.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_optional_image_dimension(value: Option<&Value>, label: &str) -> Result<(), CommandError> {
+    let Some(value) = value else { return Ok(()); };
+    if value.is_null() { return Ok(()); }
     let dimension = value.as_f64().ok_or_else(|| {
         CommandError::new(
             "invalid_card_style",
@@ -478,11 +553,15 @@ fn validate_node_attribute_keys(
     attrs: &serde_json::Map<String, Value>,
 ) -> Result<(), CommandError> {
     let allowed: &[&str] = match node_type {
+        "doc" => &["schemaVersion"],
         "paragraph" => &["textAlign", "indent"],
         "heading" => &["textAlign", "indent", "level"],
         "image" => &["src", "alt", "title", "assetId", "width", "height"],
         "orderedList" => &["start", "type"],
         "codeBlock" => &["language"],
+        "tableCell" | "tableHeader" => &["colspan", "rowspan", "colwidth"],
+        "taskList" => &["mode"],
+        "taskItem" => &["checked", "itemId"],
         _ => &[],
     };
     for key in attrs.keys() {
@@ -542,9 +621,7 @@ fn validate_mark(value: &Value) -> Result<String, CommandError> {
             .and_then(Value::as_str)
             .ok_or_else(|| CommandError::new("invalid_link", "The card link has no address."))?;
         validate_link(href)?;
-        if let Some(target) =
-            optional_string(attrs.and_then(|value| value.get("target")), "link target")?
-        {
+        if let Some(target) = optional_string(attrs.and_then(|value| value.get("target")), "link target")? {
             if target != "_blank" {
                 return Err(CommandError::new(
                     "invalid_link",
@@ -552,22 +629,11 @@ fn validate_mark(value: &Value) -> Result<String, CommandError> {
                 ));
             }
         }
-        validate_optional_attribute_text(
-            attrs.and_then(|value| value.get("rel")),
-            200,
-            "link relationship",
-        )?;
-        validate_optional_attribute_text(
-            attrs.and_then(|value| value.get("class")),
-            200,
-            "link class",
-        )?;
+        validate_optional_attribute_text(attrs.and_then(|value| value.get("rel")), 200, "link relationship")?;
+        validate_optional_attribute_text(attrs.and_then(|value| value.get("class")), 200, "link class")?;
     }
     if mark_type == "highlight" {
-        if let Some(color) = optional_string(
-            attrs.and_then(|value| value.get("color")),
-            "highlight color",
-        )? {
+        if let Some(color) = optional_string(attrs.and_then(|value| value.get("color")), "highlight color")? {
             validate_css_color(color, "highlight color")?;
         }
     }
@@ -582,9 +648,7 @@ fn validate_mark(value: &Value) -> Result<String, CommandError> {
             if let Some(color) = optional_string(attrs.get("color"), "text color")? {
                 validate_css_color(color, "text color")?;
             }
-            if let Some(background) =
-                optional_string(attrs.get("backgroundColor"), "background color")?
-            {
+            if let Some(background) = optional_string(attrs.get("backgroundColor"), "background color")? {
                 validate_css_color(background, "background color")?;
             }
             if let Some(line_height) = optional_string(attrs.get("lineHeight"), "line height")? {
@@ -603,13 +667,7 @@ fn validate_mark_attribute_keys(
     let allowed: &[&str] = match mark_type {
         "link" => &["href", "target", "rel", "class"],
         "highlight" => &["color"],
-        "textStyle" => &[
-            "fontFamily",
-            "fontSize",
-            "color",
-            "backgroundColor",
-            "lineHeight",
-        ],
+        "textStyle" => &["fontFamily", "fontSize", "color", "backgroundColor", "lineHeight"],
         _ => &[],
     };
     if let Some(attrs) = attrs {
@@ -617,9 +675,7 @@ fn validate_mark_attribute_keys(
             if !allowed.contains(&key.as_str()) {
                 return Err(CommandError::new(
                     "invalid_card_document",
-                    format!(
-                        "The {mark_type} formatting mark contains an unsupported attribute: {key}."
-                    ),
+                    format!("The {mark_type} formatting mark contains an unsupported attribute: {key}."),
                 ));
             }
         }
@@ -627,10 +683,7 @@ fn validate_mark_attribute_keys(
     Ok(())
 }
 
-fn optional_string<'a>(
-    value: Option<&'a Value>,
-    label: &str,
-) -> Result<Option<&'a str>, CommandError> {
+fn optional_string<'a>(value: Option<&'a Value>, label: &str) -> Result<Option<&'a str>, CommandError> {
     match value {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => Ok(Some(value)),
@@ -641,22 +694,11 @@ fn optional_string<'a>(
     }
 }
 
-fn validate_optional_attribute_text(
-    value: Option<&Value>,
-    max_chars: usize,
-    label: &str,
-) -> Result<(), CommandError> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    if value.is_null() {
-        return Ok(());
-    }
+fn validate_optional_attribute_text(value: Option<&Value>, max_chars: usize, label: &str) -> Result<(), CommandError> {
+    let Some(value) = value else { return Ok(()); };
+    if value.is_null() { return Ok(()); }
     let text = value.as_str().ok_or_else(|| {
-        CommandError::new(
-            "invalid_card_document",
-            format!("The {label} must be text."),
-        )
+        CommandError::new("invalid_card_document", format!("The {label} must be text."))
     })?;
     if text.chars().count() > max_chars || text.chars().any(char::is_control) {
         return Err(CommandError::new(
@@ -670,9 +712,7 @@ fn validate_optional_attribute_text(
 fn validate_font_family(value: &str) -> Result<(), CommandError> {
     if value.is_empty()
         || value.len() > 200
-        || value
-            .chars()
-            .any(|character| matches!(character, ';' | '{' | '}' | '<' | '>' | '\n' | '\r' | '\0'))
+        || value.chars().any(|character| matches!(character, ';' | '{' | '}' | '<' | '>' | '\n' | '\r' | '\0'))
     {
         return Err(CommandError::new(
             "invalid_card_style",
@@ -690,10 +730,7 @@ fn validate_font_size(value: &str) -> Result<(), CommandError> {
         ));
     };
     let parsed = number.parse::<u16>().map_err(|_| {
-        CommandError::new(
-            "invalid_card_style",
-            "The selected card font size is invalid.",
-        )
+        CommandError::new("invalid_card_style", "The selected card font size is invalid.")
     })?;
     if !(8..=96).contains(&parsed) {
         return Err(CommandError::new(
@@ -730,6 +767,97 @@ fn validate_css_color(value: &str, label: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[derive(Debug)]
+struct AnswerChecklist {
+    ids: Vec<String>,
+    checked: Vec<bool>,
+}
+
+fn validate_answer_checklist_pair(front: &Value, back: &Value) -> Result<(), CommandError> {
+    let front_lists = collect_answer_checklists(front)?;
+    let back_lists = collect_answer_checklists(back)?;
+    if front_lists.is_empty() && back_lists.is_empty() {
+        return Ok(());
+    }
+    if front_lists.len() != back_lists.len() {
+        return Err(invalid_answer_checklist(
+            "Copy each question answer-checklist to the answer before saving.",
+        ));
+    }
+    for (front, back) in front_lists.iter().zip(back_lists.iter()) {
+        if front.ids != back.ids {
+            return Err(invalid_answer_checklist(
+                "The question and answer checklists must contain the same stable items.",
+            ));
+        }
+        if front.checked.iter().any(|checked| *checked) {
+            return Err(invalid_answer_checklist(
+                "Question answer-checklist boxes must be empty. Copy the checklist to the answer again.",
+            ));
+        }
+        if !back.checked.iter().any(|checked| *checked) {
+            return Err(invalid_answer_checklist(
+                "Mark at least one correct answer in each answer checklist.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn collect_answer_checklists(document: &Value) -> Result<Vec<AnswerChecklist>, CommandError> {
+    let mut output = Vec::new();
+    let mut all_ids = BTreeSet::new();
+    collect_answer_checklists_from_value(document, &mut output, &mut all_ids)?;
+    Ok(output)
+}
+
+fn collect_answer_checklists_from_value(
+    value: &Value,
+    output: &mut Vec<AnswerChecklist>,
+    all_ids: &mut BTreeSet<String>,
+) -> Result<(), CommandError> {
+    let Some(object) = value.as_object() else { return Ok(()); };
+    if object.get("type").and_then(Value::as_str) == Some("taskList")
+        && object
+            .get("attrs")
+            .and_then(Value::as_object)
+            .and_then(|attrs| attrs.get("mode"))
+            .and_then(Value::as_str)
+            == Some("answer_key")
+    {
+        let mut ids = Vec::new();
+        let mut checked = Vec::new();
+        for item in object.get("content").and_then(Value::as_array).into_iter().flatten() {
+            let attrs = item.get("attrs").and_then(Value::as_object).ok_or_else(|| {
+                invalid_answer_checklist("Every answer-checklist item needs attributes.")
+            })?;
+            let id = attrs.get("itemId").and_then(Value::as_str).ok_or_else(|| {
+                invalid_answer_checklist("Every answer-checklist item needs a stable identity.")
+            })?;
+            validate_entity_id(id, "checklist item")?;
+            if !all_ids.insert(id.to_string()) {
+                return Err(invalid_answer_checklist(
+                    "Answer-checklist item identities must be unique.",
+                ));
+            }
+            ids.push(id.to_string());
+            checked.push(attrs.get("checked").and_then(Value::as_bool).unwrap_or(false));
+        }
+        output.push(AnswerChecklist { ids, checked });
+        return Ok(());
+    }
+    if let Some(content) = object.get("content").and_then(Value::as_array) {
+        for child in content {
+            collect_answer_checklists_from_value(child, output, all_ids)?;
+        }
+    }
+    Ok(())
+}
+
+fn invalid_answer_checklist(message: &str) -> CommandError {
+    CommandError::new("invalid_answer_checklist", message)
+}
+
 fn extract_plain_text(document: &Value, label: &str) -> Result<String, CommandError> {
     let mut output = String::new();
     collect_plain_text(document, &mut output);
@@ -750,35 +878,36 @@ fn extract_plain_text(document: &Value, label: &str) -> Result<String, CommandEr
 }
 
 fn collect_plain_text(value: &Value, output: &mut String) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
-    let node_type = object
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let Some(object) = value.as_object() else { return; };
+    let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
     if node_type == "text" {
-        if let Some(text) = object.get("text").and_then(Value::as_str) {
-            output.push_str(text);
-        }
+        if let Some(text) = object.get("text").and_then(Value::as_str) { output.push_str(text); }
         return;
     }
-    if node_type == "hardBreak" {
-        output.push('\n');
-        return;
+    if node_type == "hardBreak" { output.push('\n'); return; }
+    if node_type == "taskItem" {
+        let checked = object
+            .get("attrs")
+            .and_then(Value::as_object)
+            .and_then(|attrs| attrs.get("checked"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        output.push_str(if checked { "[x] " } else { "[ ] " });
     }
 
     if let Some(content) = object.get("content").and_then(Value::as_array) {
-        for child in content {
+        for (index, child) in content.iter().enumerate() {
             collect_plain_text(child, output);
+            if matches!(node_type, "tableRow") && index + 1 < content.len() && !output.ends_with('\t') {
+                output.push('\t');
+            }
         }
     }
 
     if matches!(
         node_type,
-        "paragraph" | "heading" | "blockquote" | "listItem" | "codeBlock"
-    ) && !output.ends_with('\n')
-    {
+        "paragraph" | "heading" | "blockquote" | "listItem" | "taskItem" | "codeBlock" | "tableRow" | "table"
+    ) && !output.ends_with('\n') {
         output.push('\n');
     }
 }
@@ -787,9 +916,7 @@ fn validate_link(href: &str) -> Result<(), CommandError> {
     if href.is_empty()
         || href != href.trim()
         || href.len() > 2_000
-        || href
-            .chars()
-            .any(|character| character.is_control() || character.is_whitespace())
+        || href.chars().any(|character| character.is_control() || character.is_whitespace())
     {
         return Err(invalid_link());
     }
@@ -806,10 +933,7 @@ fn validate_link(href: &str) -> Result<(), CommandError> {
     } else {
         false
     };
-
-    if !valid {
-        return Err(invalid_link());
-    }
+    if !valid { return Err(invalid_link()); }
     Ok(())
 }
 
@@ -832,15 +956,10 @@ pub(crate) fn collect_asset_ids(document: &Value) -> Result<Vec<String>, Command
     Ok(ids.into_iter().collect())
 }
 
-fn collect_asset_ids_from_value(
-    value: &Value,
-    ids: &mut BTreeSet<String>,
-) -> Result<(), CommandError> {
+fn collect_asset_ids_from_value(value: &Value, ids: &mut BTreeSet<String>) -> Result<(), CommandError> {
     match value {
         Value::Array(values) => {
-            for item in values {
-                collect_asset_ids_from_value(item, ids)?;
-            }
+            for item in values { collect_asset_ids_from_value(item, ids)?; }
         }
         Value::Object(object) => {
             if object.get("type").and_then(Value::as_str) == Some("image") {
@@ -858,9 +977,7 @@ fn collect_asset_ids_from_value(
                 validate_entity_id(id, "asset")?;
                 ids.insert(id.to_string());
             }
-            for nested in object.values() {
-                collect_asset_ids_from_value(nested, ids)?;
-            }
+            for nested in object.values() { collect_asset_ids_from_value(nested, ids)?; }
         }
         _ => {}
     }
@@ -896,33 +1013,104 @@ mod tests {
     #[test]
     fn rejects_incomplete_or_unsafe_links() {
         for href in [
-            "",
-            " https://example.org",
-            "https://example.org ",
-            "https://",
-            "http:///missing-host",
-            "https://example .org",
-            "mailto:",
-            "tel:",
-            "javascript:alert(1)",
-            "file:///tmp/private",
+            "", " https://example.org", "https://example.org ", "https://",
+            "http:///missing-host", "https://example .org", "mailto:", "tel:",
+            "javascript:alert(1)", "file:///tmp/private",
         ] {
             assert!(validate_link(href).is_err(), "{href} should be rejected");
         }
     }
 
     #[test]
+    fn accepts_versioned_tables_tasks_and_subscripts() {
+        let document = serde_json::json!({
+            "type": "doc",
+            "attrs": {"schemaVersion": 2},
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{
+                        "type": "text",
+                        "text": "H2O",
+                        "marks": [{"type": "subscript"}]
+                    }]
+                },
+                {
+                    "type": "table",
+                    "content": [{
+                        "type": "tableRow",
+                        "content": [
+                            {"type": "tableHeader", "attrs": {"colspan": 1, "rowspan": 1, "colwidth": null}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Drug"}]}]},
+                            {"type": "tableCell", "attrs": {"colspan": 1, "rowspan": 1, "colwidth": null}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Dose"}]}]}
+                        ]
+                    }]
+                },
+                {
+                    "type": "taskList",
+                    "attrs": {"mode": "ordinary"},
+                    "content": [{
+                        "type": "taskItem",
+                        "attrs": {"checked": true, "itemId": null},
+                        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Review"}]}]
+                    }]
+                }
+            ]
+        });
+        validate_document(&document).expect("versioned rich content should validate");
+        let text = extract_plain_text(&document, "question").expect("text should derive");
+        assert!(text.contains("Drug\tDose"));
+        assert!(text.contains("[x] Review"));
+    }
+
+    #[test]
+    fn validates_matching_answer_checklists() {
+        let item_a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let item_b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let make = |first_checked: bool, second_checked: bool| serde_json::json!({
+            "type": "doc",
+            "attrs": {"schemaVersion": 2},
+            "content": [{
+                "type": "taskList",
+                "attrs": {"mode": "answer_key"},
+                "content": [
+                    {"type": "taskItem", "attrs": {"checked": first_checked, "itemId": item_a}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "First"}]}]},
+                    {"type": "taskItem", "attrs": {"checked": second_checked, "itemId": item_b}, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Second"}]}]}
+                ]
+            }]
+        });
+        validate_content(
+            make(false, false),
+            make(true, false),
+            "First Second".to_string(),
+            "First Second".to_string(),
+        )
+        .expect("matching answer checklist should validate");
+    }
+
+    #[test]
+    fn rejects_mismatched_answer_checklists() {
+        let front = serde_json::json!({
+            "type": "doc", "attrs": {"schemaVersion": 2}, "content": [{
+                "type": "taskList", "attrs": {"mode": "answer_key"}, "content": [{
+                    "type": "taskItem", "attrs": {"checked": false, "itemId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+                    "content": [{"type": "paragraph", "content": [{"type": "text", "text": "First"}]}]
+                }]
+            }]
+        });
+        let back = paragraph("Different answer");
+        let error = validate_content(front, back, "First".to_string(), "Different answer".to_string())
+            .expect_err("unsynchronized checklist should fail");
+        assert_eq!(error.code, "invalid_answer_checklist");
+    }
+
+    #[test]
     fn deletes_a_card_note_and_its_presentation() {
         let database = Database::open_in_memory().expect("database should open");
-
         let deck = database
             .with_connection(|connection| {
                 crate::decks::create_deck_in_connection(
                     connection,
-                    crate::decks::CreateDeckInput {
-                        name: "Biology".to_string(),
-                        description: None,
-                    },
+                    crate::decks::CreateDeckInput { name: "Biology".to_string(), description: None },
                 )
             })
             .expect("deck should be created");
@@ -938,87 +1126,50 @@ mod tests {
                 let now = unix_time_millis()?;
                 let note_id = crate::util::generate_id(connection)?;
                 let card_id = crate::util::generate_id(connection)?;
-                connection
-                    .execute(
-                        "INSERT INTO notes (
-                             id, deck_id, note_type, content_format, content_schema_version,
-                             front_doc, back_doc, front_text, back_text,
-                             created_at, updated_at, revision
-                         ) VALUES (
-                             ?1, ?2, 'basic', 'tiptap-json', 1,
-                             ?3, ?4, ?5, ?6, ?7, ?7, 1
-                         )",
-                        params![
-                            note_id,
-                            deck.id,
-                            content.front_doc_json,
-                            content.back_doc_json,
-                            content.front_text,
-                            content.back_text,
-                            now
-                        ],
-                    )
-                    .map_err(CommandError::database)?;
-                connection
-                    .execute(
-                        "INSERT INTO cards (
-                             id, note_id, deck_id, direction, template_ordinal,
-                             created_at, updated_at
-                         ) VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
-                        params![card_id, note_id, deck.id, now],
-                    )
-                    .map_err(CommandError::database)?;
+                connection.execute(
+                    "INSERT INTO notes (
+                         id, deck_id, note_type, content_format, content_schema_version,
+                         front_doc, back_doc, front_text, back_text,
+                         created_at, updated_at, revision
+                     ) VALUES (?1, ?2, 'basic', 'tiptap-json', 1, ?3, ?4, ?5, ?6, ?7, ?7, 1)",
+                    params![note_id, deck.id, content.front_doc_json, content.back_doc_json, content.front_text, content.back_text, now],
+                ).map_err(CommandError::database)?;
+                connection.execute(
+                    "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, 'forward', 0, ?4, ?4)",
+                    params![card_id, note_id, deck.id, now],
+                ).map_err(CommandError::database)?;
                 crate::scheduler::insert_new_schedule(connection, &card_id, now)?;
                 Ok((note_id, card_id))
             })
             .expect("card fixture should be created");
 
-        let deletion = database
-            .with_connection(|connection| {
-                crate::deletion::delete_cards(
-                    connection,
-                    vec![note_id.clone()],
-                    "Flashcard".to_string(),
-                )
-            })
-            .expect("card should delete");
+        let deletion = database.with_connection(|connection| {
+            crate::deletion::delete_cards(connection, vec![note_id.clone()], "Flashcard".to_string())
+        }).expect("card should delete");
         assert_eq!(deletion.affected_count, 1);
-
-        database
-            .with_connection(|connection| {
-                let active_note: i64 = connection
-                    .query_row(
-                        "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NULL",
-                        [note_id.as_str()],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                let active_card: i64 = connection
-                    .query_row(
-                        "SELECT COUNT(*) FROM cards WHERE id = ?1 AND deleted_at IS NULL",
-                        [card_id.as_str()],
-                        |row| row.get(0),
-                    )
-                    .map_err(CommandError::database)?;
-                assert_eq!(active_note, 0);
-                assert_eq!(active_card, 0);
-                Ok(())
-            })
-            .expect("deletion tombstones should be readable");
+        database.with_connection(|connection| {
+            let active_note: i64 = connection.query_row(
+                "SELECT COUNT(*) FROM notes WHERE id = ?1 AND deleted_at IS NULL",
+                [note_id.as_str()], |row| row.get(0),
+            ).map_err(CommandError::database)?;
+            let active_card: i64 = connection.query_row(
+                "SELECT COUNT(*) FROM cards WHERE id = ?1 AND deleted_at IS NULL",
+                [card_id.as_str()], |row| row.get(0),
+            ).map_err(CommandError::database)?;
+            assert_eq!(active_note, 0);
+            assert_eq!(active_card, 0);
+            Ok(())
+        }).expect("deletion tombstones should be readable");
     }
 
     #[test]
     fn rejects_javascript_links() {
         let document = serde_json::json!({
-            "type": "doc",
-            "content": [{
-                "type": "paragraph",
-                "content": [{
-                    "type": "text",
-                    "text": "bad",
-                    "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}]
-                }]
-            }]
+            "type": "doc", "content": [{"type": "paragraph", "content": [{
+                "type": "text", "text": "bad",
+                "marks": [{"type": "link", "attrs": {"href": "javascript:alert(1)"}}]
+            }]}]
         });
         let error = validate_document(&document).expect_err("link should fail");
         assert_eq!(error.code, "invalid_link");
@@ -1027,123 +1178,40 @@ mod tests {
     #[test]
     fn derives_search_text_from_the_validated_document() {
         let validated = validate_content(
-            paragraph("Visible question"),
-            paragraph("Visible answer"),
-            "spoofed question".to_string(),
-            "spoofed answer".to_string(),
-        )
-        .expect("valid card should be accepted");
+            paragraph("Visible question"), paragraph("Visible answer"),
+            "spoofed question".to_string(), "spoofed answer".to_string(),
+        ).expect("valid card should be accepted");
         assert_eq!(validated.front_text, "Visible question");
         assert_eq!(validated.back_text, "Visible answer");
     }
 
     #[test]
     fn rejects_unknown_nodes_and_noncanonical_images() {
-        let unknown = serde_json::json!({
-            "type": "doc",
-            "content": [{"type": "iframe", "attrs": {"src": "https://example.org"}}]
-        });
+        let unknown = serde_json::json!({"type": "doc", "content": [{"type": "iframe"}]});
         let error = validate_document(&unknown).expect_err("unknown node should fail");
-        assert_eq!(
-            error.code, "unsupported_card_content",
-            "unknown nodes must be reported as unsupported schema content"
-        );
+        assert_eq!(error.code, "unsupported_card_content");
 
         let image = serde_json::json!({
-            "type": "doc",
-            "content": [{
-                "type": "image",
-                "attrs": {
-                    "assetId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "src": "https://example.org/image.png",
-                    "alt": "diagram",
-                    "title": null,
-                    "width": null,
-                    "height": 320
-                }
-            }]
+            "type": "doc", "content": [{"type": "image", "attrs": {
+                "assetId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "src": "https://example.org/image.png",
+                "alt": "diagram", "title": null, "width": null, "height": 320
+            }}]
         });
         let error = validate_document(&image).expect_err("remote image should fail");
         assert_eq!(error.code, "invalid_image_reference");
     }
 
     #[test]
-    fn accepts_tiptap_image_dimensions() {
-        let image = serde_json::json!({
-            "type": "doc",
-            "content": [{
-                "type": "image",
-                "attrs": {
-                    "assetId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "src": "study-asset://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    "alt": "diagram",
-                    "title": null,
-                    "width": null,
-                    "height": 320
-                }
-            }]
-        });
-        validate_document(&image).expect("Tiptap image dimensions should be accepted");
-    }
-
-    #[test]
-    fn distinguishes_unsupported_content_from_invalid_structure() {
-        let unknown_mark = serde_json::json!({
-            "type": "doc",
-            "content": [{
-                "type": "paragraph",
-                "content": [{
-                    "type": "text",
-                    "text": "unsupported mark",
-                    "marks": [{"type": "blink"}]
-                }]
-            }]
-        });
-        let error =
-            validate_document(&unknown_mark).expect_err("unknown mark should be unsupported");
-        assert_eq!(error.code, "unsupported_card_content");
-
-        let known_node_in_wrong_position = serde_json::json!({
-            "type": "doc",
-            "content": [{"type": "text", "text": "orphan text"}]
-        });
-        let error = validate_document(&known_node_in_wrong_position)
-            .expect_err("a text node cannot be a direct document child");
-        assert_eq!(error.code, "invalid_card_document");
-    }
-
-    #[test]
     fn accepts_supported_rich_text_and_local_image_nodes() {
         let document = serde_json::json!({
-            "type": "doc",
-            "content": [
-                {
-                    "type": "heading",
-                    "attrs": {"level": 2, "textAlign": "center", "indent": 1},
-                    "content": [{
-                        "type": "text",
-                        "text": "Card heading",
-                        "marks": [{
-                            "type": "textStyle",
-                            "attrs": {
-                                "fontFamily": "Georgia, serif",
-                                "fontSize": "24px",
-                                "color": "#abcdef",
-                                "backgroundColor": null,
-                                "lineHeight": null
-                            }
-                        }]
-                    }]
-                },
-                {
-                    "type": "image",
-                    "attrs": {
-                        "assetId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                        "src": "study-asset://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                        "alt": "diagram",
-                        "title": "Local image"
-                    }
-                }
+            "type": "doc", "content": [
+                {"type": "heading", "attrs": {"level": 2, "textAlign": "center", "indent": 1},
+                 "content": [{"type": "text", "text": "Card heading", "marks": [{"type": "superscript"}]}]},
+                {"type": "image", "attrs": {
+                    "assetId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "src": "study-asset://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "alt": "diagram", "title": "Local image"
+                }}
             ]
         });
         validate_document(&document).expect("supported rich document should validate");
