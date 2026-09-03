@@ -1,0 +1,31 @@
+@layer components {
+  .detailRoute {
+    position: relative;
+    min-height: 24rem;
+  }
+
+  .detailLoading {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .detailContent {
+    min-width: 0;
+  }
+
+  .detailContent[data-ready="false"] {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .detailContent[data-ready="true"] {
+    position: relative;
+    opacity: 1;
+  }
+}
