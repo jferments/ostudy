@@ -66,9 +66,9 @@
     color: transparent;
     cursor: pointer;
     transition:
-      width var(--ostudy-duration-fast) var(--ostudy-easing-standard),
-      border-color var(--ostudy-duration-fast) var(--ostudy-easing-standard),
-      color var(--ostudy-duration-fast) var(--ostudy-easing-standard);
+      width var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
+      color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
   }
 
   .route :global(.deck-card-search) input[type="search"]::placeholder {
