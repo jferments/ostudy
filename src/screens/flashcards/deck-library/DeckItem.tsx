@@ -3,9 +3,7 @@ import { memo } from "react";
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
 import { IconButton } from "../../../ui/icons/IconButton";
-import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { ResponsiveActionGroup } from "../../../ui/patterns/ResponsiveActionGroup";
-import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
 import styles from "./DeckItem.module.css";
 import type { DeckLibraryReorderAdapter } from "./useDeckLibraryReorder";
@@ -40,7 +38,6 @@ export const DeckItem = memo(function DeckItem({
   onDelete,
   onToggleSelected,
 }: DeckItemProps) {
-  const { layoutMode } = useLayoutMode();
   return (
     <article
       className={styles.item}
@@ -52,8 +49,10 @@ export const DeckItem = memo(function DeckItem({
       data-item-index={archived ? undefined : index}
       data-item-name={archived ? undefined : deck.name}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
+      draggable={false}
+      onDragStart={(event) => event.preventDefault()}
     >
-      <label className={styles.selection}>
+      <label className={styles.selection} data-library-no-pointer-drag="true">
         <input
           type="checkbox"
           aria-label={`Select ${deck.name}`}
@@ -105,7 +104,7 @@ export const DeckItem = memo(function DeckItem({
           </small>
         </span>
       </div>
-      <div className={styles.actions}>
+      <div className={styles.actions} data-library-no-pointer-drag="true">
         {!archived ? (
           <ResponsiveActionGroup
             label={`${deck.name} actions`}
@@ -122,24 +121,11 @@ export const DeckItem = memo(function DeckItem({
               {
                 id: "delete",
                 label: `Delete ${deck.name}`,
-                placement: "wide-and-medium",
+                placement: "always-visible",
                 presentation: "icon",
                 icon: "delete",
                 destructive: true,
                 disabled,
-                onSelect: onDelete,
-              },
-            ]}
-          />
-        ) : layoutMode === "compact" ? (
-          <OverflowMenu
-            label={`${deck.name} actions`}
-            disabled={disabled}
-            items={[
-              {
-                id: "delete",
-                label: `Delete ${deck.name}`,
-                destructive: true,
                 onSelect: onDelete,
               },
             ]}
