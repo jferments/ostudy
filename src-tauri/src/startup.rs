@@ -15,8 +15,7 @@ mod pre_public_transition;
 const STARTUP_CONFIGURATION_EXIT_CODE: i32 = 78;
 
 #[cfg(desktop)]
-const MAIN_WINDOW_ICON: tauri::image::Image<'static> =
-    tauri::include_image!("./icons/128x128.png");
+const MAIN_WINDOW_ICON: tauri::image::Image<'static> = tauri::include_image!("./icons/128x128.png");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum StartupFailureKind {

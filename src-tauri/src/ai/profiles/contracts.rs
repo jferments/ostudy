@@ -189,11 +189,7 @@ impl ProfileSnapshot {
             self.provider_kind,
             self.require_zero_data_retention,
         )?;
-        validate_endpoint(
-            self.provider_kind,
-            &self.base_url,
-            self.allow_insecure_http,
-        )?;
+        validate_endpoint(self.provider_kind, &self.base_url, self.allow_insecure_http)?;
         Ok(())
     }
 }
