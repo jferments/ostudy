@@ -118,39 +118,37 @@ function resolveFolderCandidate(
   geometry: DragGeometrySnapshot,
   organization: DeckLibrarySnapshot,
 ): DragCandidate {
-  const rows = geometry.rows
+  const allRows = geometry.rows
     .filter((row) => row.kind === "folder")
     .sort((left, right) => left.index - right.index);
-  const containing = rows.find((row) => pointInsideRect(point, row.rect));
-  if (!containing) {
-    return invalidCandidate("No folder position", "Move over another folder position.");
-  }
   const sourceIndex = organization.folders.findIndex((folder) => folder.id === folderId);
-  if (containing.id === folderId) {
-    const remainingRows = rows.filter((row) => row.id !== folderId);
-    const insertion = insertionAnchor(remainingRows, sourceIndex, containing.key);
-    const intent: LibraryMoveIntent = {
-      kind: "folder",
-      folderId,
-      targetIndex: sourceIndex,
-      source: "pointer",
-    };
-    return candidateFromValidation(
-      validateMoveIntent(organization, intent),
-      containing.key,
-      null,
-      "Folders",
-      `position ${Math.max(0, sourceIndex) + 1}`,
-      insertion.targetKey,
-      insertion.edge,
-    );
+  if (sourceIndex < 0 || allRows.length === 0) {
+    return invalidCandidate("No folder position", "Move over the folder list.");
   }
-  const remainingRows = rows.filter((row) => row.id !== folderId);
-  const containingIndex = remainingRows.findIndex((row) => row.id === containing.id);
-  const targetIndex = point.y < midpoint(containing.rect)
-    ? containingIndex
-    : containingIndex + 1;
-  const insertion = insertionAnchor(remainingRows, targetIndex, containing.key);
+
+  // A folder tile may be taller than the gaps around it. Resolve against the
+  // complete vertical lane so the placeholder can move through those gaps
+  // instead of requiring the pointer to intersect another folder's contents.
+  const laneLeft = Math.min(...allRows.map((row) => row.rect.left));
+  const laneRight = Math.max(...allRows.map((row) => row.rect.right));
+  const laneTop = Math.min(...allRows.map((row) => row.rect.top)) - 32;
+  const laneBottom = Math.max(...allRows.map((row) => row.rect.bottom)) + 32;
+  if (
+    point.x < laneLeft ||
+    point.x > laneRight ||
+    point.y < laneTop ||
+    point.y > laneBottom
+  ) {
+    return invalidCandidate("No folder position", "Move over the folder list.");
+  }
+
+  const remainingRows = allRows.filter((row) => row.id !== folderId);
+  const targetIndex = insertionIndex(point.y, remainingRows);
+  const insertion = insertionAnchor(
+    remainingRows,
+    targetIndex,
+    allRows[Math.min(sourceIndex, allRows.length - 1)]?.key ?? "folders",
+  );
   const intent: LibraryMoveIntent = {
     kind: "folder",
     folderId,
@@ -159,7 +157,7 @@ function resolveFolderCandidate(
   };
   return candidateFromValidation(
     validateMoveIntent(organization, intent),
-    containing.key,
+    insertion.targetKey,
     null,
     "Folders",
     `position ${targetIndex + 1}`,
