@@ -116,7 +116,7 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
               <strong>{profile.displayName}</strong>
               <small>{profile.providerLabel}</small>
               <small>{profile.modelId || "Model not selected"}</small>
-              <small>Reasoning: {reasoningLabel(profile.reasoningEffort)}</small>
+              <small>Reasoning: {reasoningLabel(profile.reasoningEffort ?? "low")}</small>
               <span className={layoutStyles.statusText} data-status={profile.configurationStatus}>
                 {configurationLabel(profile.configurationStatus)}
               </span>
@@ -191,7 +191,7 @@ function ProfileSetup({
   const modelDirty =
     profile !== null &&
     (draft.modelId !== profile.modelId ||
-      draft.reasoningEffort !== profile.reasoningEffort);
+      draft.reasoningEffort !== (profile.reasoningEffort ?? "low"));
   const modelSaved = profile !== null && draft.modelId !== "" && !modelDirty;
   const canConnect =
     !controller.mutating &&
