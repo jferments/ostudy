@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ShowToast } from "../components/Toast";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
   cancelDocumentStudyGuideGeneration,
@@ -384,11 +385,11 @@ describe("StudyGuideDialog", () => {
 });
 
 function renderGuide({
-  showToast = vi.fn(),
-  onClose = vi.fn(),
+  showToast = vi.fn() as ShowToast,
+  onClose = vi.fn() as () => void,
 }: {
-  showToast?: ReturnType<typeof vi.fn>;
-  onClose?: ReturnType<typeof vi.fn>;
+  showToast?: ShowToast;
+  onClose?: () => void;
 } = {}) {
   return render(
     <StudyGuideDialog
