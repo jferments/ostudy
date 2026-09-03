@@ -5,9 +5,8 @@ import { LibraryDragFeedback } from "./LibraryDragFeedback";
 
 describe("LibraryDragFeedback", () => {
   it.each(["valid", "noop", "invalid"] as const)(
-    "renders a panel-like %s drag ghost with destination copy",
+    "announces a %s destination without rendering a detached partial-tile preview",
     (status) => {
-      const bindPreview = vi.fn();
       const { container } = render(
         <LibraryDragFeedback
           feedback={{
@@ -26,23 +25,23 @@ describe("LibraryDragFeedback", () => {
               announcement: `Nursing, position 2. ${status}.`,
             },
           }}
-          bindPreview={bindPreview}
+          bindPreview={vi.fn()}
         />,
       );
-      const preview = container.querySelector<HTMLElement>(
-        `[data-drag-panel-preview="true"][data-status="${status}"]`,
-      );
-      expect(preview).not.toBeNull();
-      expect(preview?.style.transform).toContain("translate3d(");
-      expect(bindPreview).toHaveBeenCalledWith(preview);
-      expect(screen.getByText("Moving")).not.toBeNull();
-      expect(screen.getByText("Biology")).not.toBeNull();
+
+      expect(
+        container.querySelector(
+          `[data-drag-destination-feedback][data-status="${status}"]`,
+        ),
+      ).not.toBeNull();
       expect(screen.getByText("Nursing · position 2")).not.toBeNull();
+      expect(screen.getByText(`Nursing, position 2. ${status}.`)).not.toBeNull();
+      expect(container.querySelector("[data-drag-panel-preview]")).toBeNull();
       expect(container.querySelectorAll("[aria-live='polite']")).toHaveLength(1);
     },
   );
 
-  it("shows the full drag ghost immediately before a candidate is resolved", () => {
+  it("does not invent a small status tile before a destination is resolved", () => {
     const { container } = render(
       <LibraryDragFeedback
         feedback={{
@@ -54,15 +53,11 @@ describe("LibraryDragFeedback", () => {
       />,
     );
 
-    const preview = container.querySelector<HTMLElement>(
-      '[data-drag-panel-preview="true"][data-status="pending"]',
-    );
-    expect(preview).not.toBeNull();
-    expect(screen.getByText("Biology")).not.toBeNull();
-    expect(screen.getByText("Choose a destination")).not.toBeNull();
+    expect(container.querySelector("[data-drag-destination-feedback]")).toBeNull();
+    expect(container.querySelector("[data-drag-panel-preview]")).toBeNull();
   });
 
-  it("keeps completion announced after the visual preview is removed", () => {
+  it("keeps completion announced after the visible DOM-clone preview is removed", () => {
     const { container } = render(
       <LibraryDragFeedback
         feedback={{
@@ -84,7 +79,8 @@ describe("LibraryDragFeedback", () => {
         bindPreview={vi.fn()}
       />,
     );
-    expect(container.querySelector("[data-drag-preview]")).toBeNull();
+
+    expect(container.querySelector("[data-drag-destination-feedback]")).toBeNull();
     expect(screen.getByText("Moved Biology to Nursing, position 2.")).not.toBeNull();
   });
 });
