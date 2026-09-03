@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
@@ -35,6 +35,7 @@ function profile(): AiProviderProfileDetail {
     baseUrl: "https://openrouter.ai/api/v1/",
     baseUrlEditable: false,
     modelId: "provider/model-000",
+    reasoningEffort: "low",
     authMode: "bearer",
     enabled: true,
     allowInsecureHttp: false,
@@ -61,16 +62,26 @@ function controller(): AiProfilesController {
     id: `provider/model-${String(index).padStart(3, "0")}`,
     displayName: `Provider Model ${String(index).padStart(3, "0")}`,
     ownedBy: "provider",
+    reasoning: index === 0
+      ? {
+          supportedEfforts: ["low", "medium", "high"] as const,
+          defaultEffort: "medium" as const,
+          defaultEnabled: true,
+          supportsMaxTokens: true,
+          mandatory: false,
+        }
+      : null,
   }));
   models.push({
     id: "zeta/final-model",
     displayName: "Zeta Final Model",
     ownedBy: "zeta",
+    reasoning: null,
   });
 
   return {
     catalog: openRouterCatalog(),
-    profiles: [],
+    profiles: [{ ...selected }],
     defaults: { flashcardGenerationProfileId: null },
     selectedProfile: selected,
     selectedProfileId: selected.id,
@@ -79,6 +90,7 @@ function controller(): AiProfilesController {
       providerKind: selected.providerKind,
       baseUrl: selected.baseUrl,
       modelId: selected.modelId,
+      reasoningEffort: selected.reasoningEffort ?? "low",
       authMode: selected.authMode,
       enabled: selected.enabled,
       allowInsecureHttp: selected.allowInsecureHttp,
@@ -125,5 +137,23 @@ describe("AiLlmSettings", () => {
     expect(screen.getByRole("option", { name: "Zeta Final Model" })).toBeTruthy();
     const modelSelect = screen.getByRole("combobox", { name: "Model" });
     expect(modelSelect.querySelectorAll("option")).toHaveLength(413);
+  });
+
+  it("keeps reasoning in the selected model profile and limits explicit efforts to catalog metadata", () => {
+    const value = controller();
+    render(
+      <OverlayProvider>
+        <AiLlmSettings controller={value} />
+      </OverlayProvider>,
+    );
+
+    const reasoning = screen.getByRole("combobox", { name: "Reasoning effort" });
+    expect(reasoning.querySelectorAll("option")).toHaveLength(4);
+    expect(screen.getByRole("option", { name: "Automatic — provider default Medium" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Maximum" })).toBeNull();
+
+    fireEvent.change(reasoning, { target: { value: "high" } });
+    expect(value.updateDraft).toHaveBeenCalledWith({ reasoningEffort: "high" });
+    expect(screen.getByText(/belongs to this profile/u)).toBeTruthy();
   });
 });
