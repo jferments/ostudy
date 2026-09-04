@@ -40,6 +40,31 @@ class MobileNavigationContractTests(unittest.TestCase):
         )[0]
         self.assertIn("a1_freshLibraryUsesQuietNavigation", launch_failure_block)
 
+    def test_compact_study_guide_search_resets_desktop_flex_bases(self) -> None:
+        css = (ROOT / "src/screens/StudyGuidesScreen.module.css").read_text()
+        self.assertIn(
+            ".search {\n      width: 100%;\n      flex: 0 1 auto;\n    }",
+            css,
+        )
+        self.assertIn(
+            ".search label {\n      width: 100%;\n      max-width: none;\n      flex: 0 1 auto;\n    }",
+            css,
+        )
+
+    def test_compact_deck_toolbar_keeps_actions_intrinsic_and_import_prominent(self) -> None:
+        css = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryView.module.css").read_text()
+        root = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx").read_text()
+        self.assertIn(
+            ".toolbarActions {\n      width: auto;\n      justify-content: flex-end;\n    }",
+            css,
+        )
+        self.assertIn(
+            ".toolbarActions > button {\n      flex: 0 0 auto;\n    }",
+            css,
+        )
+        self.assertIn(".importAction svg {\n    stroke-width: 2.15;\n  }", css)
+        self.assertIn('icon="folder-open"\n            iconSize={24}', root)
+
 
 if __name__ == "__main__":
     unittest.main()
