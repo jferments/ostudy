@@ -106,12 +106,39 @@ class PullRequestContractTests(unittest.TestCase):
         self.assertIn("does not match GitHub", completed.stderr)
         self.assertTrue(result["warnings"])
 
+    def test_missing_acceptance_tests_array_fails_while_draft(self) -> None:
+        contract = base_contract()
+        del contract["acceptance"]["AC-01"]["tests"]
+        completed, _ = self.run_contract(contract)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("AC-01.tests must be an array", completed.stderr)
+
+    def test_missing_canonical_validation_keys_fail_while_draft(self) -> None:
+        contract = base_contract()
+        contract["validation"] = {
+            "static": {"status": "pending"},
+            "linuxFull": {"status": "pending"},
+            "androidSmoke": {"status": "pending"},
+        }
+        completed, _ = self.run_contract(contract)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("validation.fast is required", completed.stderr)
+        self.assertIn("validation.full is required", completed.stderr)
+        self.assertIn("validation.android is required", completed.stderr)
+
     def test_terminal_acceptance_requires_evidence(self) -> None:
         contract = base_contract()
         contract["acceptance"]["AC-01"]["evidence"] = []
         completed, _ = self.run_contract(contract)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("terminal but has no", completed.stderr)
+
+    def test_human_required_manual_acceptance_requires_evidence(self) -> None:
+        contract = base_contract()
+        contract["manualAcceptance"]["review"] = {"status": "humanRequired"}
+        completed, _ = self.run_contract(contract)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("manualAcceptance.review.humanRequired requires explanatory evidence", completed.stderr)
 
     def test_not_required_status_requires_explanatory_evidence(self) -> None:
         contract = base_contract()
@@ -138,11 +165,24 @@ class PullRequestContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("must match the ledger headSha", completed.stderr)
 
-    def test_ready_pull_request_rejects_incomplete_state(self) -> None:
-        completed, _ = self.run_contract(base_contract(), draft=False)
+    def test_ready_pull_request_rejects_incomplete_acceptance(self) -> None:
+        contract = self.ready_contract()
+        contract["acceptance"]["AC-02"] = {
+            "status": "inProgress",
+            "evidence": [],
+            "tests": [],
+        }
+        completed, _ = self.run_contract(contract, draft=False)
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("readyForReview", completed.stderr)
         self.assertIn("AC-02 is not terminal", completed.stderr)
+
+    def test_ready_pull_request_warns_about_stale_progress_state(self) -> None:
+        contract = self.ready_contract()
+        contract["currentState"] = "manualAcceptance"
+        completed, result = self.run_contract(contract, draft=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(result["valid"])
+        self.assertIn("GitHub lifecycle state is authoritative", completed.stderr)
 
     def test_ready_pull_request_rejects_empty_risk_record(self) -> None:
         contract = self.ready_contract()
@@ -151,19 +191,39 @@ class PullRequestContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("residualRisks must contain at least one explicit readiness entry", completed.stderr)
 
-    def test_ready_pull_request_rejects_not_run_full_gate(self) -> None:
+    def test_ready_pull_request_allows_pending_validation(self) -> None:
+        contract = self.ready_contract()
+        completed, result = self.run_contract(contract, draft=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(result["valid"])
+        self.assertEqual(contract["validation"]["full"]["status"], "pending")
+
+    def test_ready_pull_request_allows_not_run_full_gate_with_evidence(self) -> None:
         contract = self.ready_contract()
         contract["validation"]["full"] = {
             "status": "notRun",
-            "evidence": ["Full qualification was not executed."],
+            "evidence": ["Ready-for-review product qualification has not executed yet."],
         }
+        completed, result = self.run_contract(contract, draft=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(result["valid"])
+
+    def test_ready_pull_request_rejects_pending_manual_acceptance(self) -> None:
+        contract = self.ready_contract()
+        contract["manualAcceptance"]["review"] = {"status": "pending"}
         completed, _ = self.run_contract(contract, draft=False)
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("validation.full must pass", completed.stderr)
-        self.assertIn("validation.full is not terminal", completed.stderr)
+        self.assertIn("manualAcceptance.review is not terminal", completed.stderr)
 
-    def test_ready_pull_request_accepts_exact_head_evidence(self) -> None:
-        completed, result = self.run_contract(self.ready_contract(), draft=False)
+    def test_ready_pull_request_accepts_exact_head_validation_evidence(self) -> None:
+        contract = self.ready_contract()
+        for gate in ["static", "fast", "full"]:
+            contract["validation"][gate] = {
+                "status": "passed",
+                "sha": HEAD_SHA,
+                "evidence": [f"workflow-{gate}"],
+            }
+        completed, result = self.run_contract(contract, draft=False)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertTrue(result["valid"])
 
@@ -180,12 +240,6 @@ class PullRequestContractTests(unittest.TestCase):
             "evidence": ["No additional product behavior is in scope."],
             "tests": [],
         }
-        for gate in ["static", "fast", "full"]:
-            contract["validation"][gate] = {
-                "status": "passed",
-                "sha": HEAD_SHA,
-                "evidence": [f"workflow-{gate}"],
-            }
         contract["manualAcceptance"]["review"] = {
             "status": "passed",
             "evidence": ["Inspected the rendered PR state and qualification record."],

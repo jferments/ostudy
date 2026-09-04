@@ -26,6 +26,7 @@ const [
   checkFull,
   checkChanged,
   checkWorkflow,
+  prContractWorkflow,
   maintenanceWorkflow,
   releaseWorkflow,
   pullRequestTemplate,
@@ -45,6 +46,7 @@ const [
   read("scripts", "check.sh"),
   read("scripts", "check-changed.sh"),
   read(".github", "workflows", "check.yml"),
+  read(".github", "workflows", "pr-contract.yml"),
   read(".github", "workflows", "maintain-generated-candidates.yml"),
   read(".github", "workflows", "release.yml"),
   read(".github", "pull_request_template.md"),
@@ -251,12 +253,33 @@ requireText("read-only check workflow", checkWorkflow, [
   "persist-credentials: false",
   "OSTUDY_CARGO_TARGET_DIR",
   "select-check-gate.mjs",
-  "verify-pr-contract.mjs",
   "write-qualification-result.mjs",
   "cargo metadata",
   "check-fast.sh",
   "check.sh",
 ]);
+if (checkWorkflow.includes("verify-pr-contract.mjs") || checkWorkflow.includes("ostudy-pr-contract.json")) {
+  failures.push("product Check must not consume pull-request contract validity as source qualification evidence");
+}
+requireText("read-only pull-request contract workflow", prContractWorkflow, [
+  "name: PR Contract",
+  "types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]",
+  "permissions:\n  contents: read",
+  "runs-on: [self-hosted, linux, x64, ostudy-unified]",
+  "persist-credentials: false",
+  "verify-pr-contract.mjs",
+  "Product qualification: **independent; not run by this workflow**",
+]);
+for (const expensiveCommand of [
+  "check-fast.sh",
+  "check.sh",
+  "android-test.sh",
+  "android-emulator-smoke.sh",
+]) {
+  if (prContractWorkflow.includes(expensiveCommand)) {
+    failures.push(`pull-request contract workflow must not run product qualification command ${expensiveCommand}`);
+  }
+}
 requireText("manual generated-candidate maintenance workflow", maintenanceWorkflow, [
   "workflow_dispatch:",
   "contents: write",
@@ -284,6 +307,7 @@ for (const [name, expected] of [
 }
 
 for (const requiredPath of [
+  ".github/workflows/pr-contract.yml",
   ".github/workflows/maintain-generated-candidates.yml",
   "scripts/build.sh",
   "scripts/install-native-deps.sh",

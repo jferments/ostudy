@@ -259,6 +259,9 @@ jobs:
 
     def test_required_check_workflow_is_source_driven(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
+        contract_workflow = (
+            ROOT / ".github" / "workflows" / "pr-contract.yml"
+        ).read_text(encoding="utf-8")
         selector = (ROOT / "scripts" / "select-check-gate.mjs").read_text(encoding="utf-8")
 
         self.assertIn(
@@ -268,6 +271,8 @@ jobs:
         self.assertNotIn("edited", workflow)
         self.assertNotIn("PR_BODY", workflow)
         self.assertNotIn("ostudy-check:all-full", workflow)
+        self.assertNotIn("verify-pr-contract.mjs", workflow)
+        self.assertNotIn("ostudy-pr-contract.json", workflow)
         self.assertIn("DISPATCH_GATE: ${{ inputs.gate || 'all-full' }}", workflow)
 
         self.assertIn("if (eventName === \"workflow_dispatch\")", selector)
@@ -285,12 +290,20 @@ jobs:
             workflow,
         )
         self.assertIn("if: github.event.action != 'closed'", workflow)
-        self.assertIn(
-            "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false",
-            workflow,
-        )
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
+
+        self.assertIn("name: PR Contract", contract_workflow)
+        self.assertIn(
+            "types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]",
+            contract_workflow,
+        )
+        self.assertIn("verify-pr-contract.mjs", contract_workflow)
+        self.assertIn("ostudy-pr-contract.json", contract_workflow)
+        self.assertIn("permissions:\n  contents: read", contract_workflow)
+        self.assertIn("persist-credentials: false", contract_workflow)
+        self.assertNotIn("./scripts/check.sh", contract_workflow)
+        self.assertNotIn("./scripts/android-test.sh", contract_workflow)
 
     def test_generated_candidate_workflow_is_validation_only(self) -> None:
         workflow = (

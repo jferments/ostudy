@@ -1,0 +1,63 @@
+name: PR Contract
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]
+
+concurrency:
+  group: pr-contract-${{ github.event.pull_request.head.repo.full_name }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# PR metadata is validated independently from product qualification. A malformed
+# compatibility ledger must be visible immediately, including while the PR is
+# still draft, but it must never prevent Linux/Android source qualification.
+
+jobs:
+  contract:
+    name: pr-contract
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 10
+
+    env:
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.PR_HEAD_SHA }}
+          clean: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Expose pinned user Node toolchain
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+
+      - name: Verify pull-request execution contract
+        run: |
+          node ./scripts/verify-pr-contract.mjs \
+            --event "$GITHUB_EVENT_PATH" \
+            --output "$RUNNER_TEMP/ostudy-pr-contract.json"
+
+      - name: Publish contract diagnostics
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/ostudy-pr-contract.json" ]]; then
+            {
+              echo '# ostudy pull-request contract'
+              echo
+              echo "- Head: \`$PR_HEAD_SHA\`"
+              echo '- Product qualification: **independent; not run by this workflow**'
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/ostudy-pr-contract.json"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

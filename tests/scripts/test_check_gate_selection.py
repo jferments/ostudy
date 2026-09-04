@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "select-check-gate.mjs"
 WORKFLOW = ROOT / ".github" / "workflows" / "check.yml"
+PR_CONTRACT_WORKFLOW = ROOT / ".github" / "workflows" / "pr-contract.yml"
 
 
 class CheckGateSelectionTests(unittest.TestCase):
@@ -94,15 +95,9 @@ class CheckGateSelectionTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         self.assertIn("Invalid qualification gate", completed.stderr)
 
-    def test_product_ci_does_not_run_for_pr_body_edits(self) -> None:
+    def test_product_ci_does_not_run_for_pr_body_edits_or_validate_metadata(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        match = re.search(
-            r"pull_request:\n\s+branches:\s*\[main\]\n\s+types:\s*\[([^]]+)\]",
-            workflow,
-        )
-        self.assertIsNotNone(match)
-        assert match is not None
-        event_types = {value.strip() for value in match.group(1).split(",")}
+        event_types = self.pull_request_event_types(workflow)
         self.assertEqual(
             event_types,
             {
@@ -114,8 +109,11 @@ class CheckGateSelectionTests(unittest.TestCase):
                 "closed",
             },
         )
+        self.assertNotIn("edited", event_types)
         self.assertNotIn("PR_BODY:", workflow)
         self.assertNotIn("ostudy-check:all-full", workflow)
+        self.assertNotIn("verify-pr-contract.mjs", workflow)
+        self.assertNotIn("ostudy-pr-contract.json", workflow)
         self.assertIn(
             "group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}",
             workflow,
@@ -126,10 +124,43 @@ class CheckGateSelectionTests(unittest.TestCase):
             workflow,
         )
         self.assertIn("if: github.event.action != 'closed'", workflow)
-        self.assertIn(
-            "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false",
+
+    def test_pr_contract_workflow_runs_on_metadata_and_source_lifecycle_events(self) -> None:
+        workflow = PR_CONTRACT_WORKFLOW.read_text(encoding="utf-8")
+        event_types = self.pull_request_event_types(workflow)
+        self.assertEqual(
+            event_types,
+            {
+                "opened",
+                "edited",
+                "synchronize",
+                "reopened",
+                "ready_for_review",
+                "converted_to_draft",
+            },
+        )
+        self.assertIn("name: PR Contract", workflow)
+        self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("verify-pr-contract.mjs", workflow)
+        self.assertIn("Product qualification: **independent; not run by this workflow**", workflow)
+        for expensive_command in [
+            "check-fast.sh",
+            "check.sh",
+            "android-test.sh",
+            "android-emulator-smoke.sh",
+        ]:
+            self.assertNotIn(expensive_command, workflow)
+
+    @staticmethod
+    def pull_request_event_types(workflow: str) -> set[str]:
+        match = re.search(
+            r"pull_request:\n\s+branches:\s*\[main\]\n\s+types:\s*\[([^]]+)\]",
             workflow,
         )
+        if match is None:
+            raise AssertionError("pull_request event types were not found")
+        return {value.strip() for value in match.group(1).split(",")}
 
 
 if __name__ == "__main__":

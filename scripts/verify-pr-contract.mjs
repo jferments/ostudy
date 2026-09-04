@@ -32,7 +32,6 @@ const TERMINAL_EVIDENCE_STATUSES = new Set([
   "notRequired",
   "humanRequired",
 ]);
-const REQUIRED_READY_GATES = ["static", "fast", "full"];
 const CURRENT_STATES = new Set([
   "planning",
   "scaffolding",
@@ -282,7 +281,7 @@ function validateContract(contract, actual, forceStrict, errors, warnings) {
     errors.push("failed or blocked validation requires a corresponding knownFailures record.");
   }
 
-  if (strict) validateReadyState(contract, actual, errors);
+  if (strict) validateReadyState(contract, actual, errors, warnings);
 }
 
 function validateIdentity(label, recorded, actual, strict, errors, warnings) {
@@ -356,9 +355,11 @@ function validateFailure(failure, index, errors) {
   }
 }
 
-function validateReadyState(contract, actual, errors) {
+function validateReadyState(contract, actual, errors, warnings) {
   if (contract.currentState !== "readyForReview") {
-    errors.push("A non-draft or strict pull request must record currentState readyForReview.");
+    warnings.push(
+      `currentState ${contract.currentState} does not match GitHub review readiness; GitHub lifecycle state is authoritative.`,
+    );
   }
   for (const key of NARRATIVE_ARRAYS) {
     if (!Array.isArray(contract[key]) || contract[key].length === 0) {
@@ -370,15 +371,7 @@ function validateReadyState(contract, actual, errors) {
       errors.push(`${identifier} is not terminal for review readiness.`);
     }
   }
-  for (const gate of REQUIRED_READY_GATES) {
-    if (contract.validation?.[gate]?.status !== "passed") {
-      errors.push(`validation.${gate} must pass on the exact current head before review readiness.`);
-    }
-  }
   for (const [name, entry] of Object.entries(contract.validation ?? {})) {
-    if (!TERMINAL_EVIDENCE_STATUSES.has(entry.status)) {
-      errors.push(`validation.${name} is not terminal for review readiness.`);
-    }
     if (entry.status === "passed" && actual?.headSha && entry.sha !== actual.headSha) {
       errors.push(`validation.${name} passed a commit other than the current GitHub head.`);
     }
