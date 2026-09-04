@@ -206,7 +206,10 @@ describe("DecksScreen", () => {
     expect(within(table).getByText("Reverse")).toBeTruthy();
 
     expect(screen.queryByRole("region", { name: "Card filters" })).toBeNull();
-    expect(screen.getByRole("region", { name: "Search this deck" })).toBeTruthy();
+    const tableControls = screen.getByRole("group", { name: "Card table controls" });
+    expect(
+      within(tableControls).getByRole("button", { name: "Search cards in this deck" }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Bulk add" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add flashcard" })).toBeTruthy();
 
@@ -215,9 +218,13 @@ describe("DecksScreen", () => {
     const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
     expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search cards" }), {
-      target: { value: "fur" },
-    });
+    fireEvent.click(
+      within(tableControls).getByRole("button", { name: "Search cards in this deck" }),
+    );
+    fireEvent.change(
+      within(tableControls).getByRole("searchbox", { name: "Search cards in this deck" }),
+      { target: { value: "fur" } },
+    );
     await waitFor(() =>
       expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
         expect.objectContaining({
