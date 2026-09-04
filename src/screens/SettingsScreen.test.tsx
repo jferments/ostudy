@@ -180,6 +180,7 @@ describe("SettingsScreen", () => {
       "Backup/Sync",
       "AI/LLM",
       "Review/Scheduling",
+      "Card templates",
       "Diagnostics",
     ]);
     expect(tabs[0].getAttribute("aria-selected")).toBe("true");
@@ -268,6 +269,10 @@ describe("SettingsScreen", () => {
   it("keeps review limits in the dedicated scheduling tab and leaves shuffle on Practice", async () => {
     const { onPreviewSettings } = renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "Review/Scheduling" }));
+    const schedulingPanel = screen.getByRole("tabpanel", { name: "Review/Scheduling" });
+    const restoreDefaults = screen.getByRole("button", { name: "Restore scheduling defaults" });
+    expect(schedulingPanel.contains(restoreDefaults)).toBe(true);
+
     fireEvent.change(screen.getByRole("spinbutton", { name: "New cards per day" }), {
       target: { value: "12" },
     });
@@ -277,6 +282,13 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith(
         expect.objectContaining({ dailyNewLimit: 12, dailyReviewLimit: 80 }),
+      );
+    });
+
+    fireEvent.click(restoreDefaults);
+    await waitFor(() => {
+      expect(onPreviewSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ desiredRetention: 0.9, dailyNewLimit: 20, dailyReviewLimit: 200 }),
       );
     });
     expect(screen.queryByRole("checkbox", { name: /shuffle/iu })).toBeNull();
