@@ -14,6 +14,10 @@ WORKFLOW = ROOT / ".github" / "workflows" / "check.yml"
 class CheckGateSelectionTests(unittest.TestCase):
     def select(self, **environment: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
+        # Tests that model an unlabeled PR must not inherit the real Actions
+        # event payload from the self-hosted runner. Label-specific cases pass
+        # an explicit temporary GITHUB_EVENT_PATH below.
+        env.pop("GITHUB_EVENT_PATH", None)
         env.update(environment)
         return subprocess.run(
             ["node", str(SCRIPT)],
