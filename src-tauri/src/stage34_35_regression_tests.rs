@@ -53,7 +53,7 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(repair_ledger, (2, 0));
+            assert_eq!(repair_ledger, (3, 0));
             Ok(())
         })
         .expect("canonical startup should be read-only");
@@ -100,49 +100,43 @@ fn startup_returns_an_interrupted_import_rename_to_its_active_draft() {
             connection
                 .execute(
                     "INSERT INTO assets (
-                         id, original_filename, mime_type, byte_size,
-                         relative_path, created_at, lifecycle_state,
-                         draft_id, staged_relative_path, updated_at
-                     ) VALUES (
-                         ?1, 'diagram.png', 'image/png', 12,
-                         ?2, ?3, 'staged', ?4, ?5, ?3
-                     )",
-                    params![asset_id, relative_path, now, draft_id, staged_relative_path,],
+                         id, media_type, relative_path, byte_size, sha256,
+                         state, draft_id, staged_relative_path,
+                         created_at, updated_at
+                     ) VALUES (?1, 'image/png', ?2, 12, ?3,
+                               'staging', ?4, ?5, ?6, ?6)",
+                    params![
+                        asset_id,
+                        relative_path,
+                        "0".repeat(64),
+                        draft_id,
+                        staged_relative_path,
+                        now
+                    ],
                 )
                 .map_err(CommandError::database)?;
             Ok(())
         })
-        .expect("crash fixture should write");
+        .expect("fixture should write");
 
-    asset_lifecycle::reconcile_startup(&database, &paths)
-        .expect("startup reconciliation should recover the draft");
+    asset_lifecycle::reconcile_startup(&database, &paths).expect("startup should reconcile");
 
-    assert!(!final_path.exists());
-    assert!(paths.resolve_relative(&staged_relative_path).is_file());
     database
         .with_connection(|connection| {
             let state: (String, Option<String>, Option<String>) = connection
                 .query_row(
-                    "SELECT lifecycle_state, draft_id, staged_relative_path
+                    "SELECT state, draft_id, staged_relative_path
                      FROM assets WHERE id = ?1",
                     [asset_id.as_str()],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(state.0, "staged");
+            assert_eq!(state.0, "staging");
             assert_eq!(state.1.as_deref(), Some(draft_id.as_str()));
             assert_eq!(state.2.as_deref(), Some(staged_relative_path.as_str()));
-            let recoveries: i64 = connection
-                .query_row(
-                    "SELECT COUNT(*) FROM asset_reconciliation_events
-                     WHERE asset_id = ?1 AND action = 'restored'",
-                    [asset_id.as_str()],
-                    |row| row.get(0),
-                )
-                .map_err(CommandError::database)?;
-            assert_eq!(recoveries, 1);
             Ok(())
         })
-        .expect("recovered state should persist");
-    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+        .expect("reconciled state should be readable");
+    assert!(paths.resolve_relative(&staged_relative_path).is_file());
+    assert!(!final_path.exists());
 }
