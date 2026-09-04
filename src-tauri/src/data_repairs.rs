@@ -339,7 +339,7 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
             .map_err(|error| {
                 format!("Could not prepare document artifact user-edit repair: {error}")
             })?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -353,7 +353,8 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
             })
             .map_err(|error| format!("Could not read document artifact metadata rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not decode document artifact metadata rows: {error}"))?
+            .map_err(|error| format!("Could not decode document artifact metadata rows: {error}"))?;
+        rows
     };
 
     let now = unix_time_millis().map_err(|error| error.message)?;
