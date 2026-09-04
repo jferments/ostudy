@@ -1,6 +1,6 @@
 # Mobile flashcards and navigation cleanup
 
-This working specification records the acceptance boundary for the current UI cleanup. The pull request remains the implementation ledger; this document exists so the user-visible requirements are reviewable beside the source.
+This implementation record defines the acceptance boundary for the UI cleanup. The pull request is the review and qualification ledger; this document keeps the user-visible requirements and presentation ownership beside the source.
 
 ## Acceptance criteria
 
@@ -24,3 +24,9 @@ This working specification records the acceptance boundary for the current UI cl
 - Card-template management remains backed by the existing template controller and IPC contracts, but Settings owns its navigation entry.
 - Compact primary navigation owns four direct learning destinations. Settings is a distinct upper-right app-bar action rather than a fifth bottom item or a More-menu destination.
 - Re-selecting the active Study Guides destination is an explicit reset-to-library request, so nested viewer state does not trap the user.
+
+## Source and qualification boundary
+
+- GitHub branch history is the durable source of truth.
+- Source is published through expected-parent Git-data commits and non-force branch updates.
+- GitHub Actions checks out and qualifies an exact published SHA; workflows do not generate, commit, or push product source.
