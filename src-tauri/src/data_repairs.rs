@@ -36,7 +36,7 @@ const CANONICAL_SEMANTIC_HASH_REPAIR_CONTRACT: &str =
 const CANONICAL_BLOCK_HASH_REPAIR_CONTRACT: &str =
     "canonical_block_hashes_v1|sha256(unit={source_unit_number}|ordinal={block_ordinal}|role={role}|headings={heading_path_gt_join}|assets={asset_ids_csv}|text={text})";
 const DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CONTRACT: &str =
-    "document_artifact_user_edits_v1|restore pre-stage7 source_title when source_title is not a recognized filename-derived import title and stage7 ledger says generated document/deck title was applied; clear applied ownership";
+    "document_artifact_user_edits_v1|restore pre-stage7 source_title when source_title is not a recognized filename-derived import title and stage7 ledger says generated document title was applied; clear applied ownership";
 
 const REPAIRS: &[DataRepair] = &[
     DataRepair {
@@ -59,7 +59,7 @@ const REPAIRS: &[DataRepair] = &[
         version: 3,
         name: "document_artifact_user_edits",
         contract: DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CONTRACT,
-        checksum: "64ddb35da4a6e94dbc4756f71d3233ff0e32971ee4eb3126e7223809dbf0fc08",
+        checksum: "14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031",
         phase: RepairPhase::AfterMigration(7),
         apply: repair_document_artifact_user_edits,
     },
@@ -325,18 +325,15 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
     let rows = {
         let mut statement = transaction
             .prepare(
-                "SELECT metadata.document_id, metadata.deck_id,
-                        metadata.document_title, metadata.deck_title,
-                        metadata.applied_document_title, metadata.applied_deck_title,
+                "SELECT metadata.document_id, metadata.document_title,
+                        metadata.applied_document_title,
                         citation.source_title, citation.original_filename, citation.source_format,
-                        document.title, deck.name
+                        document.title
                  FROM document_artifact_metadata AS metadata
                  JOIN source_citation_snapshots AS citation
                    ON citation.source_document_id = metadata.document_id
                  JOIN documents AS document
                    ON document.id = metadata.document_id
-                 LEFT JOIN decks AS deck
-                   ON deck.id = metadata.deck_id AND deck.deleted_at IS NULL
                  ORDER BY metadata.document_id",
             )
             .map_err(|error| {
@@ -346,16 +343,12 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
                     row.get::<_, String>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
-                    row.get::<_, String>(7)?,
-                    row.get::<_, String>(8)?,
-                    row.get::<_, String>(9)?,
-                    row.get::<_, Option<String>>(10)?,
                 ))
             })
             .map_err(|error| format!("Could not read document artifact metadata rows: {error}"))?
@@ -367,90 +360,51 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
     let mut changed_rows = 0_i64;
     for (
         document_id,
-        deck_id,
         generated_document_title,
-        generated_deck_title,
         applied_document_title,
-        applied_deck_title,
         source_title,
         original_filename,
         source_format,
         current_document_title,
-        current_deck_title,
     ) in rows
     {
         if is_filename_derived_import_title(&source_title, &original_filename, &source_format) {
             continue;
         }
-
-        if source_title != generated_document_title
-            && current_document_title == generated_document_title
-            && applied_document_title.as_deref() == Some(generated_document_title.as_str())
+        if source_title == generated_document_title
+            || current_document_title != generated_document_title
+            || applied_document_title.as_deref() != Some(generated_document_title.as_str())
         {
-            let changed = transaction
-                .execute(
-                    "UPDATE documents
-                     SET title = ?1, updated_at = MAX(updated_at, ?2), revision = revision + 1
-                     WHERE id = ?3 AND title = ?4",
-                    params![source_title, now, document_id, generated_document_title],
-                )
-                .map_err(|error| {
-                    format!("Could not restore user-edited document title {document_id}: {error}")
-                })?;
-            if changed != 1 {
-                return Err(format!(
-                    "Document artifact user-edit repair lost ownership of document {document_id}."
-                ));
-            }
-            transaction
-                .execute(
-                    "UPDATE document_artifact_metadata
-                     SET applied_document_title = NULL, updated_at = MAX(updated_at, ?1)
-                     WHERE document_id = ?2
-                       AND applied_document_title = ?3",
-                    params![now, document_id, generated_document_title],
-                )
-                .map_err(|error| {
-                    format!("Could not clear generated document-title ownership {document_id}: {error}")
-                })?;
-            changed_rows = changed_rows.saturating_add(1);
+            continue;
         }
 
-        if let (Some(deck_id), Some(current_deck_title)) = (deck_id, current_deck_title) {
-            if source_title != generated_deck_title
-                && current_deck_title == generated_deck_title
-                && applied_deck_title.as_deref() == Some(generated_deck_title.as_str())
-            {
-                let changed = transaction
-                    .execute(
-                        "UPDATE decks
-                         SET name = ?1, updated_at = MAX(updated_at, ?2), revision = revision + 1
-                         WHERE id = ?3 AND name = ?4 AND deleted_at IS NULL",
-                        params![source_title, now, deck_id, generated_deck_title],
-                    )
-                    .map_err(|error| {
-                        format!("Could not restore user-owned generated deck title {deck_id}: {error}")
-                    })?;
-                if changed != 1 {
-                    return Err(format!(
-                        "Document artifact user-edit repair lost ownership of deck {deck_id}."
-                    ));
-                }
-                transaction
-                    .execute(
-                        "UPDATE document_artifact_metadata
-                         SET applied_deck_title = NULL, updated_at = MAX(updated_at, ?1)
-                         WHERE document_id = ?2
-                           AND deck_id = ?3
-                           AND applied_deck_title = ?4",
-                        params![now, document_id, deck_id, generated_deck_title],
-                    )
-                    .map_err(|error| {
-                        format!("Could not clear generated deck-title ownership {deck_id}: {error}")
-                    })?;
-                changed_rows = changed_rows.saturating_add(1);
-            }
+        let changed = transaction
+            .execute(
+                "UPDATE documents
+                 SET title = ?1, updated_at = MAX(updated_at, ?2), revision = revision + 1
+                 WHERE id = ?3 AND title = ?4",
+                params![source_title, now, document_id, generated_document_title],
+            )
+            .map_err(|error| {
+                format!("Could not restore user-edited document title {document_id}: {error}")
+            })?;
+        if changed != 1 {
+            return Err(format!(
+                "Document artifact user-edit repair lost ownership of document {document_id}."
+            ));
         }
+        transaction
+            .execute(
+                "UPDATE document_artifact_metadata
+                 SET applied_document_title = NULL, updated_at = MAX(updated_at, ?1)
+                 WHERE document_id = ?2
+                   AND applied_document_title = ?3",
+                params![now, document_id, generated_document_title],
+            )
+            .map_err(|error| {
+                format!("Could not clear generated document-title ownership {document_id}: {error}")
+            })?;
+        changed_rows = changed_rows.saturating_add(1);
     }
     Ok(changed_rows)
 }
@@ -576,13 +530,6 @@ mod tests {
                      updated_at INTEGER NOT NULL,
                      revision INTEGER NOT NULL
                  );
-                 CREATE TABLE decks (
-                     id TEXT PRIMARY KEY,
-                     name TEXT NOT NULL,
-                     deleted_at INTEGER,
-                     updated_at INTEGER NOT NULL,
-                     revision INTEGER NOT NULL
-                 );
                  CREATE TABLE source_citation_snapshots (
                      source_document_id TEXT PRIMARY KEY,
                      source_title TEXT NOT NULL,
@@ -591,39 +538,28 @@ mod tests {
                  );
                  CREATE TABLE document_artifact_metadata (
                      document_id TEXT PRIMARY KEY,
-                     deck_id TEXT,
                      document_title TEXT NOT NULL,
-                     deck_title TEXT NOT NULL,
                      applied_document_title TEXT,
-                     applied_deck_title TEXT,
                      updated_at INTEGER NOT NULL
                  );
                  INSERT INTO documents VALUES (
                      'custom-doc', 'Vasopressor pharmacology', 3, 2
                  );
-                 INSERT INTO decks VALUES (
-                     'custom-deck', 'Vasopressor pharmacology', NULL, 3, 2
-                 );
                  INSERT INTO source_citation_snapshots VALUES (
                      'custom-doc', 'My vasopressor notes', 'vasopressors.pdf', 'pdf'
                  );
                  INSERT INTO document_artifact_metadata VALUES (
-                     'custom-doc', 'custom-deck', 'Vasopressor pharmacology',
-                     'Vasopressor pharmacology', 'Vasopressor pharmacology',
+                     'custom-doc', 'Vasopressor pharmacology',
                      'Vasopressor pharmacology', 3
                  );
                  INSERT INTO documents VALUES (
                      'generated-doc', 'Distributive shock physiology', 3, 2
                  );
-                 INSERT INTO decks VALUES (
-                     'generated-deck', 'Distributive shock physiology', NULL, 3, 2
-                 );
                  INSERT INTO source_citation_snapshots VALUES (
                      'generated-doc', 'shock_notes', 'shock_notes.pdf', 'pdf'
                  );
                  INSERT INTO document_artifact_metadata VALUES (
-                     'generated-doc', 'generated-deck', 'Distributive shock physiology',
-                     'Distributive shock physiology', 'Distributive shock physiology',
+                     'generated-doc', 'Distributive shock physiology',
                      'Distributive shock physiology', 3
                  );",
             )
@@ -635,40 +571,30 @@ mod tests {
         let changed = repair_document_artifact_user_edits(&transaction)
             .expect("user-edit repair should succeed");
         transaction.commit().expect("repair should commit");
-        assert_eq!(changed, 2);
+        assert_eq!(changed, 1);
 
-        let custom: (String, String, Option<String>, Option<String>) = connection
+        let custom: (String, Option<String>) = connection
             .query_row(
-                "SELECT document.title, deck.name,
-                        metadata.applied_document_title, metadata.applied_deck_title
+                "SELECT document.title, metadata.applied_document_title
                  FROM documents AS document
                  JOIN document_artifact_metadata AS metadata
                    ON metadata.document_id = document.id
-                 JOIN decks AS deck ON deck.id = metadata.deck_id
                  WHERE document.id = 'custom-doc'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .expect("custom row should load");
-        assert_eq!(custom.0, "My vasopressor notes");
-        assert_eq!(custom.1, "My vasopressor notes");
-        assert_eq!(custom.2, None);
-        assert_eq!(custom.3, None);
-
-        let generated: (String, String) = connection
-            .query_row(
-                "SELECT document.title, deck.name
-                 FROM documents AS document
-                 JOIN document_artifact_metadata AS metadata
-                   ON metadata.document_id = document.id
-                 JOIN decks AS deck ON deck.id = metadata.deck_id
-                 WHERE document.id = 'generated-doc'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
+            .expect("custom row should load");
+        assert_eq!(custom.0, "My vasopressor notes");
+        assert_eq!(custom.1, None);
+
+        let generated: String = connection
+            .query_row(
+                "SELECT title FROM documents WHERE id = 'generated-doc'",
+                [],
+                |row| row.get(0),
+            )
             .expect("generated row should load");
-        assert_eq!(generated.0, "Distributive shock physiology");
-        assert_eq!(generated.1, "Distributive shock physiology");
+        assert_eq!(generated, "Distributive shock physiology");
     }
 
     #[test]
