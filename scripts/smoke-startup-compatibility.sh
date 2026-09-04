@@ -87,7 +87,7 @@ CREATE TABLE ai_provider_profiles_legacy (
     model_id                TEXT NOT NULL DEFAULT '' CHECK(length(model_id) <= 300),
     auth_mode               TEXT NOT NULL CHECK(auth_mode IN ('none', 'bearer')),
     enabled                 INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
-    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),
+    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0, 1)),
     request_timeout_ms      INTEGER NOT NULL DEFAULT 60000
                             CHECK(request_timeout_ms BETWEEN 1000 AND 300000),
     credential_storage      TEXT NOT NULL DEFAULT 'none'
@@ -278,6 +278,7 @@ expected_migrations="$(node "$SCRIPT_DIR/current-public-migrations.mjs" --ledger
 expected_repairs="$(cat <<'EOF'
 1|canonical_semantic_chunk_hashes|779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f|0
 2|canonical_block_hashes|02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085|0
+3|document_artifact_user_edits|14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031|0
 EOF
 )"
 after_decks="$(sqlite3 "$DATABASE" 'SELECT COUNT(*) FROM decks;')"
