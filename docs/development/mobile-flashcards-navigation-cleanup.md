@@ -16,3 +16,11 @@ This working specification records the acceptance boundary for the current UI cl
 
 - No scheduling, analytics, document-processing, AI-provider, database-schema, or portable-file-format changes.
 - No removal of card-template or deck-transfer capabilities; only their presentation and navigation ownership change.
+
+## Presentation ownership
+
+- The Flashcards workspace owns only Decks and Search/Filter.
+- Portable deck-file orchestration is presentation-independent in `DeckTransferController`; the Decks page and focused dialogs supply the UI entry points.
+- Card-template management remains backed by the existing template controller and IPC contracts, but Settings owns its navigation entry.
+- Compact primary navigation owns four direct learning destinations. Settings is a distinct upper-right app-bar action rather than a fifth bottom item or a More-menu destination.
+- Re-selecting the active Study Guides destination is an explicit reset-to-library request, so nested viewer state does not trap the user.

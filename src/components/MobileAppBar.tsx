@@ -41,6 +41,7 @@ export function MobileAppBar({
           icon="settings"
           label="Settings"
           tooltip="Settings"
+          data-testid="app-settings"
           aria-current={settingsActive ? "page" : undefined}
           onClick={() => void onNavigate("settings")}
         />

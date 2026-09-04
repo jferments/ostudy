@@ -6,6 +6,7 @@ import { MobileAppBar } from "./components/MobileAppBar";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { useAppController } from "./controllers/useAppController";
+import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
@@ -55,9 +56,11 @@ function App() {
 
   function navigate(section: Parameters<typeof controller.navigate>[0]): void {
     if (
-      section === "study-guides" &&
-      controller.section === "study-guides" &&
-      controller.activeWorkflow === null
+      shouldResetStudyGuidesRoute(
+        section,
+        controller.section,
+        controller.activeWorkflow,
+      )
     ) {
       setStudyGuidesNavigationKey((current) => current + 1);
     }

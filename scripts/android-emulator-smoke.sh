@@ -196,6 +196,7 @@ if ! run_case rustPlatformSnapshotReachesDocumentAndQrNativeRoutes AndroidPlatfo
   failed_cases+=("AndroidPlatformRoutingTest#rustPlatformSnapshotReachesDocumentAndQrNativeRoutes")
   launch_ok=0
 elif ! run_case a0_appLaunchesAndTestBridgeIsReady; then
+run_case a1_freshLibraryUsesQuietNavigation
   failed_cases+=("AndroidSmokeTest#a0_appLaunchesAndTestBridgeIsReady")
   launch_ok=0
 fi

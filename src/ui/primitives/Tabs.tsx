@@ -1,4 +1,4 @@
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import styles from "./Tabs.module.css";
 
@@ -27,6 +27,15 @@ export function Tabs<T extends string>({ value, onValueChange, tabs, ariaLabel }
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const visibleTabs = tabs.filter((tab) => !tab.hiddenFromTabList);
   const hasVisibleSelection = visibleTabs.some((tab) => tab.value === value);
+  const [mountedHiddenValues, setMountedHiddenValues] = useState<ReadonlySet<T>>(
+    () => new Set(),
+  );
+
+  useEffect(() => {
+    const selectedTab = tabs.find((tab) => tab.value === value);
+    if (!selectedTab?.hiddenFromTabList || mountedHiddenValues.has(value)) return;
+    setMountedHiddenValues((current) => new Set(current).add(value));
+  }, [mountedHiddenValues, tabs, value]);
 
   function activateAt(index: number): void {
     const tab = visibleTabs[index];
@@ -92,7 +101,9 @@ export function Tabs<T extends string>({ value, onValueChange, tabs, ariaLabel }
             tabIndex={0}
             className={styles.panel}
           >
-            {tab.hiddenFromTabList && !selected ? null : tab.panel}
+            {tab.hiddenFromTabList && !selected && !mountedHiddenValues.has(tab.value)
+              ? null
+              : tab.panel}
           </section>
         );
       })}

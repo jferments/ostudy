@@ -84,7 +84,9 @@ if (sources.compactNavigation !== null) {
     sources.compactNavigation,
     "COMPACT_PRIMARY_SECTIONS",
   );
-  const compactPrimarySet = new Set(compactPrimary);
+  const compactAppBar =
+    sources.mobileAppBar === null ? [] : parseAppBarDestinations(sources.mobileAppBar);
+  const reserved = new Set([...compactPrimary, ...compactAppBar]);
   compareOrderedValues(
     "compact primary destinations",
     contract.compactNavigation.primary,
@@ -93,7 +95,12 @@ if (sources.compactNavigation !== null) {
   compareOrderedValues(
     "compact More destinations",
     contract.compactNavigation.more,
-    visibleDestinations.filter((section) => !compactPrimarySet.has(section)),
+    visibleDestinations.filter((section) => !reserved.has(section)),
+  );
+  compareOrderedValues(
+    "compact app-bar destinations",
+    contract.compactNavigation.appBar,
+    compactAppBar,
   );
 }
 if (sources.flashcardsRoutes !== null) {
@@ -166,6 +173,7 @@ function validateContractShape(value) {
     "checkpointGateway",
     "primaryNavigation",
     "compactNavigation",
+    "mobileAppBar",
     "flashcardsRoutes",
     "flashcardsTabs",
     "nativeSmokeRunner",
@@ -272,7 +280,7 @@ function validateContractShape(value) {
 }
 
 function validateCompactNavigation(compactNavigation, primaryDestinations) {
-  const groups = ["primary", "more"];
+  const groups = ["primary", "more", "appBar"];
   for (const group of groups) {
     if (
       !Array.isArray(compactNavigation[group]) ||
@@ -287,12 +295,15 @@ function validateCompactNavigation(compactNavigation, primaryDestinations) {
   const visible = primaryDestinations.map((entry) => entry.section);
   const compactPrimary = compactNavigation.primary;
   const compactMore = compactNavigation.more;
-  reportDuplicates("compact destination", [...compactPrimary, ...compactMore]);
-  compareSets("compact navigation coverage", visible, [...compactPrimary, ...compactMore]);
+  const compactAppBar = compactNavigation.appBar;
+  const allCompact = [...compactPrimary, ...compactMore, ...compactAppBar];
+  reportDuplicates("compact destination", allCompact);
+  compareSets("compact navigation coverage", visible, allCompact);
 
   for (const [label, group] of [
     ["primary", compactPrimary],
     ["More", compactMore],
+    ["app-bar", compactAppBar],
   ]) {
     const groupSet = new Set(group);
     const expectedOrder = visible.filter((section) => groupSet.has(section));
@@ -674,6 +685,26 @@ function parseRenderedAppWorkflows(source) {
   return workflows;
 }
 
+function parseAppBarDestinations(source) {
+  const pattern =
+    /<IconButton[\s\S]*?data-testid="app-([^"]+)"[\s\S]*?onClick=\{\(\) => void onNavigate\("([^"]+)"\)\}[\s\S]*?\/>/gu;
+  const destinations = [];
+  for (const match of source.matchAll(pattern)) {
+    const testId = match[1];
+    const destination = match[2];
+    if (testId !== destination) {
+      fail(
+        `Compact app-bar test ID app-${testId} does not match destination ${destination}.`,
+      );
+    }
+    destinations.push(destination);
+  }
+  if (destinations.length === 0) {
+    fail("Could not parse compact app-bar destinations from MobileAppBar.");
+  }
+  return destinations;
+}
+
 function parseNativeSmokeEntrypoints(source) {
   const pattern =
     /^[ \t]*run_smoke[ \t]+"[^"\r\n]+"[ \t]*\\[ \t]*\r?\n[ \t]*"\$ROOT_DIR\/([^"\r\n]+)"[ \t]*$/gmu;
@@ -858,6 +889,7 @@ function finish() {
       `(${routeEntryCount} route-entry; ${presenceCount} presence-only), with ` +
       `${contract.protectedWorkflows.length} protected workflow and ` +
       `${contract.compactNavigation.primary.length} compact primary / ` +
-      `${contract.compactNavigation.more.length} More destinations.`,
+      `${contract.compactNavigation.more.length} More / ` +
+      `${contract.compactNavigation.appBar.length} app-bar destinations.`,
   );
 }

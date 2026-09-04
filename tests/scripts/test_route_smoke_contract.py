@@ -59,7 +59,7 @@ class RouteSmokeContractTests(unittest.TestCase):
         self.assertIn("7 application sections, 1 application workflow", completed.stdout)
         self.assertIn("7 route-entry; 0 presence-only", completed.stdout)
         self.assertIn("1 protected workflow", completed.stdout)
-        self.assertIn("4 compact primary / 1 More destinations", completed.stdout)
+        self.assertIn("4 compact primary / 0 More / 1 app-bar destinations", completed.stdout)
 
     def test_internal_practice_retains_protected_smoke(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

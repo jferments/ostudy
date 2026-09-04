@@ -43,6 +43,81 @@ class AndroidSmokeTest {
     }
 
     @Test
+    fun a1_freshLibraryUsesQuietNavigation() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards'"
+                }
+            )
+            val snapshot = evaluateJsonObject(
+                webView,
+                """
+                (() => {
+                  const tabLabels = [...document.querySelectorAll(
+                    "main [role='tablist'][aria-label='Flashcards workspaces'] [role='tab']"
+                  )].map((tab) => tab.getAttribute('aria-label') || (tab.textContent || '').trim());
+                  const navigationLabels = [...document.querySelectorAll(
+                    "nav[aria-label='Main navigation'] button"
+                  )].map((button) => (button.textContent || '').trim());
+                  const mainText = document.querySelector('main')?.textContent || '';
+                  const buttons = [...document.querySelectorAll('main button')];
+                  return {
+                    tabs: tabLabels.join('|'),
+                    navigation: navigationLabels.join('|'),
+                    settingsGear: Boolean(document.querySelector('[data-testid="app-settings"]')),
+                    importAction: Boolean(
+                      document.querySelector('main button[aria-label="Import deck from file"]')
+                    ),
+                    createAction: buttons.some(
+                      (button) => button.textContent?.trim() === 'Create a new deck'
+                    ),
+                    emptyHeading: [...document.querySelectorAll('main h2')].some(
+                      (heading) => heading.textContent?.trim() === 'No decks have been created yet.'
+                    ),
+                    foldersHeading: [...document.querySelectorAll('main h2')].some(
+                      (heading) => heading.textContent?.trim() === 'Folders'
+                    ),
+                    unsortedHeading: [...document.querySelectorAll('main h2')].some(
+                      (heading) => heading.textContent?.trim() === 'Unsorted decks'
+                    ),
+                    staleEmptyCopy:
+                      mainText.includes('No folders yet.') ||
+                      mainText.includes('All active decks are in folders.'),
+                    irrelevantControls: buttons.some((button) => {
+                      const label = (
+                        button.getAttribute('aria-label') ||
+                        button.textContent ||
+                        ''
+                      ).trim();
+                      return label === 'Collapse all' ||
+                        label === 'Expand all' ||
+                        label.startsWith('Select all');
+                    })
+                  };
+                })()
+                """.trimIndent()
+            )
+            assertEquals("Decks|Search/Filter", snapshot.getString("tabs"))
+            assertEquals(
+                "Flashcards|Study Guides|Documents|Analytics",
+                snapshot.getString("navigation")
+            )
+            assertTrue(snapshot.getBoolean("settingsGear"))
+            assertTrue(snapshot.getBoolean("importAction"))
+            assertTrue(snapshot.getBoolean("createAction"))
+            assertTrue(snapshot.getBoolean("emptyHeading"))
+            assertFalse(snapshot.getBoolean("foldersHeading"))
+            assertFalse(snapshot.getBoolean("unsortedHeading"))
+            assertFalse(snapshot.getBoolean("staleEmptyCopy"))
+            assertFalse(snapshot.getBoolean("irrelevantControls"))
+        }
+    }
+
+    @Test
     fun a_seedLibraryPracticeAndAnalytics() {
         withApplication { webView ->
             waitForBridge(webView)
@@ -73,17 +148,6 @@ class AndroidSmokeTest {
     fun c_documentsStubAndAndroidBackReturnToFlashcardsDecks() {
         withApplication { webView ->
             waitForBridge(webView)
-            evaluateSync(
-                webView,
-                "document.querySelector('[data-testid=\"nav-more\"]')?.click(); true"
-            )
-            waitUntil(
-                webView,
-                predicate = { it == "true" },
-                expression = {
-                    "Boolean(document.querySelector('[data-testid=\"nav-documents\"]'))"
-                }
-            )
             evaluateSync(
                 webView,
                 "document.querySelector('[data-testid=\"nav-documents\"]')?.click(); true"
