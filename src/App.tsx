@@ -53,6 +53,7 @@ function App() {
   const controller = useAppController();
   const [studyGuidesNavigationKey, setStudyGuidesNavigationKey] = useState(0);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
+  const legacyTemplatesSection = controller.section === "templates";
 
   function navigate(section: Parameters<typeof controller.navigate>[0]): void {
     if (
@@ -182,13 +183,18 @@ function App() {
                             onSearchTag={controller.openAnalyticsTagSearch}
                             showToast={controller.showToast}
                           />
-                        ) : controller.section === "settings" ||
-                          controller.section === "templates" ? (
+                        ) : controller.section === "settings" ? (
                           <SettingsScreen
                             settings={controller.savedSettings}
-                            initialSection={
-                              controller.section === "templates" ? "templates" : undefined
-                            }
+                            onPreviewSettings={controller.setActiveSettings}
+                            onSavedSettings={controller.saveSettingsLocally}
+                            onDirtyChange={controller.setHasUnsavedSettings}
+                            showToast={controller.showToast}
+                          />
+                        ) : legacyTemplatesSection ? (
+                          <SettingsScreen
+                            settings={controller.savedSettings}
+                            initialSection="templates"
                             onPreviewSettings={controller.setActiveSettings}
                             onSavedSettings={controller.saveSettingsLocally}
                             onDirtyChange={controller.setHasUnsavedSettings}
