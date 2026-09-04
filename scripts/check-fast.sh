@@ -95,6 +95,22 @@ cargo test \
   --lib \
   document_
 
+step "Stage 10 rich-content and document-lifecycle regressions"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  cards::content::tests::accepts_versioned_tables_tasks_and_subscripts \
+  -- --exact
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  documents::lifecycle::tests::startup_interruption_preserves_ready_state_for_a_guide_only_document \
+  -- --exact
+
 step "PDF extraction, rendering, and OCR contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
