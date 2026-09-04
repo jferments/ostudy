@@ -105,12 +105,17 @@ export const DeckLibraryView = memo(function DeckLibraryView({
           </div>
         </div>
         {snapshot.unsortedDecks.length === 0 ? (
-          <Surface level={1} material="soft" className={styles.emptyFolderHint}>
+          <Surface
+            level={1}
+            material="soft"
+            className={styles.emptyFolderHint}
+            data-library-deck-list="true"
+          >
             <Icon name="check" size={24} />
             <span>All active decks are in folders.</span>
           </Surface>
         ) : (
-          <div className={listStyles.list}>
+          <div className={listStyles.list} data-library-deck-list="true">
             {snapshot.unsortedDecks.map((deck, index) => (
               <UnsortedDeckItem
                 key={deck.id}

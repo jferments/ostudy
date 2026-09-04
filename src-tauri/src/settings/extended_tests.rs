@@ -19,7 +19,6 @@ mod extended_tests {
             desired_retention: 0.90,
             daily_new_limit: 20,
             daily_review_limit: 200,
-            ai_reasoning_effort: "low".to_string(),
         }
     }
 
@@ -42,7 +41,6 @@ mod extended_tests {
             desired_retention: 0.96,
             daily_new_limit: 12,
             daily_review_limit: 80,
-            ai_reasoning_effort: "minimal".to_string(),
         };
         validate_settings(&expected).expect("fixture should validate");
         database
@@ -67,7 +65,6 @@ mod extended_tests {
         assert_eq!(loaded.desired_retention, expected.desired_retention);
         assert_eq!(loaded.daily_new_limit, expected.daily_new_limit);
         assert_eq!(loaded.daily_review_limit, expected.daily_review_limit);
-        assert_eq!(loaded.ai_reasoning_effort, expected.ai_reasoning_effort);
     }
 
     #[test]
@@ -92,13 +89,6 @@ mod extended_tests {
         assert_eq!(
             validate_settings(&value).unwrap_err().code,
             "invalid_material_preference"
-        );
-
-        let mut value = settings();
-        value.ai_reasoning_effort = "unbounded".to_string();
-        assert_eq!(
-            validate_settings(&value).unwrap_err().code,
-            "invalid_ai_reasoning_effort"
         );
 
         let mut value = settings();
@@ -138,15 +128,20 @@ mod extended_tests {
             "practiceShuffle": true,
             "desiredRetention": 0.9,
             "dailyNewLimit": 20,
-            "dailyReviewLimit": 200,
-            "aiReasoningEffort": "low"
+            "dailyReviewLimit": 200
         });
 
-        let mut removed = base.clone();
-        removed["deckViewDensity"] = json!("comfortable");
-        let error = serde_json::from_value::<AppSettingsDto>(removed)
+        let mut removed_density = base.clone();
+        removed_density["deckViewDensity"] = json!("comfortable");
+        let error = serde_json::from_value::<AppSettingsDto>(removed_density)
             .expect_err("removed deck density must not be ignored");
         assert!(error.to_string().contains("deckViewDensity"));
+
+        let mut removed_reasoning = base.clone();
+        removed_reasoning["aiReasoningEffort"] = json!("high");
+        let error = serde_json::from_value::<AppSettingsDto>(removed_reasoning)
+            .expect_err("global AI reasoning must be rejected by application settings");
+        assert!(error.to_string().contains("aiReasoningEffort"));
 
         let mut misspelled = base;
         misspelled["shuffleDecks"] = json!(true);

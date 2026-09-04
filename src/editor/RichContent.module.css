@@ -1,6 +1,7 @@
 @layer components {
   .view {
     min-width: 0;
+    overflow-x: auto;
   }
 
   .content {
@@ -13,45 +14,26 @@
     overflow-wrap: anywhere;
   }
 
-  .content > :first-child {
-    margin-top: 0;
-  }
+  .content > :first-child { margin-top: 0; }
+  .content > :last-child { margin-bottom: 0; }
+  .content p { margin: 0.55em 0; }
+  .content h1 { margin: 0.7em 0 0.35em; font-size: 2em; line-height: 1.15; }
+  .content h2 { margin: 0.7em 0 0.35em; font-size: 1.6em; line-height: 1.2; }
+  .content h3 { margin: 0.7em 0 0.35em; font-size: 1.3em; }
+  .content h4 { margin: 0.7em 0 0.35em; font-size: 1.1em; }
 
-  .content > :last-child {
-    margin-bottom: 0;
+  .content sub,
+  .content sup {
+    position: relative;
+    font-size: 0.72em;
+    line-height: 0;
+    vertical-align: baseline;
   }
-
-  .content p {
-    margin: 0.55em 0;
-  }
-
-  .content h1 {
-    margin: 0.7em 0 0.35em;
-    font-size: 2em;
-    line-height: 1.15;
-  }
-
-  .content h2 {
-    margin: 0.7em 0 0.35em;
-    font-size: 1.6em;
-    line-height: 1.2;
-  }
-
-  .content h3 {
-    margin: 0.7em 0 0.35em;
-    font-size: 1.3em;
-  }
-
-  .content h4 {
-    margin: 0.7em 0 0.35em;
-    font-size: 1.1em;
-  }
+  .content sup { top: -0.48em; }
+  .content sub { bottom: -0.18em; }
 
   .content ul,
-  .content ol {
-    margin: 0.55em 0;
-    padding-left: 1.7em;
-  }
+  .content ol { margin: 0.55em 0; padding-left: 1.7em; }
 
   .content blockquote {
     margin: 0.8em 0;
@@ -75,11 +57,7 @@
     color: var(--ostudy-color-text-accent);
   }
 
-  .content pre code {
-    padding: 0;
-    background: transparent;
-    color: var(--ostudy-color-text-primary);
-  }
+  .content pre code { padding: 0; background: transparent; color: var(--ostudy-color-text-primary); }
 
   .content a {
     color: var(--ostudy-color-text-accent);
@@ -87,22 +65,19 @@
     text-underline-offset: 0.14em;
   }
 
-  .content hr {
-    margin: 1.2em 0;
-    border: 0;
-    border-top: 1px solid var(--ostudy-color-border-strong);
-  }
+  .content hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--ostudy-color-border-strong); }
 
   .content table {
     width: 100%;
-    overflow: hidden;
+    min-width: 34rem;
     border-collapse: collapse;
     border: 1px solid var(--ostudy-color-border-subtle);
-    border-radius: var(--ostudy-radius-small);
+    background: var(--ostudy-color-surface-base);
   }
 
   .content th,
   .content td {
+    min-width: 7rem;
     border: 1px solid var(--ostudy-color-border-subtle);
     padding: 0.45em 0.6em;
     text-align: start;
@@ -112,6 +87,48 @@
   .content th {
     background: var(--ostudy-color-surface-raised);
     color: var(--ostudy-color-text-primary);
+    font-weight: 760;
+  }
+
+  .content [data-task-list] {
+    display: grid;
+    gap: 0.35em;
+    padding-left: 0;
+    list-style: none;
+  }
+
+  .content [data-task-item] {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.2em minmax(0, 1fr);
+    align-items: start;
+    gap: 0.45em;
+  }
+
+  .content [data-task-item]::before {
+    display: grid;
+    width: 1.05em;
+    height: 1.05em;
+    place-items: center;
+    margin-top: 0.25em;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: 0.2em;
+    background: var(--ostudy-color-surface-base);
+    color: var(--ostudy-color-status-success);
+    content: "";
+    font-size: 0.82em;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .content [data-task-item][data-checked="true"]::before { content: "✓"; }
+  .content [data-task-item] > p { margin: 0; }
+
+  .content [data-checklist-mode="answer_key"] {
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-medium);
+    padding: 0.75em;
+    background: var(--ostudy-color-surface-soft);
   }
 
   .content [data-indent="1"] { margin-left: 2rem; }
@@ -158,8 +175,19 @@
     border-style: dashed;
   }
 
-  .inlinePlaceholder {
-    margin-inline: 0.12rem;
-    vertical-align: baseline;
+  .inlinePlaceholder { margin-inline: 0.12rem; vertical-align: baseline; }
+
+  @media (max-width: 760px) {
+    .content table { width: max-content; min-width: 100%; }
+    .content [data-indent="4"],
+    .content [data-indent="5"],
+    .content [data-indent="6"] { margin-left: 3rem; }
+  }
+
+  @media (forced-colors: active) {
+    .content [data-task-item]::before,
+    .content table,
+    .content th,
+    .content td { border-color: CanvasText; }
   }
 }

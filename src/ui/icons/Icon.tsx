@@ -37,8 +37,10 @@ export const ICON_NAMES = [
   "settings",
   "sort",
   "sparkles",
+  "stop",
   "study-guide",
   "template",
+  "timer",
   "upload",
   "warning",
 ] as const;
@@ -273,11 +275,25 @@ function iconPath(name: IconName): ReactNode {
           <path d="m19 14 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8zM5 15l.7 1.8 1.8.7-1.8.7L5 20l-.7-1.8-1.8-.7 1.8-.7z" />
         </>
       );
+    case "stop":
+      return (
+        <>
+          <path d="m8 3h8l5 5v8l-5 5H8l-5-5V8z" />
+          <rect x="9" y="9" width="6" height="6" rx="0.8" fill="currentColor" stroke="none" />
+        </>
+      );
     case "template":
       return (
         <>
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <path d="M3 9h18M9 9v12" />
+        </>
+      );
+    case "timer":
+      return (
+        <>
+          <circle cx="12" cy="13" r="8" />
+          <path d="M12 9v4l3 2M9 2h6M12 2v3M5 4 3 6M19 4l2 2" />
         </>
       );
     case "upload":

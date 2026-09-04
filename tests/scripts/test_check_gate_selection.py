@@ -1,6 +1,8 @@
+import json
 import os
 import re
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -12,6 +14,10 @@ WORKFLOW = ROOT / ".github" / "workflows" / "check.yml"
 class CheckGateSelectionTests(unittest.TestCase):
     def select(self, **environment: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
+        # Tests that model an unlabeled PR must not inherit the real Actions
+        # event payload from the self-hosted runner. Label-specific cases pass
+        # an explicit temporary GITHUB_EVENT_PATH below.
+        env.pop("GITHUB_EVENT_PATH", None)
         env.update(environment)
         return subprocess.run(
             ["node", str(SCRIPT)],
@@ -23,11 +29,34 @@ class CheckGateSelectionTests(unittest.TestCase):
             check=False,
         )
 
+    def select_with_labels(self, labels: list[str]) -> subprocess.CompletedProcess[str]:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json") as handle:
+            json.dump(
+                {"pull_request": {"labels": [{"name": label} for label in labels]}},
+                handle,
+            )
+            handle.flush()
+            return self.select(
+                EVENT_NAME="pull_request",
+                PR_DRAFT="true",
+                GITHUB_EVENT_PATH=handle.name,
+            )
+
     def test_draft_pull_request_uses_fast_by_default(self) -> None:
         completed = self.select(
             EVENT_NAME="pull_request",
             PR_DRAFT="true",
         )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout.strip(), "fast")
+
+    def test_full_qualification_label_runs_all_full_while_pr_remains_draft(self) -> None:
+        completed = self.select_with_labels(["qualification:full"])
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(completed.stdout.strip(), "all-full")
+
+    def test_unrelated_labels_leave_draft_on_fast_gate(self) -> None:
+        completed = self.select_with_labels(["documentation", "ui"])
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout.strip(), "fast")
 

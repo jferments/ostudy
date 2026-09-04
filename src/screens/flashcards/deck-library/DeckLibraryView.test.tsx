@@ -78,7 +78,7 @@ describe("DeckLibraryView render isolation", () => {
     window.matchMedia = originalMatchMedia;
   });
 
-  it("does not recommit a deterministic large deck tree when drag target feedback changes", () => {
+  it("does not recommit a deterministic large deck tree when semantic drag feedback changes", () => {
     render(<Harness />);
     expect(screen.getAllByTestId("large-tree-deck")).toHaveLength(240);
     expect(rowRender).toHaveBeenCalledTimes(240);
@@ -86,7 +86,7 @@ describe("DeckLibraryView render isolation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change drag target" }));
 
     expect(rowRender).toHaveBeenCalledTimes(240);
-    expect(screen.getByText("Clinical")).not.toBeNull();
+    expect(screen.getByText("Clinical, position 1.")).toBeTruthy();
   });
 
   it.each([
@@ -96,20 +96,10 @@ describe("DeckLibraryView render isolation", () => {
     { collapsed: true, layoutMode: "medium", toggleName: "Expand Nursing folder" },
     { collapsed: false, layoutMode: "compact", toggleName: "Collapse Nursing folder" },
     { collapsed: true, layoutMode: "compact", toggleName: "Expand Nursing folder" },
-  ])(
-    "starts folder drag from title and copy, not explicit controls, when collapsed is $collapsed in $layoutMode layout",
+  ] as const)(
+    "starts folder drag from the summary but not explicit controls when collapsed is $collapsed in $layoutMode layout",
     ({ collapsed, layoutMode, toggleName }) => {
-      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-        matches:
-          (query === "(max-width: 760px)" && layoutMode === "compact") ||
-          (query === "(max-width: 1180px)" && layoutMode !== "wide"),
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }));
+      setLayoutMode(layoutMode);
       const folderSnapshot = createDeckLibrarySnapshot([deck(0)], {
         revision: 12,
         folders: [folder],
@@ -166,20 +156,10 @@ describe("DeckLibraryView render isolation", () => {
     { collapsed: true, layoutMode: "medium", toggleName: "Expand Nursing folder" },
     { collapsed: false, layoutMode: "compact", toggleName: "Collapse Nursing folder" },
     { collapsed: true, layoutMode: "compact", toggleName: "Expand Nursing folder" },
-  ])(
-    "toggles a folder from short summary clicks and its explicit control when collapsed is $collapsed in $layoutMode layout",
+  ] as const)(
+    "uses only the explicit caret to toggle when collapsed is $collapsed in $layoutMode layout",
     ({ collapsed, layoutMode, toggleName }) => {
-      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-        matches:
-          (query === "(max-width: 760px)" && layoutMode === "compact") ||
-          (query === "(max-width: 1180px)" && layoutMode !== "wide"),
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }));
+      setLayoutMode(layoutMode);
       const toggleFolder = vi.fn();
       const folderSnapshot = createDeckLibrarySnapshot([deck(0)], {
         revision: 12,
@@ -204,22 +184,10 @@ describe("DeckLibraryView render isolation", () => {
         </LayoutModeProvider>,
       );
 
-      const title = screen.getByRole("heading", { name: folder.name });
-      const copy = screen.getByText("1 deck · 1 ready");
-      const dragSurface = title.closest("[data-library-pointer-drag-source='true']");
-
-      expect(dragSurface?.tagName).toBe("DIV");
-      expect(dragSurface?.hasAttribute("role")).toBe(false);
-      expect(dragSurface?.hasAttribute("tabindex")).toBe(false);
-
-      fireEvent.click(title);
-      fireEvent.click(copy);
+      expect(screen.queryByText(collapsed ? "Expand" : "Collapse")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: toggleName }));
-
-      expect(toggleFolder).toHaveBeenCalledTimes(3);
-      expect(toggleFolder).toHaveBeenNthCalledWith(1, folder.id);
-      expect(toggleFolder).toHaveBeenNthCalledWith(2, folder.id);
-      expect(toggleFolder).toHaveBeenNthCalledWith(3, folder.id);
+      expect(toggleFolder).toHaveBeenCalledTimes(1);
+      expect(toggleFolder).toHaveBeenCalledWith(folder.id);
     },
   );
 });
@@ -240,7 +208,7 @@ function Harness() {
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
       />
-      <LibraryDragFeedback feedback={feedback} bindPreview={() => undefined} />
+      <LibraryDragFeedback feedback={feedback} />
     </>
   );
 }
@@ -265,6 +233,20 @@ function dragFeedback(
       announcement: `${destinationName}, position 1.`,
     },
   };
+}
+
+function setLayoutMode(mode: "wide" | "medium" | "compact"): void {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches:
+      (query === "(max-width: 760px)" && mode === "compact") ||
+      (query === "(max-width: 1180px)" && mode !== "wide"),
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
 }
 
 function deck(index: number): DeckSummary {

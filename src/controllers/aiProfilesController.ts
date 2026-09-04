@@ -114,7 +114,18 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
         if (result.models.length === 1 && result.models[0]?.id !== profile.modelId) {
           const serverModelId = result.models[0]?.id;
           if (serverModelId) {
-            setDraft((current) => (current ? { ...current, modelId: serverModelId } : current));
+            setDraft((current) =>
+              current
+                ? {
+                    ...current,
+                    modelId: serverModelId,
+                    reasoningEffort: compatibleReasoningEffort(
+                      current.reasoningEffort,
+                      result.models[0] ?? null,
+                    ),
+                  }
+                : current,
+            );
             if (announceChanges) {
               showToast("info", "The provider reports one available model. ostudy selected it.");
             }
@@ -222,6 +233,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       providerKind,
       baseUrl: provider.defaultBaseUrl,
       modelId: "",
+      reasoningEffort: "low",
       authMode: provider.authenticationRequired ? "bearer" : "none",
       enabled: true,
       allowInsecureHttp: false,
@@ -532,10 +544,25 @@ function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
     providerKind: profile.providerKind,
     baseUrl: profile.baseUrl,
     modelId: profile.modelId,
+    reasoningEffort: profile.reasoningEffort ?? "low",
     authMode: profile.authMode,
     enabled: profile.enabled,
     allowInsecureHttp: profile.allowInsecureHttp,
     requireZeroDataRetention: profile.requireZeroDataRetention ?? false,
     requestTimeoutMs: profile.requestTimeoutMs,
   };
+}
+
+function compatibleReasoningEffort(
+  current: AiProfileDraft["reasoningEffort"],
+  model: AiProviderModel | null,
+): NonNullable<AiProfileDraft["reasoningEffort"]> {
+  const normalized = current ?? "low";
+  if (normalized === "automatic") return normalized;
+  const reasoning = model?.reasoning;
+  if (!reasoning) return normalized;
+  if (reasoning.mandatory && normalized === "none") return "automatic";
+  const supported = reasoning.supportedEfforts;
+  if (supported && !supported.includes(normalized)) return "automatic";
+  return normalized;
 }

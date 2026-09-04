@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ShowToast } from "../components/Toast";
 import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import {
+  cancelDocumentStudyGuideGeneration,
   discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide,
   getDocumentStudyGuide,
@@ -21,6 +23,7 @@ vi.mock("../ipc/studyGuides", async () => {
   );
   return {
     ...actual,
+    cancelDocumentStudyGuideGeneration: vi.fn(),
     discardDocumentStudyGuideOverlay: vi.fn(),
     generateDocumentStudyGuide: vi.fn(),
     getDocumentStudyGuide: vi.fn(),
@@ -156,6 +159,7 @@ function conflictedOverride(): StudyGuideOverlay {
 
 const mockedGetGuide = vi.mocked(getDocumentStudyGuide);
 const mockedGenerate = vi.mocked(generateDocumentStudyGuide);
+const mockedCancel = vi.mocked(cancelDocumentStudyGuideGeneration);
 const mockedProjection = vi.mocked(getDocumentTopicCardProjection);
 const mockedCardIds = vi.mocked(getDocumentTopicCardIds);
 const mockedSaveOverlay = vi.mocked(saveDocumentStudyGuideOverlay);
@@ -167,6 +171,7 @@ const mockedRelease = vi.mocked(releasePreparedExport);
 beforeEach(() => {
   vi.clearAllMocks();
   onPracticeCards.mockClear();
+  mockedCancel.mockResolvedValue(undefined);
   mockedProjection.mockResolvedValue({
     topicId,
     noteCount: 1,
@@ -184,25 +189,72 @@ describe("StudyGuideDialog", () => {
     mockedGenerate.mockResolvedValue(guide());
     const showToast = vi.fn();
 
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={showToast}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
+    renderGuide({ showToast });
 
     expect(await screen.findByText("No study guide yet")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Create study guide" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate study guide" }));
 
     expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
     expect(mockedGenerate).toHaveBeenCalledWith(documentId);
     expect(showToast).toHaveBeenCalledWith("success", "Study guide created.");
   });
 
-  it("renders structured source-grounded sections and exports through native prepared files", async () => {
+  it("uses the same generating button as the red stop control", async () => {
+    mockedGetGuide.mockResolvedValue(null);
+    let resolveGeneration!: (value: DocumentStudyGuide) => void;
+    mockedGenerate.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGeneration = resolve;
+      }),
+    );
+
+    renderGuide();
+    fireEvent.click(await screen.findByRole("button", { name: "Generate study guide" }));
+
+    const stop = await screen.findByRole("button", {
+      name: "Generating study guide; click to stop",
+    });
+    expect(stop.textContent).toContain("Generating study guide");
+    expect(stop.querySelector("svg")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Stop study guide/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Stop generation/u })).toBeNull();
+
+    fireEvent.click(stop);
+    await waitFor(() => expect(mockedCancel).toHaveBeenCalledWith(documentId));
+    expect(
+      screen.getByRole("button", { name: "Stopping study guide generation" }),
+    ).toBeTruthy();
+
+    resolveGeneration(guide());
+    expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
+  });
+
+  it("renders an existing guide without revision metadata or a regenerate action", async () => {
+    mockedGetGuide.mockResolvedValue(guide());
+    const onClose = vi.fn();
+    renderGuide({ onClose });
+
+    expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeTruthy();
+    const workspace = screen.getByRole("region", { name: "Study guide · Physiology" });
+    expect(workspace.getAttribute("data-inline-workspace")).toBe("true");
+    expect(screen.queryByRole("dialog", { name: "Study guide · Physiology" })).toBeNull();
+    expect(workspace.getAttribute("aria-modal")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Study guide contents" })).toBeTruthy();
+    expect(screen.getByRole("article")).toBeTruthy();
+    expect(screen.getByText("Page 2–3")).toBeTruthy();
+    expect(screen.getByText("1 section")).toBeTruthy();
+    expect(screen.queryByText("Revision 1")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Regenerate study guide" })).toBeNull();
+
+    const close = screen.getByRole("button", { name: "Close study guide" });
+    expect(close.querySelector("svg")?.getAttribute("width")).toBe("24");
+    fireEvent.focus(close);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("exports through native prepared files without exposing an internal revision", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     mockedPreparePdf.mockResolvedValue({
       preparedExport: {
@@ -225,25 +277,9 @@ describe("StudyGuideDialog", () => {
       completedAt: 123,
     });
     const showToast = vi.fn();
+    renderGuide({ showToast });
 
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={showToast}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeTruthy();
-    const dialog = screen.getByRole("dialog", { name: "Study guide · Physiology" });
-    expect(dialog.getAttribute("data-presentation")).toBe("fullscreen");
-    expect(dialog.firstElementChild?.className).toContain("workspace");
-    expect(screen.getByRole("navigation", { name: "Study guide contents" })).toBeTruthy();
-    expect(screen.getByRole("article")).toBeTruthy();
-    expect(screen.getByText("Page 2–3")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Export PDF" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
 
     await waitFor(() => {
       expect(mockedPreparePdf).toHaveBeenCalledWith(documentId, true);
@@ -252,22 +288,13 @@ describe("StudyGuideDialog", () => {
     });
     expect(showToast).toHaveBeenCalledWith(
       "success",
-      "Exported study guide revision 1 with 1 section.",
+      "Exported study guide with 1 section.",
     );
   });
 
   it("routes exact topic-linked cards through the app practice capability", async () => {
     mockedGetGuide.mockResolvedValue(guide());
-
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={vi.fn()}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
+    renderGuide();
 
     fireEvent.click(await screen.findByRole("button", { name: "Study linked cards (2)" }));
 
@@ -293,16 +320,7 @@ describe("StudyGuideDialog", () => {
       ...topicNote(),
       plainText: "Remember the relationship to end-diastolic volume.",
     });
-
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={vi.fn()}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
+    renderGuide();
 
     fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
     fireEvent.change(screen.getByRole("textbox"), {
@@ -320,23 +338,16 @@ describe("StudyGuideDialog", () => {
         }),
       ),
     );
-    expect(await screen.findByText("Remember the relationship to end-diastolic volume.")).toBeTruthy();
+    expect(
+      await screen.findByText("Remember the relationship to end-diastolic volume."),
+    ).toBeTruthy();
   });
 
   it("removes an existing topic note through the discard overlay boundary", async () => {
     const withNote = { ...guide(), overlays: [topicNote()] };
     mockedGetGuide.mockResolvedValueOnce(withNote).mockResolvedValueOnce(guide());
     const showToast = vi.fn();
-
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={showToast}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
+    renderGuide({ showToast });
 
     expect(await screen.findByText("Remember end-diastolic volume.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
@@ -350,16 +361,7 @@ describe("StudyGuideDialog", () => {
   it("treats clearing an existing note as removal instead of invalid empty rich content", async () => {
     const withNote = { ...guide(), overlays: [topicNote()] };
     mockedGetGuide.mockResolvedValueOnce(withNote).mockResolvedValueOnce(guide());
-
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={vi.fn()}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
+    renderGuide();
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit note" }));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
@@ -375,16 +377,7 @@ describe("StudyGuideDialog", () => {
       .mockResolvedValueOnce({ ...guide(), overlays: [conflict] })
       .mockResolvedValueOnce(guide());
     const showToast = vi.fn();
-
-    render(
-      <StudyGuideDialog
-        documentId={documentId}
-        documentTitle="Physiology"
-        showToast={showToast}
-        onPracticeCards={onPracticeCards}
-        onClose={vi.fn()}
-      />,
-    );
+    renderGuide({ showToast });
 
     expect(await screen.findByText("My older preload explanation.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Discard older edit" }));
@@ -395,3 +388,21 @@ describe("StudyGuideDialog", () => {
     });
   });
 });
+
+function renderGuide({
+  showToast = vi.fn() as ShowToast,
+  onClose = vi.fn() as () => void,
+}: {
+  showToast?: ShowToast;
+  onClose?: () => void;
+} = {}) {
+  return render(
+    <StudyGuideDialog
+      documentId={documentId}
+      documentTitle="Physiology"
+      showToast={showToast}
+      onPracticeCards={onPracticeCards}
+      onClose={onClose}
+    />,
+  );
+}

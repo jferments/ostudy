@@ -38,11 +38,15 @@ describe("AI provider IPC", () => {
   it("creates profiles through a strict operation-identified native mutation", async () => {
     await createAiProviderProfile(draft);
     expect(invoke).toHaveBeenCalledWith("create_ai_provider_profile", {
-      input: { ...draft, operationId: "f".repeat(32) },
+      input: {
+        ...draft,
+        reasoningEffort: "low",
+        operationId: "f".repeat(32),
+      },
     });
   });
 
-  it("omits immutable provider kind from update mutations", async () => {
+  it("omits immutable provider kind and absent editor drafts from update mutations", async () => {
     await updateAiProviderProfile(profileId, 7, draft);
     expect(invoke).toHaveBeenCalledWith("update_ai_provider_profile", {
       input: {
@@ -52,6 +56,7 @@ describe("AI provider IPC", () => {
         displayName: draft.displayName,
         baseUrl: draft.baseUrl,
         modelId: draft.modelId,
+        reasoningEffort: "low",
         authMode: draft.authMode,
         enabled: draft.enabled,
         allowInsecureHttp: draft.allowInsecureHttp,
@@ -61,6 +66,7 @@ describe("AI provider IPC", () => {
     });
     const call = vi.mocked(invoke).mock.calls[0]?.[1] as { input?: Record<string, unknown> };
     expect(call.input).not.toHaveProperty("providerKind");
+    expect(call.input).not.toHaveProperty("editorDraft");
   });
 
   it("submits credentials only to operation-identified write commands", async () => {

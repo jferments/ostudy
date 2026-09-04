@@ -11,10 +11,18 @@ pub(super) struct KeyringSecretStore;
 
 impl SecureSecretStore for KeyringSecretStore {
     fn availability(&self) -> SecretStoreAvailability {
-        if Entry::new(KEYRING_SERVICE, KEYRING_AVAILABILITY_ACCOUNT).is_ok() {
-            SecretStoreAvailability::Available
-        } else {
-            SecretStoreAvailability::Unavailable
+        let Ok(entry) = Entry::new(KEYRING_SERVICE, KEYRING_AVAILABILITY_ACCOUNT) else {
+            return SecretStoreAvailability::Unavailable;
+        };
+        match entry.get_secret() {
+            Ok(_) | Err(KeyringError::NoEntry) => SecretStoreAvailability::Available,
+            Err(error) => match classify_error(error) {
+                SecretStoreError::Locked => SecretStoreAvailability::Locked,
+                SecretStoreError::Unavailable
+                | SecretStoreError::PermissionDenied
+                | SecretStoreError::Invalidated
+                | SecretStoreError::Failed => SecretStoreAvailability::Unavailable,
+            },
         }
     }
 

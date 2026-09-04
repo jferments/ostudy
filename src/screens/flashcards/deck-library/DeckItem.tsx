@@ -3,9 +3,7 @@ import { memo } from "react";
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
 import { IconButton } from "../../../ui/icons/IconButton";
-import { useLayoutMode } from "../../../ui/layout/LayoutModeProvider";
 import { ResponsiveActionGroup } from "../../../ui/patterns/ResponsiveActionGroup";
-import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
 import styles from "./DeckItem.module.css";
 import type { DeckLibraryReorderAdapter } from "./useDeckLibraryReorder";
@@ -40,7 +38,6 @@ export const DeckItem = memo(function DeckItem({
   onDelete,
   onToggleSelected,
 }: DeckItemProps) {
-  const { layoutMode } = useLayoutMode();
   return (
     <article
       className={styles.item}
@@ -53,7 +50,7 @@ export const DeckItem = memo(function DeckItem({
       data-item-name={archived ? undefined : deck.name}
       data-folder-id={folderId ?? UNSORTED_DATA_VALUE}
     >
-      <label className={styles.selection}>
+      <label className={styles.selection} data-library-no-pointer-drag="true">
         <input
           type="checkbox"
           aria-label={`Select ${deck.name}`}
@@ -64,8 +61,26 @@ export const DeckItem = memo(function DeckItem({
       </label>
       <div
         className={styles.main}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${deck.name}`}
+        aria-keyshortcuts={
+          archived
+            ? "Enter Space"
+            : "Enter Space ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
+        }
         data-library-pointer-drag-source={archived ? undefined : "true"}
         onClick={onOpen}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen();
+            return;
+          }
+          if (!archived) {
+            reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count);
+          }
+        }}
         onPointerDown={
           archived
             ? undefined
@@ -87,24 +102,7 @@ export const DeckItem = memo(function DeckItem({
           </small>
         </span>
       </div>
-      <button
-        type="button"
-        className={styles.open}
-        aria-label={`Open ${deck.name}`}
-        aria-keyshortcuts={
-          archived ? undefined : "ArrowUp ArrowDown Home End ArrowLeft ArrowRight"
-        }
-        onKeyDown={
-          archived
-            ? undefined
-            : (event) =>
-                reorder.moveDeckWithKeyboard(event, deck.id, folderId, index, count)
-        }
-        onClick={onOpen}
-      >
-        Open
-      </button>
-      <div className={styles.actions}>
+      <div className={styles.actions} data-library-no-pointer-drag="true">
         {!archived ? (
           <ResponsiveActionGroup
             label={`${deck.name} actions`}
@@ -121,24 +119,11 @@ export const DeckItem = memo(function DeckItem({
               {
                 id: "delete",
                 label: `Delete ${deck.name}`,
-                placement: "wide-and-medium",
+                placement: "always-visible",
                 presentation: "icon",
                 icon: "delete",
                 destructive: true,
                 disabled,
-                onSelect: onDelete,
-              },
-            ]}
-          />
-        ) : layoutMode === "compact" ? (
-          <OverflowMenu
-            label={`${deck.name} actions`}
-            disabled={disabled}
-            items={[
-              {
-                id: "delete",
-                label: `Delete ${deck.name}`,
-                destructive: true,
                 onSelect: onDelete,
               },
             ]}

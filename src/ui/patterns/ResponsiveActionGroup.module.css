@@ -8,6 +8,16 @@
     gap: var(--ostudy-space-2);
   }
 
+  .actionIcon {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+  }
+
+  .actionIcon[data-tone="danger"] {
+    color: var(--ostudy-color-status-danger);
+  }
+
   :global(:root[data-input-mode="coarse"]) .group button {
     min-height: var(--ostudy-size-touch-target);
   }

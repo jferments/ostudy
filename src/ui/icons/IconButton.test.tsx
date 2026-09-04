@@ -26,6 +26,15 @@ describe("IconButton", () => {
     expect(screen.getByRole("tooltip").textContent).toBe("Search flashcards");
   });
 
+  it("can suppress visible tooltip copy without removing the accessible name", () => {
+    render(<IconButton icon="close" label="Close study guide" tooltip={false} />);
+    const button = screen.getByRole("button", { name: "Close study guide" });
+
+    fireEvent.focus(button);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(button.getAttribute("aria-label")).toBe("Close study guide");
+  });
+
   it("supports custom tooltip copy, forwarding refs, and activation", () => {
     const ref = createRef<HTMLButtonElement>();
     const onClick = vi.fn();

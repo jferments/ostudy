@@ -5,7 +5,7 @@ import { LibraryDragFeedback } from "./LibraryDragFeedback";
 
 describe("LibraryDragFeedback", () => {
   it.each(["valid", "noop", "invalid"] as const)(
-    "renders distinct %s feedback with destination and insertion copy",
+    "announces a %s destination without rendering a detached partial-tile preview",
     (status) => {
       const { container } = render(
         <LibraryDragFeedback
@@ -28,15 +28,36 @@ describe("LibraryDragFeedback", () => {
           bindPreview={vi.fn()}
         />,
       );
-      expect(container.querySelector(`[data-status="${status}"]`)).not.toBeNull();
-      expect(screen.getByText("Biology")).not.toBeNull();
-      expect(screen.getByText("Nursing")).not.toBeNull();
-      expect(screen.getByText("position 2")).not.toBeNull();
+
+      expect(
+        container.querySelector(
+          `[data-drag-destination-feedback][data-status="${status}"]`,
+        ),
+      ).not.toBeNull();
+      expect(screen.getByText("Nursing · position 2")).not.toBeNull();
+      expect(screen.getByText(`Nursing, position 2. ${status}.`)).not.toBeNull();
+      expect(container.querySelector("[data-drag-panel-preview]")).toBeNull();
       expect(container.querySelectorAll("[aria-live='polite']")).toHaveLength(1);
     },
   );
 
-  it("keeps completion announced after the visual preview is removed", () => {
+  it("does not invent a small status tile before a destination is resolved", () => {
+    const { container } = render(
+      <LibraryDragFeedback
+        feedback={{
+          active: true,
+          sourceName: "Biology",
+          candidate: null,
+        }}
+        bindPreview={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("[data-drag-destination-feedback]")).toBeNull();
+    expect(container.querySelector("[data-drag-panel-preview]")).toBeNull();
+  });
+
+  it("keeps completion announced after the visible DOM-clone preview is removed", () => {
     const { container } = render(
       <LibraryDragFeedback
         feedback={{
@@ -58,7 +79,8 @@ describe("LibraryDragFeedback", () => {
         bindPreview={vi.fn()}
       />,
     );
-    expect(container.querySelector("[data-drag-preview]")).toBeNull();
+
+    expect(container.querySelector("[data-drag-destination-feedback]")).toBeNull();
     expect(screen.getByText("Moved Biology to Nursing, position 2.")).not.toBeNull();
   });
 });

@@ -66,7 +66,9 @@ describe("OverflowMenu", () => {
 
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     expect(document.activeElement).toBe(last);
-    expect((within(menu).getByRole("menuitem", { name: "Disabled" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (within(menu).getByRole("menuitem", { name: "Disabled" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     fireEvent.keyDown(menu, { key: "Home" });
     fireEvent.keyDown(menu, { key: " " });
     expect(onFirst).toHaveBeenCalledOnce();
@@ -90,33 +92,25 @@ describe("OverflowMenu", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it("closes and restores the trigger before invoking a selected callback", async () => {
-    renderMenu();
-    const trigger = screen.getByRole("button", { name: "Card actions" });
-    const observed: Array<{ open: boolean; focused: boolean }> = [];
+  it("renders a single command directly instead of creating a one-item ellipsis menu", () => {
+    setLayout("wide");
+    const onSelect = vi.fn();
     render(
-      <OverflowMenu
-        label="Ordering actions"
-        items={[
-          {
-            id: "observe",
-            label: "Observe",
-            onSelect: () => {
-              observed.push({
-                open: screen.queryByRole("menu", { name: "Ordering actions" }) !== null,
-                focused: document.activeElement === screen.getByRole("button", { name: "Ordering actions" }),
-              });
-            },
-          },
-        ]}
-      />,
+      <LayoutModeProvider>
+        <OverlayProvider>
+          <OverflowMenu
+            label="Ordering actions"
+            items={[{ id: "observe", label: "Observe", onSelect }]}
+          />
+        </OverlayProvider>
+      </LayoutModeProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Ordering actions" }));
-    fireEvent.keyDown(await screen.findByRole("menu", { name: "Ordering actions" }), {
-      key: "Enter",
-    });
-    expect(observed).toEqual([{ open: false, focused: true }]);
-    expect(trigger).toBeTruthy();
+
+    expect(screen.queryByRole("button", { name: "Ordering actions" })).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Observe" }));
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("uses the shared compact Sheet lifecycle", async () => {

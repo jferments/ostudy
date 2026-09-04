@@ -30,6 +30,7 @@ mod document_canonical;
 mod document_canonical_store;
 mod document_card_topics;
 mod document_checkpoints;
+mod document_citations;
 mod document_cost;
 mod document_delete_reconciliation;
 mod document_domain;
@@ -48,8 +49,10 @@ mod document_scale;
 mod document_semantics;
 mod document_store;
 mod document_study_guide_commands;
+mod document_study_guide_deletion;
 mod document_study_guide_export;
 mod document_study_guide_generation;
+mod document_study_guide_library;
 mod document_study_guides;
 mod document_topic_links;
 mod document_visual_evidence;
@@ -268,11 +271,14 @@ pub fn run() {
             document_progress::get_document_generation_progress,
             document_operations::open_document_source,
             document_operations::delete_document,
-            documents::commands::set_document_archived,
+            document_citations::list_deck_source_citations,
+            document_citations::get_note_source_citation,
             document_study_guide_commands::generate_document_study_guide,
             document_study_guide_commands::cancel_document_study_guide_generation,
             document_study_guide_commands::get_document_study_guide,
             document_study_guide_commands::list_document_study_guides,
+            document_study_guide_library::list_document_study_guide_page,
+            document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,
             document_study_guide_commands::save_document_study_guide_overlay,

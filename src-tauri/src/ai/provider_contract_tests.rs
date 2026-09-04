@@ -267,6 +267,7 @@ fn profile(
         provider_kind,
         base_url,
         model_id: model_id.to_string(),
+        reasoning_effort: "low".to_string(),
         auth_mode,
         enabled: true,
         allow_insecure_http: false,

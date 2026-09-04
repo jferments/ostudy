@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type DocumentLifecycleState = "processing" | "ready" | "failed" | "archived";
+import type { SourceLocator } from "./studyGuides";
+
+export type DocumentLifecycleState = "processing" | "ready" | "failed";
 export type DocumentScaleMode = "standard" | "large";
 export type DocumentExtractionMode = "native" | "page_text_fallback" | "ocr_fallback";
 
@@ -62,11 +64,26 @@ export interface DocumentSummary {
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;
-  archivedAt: number | null;
   revision: number;
   processingDurationMs: number | null;
   apiTokenCount: number | null;
   apiTokenUsageComplete: boolean;
+}
+
+export interface SourceCitation {
+  citationId: string;
+  schemaVersion: number;
+  sourceDocumentId: string;
+  sourceIdentity: string;
+  sourceFingerprintSha256: string;
+  sourceTitle: string;
+  originalFilename: string;
+  sourceFormat: string;
+  sourceMediaType: string;
+  sourceUnitKind: string;
+  sourceUnitCount: number;
+  sourceRemoved: boolean;
+  sourceLocator: SourceLocator | null;
 }
 
 export interface DocumentGenerationResult {
@@ -94,8 +111,8 @@ interface ImportedDocument {
   documentId: string;
 }
 
-export async function listDocuments(includeArchived = false): Promise<DocumentSummary[]> {
-  return invoke<DocumentSummary[]>("list_documents", { includeArchived });
+export async function listDocuments(): Promise<DocumentSummary[]> {
+  return invoke<DocumentSummary[]>("list_documents");
 }
 
 export async function getDocumentGenerationProgress(
@@ -104,6 +121,14 @@ export async function getDocumentGenerationProgress(
   return invoke<DocumentGenerationProgress | null>("get_document_generation_progress", {
     documentId,
   });
+}
+
+export async function listDeckSourceCitations(deckId: string): Promise<SourceCitation[]> {
+  return invoke<SourceCitation[]>("list_deck_source_citations", { deckId });
+}
+
+export async function getNoteSourceCitation(noteId: string): Promise<SourceCitation | null> {
+  return invoke<SourceCitation | null>("get_note_source_citation", { noteId });
 }
 
 export async function importDocument(stagedFileId: string): Promise<ImportedDocument> {
@@ -152,16 +177,6 @@ export async function deleteDocument(
 ): Promise<DeleteDocumentResult> {
   return invoke<DeleteDocumentResult>("delete_document", {
     input: { documentId, revision },
-  });
-}
-
-export async function setDocumentArchived(
-  documentId: string,
-  revision: number,
-  archived: boolean,
-): Promise<DocumentSummary> {
-  return invoke<DocumentSummary>("set_document_archived", {
-    input: { documentId, revision, archived },
   });
 }
 

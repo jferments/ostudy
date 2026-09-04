@@ -1,4 +1,21 @@
 {
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ostudy",
+        "url": "index.html",
+        "width": 1280,
+        "height": 760,
+        "center": true,
+        "minWidth": 380,
+        "minHeight": 520,
+        "resizable": true,
+        "fullscreen": false,
+        "create": false
+      }
+    ]
+  },
   "bundle": {
     "resources": {
       "resources/native/pdfium/*": "native/pdfium/"

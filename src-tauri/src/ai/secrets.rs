@@ -138,6 +138,14 @@ impl SecretManager {
                 session_only_available: true,
             }),
             CredentialStorage::Secure => {
+                if self.session_contains(profile_id)? {
+                    return Ok(CredentialStatusDto {
+                        status: CredentialStatus::SessionOnly,
+                        authentication_required: true,
+                        secure_persistence_available: secure_available,
+                        session_only_available: true,
+                    });
+                }
                 match self.secure.read(&SecretLocator::ai_profile(profile_id)) {
                     Ok(Some(_secret)) => Ok(CredentialStatusDto {
                         status: CredentialStatus::SavedSecurely,
@@ -197,23 +205,28 @@ impl SecretManager {
                         "This session-only AI credential expired when ostudy closed. Enter it again.",
                     )
                 }),
-            CredentialStorage::Secure => match self.secure.read(&SecretLocator::ai_profile(profile_id)) {
-                Ok(Some(secret)) => Ok(Some(secret)),
-                Ok(None) => Err(CommandError::new(
-                    "ai_credential_required",
-                    "The securely saved AI credential is missing. Enter it again.",
-                )),
-                Err(SecretStoreError::Unavailable | SecretStoreError::Locked) => Err(
-                    CommandError::new(
-                        "ai_secure_store_unavailable",
-                        "The operating-system credential store is unavailable.",
+            CredentialStorage::Secure => {
+                if let Some(session) = self.take_session_copy(profile_id)? {
+                    return Ok(Some(session));
+                }
+                match self.secure.read(&SecretLocator::ai_profile(profile_id)) {
+                    Ok(Some(secret)) => Ok(Some(secret)),
+                    Ok(None) => Err(CommandError::new(
+                        "ai_credential_required",
+                        "The securely saved AI credential is missing. Enter it again.",
+                    )),
+                    Err(SecretStoreError::Unavailable | SecretStoreError::Locked) => Err(
+                        CommandError::new(
+                            "ai_secure_store_unavailable",
+                            "Secure credential storage is unavailable. Open Settings → AI/LLM, re-enter the API key, and choose “Keep only for this app session.”",
+                        ),
                     ),
-                ),
-                Err(_) => Err(secret_command_error(
-                    "ai_secure_store_failed",
-                    "The operating-system credential store could not be read.",
-                )),
-            },
+                    Err(_) => Err(secret_command_error(
+                        "ai_secure_store_failed",
+                        "The operating-system credential store could not be read.",
+                    )),
+                }
+            }
         }
     }
 
@@ -234,10 +247,14 @@ impl SecretManager {
                 self.remove_session(profile_id)?;
             }
             CredentialPersistence::Session => {
-                if previous_storage == CredentialStorage::Secure {
-                    self.secure.delete(&locator).map_err(map_delete_error)?;
-                }
+                // Install the usable in-memory credential first. An unavailable
+                // secure store must never block the explicitly selected session-only
+                // fallback. Any old secure entry becomes unreferenced and is
+                // removed on a best-effort basis without logging credential data.
                 self.insert_session(profile_id, credential.into_bytes())?;
+                if previous_storage == CredentialStorage::Secure {
+                    self.best_effort_delete_secure(&locator);
+                }
             }
         }
         Ok(())
@@ -245,13 +262,36 @@ impl SecretManager {
 
     pub fn clear(&self, profile_id: &str, storage: CredentialStorage) -> Result<(), CommandError> {
         match storage {
-            CredentialStorage::None | CredentialStorage::Session => self.remove_session(profile_id),
+            CredentialStorage::None => self.remove_session(profile_id),
+            CredentialStorage::Session => {
+                self.remove_session(profile_id)?;
+                self.best_effort_delete_secure(&SecretLocator::ai_profile(profile_id));
+                Ok(())
+            }
             CredentialStorage::Secure => {
                 self.secure
                     .delete(&SecretLocator::ai_profile(profile_id))
                     .map_err(map_delete_error)?;
                 self.remove_session(profile_id)
             }
+        }
+    }
+
+    fn best_effort_delete_secure(&self, locator: &SecretLocator) {
+        if let Err(error) = self.secure.delete(locator) {
+            let reason = match error {
+                SecretStoreError::Unavailable => "unavailable",
+                SecretStoreError::Locked => "locked",
+                SecretStoreError::PermissionDenied => "permission_denied",
+                SecretStoreError::Invalidated => "invalidated",
+                SecretStoreError::Failed => "failed",
+            };
+            logging::warn_target(
+                "ai.credentials",
+                "stale_secure_credential_cleanup_deferred",
+                "A session-only credential is active; cleanup of the previous secure entry was deferred.",
+                serde_json::json!({ "reason": reason }),
+            );
         }
     }
 
@@ -338,6 +378,26 @@ fn secret_command_error(code: &str, message: &str) -> CommandError {
 mod tests {
     use super::*;
 
+    struct UnavailableStore;
+
+    impl SecureSecretStore for UnavailableStore {
+        fn availability(&self) -> SecretStoreAvailability {
+            SecretStoreAvailability::Unavailable
+        }
+
+        fn read(&self, _locator: &SecretLocator) -> Result<Option<SecretBytes>, SecretStoreError> {
+            Err(SecretStoreError::Unavailable)
+        }
+
+        fn write(&self, _locator: &SecretLocator, _value: &[u8]) -> Result<(), SecretStoreError> {
+            Err(SecretStoreError::Unavailable)
+        }
+
+        fn delete(&self, _locator: &SecretLocator) -> Result<(), SecretStoreError> {
+            Err(SecretStoreError::Unavailable)
+        }
+    }
+
     #[test]
     fn session_credentials_are_never_exposed_by_status() {
         let manager = SecretManager::default();
@@ -366,6 +426,31 @@ mod tests {
                 CredentialStorage::Session,
             )
             .is_ok());
+    }
+
+    #[test]
+    fn session_fallback_survives_an_unavailable_previous_secure_store() {
+        let manager = SecretManager::new(Arc::new(UnavailableStore));
+        let profile_id = "0123456789abcdef0123456789abcdef";
+
+        manager
+            .set(
+                profile_id,
+                "session-fallback-secret".to_string(),
+                CredentialPersistence::Session,
+                CredentialStorage::Secure,
+            )
+            .expect("unavailable secure store must not block session fallback");
+
+        let status = manager
+            .status(profile_id, AuthMode::Bearer, CredentialStorage::Secure)
+            .expect("ambiguous database state should expose the active session fallback");
+        assert_eq!(status.status, CredentialStatus::SessionOnly);
+        let credential = manager
+            .resolve(profile_id, AuthMode::Bearer, CredentialStorage::Secure)
+            .expect("active session fallback should resolve")
+            .expect("credential should be present");
+        assert_eq!(credential.as_bytes(), b"session-fallback-secret");
     }
 
     #[test]

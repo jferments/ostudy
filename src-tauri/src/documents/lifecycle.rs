@@ -1,15 +1,8 @@
 use rusqlite::{params, Connection, TransactionBehavior};
 
-use crate::{
-    database::Database,
-    error::CommandError,
-    util::{unix_time_millis, validate_entity_id},
-};
+use crate::{database::Database, error::CommandError, util::unix_time_millis};
 
-use super::{
-    contracts::{DocumentDto, SetDocumentArchivedInput},
-    repository,
-};
+use super::repository;
 
 pub(crate) const FLASHCARD_CANCELED_CODE: &str = "document_generation_canceled";
 pub(crate) const FLASHCARD_CANCELED_MESSAGE: &str =
@@ -19,7 +12,6 @@ pub(crate) const FLASHCARD_CANCELED_MESSAGE: &str =
 enum SettledDocumentState {
     Ready,
     Failed,
-    Archived,
 }
 
 impl SettledDocumentState {
@@ -27,7 +19,6 @@ impl SettledDocumentState {
         match self {
             Self::Ready => "ready",
             Self::Failed => "failed",
-            Self::Archived => "archived",
         }
     }
 }
@@ -45,52 +36,6 @@ impl FlashcardJobTerminalState {
             Self::Canceled => "canceled",
         }
     }
-}
-
-pub(crate) fn set_document_archived(
-    database: &Database,
-    input: SetDocumentArchivedInput,
-) -> Result<DocumentDto, CommandError> {
-    validate_entity_id(&input.document_id, "document")?;
-    if input.revision < 1 {
-        return Err(CommandError::new(
-            "invalid_revision",
-            "The document revision is invalid.",
-        ));
-    }
-
-    database.with_connection(|connection| {
-        let now = unix_time_millis()?;
-        let lifecycle = settled_state(connection, &input.document_id, input.archived)?.as_db();
-        let changed = connection
-            .execute(
-                "UPDATE documents
-                 SET lifecycle_state = ?1, archived_at = ?2, updated_at = ?3,
-                     revision = revision + 1
-                 WHERE id = ?4 AND revision = ?5",
-                params![
-                    lifecycle,
-                    input.archived.then_some(now),
-                    now,
-                    input.document_id,
-                    input.revision,
-                ],
-            )
-            .map_err(|error| {
-                CommandError::database_at(
-                    "document_archive_write_failed",
-                    format!("document={}", input.document_id),
-                    error,
-                )
-            })?;
-        if changed != 1 {
-            return Err(CommandError::new(
-                "document_changed",
-                "This document changed before the archive action completed. Reload it and try again.",
-            ));
-        }
-        Ok(repository::load_document(connection, &input.document_id)?.dto)
-    })
 }
 
 pub(crate) fn record_document_failure(
@@ -138,7 +83,7 @@ pub(crate) fn reconcile_interrupted_flashcard_operations(
     let interrupted_documents = {
         let mut statement = connection
             .prepare(
-                "SELECT id, archived_at IS NOT NULL
+                "SELECT id
                  FROM documents
                  WHERE lifecycle_state = 'processing'
                  ORDER BY id",
@@ -151,17 +96,15 @@ pub(crate) fn reconcile_interrupted_flashcard_operations(
                 )
             })?;
         let rows = statement
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))
-            })
+            .query_map([], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)?
     };
 
     let mut document_count = 0_usize;
-    for (document_id, archived) in interrupted_documents {
-        let lifecycle = settled_state(connection, &document_id, archived)?.as_db();
+    for document_id in interrupted_documents {
+        let lifecycle = settled_state(connection, &document_id)?.as_db();
         let changed = connection
             .execute(
                 "UPDATE documents
@@ -172,6 +115,7 @@ pub(crate) fn reconcile_interrupted_flashcard_operations(
                          WHEN processing_started_at IS NULL THEN processing_duration_ms
                          ELSE MAX(0, ?4 - processing_started_at)
                      END,
+                     archived_at = NULL,
                      updated_at = ?4, revision = revision + 1
                  WHERE id = ?5 AND lifecycle_state = 'processing'",
                 params![
@@ -224,14 +168,7 @@ fn record_flashcard_terminal(
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        let archived = transaction
-            .query_row(
-                "SELECT archived_at IS NOT NULL FROM documents WHERE id = ?1",
-                [document_id],
-                |row| row.get::<_, bool>(0),
-            )
-            .map_err(CommandError::database)?;
-        let lifecycle = settled_state(&transaction, document_id, archived)?.as_db();
+        let lifecycle = settled_state(&transaction, document_id)?.as_db();
         let document_changed = transaction
             .execute(
                 "UPDATE documents
@@ -244,6 +181,7 @@ fn record_flashcard_terminal(
                      END,
                      api_token_count = CASE WHEN ?5 IS NULL THEN api_token_count ELSE ?5 END,
                      api_token_usage_complete = CASE WHEN ?5 IS NULL THEN api_token_usage_complete ELSE ?6 END,
+                     archived_at = NULL,
                      updated_at = ?4, revision = revision + 1
                  WHERE id = ?7",
                 params![
@@ -305,20 +243,14 @@ fn record_flashcard_terminal(
 fn settled_state(
     connection: &Connection,
     document_id: &str,
-    archived: bool,
 ) -> Result<SettledDocumentState, CommandError> {
     let has_learning_artifact = repository::active_generated_deck_exists(connection, document_id)?
         || repository::active_study_guide_exists(connection, document_id)?;
-    Ok(settled_state_for_presence(archived, has_learning_artifact))
+    Ok(settled_state_for_presence(has_learning_artifact))
 }
 
-const fn settled_state_for_presence(
-    archived: bool,
-    has_learning_artifact: bool,
-) -> SettledDocumentState {
-    if archived {
-        SettledDocumentState::Archived
-    } else if has_learning_artifact {
+const fn settled_state_for_presence(has_learning_artifact: bool) -> SettledDocumentState {
+    if has_learning_artifact {
         SettledDocumentState::Ready
     } else {
         SettledDocumentState::Failed
@@ -336,19 +268,11 @@ mod tests {
     #[test]
     fn settled_state_truth_table_preserves_available_learning_artifacts() {
         assert_eq!(
-            settled_state_for_presence(true, false),
-            SettledDocumentState::Archived
-        );
-        assert_eq!(
-            settled_state_for_presence(true, true),
-            SettledDocumentState::Archived
-        );
-        assert_eq!(
-            settled_state_for_presence(false, true),
+            settled_state_for_presence(true),
             SettledDocumentState::Ready
         );
         assert_eq!(
-            settled_state_for_presence(false, false),
+            settled_state_for_presence(false),
             SettledDocumentState::Failed
         );
     }
@@ -363,15 +287,17 @@ mod tests {
 
         database
             .with_connection(|connection| {
-                let (lifecycle, code): (String, String) = connection
+                let (lifecycle, code, archived_at): (String, String, Option<i64>) = connection
                     .query_row(
-                        "SELECT lifecycle_state, safe_error_code FROM documents WHERE id = ?1",
+                        "SELECT lifecycle_state, safe_error_code, archived_at
+                         FROM documents WHERE id = ?1",
                         [document_id.as_str()],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                     )
                     .map_err(CommandError::database)?;
                 assert_eq!(lifecycle, "ready");
                 assert_eq!(code, FLASHCARD_CANCELED_CODE);
+                assert_eq!(archived_at, None);
                 Ok(())
             })
             .unwrap();
@@ -411,9 +337,14 @@ mod tests {
         insert_guide_only_document(&database, &document_id);
         database
             .with_connection(|connection| {
+                // The public schema requires archived_at to be present iff the lifecycle is
+                // archived. Keep the interrupted-processing fixture valid so this test exercises
+                // startup reconciliation rather than an impossible database state.
                 connection
                     .execute(
-                        "UPDATE documents SET lifecycle_state = 'processing' WHERE id = ?1",
+                        "UPDATE documents
+                         SET lifecycle_state = 'processing', archived_at = NULL
+                         WHERE id = ?1",
                         [document_id.as_str()],
                     )
                     .map_err(CommandError::database)?;
@@ -424,14 +355,15 @@ mod tests {
                     "interrupted",
                 )?;
                 assert_eq!(documents, 1);
-                let lifecycle: String = connection
+                let (lifecycle, archived_at): (String, Option<i64>) = connection
                     .query_row(
-                        "SELECT lifecycle_state FROM documents WHERE id = ?1",
+                        "SELECT lifecycle_state, archived_at FROM documents WHERE id = ?1",
                         [document_id.as_str()],
-                        |row| row.get(0),
+                        |row| Ok((row.get(0)?, row.get(1)?)),
                     )
                     .map_err(CommandError::database)?;
                 assert_eq!(lifecycle, "ready");
+                assert_eq!(archived_at, None);
                 Ok(())
             })
             .unwrap();

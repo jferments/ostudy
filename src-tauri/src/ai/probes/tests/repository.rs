@@ -22,6 +22,7 @@ fn profile() -> ProfileSnapshot {
         provider_kind: ProviderKind::LlamaCpp,
         base_url: "http://127.0.0.1:8080/".to_string(),
         model_id: "model".to_string(),
+        reasoning_effort: "low".to_string(),
         auth_mode: AuthMode::None,
         enabled: true,
         allow_insecure_http: false,

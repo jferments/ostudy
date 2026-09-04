@@ -1,0 +1,111 @@
+@layer overlays {
+  .inlineWorkspace {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: min(78dvh, 48rem);
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--ostudy-color-border-strong);
+    border-radius: var(--ostudy-radius-xlarge);
+    background: var(--ostudy-color-surface-overlay);
+    box-shadow: var(--ostudy-shadow-level-2);
+    color: var(--ostudy-color-text-primary);
+  }
+
+  .inlineHeader {
+    position: sticky;
+    z-index: var(--ostudy-layer-sticky);
+    inset-block-start: 0;
+    display: flex;
+    min-width: 0;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ostudy-space-4);
+    border-bottom: 1px solid var(--ostudy-color-border-subtle);
+    padding: var(--ostudy-space-5);
+    background: var(--ostudy-color-surface-raised);
+    box-shadow: var(--ostudy-shadow-level-1);
+  }
+
+  .heading {
+    min-width: 0;
+  }
+
+  .heading h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    overflow-wrap: anywhere;
+  }
+
+  .heading p {
+    margin: var(--ostudy-space-2) 0 0;
+    color: var(--ostudy-color-text-muted);
+    line-height: 1.5;
+  }
+
+  .inlineBody {
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 0;
+  }
+
+  .inlineClose {
+    width: 46px !important;
+    min-width: 46px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    border-color: color-mix(
+      in srgb,
+      var(--ostudy-color-status-danger) 70%,
+      var(--ostudy-color-border-strong)
+    ) !important;
+    background: var(--ostudy-color-status-danger-soft) !important;
+    color: var(--ostudy-color-status-danger) !important;
+    box-shadow: var(--ostudy-shadow-level-1);
+  }
+
+  .inlineClose:hover:not(:disabled) {
+    background: color-mix(
+      in srgb,
+      var(--ostudy-color-status-danger-soft) 72%,
+      var(--ostudy-color-status-danger)
+    ) !important;
+    color: var(--ostudy-color-status-danger-on) !important;
+  }
+
+  @media (max-width: 760px) {
+    .inlineWorkspace {
+      min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+      border-radius: var(--ostudy-radius-large);
+    }
+
+    .inlineHeader {
+      padding: var(--ostudy-space-4);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .inlineWorkspace {
+      border: 2px solid CanvasText;
+      background: Canvas;
+      color: CanvasText;
+      forced-color-adjust: auto;
+    }
+
+    .inlineHeader {
+      border-color: CanvasText;
+      background: Canvas;
+    }
+
+    .inlineClose {
+      border-color: LinkText !important;
+      background: ButtonFace !important;
+      color: LinkText !important;
+    }
+  }
+}

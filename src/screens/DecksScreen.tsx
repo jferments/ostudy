@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import type { DeckOpenRequest } from "../App";
 import { Modal } from "../components/Modal";
+import { SourceCitationPanel } from "../components/SourceCitationPanel";
 import type { ShowToast } from "../components/Toast";
 import { DecksController } from "../controllers/decksController";
 import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
@@ -21,7 +22,6 @@ import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 import ownershipStyles from "./DecksScreen.module.css";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
 
 interface DecksScreenProps {
   decks: DeckSummary[];
@@ -588,7 +588,10 @@ export function DecksScreen({
                   {
                     id: "delete",
                     label: `Delete ${selectedDeck.name}`,
-                    placement: "overflow-only",
+                    placement: "always-visible",
+                    presentation: "icon",
+                    icon: "delete",
+                    description: "Delete deck",
                     destructive: true,
                     onSelect: () => void handleDeleteDeck(selectedDeck),
                   },
@@ -596,6 +599,8 @@ export function DecksScreen({
               />
             </header>
           ) : null}
+
+          {view === "detail" ? <SourceCitationPanel deckId={selectedDeck.id} /> : null}
 
           {view === "detail" && errorMessage ? (
             <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div>

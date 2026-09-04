@@ -11,7 +11,6 @@ import {
   listDocuments,
   openDocumentSource,
   retryPdfFlashcardGeneration,
-  setDocumentArchived,
   type DocumentGenerationProgress,
   type DocumentSummary,
 } from "../ipc/documents";
@@ -20,14 +19,22 @@ import {
   generateDocumentStudyGuide,
 } from "../ipc/studyGuides";
 import { selectExternalImport } from "../platform/files";
+import {
+  InfoButton,
+  MetadataItem,
+  MetadataList,
+} from "../ui/overlays/MetadataDialog";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import {
+  ResponsiveActionGroup,
+  type ResponsiveAction,
+} from "../ui/patterns/ResponsiveActionGroup";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 import progressStyles from "./DocumentGenerationProgress.module.css";
 import styles from "./DocumentsScreen.module.css";
-import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 
 const ownedStyleMaps = sharedClassMaps;
-
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
@@ -45,7 +52,6 @@ export function DocumentsScreen({
     Record<string, DocumentGenerationProgress | null>
   >({});
   const [clockNow, setClockNow] = useState(() => Date.now());
-  const [includeArchived, setIncludeArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
@@ -63,11 +69,11 @@ export function DocumentsScreen({
   const hasProcessingDocument = processingDocuments.length > 0;
 
   const refreshDocuments = useCallback(async () => {
-    const loaded = await listDocuments(includeArchived);
+    const loaded = await listDocuments();
     setDocuments(loaded);
     setErrorMessage(null);
     return loaded;
-  }, [includeArchived]);
+  }, []);
 
   const refreshLiveProgress = useCallback(async () => {
     if (processingDocuments.length === 0) {
@@ -190,7 +196,6 @@ export function DocumentsScreen({
       busyDocumentId ||
       deletingDocumentId ||
       guideGeneratingDocumentId ||
-      document.archivedAt !== null ||
       document.lifecycleState === "processing"
     ) {
       return;
@@ -287,12 +292,10 @@ export function DocumentsScreen({
     ) {
       return;
     }
-    const hasSurvivingGeneratedDeck = document.generatedDeckId !== null;
     const accepted = await confirm({
       title: "Delete this document permanently?",
-      description: hasSurvivingGeneratedDeck
-        ? "The managed source, extracted structure, local derivatives, outline, study guides, annotations, and generation history for this document will be removed. The surviving generated deck will remain and its source will be preserved as a text citation instead of a file link. This cannot be undone."
-        : "The managed source, extracted structure, local derivatives, outline, study guides, annotations, and generation history for this document will be removed. No active generated deck remains, so no source citation will be preserved. This cannot be undone.",
+      description:
+        "The managed source, extracted structure, local derivatives, learning plan, study guides, annotations, and generation jobs for this document will be removed. Any surviving generated decks and cards remain, with structured source citations and available page, slide, chapter, or section locators preserved and marked as source removed. This cannot be undone.",
       confirmLabel: "Delete document",
       destructive: true,
     });
@@ -305,7 +308,7 @@ export function DocumentsScreen({
       showToast(
         "success",
         result.preservedDeckCitationCount > 0
-          ? `Document deleted. Preserved text source citations in ${result.preservedDeckCitationCount} generated deck${result.preservedDeckCitationCount === 1 ? "" : "s"}.`
+          ? `Document deleted. Preserved structured source citations for ${result.preservedDeckCitationCount} deck${result.preservedDeckCitationCount === 1 ? "" : "s"}.`
           : "Document deleted from Documents.",
       );
     } catch (error: unknown) {
@@ -314,33 +317,6 @@ export function DocumentsScreen({
       showToast("error", message);
     } finally {
       setDeletingDocumentId(null);
-    }
-  }
-
-  async function toggleArchived(document: DocumentSummary): Promise<void> {
-    if (
-      isUploading ||
-      busyDocumentId ||
-      deletingDocumentId ||
-      guideGeneratingDocumentId ||
-      document.lifecycleState === "processing"
-    ) {
-      return;
-    }
-    setBusyDocumentId(document.id);
-    try {
-      await setDocumentArchived(document.id, document.revision, document.archivedAt === null);
-      await refreshDocuments();
-      showToast(
-        "success",
-        document.archivedAt === null ? "Document archived." : "Document restored.",
-      );
-    } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      setErrorMessage(message);
-      showToast("error", message);
-    } finally {
-      setBusyDocumentId(null);
     }
   }
 
@@ -370,14 +346,6 @@ export function DocumentsScreen({
       {headerSupplement}
 
       <div className={styles.toolbar}>
-        <label className={styles.archiveToggle}>
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(event) => setIncludeArchived(event.currentTarget.checked)}
-          />
-          Show archived documents
-        </label>
         <span className={styles.count}>
           {documents.length} document{documents.length === 1 ? "" : "s"}
         </span>
@@ -410,15 +378,81 @@ export function DocumentsScreen({
             const cancelingGuide = cancelingGuideDocumentId === document.id;
             const live = generationProgress[document.id] ?? null;
             const canRetry =
-              document.generatedDeckId === null &&
-              document.lifecycleState !== "processing" &&
-              document.archivedAt === null;
+              document.generatedDeckId === null && document.lifecycleState !== "processing";
             const canGenerateMore =
-              document.generatedDeckId !== null &&
-              document.lifecycleState === "ready" &&
-              document.archivedAt === null;
-            const canGenerateGuide =
-              document.lifecycleState !== "processing" && document.archivedAt === null;
+              document.generatedDeckId !== null && document.lifecycleState === "ready";
+            const canGenerateGuide = document.lifecycleState !== "processing";
+            const actions: ResponsiveAction[] = [
+              {
+                id: "view",
+                label: "View",
+                placement: "always-visible",
+                onSelect: () => void openSource(document),
+                disabled: busy,
+              },
+            ];
+            if (document.lifecycleState === "processing") {
+              actions.push({
+                id: "stop-generation",
+                label: canceling ? "Stopping…" : "Stop generation",
+                placement: "always-visible",
+                onSelect: () => void stopGeneration(document),
+                disabled: canceling,
+              });
+            }
+            if (canGenerateGuide) {
+              actions.push({
+                id: "generate-guide",
+                label: guideGenerating ? "Generating study guide…" : "Generate study guide",
+                placement: "always-visible",
+                variant: "primary",
+                onSelect: () => void generateStudyGuide(document),
+                disabled: busy || isUploading,
+              });
+            }
+            if (guideGenerating) {
+              actions.push({
+                id: "stop-guide",
+                label: cancelingGuide ? "Stopping…" : "Stop study guide",
+                placement: "wide-and-medium",
+                onSelect: () => void stopStudyGuide(document),
+                disabled: cancelingGuide,
+              });
+            }
+            if (canRetry) {
+              actions.push({
+                id: "retry",
+                label: busyDocumentId === document.id ? "Retrying…" : "Retry generation",
+                placement: "always-visible",
+                variant: "primary",
+                onSelect: () => void retry(document),
+                disabled: busy || isUploading,
+              });
+            }
+            if (canGenerateMore) {
+              actions.push({
+                id: "generate-more",
+                label: busyDocumentId === document.id ? "Generating…" : "Generate more cards",
+                placement: "wide-and-medium",
+                variant: "primary",
+                onSelect: () => void generateMore(document),
+                disabled: busy || isUploading,
+              });
+            }
+            if (document.lifecycleState !== "processing") {
+              actions.push({
+                id: "delete",
+                label: "Delete document",
+                description: "Permanently delete this managed source and document-owned derivatives.",
+                placement: "wide-and-medium",
+                presentation: "icon",
+                icon: "delete",
+                destructive: true,
+                onSelect: () => void deleteDocument(document),
+                disabled: busy || isUploading,
+                loading: deletingDocumentId === document.id,
+              });
+            }
             return (
               <article key={document.id} className={styles.card}>
                 <div className={styles.cardMain}>
@@ -436,40 +470,43 @@ export function DocumentsScreen({
                         {cancelingGuide ? "Stopping study guide" : "Generating study guide"}
                       </span>
                     ) : null}
+                    {document.lifecycleState !== "processing" ? (
+                      <InfoButton
+                        label={`View metadata for ${document.title}`}
+                        title={`${document.title} metadata`}
+                        description="Source and processing details for this document."
+                        className={styles.metadataButton}
+                      >
+                        <MetadataList>
+                          <MetadataItem
+                            label="Format and size"
+                            value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`}
+                          />
+                          <MetadataItem
+                            label={sourceUnitHeading(document.sourceUnitKind)}
+                            value={formatSourceUnitMetric(document)}
+                          />
+                          <MetadataItem
+                            label="Processing time"
+                            value={formatProcessingDuration(document.processingDurationMs)}
+                          />
+                          <MetadataItem
+                            label="API tokens"
+                            value={formatApiTokens(document, null)}
+                          />
+                          <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
+                          <MetadataItem label="Created" value={formatDate(document.createdAt)} />
+                          <MetadataItem label="SHA-256" value={document.sha256} />
+                        </MetadataList>
+                      </InfoButton>
+                    ) : null}
                   </div>
-                  <p className={styles.filename}>{document.originalFilename}</p>
-                  <dl className={styles.metrics}>
-                    <div>
-                      <dt>Format</dt>
-                      <dd>
-                        {formatDocumentType(document.sourceFormat)} · {formatBytes(document.byteSize)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{sourceUnitHeading(document.sourceUnitKind)}</dt>
-                      <dd>{formatSourceUnitMetric(document)}</dd>
-                    </div>
-                    <div>
-                      <dt>Cards</dt>
-                      <dd>{document.generatedCardCount}</dd>
-                    </div>
-                    <div>
-                      <dt>{document.lifecycleState === "processing" ? "Running" : "Processing"}</dt>
-                      <dd>
-                        {document.lifecycleState === "processing"
-                          ? formatLiveDuration(live?.startedAt ?? null, clockNow)
-                          : formatProcessingDuration(document.processingDurationMs)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>API tokens</dt>
-                      <dd>{formatApiTokens(document, live)}</dd>
-                    </div>
-                    <div>
-                      <dt>Updated</dt>
-                      <dd>{formatDate(document.updatedAt)}</dd>
-                    </div>
-                  </dl>
+                  <div className={styles.sourceSummary}>
+                    <span className={styles.filename}>{document.originalFilename}</span>
+                    <span className={styles.cardCount}>
+                      {document.generatedCardCount} card{document.generatedCardCount === 1 ? "" : "s"}
+                    </span>
+                  </div>
                   {document.lifecycleState === "processing" ? (
                     <GenerationProgressPanel document={document} progress={live} now={clockNow} />
                   ) : null}
@@ -485,84 +522,11 @@ export function DocumentsScreen({
                     </p>
                   ) : null}
                 </div>
-                <div className={styles.actions}>
-                  <button
-                    type="button"
-                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                    disabled={busy}
-                    onClick={() => void openSource(document)}
-                  >
-                    Open source
-                  </button>
-                  {document.lifecycleState === "processing" ? (
-                    <button
-                      type="button"
-                      className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                      disabled={canceling}
-                      onClick={() => void stopGeneration(document)}
-                    >
-                      {canceling ? "Stopping…" : "Stop generation"}
-                    </button>
-                  ) : null}
-                  {canGenerateGuide ? (
-                    <button
-                      type="button"
-                      className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                      disabled={busy || isUploading}
-                      onClick={() => void generateStudyGuide(document)}
-                    >
-                      {guideGenerating ? "Generating study guide…" : "Generate study guide"}
-                    </button>
-                  ) : null}
-                  {guideGenerating ? (
-                    <button
-                      type="button"
-                      className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                      disabled={cancelingGuide}
-                      onClick={() => void stopStudyGuide(document)}
-                    >
-                      {cancelingGuide ? "Stopping…" : "Stop study guide"}
-                    </button>
-                  ) : null}
-                  {canRetry ? (
-                    <button
-                      type="button"
-                      className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                      disabled={busy || isUploading}
-                      onClick={() => void retry(document)}
-                    >
-                      {busyDocumentId === document.id ? "Retrying…" : "Retry generation"}
-                    </button>
-                  ) : null}
-                  {canGenerateMore ? (
-                    <button
-                      type="button"
-                      className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                      disabled={busy || isUploading}
-                      onClick={() => void generateMore(document)}
-                    >
-                      {busyDocumentId === document.id ? "Generating…" : "Generate more cards"}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                    disabled={busy || document.lifecycleState === "processing"}
-                    onClick={() => void toggleArchived(document)}
-                  >
-                    {document.archivedAt === null ? "Archive" : "Restore"}
-                  </button>
-                  {document.lifecycleState !== "processing" ? (
-                    <button
-                      type="button"
-                      className={ownedClassNames(ownedStyleMaps, "danger-button")}
-                      disabled={busy || isUploading}
-                      onClick={() => void deleteDocument(document)}
-                    >
-                      {deletingDocumentId === document.id ? "Deleting…" : "Delete document"}
-                    </button>
-                  ) : null}
-                </div>
+                <ResponsiveActionGroup
+                  label={`Actions for ${document.title}`}
+                  actions={actions}
+                  className={styles.actions}
+                />
               </article>
             );
           })}
@@ -866,7 +830,6 @@ function showGenerationSuccess(
 }
 
 function statusLabel(document: DocumentSummary): string {
-  if (document.archivedAt !== null) return "Archived";
   if (
     document.safeErrorCode === "document_generation_canceled" ||
     document.safeErrorCode === "ai_request_canceled"
@@ -880,8 +843,6 @@ function statusLabel(document: DocumentSummary): string {
       return document.generatedDeckId ? "Deck created" : "Ready";
     case "failed":
       return "Needs attention";
-    default:
-      return document.lifecycleState;
   }
 }
 

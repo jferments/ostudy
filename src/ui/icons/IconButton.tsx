@@ -14,7 +14,7 @@ export interface IconButtonProps
   > {
   icon: IconName;
   label: string;
-  tooltip?: string;
+  tooltip?: string | false;
   tone?: "neutral" | "danger";
   loading?: boolean;
   iconSize?: 16 | 20 | 24 | 32;
@@ -40,33 +40,33 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     if (accessibleLabel === "") {
       throw new Error("IconButton requires a nonblank accessible label.");
     }
-    const tooltipContent = tooltip?.trim() || accessibleLabel;
-
-    return (
-      <Tooltip content={tooltipContent}>
-        <button
-          {...props}
-          ref={ref}
-          type={type}
-          className={`${styles.button} ${styles[tone]} ${className}`.trim()}
-          data-tone={tone}
-          aria-label={accessibleLabel}
-          aria-busy={loading || undefined}
-          disabled={disabled || loading}
-        >
-          <span className={styles.icon} data-loading={loading || undefined}>
-            <Icon name={icon} size={iconSize} />
-          </span>
-          {loading ? (
-            <>
-              <span className={styles.spinner} aria-hidden="true" />
-              <span className={styles.loadingFallback} aria-hidden="true">
-                …
-              </span>
-            </>
-          ) : null}
-        </button>
-      </Tooltip>
+    const tooltipContent =
+      tooltip === false ? null : tooltip?.trim() || accessibleLabel;
+    const button = (
+      <button
+        {...props}
+        ref={ref}
+        type={type}
+        className={`${styles.button} ${styles[tone]} ${className}`.trim()}
+        data-tone={tone}
+        aria-label={accessibleLabel}
+        aria-busy={loading || undefined}
+        disabled={disabled || loading}
+      >
+        <span className={styles.icon} data-loading={loading || undefined}>
+          <Icon name={icon} size={iconSize} />
+        </span>
+        {loading ? (
+          <>
+            <span className={styles.spinner} aria-hidden="true" />
+            <span className={styles.loadingFallback} aria-hidden="true">
+              …
+            </span>
+          </>
+        ) : null}
+      </button>
     );
+
+    return tooltipContent ? <Tooltip content={tooltipContent}>{button}</Tooltip> : button;
   },
 );

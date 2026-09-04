@@ -6,8 +6,13 @@ import {
   canonicalizeDocument,
   cloneDocument,
   collectAssetIds,
+  copyAnswerKeyChecklistsToAnswer,
+  extractRichDocumentText,
+  hasAnswerKeyChecklist,
   hydrateDocument,
   isDocumentEmpty,
+  prepareDocumentForPresentation,
+  validateAnswerChecklistPair,
 } from "./richText";
 
 vi.mock("../platform/assets", () => ({
@@ -19,7 +24,7 @@ describe("rich document helpers", () => {
     vi.clearAllMocks();
   });
 
-  it("canonicalizes managed images without mutating editor state", () => {
+  it("canonicalizes managed images and schema version without mutating editor state", () => {
     const source = {
       type: "doc",
       content: [
@@ -40,6 +45,7 @@ describe("rich document helpers", () => {
     expect(canonical).not.toBe(source);
     expect(canonical).toEqual({
       type: "doc",
+      attrs: { schemaVersion: 2 },
       content: [
         {
           type: "image",
@@ -149,4 +155,118 @@ describe("rich document helpers", () => {
     expect(original).toEqual(paragraphDocument("Original"));
     expect(clone).toEqual(paragraphDocument("Changed"));
   });
+
+  it("copies the marked answer key while clearing persisted question boxes", () => {
+    const first = "1".repeat(32);
+    const second = "2".repeat(32);
+    const question = answerChecklist([
+      { id: first, text: "Check blood pressure", correct: true },
+      { id: second, text: "Give a contraindicated drug", correct: false },
+    ]);
+
+    const copied = copyAnswerKeyChecklistsToAnswer(question, paragraphDocument("Rationale"));
+
+    expect(hasAnswerKeyChecklist(copied.question)).toBe(true);
+    expect(validateAnswerChecklistPair(copied.question, copied.answer)).toBeNull();
+    expect(extractRichDocumentText(copied.question)).toContain("[ ] Check blood pressure");
+    expect(extractRichDocumentText(copied.question)).toContain("[ ] Give a contraindicated drug");
+    expect(extractRichDocumentText(copied.question)).not.toContain("[x]");
+    expect(extractRichDocumentText(copied.answer)).toContain("[x] Check blood pressure");
+    expect(extractRichDocumentText(copied.answer)).toContain("[ ] Give a contraindicated drug");
+  });
+
+  it("repairs missing or duplicate checklist identities only through the copy action", () => {
+    const question = answerChecklist([
+      { id: "", text: "First", correct: true },
+      { id: "3".repeat(32), text: "Second", correct: false },
+      { id: "3".repeat(32), text: "Third", correct: true },
+    ]);
+    expect(validateAnswerChecklistPair(question, paragraphDocument(""))).toMatch(/stable identity/u);
+
+    const copied = copyAnswerKeyChecklistsToAnswer(question, paragraphDocument(""));
+    expect(validateAnswerChecklistPair(copied.question, copied.answer)).toBeNull();
+  });
+
+  it("rejects checked questions and answers without a correct option", () => {
+    const identity = "5".repeat(32);
+    const markedQuestion = answerChecklist([
+      { id: identity, text: "Correct", correct: true },
+    ]);
+    expect(validateAnswerChecklistPair(markedQuestion, markedQuestion)).toMatch(
+      /Question answer-checklist boxes must be empty/u,
+    );
+
+    const emptyQuestion = answerChecklist([
+      { id: identity, text: "Correct", correct: false },
+    ]);
+    const emptyAnswer = answerChecklist([
+      { id: identity, text: "Correct", correct: false },
+    ]);
+    expect(validateAnswerChecklistPair(emptyQuestion, emptyAnswer)).toMatch(
+      /Mark at least one correct answer/u,
+    );
+  });
+
+  it("conceals answer-key state on questions and preserves ordinary task state", () => {
+    const answerKey = answerChecklist([
+      { id: "4".repeat(32), text: "Correct", correct: true },
+    ]);
+    const question = prepareDocumentForPresentation(answerKey, "question");
+    const answer = prepareDocumentForPresentation(answerKey, "answer");
+
+    expect(extractRichDocumentText(question)).toContain("[ ] Correct");
+    expect(extractRichDocumentText(answer)).toContain("[x] Correct");
+
+    const ordinary = taskList(true);
+    expect(extractRichDocumentText(prepareDocumentForPresentation(ordinary, "question"))).toContain(
+      "[x] Ordinary",
+    );
+  });
 });
+
+function answerChecklist(
+  entries: Array<{ id: string; text: string; correct: boolean }>,
+) {
+  return {
+    type: "doc",
+    attrs: { schemaVersion: 2 },
+    content: [
+      {
+        type: "taskList",
+        attrs: { mode: "answer_key" },
+        content: entries.map((entry) => ({
+          type: "taskItem",
+          attrs: { itemId: entry.id, checked: entry.correct },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: entry.text }],
+            },
+          ],
+        })),
+      },
+    ],
+  };
+}
+
+function taskList(checked: boolean) {
+  return {
+    type: "doc",
+    attrs: { schemaVersion: 2 },
+    content: [
+      {
+        type: "taskList",
+        attrs: { mode: "ordinary" },
+        content: [
+          {
+            type: "taskItem",
+            attrs: { itemId: null, checked },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Ordinary" }] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}

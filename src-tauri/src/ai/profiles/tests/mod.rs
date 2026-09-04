@@ -29,6 +29,7 @@ fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
         allow_insecure_http: false,
         require_zero_data_retention: false,
         request_timeout_ms: DEFAULT_TIMEOUT_MS,
+        reasoning_effort: "low".to_string(),
         editor_draft: None,
     }
 }
@@ -217,6 +218,7 @@ fn configuration_status_remains_credential_and_enablement_aware() {
         provider_kind: ProviderKind::Deepseek,
         base_url: "https://api.deepseek.com/".to_string(),
         model_id: "deepseek-chat".to_string(),
+        reasoning_effort: "low".to_string(),
         auth_mode: AuthMode::Bearer,
         enabled: true,
         allow_insecure_http: false,

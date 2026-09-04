@@ -14,6 +14,7 @@ mod gateway;
 pub(crate) mod probes;
 pub(crate) mod profiles;
 mod providers;
+pub(crate) mod reasoning;
 mod secrets;
 
 #[cfg(test)]

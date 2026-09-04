@@ -495,10 +495,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertIn("Practice selected", browser)
         self.assertNotIn("Practice results", browser)
         self.assertNotIn("Ready now", browser)
-        self.assertIn(
-            'ownedClassNames(ownedStyleMaps, "organized-card-sides card-listing-sides")',
-            browser,
-        )
+        self.assertIn('"organized-card-sides card-listing-sides"', browser)
         self.assertIn("Q:", browser)
         self.assertIn("A:", browser)
 

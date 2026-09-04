@@ -58,7 +58,6 @@ const document: DocumentSummary = {
   createdAt: Date.now() - 60_000,
   updatedAt: Date.now(),
   completedAt: null,
-  archivedAt: null,
   revision: 2,
   processingDurationMs: null,
   apiTokenCount: null,
@@ -184,7 +183,6 @@ describe("DocumentsScreen live generation progress", () => {
     expect(screen.getAllByText("Building outline").length).toBeGreaterThan(0);
     expect(screen.getByText("Window 4 of 10 · pages 13–18.")).toBeTruthy();
     expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
-    expect(screen.getByText("15k")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();
     expect(screen.getByText(/Receiving output/u)).toBeTruthy();
     expect(screen.getByText("1")).toBeTruthy();

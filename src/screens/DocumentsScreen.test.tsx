@@ -17,7 +17,6 @@ vi.mock("../ipc/documents", () => ({
   cancelPdfFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
   deletePdfDocument: vi.fn(),
-  setDocumentArchived: vi.fn(),
 }));
 vi.mock("../ipc/studyGuides", () => ({
   generateDocumentStudyGuide: vi.fn(),
@@ -71,7 +70,6 @@ function makeDocument(
     createdAt: 1_700_000_000_000,
     updatedAt: 1_700_000_000_000,
     completedAt: 1_700_000_000_000,
-    archivedAt: null,
     revision: 2,
     processingDurationMs: 12_345,
     apiTokenCount: 45_678,
@@ -80,10 +78,7 @@ function makeDocument(
   };
 }
 
-
-function makeProgress(
-  phase: string,
-): documentIpc.DocumentGenerationProgress {
+function makeProgress(phase: string): documentIpc.DocumentGenerationProgress {
   return {
     startedAt: Date.now() - 1_000,
     phase,
@@ -131,15 +126,17 @@ describe("DocumentsScreen", () => {
     vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
   });
 
-  it("shows a simple upload-first empty state", async () => {
+  it("shows a simple upload-first empty state without archive controls", async () => {
     renderDocuments();
     expect(await screen.findByRole("heading", { name: "No documents yet" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Upload document" })).toBeTruthy();
+    expect(screen.queryByText(/show archived documents/iu)).toBeNull();
+    expect(screen.queryByRole("button", { name: /archive|restore/iu })).toBeNull();
     expect(screen.queryByText(/review generated/u)).toBeNull();
     expect(screen.queryByText(/JSON/u)).toBeNull();
   });
 
-  it("uploads one document, announces live progress, and creates a normal deck", async () => {
+  it("uploads one document, announces live progress, and keeps completed metadata behind info", async () => {
     const completed = makeDocument();
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
       id: "1".repeat(32),
@@ -177,12 +174,18 @@ describe("DocumentsScreen", () => {
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
     expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
-    expect(screen.getByText("PDF · 2.0 KB")).toBeTruthy();
-    expect(screen.getByText("12 sec")).toBeTruthy();
-    expect(screen.getByText("45,678")).toBeTruthy();
+    expect(screen.getByText("cardiac-physiology.pdf")).toBeTruthy();
+    expect(screen.getByText("7 cards")).toBeTruthy();
+    expect(screen.queryByText("PDF · 2.0 KB")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "View metadata for Cardiac physiology" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology metadata" });
+    expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
+    expect(within(dialog).getByText("12 sec")).toBeTruthy();
+    expect(within(dialog).getByText("45,678")).toBeTruthy();
   });
 
-  it("shows detected non-PDF formats with truthful canonical section counts", async () => {
+  it("shows detected non-PDF formats with truthful canonical section counts in metadata", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([
       makeDocument({
         originalFilename: "cardiac-physiology.docx",
@@ -197,9 +200,11 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    expect(screen.getByText("Word · 2.0 KB")).toBeTruthy();
-    expect(screen.getByText("Sections")).toBeTruthy();
-    expect(screen.getByText("8")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View metadata for Cardiac physiology" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cardiac physiology metadata" });
+    expect(within(dialog).getByText("Word · 2.0 KB")).toBeTruthy();
+    expect(within(dialog).getByText("Sections")).toBeTruthy();
+    expect(within(dialog).getByText("8")).toBeTruthy();
     expect(screen.queryByText(/rendered/u)).toBeNull();
   });
 
@@ -327,8 +332,7 @@ describe("DocumentsScreen", () => {
     ]);
     renderDocuments();
 
-    expect(await screen.findByText("4/11 rendered")).toBeTruthy();
-    expect(screen.getAllByText("Rendering pages 4/11").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Rendering pages 4/11")).length).toBeGreaterThan(0);
   });
 
   it("offers an exact stop action while a document generation task is processing", async () => {
@@ -408,19 +412,19 @@ describe("DocumentsScreen", () => {
     });
   });
 
-  it("opens the managed source through the native document command", async () => {
+  it("opens the managed source through the compact View action", async () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    fireEvent.click(screen.getByRole("button", { name: "Open source" }));
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
 
     await waitFor(() => {
       expect(documentIpc.openDocumentSource).toHaveBeenCalledWith(documentId);
     });
   });
 
-  it("permanently deletes a document only after confirmation and preserves deck citations", async () => {
+  it("permanently deletes a document only after precise confirmation and preserves citations", async () => {
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([makeDocument()])
       .mockResolvedValue([]);
@@ -435,6 +439,8 @@ describe("DocumentsScreen", () => {
     const dialog = await screen.findByRole("alertdialog", {
       name: "Delete this document permanently?",
     });
+    expect(within(dialog).getByText(/structured source citations/iu)).toBeTruthy();
+    expect(within(dialog).getByText(/source removed/iu)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete document" }));
 
     await waitFor(() => {
@@ -442,12 +448,12 @@ describe("DocumentsScreen", () => {
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
-        "Document deleted. Preserved text source citations in 1 generated deck.",
+        "Document deleted. Preserved structured source citations for 1 deck.",
       );
     });
   });
 
-  it("does not claim citation preservation after the only generated deck was deleted", async () => {
+  it("does not claim citation preservation when no surviving deck remains", async () => {
     const withoutDeck = makeDocument({
       generatedDeckId: null,
       lifecycleState: "ready",
@@ -467,7 +473,6 @@ describe("DocumentsScreen", () => {
     const dialog = await screen.findByRole("alertdialog", {
       name: "Delete this document permanently?",
     });
-    expect(within(dialog).getByText(/No active generated deck remains/u)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete document" }));
 
     await waitFor(() => {

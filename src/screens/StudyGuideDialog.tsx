@@ -18,12 +18,12 @@ import {
   type StudyGuideOverlay,
   type TopicCardProjection,
 } from "../ipc/studyGuides";
-import { Dialog } from "../ui/overlays/Dialog";
-import styles from "./StudyGuideDialog.module.css";
+import { Icon } from "../ui/icons/Icon";
+import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import styles from "./StudyGuideDialog.module.css";
 
 const ownedStyleMaps = sharedClassMaps;
-
 
 interface StudyGuideDialogProps {
   documentId: string;
@@ -110,19 +110,22 @@ export function StudyGuideDialog({
   );
 
   async function generate(): Promise<void> {
-    if (isGenerating || isSaving || isExporting) return;
+    if (guide || isGenerating || isSaving || isExporting) return;
     setIsGenerating(true);
     setErrorMessage(null);
     try {
       const generated = await generateDocumentStudyGuide(documentId);
       setGuide(generated);
       setEditing(null);
-      showToast("success", guide ? "Study guide regenerated." : "Study guide created.");
+      showToast("success", "Study guide created.");
     } catch (error: unknown) {
       const code = getErrorCode(error);
       if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
         setErrorMessage(null);
-        showToast("info", "Study-guide generation stopped. Saved topic checkpoints can be reused on retry.");
+        showToast(
+          "info",
+          "Study-guide generation stopped. Saved topic checkpoints can be reused on retry.",
+        );
       } else {
         const message = getErrorMessage(error);
         setErrorMessage(message);
@@ -155,9 +158,15 @@ export function StudyGuideDialog({
       preparedExportId = prepared.preparedExport.id;
       const receipt = await publishPreparedExport(prepared.preparedExport.id);
       if (receipt) {
+        const annotationSummary =
+          prepared.annotationCount > 0
+            ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}`
+            : "";
         showToast(
           "success",
-          `Exported study guide revision ${prepared.guideRevision} with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}.`,
+          `Exported study guide with ${prepared.sectionCount} section${
+            prepared.sectionCount === 1 ? "" : "s"
+          }${annotationSummary}.`,
         );
       }
     } catch (error: unknown) {
@@ -178,7 +187,10 @@ export function StudyGuideDialog({
     }
   }
 
-  async function discardOverlay(overlay: StudyGuideOverlay, successMessage: string): Promise<void> {
+  async function discardOverlay(
+    overlay: StudyGuideOverlay,
+    successMessage: string,
+  ): Promise<void> {
     if (isSaving) return;
     setIsSaving(true);
     try {
@@ -198,7 +210,12 @@ export function StudyGuideDialog({
     const topic = editing.topicId
       ? guide.sections.find((section) => section.topicId === editing.topicId) ?? null
       : null;
-    const existing = findEditingOverlay(guide.overlays, editing.topicId, editing.mode, guide.id);
+    const existing = findEditingOverlay(
+      guide.overlays,
+      editing.topicId,
+      editing.mode,
+      guide.id,
+    );
     const isBlank = editing.value.trim().length === 0;
     setIsSaving(true);
     try {
@@ -206,7 +223,10 @@ export function StudyGuideDialog({
         if (existing) {
           await discardDocumentStudyGuideOverlay(existing.id, existing.revision);
           await refresh();
-          showToast("success", editing.mode === "override" ? "Section edit reset." : "Note removed.");
+          showToast(
+            "success",
+            editing.mode === "override" ? "Section edit reset." : "Note removed.",
+          );
         }
         setEditing(null);
         return;
@@ -230,7 +250,10 @@ export function StudyGuideDialog({
       });
       await refresh();
       setEditing(null);
-      showToast("success", editing.mode === "override" ? "Section edit saved." : "Note saved.");
+      showToast(
+        "success",
+        editing.mode === "override" ? "Section edit saved." : "Note saved.",
+      );
     } catch (error: unknown) {
       showToast("error", getErrorMessage(error));
     } finally {
@@ -256,12 +279,22 @@ export function StudyGuideDialog({
   }
 
   function beginTopicNote(section: DocumentStudyGuideSection): void {
-    const overlay = findEditingOverlay(guide?.overlays ?? [], section.topicId, "note", guide?.id);
+    const overlay = findEditingOverlay(
+      guide?.overlays ?? [],
+      section.topicId,
+      "note",
+      guide?.id,
+    );
     setEditing({ topicId: section.topicId, mode: "note", value: overlay?.plainText ?? "" });
   }
 
   function beginSectionOverride(section: DocumentStudyGuideSection): void {
-    const overlay = findEditingOverlay(guide?.overlays ?? [], section.topicId, "override", guide?.id);
+    const overlay = findEditingOverlay(
+      guide?.overlays ?? [],
+      section.topicId,
+      "override",
+      guide?.id,
+    );
     setEditing({
       topicId: section.topicId,
       mode: "override",
@@ -270,12 +303,11 @@ export function StudyGuideDialog({
   }
 
   return (
-    <Dialog
+    <InlineWorkspace
       title={`Study guide · ${documentTitle}`}
       description="Source-grounded sections, learner notes, and topic-linked flashcards."
-      onClose={() => onClose()}
-      width="workspace"
-      presentation="fullscreen"
+      onClose={onClose}
+      closeLabel="Close study guide"
       className={styles.workspace}
       dismissible={!isGenerating && !isSaving && !isExporting}
       busy={isSaving || isExporting}
@@ -283,7 +315,11 @@ export function StudyGuideDialog({
       <header className={styles.header}>
         <div>
           <p className={styles.eyebrow}>Document learning artifact</p>
-          <strong>{guide ? `Revision ${guide.revision}` : "Not generated yet"}</strong>
+          <strong>
+            {guide
+              ? `${guide.sections.length} section${guide.sections.length === 1 ? "" : "s"}`
+              : "Not generated yet"}
+          </strong>
         </div>
         <div className={styles.headerActions}>
           {guide ? (
@@ -307,28 +343,40 @@ export function StudyGuideDialog({
               {isExporting ? "Exporting…" : "Export PDF"}
             </button>
           ) : null}
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={() => void openSource()}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={() => void openSource()}
+          >
             Open source
           </button>
           {isGenerating ? (
             <button
               type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+              className={`${ownedClassNames(ownedStyleMaps, "secondary-button")} ${styles.generationButton}`}
               disabled={isCanceling}
+              aria-label={
+                isCanceling
+                  ? "Stopping study guide generation"
+                  : "Generating study guide; click to stop"
+              }
               onClick={() => void stopGeneration()}
             >
-              {isCanceling ? "Stopping…" : "Stop generation"}
+              <span className={styles.stopSign} aria-hidden="true">
+                <Icon name="stop" size={18} />
+              </span>
+              {isCanceling ? "Stopping study guide…" : "Generating study guide…"}
             </button>
-          ) : (
+          ) : !guide ? (
             <button
               type="button"
-              className={ownedClassNames(ownedStyleMaps, guide ? "secondary-button" : "primary-button")}
+              className={ownedClassNames(ownedStyleMaps, "primary-button")}
               disabled={isSaving || isExporting}
               onClick={() => void generate()}
             >
-              {guide ? "Regenerate" : "Create study guide"}
+              Generate study guide
             </button>
-          )}
+          ) : null}
         </div>
       </header>
 
@@ -375,7 +423,11 @@ export function StudyGuideDialog({
                 </aside>
               ) : null}
               <div className={styles.editorActions}>
-                <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={beginGuideNote}>
+                <button
+                  type="button"
+                  className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                  onClick={beginGuideNote}
+                >
                   {guideNote ? "Edit guide note" : "Add guide note"}
                 </button>
                 {guideNote ? (
@@ -413,7 +465,9 @@ export function StudyGuideDialog({
       {editing ? (
         <div className={styles.editor}>
           <label>
-            <strong>{editing.mode === "override" ? "Edit generated section" : "Personal note"}</strong>
+            <strong>
+              {editing.mode === "override" ? "Edit generated section" : "Personal note"}
+            </strong>
             <textarea
               value={editing.value}
               rows={10}
@@ -425,8 +479,8 @@ export function StudyGuideDialog({
           </label>
           <p>
             {editing.mode === "override"
-              ? "This non-destructive override is tied to the current generated base. Regeneration keeps it only when that base is compatible; otherwise it becomes an explicit conflict for review. Clear the text and save to reset an existing section edit."
-              : "Personal notes attach to the document or stable learning topic and remain available across guide regeneration. Clear the text and save to remove an existing note."}
+              ? "This non-destructive edit is tied to the current generated section. Clear the text and save to reset an existing section edit."
+              : "Personal notes attach to the document or stable learning topic. Clear the text and save to remove an existing note."}
           </p>
           <div className={styles.editorActions}>
             <button
@@ -448,7 +502,7 @@ export function StudyGuideDialog({
           </div>
         </div>
       ) : null}
-    </Dialog>
+    </InlineWorkspace>
   );
 }
 
@@ -495,10 +549,18 @@ function StudyGuideSectionView({
           <h2>{section.title}</h2>
         </div>
         <div className={styles.sectionActions}>
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onOpenSource}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={onOpenSource}
+          >
             Open source
           </button>
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onEditNote}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={onEditNote}
+          >
             {note ? "Edit note" : "Add note"}
           </button>
           {note ? (
@@ -511,7 +573,11 @@ function StudyGuideSectionView({
               Remove note
             </button>
           ) : null}
-          <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={onEditSection}>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            onClick={onEditSection}
+          >
             {override ? "Edit override" : "Edit section"}
           </button>
           {override ? (
@@ -551,9 +617,8 @@ function StudyGuideSectionView({
         <aside className={styles.conflict}>
           <strong>Older section edit needs review.</strong>
           <p>
-            The generated base changed during regeneration, so ostudy did not silently apply the
-            old override to new source-grounded content. The prior edit remains preserved below as
-            a conflict.
+            The generated base changed, so ostudy did not silently apply the old override to new
+            source-grounded content. The prior edit remains preserved below as a conflict.
           </p>
           <div className={styles.overrideText}>{renderPlainText(conflict.plainText)}</div>
           <button

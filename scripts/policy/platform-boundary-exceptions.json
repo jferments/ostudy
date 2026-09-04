@@ -20,6 +20,12 @@
       "reason": "Desktop/mobile renderer adapter selection"
     },
     {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/startup.rs",
+      "retireInPhase": "platform-owned desktop window construction adapter",
+      "reason": "Linux must create the main Tauri window with the embedded raccoon icon before GTK maps the window. Other desktop targets keep Tauri's configured automatic window construction."
+    },
+    {
       "rule": "rust-process-command-outside-adapter",
       "path": "src-tauri/src/pdf_ocr_backend.rs",
       "retireInPhase": "Android/iOS",

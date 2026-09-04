@@ -6,9 +6,9 @@ import type { DeckSummary } from "../../ipc/decks";
 import type { AppSettings } from "../../ipc/settings";
 import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
-import { useConfirm } from "../../ui/overlays/overlayContext";
 import { PerformanceProfiler } from "../../testing/PerformanceProfiler";
-import { DecksScreen } from "../DecksScreen";
+import { useConfirm } from "../../ui/overlays/overlayContext";
+import { DeckDetailRoute } from "./DeckDetailRoute";
 import { DeckLibraryRoot } from "./deck-library/DeckLibraryRoot";
 import { useDeckLibraryController } from "./deck-library/useDeckLibraryController";
 
@@ -43,21 +43,15 @@ export function DeckLibraryWorkspace({
   openDeckRequest,
   onOpenDeck,
   onReturnToLibrary,
-  onManageTemplates,
   onCardDirtyChange,
   showToast,
 }: DeckLibraryWorkspaceProps) {
-  const detailOpenedRef = useRef(false);
   const controllerSelectionRef = useRef<TransientDeckSelectionEntry[]>([]);
   const confirm = useConfirm();
   const controller = useDeckLibraryController({
     decks,
     refreshDecks,
-    onOpenDeck: (deckId) =>
-      onOpenDeck(
-        deckId,
-        controllerSelectionRef.current,
-      ),
+    onOpenDeck: (deckId) => onOpenDeck(deckId, controllerSelectionRef.current),
     showToast,
     confirm,
     restoredSelection,
@@ -66,22 +60,13 @@ export function DeckLibraryWorkspace({
 
   if (openDeckRequest) {
     return (
-      <DecksScreen
+      <DeckDetailRoute
         key={openDeckRequest.requestId}
         decks={decks}
-        settings={settings}
         refreshDecks={refreshDecks}
         onPracticeDeck={onPracticeDeck}
-        openDeckRequest={openDeckRequest}
-        onOpenDeckRequestConsumed={() => undefined}
-        onManageTemplates={onManageTemplates}
-        onViewChange={(view) => {
-          if (view === "detail" || view === "editor") detailOpenedRef.current = true;
-          if (view === "library" && detailOpenedRef.current) {
-            detailOpenedRef.current = false;
-            void onReturnToLibrary();
-          }
-        }}
+        openRequest={openDeckRequest}
+        onReturnToLibrary={onReturnToLibrary}
         onDirtyChange={onCardDirtyChange}
         showToast={showToast}
       />

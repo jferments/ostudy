@@ -947,7 +947,7 @@ fn public_baseline_preserves_stage36_38_attribution_schema() {
             assert_eq!(public_baseline_present, 1);
             assert_eq!(canonical_migration_present, 1);
             assert_eq!(migration_count, LATEST_SCHEMA_VERSION);
-            assert_eq!(repair_state, (2, 0));
+            assert_eq!(repair_state, (3, 0));
             assert_eq!(attribution_tables, 4);
             Ok(())
         })

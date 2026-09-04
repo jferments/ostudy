@@ -21,13 +21,13 @@ describe("DeckItem", () => {
   });
 
   it.each(["ArrowUp", "ArrowDown", "Home", "End", "ArrowLeft", "ArrowRight"])(
-    "routes %s from the explicit Open control through the reorder adapter",
+    "routes %s from the keyboard-reachable deck row through the reorder adapter",
     (key) => {
       const reorder = makeReorder();
       renderDeckItem({ reorder });
-      const openControl = screen.getByRole("button", { name: "Open Anatomy" });
+      const openSurface = screen.getByRole("button", { name: "Open Anatomy" });
 
-      fireEvent.keyDown(openControl, { key });
+      fireEvent.keyDown(openSurface, { key });
 
       expect(reorder.moveDeckWithKeyboard).toHaveBeenCalledTimes(1);
       expect(reorder.moveDeckWithKeyboard).toHaveBeenCalledWith(
@@ -37,10 +37,10 @@ describe("DeckItem", () => {
         2,
         5,
       );
-      expect(openControl.getAttribute("aria-keyshortcuts")).toBe(
-        "ArrowUp ArrowDown Home End ArrowLeft ArrowRight",
+      expect(openSurface.getAttribute("aria-keyshortcuts")).toBe(
+        "Enter Space ArrowUp ArrowDown Home End ArrowLeft ArrowRight",
       );
-      expect(openControl.closest("[data-library-pointer-drag-source='true']")).toBeNull();
+      expect(openSurface.getAttribute("data-library-pointer-drag-source")).toBe("true");
     },
   );
 
@@ -61,21 +61,16 @@ describe("DeckItem", () => {
         deck.name,
       );
 
-      fireEvent.pointerDown(screen.getByRole("button", { name: "Open Anatomy" }));
       fireEvent.pointerDown(screen.getByRole("checkbox", { name: "Select Anatomy" }));
       fireEvent.pointerDown(screen.getByRole("button", { name: "Practice" }));
-      fireEvent.pointerDown(
-        screen.getByRole("button", {
-          name: layoutMode === "compact" ? "Anatomy actions" : "Delete Anatomy",
-        }),
-      );
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Delete Anatomy" }));
 
       expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
     },
   );
 
   it.each(["wide", "medium", "compact"] as const)(
-    "opens from short clicks on the broad title and copy while controls stay isolated in %s layout",
+    "opens from short clicks on the deck row while controls stay isolated in %s layout",
     (layoutMode) => {
       setLayoutMode(layoutMode);
       const onOpen = vi.fn();
@@ -84,16 +79,16 @@ describe("DeckItem", () => {
 
       const title = screen.getByText("Anatomy");
       const copy = screen.getByText("12 cards · 4 ready");
-      const dragSurface = title.closest("[data-library-pointer-drag-source='true']");
+      const openSurface = screen.getByRole("button", { name: "Open Anatomy" });
       const selection = screen.getByRole("checkbox", { name: "Select Anatomy" });
 
-      expect(dragSurface?.tagName).toBe("DIV");
-      expect(dragSurface?.hasAttribute("role")).toBe(false);
-      expect(dragSurface?.hasAttribute("tabindex")).toBe(false);
+      expect(openSurface.tagName).toBe("DIV");
+      expect(openSurface.getAttribute("tabindex")).toBe("0");
+      expect(screen.queryByText(/^Open$/u)).toBeNull();
 
       fireEvent.click(title);
       fireEvent.click(copy);
-      fireEvent.click(screen.getByRole("button", { name: "Open Anatomy" }));
+      fireEvent.click(openSurface);
 
       expect(onOpen).toHaveBeenCalledTimes(3);
       expect(onToggleSelected).not.toHaveBeenCalled();
@@ -106,27 +101,39 @@ describe("DeckItem", () => {
     },
   );
 
-  it("leaves default prevention to the validated adapter and preserves opening", () => {
+  it("keeps the trash action direct in compact layout instead of creating a one-item menu", () => {
+    setLayoutMode("compact");
+    const onDelete = vi.fn();
+    renderDeckItem({ onDelete });
+
+    expect(screen.queryByRole("button", { name: "Anatomy actions" })).toBeNull();
+    const trash = screen.getByRole("button", { name: "Delete Anatomy" });
+    expect(trash.getAttribute("data-tone")).toBe("danger");
+    fireEvent.click(trash);
+    expect(onDelete).toHaveBeenCalledOnce();
+  });
+
+  it("opens with Enter and Space while leaving movement prevention to the reorder adapter", () => {
     const onOpen = vi.fn();
     const reorder = makeReorder();
     vi.mocked(reorder.moveDeckWithKeyboard).mockImplementation((event) => {
       if (event.key === "ArrowDown") event.preventDefault();
     });
     const { container } = renderDeckItem({ reorder, onOpen });
-    const openControl = screen.getByRole("button", { name: "Open Anatomy" });
+    const openSurface = screen.getByRole("button", { name: "Open Anatomy" });
     const movement = keyboardEvent("ArrowDown");
     const enter = keyboardEvent("Enter");
     const space = keyboardEvent(" ");
 
-    openControl.dispatchEvent(movement);
-    openControl.dispatchEvent(enter);
-    openControl.dispatchEvent(space);
-    fireEvent.click(openControl);
+    openSurface.dispatchEvent(movement);
+    openSurface.dispatchEvent(enter);
+    openSurface.dispatchEvent(space);
+    fireEvent.click(openSurface);
 
     expect(movement.defaultPrevented).toBe(true);
-    expect(enter.defaultPrevented).toBe(false);
-    expect(space.defaultPrevented).toBe(false);
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(enter.defaultPrevented).toBe(true);
+    expect(space.defaultPrevented).toBe(true);
+    expect(onOpen).toHaveBeenCalledTimes(3);
     expect(screen.getByRole("button", { name: "Move earlier" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Move later" })).toBeTruthy();
     expect(container.querySelector("[data-library-drag-handle]")).toBeNull();
@@ -134,9 +141,7 @@ describe("DeckItem", () => {
   });
 });
 
-function renderDeckItem(
-  overrides: Partial<ComponentProps<typeof DeckItem>> = {},
-) {
+function renderDeckItem(overrides: Partial<ComponentProps<typeof DeckItem>> = {}) {
   const props: ComponentProps<typeof DeckItem> = {
     deck,
     folderId,

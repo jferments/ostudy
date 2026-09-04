@@ -4,9 +4,9 @@ import type {
   DragGeometrySnapshot,
   DragRect,
 } from "./dragSessionModel";
-import type { LibraryDragPayload } from "./types";
 
-export const POINTER_ACTIVATION_DISTANCE = 8;
+export const POINTER_ACTIVATION_DISTANCE = 4;
+export const TOUCH_POINTER_ACTIVATION_DISTANCE = 8;
 export const HOVER_EXPAND_DELAY_MS = 500;
 export const EDGE_SCROLL_ZONE_PX = 56;
 export const EDGE_SCROLL_MAX_PX = 18;
@@ -43,8 +43,8 @@ export interface PointerStartInput {
 }
 
 export interface PointerSessionStart {
-  payload: LibraryDragPayload;
   pointerId: number;
+  pointerType: LibraryPointerType;
   startX: number;
   startY: number;
   origin: HTMLElement;
@@ -59,16 +59,25 @@ export function canStartPointerSession(input: PointerStartInput): boolean {
   ) {
     return false;
   }
-  if (input.currentTarget.dataset.archived === "true") return false;
+  if (input.currentTarget.closest<HTMLElement>("[data-archived='true']")) return false;
   if (
     !(input.target instanceof Element) ||
     !input.currentTarget.contains(input.target)
   ) {
     return false;
   }
-  if (input.target.closest(INTERACTIVE_SELECTOR)) return false;
-  const selection = input.currentTarget.ownerDocument.getSelection?.();
-  return !selection || selection.isCollapsed || selection.toString().trim().length === 0;
+
+  // The accessible deck-open surface is deliberately both a keyboard button
+  // and the broad pointer drag surface. Permit that surface itself while still
+  // rejecting every nested checkbox, button, link, menu, or explicit opt-out.
+  const interactive = input.target.closest<HTMLElement>(INTERACTIVE_SELECTOR);
+  return interactive === null || interactive === input.currentTarget;
+}
+
+export function activationDistance(pointerType: LibraryPointerType): number {
+  return pointerType === "touch"
+    ? TOUCH_POINTER_ACTIVATION_DISTANCE
+    : POINTER_ACTIVATION_DISTANCE;
 }
 
 export function movementExceedsThreshold(
@@ -86,11 +95,17 @@ export function edgeScrollVelocity(
   ownerRect: Pick<DragRect, "top" | "bottom">,
 ): number {
   if (pointerY < ownerRect.top + EDGE_SCROLL_ZONE_PX) {
-    const pressure = Math.min(1, (ownerRect.top + EDGE_SCROLL_ZONE_PX - pointerY) / EDGE_SCROLL_ZONE_PX);
+    const pressure = Math.min(
+      1,
+      (ownerRect.top + EDGE_SCROLL_ZONE_PX - pointerY) / EDGE_SCROLL_ZONE_PX,
+    );
     return -Math.ceil(pressure * EDGE_SCROLL_MAX_PX);
   }
   if (pointerY > ownerRect.bottom - EDGE_SCROLL_ZONE_PX) {
-    const pressure = Math.min(1, (pointerY - (ownerRect.bottom - EDGE_SCROLL_ZONE_PX)) / EDGE_SCROLL_ZONE_PX);
+    const pressure = Math.min(
+      1,
+      (pointerY - (ownerRect.bottom - EDGE_SCROLL_ZONE_PX)) / EDGE_SCROLL_ZONE_PX,
+    );
     return Math.ceil(pressure * EDGE_SCROLL_MAX_PX);
   }
   return 0;
@@ -105,6 +120,7 @@ export function captureDragGeometry(root: HTMLElement): {
   const destinations: DragGeometryDestination[] = [];
 
   for (const element of root.querySelectorAll<HTMLElement>("[data-library-row]")) {
+    if (element.dataset.dragSourceHidden === "true") continue;
     const kind = element.dataset.libraryRow;
     const id = element.dataset.itemId;
     const index = Number(element.dataset.itemIndex);
@@ -125,6 +141,7 @@ export function captureDragGeometry(root: HTMLElement): {
   }
 
   for (const element of root.querySelectorAll<HTMLElement>("[data-library-folder-surface]")) {
+    if (element.dataset.dragSourceHidden === "true") continue;
     const key = element.dataset.geometryKey;
     if (!key) continue;
     elements.set(key, element);

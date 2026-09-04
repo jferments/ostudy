@@ -53,7 +53,7 @@ fn canonical_database_reopen_does_not_mutate_application_rows() {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(repair_ledger, (2, 0));
+            assert_eq!(repair_ledger, (3, 0));
             Ok(())
         })
         .expect("canonical startup should be read-only");

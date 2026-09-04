@@ -15,6 +15,8 @@ const CANONICAL_SEMANTIC_HASH_REPAIR_CHECKSUM: &str =
     "779d93574a75f1e694fc4476bbf278ce7a540155cc4c35cf113f9ddb03d2a46f";
 const CANONICAL_BLOCK_HASH_REPAIR_CHECKSUM: &str =
     "02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085";
+const DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CHECKSUM: &str =
+    "14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031";
 const EXPECTED_CANONICAL_CHUNK_HASH: &str =
     "1ddbbf54830254d96e8eaf5c04a21564d65f02984061b9d7b3c49931223bad3d";
 const EXPECTED_CANONICAL_BLOCK_HASH: &str =
@@ -289,6 +291,20 @@ fn assert_canonical_pdf_backfill(connection: &mut Connection) -> Result<(), Comm
     assert_eq!(block_repair.0, "canonical_block_hashes");
     assert_eq!(block_repair.1, CANONICAL_BLOCK_HASH_REPAIR_CHECKSUM);
     assert_eq!(block_repair.2, 1);
+
+    let metadata_repair: (String, String, i64) = connection
+        .query_row(
+            "SELECT name, checksum, changed_rows FROM data_repairs WHERE version = 3",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(CommandError::database)?;
+    assert_eq!(metadata_repair.0, "document_artifact_user_edits");
+    assert_eq!(
+        metadata_repair.1,
+        DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CHECKSUM
+    );
+    assert_eq!(metadata_repair.2, 0);
 
     let legacy_page_count: i64 = connection
         .query_row(

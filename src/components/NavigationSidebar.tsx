@@ -1,8 +1,8 @@
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
-import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 import { Icon, type IconName } from "../ui/icons/Icon";
+import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 import { Sheet } from "../ui/overlays/Dialog";
 import { BrandLockup } from "./Brand";
 import styles from "./NavigationSidebar.module.css";
@@ -11,7 +11,6 @@ interface NavigationSidebarProps {
   section: AppSection;
   activeWorkflow: AppWorkflow | null;
   onNavigate: (section: AppSection) => void | Promise<void>;
-  windowControls?: ReactNode;
 }
 
 const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string }> = [
@@ -45,7 +44,6 @@ export function NavigationSidebar({
   section,
   activeWorkflow,
   onNavigate,
-  windowControls,
 }: NavigationSidebarProps) {
   const { layoutMode } = useLayoutMode();
   const compact = layoutMode === "compact";
@@ -157,9 +155,6 @@ export function NavigationSidebar({
           );
         })}
       </nav>
-      {windowControls ? (
-        <div className={styles.windowControls}>{windowControls}</div>
-      ) : null}
     </aside>
   );
 }

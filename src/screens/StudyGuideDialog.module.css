@@ -1,5 +1,6 @@
 .workspace {
   container-type: inline-size;
+  min-height: 0;
 }
 
 .header {
@@ -50,6 +51,21 @@
 .headerActions {
   align-items: center;
   justify-content: flex-end;
+}
+
+.generationButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ostudy-space-2);
+}
+
+.stopSign {
+  display: inline-grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  place-items: center;
+  color: var(--ostudy-color-status-danger);
 }
 
 .error,
@@ -278,24 +294,6 @@
   @page {
     size: auto;
     margin: 16mm;
-  }
-
-  .backdrop {
-    position: static;
-    display: block;
-    padding: 0;
-    background: var(--ostudy-color-neutral-0);
-  }
-
-  .dialog {
-    width: auto;
-    max-height: none;
-    overflow: visible;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    background: var(--ostudy-color-neutral-0);
-    color: var(--ostudy-color-neutral-950);
   }
 
   .header {

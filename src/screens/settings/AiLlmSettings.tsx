@@ -4,24 +4,35 @@ import type { AiProfilesController } from "../../controllers/aiProfilesControlle
 import type {
   AiCapability,
   AiProviderKind,
+  AiProviderModel,
   AiProviderProfileDetail,
   AiProviderProbeResult,
   AiProbePhase,
+  AiReasoningEffort,
 } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import aiStyles from "./AiLlmSettings.module.css";
+import layoutStyles from "./AiModelsLayout.module.css";
 import styles from "./Settings.module.css";
 import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 
 const ownedStyleMaps = sharedClassMaps;
-
+const FALLBACK_REASONING_EFFORTS: Exclude<AiReasoningEffort, "automatic">[] = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
-  sidebarTop?: ReactNode;
+  defaultBlock?: ReactNode;
 }
 
-export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
+export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) {
   const confirm = useConfirm();
   const availableProviders = controller.catalog.filter(
     (provider) => provider.implementationStatus === "available",
@@ -52,58 +63,72 @@ export function AiLlmSettings({ controller, sidebarTop }: AiLlmSettingsProps) {
   }
 
   return (
-    <div className={styles.aiLayout}>
+    <div className={layoutStyles.layout}>
       {controller.errorMessage ? (
-        <div className={ownedClassNames(ownedStyleMaps, `${styles.fullWidth} inline-alert error-alert`)}>{controller.errorMessage}</div>
+        <div
+          className={ownedClassNames(
+            ownedStyleMaps,
+            `${styles.fullWidth} inline-alert error-alert`,
+          )}
+        >
+          {controller.errorMessage}
+        </div>
       ) : null}
 
-      <div className={styles.aiSidebarStack}>
-        {sidebarTop}
-        <aside className={styles.aiSidebar} aria-label="AI profiles">
-          <div className={styles.sectionHeading}>
-            <h2>AI models</h2>
-          </div>
-          <div className={styles.addProviderGrid}>
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-              disabled={controller.mutating || availableProviders.length === 0}
-              onClick={() => {
-                const preferred =
-                  availableProviders.find((provider) => provider.providerKind === "llama_cpp") ??
-                  availableProviders[0];
-                if (preferred) void beginCreate(preferred.providerKind);
-              }}
-            >
-              Add model
-            </button>
-          </div>
-          {controller.loading ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Loading AI models…</div> : null}
-          <div className={styles.profileList}>
-            {controller.profiles.map((profile) => (
-              <button
-                key={profile.id}
-                type="button"
-                className={styles.profileListItem}
-                data-selected={profile.id === controller.selectedProfileId}
-                onClick={() => void changeProfile(profile.id)}
-              >
-                <strong>{profile.displayName}</strong>
-                <small>{profile.providerLabel}</small>
-                <small>{profile.modelId || "Model not selected"}</small>
-                <span className={styles.statusText} data-status={profile.configurationStatus}>
-                  {configurationLabel(profile.configurationStatus)}
-                </span>
-              </button>
-            ))}
-            {!controller.loading && controller.profiles.length === 0 ? (
-              <p className={styles.emptyCopy}>No AI models configured.</p>
-            ) : null}
-          </div>
-        </aside>
-      </div>
+      {defaultBlock}
 
-      <main className={styles.aiDetail}>
+      <section className={layoutStyles.modelListSection} aria-label="AI models">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2>AI models</h2>
+            <p>Choose a saved model, or add another local server or API connection.</p>
+          </div>
+          <button
+            type="button"
+            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            disabled={controller.mutating || availableProviders.length === 0}
+            onClick={() => {
+              const preferred =
+                availableProviders.find((provider) => provider.providerKind === "llama_cpp") ??
+                availableProviders[0];
+              if (preferred) void beginCreate(preferred.providerKind);
+            }}
+          >
+            Add model
+          </button>
+        </div>
+
+        {controller.loading ? (
+          <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>
+            Loading AI models…
+          </div>
+        ) : null}
+
+        <div className={layoutStyles.profileList}>
+          {controller.profiles.map((profile) => (
+            <button
+              key={profile.id}
+              type="button"
+              className={layoutStyles.profileListItem}
+              data-selected={profile.id === controller.selectedProfileId}
+              onClick={() => void changeProfile(profile.id)}
+            >
+              <strong>{profile.displayName}</strong>
+              <small>{profile.providerLabel}</small>
+              <small>{profile.modelId || "Model not selected"}</small>
+              <small>Reasoning: {reasoningLabel(profile.reasoningEffort ?? "low")}</small>
+              <span className={layoutStyles.statusText} data-status={profile.configurationStatus}>
+                {configurationLabel(profile.configurationStatus)}
+              </span>
+            </button>
+          ))}
+          {!controller.loading && controller.profiles.length === 0 ? (
+            <p className={styles.emptyCopy}>No AI models configured.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <main className={layoutStyles.detail}>
         {controller.draft ? (
           <ProfileSetup
             controller={controller}
@@ -142,6 +167,13 @@ function ProfileSetup({
 
   const profile = controller.selectedProfile;
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
+  const selectedModel =
+    controller.models.find((candidate) => candidate.id === draft.modelId) ?? null;
+  const supportedReasoningOptions = reasoningEffortsForModel(selectedModel);
+  const reasoningValid = supportedReasoningOptions.includes(draft.reasoningEffort);
+  const reasoningOptions = reasoningValid
+    ? supportedReasoningOptions
+    : [...supportedReasoningOptions, draft.reasoningEffort];
   const isLlama = draft.providerKind === "llama_cpp";
   const requiresCredential = draft.authMode !== "none";
   const hasCredential = profileHasCredential(profile);
@@ -154,8 +186,12 @@ function ProfileSetup({
     (draft.requireZeroDataRetention ?? false) !== (profile.requireZeroDataRetention ?? false);
   const metadataDirty =
     profile !== null &&
-    (draft.displayName !== profile.displayName || draft.requestTimeoutMs !== profile.requestTimeoutMs);
-  const modelDirty = profile !== null && draft.modelId !== profile.modelId;
+    (draft.displayName !== profile.displayName ||
+      draft.requestTimeoutMs !== profile.requestTimeoutMs);
+  const modelDirty =
+    profile !== null &&
+    (draft.modelId !== profile.modelId ||
+      draft.reasoningEffort !== (profile.reasoningEffort ?? "low"));
   const modelSaved = profile !== null && draft.modelId !== "" && !modelDirty;
   const canConnect =
     !controller.mutating &&
@@ -165,6 +201,7 @@ function ProfileSetup({
     profile !== null &&
     !connectionDirty &&
     !controller.mutating &&
+    reasoningValid &&
     (metadataDirty || modelDirty);
 
   return (
@@ -172,7 +209,7 @@ function ProfileSetup({
       <section className={styles.settingsCard} aria-busy={controller.mutating}>
         <div className={styles.sectionHeading}>
           <div>
-            <h2>{profile ? "AI model" : "Add AI model"}</h2>
+            <h2>{profile ? `Configure ${profile.displayName}` : "Add AI model"}</h2>
             <p>Choose the service, connect it, then select the model you want ostudy to use.</p>
           </div>
         </div>
@@ -208,7 +245,10 @@ function ProfileSetup({
 
           {requiresCredential ? (
             <label
-              className={ownedClassNames(ownedStyleMaps, `${styles.stackedField} ${provider?.baseUrlEditable ? styles.fullWidth : ""}`)}
+              className={ownedClassNames(
+                ownedStyleMaps,
+                `${styles.stackedField} ${provider?.baseUrlEditable ? styles.fullWidth : ""}`,
+              )}
             >
               <span>API key</span>
               <span className={aiStyles.credentialField}>
@@ -262,40 +302,84 @@ function ProfileSetup({
       <section className={styles.settingsCard}>
         <div className={styles.sectionHeading}>
           <div>
-            <h2>Model</h2>
-            <p>Select a model reported by the configured provider.</p>
+            <h2>Model and reasoning</h2>
+            <p>
+              The reasoning preference belongs to this profile, so switching models cannot
+              silently change another model's behavior.
+            </p>
           </div>
         </div>
 
-        <label className={styles.stackedField}>
-          <span>Model</span>
-          <select
-            aria-label="Model"
-            value={draft.modelId}
-            disabled={
-              controller.refreshingModels ||
-              connectionDirty ||
-              !controller.modelsLoaded ||
-              controller.models.length === 0
-            }
-            onChange={(event) => controller.updateDraft({ modelId: event.currentTarget.value })}
-          >
-            <option value="">
-              {controller.refreshingModels
-                ? "Loading models…"
-                : !profile || connectionDirty
-                  ? "Connect first"
-                  : controller.models.length === 0
-                    ? "No models reported"
-                    : "Select a model"}
-            </option>
-            {controller.models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.displayName || model.id}
+        <div className={styles.formGrid}>
+          <label className={styles.stackedField}>
+            <span>Model</span>
+            <select
+              aria-label="Model"
+              value={draft.modelId}
+              disabled={
+                controller.refreshingModels ||
+                connectionDirty ||
+                !controller.modelsLoaded ||
+                controller.models.length === 0
+              }
+              onChange={(event) => {
+                const modelId = event.currentTarget.value;
+                const model =
+                  controller.models.find((candidate) => candidate.id === modelId) ?? null;
+                controller.updateDraft({
+                  modelId,
+                  reasoningEffort: compatibleReasoningEffort(
+                    draft.reasoningEffort,
+                    model,
+                  ),
+                });
+              }}
+            >
+              <option value="">
+                {controller.refreshingModels
+                  ? "Loading models…"
+                  : !profile || connectionDirty
+                    ? "Connect first"
+                    : controller.models.length === 0
+                      ? "No models reported"
+                      : "Select a model"}
               </option>
-            ))}
-          </select>
-        </label>
+              {controller.models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.displayName || model.id}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.stackedField}>
+            <span>Reasoning effort</span>
+            <select
+              aria-label="Reasoning effort"
+              value={draft.reasoningEffort}
+              disabled={connectionDirty || draft.modelId === ""}
+              onChange={(event) =>
+                controller.updateDraft({
+                  reasoningEffort: event.currentTarget.value as AiReasoningEffort,
+                })
+              }
+            >
+              {reasoningOptions.map((effort) => (
+                <option key={effort} value={effort}>
+                  {reasoningOptionLabel(effort, selectedModel)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <p className={styles.note}>{reasoningExplanation(selectedModel)}</p>
+        {!reasoningValid ? (
+          <p className={styles.cloudNotice}>
+            The provider no longer advertises the saved effort for this model. Choose Automatic
+            or another advertised effort before saving.
+          </p>
+        ) : null}
 
         <div className={styles.actionRow}>
           <button
@@ -358,7 +442,9 @@ function ProfileSetup({
               <select
                 value={draft.authMode}
                 onChange={(event) =>
-                  controller.updateDraft({ authMode: event.currentTarget.value as "none" | "bearer" })
+                  controller.updateDraft({
+                    authMode: event.currentTarget.value as "none" | "bearer",
+                  })
                 }
               >
                 <option value="none">None</option>
@@ -512,7 +598,8 @@ async function confirmDiscardIfNeeded(
   if (!controller.dirty) return true;
   const accepted = await confirm({
     title: "Discard AI setup changes?",
-    description: "Unsaved connection, API key entry, model, or advanced settings will be lost.",
+    description:
+      "Unsaved connection, API key entry, model, reasoning, or advanced settings will be lost.",
     confirmLabel: "Discard changes",
     destructive: true,
   });
@@ -525,6 +612,75 @@ function profileHasCredential(profile: AiProviderProfileDetail | null): boolean 
     profile?.credentialStatus.status === "saved_securely" ||
     profile?.credentialStatus.status === "session_only"
   );
+}
+
+function reasoningEffortsForModel(model: AiProviderModel | null): AiReasoningEffort[] {
+  const advertised = model?.reasoning?.supportedEfforts ?? FALLBACK_REASONING_EFFORTS;
+  const efforts = advertised.filter(
+    (effort) => !(model?.reasoning?.mandatory && effort === "none"),
+  );
+  return [...new Set<AiReasoningEffort>(["automatic", ...efforts])];
+}
+
+function compatibleReasoningEffort(
+  current: AiReasoningEffort,
+  model: AiProviderModel | null,
+): AiReasoningEffort {
+  if (current === "automatic") return current;
+  const reasoning = model?.reasoning;
+  if (!reasoning) return current;
+  if (reasoning.mandatory && current === "none") return "automatic";
+  if (reasoning.supportedEfforts && !reasoning.supportedEfforts.includes(current)) {
+    return "automatic";
+  }
+  return current;
+}
+
+function reasoningOptionLabel(
+  effort: AiReasoningEffort,
+  model: AiProviderModel | null,
+): string {
+  if (effort === "automatic") {
+    const providerDefault = model?.reasoning?.defaultEffort;
+    return providerDefault
+      ? `Automatic — provider default ${reasoningLabel(providerDefault)}`
+      : "Automatic";
+  }
+  return reasoningLabel(effort);
+}
+
+function reasoningExplanation(model: AiProviderModel | null): string {
+  const reasoning = model?.reasoning;
+  if (!reasoning) {
+    return "Automatic uses provider-managed behavior. Profiles retain their own preference even when another model becomes the default.";
+  }
+  if (reasoning.mandatory) {
+    return "Reasoning is mandatory for this model. ostudy will resolve Automatic or a stale unsupported value to the lowest advertised valid effort.";
+  }
+  return "Automatic follows this model's provider default. Explicit efforts are limited to values advertised by the current model catalog.";
+}
+
+function reasoningLabel(value: string): string {
+  switch (value) {
+    case "automatic":
+      return "Automatic";
+    case "none":
+      return "None";
+    case "minimal":
+      return "Minimal";
+    case "low":
+      return "Low";
+    case "medium":
+      return "Medium";
+    case "high":
+      return "High";
+    case "xhigh":
+      return "Extra high";
+    case "max":
+      return "Maximum";
+    default:
+      return value;
+  }
 }
 
 function configurationLabel(status: string): string {

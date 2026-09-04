@@ -8,6 +8,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
+import type { IconName } from "../icons/Icon";
 import { IconButton } from "../icons/IconButton";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { Sheet } from "./Dialog";
@@ -28,6 +29,7 @@ export interface OverflowMenuProps {
   disabled?: boolean;
   className?: string;
   triggerPresentation?: "icon" | "text";
+  triggerIcon?: IconName;
 }
 
 export function OverflowMenu({
@@ -36,6 +38,7 @@ export function OverflowMenu({
   disabled = false,
   className = "",
   triggerPresentation = "icon",
+  triggerIcon = "overflow",
 }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -58,7 +61,7 @@ export function OverflowMenu({
   );
 
   useEffect(() => {
-    if (!open || compact) return;
+    if (!open || compact || items.length <= 1) return;
     return register({
       id,
       parentId,
@@ -68,20 +71,20 @@ export function OverflowMenu({
         return true;
       },
     });
-  }, [compact, id, open, parentId, register]);
+  }, [compact, id, items.length, open, parentId, register]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || items.length <= 1) return;
     const firstEnabled = enabledItems[0];
     setActiveId(firstEnabled?.id ?? null);
     queueMicrotask(() => {
       const target = firstEnabled ? findItemButton(menuRef.current, firstEnabled.id) : null;
       target?.focus();
     });
-  }, [enabledItems, open]);
+  }, [enabledItems, items.length, open]);
 
   useEffect(() => {
-    if (!open || compact) return;
+    if (!open || compact || items.length <= 1) return;
     function onPointerDown(event: PointerEvent): void {
       if (!isTop(id)) return;
       const target = event.target;
@@ -91,7 +94,7 @@ export function OverflowMenu({
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [compact, id, isTop, open]);
+  }, [compact, id, isTop, items.length, open]);
 
   function closeAndRestore(): void {
     setOpen(false);
@@ -100,8 +103,6 @@ export function OverflowMenu({
 
   function select(item: OverflowMenuItem): void {
     if (item.disabled) return;
-    // The selected callback may open another overlay. Close and restore first
-    // so that overlay captures the actual overflow trigger as its opener.
     flushSync(() => setOpen(false));
     triggerRef.current?.focus();
     item.onSelect();
@@ -162,10 +163,37 @@ export function OverflowMenu({
     ));
   }
 
+  // A menu containing one command is needless indirection. Render that command
+  // directly, preserving its label, disabled state, and destructive treatment.
+  const singleItem = items.length === 1 ? items[0] : null;
+  if (singleItem) {
+    return triggerPresentation === "icon" ? (
+      <IconButton
+        ref={triggerRef}
+        icon={singleItem.destructive ? "delete" : triggerIcon}
+        label={singleItem.label}
+        className={className}
+        tone={singleItem.destructive ? "danger" : "neutral"}
+        disabled={disabled || singleItem.disabled}
+        onClick={singleItem.onSelect}
+      />
+    ) : (
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`${styles.trigger} ${className}`.trim()}
+        disabled={disabled || singleItem.disabled}
+        onClick={singleItem.onSelect}
+      >
+        {singleItem.label}
+      </button>
+    );
+  }
+
   const trigger = triggerPresentation === "icon" ? (
     <IconButton
       ref={triggerRef}
-      icon="overflow"
+      icon={triggerIcon}
       label={label}
       className={className}
       aria-haspopup="menu"
@@ -225,6 +253,7 @@ export function OverflowMenu({
 }
 
 function findItemButton(root: HTMLDivElement | null, id: string): HTMLButtonElement | undefined {
-  return [...(root?.querySelectorAll<HTMLButtonElement>("[data-overflow-item-id]") ?? [])]
-    .find((button) => button.dataset.overflowItemId === id);
+  return [...(root?.querySelectorAll<HTMLButtonElement>("[data-overflow-item-id]") ?? [])].find(
+    (button) => button.dataset.overflowItemId === id,
+  );
 }

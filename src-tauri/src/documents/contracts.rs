@@ -6,14 +6,6 @@ pub struct RetryPdfGenerationInput {
     pub document_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SetDocumentArchivedInput {
-    pub document_id: String,
-    pub revision: i64,
-    pub archived: bool,
-}
-
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentDto {

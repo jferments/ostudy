@@ -1,7 +1,7 @@
 import { Fragment, useId } from "react";
 
+import { Icon, type IconName } from "../icons/Icon";
 import { IconButton } from "../icons/IconButton";
-import type { IconName } from "../icons/Icon";
 import { useLayoutMode, type LayoutMode } from "../layout/LayoutModeProvider";
 import { OverflowMenu } from "../overlays/OverflowMenu";
 import { Button, type ButtonProps } from "../primitives/Button";
@@ -50,8 +50,13 @@ export function ResponsiveActionGroup({
     throw new Error("ResponsiveActionGroup requires an always-visible primary action.");
   }
 
-  const direct = actions.filter((action) => isDirect(action.placement, layoutMode));
-  const overflow = actions.filter((action) => !isDirect(action.placement, layoutMode));
+  const layoutDirect = actions.filter((action) => isDirect(action.placement, layoutMode));
+  const layoutOverflow = actions.filter((action) => !isDirect(action.placement, layoutMode));
+  // A one-item ellipsis menu adds a click without reducing complexity. Promote
+  // its sole action directly, preserving the requested text/icon presentation.
+  const direct =
+    layoutOverflow.length === 1 ? [...layoutDirect, layoutOverflow[0]] : layoutDirect;
+  const overflow = layoutOverflow.length === 1 ? [] : layoutOverflow;
 
   return (
     <div
@@ -62,9 +67,7 @@ export function ResponsiveActionGroup({
     >
       {direct.map((action, index) => {
         const description = action.description?.trim() || undefined;
-        const descriptionId = description
-          ? `${descriptionIdPrefix}-${index}`
-          : undefined;
+        const descriptionId = description ? `${descriptionIdPrefix}-${index}` : undefined;
         return (
           <Fragment key={action.id}>
             {description ? (
@@ -94,6 +97,15 @@ export function ResponsiveActionGroup({
                 aria-describedby={descriptionId}
                 onClick={action.onSelect}
               >
+                {action.icon ? (
+                  <span
+                    className={styles.actionIcon}
+                    data-tone={action.destructive ? "danger" : undefined}
+                    aria-hidden="true"
+                  >
+                    <Icon name={action.icon} size={18} />
+                  </span>
+                ) : null}
                 {action.label}
               </Button>
             )}

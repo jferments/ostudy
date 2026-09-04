@@ -19,12 +19,6 @@ pub(crate) async fn retry_pdf_flashcard_generation(
     validate_entity_id(&input.document_id, "document")?;
     let document = database
         .with_connection(|connection| repository::load_document(connection, &input.document_id))?;
-    if document.dto.archived_at.is_some() {
-        return Err(CommandError::new(
-            "document_archived",
-            "Restore this document before generating flashcards from it.",
-        ));
-    }
     if document.dto.generated_deck_id.is_some() {
         return Err(CommandError::new(
             "document_already_generated",

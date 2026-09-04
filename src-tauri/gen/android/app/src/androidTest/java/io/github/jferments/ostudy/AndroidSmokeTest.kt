@@ -124,12 +124,12 @@ class AndroidSmokeTest {
                 predicate = { it == "true" },
                 expression = {
                     "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
-                        "Boolean(document.querySelector('main button[aria-label=\"Open Android Emulator Smoke Deck\"]'))"
+                        "Boolean(document.querySelector('main [role=\"button\"][aria-label=\"Open Android Emulator Smoke Deck\"]'))"
                 }
             )
             evaluateSync(
                 webView,
-                "document.querySelector('main button[aria-label=\"Open Android Emulator Smoke Deck\"]')?.click(); true"
+                "document.querySelector('main [role=\"button\"][aria-label=\"Open Android Emulator Smoke Deck\"]')?.click(); true"
             )
             waitUntil(
                 webView,
@@ -169,7 +169,7 @@ class AndroidSmokeTest {
                 expression = {
                     "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
                         "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks')) && " +
-                        "Boolean(document.querySelector('main button[aria-label=\"Open Android Emulator Smoke Deck\"]')) && " +
+                        "Boolean(document.querySelector('main [role=\"button\"][aria-label=\"Open Android Emulator Smoke Deck\"]')) && " +
                         "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck')"
                 }
             )

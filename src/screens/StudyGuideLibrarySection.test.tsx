@@ -33,7 +33,6 @@ describe("StudyGuideLibrarySection", () => {
         sourceUnitCount: 12,
         guideRevision: 3,
         publishedAt: 10,
-        archived: false,
       },
     ]);
 
@@ -42,6 +41,7 @@ describe("StudyGuideLibrarySection", () => {
     expect(await screen.findByRole("heading", { name: "Study guides" })).toBeTruthy();
     expect(await screen.findByText("Distributive shock")).toBeTruthy();
     expect(screen.getByText(/12 pages/u)).toBeTruthy();
+    expect(studyGuides.listDocumentStudyGuides).toHaveBeenCalledWith();
     fireEvent.click(screen.getByRole("button", { name: "Open study guide" }));
     expect(screen.getByRole("dialog", { name: "Guide Distributive shock" })).toBeTruthy();
   });

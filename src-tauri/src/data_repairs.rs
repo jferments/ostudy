@@ -35,6 +35,8 @@ const CANONICAL_SEMANTIC_HASH_REPAIR_CONTRACT: &str =
     "canonical_semantic_chunk_hashes_v1|sha256(locator={stable_identity}|types={element_types_csv}|heading={heading_or_empty}|text={full_text})";
 const CANONICAL_BLOCK_HASH_REPAIR_CONTRACT: &str =
     "canonical_block_hashes_v1|sha256(unit={source_unit_number}|ordinal={block_ordinal}|role={role}|headings={heading_path_gt_join}|assets={asset_ids_csv}|text={text})";
+const DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CONTRACT: &str =
+    "document_artifact_user_edits_v1|restore pre-stage7 source_title when source_title is not a recognized filename-derived import title and stage7 ledger says generated document title was applied; clear applied ownership";
 
 const REPAIRS: &[DataRepair] = &[
     DataRepair {
@@ -52,6 +54,14 @@ const REPAIRS: &[DataRepair] = &[
         checksum: "02a07faa3635627246ef361160e94fe80a4634f7d36c97dbc3d6cb0819846085",
         phase: RepairPhase::AfterMigration(2),
         apply: repair_canonical_block_hashes,
+    },
+    DataRepair {
+        version: 3,
+        name: "document_artifact_user_edits",
+        contract: DOCUMENT_ARTIFACT_USER_EDIT_REPAIR_CONTRACT,
+        checksum: "14c6f90de653f8227f0d43a5ab51c8d9be5651a5cab589e4e1cefe29b90e6031",
+        phase: RepairPhase::AfterMigration(7),
+        apply: repair_document_artifact_user_edits,
     },
 ];
 
@@ -311,6 +321,123 @@ fn repair_canonical_block_hashes(transaction: &Transaction<'_>) -> Result<i64, S
     Ok(changed_rows)
 }
 
+fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<i64, String> {
+    let rows = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT metadata.document_id, metadata.document_title,
+                        metadata.applied_document_title,
+                        citation.source_title, citation.original_filename, citation.source_format,
+                        document.title
+                 FROM document_artifact_metadata AS metadata
+                 JOIN source_citation_snapshots AS citation
+                   ON citation.source_document_id = metadata.document_id
+                 JOIN documents AS document
+                   ON document.id = metadata.document_id
+                 ORDER BY metadata.document_id",
+            )
+            .map_err(|error| {
+                format!("Could not prepare document artifact user-edit repair: {error}")
+            })?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(|error| format!("Could not read document artifact metadata rows: {error}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                format!("Could not decode document artifact metadata rows: {error}")
+            })?;
+        rows
+    };
+
+    let now = unix_time_millis().map_err(|error| error.message)?;
+    let mut changed_rows = 0_i64;
+    for (
+        document_id,
+        generated_document_title,
+        applied_document_title,
+        source_title,
+        original_filename,
+        source_format,
+        current_document_title,
+    ) in rows
+    {
+        if is_filename_derived_import_title(&source_title, &original_filename, &source_format) {
+            continue;
+        }
+        if source_title == generated_document_title
+            || current_document_title != generated_document_title
+            || applied_document_title.as_deref() != Some(generated_document_title.as_str())
+        {
+            continue;
+        }
+
+        let changed = transaction
+            .execute(
+                "UPDATE documents
+                 SET title = ?1, updated_at = MAX(updated_at, ?2), revision = revision + 1
+                 WHERE id = ?3 AND title = ?4",
+                params![source_title, now, document_id, generated_document_title],
+            )
+            .map_err(|error| {
+                format!("Could not restore user-edited document title {document_id}: {error}")
+            })?;
+        if changed != 1 {
+            return Err(format!(
+                "Document artifact user-edit repair lost ownership of document {document_id}."
+            ));
+        }
+        transaction
+            .execute(
+                "UPDATE document_artifact_metadata
+                 SET applied_document_title = NULL, updated_at = MAX(updated_at, ?1)
+                 WHERE document_id = ?2
+                   AND applied_document_title = ?3",
+                params![now, document_id, generated_document_title],
+            )
+            .map_err(|error| {
+                format!("Could not clear generated document-title ownership {document_id}: {error}")
+            })?;
+        changed_rows = changed_rows.saturating_add(1);
+    }
+    Ok(changed_rows)
+}
+
+fn is_filename_derived_import_title(
+    title: &str,
+    original_filename: &str,
+    source_format: &str,
+) -> bool {
+    let title = title.trim();
+    let filename = original_filename.trim();
+    let extension = format!(".{source_format}");
+    let stem = if filename
+        .to_ascii_lowercase()
+        .ends_with(&extension.to_ascii_lowercase())
+    {
+        &filename[..filename.len().saturating_sub(extension.len())]
+    } else {
+        filename
+    };
+    [
+        filename.to_string(),
+        stem.to_string(),
+        stem.replace('_', " "),
+        stem.replace('-', " "),
+    ]
+    .into_iter()
+    .any(|candidate| title.eq_ignore_ascii_case(candidate.trim()))
+}
+
 fn canonical_semantic_chunk_hash(
     locator: &SourceLocator,
     full_text: &str,
@@ -397,6 +524,84 @@ mod tests {
     fn later_migration_phases_include_prerequisite_repairs() {
         assert!(RepairPhase::AfterMigration(2).is_satisfied_by(RepairPhase::AfterMigration(3)));
         assert!(!RepairPhase::AfterMigration(3).is_satisfied_by(RepairPhase::AfterMigration(2)));
+    }
+
+    #[test]
+    fn document_artifact_user_edit_repair_restores_pre_stage7_titles() {
+        let mut connection = Connection::open_in_memory().expect("repair fixture should open");
+        connection
+            .execute_batch(
+                "CREATE TABLE documents (
+                     id TEXT PRIMARY KEY,
+                     title TEXT NOT NULL,
+                     updated_at INTEGER NOT NULL,
+                     revision INTEGER NOT NULL
+                 );
+                 CREATE TABLE source_citation_snapshots (
+                     source_document_id TEXT PRIMARY KEY,
+                     source_title TEXT NOT NULL,
+                     original_filename TEXT NOT NULL,
+                     source_format TEXT NOT NULL
+                 );
+                 CREATE TABLE document_artifact_metadata (
+                     document_id TEXT PRIMARY KEY,
+                     document_title TEXT NOT NULL,
+                     applied_document_title TEXT,
+                     updated_at INTEGER NOT NULL
+                 );
+                 INSERT INTO documents VALUES (
+                     'custom-doc', 'Vasopressor pharmacology', 3, 2
+                 );
+                 INSERT INTO source_citation_snapshots VALUES (
+                     'custom-doc', 'My vasopressor notes', 'vasopressors.pdf', 'pdf'
+                 );
+                 INSERT INTO document_artifact_metadata VALUES (
+                     'custom-doc', 'Vasopressor pharmacology',
+                     'Vasopressor pharmacology', 3
+                 );
+                 INSERT INTO documents VALUES (
+                     'generated-doc', 'Distributive shock physiology', 3, 2
+                 );
+                 INSERT INTO source_citation_snapshots VALUES (
+                     'generated-doc', 'shock_notes', 'shock_notes.pdf', 'pdf'
+                 );
+                 INSERT INTO document_artifact_metadata VALUES (
+                     'generated-doc', 'Distributive shock physiology',
+                     'Distributive shock physiology', 3
+                 );",
+            )
+            .expect("repair fixture schema should load");
+
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .expect("repair transaction should start");
+        let changed = repair_document_artifact_user_edits(&transaction)
+            .expect("user-edit repair should succeed");
+        transaction.commit().expect("repair should commit");
+        assert_eq!(changed, 1);
+
+        let custom: (String, Option<String>) = connection
+            .query_row(
+                "SELECT document.title, metadata.applied_document_title
+                 FROM documents AS document
+                 JOIN document_artifact_metadata AS metadata
+                   ON metadata.document_id = document.id
+                 WHERE document.id = 'custom-doc'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("custom row should load");
+        assert_eq!(custom.0, "My vasopressor notes");
+        assert_eq!(custom.1, None);
+
+        let generated: String = connection
+            .query_row(
+                "SELECT title FROM documents WHERE id = 'generated-doc'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("generated row should load");
+        assert_eq!(generated, "Distributive shock physiology");
     }
 
     #[test]

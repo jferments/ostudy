@@ -5,6 +5,7 @@ use crate::{editor_drafts::EditorDraftCommitRef, error::CommandError};
 use super::super::{
     catalog::{AiTaskKind, AuthMode, ProviderKind},
     endpoint_policy::{validate_endpoint, NetworkScope},
+    reasoning::default_reasoning_effort,
     secrets::{CredentialPersistence, CredentialStatusDto, CredentialStorage},
 };
 
@@ -22,6 +23,8 @@ pub struct CreateAiProviderProfileInput {
     #[serde(default)]
     pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
+    #[serde(default = "default_reasoning_effort")]
+    pub reasoning_effort: String,
     #[serde(default)]
     pub editor_draft: Option<EditorDraftCommitRef>,
 }
@@ -41,6 +44,8 @@ pub struct UpdateAiProviderProfileInput {
     #[serde(default)]
     pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
+    #[serde(default = "default_reasoning_effort")]
+    pub reasoning_effort: String,
     #[serde(default)]
     pub editor_draft: Option<EditorDraftCommitRef>,
 }
@@ -96,6 +101,7 @@ pub struct AiProviderProfileSummaryDto {
     pub provider_kind: ProviderKind,
     pub provider_label: String,
     pub model_id: String,
+    pub reasoning_effort: String,
     pub enabled: bool,
     pub network_scope: NetworkScope,
     pub credential_status: CredentialStatusDto,
@@ -114,6 +120,7 @@ pub struct AiProviderProfileDetailDto {
     pub base_url: String,
     pub base_url_editable: bool,
     pub model_id: String,
+    pub reasoning_effort: String,
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
@@ -147,6 +154,7 @@ pub(crate) struct ProfileSnapshot {
     pub provider_kind: ProviderKind,
     pub base_url: String,
     pub model_id: String,
+    pub reasoning_effort: String,
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
@@ -176,6 +184,7 @@ impl ProfileSnapshot {
                 "Select or enter a model before testing this AI provider profile.",
             ));
         }
+        super::super::reasoning::validate_reasoning_effort(&self.reasoning_effort)?;
         super::policy::validate_privacy_configuration(
             self.provider_kind,
             self.require_zero_data_retention,
@@ -192,6 +201,7 @@ pub(super) struct StoredProfile {
     pub provider_kind: ProviderKind,
     pub base_url: String,
     pub model_id: String,
+    pub reasoning_effort: String,
     pub auth_mode: AuthMode,
     pub enabled: bool,
     pub allow_insecure_http: bool,
@@ -211,6 +221,7 @@ impl From<&StoredProfile> for ProfileSnapshot {
             provider_kind: profile.provider_kind,
             base_url: profile.base_url.clone(),
             model_id: profile.model_id.clone(),
+            reasoning_effort: profile.reasoning_effort.clone(),
             auth_mode: profile.auth_mode,
             enabled: profile.enabled,
             allow_insecure_http: profile.allow_insecure_http,
