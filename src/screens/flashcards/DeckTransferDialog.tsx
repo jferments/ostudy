@@ -53,15 +53,18 @@ export function DeckTransferDialog({
     try {
       const outcome = await controller.importFromFile();
       if (!outcome) return;
+      let refreshError: string | null = null;
       try {
         await refreshDecks();
       } catch (error: unknown) {
-        showToast(
-          "info",
-          `${outcome.message} The library could not refresh immediately: ${getErrorMessage(error)}`,
-        );
+        refreshError = getErrorMessage(error);
       }
-      showToast("success", outcome.message);
+      showToast(
+        refreshError ? "info" : "success",
+        refreshError
+          ? `${outcome.message} The library could not refresh immediately: ${refreshError}`
+          : outcome.message,
+      );
       onClose();
       await onImportedDeck?.(outcome);
     } catch (error: unknown) {
