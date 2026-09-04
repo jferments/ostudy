@@ -38,34 +38,23 @@ export function DeckLibraryRoot({
   const selectionUnavailable =
     controller.selectionAnalysis.staleIds.length > 0 ||
     controller.selectionAnalysis.missingIds.length > 0;
-  const allCurrentScopeSelected =
-    controller.currentScopeDeckCount > 0 &&
-    controller.selectedIds.size === controller.currentScopeDeckCount;
-  const selectionLabel = allCurrentScopeSelected
-    ? `Deselect all (${controller.currentScopeDeckCount})`
-    : `Select all (${controller.currentScopeDeckCount})`;
+  const hasAnyDecks = Boolean(
+    controller.snapshot &&
+      (controller.snapshot.activeDecks.length > 0 ||
+        controller.snapshot.archivedDecks.length > 0),
+  );
 
   return (
     <div className={styles.root} aria-busy={controller.isLoading || controller.isMutating}>
-      <div className={styles.toolbar} aria-label="Deck library controls">
-        <div className={styles.selectionControls} role="group" aria-label="Deck selection controls">
-          <Button
-            size="small"
-            variant="secondary"
-            disabled={controller.currentScopeDeckCount === 0 || controller.isMutating}
-            onClick={
-              allCurrentScopeSelected ? controller.clearSelection : controller.selectCurrentScope
-            }
-          >
-            {selectionLabel}
-          </Button>
+      {hasAnyDecks ? (
+        <div className={styles.toolbar} aria-label="Deck library controls">
+          <div className={styles.toolbarActions}>
+            <Button variant="primary" onClick={controller.openDeckCreator}>
+              <Icon name="plus" size={18} /> New deck
+            </Button>
+          </div>
         </div>
-        <div className={styles.toolbarActions}>
-          <Button variant="primary" onClick={controller.openDeckCreator}>
-            <Icon name="plus" size={18} /> New deck
-          </Button>
-        </div>
-      </div>
+      ) : null}
 
       <SelectionToolbar
         selectedCount={controller.selectedIds.size}
