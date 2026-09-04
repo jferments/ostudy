@@ -8,6 +8,19 @@ import json
 import smoke as webdriver
 
 
+_original_click_text_button = webdriver.click_text_button
+
+
+def click_current_text_button(
+    session_id: str,
+    label: str,
+    deadline: float,
+) -> None:
+    """Translate the retired empty-library label used by the shared smoke flow."""
+    current_label = "Create a new deck" if label == "New deck" else label
+    _original_click_text_button(session_id, current_label, deadline)
+
+
 def verify_persistence_after_restart(
     session_id: str,
     deck_name: str,
@@ -109,5 +122,6 @@ def verify_persistence_after_restart(
 
 
 if __name__ == "__main__":
+    webdriver.click_text_button = click_current_text_button
     webdriver.verify_persistence_after_restart = verify_persistence_after_restart
     raise SystemExit(webdriver.main())
