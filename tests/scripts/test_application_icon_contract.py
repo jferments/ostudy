@@ -23,20 +23,36 @@ def png_dimensions(path: Path) -> tuple[int, int]:
 
 
 class ApplicationIconContractTests(unittest.TestCase):
-    def test_desktop_uses_the_embedded_raccoon_icon_and_stable_gtk_identity(self) -> None:
+    def test_desktop_embeds_the_actual_repository_mascot(self) -> None:
+        source = ROOT / "assets/images/racoon mascot (logo).png"
+        desktop_icon = TAURI / "icons/icon.png"
         startup = (TAURI / "src/startup.rs").read_text(encoding="utf-8")
         config = json.loads((TAURI / "tauri.conf.json").read_text(encoding="utf-8"))
-        icon = TAURI / "icons/128x128.png"
 
-        self.assertEqual(png_dimensions(icon), (128, 128))
-        self.assertIn('tauri::include_image!("./icons/128x128.png")', startup)
+        width, height = png_dimensions(source)
+        self.assertEqual(width, height)
+        self.assertGreaterEqual(width, 512)
+        self.assertEqual(desktop_icon.read_bytes(), source.read_bytes())
+        self.assertIn('tauri::include_image!("./icons/icon.png")', startup)
         self.assertIn("window.set_icon(MAIN_WINDOW_ICON.clone())", startup)
         self.assertNotIn("default_window_icon()", startup)
         self.assertTrue(config["app"]["enableGTKAppId"])
         self.assertEqual(config["identifier"], "io.github.jferments.ostudy")
-        self.assertIn("icons/icon.png", config["bundle"]["icon"])
+        self.assertEqual(config["bundle"]["icon"][0], "icons/icon.png")
+        self.assertNotIn("icons/32x32.png", config["bundle"]["icon"])
+        self.assertNotIn("icons/128x128.png", config["bundle"]["icon"])
 
-    def test_android_manifest_and_adaptive_icons_use_launcher_resources(self) -> None:
+    def test_android_launcher_uses_the_same_actual_mascot(self) -> None:
+        source = ROOT / "assets/images/racoon mascot (logo).png"
+        android_source = ANDROID_RES / "drawable-nodpi/ostudy_raccoon_mascot.png"
+        foreground = ANDROID_RES / "drawable/ostudy_raccoon_foreground.xml"
+
+        self.assertEqual(android_source.read_bytes(), source.read_bytes())
+        foreground_text = foreground.read_text(encoding="utf-8")
+        self.assertIn("@drawable/ostudy_raccoon_mascot", foreground_text)
+        self.assertIn('android:gravity="fill"', foreground_text)
+
+    def test_manifest_and_every_launcher_variant_resolve_to_mascot_resources(self) -> None:
         manifest = ET.parse(
             TAURI / "gen/android/app/src/main/AndroidManifest.xml"
         ).getroot()
@@ -50,10 +66,13 @@ class ApplicationIconContractTests(unittest.TestCase):
         )
 
         for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
-            root = ET.parse(ANDROID_RES / "mipmap-anydpi-v26" / name).getroot()
-            self.assertEqual(root.tag, "adaptive-icon")
-            background = root.find("background")
-            foreground = root.find("foreground")
+            legacy = (ANDROID_RES / "mipmap-anydpi" / name).read_text(encoding="utf-8")
+            self.assertIn("@drawable/ostudy_raccoon_mascot", legacy)
+
+            adaptive = ET.parse(ANDROID_RES / "mipmap-anydpi-v26" / name).getroot()
+            self.assertEqual(adaptive.tag, "adaptive-icon")
+            background = adaptive.find("background")
+            foreground = adaptive.find("foreground")
             self.assertIsNotNone(background)
             self.assertIsNotNone(foreground)
             assert background is not None and foreground is not None
@@ -63,36 +82,30 @@ class ApplicationIconContractTests(unittest.TestCase):
             )
             self.assertEqual(
                 foreground.attrib[f"{ANDROID_NS}drawable"],
-                "@mipmap/ic_launcher_foreground",
+                "@drawable/ostudy_raccoon_foreground",
             )
 
-        foreground_xml = (
-            ANDROID_RES / "drawable-v24/ic_launcher_foreground.xml"
-        ).read_text(encoding="utf-8")
-        self.assertIn("@mipmap/ic_launcher_foreground", foreground_xml)
-        self.assertNotIn("android:pathData", foreground_xml)
-
-    def test_every_android_launcher_bitmap_is_derived_from_the_raccoon_assets(self) -> None:
-        raccoon_128 = (TAURI / "icons/128x128.png").read_bytes()
-        raccoon_256 = (TAURI / "icons/128x128@2x.png").read_bytes()
-
-        for density in ("mdpi", "hdpi", "xhdpi"):
-            directory = ANDROID_RES / f"mipmap-{density}"
-            self.assertEqual((directory / "ic_launcher.png").read_bytes(), raccoon_128)
-            self.assertEqual((directory / "ic_launcher_round.png").read_bytes(), raccoon_128)
+            themed = ET.parse(ANDROID_RES / "mipmap-anydpi-v33" / name).getroot()
+            monochrome = themed.find("monochrome")
+            self.assertIsNotNone(monochrome)
+            assert monochrome is not None
             self.assertEqual(
-                (directory / "ic_launcher_foreground.png").read_bytes(),
-                raccoon_256,
+                monochrome.attrib[f"{ANDROID_NS}drawable"],
+                "@drawable/ostudy_raccoon_foreground",
             )
 
-        for density in ("xxhdpi", "xxxhdpi"):
+    def test_stale_generic_android_launcher_assets_are_absent(self) -> None:
+        self.assertFalse(
+            (ANDROID_RES / "drawable-v24/ic_launcher_foreground.xml").exists()
+        )
+        for density in ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"):
             directory = ANDROID_RES / f"mipmap-{density}"
             for name in (
                 "ic_launcher.png",
                 "ic_launcher_round.png",
                 "ic_launcher_foreground.png",
             ):
-                self.assertEqual((directory / name).read_bytes(), raccoon_256)
+                self.assertFalse((directory / name).exists(), f"stale asset: {density}/{name}")
 
 
 if __name__ == "__main__":

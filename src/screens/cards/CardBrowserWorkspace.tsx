@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MutableRefObject } from "react";
+import type { KeyboardEvent, MutableRefObject } from "react";
 
 import type { ShowToast } from "../../components/Toast";
 import { CardsController } from "../../controllers/cardsController";
@@ -21,6 +21,9 @@ import type { DeckSummary } from "../../ipc/decks";
 import type { AnalyticsSearchLaunch } from "../../navigation/flashcardsRoutes";
 import type { ScheduleAction } from "../../ipc/scheduling";
 import type { CardTemplate, GenerateTemplateCardsResult } from "../../ipc/templates";
+import { IconButton } from "../../ui/icons/IconButton";
+import { SelectionToolbar } from "../../ui/patterns/SelectionToolbar";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 import { CardEditorScreen } from "../CardEditorScreen";
 import { BulkEntryModal } from "./BulkEntryModal";
 import { BulkTagModal } from "./BulkTagModal";
@@ -29,13 +32,10 @@ import { DeleteCardsModal } from "./DeleteCardsModal";
 import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 import { ScheduleActionModal } from "./ScheduleActionModal";
-import { scheduleActionNotice } from "./scheduleActionResult";
-import { SelectionToolbar } from "../../ui/patterns/SelectionToolbar";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 import ownershipStyles from "./CardBrowserWorkspace.module.css";
+import { scheduleActionNotice } from "./scheduleActionResult";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
 
 export type CardBrowserView = "list" | "editor";
 export type CardBrowserControls = "deck" | "search";
@@ -79,7 +79,7 @@ const PAGE_SIZE = 100;
  * row markup, selection semantics, card editing, and bulk operations. The
  * control mode intentionally varies only the screen-specific controls above
  * that shared behavior: Search/Filter gets the complete filter model, while a
- * deck gets a fixed scope, one lightweight search field, and authoring actions.
+ * deck gets a fixed scope and a compact table-level search action.
  */
 export function CardBrowserWorkspace({
   decks,
@@ -109,6 +109,7 @@ export function CardBrowserWorkspace({
   );
   const [filterDeckIds, setFilterDeckIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [deckSearchOpen, setDeckSearchOpen] = useState(false);
   const [availabilityFilter, setAvailabilityFilter] =
     useState<AvailabilityFilter>("all");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>(() =>
@@ -182,6 +183,8 @@ export function CardBrowserWorkspace({
   const practiceSourceLabel = fixedDeckId
     ? `the “${selectedDeck?.name ?? "current"}” deck`
     : "Search/Filter";
+  const deckQueryActive = controlMode === "deck" && query.trim() !== "";
+  const deckSearchExpanded = controlMode === "deck" && (deckSearchOpen || deckQueryActive);
 
   const loadTags = useCallback(async (): Promise<void> => {
     try {
@@ -298,6 +301,21 @@ export function CardBrowserWorkspace({
   function changeQuery(value: string): void {
     setQuery(value);
     if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
+  }
+
+  function openDeckSearch(): void {
+    setDeckSearchOpen(true);
+  }
+
+  function closeDeckSearch(): void {
+    changeQuery("");
+    setDeckSearchOpen(false);
+  }
+
+  function handleDeckSearchKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeDeckSearch();
   }
 
   function changeTagIds(next: Set<string>): void {
@@ -593,19 +611,7 @@ export function CardBrowserWorkspace({
           onSortChange={setSort}
           onTagIdsChange={changeTagIds}
         />
-      ) : (
-        <section className={ownedClassNames(ownedStyleMaps, "deck-card-search")} aria-label="Search this deck">
-          <label>
-            <span>Search cards</span>
-            <input
-              type="search"
-              value={query}
-              placeholder="Question, answer, or tag"
-              onChange={(event) => changeQuery(event.currentTarget.value)}
-            />
-          </label>
-        </section>
-      )}
+      ) : null}
 
       {selectedCards.size > 0 ? (
         <SelectionToolbar
@@ -639,7 +645,11 @@ export function CardBrowserWorkspace({
         />
       ) : null}
 
-      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
+      {errorMessage ? (
+        <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>
+          {errorMessage}
+        </div>
+      ) : null}
       {searchGate === "blocked" ? (
         <button
           type="button"
@@ -649,16 +659,28 @@ export function CardBrowserWorkspace({
           Clear unavailable tag filter
         </button>
       ) : null}
-      {isOpeningCard ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening card…</div> : null}
-      {isLoading ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Searching cards…</div> : null}
+      {isOpeningCard ? (
+        <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening card…</div>
+      ) : null}
+      {isLoading ? (
+        <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Searching cards…</div>
+      ) : null}
 
-      <section className={ownedClassNames(ownedStyleMaps, "card-library-panel shared-card-browser")} aria-label="Card browser">
+      <section
+        className={ownedClassNames(
+          ownedStyleMaps,
+          "card-library-panel shared-card-browser",
+        )}
+        aria-label="Card browser"
+      >
         <div className={ownedClassNames(ownedStyleMaps, "card-browser-heading")}>
           <div>
             <h2>{fixedDeckId ? "Cards" : "Results"}</h2>
-            <span className={ownedClassNames(ownedStyleMaps, "card-count-summary")}>
-              {page.totalCount} {page.totalCount === 1 ? "card" : "cards"}
-            </span>
+            {!fixedDeckId ? (
+              <span className={ownedClassNames(ownedStyleMaps, "card-count-summary")}>
+                {page.totalCount} {page.totalCount === 1 ? "card" : "cards"}
+              </span>
+            ) : null}
           </div>
           {controlMode === "deck" ? (
             <div className={ownedClassNames(ownedStyleMaps, "card-browser-actions")}>
@@ -686,43 +708,100 @@ export function CardBrowserWorkspace({
           ) : null}
         </div>
 
-        {page.totalCount > 0 ? (
+        {page.totalCount > 0 || controlMode === "deck" ? (
           <div className={ownedClassNames(ownedStyleMaps, "card-library-summary")}>
             <div className={ownedClassNames(ownedStyleMaps, "result-count")}>
               <strong>
                 {page.cards.length} of {page.totalCount}
               </strong>
-              <span> cards shown</span>
+              <span>{deckQueryActive ? " matching cards shown" : " cards shown"}</span>
             </div>
-            <div className={ownedClassNames(ownedStyleMaps, "selection-buttons")} aria-label="Selection controls">
-              <button type="button" className={ownedClassNames(ownedStyleMaps, "secondary-button")} onClick={selectVisible}>
-                Select visible
-              </button>
-              <button
-                type="button"
-                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                disabled={isSelectingAll}
-                onClick={() => void selectAllMatching()}
-              >
-                {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
-              </button>
+            <div
+              className={ownedClassNames(ownedStyleMaps, "selection-buttons")}
+              role="group"
+              aria-label="Card table controls"
+            >
+              {page.totalCount > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                    onClick={selectVisible}
+                  >
+                    Select visible
+                  </button>
+                  <button
+                    type="button"
+                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                    disabled={isSelectingAll}
+                    onClick={() => void selectAllMatching()}
+                  >
+                    {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
+                  </button>
+                </>
+              ) : null}
+              {controlMode === "deck" ? (
+                <div
+                  className={ownedClassNames(ownedStyleMaps, "deck-card-search")}
+                  data-expanded={deckSearchExpanded || undefined}
+                >
+                  {deckSearchExpanded ? (
+                    <>
+                      <label>
+                        <span className="sr-only">Search cards in this deck</span>
+                        <input
+                          autoFocus
+                          type="search"
+                          value={query}
+                          placeholder="Question, answer, or tag"
+                          aria-label="Search cards in this deck"
+                          onChange={(event) => changeQuery(event.currentTarget.value)}
+                          onKeyDown={handleDeckSearchKeyDown}
+                        />
+                      </label>
+                      <IconButton
+                        icon="close"
+                        label="Close deck search"
+                        tooltip={false}
+                        onClick={closeDeckSearch}
+                      />
+                    </>
+                  ) : (
+                    <IconButton
+                      icon="search"
+                      label="Search cards in this deck"
+                      tooltip="Search cards"
+                      onClick={openDeckSearch}
+                    />
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
 
         {!isLoading && page.totalCount === 0 ? (
-          <section className={ownedClassNames(ownedStyleMaps, "compact-empty-state large-empty-state")}>
-            <h2>{fixedDeckId ? "This deck is empty" : "No matching cards"}</h2>
+          <section
+            className={ownedClassNames(
+              ownedStyleMaps,
+              "compact-empty-state large-empty-state",
+            )}
+          >
+            <h2>{fixedDeckId && !deckQueryActive ? "This deck is empty" : "No matching cards"}</h2>
             <p>
-              {fixedDeckId
+              {fixedDeckId && !deckQueryActive
                 ? "Add a flashcard or use Bulk add to start studying this deck."
-                : "Try removing a filter or changing the search."}
+                : "Try changing or clearing the search."}
             </p>
           </section>
         ) : null}
 
         {page.totalCount > 0 ? (
-          <div className={ownedClassNames(ownedStyleMaps, "organized-card-list")} role="table" aria-label="Matching cards">
+          <div
+            className={ownedClassNames(ownedStyleMaps, "organized-card-list")}
+            role="table"
+            aria-label="Matching cards"
+          >
             {page.cards.map((card) => {
               const selectedRow = selectedCards.has(card.cardId);
               return (
@@ -774,7 +853,11 @@ export function CardBrowserWorkspace({
   );
 
   if (!showPageHeader) {
-    return <div className={ownedClassNames(ownedStyleMaps, "card-browser-workspace")}>{listContent}</div>;
+    return (
+      <div className={ownedClassNames(ownedStyleMaps, "card-browser-workspace")}>
+        {listContent}
+      </div>
+    );
   }
 
   return (
@@ -807,10 +890,16 @@ function CardBrowserListRow({
   const dueLabel = formatDue(card.dueAt);
   return (
     <article
-      className={ownedClassNames(ownedStyleMaps, selected ? "organized-card-row selected" : "organized-card-row")}
+      className={ownedClassNames(
+        ownedStyleMaps,
+        selected ? "organized-card-row selected" : "organized-card-row",
+      )}
       role="row"
     >
-      <label className={ownedClassNames(ownedStyleMaps, "card-row-selector")} onClick={(event) => event.stopPropagation()}>
+      <label
+        className={ownedClassNames(ownedStyleMaps, "card-row-selector")}
+        onClick={(event) => event.stopPropagation()}
+      >
         <input
           type="checkbox"
           checked={selected}
@@ -818,30 +907,67 @@ function CardBrowserListRow({
           onChange={onToggleSelected}
         />
       </label>
-      <button type="button" className={ownedClassNames(ownedStyleMaps, "organized-card-main")} onClick={onOpen}>
+      <button
+        type="button"
+        className={ownedClassNames(ownedStyleMaps, "organized-card-main")}
+        onClick={onOpen}
+      >
         <span className={ownedClassNames(ownedStyleMaps, "organized-card-deck")}>
           {card.deckName}
-          <span className={ownedClassNames(ownedStyleMaps, "card-type-badge")}>{card.cardLabel}</span>
+          <span className={ownedClassNames(ownedStyleMaps, "card-type-badge")}>
+            {card.cardLabel}
+          </span>
         </span>
         <span className={ownedClassNames(ownedStyleMaps, "organized-card-statuses")}>
-          {card.suspendedAt ? <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge suspended")}>Suspended</span> : null}
+          {card.suspendedAt ? (
+            <span
+              className={ownedClassNames(
+                ownedStyleMaps,
+                "schedule-status-badge suspended",
+              )}
+            >
+              Suspended
+            </span>
+          ) : null}
           {card.buriedUntil && card.buriedUntil > Date.now() ? (
-            <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge buried")}>Buried</span>
+            <span
+              className={ownedClassNames(ownedStyleMaps, "schedule-status-badge buried")}
+            >
+              Buried
+            </span>
           ) : null}
           {card.needsMorePractice ? (
-            <span className={ownedClassNames(ownedStyleMaps, "schedule-status-badge needs-practice")}>Needs more practice</span>
+            <span
+              className={ownedClassNames(
+                ownedStyleMaps,
+                "schedule-status-badge needs-practice",
+              )}
+            >
+              Needs more practice
+            </span>
           ) : null}
         </span>
-        <span className={ownedClassNames(ownedStyleMaps, "organized-card-sides card-listing-sides")}>
+        <span
+          className={ownedClassNames(
+            ownedStyleMaps,
+            "organized-card-sides card-listing-sides",
+          )}
+        >
           <span className={ownedClassNames(ownedStyleMaps, "card-listing-line")}>
-            <span className={ownedClassNames(ownedStyleMaps, "card-listing-label")} aria-hidden="true">
+            <span
+              className={ownedClassNames(ownedStyleMaps, "card-listing-label")}
+              aria-hidden="true"
+            >
               Q:
             </span>
             <span className="sr-only">Question: </span>
             <strong>{summarize(card.frontText)}</strong>
           </span>
           <span className={ownedClassNames(ownedStyleMaps, "card-listing-line")}>
-            <span className={ownedClassNames(ownedStyleMaps, "card-listing-label")} aria-hidden="true">
+            <span
+              className={ownedClassNames(ownedStyleMaps, "card-listing-label")}
+              aria-hidden="true"
+            >
               A:
             </span>
             <span className="sr-only">Answer: </span>
@@ -853,7 +979,10 @@ function CardBrowserListRow({
             <small>No tags</small>
           ) : (
             card.tags.map((tag) => (
-              <span className={ownedClassNames(ownedStyleMaps, "tag-chip static")} key={tag}>
+              <span
+                className={ownedClassNames(ownedStyleMaps, "tag-chip static")}
+                key={tag}
+              >
                 {tag}
               </span>
             ))

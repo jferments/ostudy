@@ -229,7 +229,7 @@ describe("StudyGuideDialog", () => {
     expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
   });
 
-  it("renders as route-owned content so application navigation remains available", async () => {
+  it("renders an existing guide without revision metadata or a regenerate action", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     const onClose = vi.fn();
     renderGuide({ onClose });
@@ -242,14 +242,19 @@ describe("StudyGuideDialog", () => {
     expect(screen.getByRole("navigation", { name: "Study guide contents" })).toBeTruthy();
     expect(screen.getByRole("article")).toBeTruthy();
     expect(screen.getByText("Page 2–3")).toBeTruthy();
+    expect(screen.getByText("1 section")).toBeTruthy();
+    expect(screen.queryByText("Revision 1")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Regenerate study guide" })).toBeNull();
 
     const close = screen.getByRole("button", { name: "Close study guide" });
     expect(close.querySelector("svg")?.getAttribute("width")).toBe("24");
+    fireEvent.focus(close);
+    expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(close);
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("exports through native prepared files", async () => {
+  it("exports through native prepared files without exposing an internal revision", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     mockedPreparePdf.mockResolvedValue({
       preparedExport: {
@@ -283,7 +288,7 @@ describe("StudyGuideDialog", () => {
     });
     expect(showToast).toHaveBeenCalledWith(
       "success",
-      "Exported study guide revision 1 with 1 section.",
+      "Exported study guide with 1 section.",
     );
   });
 
