@@ -30,6 +30,10 @@
     white-space: nowrap;
   }
 
+  .importAction svg {
+    stroke-width: 2.15;
+  }
+
   .library {
     display: grid;
     min-width: 0;
@@ -169,12 +173,12 @@
 
   @container deck-library (max-width: 620px) {
     .toolbarActions {
-      width: 100%;
-      justify-content: stretch;
+      width: auto;
+      justify-content: flex-end;
     }
 
     .toolbarActions > button {
-      flex: 1 1 auto;
+      flex: 0 0 auto;
     }
 
     .emptyLibrary {
