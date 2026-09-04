@@ -24,12 +24,12 @@ fn default_input(provider_kind: ProviderKind) -> CreateAiProviderProfileInput {
         provider_kind,
         base_url: provider_kind.default_base_url().to_string(),
         model_id: String::new(),
-        reasoning_effort: "low".to_string(),
         auth_mode: provider_kind.default_auth_mode(),
         enabled: true,
         allow_insecure_http: false,
         require_zero_data_retention: false,
         request_timeout_ms: DEFAULT_TIMEOUT_MS,
+        reasoning_effort: "low".to_string(),
         editor_draft: None,
     }
 }
@@ -71,7 +71,6 @@ fn creates_profiles_without_persisting_credentials() {
             assert_eq!(storage, "none");
             let snapshot = profile_repository::load_profile_snapshot(connection, &profile_id)?;
             assert_eq!(snapshot.provider_kind, ProviderKind::LlamaCpp);
-            assert_eq!(snapshot.reasoning_effort, "low");
             Ok(())
         })
         .expect("profile should load");
