@@ -25,6 +25,21 @@ class MobileNavigationContractTests(unittest.TestCase):
         self.assertIn('data-testid="app-settings"', app_bar)
         self.assertIn('onNavigate("settings")', app_bar)
 
+    def test_fresh_library_android_smoke_runs_before_library_seeding(self) -> None:
+        runner = (ROOT / "scripts/android-emulator-smoke.sh").read_text()
+        healthy_sequence = (
+            "else\n"
+            "  record_case a1_freshLibraryUsesQuietNavigation || true\n\n"
+            "  seed_ok=1\n"
+            "  record_case a_seedLibraryPracticeAndAnalytics || seed_ok=0"
+        )
+        self.assertIn(healthy_sequence, runner)
+
+        launch_failure_block = runner.split("if ((launch_ok == 0)); then", 1)[1].split(
+            "else", 1
+        )[0]
+        self.assertIn("a1_freshLibraryUsesQuietNavigation", launch_failure_block)
+
 
 if __name__ == "__main__":
     unittest.main()
