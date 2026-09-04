@@ -85,7 +85,7 @@ export VITE_OSTUDY_ANDROID_TEST_BRIDGE=1
 # postbuild wrapper reuses that x86_64 output while excluding generated
 # rustBuild tasks that cannot outlive the parent Tauri process.
 bash ./scripts/android-build.sh --debug --apk --target x86_64 --smoke-bridge
-bash ./scripts/android-gradle-postbuild.sh instrumentation-package
+android_instrumentation_postbuild
 
 app_apk="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk"
 test_apk="$({

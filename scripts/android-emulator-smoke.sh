@@ -6,6 +6,12 @@ ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
 
+# The public qualification entrypoint owns the postbuild contract even though
+# setup and installation are kept in a bounded sourced helper.
+android_instrumentation_postbuild() {
+  bash ./scripts/android-gradle-postbuild.sh instrumentation-package
+}
+
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/android-emulator-smoke-setup.bash"
 
