@@ -9,7 +9,6 @@ assertions for those two policies while reusing the complete UI-platform smoke.
 
 from __future__ import annotations
 
-import json
 import time
 
 import ui_platform_smoke as ui
@@ -250,11 +249,15 @@ def verify_current_deck_detail_header(
             )
 
         if not expected_overflow:
-            if ui.find_optional(
+            more_count = ui.execute(
                 session_id,
-                "css selector",
-                "main header button[aria-label='More actions']",
-            ) is not None:
+                """
+                return document.querySelectorAll(
+                  "main header button[aria-label='More actions']"
+                ).length;
+                """,
+            )
+            if more_count != 0:
                 raise AssertionError(
                     "Wide deck detail exposed a one-item More menu instead of promoting Delete."
                 )
