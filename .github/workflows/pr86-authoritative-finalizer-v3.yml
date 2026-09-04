@@ -1,0 +1,319 @@
+name: PR 86 Authoritative Finalizer
+
+on:
+  push:
+    branches:
+      - agent/mobile-flashcards-navigation-cleanup
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr86-authoritative-finalizer-v3
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 300
+    steps:
+      - name: Check out the exact PR branch head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: agent/mobile-flashcards-navigation-cleanup
+          clean: true
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply or verify final product source
+        run: |
+          set -euo pipefail
+          if [[ -f scripts/finish-pr86.py ]]; then
+            python3 scripts/finish-pr86.py
+          fi
+
+          rm -f scripts/finish-pr86.py
+          rm -f .github/workflows/source-snapshot.yml
+          rm -f .github/workflows/finalize-pr86-terminal.yml
+          rm -f .github/workflows/pr86-authoritative-finalizer-v3.yml
+          rm -f docs/development/mobile-flashcards-navigation-cleanup-progress.md
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('.')
+          required = [
+              'src/navigation/studyGuidesNavigation.ts',
+              'src/navigation/studyGuidesNavigation.test.ts',
+              'src/screens/SettingsScreen.templates.test.tsx',
+              'tests/scripts/test_mobile_navigation_contract.py',
+          ]
+          for relative in required:
+              assert (root / relative).is_file(), f'missing final source: {relative}'
+
+          mobile = (root / 'src/components/MobileAppBar.tsx').read_text()
+          navigation = (root / 'src/components/NavigationSidebar.tsx').read_text()
+          flashcards = (root / 'src/screens/flashcards/FlashcardsWorkspace.tsx').read_text()
+          library = (root / 'src/screens/flashcards/deck-library/DeckLibraryView.tsx').read_text()
+          settings = (root / 'src/screens/SettingsScreen.tsx').read_text()
+          native = (root / 'tests/webdriver/ui_platform_smoke.py').read_text()
+          android = (root / 'src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt').read_text()
+          contract = json.loads((root / 'scripts/route-smoke-contract.json').read_text())
+
+          assert 'data-testid="app-settings"' in mobile
+          assert 'nav-more' not in navigation
+          assert '"documents",\n  "analytics"' in navigation
+          assert 'value: "decks"' in flashcards
+          assert 'value: "search"' in flashcards
+          assert 'TemplatesScreen' not in flashcards
+          assert 'TransferWorkspace' not in flashcards
+          assert 'No decks have been created yet.' in library
+          assert 'No folders yet.' not in library
+          assert 'All active decks are in folders.' not in library
+          assert 'Card templates' in settings
+          assert 'Search/Filter' in native
+          assert 'a1_freshLibraryUsesQuietNavigation' in android
+          assert contract['compactNavigation'] == {
+              'primary': ['decks', 'study-guides', 'documents', 'analytics'],
+              'more': [],
+              'appBar': ['settings'],
+          }
+          assert [item['id'] for item in contract['flashcardsWorkspaces']] == ['decks', 'search']
+          assert not (root / 'src/screens/flashcards/TransferWorkspace.tsx').exists()
+          assert not (root / 'src/components/AndroidDeckSharePanel.tsx').exists()
+          PY
+
+      - name: Create the exact candidate commit
+        id: candidate
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet --exit-code; then
+            echo 'Final source was already committed; qualifying the current head.'
+          else
+            git commit -m 'test(ui): complete navigation and smoke coverage'
+          fi
+          final_sha="$(git rev-parse HEAD)"
+          echo "sha=$final_sha" >> "$GITHUB_OUTPUT"
+          test -z "$(git status --porcelain)"
+
+      - name: Run focused source and route contracts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/webdriver/ui_platform_smoke.py
+          bash -n scripts/android-emulator-smoke.sh
+          node --check scripts/verify-route-smoke-contract.mjs
+          node scripts/verify-route-smoke-contract.mjs
+          python3 -m unittest tests.scripts.test_route_smoke_contract
+          python3 -m unittest tests.scripts.test_mobile_navigation_contract
+
+      - name: Run authoritative Linux qualification
+        env:
+          OSTUDY_FORCE_CHECK: '1'
+          OSTUDY_KEEP_FAILURE_ARTIFACTS: '1'
+        run: ./scripts/check.sh
+
+      - name: Run authoritative Android Emulator qualification
+        env:
+          OSTUDY_FORCE_CHECK: '1'
+          OSTUDY_KEEP_FAILURE_ARTIFACTS: '1'
+        run: ./scripts/android-test.sh --emulator
+
+      - name: Publish the exact tested candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.candidate.outputs.sha }}"
+          test -z "$(git status --porcelain)"
+          git push origin HEAD:agent/mobile-flashcards-navigation-cleanup
+
+      - name: Update PR implementation ledger and mark ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINAL_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repository = os.environ['GITHUB_REPOSITORY']
+          token = os.environ['GH_TOKEN']
+          sha = os.environ['FINAL_SHA']
+          state = {
+            'schemaVersion': 1,
+            'baseSha': 'dafa42a637348f790cf45004e10f9cde50402ec9',
+            'headSha': sha,
+            'branch': 'agent/mobile-flashcards-navigation-cleanup',
+            'executionMode': 'githubConnector',
+            'currentState': 'readyForReview',
+            'nonGoals': [
+              'No scheduling, analytics, document-processing, AI-provider, database-schema, or portable-file-format changes.'
+            ],
+            'compatibilityNotes': [
+              'Legacy cards routes normalize to Flashcards Search/Filter.',
+              'Legacy templates and transfer Flashcards workspaces normalize to supported destinations.',
+              'Portable .studydeck and generated-card JSON formats are unchanged.'
+            ],
+            'rollbackNotes': [
+              'Revert the PR squash commit to restore the previous Flashcards tabs and compact More menu.'
+            ],
+            'residualRisks': [
+              'Final visual density and placement require human review on compact Android and desktop.'
+            ],
+            'mergeMethod': 'squash',
+            'acceptance': {
+              'AC-01': {
+                'status': 'implemented',
+                'evidence': ['src/screens/flashcards/deck-library/DeckLibraryView.tsx'],
+                'tests': ['src/screens/flashcards/deck-library/DeckLibraryView.test.tsx', 'AndroidSmokeTest#a1_freshLibraryUsesQuietNavigation']
+              },
+              'AC-02': {
+                'status': 'implemented',
+                'evidence': ['src/screens/flashcards/deck-library/DeckLibraryView.tsx', 'src/screens/flashcards/deck-library/DeckLibraryRoot.tsx'],
+                'tests': ['src/screens/flashcards/deck-library/DeckLibraryView.test.tsx']
+              },
+              'AC-03': {
+                'status': 'implemented',
+                'evidence': ['src/screens/flashcards/FlashcardsWorkspace.tsx', 'src/screens/SettingsScreen.tsx'],
+                'tests': ['src/screens/flashcards/FlashcardsWorkspace.backNavigation.test.tsx', 'src/screens/SettingsScreen.templates.test.tsx', 'src/ui/primitives/Tabs.hidden.test.tsx']
+              },
+              'AC-04': {
+                'status': 'implemented',
+                'evidence': ['src/controllers/deckTransferController.ts', 'src/screens/flashcards/DeckTransferDialog.tsx', 'src/screens/flashcards/deck-library/DeckItem.tsx', 'src/screens/flashcards/DeckDetailRoute.tsx'],
+                'tests': ['src/controllers/deckTransferController.test.ts', 'src/screens/flashcards/deck-library/DeckItem.test.tsx']
+              },
+              'AC-05': {
+                'status': 'implemented',
+                'evidence': ['src/components/NavigationSidebar.tsx', 'src/components/MobileAppBar.tsx'],
+                'tests': ['src/components/NavigationSidebar.test.tsx', 'src/components/MobileAppBar.test.tsx', 'tests/scripts/test_mobile_navigation_contract.py', 'AndroidSmokeTest#a1_freshLibraryUsesQuietNavigation']
+              },
+              'AC-06': {
+                'status': 'implemented',
+                'evidence': ['src/App.tsx', 'src/navigation/studyGuidesNavigation.ts'],
+                'tests': ['src/navigation/studyGuidesNavigation.test.ts']
+              },
+              'AC-07': {
+                'status': 'implemented',
+                'evidence': ['scripts/route-smoke-contract.json', 'scripts/verify-route-smoke-contract.mjs', 'docs/development/mobile-flashcards-navigation-cleanup.md', 'docs/architecture/ui.md'],
+                'tests': ['tests/scripts/test_route_smoke_contract.py', 'tests/scripts/test_mobile_navigation_contract.py', 'tests/webdriver/ui_platform_smoke.py', 'src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt']
+              }
+            },
+            'validation': {
+              'static': {'status': 'passed', 'sha': sha},
+              'fast': {'status': 'passed', 'sha': sha},
+              'full': {'status': 'passed', 'sha': sha},
+              'android': {'status': 'passed', 'sha': sha}
+            },
+            'manualAcceptance': {
+              'compactAndroid': {
+                'status': 'humanRequired',
+                'evidence': ['Verify fresh-install density, direct Documents navigation, contextual import/export dialogs, and the upper-right Settings gear on Android.']
+              },
+              'desktopNavigation': {
+                'status': 'humanRequired',
+                'evidence': ['Verify desktop spacing, contextual deck actions, Settings Card templates, and Study Guides viewer reset behavior.']
+              }
+            },
+            'knownFailures': []
+          }
+          body = f'''## Current state
+
+- Current phase: ready for human acceptance
+- Implemented acceptance criteria: 7/7
+- Exact qualified head: `{sha}`
+- Linux full qualification: passed
+- Android Emulator qualification: passed
+- Current blocker: human visual acceptance only
+
+## Goal
+
+Reduce fresh-install and compact-navigation clutter while preserving deck, transfer, template, and study-guide functionality through clearer contextual entry points.
+
+## Acceptance criteria
+
+- **AC-01:** A fresh library shows one quiet empty-deck call to action; empty folder/unsorted placeholders and zero-count controls are absent.
+- **AC-02:** New folder is an icon-only plus beside Folders; Select all sits beside a Collapse all / Expand all toggle and appears only when relevant.
+- **AC-03:** Flashcards exposes only Decks and Search/Filter; Card templates moves into Settings.
+- **AC-04:** Deck import is a top-corner Decks action; single and selected deck export use a save icon and contextual dialogs.
+- **AC-05:** Compact bottom navigation contains Flashcards, Study Guides, Documents, and Analytics; Settings is an upper-right gear.
+- **AC-06:** Selecting Study Guides while a guide is open returns to the Study Guides library.
+- **AC-07:** Legacy route/checkpoint compatibility and affected desktop/Android/accessibility behavior remain tested.
+
+## Implemented
+
+- Replaced zero-content library chrome with one actionable empty state.
+- Made folder and selection controls conditional and compact.
+- Reduced Flashcards to Decks and Search/Filter.
+- Moved Card templates into Settings without changing template storage contracts.
+- Replaced the Transfer workspace with contextual import and single/multi-deck export dialogs.
+- Added direct Documents compact navigation and the upper-right Settings gear.
+- Made re-selecting Study Guides reset an open viewer to the library.
+- Refactored portable deck-file orchestration behind `DeckTransferController`.
+- Updated unit, route-contract, native WebDriver, and Android Emulator coverage.
+
+## Validation
+
+Both `./scripts/check.sh` and `./scripts/android-test.sh --emulator` passed on exact commit `{sha}` before it was pushed.
+
+## Manual acceptance
+
+- Compact Android fresh-install density and navigation placement.
+- Desktop spacing and contextual actions.
+- Import/export dialogs on a real file workflow.
+- Settings → Card templates.
+- Study Guides viewer reset by re-selecting Study Guides.
+
+## Known limitations and residual risks
+
+No known functional failures. Final visual acceptance remains human-required.
+
+<!-- ostudy-agent-state:start -->
+```json
+{json.dumps(state, indent=2)}
+```
+<!-- ostudy-agent-state:end -->
+
+## Merge
+
+Requested method: **Squash and merge** after human acceptance.
+'''
+          data = json.dumps({'body': body}).encode()
+          request = urllib.request.Request(
+              f'https://api.github.com/repos/{repository}/pulls/86',
+              data=data,
+              method='PATCH',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'Content-Type': 'application/json',
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              pr = json.load(response)
+
+          if pr.get('draft'):
+              mutation = {
+                  'query': 'mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }',
+                  'variables': {'id': pr['node_id']},
+              }
+              request = urllib.request.Request(
+                  'https://api.github.com/graphql',
+                  data=json.dumps(mutation).encode(),
+                  method='POST',
+                  headers={
+                      'Authorization': f'Bearer {token}',
+                      'Accept': 'application/vnd.github+json',
+                      'Content-Type': 'application/json',
+                  },
+              )
+              with urllib.request.urlopen(request) as response:
+                  result = json.load(response)
+              if result.get('errors'):
+                  raise RuntimeError(result['errors'])
+          PY
