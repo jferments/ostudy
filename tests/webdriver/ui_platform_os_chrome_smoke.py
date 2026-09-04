@@ -22,10 +22,8 @@ def assert_no_app_window_controls(session_id: str, label: str) -> None:
           "[role='group'][aria-label='Window controls']"
         )];
         const labeled = [...document.querySelectorAll(
-          "button[aria-label='Maximize window'],"
-          "button[aria-label='Restore window'],"
-          "button[aria-label='Enter full screen'],"
-          "button[aria-label='Exit full screen']"
+          "button[aria-label='Maximize window'], button[aria-label='Restore window'], " +
+          "button[aria-label='Enter full screen'], button[aria-label='Exit full screen']"
         )];
         return {
           groupCount: groups.length,
