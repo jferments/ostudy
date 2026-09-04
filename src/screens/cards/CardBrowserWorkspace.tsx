@@ -743,6 +743,7 @@ export function CardBrowserWorkspace({
               {controlMode === "deck" ? (
                 <div
                   className={ownedClassNames(ownedStyleMaps, "deck-card-search")}
+                  aria-label="Search this deck"
                   data-expanded={deckSearchExpanded || undefined}
                 >
                   {deckSearchExpanded ? (
