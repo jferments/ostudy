@@ -33,8 +33,8 @@ const settings: AppSettings = {
   dailyReviewLimit: 200,
 };
 
-describe("Settings Card templates tool", () => {
-  it("opens template management from Settings without adding another Settings tab", () => {
+describe("Settings Card templates tab", () => {
+  it("exposes template management as a normal Settings tab", () => {
     render(
       <SettingsScreen
         settings={settings}
@@ -50,18 +50,19 @@ describe("Settings Card templates tool", () => {
       "Backup/Sync",
       "AI/LLM",
       "Review/Scheduling",
+      "Card templates",
       "Diagnostics",
     ]);
     expect(screen.queryByLabelText("Card template manager")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Card templates" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Card templates" }));
 
     expect(screen.getByRole("tabpanel", { name: "Card templates" })).toBeTruthy();
     expect(screen.getByLabelText("Card template manager")).toBeTruthy();
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.getAllByRole("tab")).toHaveLength(6);
   });
 
-  it("opens the legacy template destination directly inside Settings", () => {
+  it("opens the legacy template destination directly on the visible Settings tab", () => {
     render(
       <SettingsScreen
         settings={settings}
@@ -73,9 +74,11 @@ describe("Settings Card templates tool", () => {
       />,
     );
 
+    expect(screen.getByRole("tab", { name: "Card templates" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
     expect(screen.getByRole("tabpanel", { name: "Card templates" })).toBeTruthy();
     expect(screen.getByLabelText("Card template manager")).toBeTruthy();
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.getAllByRole("tab")).toHaveLength(6);
   });
-
 });
