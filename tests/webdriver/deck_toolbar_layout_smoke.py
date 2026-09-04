@@ -206,11 +206,14 @@ def create_first_deck(session_id: str) -> None:
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
     ui.wait_for_overlay_inactive(session_id, deadline, "deck toolbar deck creation")
 
-    # Deck creation can legitimately consume most of the bounded mutation phase.
-    # Navigation back to the library is a separate read/navigation phase, so give
-    # it a fresh deadline instead of reusing an almost-expired absolute timestamp.
     navigation_deadline = webdriver.deadline_after()
-    webdriver.click_text_button(session_id, "← All decks", navigation_deadline)
+    back_button = webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//button[contains(normalize-space(.), 'All decks')]",
+        navigation_deadline,
+    )
+    webdriver.click(session_id, back_button)
     webdriver.wait_for_main_heading(session_id, "Flashcards", navigation_deadline)
 
 
