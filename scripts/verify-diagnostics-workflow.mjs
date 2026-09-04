@@ -6,6 +6,10 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workflow = await readFile(join(root, ".github", "workflows", "check.yml"), "utf8");
+const prContractWorkflow = await readFile(
+  join(root, ".github", "workflows", "pr-contract.yml"),
+  "utf8",
+);
 const unifiedRunnerWorkflow = await readFile(
   join(root, ".github", "workflows", "unified-runner-qualification.yml"),
   "utf8",
@@ -54,7 +58,6 @@ for (const required of [
   "write-qualification-result.mjs",
   "render-agent-handoff.mjs",
   "ostudy-qualification-result.json",
-  "ostudy-pr-contract.json",
   "ostudy-agent-handoff.md",
   "Enforce handoff evidence integrity",
   "export-diagnostics.sh",
@@ -64,9 +67,26 @@ for (const required of [
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
 
+for (const required of [
+  "name: PR Contract",
+  "types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft]",
+  "permissions:\n  contents: read",
+  "verify-pr-contract.mjs",
+  "ostudy-pr-contract.json",
+  "Product qualification: **independent; not run by this workflow**",
+]) {
+  if (!prContractWorkflow.includes(required)) failures.push(`pr-contract.yml missing ${required}`);
+}
+
 if (!workflow.includes("cancel-in-progress: true")) {
   failures.push(
     "check.yml must cancel obsolete work within each qualification lane",
+  );
+}
+
+if (!prContractWorkflow.includes("cancel-in-progress: true")) {
+  failures.push(
+    "pr-contract.yml must cancel obsolete metadata validation for the same pull request",
   );
 }
 
@@ -98,12 +118,25 @@ if (!workflow.includes("if: github.event.action != 'closed'")) {
   );
 }
 
-const readyOnlyContract =
-  "if: github.event_name == 'pull_request' && github.event.pull_request.draft == false";
-if (!workflow.includes(readyOnlyContract)) {
-  failures.push(
-    "check.yml must not let compatibility snapshot errors block draft source qualification",
-  );
+for (const forbidden of ["verify-pr-contract.mjs", "ostudy-pr-contract.json"]) {
+  if (workflow.includes(forbidden)) {
+    failures.push(
+      `check.yml must keep pull-request metadata validity outside product qualification: ${forbidden}`,
+    );
+  }
+}
+
+for (const forbidden of [
+  "check-fast.sh",
+  "check.sh",
+  "android-test.sh",
+  "android-emulator-smoke.sh",
+]) {
+  if (prContractWorkflow.includes(forbidden)) {
+    failures.push(
+      `pr-contract.yml must not execute product qualification: ${forbidden}`,
+    );
+  }
 }
 
 for (const forbidden of [
@@ -216,5 +249,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, exact-head JSON and Markdown handoff evidence are retained, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, PR metadata validation is independent from product qualification, exact-head JSON and Markdown handoff evidence are retained, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
 );
