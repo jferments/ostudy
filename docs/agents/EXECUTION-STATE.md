@@ -112,9 +112,11 @@ For compatibility with current validation and handoff tooling, substantial pull 
 
 This snapshot is not a source of truth for the branch head, an Actions run, runner health, or active task ownership. It must never be used as a CI trigger or branch lock. GitHub and exact-SHA workflow evidence remain authoritative.
 
-`scripts/verify-pr-contract.mjs` validates the JSON shape and, for a non-draft pull request, requires exact agreement with the current GitHub base, head, and branch.
+The lightweight `PR Contract` workflow validates the snapshot independently on pull-request open, edit, synchronize, reopen, draft/readiness transitions. Structural defects therefore become visible while a pull request is still draft, but a malformed snapshot never prevents Linux, Android, or other product qualification from running in `Check`.
 
-Draft synchronize events can race the human-readable snapshot update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity without blocking source qualification. Before review readiness, the snapshot must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
+`scripts/verify-pr-contract.mjs` validates the JSON shape. For a non-draft pull request it also requires exact agreement with the current GitHub base, head, and branch. The recorded `currentState` is progress metadata rather than GitHub lifecycle authority: a stale value produces a warning instead of defeating GitHub's actual draft/readiness state.
+
+Draft synchronize events can race the human-readable snapshot update. A draft may therefore temporarily record `unrecorded`, `unqualified`, or an older identity without blocking source qualification, although schema errors such as missing acceptance test arrays, missing canonical validation keys, or unexplained `humanRequired` entries fail the independent contract check immediately. Before review readiness, the snapshot identity must be reconciled to the current exact head. A passed validation entry always records the exact SHA it tested.
 
 Acceptance statuses are:
 
@@ -170,7 +172,9 @@ humanDecision
 
 Drafts may leave the four narrative arrays empty while facts are still being established. Before review readiness, `nonGoals`, `compatibilityNotes`, `rollbackNotes`, and `residualRisks` each contain at least one explicit entry; `None` is acceptable only when written as a checked, explanatory statement rather than omitted state.
 
-A pull request may be marked ready only when every acceptance criterion has a terminal state, static/fast/full passed on the current exact head, every additional platform/manual entry is terminal and explained, the four readiness narrative arrays are populated, `knownFailures` is empty, and remaining manual-only boundaries are explicit.
+A pull-request snapshot is ready for review when every acceptance criterion has a terminal state, every required manual entry is terminal and explained, the four readiness narrative arrays are populated, `knownFailures` is empty, and remaining manual-only boundaries are explicit. Validation entries may still be `pending` or an explained `notRun` at the moment review readiness triggers product CI. They must not claim success in advance merely to permit the workflow that will determine success.
+
+Automated merge qualification remains a separate completion requirement. Static/fast/full and any required platform checks must ultimately pass against the exact current head before the change is described as complete or merged under the normal policy. The authoritative evidence for that fact is the `Check` workflow result, not the PR-body snapshot.
 
 A known failure is recorded as an object with:
 
@@ -188,9 +192,11 @@ The classification vocabulary is defined in [Failure triage](FAILURE-TRIAGE.md).
 
 ## Evidence-derived handoff
 
-Every `Check` run writes `ostudy-qualification-result.json`. Non-draft pull-request runs also write `ostudy-pr-contract.json`; draft handoffs remain qualification-only so compatibility snapshot errors cannot block fast source feedback. `scripts/render-agent-handoff.mjs` combines the available validated records with the exact Git diff into `ostudy-agent-handoff.md`.
+Every `Check` run writes `ostudy-qualification-result.json` and renders a qualification-derived handoff from the exact tested source tree. `Check` deliberately does not consume PR-contract validity or a PR-contract artifact, so invalid pull-request metadata cannot abort product qualification or generate a second handoff-integrity failure for the same metadata defect.
 
-The renderer includes:
+The separate `PR Contract` workflow writes contract diagnostics to its own job summary. `scripts/render-agent-handoff.mjs` can still combine a validated contract artifact with qualification evidence when an explicit caller supplies one, but that combination is no longer part of the product qualification dependency chain.
+
+The renderer includes, when corresponding evidence is available:
 
 - base, branch, PR state, and exact published/tested head;
 - acceptance status and implementation/test evidence;
@@ -202,7 +208,7 @@ The renderer includes:
 - requested merge method;
 - evidence-integrity warnings or errors.
 
-It never silently combines mismatched SHAs. A qualification/PR-head mismatch produces an artifact marked `invalid` and a nonzero exit. When a draft snapshot is supplied, its drift remains visible as a warning while the actual GitHub head remains the publication authority.
+It never silently combines mismatched SHAs. A qualification/PR-head mismatch still produces an artifact marked `invalid` and a nonzero exit when those records are explicitly combined. Qualification-only handoffs remain valid without a PR-contract artifact because GitHub Actions evidence is independently authoritative for the tested source SHA.
 
 The generated handoff is the factual starting point for the final response and PR review record. It does not replace human review or allow an agent to claim manual behavior it did not exercise.
 

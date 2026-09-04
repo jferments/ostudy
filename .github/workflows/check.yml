@@ -32,6 +32,8 @@ permissions:
 
 # Source-writing maintenance is deliberately isolated in
 # maintain-generated-candidates.yml and is never performed by Check.
+# Pull-request metadata is validated independently by pr-contract.yml so a
+# malformed compatibility ledger can never block source qualification.
 # Draft source updates stay fast. Ready pull requests and explicit manual
 # dispatches are the only paths to terminal full qualification.
 
@@ -87,14 +89,6 @@ jobs:
           gate="$(node ./scripts/select-check-gate.mjs)"
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
           echo "Selected qualification gate: $gate"
-
-      - name: Verify pull-request execution contract
-        id: pr_contract
-        if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
-        run: |
-          node ./scripts/verify-pr-contract.mjs \
-            --event "$GITHUB_EVENT_PATH" \
-            --output "$RUNNER_TEMP/ostudy-pr-contract.json"
 
       - name: Run static qualification first
         id: static
@@ -158,7 +152,6 @@ jobs:
         env:
           GATE: ${{ steps.gate.outputs.gate || 'unknown' }}
           JOB_STATUS: ${{ job.status }}
-          PR_CONTRACT_STATUS: ${{ steps.pr_contract.outcome }}
           STATIC_STATUS: ${{ steps.static.outcome }}
           PREFLIGHT_STATUS: ${{ steps.preflight.outcome }}
           DEPENDENCY_STATUS: ${{ steps.dependency_graph.outcome }}
@@ -171,7 +164,6 @@ jobs:
             --output "$RUNNER_TEMP/ostudy-qualification-result.json" \
             --status "$JOB_STATUS" \
             --gate "$GATE" \
-            --step "pr-contract=${PR_CONTRACT_STATUS:-skipped}" \
             --step "static=${STATIC_STATUS:-skipped}" \
             --step "preflight=${PREFLIGHT_STATUS:-skipped}" \
             --step "dependency-graph=${DEPENDENCY_STATUS:-skipped}" \
@@ -192,16 +184,12 @@ jobs:
         id: handoff
         if: always()
         run: |
-          arguments=(
-            --qualification "$RUNNER_TEMP/ostudy-qualification-result.json"
-            --repository-root "$GITHUB_WORKSPACE"
-            --output "$RUNNER_TEMP/ostudy-agent-handoff.md"
-          )
-          if [[ -f "$RUNNER_TEMP/ostudy-pr-contract.json" ]]; then
-            arguments+=(--contract "$RUNNER_TEMP/ostudy-pr-contract.json")
-          fi
           status=0
-          node ./scripts/render-agent-handoff.mjs "${arguments[@]}" || status=$?
+          node ./scripts/render-agent-handoff.mjs \
+            --qualification "$RUNNER_TEMP/ostudy-qualification-result.json" \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/ostudy-agent-handoff.md" \
+            || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           if [[ -f "$RUNNER_TEMP/ostudy-agent-handoff.md" ]]; then
             cat "$RUNNER_TEMP/ostudy-agent-handoff.md" >> "$GITHUB_STEP_SUMMARY"
@@ -234,7 +222,6 @@ jobs:
           name: ostudy-diagnostics-${{ env.QUALIFIED_SHA }}
           path: |
             ${{ runner.temp }}/ostudy-qualification-result.json
-            ${{ runner.temp }}/ostudy-pr-contract.json
             ${{ runner.temp }}/ostudy-agent-handoff.md
             ${{ runner.temp }}/ostudy-failure-summary.md
             ${{ runner.temp }}/ostudy-diagnostics/**
@@ -280,5 +267,5 @@ jobs:
       - name: Enforce handoff evidence integrity
         if: always() && steps.handoff.outputs.status != '0'
         run: |
-          echo "Evidence-derived handoff integrity failed; see the uploaded handoff artifact." >&2
+          echo "Evidence-derived qualification handoff integrity failed; see the uploaded handoff artifact." >&2
           exit 1
