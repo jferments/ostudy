@@ -64,6 +64,7 @@ export function SettingsScreen({
   showToast,
 }: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialSection);
+  const [templatesMounted, setTemplatesMounted] = useState(initialSection === "templates");
   const [draft, setDraft] = useState(settings);
   const [savedBaseline, setSavedBaseline] = useState(settings);
   const [templateDirty, setTemplateDirty] = useState(false);
@@ -77,6 +78,10 @@ export function SettingsScreen({
   useEffect(() => {
     setActiveTab(initialSection);
   }, [initialSection]);
+
+  useEffect(() => {
+    if (activeTab === "templates") setTemplatesMounted(true);
+  }, [activeTab]);
 
   useEffect(() => {
     setDraft(settings);
@@ -177,12 +182,12 @@ export function SettingsScreen({
     {
       value: "templates",
       label: "Card templates",
-      panel: (
+      panel: templatesMounted ? (
         <TemplatesScreen
           onDirtyChange={setTemplateDirty}
           showToast={showToast}
         />
-      ),
+      ) : null,
     },
     {
       value: "diagnostics",
