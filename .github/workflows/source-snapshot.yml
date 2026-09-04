@@ -40,6 +40,7 @@ jobs:
             src/screens/flashcards/DeckLibraryWorkspace.test.tsx
             src/navigation/flashcardsRoutes.test.ts
             scripts/route-smoke-contract.json
+            scripts/verify-route-smoke-contract.mjs
             tests/scripts/test_route_smoke_contract.py
             docs/architecture/ui.md
             docs/user-guide/getting-started.md
