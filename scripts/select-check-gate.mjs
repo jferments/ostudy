@@ -38,7 +38,8 @@ let gate;
 if (eventName === "workflow_dispatch") {
   gate = dispatchGate;
 } else if (eventName === "pull_request" && pullRequestDraft) {
-  gate = draftRequestsFullQualification() ? "all-full" : "fast";
+  gate = "fast";
+  if (draftRequestsFullQualification()) gate = "all-full";
 } else {
   gate = "all-full";
 }
