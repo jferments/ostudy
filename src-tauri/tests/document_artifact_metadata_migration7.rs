@@ -98,7 +98,7 @@ fn insert_document_plan(
 }
 
 #[test]
-fn migration_repairs_only_exact_generated_values_and_preserves_source_identity() {
+fn migration_backfills_metadata_and_preserves_source_identity_for_followup_repairs() {
     let connection = fixture_connection();
     let generated_document = "1".repeat(32);
     let generated_plan = "2".repeat(32);
@@ -167,13 +167,24 @@ fn migration_repairs_only_exact_generated_values_and_preserves_source_identity()
         .1
         .starts_with("Review Distributive shock physiology"));
 
-    let user_title: String = connection
+    // Migration 7 is already checksum-published in development databases. Its
+    // historical source-title branch therefore remains immutable. The versioned
+    // data repair that follows migration 7 uses the preserved citation title to
+    // restore this user-owned display title and clear generated-value ownership.
+    let migrated_user_title: String = connection
         .query_row(
             "SELECT title FROM documents WHERE id = ?1",
             [user_document.as_str()],
             |row| row.get(0),
         )
-        .expect("user title should load");
+        .expect("migrated user title should load");
+    let preserved_user_source_title: String = connection
+        .query_row(
+            "SELECT source_title FROM source_citation_snapshots WHERE source_document_id = ?1",
+            [user_document.as_str()],
+            |row| row.get(0),
+        )
+        .expect("preserved source title should load");
     let user_deck_values: (String, String) = connection
         .query_row(
             "SELECT name, description FROM decks WHERE id = ?1",
@@ -181,7 +192,8 @@ fn migration_repairs_only_exact_generated_values_and_preserves_source_identity()
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .expect("user deck should load");
-    assert_eq!(user_title, "My vasopressor notes");
+    assert_eq!(migrated_user_title, "Vasopressor pharmacology");
+    assert_eq!(preserved_user_source_title, "My vasopressor notes");
     assert_eq!(user_deck_values.0, "My shock review");
     assert_eq!(user_deck_values.1, "My bedside notes");
 
