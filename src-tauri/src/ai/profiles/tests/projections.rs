@@ -14,6 +14,7 @@ fn stored(enabled: bool, model_id: &str, auth_mode: AuthMode) -> StoredProfile {
         provider_kind: ProviderKind::LlamaCpp,
         base_url: "http://127.0.0.1:8080/v1/".to_string(),
         model_id: model_id.to_string(),
+        reasoning_effort: "low".to_string(),
         auth_mode,
         enabled,
         allow_insecure_http: false,

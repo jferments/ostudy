@@ -23,24 +23,34 @@ def png_dimensions(path: Path) -> tuple[int, int]:
 
 
 class ApplicationIconContractTests(unittest.TestCase):
-    def test_desktop_embeds_the_actual_repository_mascot(self) -> None:
+    def test_linux_creates_the_window_with_the_actual_mascot_before_mapping(self) -> None:
         source = ROOT / "assets/images/racoon mascot (logo).png"
         desktop_icon = TAURI / "icons/icon.png"
         startup = (TAURI / "src/startup.rs").read_text(encoding="utf-8")
         config = json.loads((TAURI / "tauri.conf.json").read_text(encoding="utf-8"))
+        linux_config = json.loads(
+            (TAURI / "tauri.linux.conf.json").read_text(encoding="utf-8")
+        )
 
         width, height = png_dimensions(source)
         self.assertEqual(width, height)
         self.assertGreaterEqual(width, 512)
         self.assertEqual(desktop_icon.read_bytes(), source.read_bytes())
         self.assertIn('tauri::include_image!("./icons/icon.png")', startup)
+        self.assertIn("create_linux_main_window(app)?", startup)
+        self.assertIn("WebviewWindowBuilder::from_config", startup)
+        self.assertIn(".icon(MAIN_WINDOW_ICON.clone())?", startup)
         self.assertIn("window.set_icon(MAIN_WINDOW_ICON.clone())", startup)
-        self.assertNotIn("default_window_icon()", startup)
+        self.assertIn("main_window_icon_applied", startup)
         self.assertTrue(config["app"]["enableGTKAppId"])
         self.assertEqual(config["identifier"], "io.github.jferments.ostudy")
         self.assertEqual(config["bundle"]["icon"][0], "icons/icon.png")
-        self.assertNotIn("icons/32x32.png", config["bundle"]["icon"])
-        self.assertNotIn("icons/128x128.png", config["bundle"]["icon"])
+
+        windows = linux_config["app"]["windows"]
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["label"], "main")
+        self.assertFalse(windows[0]["create"])
+        self.assertEqual(windows[0]["url"], "index.html")
 
     def test_android_launcher_uses_the_same_actual_mascot(self) -> None:
         source = ROOT / "assets/images/racoon mascot (logo).png"

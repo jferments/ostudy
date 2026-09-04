@@ -15,6 +15,7 @@ fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
             _ => "https://api.deepseek.com/".to_string(),
         },
         model_id: model_id.to_string(),
+        reasoning_effort: "low".to_string(),
         auth_mode: if matches!(
             provider_kind,
             ProviderKind::Deepseek | ProviderKind::Openrouter

@@ -59,6 +59,7 @@ mod tests {
             provider_kind: crate::ai::catalog::ProviderKind::Deepseek,
             base_url: "https://api.deepseek.com/".to_string(),
             model_id: "deepseek-v4-flash".to_string(),
+            reasoning_effort: "low".to_string(),
             auth_mode: crate::ai::catalog::AuthMode::Bearer,
             enabled: true,
             allow_insecure_http: false,

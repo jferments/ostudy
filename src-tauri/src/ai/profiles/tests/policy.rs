@@ -22,6 +22,7 @@ fn stored_profile(
         provider_kind: ProviderKind::LlamaCpp,
         base_url: base_url.to_string(),
         model_id: "model".to_string(),
+        reasoning_effort: "low".to_string(),
         auth_mode,
         enabled: true,
         allow_insecure_http: false,

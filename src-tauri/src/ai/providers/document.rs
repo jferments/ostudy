@@ -123,6 +123,7 @@ mod tests {
             provider_kind: kind,
             base_url: base_url.to_string(),
             model_id: model_id.to_string(),
+            reasoning_effort: "low".to_string(),
             auth_mode: if kind == ProviderKind::LlamaCpp {
                 AuthMode::None
             } else {

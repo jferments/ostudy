@@ -43,6 +43,9 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
 }
 
 fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "linux")]
+    create_linux_main_window(app)?;
+
     let app_data_directory = app.path().app_data_dir().map_err(|error| {
         io::Error::other(format!(
             "Could not resolve the application data directory: {error}"
@@ -129,6 +132,24 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn create_linux_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if app.get_webview_window("main").is_some() {
+        return Ok(());
+    }
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")
+        .ok_or_else(|| io::Error::other("The Linux main-window configuration is missing."))?;
+    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+        .icon(MAIN_WINDOW_ICON.clone())?
+        .build()?;
+    Ok(())
+}
+
 #[cfg(desktop)]
 fn apply_main_window_icon(app: &tauri::App) {
     let Some(window) = app.get_webview_window("main") else {
@@ -147,7 +168,14 @@ fn apply_main_window_icon(app: &tauri::App) {
             "The desktop environment rejected the embedded application icon.",
             serde_json::json!({ "window": "main", "error": error.to_string() }),
         );
+        return;
     }
+    logging::info_target(
+        "app.startup",
+        "main_window_icon_applied",
+        "The raccoon mascot icon was applied to the main desktop window.",
+        serde_json::json!({ "window": "main", "source": "embedded_raccoon_mascot" }),
+    );
 }
 
 fn open_database_with_pre_public_adoption(
