@@ -24,25 +24,21 @@ jobs:
       - name: Verify exact checkout
         run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
 
-      - name: Upload selected sources
+      - name: Package repository source
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=target \
+            --exclude=src-tauri/target \
+            --exclude=artifacts \
+            --exclude=.pnpm-store \
+            -czf "$RUNNER_TEMP/ostudy-source-snapshot.tar.gz" .
+
+      - name: Upload source snapshot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-source-snapshot-${{ github.event.pull_request.head.sha }}
-          path: |
-            tests/webdriver/ui_platform_smoke.py
-            src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt
-            src/controllers/useAppController.ts
-            src/controllers/useAppController.checkpoint.test.tsx
-            src/App.tsx
-            src/App.test.tsx
-            src/components/NavigationSidebar.module.css
-            src/screens/SettingsScreen.test.tsx
-            src/screens/flashcards/DeckLibraryWorkspace.test.tsx
-            src/navigation/flashcardsRoutes.test.ts
-            scripts/route-smoke-contract.json
-            scripts/verify-route-smoke-contract.mjs
-            tests/scripts/test_route_smoke_contract.py
-            docs/architecture/ui.md
-            docs/user-guide/getting-started.md
-          if-no-files-found: warn
+          path: ${{ runner.temp }}/ostudy-source-snapshot.tar.gz
+          if-no-files-found: error
           retention-days: 1
