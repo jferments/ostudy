@@ -5,11 +5,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [viewCss, folderCss, deckCss, feedbackCss, deckSource, folderSource, reorderSource, tauriConfigText] = await Promise.all([
+const [viewCss, folderCss, deckCss, feedbackCss, rootSource, deckSource, folderSource, reorderSource, tauriConfigText] = await Promise.all([
   readFile(join(root, "src/screens/flashcards/deck-library/DeckLibraryView.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/FolderSection.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/DeckItem.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/LibraryDragFeedback.module.css"), "utf8"),
+  readFile(join(root, "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/DeckItem.tsx"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/FolderSection.tsx"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/useDeckLibraryReorder.ts"), "utf8"),
@@ -40,6 +41,17 @@ expectRule(
 );
 expectRule(
   css,
+  ".importAction svg",
+  ["stroke-width: 2.15"],
+  "prominent import icon",
+);
+expectContains(
+  rootSource,
+  'icon="folder-open"\n            iconSize={24}',
+  "24px contextual import icon",
+);
+expectRule(
+  css,
   ".sectionActions",
   ["display: flex", "justify-content: flex-end"],
   "folder section action group",
@@ -53,8 +65,15 @@ expectNestedRule(
   css,
   "@container deck-library (max-width: 620px)",
   ".toolbarActions",
-  ["width: 100%", "justify-content: stretch"],
-  "compact toolbar wrapping",
+  ["width: auto", "justify-content: flex-end"],
+  "compact intrinsic toolbar actions",
+);
+expectNestedRule(
+  css,
+  "@container deck-library (max-width: 620px)",
+  ".toolbarActions > button",
+  ["flex: 0 0 auto"],
+  "compact intrinsic action button sizing",
 );
 expectNestedRule(
   css,
@@ -112,7 +131,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Deck layout, row pointer surfaces, semantic drag feedback, keyboard reorder controls, and coarse-pointer targets are consistent.",
+  "OK   Deck layout, intrinsic compact toolbar actions, prominent import affordance, row pointer surfaces, semantic drag feedback, keyboard reorder controls, and coarse-pointer targets are consistent.",
 );
 
 function expectContains(source, expected, label) {
