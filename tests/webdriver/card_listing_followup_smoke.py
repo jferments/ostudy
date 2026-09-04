@@ -211,7 +211,7 @@ def assert_search_browser(
     deck_measurement: dict[str, Any],
     deadline: float,
 ) -> None:
-    search_tab = ui.find_workspace_tab(session_id, "Search", deadline)
+    search_tab = ui.find_workspace_tab(session_id, "Search/Filter", deadline)
     webdriver.click(session_id, search_tab)
     webdriver.find_element(
         session_id,
