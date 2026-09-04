@@ -987,15 +987,26 @@ fn collect_plain_text(value: &Value, output: &mut String) {
         output.push_str(if checked { "[x] " } else { "[ ] " });
     }
 
-    if let Some(content) = object.get("content").and_then(Value::as_array) {
-        for (index, child) in content.iter().enumerate() {
-            collect_plain_text(child, output);
-            if matches!(node_type, "tableRow")
-                && index + 1 < content.len()
-                && !output.ends_with('\t')
-            {
-                output.push('\t');
+    if node_type == "tableRow" {
+        if let Some(content) = object.get("content").and_then(Value::as_array) {
+            for (index, cell) in content.iter().enumerate() {
+                let mut cell_text = String::new();
+                collect_plain_text(cell, &mut cell_text);
+                output.push_str(cell_text.trim_end_matches('\n'));
+                if index + 1 < content.len() {
+                    output.push('\t');
+                }
             }
+        }
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        return;
+    }
+
+    if let Some(content) = object.get("content").and_then(Value::as_array) {
+        for child in content {
+            collect_plain_text(child, output);
         }
     }
 
@@ -1007,7 +1018,6 @@ fn collect_plain_text(value: &Value, output: &mut String) {
             | "listItem"
             | "taskItem"
             | "codeBlock"
-            | "tableRow"
             | "table"
     ) && !output.ends_with('\n')
     {
