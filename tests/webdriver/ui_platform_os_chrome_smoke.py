@@ -45,8 +45,6 @@ def verify_os_owned_native_window_states(session_id: str, deadline: float) -> No
     ui.open_study_guides(session_id, deadline, "resized desktop viewport")
     route_selector = "[aria-label='Study Guides']"
 
-    # Start from a deterministic ordinary window. W3C Set Window Rect also
-    # leaves any prior maximized/full-screen state before applying the size.
     ui.set_window_rect(session_id, 1280, 800)
     ui.wait_for_layout_mode(session_id, "wide", deadline)
     assert_no_app_window_controls(session_id, "resized desktop viewport")
@@ -112,15 +110,20 @@ def verify_current_deck_detail_header(
             "medium",
             1000,
             800,
-            ["Practice", "Export", "More actions"],
-            [f"Archive {deck_name}", f"Delete {deck_name}"],
+            [
+                "Practice",
+                "Export",
+                f"Delete {deck_name}",
+                f"Archive {deck_name}",
+            ],
+            [],
         ),
         (
             "compact",
             390,
             700,
-            ["Practice", "More actions"],
-            ["Export", f"Archive {deck_name}", f"Delete {deck_name}"],
+            ["Practice", f"Delete {deck_name}", "More actions"],
+            ["Export", f"Archive {deck_name}"],
         ),
     )
 
@@ -259,7 +262,7 @@ def verify_current_deck_detail_header(
             )
             if more_count != 0:
                 raise AssertionError(
-                    "Wide deck detail exposed a one-item More menu instead of promoting Delete."
+                    f"Deck detail {mode} exposed a one-item More menu instead of promoting its sole overflow action."
                 )
             continue
 
