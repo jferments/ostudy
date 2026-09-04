@@ -40,10 +40,14 @@ def verify_persistence_after_restart(
         "//main//*[@role='tab' and @aria-selected='true'][contains(normalize-space(.), 'Decks')]",
         deadline,
     )
+    # Deck rows are article-owned now. The clickable/openable surface is the
+    # accessible role=button child, not a native <button>. Keep the smoke tied
+    # to the same accessibility contract keyboard users depend on rather than
+    # to the element tag used by an older deck-library implementation.
     deck_button = webdriver.find_element(
         session_id,
         "xpath",
-        f"//main//button[@aria-label={json.dumps(f'Open {deck_name}')}]",
+        f"//main//*[@role='button' and @aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     webdriver.click(session_id, deck_button)
