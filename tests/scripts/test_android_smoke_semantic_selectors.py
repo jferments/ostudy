@@ -49,10 +49,14 @@ class AndroidSmokeSemanticSelectorTests(unittest.TestCase):
         end = source.index("\n    @Test\n    fun d_reloadsIntoInterruptedPracticeSession()", start)
         scenario = source[start:end]
         open_selector = (
-            'button[aria-label=\\"Open Android Emulator Smoke Deck\\"]'
+            '[role=\\"button\\"][aria-label=\\"Open Android Emulator Smoke Deck\\"]'
         )
 
         self.assertNotIn("button.querySelector('strong')", scenario)
+        self.assertNotIn(
+            'button[aria-label=\\"Open Android Emulator Smoke Deck\\"]',
+            scenario,
+        )
         self.assertEqual(3, scenario.count(open_selector))
         self.assertIn(
             "document.querySelector('main "
