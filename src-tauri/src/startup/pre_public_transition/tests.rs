@@ -289,9 +289,10 @@ fn historical_zero_marker_preserves_library_and_analytics() {
             assert_eq!(migrations[1].name, "canonical_documents");
 
             let repairs = read_ledger(connection, "data_repairs").unwrap();
-            assert_eq!(repairs.len(), 2);
+            assert_eq!(repairs.len(), 3);
             assert_eq!(repairs[0].name, "canonical_semantic_chunk_hashes");
             assert_eq!(repairs[1].name, "canonical_block_hashes");
+            assert_eq!(repairs[2].name, "document_artifact_user_edits");
 
             assert!(column_exists(
                 connection,
