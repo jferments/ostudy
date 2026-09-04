@@ -353,7 +353,9 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
             })
             .map_err(|error| format!("Could not read document artifact metadata rows: {error}"))?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("Could not decode document artifact metadata rows: {error}"))?;
+            .map_err(|error| {
+                format!("Could not decode document artifact metadata rows: {error}")
+            })?;
         rows
     };
 
