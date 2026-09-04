@@ -57,6 +57,8 @@ export function DeckLibraryRoot({
         <div className={styles.toolbarActions}>
           <IconButton
             icon="folder-open"
+            iconSize={24}
+            className={styles.importAction}
             label="Import deck from file"
             tooltip="Import deck from file"
             disabled={controller.isLoading || controller.isMutating}
