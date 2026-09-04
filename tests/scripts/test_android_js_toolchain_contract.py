@@ -26,6 +26,24 @@ class AndroidJavaScriptToolchainContractTests(unittest.TestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertIn('source "$SCRIPT_DIR/android-env.sh"', source, relative)
 
+    def test_emulator_entrypoint_owns_instrumentation_postbuild(self) -> None:
+        entrypoint = (ROOT / "scripts" / "android-emulator-smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        setup = (
+            ROOT / "scripts" / "lib" / "android-emulator-smoke-setup.bash"
+        ).read_text(encoding="utf-8")
+        self.assertIn("android_instrumentation_postbuild()", entrypoint)
+        self.assertIn(
+            "bash ./scripts/android-gradle-postbuild.sh instrumentation-package",
+            entrypoint,
+        )
+        self.assertIn("android_instrumentation_postbuild", setup)
+        self.assertNotIn(
+            "bash ./scripts/android-gradle-postbuild.sh instrumentation-package",
+            setup,
+        )
+
     def test_android_instrumentation_has_a_hard_timeout_and_cleanup(self) -> None:
         source = (ROOT / "scripts" / "android-emulator-smoke.sh").read_text(
             encoding="utf-8"

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
@@ -8,6 +8,10 @@ import type { SelectedPracticeRequest } from "../../ipc/practice";
 import type { TransientDeckSelectionEntry } from "../../navigation/flashcardsRoutes";
 import { PerformanceProfiler } from "../../testing/PerformanceProfiler";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import {
+  DeckTransferDialog,
+  type DeckTransferDialogRequest,
+} from "./DeckTransferDialog";
 import { DeckDetailRoute } from "./DeckDetailRoute";
 import { DeckLibraryRoot } from "./deck-library/DeckLibraryRoot";
 import { useDeckLibraryController } from "./deck-library/useDeckLibraryController";
@@ -28,7 +32,8 @@ interface DeckLibraryWorkspaceProps {
     returnDeckSelection?: readonly TransientDeckSelectionEntry[],
   ) => void;
   onReturnToLibrary: () => void | Promise<void>;
-  onManageTemplates: () => void | Promise<void>;
+  /** Compatibility-only input for older test harnesses; templates now live in Settings. */
+  onManageTemplates?: () => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
@@ -47,6 +52,8 @@ export function DeckLibraryWorkspace({
   showToast,
 }: DeckLibraryWorkspaceProps) {
   const controllerSelectionRef = useRef<TransientDeckSelectionEntry[]>([]);
+  const [transferRequest, setTransferRequest] =
+    useState<DeckTransferDialogRequest | null>(null);
   const confirm = useConfirm();
   const controller = useDeckLibraryController({
     decks,
@@ -74,23 +81,39 @@ export function DeckLibraryWorkspace({
   }
 
   return (
-    <PerformanceProfiler id="deck-library">
-      <DeckLibraryRoot
-        controller={controller}
-        onPracticeDeck={onPracticeDeck}
-        decks={decks}
-        practiceShuffle={settings.practiceShuffle}
-        onPracticeSelected={(request) =>
-          onPracticeSelected(
-            request,
-            controller.selectionAnalysis.decks.map((deck) => ({
-              id: deck.id,
-              revision: deck.revision,
-            })),
-          )
-        }
-      />
-    </PerformanceProfiler>
+    <>
+      <PerformanceProfiler id="deck-library">
+        <DeckLibraryRoot
+          controller={controller}
+          onPracticeDeck={onPracticeDeck}
+          decks={decks}
+          practiceShuffle={settings.practiceShuffle}
+          onPracticeSelected={(request) =>
+            onPracticeSelected(
+              request,
+              controller.selectionAnalysis.decks.map((deck) => ({
+                id: deck.id,
+                revision: deck.revision,
+              })),
+            )
+          }
+          onImportDeck={() => setTransferRequest({ kind: "import" })}
+          onExportDeck={(deck) => setTransferRequest({ kind: "export", decks: [deck] })}
+          onExportSelected={(selectedDecks) =>
+            setTransferRequest({ kind: "export", decks: selectedDecks })
+          }
+        />
+      </PerformanceProfiler>
+      {transferRequest ? (
+        <DeckTransferDialog
+          request={transferRequest}
+          refreshDecks={refreshDecks}
+          onImportedDeck={(outcome) => onOpenDeck(outcome.deckId)}
+          onClose={() => setTransferRequest(null)}
+          showToast={showToast}
+        />
+      ) : null}
+    </>
   );
 }
 

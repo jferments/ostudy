@@ -93,38 +93,16 @@ def verify_current_deck_detail_header(
     deck_description: str,
 ) -> None:
     """Verify the current vertical deck header and responsive action policy."""
+    expected_direct = [
+        "Practice",
+        f"Export {deck_name}",
+        f"Delete {deck_name}",
+        f"Archive {deck_name}",
+    ]
     placements = (
-        (
-            "wide",
-            1440,
-            900,
-            [
-                "Practice",
-                "Export",
-                f"Archive {deck_name}",
-                f"Delete {deck_name}",
-            ],
-            [],
-        ),
-        (
-            "medium",
-            1000,
-            800,
-            [
-                "Practice",
-                "Export",
-                f"Delete {deck_name}",
-                f"Archive {deck_name}",
-            ],
-            [],
-        ),
-        (
-            "compact",
-            390,
-            700,
-            ["Practice", f"Delete {deck_name}", "More actions"],
-            ["Export", f"Archive {deck_name}"],
-        ),
+        ("wide", 1440, 900, expected_direct, []),
+        ("medium", 1000, 800, expected_direct, []),
+        ("compact", 390, 700, expected_direct, []),
     )
 
     for mode, width, height, expected_direct, expected_overflow in placements:

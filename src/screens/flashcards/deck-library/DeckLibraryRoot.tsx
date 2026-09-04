@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import { Icon } from "../../../ui/icons/Icon";
+import { IconButton } from "../../../ui/icons/IconButton";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
@@ -24,6 +25,9 @@ interface DeckLibraryRootProps {
   decks: readonly DeckSummary[];
   practiceShuffle: boolean;
   onPracticeSelected(request: SelectedPracticeRequest): void | Promise<void>;
+  onImportDeck(): void;
+  onExportDeck(deck: DeckSummary): void;
+  onExportSelected(decks: DeckSummary[]): void;
 }
 
 export function DeckLibraryRoot({
@@ -32,38 +36,39 @@ export function DeckLibraryRoot({
   decks,
   practiceShuffle,
   onPracticeSelected,
+  onImportDeck,
+  onExportDeck,
+  onExportSelected,
 }: DeckLibraryRootProps) {
   const guidance = selectionGuidance(controller);
   const practiceValidation = practiceSelectionValidation(controller.selectionAnalysis);
   const selectionUnavailable =
     controller.selectionAnalysis.staleIds.length > 0 ||
     controller.selectionAnalysis.missingIds.length > 0;
-  const allCurrentScopeSelected =
-    controller.currentScopeDeckCount > 0 &&
-    controller.selectedIds.size === controller.currentScopeDeckCount;
-  const selectionLabel = allCurrentScopeSelected
-    ? `Deselect all (${controller.currentScopeDeckCount})`
-    : `Select all (${controller.currentScopeDeckCount})`;
+  const hasAnyDecks = Boolean(
+    controller.snapshot &&
+      (controller.snapshot.activeDecks.length > 0 ||
+        controller.snapshot.archivedDecks.length > 0),
+  );
 
   return (
     <div className={styles.root} aria-busy={controller.isLoading || controller.isMutating}>
       <div className={styles.toolbar} aria-label="Deck library controls">
-        <div className={styles.selectionControls} role="group" aria-label="Deck selection controls">
-          <Button
-            size="small"
-            variant="secondary"
-            disabled={controller.currentScopeDeckCount === 0 || controller.isMutating}
-            onClick={
-              allCurrentScopeSelected ? controller.clearSelection : controller.selectCurrentScope
-            }
-          >
-            {selectionLabel}
-          </Button>
-        </div>
         <div className={styles.toolbarActions}>
-          <Button variant="primary" onClick={controller.openDeckCreator}>
-            <Icon name="plus" size={18} /> New deck
-          </Button>
+          <IconButton
+            icon="folder-open"
+            iconSize={24}
+            className={styles.importAction}
+            label="Import deck from file"
+            tooltip="Import deck from file"
+            disabled={controller.isLoading || controller.isMutating}
+            onClick={onImportDeck}
+          />
+          {hasAnyDecks ? (
+            <Button variant="primary" onClick={controller.openDeckCreator}>
+              <Icon name="plus" size={18} /> New deck
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -77,6 +82,19 @@ export function DeckLibraryRoot({
           onSelect: controller.openPracticeSetup,
         }}
         secondaryActions={[
+          {
+            id: "export",
+            label:
+              controller.selectionAnalysis.decks.length === 1
+                ? "Export selected deck"
+                : "Export selected decks",
+            description: "Save selected decks to file",
+            placement: "always-visible",
+            presentation: "icon",
+            icon: "save",
+            disabled: selectionUnavailable || controller.isMutating,
+            onSelect: () => onExportSelected(controller.selectionAnalysis.decks),
+          },
           {
             id: "move",
             label: "Move",
@@ -148,6 +166,7 @@ export function DeckLibraryRoot({
           controller={controller}
           snapshot={controller.snapshot}
           onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
+          onExportDeck={onExportDeck}
         />
       ) : null}
       <DeckLibrarySheets
@@ -188,7 +207,11 @@ function ReadyDeckLibrary({
   controller,
   snapshot,
   onPracticeDeck,
-}: Pick<DeckLibraryRootProps, "controller" | "onPracticeDeck"> & {
+  onExportDeck,
+}: Pick<
+  DeckLibraryRootProps,
+  "controller" | "onPracticeDeck" | "onExportDeck"
+> & {
   snapshot: DeckLibrarySnapshot;
 }) {
   const libraryRef = useRef<HTMLDivElement | null>(null);
@@ -220,6 +243,7 @@ function ReadyDeckLibrary({
         reorder={reorder}
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
+        onExportDeck={onExportDeck}
       />
       <LibraryDragFeedback feedback={pointer.feedback} />
     </>

@@ -12,6 +12,7 @@ interface ArchivedDecksSectionProps {
   reorder: DeckLibraryReorderAdapter;
   onToggle(): void;
   onOpenDeck(deckId: string): void;
+  onExportDeck(deck: DeckSummary): void;
   onDeleteDeck(deckId: string): void;
   selectedIds: ReadonlySet<string>;
   onToggleDeckSelected(deck: DeckSummary): void;
@@ -24,6 +25,7 @@ export function ArchivedDecksSection({
   reorder,
   onToggle,
   onOpenDeck,
+  onExportDeck,
   onDeleteDeck,
   selectedIds,
   onToggleDeckSelected,
@@ -58,6 +60,7 @@ export function ArchivedDecksSection({
               reorder={reorder}
               onOpen={() => onOpenDeck(deck.id)}
               onPractice={() => undefined}
+              onExport={() => onExportDeck(deck)}
               onDelete={() => onDeleteDeck(deck.id)}
               onToggleSelected={() => onToggleDeckSelected(deck)}
             />

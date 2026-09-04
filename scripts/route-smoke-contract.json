@@ -11,7 +11,8 @@
     "flashcardsRoutes": "src/navigation/flashcardsRoutes.ts",
     "flashcardsTabs": "src/screens/flashcards/FlashcardsWorkspace.tsx",
     "nativeSmokeRunner": "scripts/smoke-native.sh",
-    "androidSmokeRunner": "scripts/android-emulator-smoke.sh"
+    "androidSmokeRunner": "scripts/android-emulator-smoke.sh",
+    "mobileAppBar": "src/components/MobileAppBar.tsx"
   },
   "applicationSections": [
     {
@@ -34,7 +35,7 @@
     {
       "id": "templates",
       "role": "compatibility-alias",
-      "target": "decks/templates"
+      "target": "settings"
     },
     {
       "id": "analytics",
@@ -89,6 +90,23 @@
             "assertionFragments": [
               "measurement.get(\"labels\") != EXPECTED_NAVIGATION",
               "Medium navigation did not expose complete labels"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "a1_freshLibraryUsesQuietNavigation"
+            },
+            "entryFragments": [
+              "fun a1_freshLibraryUsesQuietNavigation()",
+              "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards'"
+            ],
+            "assertionFragments": [
+              "No decks have been created yet.",
+              "Import deck from file",
+              "Flashcards|Study Guides|Documents|Analytics"
             ]
           }
         ]
@@ -194,7 +212,7 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "button[data-testid='nav-settings']",
+              "button[data-testid='app-settings']",
               "webdriver.click(session_id, settings)"
             ],
             "assertionFragments": [
@@ -210,10 +228,11 @@
     "primary": [
       "decks",
       "study-guides",
+      "documents",
       "analytics"
     ],
-    "more": [
-      "documents",
+    "more": [],
+    "appBar": [
       "settings"
     ]
   },
@@ -305,26 +324,8 @@
       }
     },
     {
-      "id": "templates",
-      "label": "Templates",
-      "smoke": {
-        "coverage": "presence",
-        "evidence": [
-          {
-            "runner": "native-webdriver",
-            "path": "tests/webdriver/ui_platform_smoke.py",
-            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
-            "presenceFragments": [
-              "for label in (\"Decks\", \"Templates\", \"Search\", \"Import/Export\"):",
-              "find_workspace_tab(session_id, label, deadline)"
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "search",
-      "label": "Search",
+      "label": "Search/Filter",
       "smoke": {
         "coverage": "route-entry",
         "evidence": [
@@ -333,30 +334,12 @@
             "path": "tests/webdriver/ui_platform_smoke.py",
             "entrypoint": "tests/webdriver/ui_platform_smoke.py",
             "entryFragments": [
-              "search = find_workspace_tab(session_id, \"Search\", deadline)",
+              "search = find_workspace_tab(session_id, \"Search/Filter\", deadline)",
               "webdriver.click(session_id, search)"
             ],
             "assertionFragments": [
               "main section[aria-label='Card filters']",
-              "medium Search workspace"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "transfer",
-      "label": "Import/Export",
-      "smoke": {
-        "coverage": "presence",
-        "evidence": [
-          {
-            "runner": "native-webdriver",
-            "path": "tests/webdriver/ui_platform_smoke.py",
-            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
-            "presenceFragments": [
-              "for label in (\"Decks\", \"Templates\", \"Search\", \"Import/Export\"):",
-              "find_workspace_tab(session_id, label, deadline)"
+              "medium Search/Filter workspace"
             ]
           }
         ]

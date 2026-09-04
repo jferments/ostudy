@@ -7,27 +7,35 @@ import { saveSettings, type AppSettings } from "../ipc/settings";
 import { DEFAULT_FONT_PRESET } from "../ui/appearance/appearanceTypes";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
+import { Button } from "../ui/primitives/Button";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
+import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
+import { TemplatesScreen } from "./TemplatesScreen";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
-import { Button } from "../ui/primitives/Button";
-import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 
 const ownedStyleMaps = sharedClassMaps;
 
+type SettingsTab =
+  | "storage"
+  | "appearance"
+  | "ai"
+  | "review"
+  | "templates"
+  | "diagnostics";
+
 interface SettingsScreenProps {
   settings: AppSettings;
+  initialSection?: SettingsTab;
   onPreviewSettings: (settings: AppSettings) => void;
   onSavedSettings: (settings: AppSettings) => void;
   onDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
-
-type SettingsTab = "storage" | "appearance" | "ai" | "review" | "diagnostics";
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
@@ -49,20 +57,31 @@ const DEFAULTS: AppSettings = {
 
 export function SettingsScreen({
   settings,
+  initialSection = "appearance",
   onPreviewSettings,
   onSavedSettings,
   onDirtyChange,
   showToast,
 }: SettingsScreenProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialSection);
+  const [templatesMounted, setTemplatesMounted] = useState(initialSection === "templates");
   const [draft, setDraft] = useState(settings);
   const [savedBaseline, setSavedBaseline] = useState(settings);
+  const [templateDirty, setTemplateDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const savingRef = useRef(false);
   const aiController = useAiProfilesController(showToast);
   const preferencesDirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
-  const dirty = preferencesDirty || aiController.dirty;
+  const dirty = preferencesDirty || aiController.dirty || templateDirty;
+
+  useEffect(() => {
+    setActiveTab(initialSection);
+  }, [initialSection]);
+
+  useEffect(() => {
+    if (activeTab === "templates") setTemplatesMounted(true);
+  }, [activeTab]);
 
   useEffect(() => {
     setDraft(settings);
@@ -151,7 +170,24 @@ export function SettingsScreen({
     {
       value: "review",
       label: "Review/Scheduling",
-      panel: <ReviewSchedulingSettings draft={draft} update={update} />,
+      panel: (
+        <ReviewSchedulingSettings
+          draft={draft}
+          update={update}
+          onRestoreDefaults={restoreCurrentDefaults}
+          restoreDisabled={isSaving}
+        />
+      ),
+    },
+    {
+      value: "templates",
+      label: "Card templates",
+      panel: templatesMounted ? (
+        <TemplatesScreen
+          onDirtyChange={setTemplateDirty}
+          showToast={showToast}
+        />
+      ) : null,
     },
     {
       value: "diagnostics",
@@ -160,14 +196,8 @@ export function SettingsScreen({
     },
   ];
 
-  const defaultsLabel =
-    activeTab === "appearance"
-      ? "appearance"
-      : activeTab === "review"
-        ? "scheduling"
-        : "safety";
-  const canRestoreDefaults =
-    activeTab === "appearance" || activeTab === "review" || activeTab === "storage";
+  const defaultsLabel = activeTab === "appearance" ? "appearance" : "safety";
+  const canRestoreDefaults = activeTab === "appearance" || activeTab === "storage";
 
   return (
     <div

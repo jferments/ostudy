@@ -17,7 +17,20 @@
       box-shadow: var(--ostudy-shadow-level-2);
       backdrop-filter: blur(var(--ostudy-material-blur-medium)) saturate(var(--ostudy-material-chrome-saturation));
     }
-    .title { overflow: hidden; color: var(--ostudy-color-text-primary); font-size: .92rem; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-    .windowControls { display: flex; min-width: 0; justify-content: flex-end; }
+
+    .title {
+      overflow: hidden;
+      color: var(--ostudy-color-text-primary);
+      font-size: .92rem;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .actions {
+      display: flex;
+      min-width: 0;
+      justify-content: flex-end;
+    }
   }
 }

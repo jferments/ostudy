@@ -15,13 +15,6 @@
     gap: var(--ostudy-space-3);
   }
 
-  .selectionControls {
-    display: flex;
-    min-width: 0;
-    flex-wrap: wrap;
-    gap: var(--ostudy-space-2);
-  }
-
   .toolbarActions {
     display: flex;
     min-width: 0;
@@ -37,10 +30,65 @@
     white-space: nowrap;
   }
 
+  .importAction svg {
+    stroke-width: 2.15;
+  }
+
   .library {
     display: grid;
     min-width: 0;
     gap: var(--ostudy-space-7);
+  }
+
+  .emptyLibrary {
+    display: grid;
+    width: 100%;
+    min-height: 148px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--ostudy-space-4);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-large);
+    padding: var(--ostudy-space-5);
+    background: var(--ostudy-color-surface-soft);
+    box-shadow: var(--ostudy-shadow-level-1);
+  }
+
+  .emptyLibraryIcon {
+    display: grid;
+    width: 52px;
+    height: 52px;
+    place-items: center;
+    border-radius: var(--ostudy-radius-medium);
+    background: var(--ostudy-color-accent-soft);
+    color: var(--ostudy-color-text-accent);
+  }
+
+  .emptyLibraryCopy {
+    display: grid;
+    min-width: 0;
+    gap: var(--ostudy-space-1);
+  }
+
+  .emptyLibraryCopy h2,
+  .emptyLibraryCopy p {
+    margin: 0;
+  }
+
+  .emptyLibraryCopy h2 {
+    font-size: 1.08rem;
+  }
+
+  .emptyLibraryCopy p {
+    color: var(--ostudy-color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .emptyLibraryActions {
+    display: flex;
+    grid-column: 2;
+    flex-wrap: wrap;
+    gap: var(--ostudy-space-2);
   }
 
   .folderArea,
@@ -56,6 +104,13 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--ostudy-space-3);
+  }
+
+  .sectionTitle {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--ostudy-space-2);
   }
 
   .sectionHeading h2,
@@ -88,15 +143,6 @@
     gap: var(--ostudy-space-4);
   }
 
-  .emptyFolderHint {
-    display: flex;
-    min-height: 68px;
-    align-items: center;
-    gap: var(--ostudy-space-3);
-    padding: var(--ostudy-space-3);
-    color: var(--ostudy-color-text-muted);
-  }
-
   .unsortedArea[data-drag-state="valid"] {
     border-radius: var(--ostudy-radius-large);
     box-shadow: var(--ostudy-shadow-focus);
@@ -127,32 +173,31 @@
 
   @container deck-library (max-width: 620px) {
     .toolbarActions {
-      width: 100%;
-      justify-content: stretch;
-    }
-
-    .toolbar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .selectionControls {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .selectionControls > button {
-      min-width: 0;
-      white-space: normal;
+      width: auto;
+      justify-content: flex-end;
     }
 
     .toolbarActions > button {
-      flex: 1 1 auto;
+      flex: 0 0 auto;
+    }
+
+    .emptyLibrary {
+      min-height: 0;
+      grid-template-columns: auto minmax(0, 1fr);
+      padding: var(--ostudy-space-4);
+    }
+
+    .emptyLibraryActions {
+      grid-column: 1 / -1;
+    }
+
+    .emptyLibraryActions > button {
+      flex: 1 1 180px;
     }
 
     .sectionHeading {
-      align-items: flex-start;
-      flex-direction: column;
+      flex-wrap: wrap;
+      align-items: center;
     }
 
     .sectionActions {

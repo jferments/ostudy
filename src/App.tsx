@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { IncomingShareCoordinator } from "./components/IncomingShareCoordinator";
@@ -6,6 +6,7 @@ import { MobileAppBar } from "./components/MobileAppBar";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { useAppController } from "./controllers/useAppController";
+import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
@@ -50,7 +51,22 @@ export type {
 
 function App() {
   const controller = useAppController();
+  const [studyGuidesNavigationKey, setStudyGuidesNavigationKey] = useState(0);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
+  const legacyTemplatesSection = controller.section === "templates";
+
+  function navigate(section: Parameters<typeof controller.navigate>[0]): void {
+    if (
+      shouldResetStudyGuidesRoute(
+        section,
+        controller.section,
+        controller.activeWorkflow,
+      )
+    ) {
+      setStudyGuidesNavigationKey((current) => current + 1);
+    }
+    void controller.navigate(section);
+  }
 
   return (
     <LayoutModeProvider>
@@ -81,12 +97,13 @@ function App() {
                 <MobileAppBar
                   section={controller.section}
                   activeWorkflow={controller.activeWorkflow}
+                  onNavigate={navigate}
                 />
                 <PerformanceProfiler id="navigation">
                   <NavigationSidebar
                     section={controller.section}
                     activeWorkflow={controller.activeWorkflow}
-                    onNavigate={controller.navigate}
+                    onNavigate={navigate}
                   />
                 </PerformanceProfiler>
 
@@ -140,11 +157,11 @@ function App() {
                             onOpenDeck={controller.openFlashcardsDeck}
                             onReturnToLibrary={controller.returnToFlashcardsLibrary}
                             onCardDirtyChange={controller.setHasUnsavedCard}
-                            onTemplateDirtyChange={controller.setHasUnsavedTemplate}
                             showToast={controller.showToast}
                           />
                         ) : controller.section === "study-guides" ? (
                           <StudyGuidesRoute
+                            key={studyGuidesNavigationKey}
                             showToast={controller.showToast}
                             onPracticeCards={controller.practiceCards}
                           />
@@ -169,6 +186,15 @@ function App() {
                         ) : controller.section === "settings" ? (
                           <SettingsScreen
                             settings={controller.savedSettings}
+                            onPreviewSettings={controller.setActiveSettings}
+                            onSavedSettings={controller.saveSettingsLocally}
+                            onDirtyChange={controller.setHasUnsavedSettings}
+                            showToast={controller.showToast}
+                          />
+                        ) : legacyTemplatesSection ? (
+                          <SettingsScreen
+                            settings={controller.savedSettings}
+                            initialSection="templates"
                             onPreviewSettings={controller.setActiveSettings}
                             onSavedSettings={controller.saveSettingsLocally}
                             onDirtyChange={controller.setHasUnsavedSettings}

@@ -489,17 +489,21 @@ def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
 
 
 def assert_flashcards_tabs(session_id: str, deadline: float) -> None:
-    for label in ("Decks", "Templates", "Search", "Import/Export"):
+    expected = ["Decks", "Search/Filter"]
+    for label in expected:
         find_workspace_tab(session_id, label, deadline)
-    removed = execute(
+    labels = execute(
         session_id,
         """
-        return [...document.querySelectorAll("[role='tablist'][aria-label='Flashcards workspaces'] [role='tab']")]
-          .filter((tab) => (tab.textContent || '').includes('Create Cards')).length;
+        return [...document.querySelectorAll(
+          "[role='tablist'][aria-label='Flashcards workspaces'] [role='tab']"
+        )].map((tab) => tab.getAttribute('aria-label') || (tab.textContent || '').trim());
         """,
     )
-    if int(removed) != 0:
-        raise AssertionError("The removed Create Cards workspace is still visible")
+    if labels != expected:
+        raise AssertionError(
+            f"Flashcards must expose exactly Decks and Search/Filter: {labels!r}"
+        )
 
 
 def assert_navigation_labels(
@@ -767,7 +771,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     assert_brand_and_fresh_font_defaults(session_id, "compact layout")
     assert_navigation_labels(
         session_id,
-        ["Flashcards", "Study Guides", "Analytics", "More"],
+        ["Flashcards", "Study Guides", "Documents", "Analytics"],
         "compact",
     )
     open_study_guides_and_return(
@@ -777,35 +781,28 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     )
     assert_no_horizontal_overflow(session_id, "compact navigation")
 
-    more = webdriver.find_element(
+    more_count = execute(
+        session_id,
+        "return document.querySelectorAll(\"button[data-testid='nav-more']\").length;",
+    )
+    if int(more_count) != 0:
+        raise AssertionError("Compact navigation still exposes the removed More destination")
+
+    documents = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-more']",
+        "button[data-testid='nav-documents']",
         deadline,
     )
-    webdriver.click(session_id, more)
-    webdriver.find_element(
-        session_id,
-        "xpath",
-        "//*[@role='dialog' and @aria-modal='true']//*[normalize-space(.)='More']",
-        deadline,
-    )
-    more_destinations = execute(
-        session_id,
-        """
-        return [...document.querySelectorAll("[role=dialog] button[data-testid^='nav-']")]
-          .map((button) => (button.textContent || '').trim());
-        """,
-    )
-    if more_destinations != ["Documents", "Settings"]:
-        raise AssertionError(
-            f"Compact More destinations were incomplete, duplicated, or out of order: {more_destinations!r}"
-        )
+    webdriver.click(session_id, documents)
+    webdriver.wait_for_element_text(session_id, "css selector", "main h1", "Documents", deadline)
+    wait_for_overlay_inactive(session_id, deadline, "compact Documents assertions")
+    assert_no_horizontal_overflow(session_id, "compact Documents screen")
 
     settings = webdriver.find_element(
         session_id,
         "css selector",
-        "button[data-testid='nav-settings']",
+        "button[data-testid='app-settings']",
         deadline,
     )
     webdriver.click(session_id, settings)
@@ -820,7 +817,12 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
         deadline,
     )
     webdriver.click(session_id, flashcards)
-    webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
+    webdriver.find_element(
+        session_id,
+        "css selector",
+        "main [role='tablist'][aria-label='Flashcards workspaces']",
+        deadline,
+    )
     assert_flashcards_tabs(session_id, deadline)
     assert_no_horizontal_overflow(session_id, "compact Flashcards workspace")
 
@@ -829,7 +831,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     new_deck = webdriver.find_element(
         session_id,
         "xpath",
-        "//main//button[normalize-space(.)='New deck']",
+        "//main//button[normalize-space(.)='Create a new deck' or normalize-space(.)='New deck']",
         deadline,
     )
     webdriver.click(session_id, new_deck)
@@ -853,7 +855,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     send_key(session_id, ESCAPE_KEY)
     wait_for_absent(session_id, "css selector", "[role='dialog']", deadline)
     wait_for_overlay_inactive(session_id, deadline, "create-deck focus restoration")
-    wait_for_active_label(session_id, "New deck", deadline)
+    wait_for_active_label(session_id, "Create a new deck", deadline)
 
 
 def verify_wide_navigation(session_id: str, deadline: float) -> None:
@@ -982,7 +984,7 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         raise AssertionError(f"Medium navigation labels are not visible: {navigation!r}")
     assert_no_horizontal_overflow(session_id, "medium Flashcards workspace")
 
-    search = find_workspace_tab(session_id, "Search", deadline)
+    search = find_workspace_tab(session_id, "Search/Filter", deadline)
     webdriver.click(session_id, search)
     webdriver.find_element(
         session_id,
@@ -990,7 +992,7 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         "main section[aria-label='Card filters']",
         deadline,
     )
-    assert_no_horizontal_overflow(session_id, "medium Search workspace")
+    assert_no_horizontal_overflow(session_id, "medium Search/Filter workspace")
 
     decks = find_workspace_tab(session_id, "Decks", deadline)
     webdriver.click(session_id, decks)
@@ -1210,7 +1212,7 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     new_deck = webdriver.find_element(
         session_id,
         "xpath",
-        "//main//button[normalize-space(.)='New deck']",
+        "//main//button[normalize-space(.)='Create a new deck' or normalize-space(.)='New deck']",
         deadline,
     )
     webdriver.click(session_id, new_deck)
@@ -1345,7 +1347,7 @@ def main() -> int:
         print(
             "Native UI platform smoke passed: compact, labeled medium, and wide navigation and branding; "
             "fresh-profile IBM Plex interface/card defaults; "
-            "four-workspace Flashcards containment; vertical responsive deck-detail actions; "
+            "two-workspace Flashcards containment; vertical responsive deck-detail actions; "
             "deck-scoped authoring; no horizontal overflow; "
             "maintained-route viewport consumption through resize, maximize/restore, and full-screen entry/exit; "
             "dialog focus containment; "

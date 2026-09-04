@@ -58,7 +58,7 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     question = "Why does ADH increase collecting-duct water permeability?"
     answer = "It promotes aquaporin-2 insertion in principal-cell apical membranes."
 
-    webdriver.click_text_button(session_id, "New deck", deadline)
+    webdriver.click_text_button(session_id, "Create a new deck", deadline)
     webdriver.set_input_text(
         session_id,
         "css selector",
@@ -211,7 +211,7 @@ def assert_search_browser(
     deck_measurement: dict[str, Any],
     deadline: float,
 ) -> None:
-    search_tab = ui.find_workspace_tab(session_id, "Search", deadline)
+    search_tab = ui.find_workspace_tab(session_id, "Search/Filter", deadline)
     webdriver.click(session_id, search_tab)
     webdriver.find_element(
         session_id,

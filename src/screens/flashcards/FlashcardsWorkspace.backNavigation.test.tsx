@@ -28,8 +28,6 @@ vi.mock("../CardsScreen", () => ({
     </div>
   ),
 }));
-vi.mock("../TemplatesScreen", () => ({ TemplatesScreen: () => <div>Templates workspace</div> }));
-vi.mock("./TransferWorkspace", () => ({ TransferWorkspace: () => <div>Transfer workspace</div> }));
 vi.mock("./DeckLibraryWorkspace", () => ({
   DeckLibraryWorkspace: () => (
     <div>
@@ -88,7 +86,6 @@ function renderWorkspace({
       onOpenDeck={vi.fn()}
       onReturnToLibrary={vi.fn()}
       onCardDirtyChange={vi.fn()}
-      onTemplateDirtyChange={vi.fn()}
       showToast={vi.fn()}
     />,
   );
@@ -107,7 +104,7 @@ describe("FlashcardsWorkspace root navigation", () => {
     view.unmount();
   });
 
-  it("returns a secondary workspace to the Decks root through platform Back", async () => {
+  it("returns Search/Filter to the Decks root through platform Back", async () => {
     const onWorkspaceChange = vi.fn();
     const view = renderWorkspace({ workspace: "search", onWorkspaceChange });
     await waitFor(() => expect(platformBackHandlerCountForTests()).toBe(1));
@@ -120,7 +117,7 @@ describe("FlashcardsWorkspace root navigation", () => {
     view.unmount();
   });
 
-  it("forwards the typed launch through the keyed Search workspace boundary", () => {
+  it("forwards the typed launch through the keyed Search/Filter boundary", () => {
     const view = renderWorkspace({
       workspace: "search",
       navigationKey: 19,
@@ -137,29 +134,55 @@ describe("FlashcardsWorkspace root navigation", () => {
     view.unmount();
   });
 
-  it("reactivates the selected Decks tab so the parent can return to its root", () => {
+  it("reactivates either selected tab so the parent can reset that workspace", () => {
     const onWorkspaceChange = vi.fn();
     const view = renderWorkspace({ workspace: "decks", onWorkspaceChange });
 
     fireEvent.click(screen.getByRole("tab", { name: "Decks" }));
-    expect(onWorkspaceChange).toHaveBeenCalledWith("decks");
+    expect(onWorkspaceChange).toHaveBeenLastCalledWith("decks");
+
+    view.rerender(
+      <FlashcardsWorkspace
+        workspace="search"
+        navigationKey={2}
+        onWorkspaceChange={onWorkspaceChange}
+        decks={[]}
+        settings={settings}
+        refreshDecks={async () => []}
+        onPracticeDeck={vi.fn()}
+        onPracticeSelected={vi.fn()}
+        onPracticeCards={vi.fn()}
+        openDeckRequest={null}
+        onOpenDeck={vi.fn()}
+        onReturnToLibrary={vi.fn()}
+        onCardDirtyChange={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Search/Filter" }));
+    expect(onWorkspaceChange).toHaveBeenLastCalledWith("search");
     view.unmount();
   });
 
-  it("reactivates a selected secondary tab instead of treating it as a no-op", () => {
-    const onWorkspaceChange = vi.fn();
-    const view = renderWorkspace({ workspace: "transfer", onWorkspaceChange });
-
-    fireEvent.click(screen.getByRole("tab", { name: "Import/Export" }));
-    expect(onWorkspaceChange).toHaveBeenCalledWith("transfer");
-    view.unmount();
-  });
-
-  it("contains exactly the four maintained Flashcards workspaces", () => {
+  it("contains exactly Decks and Search/Filter", () => {
     const view = renderWorkspace();
     const labels = screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"));
-    expect(labels).toEqual(["Decks", "Templates", "Search", "Import/Export"]);
-    expect(screen.queryByRole("tab", { name: "Create Cards" })).toBeNull();
+    expect(labels).toEqual(["Decks", "Search/Filter"]);
+    expect(screen.queryByRole("tab", { name: "Templates" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Import/Export" })).toBeNull();
     view.unmount();
   });
+
+  it.each(["templates", "transfer"] as const)(
+    "recovers the legacy %s workspace to Decks without rendering obsolete tabs",
+    (workspace) => {
+      const view = renderWorkspace({ workspace });
+      expect(screen.getByRole("tab", { name: "Decks" }).getAttribute("aria-selected")).toBe(
+        "true",
+      );
+      expect(screen.getByText("Deck library workspace")).toBeTruthy();
+      expect(screen.getAllByRole("tab")).toHaveLength(2);
+      view.unmount();
+    },
+  );
 });

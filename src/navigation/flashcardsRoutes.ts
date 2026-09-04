@@ -1,11 +1,17 @@
-export const flashcardsWorkspaceNames = [
-  "decks",
-  "templates",
-  "search",
-  "transfer",
-] as const;
+export const flashcardsWorkspaceNames = ["decks", "search"] as const;
 
-export type FlashcardsWorkspaceName = (typeof flashcardsWorkspaceNames)[number];
+/**
+ * `templates` and `transfer` are retained only as compatibility inputs for
+ * historical checkpoints and callers. New UI surfaces must use one of the two
+ * values in `flashcardsWorkspaceNames`.
+ */
+export type FlashcardsWorkspaceName =
+  | (typeof flashcardsWorkspaceNames)[number]
+  | "templates"
+  | "transfer";
+
+export type CurrentFlashcardsWorkspaceName =
+  (typeof flashcardsWorkspaceNames)[number];
 
 /** Process-local selection restoration. This is intentionally not checkpoint data. */
 export interface TransientDeckSelectionEntry {
@@ -42,13 +48,23 @@ export interface FlashcardsDeckRoute {
 export type FlashcardsRoute = FlashcardsRootRoute | FlashcardsDeckRoute;
 
 export function isFlashcardsWorkspaceName(value: string): value is FlashcardsWorkspaceName {
-  return (flashcardsWorkspaceNames as readonly string[]).includes(value);
+  return (
+    value === "decks" ||
+    value === "search" ||
+    value === "templates" ||
+    value === "transfer"
+  );
 }
 
+/**
+ * Templates and Transfer remain accepted as legacy checkpoint strings at
+ * runtime, but both recover to Decks. Only Decks and Search/Filter are current
+ * Flashcards destinations.
+ */
 export function normalizeFlashcardsWorkspace(
   value: string | null | undefined,
-): FlashcardsWorkspaceName {
-  return value && isFlashcardsWorkspaceName(value) ? value : "decks";
+): CurrentFlashcardsWorkspaceName {
+  return value === "search" ? "search" : "decks";
 }
 
 export function createFlashcardsRootRoute(
@@ -56,9 +72,15 @@ export function createFlashcardsRootRoute(
   requestId: number,
   restoreDeckSelection?: TransientDeckSelectionEntry[],
 ): FlashcardsRootRoute {
+  const normalizedWorkspace = normalizeFlashcardsWorkspace(workspace);
   return restoreDeckSelection && restoreDeckSelection.length > 0
-    ? { requestId, workspace, view: "root", restoreDeckSelection }
-    : { requestId, workspace, view: "root" };
+    ? {
+        requestId,
+        workspace: normalizedWorkspace,
+        view: "root",
+        restoreDeckSelection,
+      }
+    : { requestId, workspace: normalizedWorkspace, view: "root" };
 }
 
 export function createFlashcardsDeckRoute(

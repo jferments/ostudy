@@ -20,7 +20,6 @@ vi.mock("./DeckItem", () => ({
   },
 }));
 vi.mock("./ArchivedDecksSection", () => ({ ArchivedDecksSection: () => null }));
-vi.mock("../../../ui/help/HelpProvider", () => ({ HelpTrigger: () => null }));
 
 import { DeckLibraryView } from "./DeckLibraryView";
 import { LibraryDragFeedback } from "./LibraryDragFeedback";
@@ -56,8 +55,13 @@ const controller = {
   showArchived: false,
   collapsedFolderIds: new Set<string>(),
   allFoldersCollapsed: false,
+  currentScopeDeckCount: decks.length,
+  openDeckCreator: vi.fn(),
   openFolderCreator: vi.fn(),
   collapseAllFolders: vi.fn(),
+  expandFolder: vi.fn(),
+  clearSelection: vi.fn(),
+  selectCurrentScope: vi.fn(),
   toggleFolder: vi.fn(),
   openDeck: vi.fn(),
   removeDeck: vi.fn(),
@@ -67,11 +71,14 @@ const controller = {
   toggleArchived: vi.fn(),
 } as unknown as DeckLibraryController;
 const onPracticeDeck = vi.fn();
+const onExportDeck = vi.fn();
 
-describe("DeckLibraryView render isolation", () => {
+describe("DeckLibraryView", () => {
   beforeEach(() => {
     rowRender.mockClear();
     vi.mocked(reorder.beginPointerDrag).mockClear();
+    onPracticeDeck.mockClear();
+    onExportDeck.mockClear();
   });
 
   afterEach(() => {
@@ -87,6 +94,88 @@ describe("DeckLibraryView render isolation", () => {
 
     expect(rowRender).toHaveBeenCalledTimes(240);
     expect(screen.getByText("Clinical, position 1.")).toBeTruthy();
+  });
+
+  it("renders one actionable empty state without empty folder, unsorted, or selection chrome", () => {
+    const openDeckCreator = vi.fn();
+    const emptyController = {
+      ...controller,
+      snapshot: createDeckLibrarySnapshot([], {
+        revision: 1,
+        folders: [],
+        placements: [],
+      }),
+      currentScopeDeckCount: 0,
+      openDeckCreator,
+    } as DeckLibraryController;
+
+    renderView(emptyController);
+
+    expect(screen.getByRole("heading", { name: "No decks have been created yet." })).toBeTruthy();
+    expect(screen.getByText(/Import deck from file above/u)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Folders" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Unsorted decks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Collapse all|Expand all/u })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Select all/u })).toBeNull();
+    expect(screen.queryByText("No folders yet.")).toBeNull();
+    expect(screen.queryByText("All active decks are in folders.")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create a new deck" }));
+    expect(openDeckCreator).toHaveBeenCalledOnce();
+  });
+
+  it("places New folder, Collapse all, and Select all together only when relevant", () => {
+    const activeDeck = deck(0);
+    const folderSnapshot = createDeckLibrarySnapshot([activeDeck], {
+      revision: 12,
+      folders: [folder],
+      placements: [{ deckId: activeDeck.id, folderId: folder.id, sortOrder: 1_000 }],
+    });
+    const openFolderCreator = vi.fn();
+    const collapseAllFolders = vi.fn();
+    const selectCurrentScope = vi.fn();
+    const folderController = {
+      ...controller,
+      snapshot: folderSnapshot,
+      currentScopeDeckCount: 1,
+      openFolderCreator,
+      collapseAllFolders,
+      selectCurrentScope,
+    } as DeckLibraryController;
+
+    renderView(folderController);
+
+    expect(screen.getByRole("heading", { name: "Folders" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Unsorted decks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Help with folders" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Create a folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all (1)" }));
+    expect(openFolderCreator).toHaveBeenCalledOnce();
+    expect(collapseAllFolders).toHaveBeenCalledOnce();
+    expect(selectCurrentScope).toHaveBeenCalledOnce();
+  });
+
+  it("turns Collapse all into Expand all after every folder is collapsed", () => {
+    const activeDeck = deck(0);
+    const folderSnapshot = createDeckLibrarySnapshot([activeDeck], {
+      revision: 13,
+      folders: [folder],
+      placements: [{ deckId: activeDeck.id, folderId: folder.id, sortOrder: 1_000 }],
+    });
+    const expandFolder = vi.fn();
+    const folderController = {
+      ...controller,
+      snapshot: folderSnapshot,
+      currentScopeDeckCount: 1,
+      allFoldersCollapsed: true,
+      collapsedFolderIds: new Set([folder.id]),
+      expandFolder,
+    } as DeckLibraryController;
+
+    renderView(folderController);
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(expandFolder).toHaveBeenCalledWith(folder.id);
   });
 
   it.each([
@@ -108,19 +197,11 @@ describe("DeckLibraryView render isolation", () => {
       const folderController = {
         ...controller,
         snapshot: folderSnapshot,
+        currentScopeDeckCount: 1,
         collapsedFolderIds: collapsed ? new Set([folder.id]) : new Set<string>(),
       } as DeckLibraryController;
 
-      render(
-        <LayoutModeProvider>
-          <DeckLibraryView
-            controller={folderController}
-            reorder={reorder}
-            libraryRef={{ current: null }}
-            onPracticeDeck={onPracticeDeck}
-          />
-        </LayoutModeProvider>,
-      );
+      renderView(folderController);
 
       fireEvent.pointerDown(screen.getByRole("heading", { name: folder.name }));
       fireEvent.pointerDown(screen.getByText("1 deck · 1 ready"));
@@ -137,9 +218,7 @@ describe("DeckLibraryView render isolation", () => {
         screen.getByRole("button", { name: /Reorder Nursing folder\./u }),
       );
       if (layoutMode === "compact") {
-        fireEvent.pointerDown(
-          screen.getByRole("button", { name: "Nursing folder actions" }),
-        );
+        fireEvent.pointerDown(screen.getByRole("button", { name: "Nursing folder actions" }));
       } else {
         fireEvent.pointerDown(screen.getByRole("button", { name: "Rename" }));
         fireEvent.pointerDown(screen.getByRole("button", { name: "Delete" }));
@@ -169,28 +248,33 @@ describe("DeckLibraryView render isolation", () => {
       const folderController = {
         ...controller,
         snapshot: folderSnapshot,
+        currentScopeDeckCount: 1,
         collapsedFolderIds: collapsed ? new Set([folder.id]) : new Set<string>(),
         toggleFolder,
       } as DeckLibraryController;
 
-      render(
-        <LayoutModeProvider>
-          <DeckLibraryView
-            controller={folderController}
-            reorder={reorder}
-            libraryRef={{ current: null }}
-            onPracticeDeck={onPracticeDeck}
-          />
-        </LayoutModeProvider>,
-      );
+      renderView(folderController);
 
-      expect(screen.queryByText(collapsed ? "Expand" : "Collapse")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: toggleName }));
       expect(toggleFolder).toHaveBeenCalledTimes(1);
       expect(toggleFolder).toHaveBeenCalledWith(folder.id);
     },
   );
 });
+
+function renderView(selectedController: DeckLibraryController) {
+  return render(
+    <LayoutModeProvider>
+      <DeckLibraryView
+        controller={selectedController}
+        reorder={reorder}
+        libraryRef={{ current: null }}
+        onPracticeDeck={onPracticeDeck}
+        onExportDeck={onExportDeck}
+      />
+    </LayoutModeProvider>,
+  );
+}
 
 function Harness() {
   const libraryRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +291,7 @@ function Harness() {
         reorder={reorder}
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
+        onExportDeck={onExportDeck}
       />
       <LibraryDragFeedback feedback={feedback} />
     </>

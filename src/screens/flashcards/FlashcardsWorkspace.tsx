@@ -15,10 +15,8 @@ import { Icon, type IconName } from "../../ui/icons/Icon";
 import { RouteTransition } from "../../ui/motion/Motion";
 import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
-import { TemplatesScreen } from "../TemplatesScreen";
 import { CardPracticeProvider } from "../cards/CardPracticeContext";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
-import { TransferWorkspace } from "./TransferWorkspace";
 import styles from "./FlashcardsWorkspace.module.css";
 
 interface FlashcardsWorkspaceProps {
@@ -43,20 +41,22 @@ interface FlashcardsWorkspaceProps {
   onReturnToLibrary: () => void | Promise<void>;
   onPracticeCards: (cardIds: string[]) => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
-  onTemplateDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }
 
 const WORKSPACES: ReadonlyArray<{
-  value: FlashcardsWorkspaceName;
+  value: "decks" | "search";
   label: string;
   compactLabel: string;
   icon: IconName;
 }> = [
   { value: "decks", label: "Decks", compactLabel: "Decks", icon: "cards" },
-  { value: "templates", label: "Templates", compactLabel: "Templates", icon: "template" },
-  { value: "search", label: "Search", compactLabel: "Search", icon: "search" },
-  { value: "transfer", label: "Import/Export", compactLabel: "Transfer", icon: "import" },
+  {
+    value: "search",
+    label: "Search/Filter",
+    compactLabel: "Search",
+    icon: "search",
+  },
 ];
 
 export function FlashcardsWorkspace({
@@ -75,23 +75,23 @@ export function FlashcardsWorkspace({
   onOpenDeck,
   onReturnToLibrary,
   onCardDirtyChange,
-  onTemplateDirtyChange,
   showToast,
 }: FlashcardsWorkspaceProps) {
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const workspaceChangeRef = useRef(onWorkspaceChange);
+  const visibleWorkspace: "decks" | "search" = workspace === "search" ? "search" : "decks";
 
   useLayoutEffect(() => {
     workspaceChangeRef.current = onWorkspaceChange;
   }, [onWorkspaceChange]);
 
   useEffect(() => {
-    if (workspace === "decks") return;
+    if (visibleWorkspace === "decks") return;
     return registerPlatformBackHandler(() => {
       void workspaceChangeRef.current("decks");
       return true;
     });
-  }, [workspace]);
+  }, [visibleWorkspace]);
 
   function activateAt(index: number): void {
     const item = WORKSPACES[index];
@@ -123,7 +123,7 @@ export function FlashcardsWorkspace({
           data-tour-anchor="flashcards.workspaces"
         >
           {WORKSPACES.map((item, index) => {
-            const selected = item.value === workspace;
+            const selected = item.value === visibleWorkspace;
             return (
               <button
                 key={item.value}
@@ -151,12 +151,12 @@ export function FlashcardsWorkspace({
       </div>
 
       <RouteTransition
-        routeKey={`${workspace}:${navigationKey}`}
+        routeKey={`${visibleWorkspace}:${navigationKey}`}
         relation="sibling"
         className={styles.panel}
       >
         <CardPracticeProvider onPracticeCards={onPracticeCards}>
-          {workspace === "decks" ? (
+          {visibleWorkspace === "decks" ? (
             <DeckLibraryWorkspace
               key={navigationKey}
               decks={decks}
@@ -168,20 +168,11 @@ export function FlashcardsWorkspace({
               openDeckRequest={openDeckRequest}
               onOpenDeck={onOpenDeck}
               onReturnToLibrary={onReturnToLibrary}
-              onManageTemplates={() => onWorkspaceChange("templates")}
               onCardDirtyChange={onCardDirtyChange}
               showToast={showToast}
             />
           ) : null}
-          {workspace === "templates" ? (
-            <TemplatesScreen
-              key={navigationKey}
-              onBack={() => onWorkspaceChange("decks")}
-              onDirtyChange={onTemplateDirtyChange}
-              showToast={showToast}
-            />
-          ) : null}
-          {workspace === "search" ? (
+          {visibleWorkspace === "search" ? (
             <CardsScreen
               key={navigationKey}
               decks={decks}
@@ -190,14 +181,6 @@ export function FlashcardsWorkspace({
               onDirtyChange={onCardDirtyChange}
               showToast={showToast}
               analyticsSearchLaunch={analyticsSearchLaunch}
-            />
-          ) : null}
-          {workspace === "transfer" ? (
-            <TransferWorkspace
-              key={navigationKey}
-              decks={decks}
-              refreshDecks={refreshDecks}
-              showToast={showToast}
             />
           ) : null}
         </CardPracticeProvider>

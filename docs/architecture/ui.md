@@ -392,3 +392,10 @@ High-risk screens should also be checked with:
 - overlay actions remaining visible above safe areas and virtual keyboards.
 
 A UI refactor is not complete because it looks correct at one desktop width. It must preserve the shared behavior that makes the same workflow usable with different input methods, themes, and available space.
+
+
+## Contextual Flashcards tools
+
+Flashcards exposes two primary modes: **Decks** and **Search/Filter**. Advanced or object-scoped actions do not consume permanent workspace tabs. Card-template management is entered from Settings, while import and export are launched from the Decks library, individual deck actions, or the selected-deck toolbar. Portable file operations are coordinated by a presentation-independent controller so desktop and Android surfaces share the same behavior without coupling backend commands to a particular layout.
+
+Compact navigation contains **Flashcards**, **Study Guides**, **Documents**, and **Analytics**. Settings is an app-bar gear action. Re-selecting Study Guides while a guide viewer is open resets the route to the Study Guides library.

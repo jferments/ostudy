@@ -1,13 +1,21 @@
 import type { AppSettings } from "../../ipc/settings";
+import { Button } from "../../ui/primitives/Button";
 import { NumberControl, RangeControl } from "./SettingsControls";
 import styles from "./Settings.module.css";
 
 interface ReviewSchedulingSettingsProps {
   draft: AppSettings;
   update: (patch: Partial<AppSettings>) => void;
+  onRestoreDefaults: () => void;
+  restoreDisabled?: boolean;
 }
 
-export function ReviewSchedulingSettings({ draft, update }: ReviewSchedulingSettingsProps) {
+export function ReviewSchedulingSettings({
+  draft,
+  update,
+  onRestoreDefaults,
+  restoreDisabled = false,
+}: ReviewSchedulingSettingsProps) {
   return (
     <div className={styles.panelGrid}>
       <section className={styles.settingsCard}>
@@ -46,6 +54,16 @@ export function ReviewSchedulingSettings({ draft, update }: ReviewSchedulingSett
         <p className={styles.note}>
           Session-specific options, including shuffling, are chosen on the Practice screen.
         </p>
+        <div className={styles.actionRow}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={restoreDisabled}
+            onClick={onRestoreDefaults}
+          >
+            Restore scheduling defaults
+          </Button>
+        </div>
       </section>
     </div>
   );
