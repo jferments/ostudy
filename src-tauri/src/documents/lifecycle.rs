@@ -337,10 +337,13 @@ mod tests {
         insert_guide_only_document(&database, &document_id);
         database
             .with_connection(|connection| {
+                // The public schema requires archived_at to be present iff the lifecycle is
+                // archived. Keep the interrupted-processing fixture valid so this test exercises
+                // startup reconciliation rather than an impossible database state.
                 connection
                     .execute(
                         "UPDATE documents
-                         SET lifecycle_state = 'processing', archived_at = 5
+                         SET lifecycle_state = 'processing', archived_at = NULL
                          WHERE id = ?1",
                         [document_id.as_str()],
                     )
