@@ -51,8 +51,12 @@ export const DeckLibraryView = memo(function DeckLibraryView({
               existing flashcard set.
             </p>
           </div>
-          <Button variant="primary" onClick={controller.openDeckCreator}>
-            <Icon name="plus" size={18} /> Create a new deck
+          <Button
+            variant="primary"
+            aria-label="Create a new deck"
+            onClick={controller.openDeckCreator}
+          >
+            <Icon name="plus" size={18} /> New deck
           </Button>
         </section>
       </div>

@@ -182,9 +182,13 @@ function App() {
                             onSearchTag={controller.openAnalyticsTagSearch}
                             showToast={controller.showToast}
                           />
-                        ) : controller.section === "settings" ? (
+                        ) : controller.section === "settings" ||
+                          controller.section === "templates" ? (
                           <SettingsScreen
                             settings={controller.savedSettings}
+                            initialSection={
+                              controller.section === "templates" ? "templates" : undefined
+                            }
                             onPreviewSettings={controller.setActiveSettings}
                             onSavedSettings={controller.saveSettingsLocally}
                             onDirtyChange={controller.setHasUnsavedSettings}

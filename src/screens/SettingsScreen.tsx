@@ -22,14 +22,6 @@ import styles from "./SettingsScreen.module.css";
 
 const ownedStyleMaps = sharedClassMaps;
 
-interface SettingsScreenProps {
-  settings: AppSettings;
-  onPreviewSettings: (settings: AppSettings) => void;
-  onSavedSettings: (settings: AppSettings) => void;
-  onDirtyChange: (dirty: boolean) => void;
-  showToast: ShowToast;
-}
-
 type SettingsTab =
   | "storage"
   | "appearance"
@@ -37,6 +29,15 @@ type SettingsTab =
   | "review"
   | "templates"
   | "diagnostics";
+
+interface SettingsScreenProps {
+  settings: AppSettings;
+  initialSection?: SettingsTab;
+  onPreviewSettings: (settings: AppSettings) => void;
+  onSavedSettings: (settings: AppSettings) => void;
+  onDirtyChange: (dirty: boolean) => void;
+  showToast: ShowToast;
+}
 
 const DEFAULTS: AppSettings = {
   theme: "dark",
@@ -58,12 +59,13 @@ const DEFAULTS: AppSettings = {
 
 export function SettingsScreen({
   settings,
+  initialSection = "appearance",
   onPreviewSettings,
   onSavedSettings,
   onDirtyChange,
   showToast,
 }: SettingsScreenProps) {
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialSection);
   const [draft, setDraft] = useState(settings);
   const [savedBaseline, setSavedBaseline] = useState(settings);
   const [templateDirty, setTemplateDirty] = useState(false);
@@ -73,6 +75,10 @@ export function SettingsScreen({
   const aiController = useAiProfilesController(showToast);
   const preferencesDirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
   const dirty = preferencesDirty || aiController.dirty || templateDirty;
+
+  useEffect(() => {
+    setActiveTab(initialSection);
+  }, [initialSection]);
 
   useEffect(() => {
     setDraft(settings);

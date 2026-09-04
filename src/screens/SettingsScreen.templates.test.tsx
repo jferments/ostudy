@@ -60,4 +60,22 @@ describe("Settings Card templates tool", () => {
     expect(screen.getByLabelText("Card template manager")).toBeTruthy();
     expect(screen.getAllByRole("tab")).toHaveLength(5);
   });
+
+  it("opens the legacy template destination directly inside Settings", () => {
+    render(
+      <SettingsScreen
+        settings={settings}
+        initialSection="templates"
+        onPreviewSettings={vi.fn()}
+        onSavedSettings={vi.fn()}
+        onDirtyChange={vi.fn()}
+        showToast={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("tabpanel", { name: "Card templates" })).toBeTruthy();
+    expect(screen.getByLabelText("Card template manager")).toBeTruthy();
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
+  });
+
 });
