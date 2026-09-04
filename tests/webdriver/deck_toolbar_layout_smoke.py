@@ -205,8 +205,13 @@ def create_first_deck(session_id: str) -> None:
     webdriver.click(session_id, create)
     webdriver.wait_for_main_heading(session_id, deck_name, deadline)
     ui.wait_for_overlay_inactive(session_id, deadline, "deck toolbar deck creation")
-    webdriver.click_text_button(session_id, "← All decks", deadline)
-    webdriver.wait_for_main_heading(session_id, "Flashcards", deadline)
+
+    # Deck creation can legitimately consume most of the bounded mutation phase.
+    # Navigation back to the library is a separate read/navigation phase, so give
+    # it a fresh deadline instead of reusing an almost-expired absolute timestamp.
+    navigation_deadline = webdriver.deadline_after()
+    webdriver.click_text_button(session_id, "← All decks", navigation_deadline)
+    webdriver.wait_for_main_heading(session_id, "Flashcards", navigation_deadline)
 
 
 def verify_populated_library(session_id: str, width: int, height: int) -> None:
