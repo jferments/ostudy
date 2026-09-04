@@ -32,6 +32,8 @@ interface DeckLibraryWorkspaceProps {
     returnDeckSelection?: readonly TransientDeckSelectionEntry[],
   ) => void;
   onReturnToLibrary: () => void | Promise<void>;
+  /** Compatibility-only input for older test harnesses; templates now live in Settings. */
+  onManageTemplates?: () => void | Promise<void>;
   onCardDirtyChange: (dirty: boolean) => void;
   showToast: ShowToast;
 }

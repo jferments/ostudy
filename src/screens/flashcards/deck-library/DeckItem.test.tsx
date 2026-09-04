@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -63,6 +63,7 @@ describe("DeckItem", () => {
 
       fireEvent.pointerDown(screen.getByRole("checkbox", { name: "Select Anatomy" }));
       fireEvent.pointerDown(screen.getByRole("button", { name: "Practice" }));
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Export Anatomy" }));
       fireEvent.pointerDown(screen.getByRole("button", { name: "Delete Anatomy" }));
 
       expect(reorder.beginPointerDrag).toHaveBeenCalledTimes(2);
@@ -101,15 +102,35 @@ describe("DeckItem", () => {
     },
   );
 
-  it("keeps the trash action direct in compact layout instead of creating a one-item menu", () => {
+  it("orders the save action between Practice and Delete and invokes the export callback", () => {
+    const onExport = vi.fn();
+    renderDeckItem({ onExport });
+
+    const actions = screen.getByRole("group", { name: "Anatomy actions" });
+    expect(
+      within(actions)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") || button.textContent?.trim()),
+    ).toEqual(["Practice", "Export Anatomy", "Delete Anatomy"]);
+
+    const save = within(actions).getByRole("button", { name: "Export Anatomy" });
+    expect(save.querySelector("svg")).not.toBeNull();
+    fireEvent.click(save);
+    expect(onExport).toHaveBeenCalledOnce();
+  });
+
+  it("keeps save and trash actions direct in compact layout", () => {
     setLayoutMode("compact");
     const onDelete = vi.fn();
-    renderDeckItem({ onDelete });
+    const onExport = vi.fn();
+    renderDeckItem({ onDelete, onExport });
 
     expect(screen.queryByRole("button", { name: "Anatomy actions" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Export Anatomy" }));
     const trash = screen.getByRole("button", { name: "Delete Anatomy" });
     expect(trash.getAttribute("data-tone")).toBe("danger");
     fireEvent.click(trash);
+    expect(onExport).toHaveBeenCalledOnce();
     expect(onDelete).toHaveBeenCalledOnce();
   });
 
@@ -152,6 +173,7 @@ function renderDeckItem(overrides: Partial<ComponentProps<typeof DeckItem>> = {}
     reorder: makeReorder(),
     onOpen: vi.fn(),
     onPractice: vi.fn(),
+    onExport: vi.fn(),
     onDelete: vi.fn(),
     onToggleSelected: vi.fn(),
     ...overrides,

@@ -53,22 +53,22 @@ export function DeckLibraryRoot({
 
   return (
     <div className={styles.root} aria-busy={controller.isLoading || controller.isMutating}>
-      {hasAnyDecks ? (
-        <div className={styles.toolbar} aria-label="Deck library controls">
-          <div className={styles.toolbarActions}>
-            <IconButton
-              icon="folder-open"
-              label="Import deck from file"
-              tooltip="Import deck from file"
-              disabled={controller.isMutating}
-              onClick={onImportDeck}
-            />
+      <div className={styles.toolbar} aria-label="Deck library controls">
+        <div className={styles.toolbarActions}>
+          <IconButton
+            icon="folder-open"
+            label="Import deck from file"
+            tooltip="Import deck from file"
+            disabled={controller.isLoading || controller.isMutating}
+            onClick={onImportDeck}
+          />
+          {hasAnyDecks ? (
             <Button variant="primary" onClick={controller.openDeckCreator}>
               <Icon name="plus" size={18} /> New deck
             </Button>
-          </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       <SelectionToolbar
         selectedCount={controller.selectedIds.size}
@@ -164,7 +164,6 @@ export function DeckLibraryRoot({
           controller={controller}
           snapshot={controller.snapshot}
           onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
-          onImportDeck={onImportDeck}
           onExportDeck={onExportDeck}
         />
       ) : null}
@@ -206,11 +205,10 @@ function ReadyDeckLibrary({
   controller,
   snapshot,
   onPracticeDeck,
-  onImportDeck,
   onExportDeck,
 }: Pick<
   DeckLibraryRootProps,
-  "controller" | "onPracticeDeck" | "onImportDeck" | "onExportDeck"
+  "controller" | "onPracticeDeck" | "onExportDeck"
 > & {
   snapshot: DeckLibrarySnapshot;
 }) {
@@ -243,7 +241,6 @@ function ReadyDeckLibrary({
         reorder={reorder}
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
-        onImportDeck={onImportDeck}
         onExportDeck={onExportDeck}
       />
       <LibraryDragFeedback feedback={pointer.feedback} />

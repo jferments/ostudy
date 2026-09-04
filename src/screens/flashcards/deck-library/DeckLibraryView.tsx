@@ -18,7 +18,6 @@ interface DeckLibraryViewProps {
   reorder: DeckLibraryReorderAdapter;
   libraryRef: RefObject<HTMLDivElement | null>;
   onPracticeDeck(deckId: string): void | Promise<void>;
-  onImportDeck(): void;
   onExportDeck(deck: DeckSummary): void;
 }
 
@@ -27,7 +26,6 @@ export const DeckLibraryView = memo(function DeckLibraryView({
   reorder,
   libraryRef,
   onPracticeDeck,
-  onImportDeck,
   onExportDeck,
 }: DeckLibraryViewProps) {
   const snapshot = controller.snapshot;
@@ -49,17 +47,13 @@ export const DeckLibraryView = memo(function DeckLibraryView({
           <div className={styles.emptyLibraryCopy}>
             <h2 id="empty-deck-library-heading">No decks have been created yet.</h2>
             <p>
-              Create a new deck of flashcards, or import a flashcard set from a file.
+              Create a new deck of flashcards here, or use Import deck from file above to add an
+              existing flashcard set.
             </p>
           </div>
-          <div className={styles.emptyLibraryActions}>
-            <Button variant="primary" onClick={controller.openDeckCreator}>
-              <Icon name="plus" size={18} /> Create deck
-            </Button>
-            <Button variant="secondary" onClick={onImportDeck}>
-              <Icon name="folder-open" size={18} /> Import from file
-            </Button>
-          </div>
+          <Button variant="primary" onClick={controller.openDeckCreator}>
+            <Icon name="plus" size={18} /> Create a new deck
+          </Button>
         </section>
       </div>
     );
