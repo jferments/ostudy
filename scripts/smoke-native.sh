@@ -146,7 +146,17 @@ is_retryable_driver_failure() {
 run_smoke() {
   local label="$1"
   local script="$2"
+  local executable_script="$script"
   local slug attempt attempt_home log_file application_log status
+
+  # The route/smoke inventory remains anchored to ui_platform_smoke.py because
+  # that module owns all responsive/overlay assertions. Its tiny execution
+  # adapter replaces only the obsolete app-rendered window-button interaction
+  # with W3C operating-system/window-manager state transitions.
+  if [[ "$script" == "$ROOT_DIR/tests/webdriver/ui_platform_smoke.py" ]]; then
+    executable_script="$ROOT_DIR/tests/webdriver/ui_platform_os_chrome_smoke.py"
+  fi
+
   slug="$(printf '%s' "$label" | tr '[:upper:] /' '[:lower:]--' | tr -cd '[:alnum:]_-')"
 
   for attempt in 1 2; do
@@ -171,7 +181,7 @@ run_smoke() {
     XDG_CACHE_HOME="$attempt_home/cache" \
     XDG_STATE_HOME="$attempt_home/state" \
       timeout --signal=INT --kill-after=30s 300s \
-        python3 -u "$script" --application "$OSTUDY_BINARY" 2>&1 | tee "$log_file"
+        python3 -u "$executable_script" --application "$OSTUDY_BINARY" 2>&1 | tee "$log_file"
     status="${PIPESTATUS[0]}"
     set -e
 
