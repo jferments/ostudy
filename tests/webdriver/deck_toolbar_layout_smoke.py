@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native regressions for Flashcards tabs and deck-library action containment."""
+"""Native regressions for the current Flashcards tabs and deck-library controls."""
 
 from __future__ import annotations
 
@@ -10,65 +10,110 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Any, Callable
 
 import smoke as webdriver
 import ui_platform_smoke as ui
 
 
-def verify_compact_tabs(session_id: str, width: int) -> None:
-    if width > 760:
-        return
-    measurements = ui.execute(
+VIEWPORTS = (
+    (390, 760),
+    (700, 760),
+    (1174, 760),
+    (1280, 760),
+)
+EXPECTED_TABS = ["Decks", "Search/Filter"]
+
+
+def library_snapshot(session_id: str) -> dict[str, Any] | None:
+    measurement = ui.execute(
         session_id,
         """
-        const list = document.querySelector(
+        const main = document.querySelector('main');
+        const tabList = main?.querySelector(
           '[role="tablist"][aria-label="Flashcards workspaces"]'
         );
-        if (!(list instanceof HTMLElement)) return null;
-        const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
-        if (tabs.length !== 4 || tabs.some((tab) => !(tab instanceof HTMLElement))) {
-          return null;
-        }
-        const rects = tabs.map((tab) => tab.getBoundingClientRect());
-        const listRect = list.getBoundingClientRect();
+        const pointerSurface = main?.querySelector(
+          '[data-deck-library-pointer-surface="true"]'
+        );
+        if (!(main instanceof HTMLElement)
+            || !(tabList instanceof HTMLElement)
+            || !(pointerSurface instanceof HTMLElement)) return null;
+
+        const tabs = [...tabList.querySelectorAll('[role="tab"]')];
+        const buttons = [...main.querySelectorAll('button')]
+          .filter((button) => button instanceof HTMLButtonElement);
+        const buttonLabel = (button) =>
+          (button.getAttribute('aria-label') || button.textContent || '').trim();
+        const labels = buttons.map(buttonLabel);
+        const folderHeading = [...main.querySelectorAll('h2')]
+          .find((heading) => heading.textContent?.trim() === 'Folders');
+        const unsortedHeading = [...main.querySelectorAll('h2')]
+          .find((heading) => heading.textContent?.trim() === 'Unsorted decks');
+        const emptyHeading = [...main.querySelectorAll('h2')]
+          .find((heading) => heading.textContent?.trim() === 'No decks have been created yet.');
+        const folderSection = folderHeading?.closest('section');
+        const folderButton = buttons.find((button) => button.getAttribute('aria-label') === 'Create a folder');
+        const importButton = buttons.find((button) => button.getAttribute('aria-label') === 'Import deck from file');
+        const newDeckButton = buttons.find((button) => button.textContent?.trim() === 'New deck');
+        const createDeckButton = buttons.find((button) => button.textContent?.trim() === 'Create a new deck');
+        const viewportWidth = document.documentElement.clientWidth;
+        const visibleButtons = buttons.filter((button) => {
+          const style = getComputedStyle(button);
+          const rect = button.getBoundingClientRect();
+          return style.display !== 'none'
+            && style.visibility !== 'hidden'
+            && rect.width > 0
+            && rect.height > 0;
+        });
         return {
-          count: rects.length,
-          firstRowTop: rects[0].top,
-          firstRowTop2: rects[1].top,
-          secondRowTop: rects[2].top,
-          secondRowTop2: rects[3].top,
-          firstRowCenter: (rects[0].left + rects[1].right) / 2,
-          secondRowCenter: (rects[2].left + rects[3].right) / 2,
-          listCenter: (listRect.left + listRect.right) / 2,
-          clientWidth: list.clientWidth,
-          scrollWidth: list.scrollWidth,
+          tabs: tabs.map((tab) => tab.getAttribute('aria-label') || (tab.textContent || '').trim()),
+          tabsContained: tabList.scrollWidth <= tabList.clientWidth + 1,
+          emptyHeading: Boolean(emptyHeading),
+          foldersHeading: Boolean(folderHeading),
+          unsortedHeading: Boolean(unsortedHeading),
+          importAction: Boolean(importButton),
+          createDeckAction: Boolean(createDeckButton),
+          newDeckAction: Boolean(newDeckButton),
+          createFolderAction: Boolean(folderButton),
+          folderButtonInFoldersSection: Boolean(folderSection && folderButton && folderSection.contains(folderButton)),
+          newDeckInFoldersSection: Boolean(folderSection && newDeckButton && folderSection.contains(newDeckButton)),
+          hasSelectAll: labels.some((label) => label.startsWith('Select all')),
+          hasCollapseToggle: labels.includes('Collapse all') || labels.includes('Expand all'),
+          staleEmptyCopy:
+            main.textContent?.includes('No folders yet.') === true
+            || main.textContent?.includes('All active decks are in folders.') === true,
+          pointerSurfacePresent: pointerSurface.dataset.deckLibraryPointerSurface === 'true',
+          obsoleteDraggableHandleCount: pointerSurface.querySelectorAll(
+            '[draggable="true"][aria-label^="Reorder "]'
+          ).length,
+          visibleButtonsContained: visibleButtons.every((button) => {
+            const rect = button.getBoundingClientRect();
+            return rect.left >= -1 && rect.right <= viewportWidth + 1;
+          }),
+          noDocumentOverflow:
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
         };
         """,
     )
-    if not isinstance(measurements, dict):
-        raise AssertionError(f"Could not measure compact Flashcards tabs at {width}px")
-    first_top = float(measurements["firstRowTop"])
-    if abs(float(measurements["firstRowTop2"]) - first_top) > 2:
-        raise AssertionError(
-            f"The first two Flashcards tabs did not share one row at {width}px: {measurements!r}"
-        )
-    second_top = float(measurements["secondRowTop"])
-    if abs(float(measurements["secondRowTop2"]) - second_top) > 2 or second_top <= first_top + 2:
-        raise AssertionError(
-            f"The final two Flashcards tabs did not form a second row at {width}px: {measurements!r}"
-        )
-    for key in ("firstRowCenter", "secondRowCenter"):
-        if abs(float(measurements[key]) - float(measurements["listCenter"])) > 3:
-            raise AssertionError(
-                f"A Flashcards tab row was not centered at {width}px: {measurements!r}"
-            )
-    if int(measurements["scrollWidth"]) > int(measurements["clientWidth"]) + 1:
-        raise AssertionError(
-            f"The Flashcards tabs still required horizontal scrolling at {width}px: {measurements!r}"
-        )
+    return measurement if isinstance(measurement, dict) else None
 
 
-def verify_toolbar(session_id: str, width: int, height: int, deadline: float) -> None:
+def wait_for_snapshot(
+    session_id: str,
+    deadline: float,
+    predicate: Callable[[dict[str, Any]], bool],
+) -> dict[str, Any]:
+    last: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last = library_snapshot(session_id)
+        if last is not None and predicate(last):
+            return last
+        time.sleep(0.1)
+    raise AssertionError(f"Deck library did not reach the expected state: {last!r}")
+
+
+def prepare_decks_workspace(session_id: str, width: int, height: int, deadline: float) -> None:
     ui.set_window_rect(session_id, width, height)
     expected_layout = "compact" if width <= 760 else "medium" if width <= 1180 else "wide"
     ui.wait_for_layout_mode(session_id, expected_layout, deadline)
@@ -78,170 +123,119 @@ def verify_toolbar(session_id: str, width: int, height: int, deadline: float) ->
         "button[data-testid='nav-decks'][aria-current='page']",
         deadline,
     )
-    webdriver.find_element(session_id, "css selector", "main [role='tablist'][aria-label='Flashcards workspaces']", deadline)
-
-    # The native smoke scripts intentionally share one temporary application
-    # profile so they also exercise durable UI checkpoint restoration. A prior
-    # smoke can therefore leave Flashcards on any workspace tab. Select Decks
-    # explicitly for every viewport instead of relying on test order or a fresh
-    # profile, then wait for React to commit the requested workspace.
     decks_tab = webdriver.find_element(
         session_id,
         "xpath",
-        "//main//*[@role='tab' and normalize-space(.)='Decks']",
+        "//main//*[@role='tab' and @aria-label='Decks']",
         deadline,
     )
     webdriver.click(session_id, decks_tab)
     webdriver.find_element(
         session_id,
         "xpath",
-        "//main//*[@role='tab' and @aria-selected='true' and normalize-space(.)='Decks']",
+        "//main//*[@role='tab' and @aria-label='Decks' and @aria-selected='true']",
         deadline,
     )
-    verify_compact_tabs(session_id, width)
 
-    folders_heading = webdriver.find_element(
+
+def assert_common_contract(snapshot: dict[str, Any], width: int) -> None:
+    if snapshot.get("tabs") != EXPECTED_TABS:
+        raise AssertionError(
+            f"Flashcards did not expose exactly Decks and Search/Filter at {width}px: {snapshot!r}"
+        )
+    for key, message in (
+        ("tabsContained", "Flashcards tabs overflowed their tablist"),
+        ("importAction", "Import deck from file was not directly available"),
+        ("pointerSurfacePresent", "Deck pointer-session surface was unavailable"),
+        ("visibleButtonsContained", "A visible deck-library button escaped the viewport"),
+        ("noDocumentOverflow", "The deck library introduced horizontal document overflow"),
+    ):
+        if snapshot.get(key) is not True:
+            raise AssertionError(f"{message} at {width}px: {snapshot!r}")
+    if int(snapshot.get("obsoleteDraggableHandleCount", -1)) != 0:
+        raise AssertionError(f"An obsolete draggable reorder handle remained at {width}px: {snapshot!r}")
+    if snapshot.get("staleEmptyCopy") is True:
+        raise AssertionError(f"Retired empty-library copy returned at {width}px: {snapshot!r}")
+
+
+def verify_empty_library(session_id: str, width: int, height: int) -> None:
+    deadline = webdriver.deadline_after(45)
+    prepare_decks_workspace(session_id, width, height, deadline)
+    snapshot = wait_for_snapshot(
         session_id,
-        "xpath",
-        "//main//h2[normalize-space(.)='Folders']",
         deadline,
+        lambda state: state.get("emptyHeading") is True,
     )
-    pointer_surface = webdriver.find_element(
+    assert_common_contract(snapshot, width)
+    expected = {
+        "emptyHeading": True,
+        "foldersHeading": False,
+        "unsortedHeading": False,
+        "createDeckAction": True,
+        "newDeckAction": False,
+        "createFolderAction": False,
+        "hasSelectAll": False,
+        "hasCollapseToggle": False,
+    }
+    mismatches = {key: snapshot.get(key) for key, value in expected.items() if snapshot.get(key) != value}
+    if mismatches:
+        raise AssertionError(
+            f"Fresh deck library exposed irrelevant chrome at {width}px: {snapshot!r}"
+        )
+    ui.assert_no_horizontal_overflow(session_id, f"empty deck library at {width}px")
+
+
+def create_first_deck(session_id: str) -> None:
+    deck_name = "Deck toolbar regression deck"
+    deadline = webdriver.deadline_after(45)
+    webdriver.click_text_button(session_id, "Create a new deck", deadline)
+    webdriver.set_input_text(
         session_id,
         "css selector",
-        "main [data-deck-library-pointer-surface='true']",
+        "dialog input[data-autofocus='true']",
+        deck_name,
         deadline,
     )
-    new_folder = webdriver.find_element(
+    create = webdriver.wait_for_enabled_element(
         session_id,
         "xpath",
-        "//main//button[normalize-space(.)='New folder']",
+        "//*[@role='dialog']//button[normalize-space(.)='Create deck']",
         deadline,
     )
-    new_deck = webdriver.find_element(
+    webdriver.click(session_id, create)
+    webdriver.wait_for_main_heading(session_id, deck_name, deadline)
+    ui.wait_for_overlay_inactive(session_id, deadline, "deck toolbar deck creation")
+    webdriver.click_text_button(session_id, "← All decks", deadline)
+    webdriver.wait_for_main_heading(session_id, "Flashcards", deadline)
+
+
+def verify_populated_library(session_id: str, width: int, height: int) -> None:
+    deadline = webdriver.deadline_after(45)
+    prepare_decks_workspace(session_id, width, height, deadline)
+    snapshot = wait_for_snapshot(
         session_id,
-        "xpath",
-        "//main//button[normalize-space(.)='New deck']",
         deadline,
+        lambda state: state.get("foldersHeading") is True and state.get("unsortedHeading") is True,
     )
-    measurements = ui.execute(
-        session_id,
-        """
-        const heading = arguments[0];
-        const folder = arguments[1];
-        const deck = arguments[2];
-        const pointerSurface = arguments[3];
-        const folderSection = heading.closest('section');
-        const folderActions = folder.parentElement;
-        const deckActions = deck.parentElement;
-        if (
-          !(heading instanceof HTMLElement) ||
-          !(folder instanceof HTMLElement) ||
-          !(deck instanceof HTMLElement) ||
-          !(folderSection instanceof HTMLElement) ||
-          !(folderActions instanceof HTMLElement) ||
-          !(deckActions instanceof HTMLElement) ||
-          !(pointerSurface instanceof HTMLElement)
-        ) {
-          return null;
-        }
-
-        // HelpTrigger renders an absolutely positioned, opacity-zero tooltip inside
-        // these groups. That tooltip is intentionally wider than its icon and is
-        // included in an ancestor's scrollWidth even when no visible control
-        // overflows. Measure the interactive controls themselves instead.
-        const controlMetrics = (group) => {
-          const groupRect = group.getBoundingClientRect();
-          const controls = [...group.querySelectorAll('button')]
-            .filter((control) => control instanceof HTMLElement);
-          const rects = controls.map((control) => control.getBoundingClientRect());
-          return {
-            left: groupRect.left,
-            right: groupRect.right,
-            controlCount: controls.length,
-            minControlLeft: rects.length
-              ? Math.min(...rects.map((rect) => rect.left))
-              : groupRect.left,
-            maxControlRight: rects.length
-              ? Math.max(...rects.map((rect) => rect.right))
-              : groupRect.right,
-            clippedLabelCount: controls.filter(
-              (control) => control.scrollWidth > control.clientWidth + 1
-            ).length,
-          };
-        };
-
-        const f = folder.getBoundingClientRect();
-        const d = deck.getBoundingClientRect();
-        const viewport = document.documentElement.clientWidth;
-        return {
-          folderInFoldersSection: folderSection.contains(folder),
-          deckInFoldersSection: folderSection.contains(deck),
-          folderLeft: f.left,
-          folderRight: f.right,
-          deckLeft: d.left,
-          deckRight: d.right,
-          viewport,
-          folderActions: controlMetrics(folderActions),
-          deckActions: controlMetrics(deckActions),
-          pointerSurfacePresent: pointerSurface.dataset.deckLibraryPointerSurface === 'true',
-          pointerRowCount: pointerSurface.querySelectorAll('[data-library-row]').length,
-          obsoleteDraggableHandleCount: pointerSurface.querySelectorAll('[draggable="true"][aria-label^="Reorder "]').length,
-        };
-        """,
-        [
-            {webdriver.ELEMENT_KEY: folders_heading},
-            {webdriver.ELEMENT_KEY: new_folder},
-            {webdriver.ELEMENT_KEY: new_deck},
-            {webdriver.ELEMENT_KEY: pointer_surface},
-        ],
-    )
-    if not isinstance(measurements, dict):
-        raise AssertionError(f"Could not measure deck-library controls at {width}px: {measurements!r}")
-    if measurements["folderInFoldersSection"] is not True:
+    assert_common_contract(snapshot, width)
+    expected = {
+        "emptyHeading": False,
+        "foldersHeading": True,
+        "unsortedHeading": True,
+        "createDeckAction": False,
+        "newDeckAction": True,
+        "createFolderAction": True,
+        "folderButtonInFoldersSection": True,
+        "newDeckInFoldersSection": False,
+        "hasSelectAll": True,
+        "hasCollapseToggle": False,
+    }
+    mismatches = {key: snapshot.get(key) for key, value in expected.items() if snapshot.get(key) != value}
+    if mismatches:
         raise AssertionError(
-            f"New folder was not placed inside the Folders section at {width}px: {measurements!r}"
+            f"Populated deck library controls did not match the cleanup contract at {width}px: {snapshot!r}"
         )
-    if measurements["pointerSurfacePresent"] is not True:
-        raise AssertionError(f"Deck pointer session surface was unavailable at {width}px: {measurements!r}")
-    if int(measurements["obsoleteDraggableHandleCount"]) != 0:
-        raise AssertionError(f"An obsolete draggable-handle contract remained at {width}px: {measurements!r}")
-    if measurements["deckInFoldersSection"] is True:
-        raise AssertionError(
-            f"New deck was incorrectly moved into the Folders section at {width}px: {measurements!r}"
-        )
-    if (
-        float(measurements["folderLeft"]) < -1
-        or float(measurements["folderRight"]) > float(measurements["viewport"]) + 1
-        or float(measurements["deckLeft"]) < -1
-        or float(measurements["deckRight"]) > float(measurements["viewport"]) + 1
-    ):
-        raise AssertionError(
-            f"Deck-library controls escaped the viewport at {width}px: {measurements!r}"
-        )
-
-    for key, label in (
-        ("folderActions", "Folders action group"),
-        ("deckActions", "Deck toolbar action group"),
-    ):
-        group = measurements[key]
-        if not isinstance(group, dict) or int(group.get("controlCount", 0)) == 0:
-            raise AssertionError(
-                f"{label} had no measurable controls at {width}px: {measurements!r}"
-            )
-        if (
-            float(group["minControlLeft"]) < float(group["left"]) - 1
-            or float(group["maxControlRight"]) > float(group["right"]) + 1
-        ):
-            raise AssertionError(
-                f"{label} controls escaped their container at {width}px: {measurements!r}"
-            )
-        if int(group["clippedLabelCount"]) != 0:
-            raise AssertionError(
-                f"{label} clipped one or more button labels at {width}px: {measurements!r}"
-            )
-
-    ui.assert_no_horizontal_overflow(session_id, f"deck-library controls at {width}px")
+    ui.assert_no_horizontal_overflow(session_id, f"populated deck library at {width}px")
 
 
 def main() -> int:
@@ -267,17 +261,20 @@ def main() -> int:
         webdriver.wait_for_driver(time.monotonic() + 20)
         session_id = webdriver.create_session(application)
         webdriver.verify_shell(session_id, webdriver.deadline_after())
-        verify_toolbar(session_id, 390, 760, webdriver.deadline_after(45))
-        verify_toolbar(session_id, 700, 760, webdriver.deadline_after(45))
-        # 1174px reproduces the manually reported screenshot dimensions closely;
-        # 1280px covers the default desktop window width.
-        verify_toolbar(session_id, 1174, 760, webdriver.deadline_after(45))
-        verify_toolbar(session_id, 1280, 760, webdriver.deadline_after(45))
+
+        for width, height in VIEWPORTS:
+            verify_empty_library(session_id, width, height)
+
+        create_first_deck(session_id)
+
+        for width, height in VIEWPORTS:
+            verify_populated_library(session_id, width, height)
+
         print(
-            "Native Flashcards layout smoke passed: compact tabs form a centered 2x2 "
-            "layout without horizontal scrolling, New folder stays inside the Folders section, "
-            "New deck remains in the top toolbar, and visible action controls stay contained "
-            "without clipped labels, and the row pointer-session surface has no obsolete draggable handle."
+            "Native Flashcards layout smoke passed: Flashcards exposes exactly two contained tabs; "
+            "the fresh library hides folder/unsorted/selection/collapse chrome while keeping import "
+            "and the create-deck CTA; after deck creation the folder plus, Unsorted section, "
+            "Select all, and top New deck action appear without horizontal overflow."
         )
         return 0
     except Exception:
@@ -286,6 +283,13 @@ def main() -> int:
             print(log_path.read_text(encoding="utf-8"))
         except OSError:
             pass
+        if session_id:
+            try:
+                source = webdriver.request("GET", f"/session/{session_id}/source")
+                print("\n--- current WebView source (truncated) ---")
+                print(str(source)[:12_000])
+            except Exception:
+                pass
         raise
     finally:
         if session_id:

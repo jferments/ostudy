@@ -58,7 +58,7 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     question = "Why does ADH increase collecting-duct water permeability?"
     answer = "It promotes aquaporin-2 insertion in principal-cell apical membranes."
 
-    webdriver.click_text_button(session_id, "New deck", deadline)
+    webdriver.click_text_button(session_id, "Create a new deck", deadline)
     webdriver.set_input_text(
         session_id,
         "css selector",
