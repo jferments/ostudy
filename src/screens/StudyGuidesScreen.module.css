@@ -208,7 +208,21 @@
       flex-direction: column;
     }
 
-    .search label,
+    .search {
+      width: 100%;
+      flex: 0 1 auto;
+    }
+
+    .search label {
+      width: 100%;
+      max-width: none;
+      flex: 0 1 auto;
+    }
+
+    .tools {
+      width: 100%;
+    }
+
     .tools label {
       max-width: none;
     }
