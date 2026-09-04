@@ -409,7 +409,11 @@ fn repair_document_artifact_user_edits(transaction: &Transaction<'_>) -> Result<
     Ok(changed_rows)
 }
 
-fn is_filename_derived_import_title(title: &str, original_filename: &str, source_format: &str) -> bool {
+fn is_filename_derived_import_title(
+    title: &str,
+    original_filename: &str,
+    source_format: &str,
+) -> bool {
     let title = title.trim();
     let filename = original_filename.trim();
     let extension = format!(".{source_format}");
