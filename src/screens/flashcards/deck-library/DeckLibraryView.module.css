@@ -39,32 +39,15 @@
   .emptyLibrary {
     display: grid;
     width: 100%;
-    min-height: 132px;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 148px;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: var(--ostudy-space-4);
     border: 1px solid var(--ostudy-color-border-subtle);
     border-radius: var(--ostudy-radius-large);
     padding: var(--ostudy-space-5);
     background: var(--ostudy-color-surface-soft);
-    color: var(--ostudy-color-text-primary);
-    text-align: start;
     box-shadow: var(--ostudy-shadow-level-1);
-    transition:
-      border-color var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
-      background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard),
-      transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard);
-  }
-
-  .emptyLibrary:hover {
-    border-color: var(--ostudy-color-border-accent);
-    background: var(--ostudy-color-surface-raised);
-    transform: translateY(-1px);
-  }
-
-  .emptyLibrary:focus-visible {
-    outline: none;
-    box-shadow: var(--ostudy-shadow-focus);
   }
 
   .emptyLibraryIcon {
@@ -83,13 +66,25 @@
     gap: var(--ostudy-space-1);
   }
 
-  .emptyLibraryCopy strong {
-    font-size: 1.02rem;
+  .emptyLibraryCopy h2,
+  .emptyLibraryCopy p {
+    margin: 0;
   }
 
-  .emptyLibraryCopy span {
+  .emptyLibraryCopy h2 {
+    font-size: 1.08rem;
+  }
+
+  .emptyLibraryCopy p {
     color: var(--ostudy-color-text-secondary);
     line-height: 1.5;
+  }
+
+  .emptyLibraryActions {
+    display: flex;
+    grid-column: 2;
+    flex-wrap: wrap;
+    gap: var(--ostudy-space-2);
   }
 
   .folderArea,
@@ -172,12 +167,6 @@
     content: "";
   }
 
-  :global(:root[data-motion="reduced"]) .emptyLibrary,
-  :global(:root[data-motion="none"]) .emptyLibrary {
-    transition: none;
-    transform: none;
-  }
-
   @container deck-library (max-width: 620px) {
     .toolbarActions {
       width: 100%;
@@ -189,13 +178,17 @@
     }
 
     .emptyLibrary {
-      min-height: 116px;
+      min-height: 0;
       grid-template-columns: auto minmax(0, 1fr);
       padding: var(--ostudy-space-4);
     }
 
-    .emptyLibrary > svg {
-      display: none;
+    .emptyLibraryActions {
+      grid-column: 1 / -1;
+    }
+
+    .emptyLibraryActions > button {
+      flex: 1 1 180px;
     }
 
     .sectionHeading {

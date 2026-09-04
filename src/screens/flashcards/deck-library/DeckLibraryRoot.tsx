@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
 import { Icon } from "../../../ui/icons/Icon";
+import { IconButton } from "../../../ui/icons/IconButton";
 import { LoadingState } from "../../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../../ui/primitives/InlineNotice";
 import { VisuallyHidden } from "../../../ui/primitives/VisuallyHidden";
@@ -24,6 +25,9 @@ interface DeckLibraryRootProps {
   decks: readonly DeckSummary[];
   practiceShuffle: boolean;
   onPracticeSelected(request: SelectedPracticeRequest): void | Promise<void>;
+  onImportDeck(): void;
+  onExportDeck(deck: DeckSummary): void;
+  onExportSelected(decks: DeckSummary[]): void;
 }
 
 export function DeckLibraryRoot({
@@ -32,6 +36,9 @@ export function DeckLibraryRoot({
   decks,
   practiceShuffle,
   onPracticeSelected,
+  onImportDeck,
+  onExportDeck,
+  onExportSelected,
 }: DeckLibraryRootProps) {
   const guidance = selectionGuidance(controller);
   const practiceValidation = practiceSelectionValidation(controller.selectionAnalysis);
@@ -49,6 +56,13 @@ export function DeckLibraryRoot({
       {hasAnyDecks ? (
         <div className={styles.toolbar} aria-label="Deck library controls">
           <div className={styles.toolbarActions}>
+            <IconButton
+              icon="folder-open"
+              label="Import deck from file"
+              tooltip="Import deck from file"
+              disabled={controller.isMutating}
+              onClick={onImportDeck}
+            />
             <Button variant="primary" onClick={controller.openDeckCreator}>
               <Icon name="plus" size={18} /> New deck
             </Button>
@@ -66,6 +80,19 @@ export function DeckLibraryRoot({
           onSelect: controller.openPracticeSetup,
         }}
         secondaryActions={[
+          {
+            id: "export",
+            label:
+              controller.selectionAnalysis.decks.length === 1
+                ? "Export selected deck"
+                : "Export selected decks",
+            description: "Save selected decks to file",
+            placement: "always-visible",
+            presentation: "icon",
+            icon: "save",
+            disabled: selectionUnavailable || controller.isMutating,
+            onSelect: () => onExportSelected(controller.selectionAnalysis.decks),
+          },
           {
             id: "move",
             label: "Move",
@@ -137,6 +164,8 @@ export function DeckLibraryRoot({
           controller={controller}
           snapshot={controller.snapshot}
           onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
+          onImportDeck={onImportDeck}
+          onExportDeck={onExportDeck}
         />
       ) : null}
       <DeckLibrarySheets
@@ -177,7 +206,12 @@ function ReadyDeckLibrary({
   controller,
   snapshot,
   onPracticeDeck,
-}: Pick<DeckLibraryRootProps, "controller" | "onPracticeDeck"> & {
+  onImportDeck,
+  onExportDeck,
+}: Pick<
+  DeckLibraryRootProps,
+  "controller" | "onPracticeDeck" | "onImportDeck" | "onExportDeck"
+> & {
   snapshot: DeckLibrarySnapshot;
 }) {
   const libraryRef = useRef<HTMLDivElement | null>(null);
@@ -209,6 +243,8 @@ function ReadyDeckLibrary({
         reorder={reorder}
         libraryRef={libraryRef}
         onPracticeDeck={onPracticeDeck}
+        onImportDeck={onImportDeck}
+        onExportDeck={onExportDeck}
       />
       <LibraryDragFeedback feedback={pointer.feedback} />
     </>

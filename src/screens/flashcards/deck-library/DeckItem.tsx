@@ -20,6 +20,7 @@ interface DeckItemProps {
   reorder: DeckLibraryReorderAdapter;
   onOpen(): void;
   onPractice(): void;
+  onExport(): void;
   onDelete(): void;
   onToggleSelected(): void;
 }
@@ -35,6 +36,7 @@ export const DeckItem = memo(function DeckItem({
   reorder,
   onOpen,
   onPractice,
+  onExport,
   onDelete,
   onToggleSelected,
 }: DeckItemProps) {
@@ -117,6 +119,16 @@ export const DeckItem = memo(function DeckItem({
                 onSelect: onPractice,
               },
               {
+                id: "export",
+                label: `Export ${deck.name}`,
+                description: "Save deck to file",
+                placement: "always-visible",
+                presentation: "icon",
+                icon: "save",
+                disabled,
+                onSelect: onExport,
+              },
+              {
                 id: "delete",
                 label: `Delete ${deck.name}`,
                 placement: "always-visible",
@@ -129,13 +141,22 @@ export const DeckItem = memo(function DeckItem({
             ]}
           />
         ) : (
-          <IconButton
-            icon="delete"
-            label={`Delete ${deck.name}`}
-            tone="danger"
-            disabled={disabled}
-            onClick={onDelete}
-          />
+          <div className={styles.archivedActions}>
+            <IconButton
+              icon="save"
+              label={`Export ${deck.name}`}
+              tooltip="Save deck to file"
+              disabled={disabled}
+              onClick={onExport}
+            />
+            <IconButton
+              icon="delete"
+              label={`Delete ${deck.name}`}
+              tone="danger"
+              disabled={disabled}
+              onClick={onDelete}
+            />
+          </div>
         )}
       </div>
       <VisuallyHidden>

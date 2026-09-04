@@ -1,0 +1,90 @@
+@layer components {
+  .content {
+    display: grid;
+    gap: var(--ostudy-space-4);
+  }
+
+  .callout {
+    display: flex;
+    align-items: center;
+    gap: var(--ostudy-space-4);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-medium);
+    padding: var(--ostudy-space-4);
+    background: var(--ostudy-color-surface-soft);
+  }
+
+  .callout p,
+  .callout strong {
+    margin: 0;
+  }
+
+  .callout p {
+    margin-top: var(--ostudy-space-1);
+    color: var(--ostudy-color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .icon {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    flex: none;
+    place-items: center;
+    border-radius: var(--ostudy-radius-medium);
+    background: var(--ostudy-color-accent-soft);
+    color: var(--ostudy-color-text-accent);
+  }
+
+  .deckList {
+    display: grid;
+    max-height: min(42vh, 360px);
+    gap: var(--ostudy-space-2);
+    overflow: auto;
+  }
+
+  .deckRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--ostudy-space-3);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-small);
+    padding: var(--ostudy-space-3);
+    background: var(--ostudy-color-surface-soft);
+  }
+
+  .deckRow > span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .deckRow strong,
+  .deckRow small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .deckRow small {
+    color: var(--ostudy-color-text-muted);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--ostudy-space-2);
+  }
+
+  @media (max-width: 760px) {
+    .callout {
+      align-items: flex-start;
+    }
+
+    .actions > button {
+      flex: 1 1 auto;
+    }
+  }
+}

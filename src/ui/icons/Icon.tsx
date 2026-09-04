@@ -32,6 +32,7 @@ export const ICON_NAMES = [
   "plus",
   "practice",
   "restore",
+  "save",
   "schedule",
   "search",
   "settings",
@@ -242,6 +243,13 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M4 7v5h5" />
           <path d="M5.5 16a8 8 0 1 0 .5-9l-2 5" />
+        </>
+      );
+    case "save":
+      return (
+        <>
+          <path d="M4 3h13l3 3v15H4z" />
+          <path d="M8 3v6h8V3M8 21v-7h8v7" />
         </>
       );
     case "search":

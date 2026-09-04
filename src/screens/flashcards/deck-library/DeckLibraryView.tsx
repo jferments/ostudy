@@ -18,6 +18,8 @@ interface DeckLibraryViewProps {
   reorder: DeckLibraryReorderAdapter;
   libraryRef: RefObject<HTMLDivElement | null>;
   onPracticeDeck(deckId: string): void | Promise<void>;
+  onImportDeck(): void;
+  onExportDeck(deck: DeckSummary): void;
 }
 
 export const DeckLibraryView = memo(function DeckLibraryView({
@@ -25,6 +27,8 @@ export const DeckLibraryView = memo(function DeckLibraryView({
   reorder,
   libraryRef,
   onPracticeDeck,
+  onImportDeck,
+  onExportDeck,
 }: DeckLibraryViewProps) {
   const snapshot = controller.snapshot;
   if (!snapshot) return null;
@@ -38,20 +42,25 @@ export const DeckLibraryView = memo(function DeckLibraryView({
   if (!hasAnyDecks) {
     return (
       <div ref={libraryRef} className={styles.library} data-deck-library-pointer-surface="true">
-        <button
-          type="button"
-          className={styles.emptyLibrary}
-          onClick={controller.openDeckCreator}
-        >
+        <section className={styles.emptyLibrary} aria-labelledby="empty-deck-library-heading">
           <span className={styles.emptyLibraryIcon} aria-hidden="true">
             <Icon name="cards" size={30} />
           </span>
-          <span className={styles.emptyLibraryCopy}>
-            <strong>No decks have been created yet.</strong>
-            <span>Click here to create a new deck of flashcards.</span>
-          </span>
-          <Icon name="plus" size={22} aria-hidden="true" />
-        </button>
+          <div className={styles.emptyLibraryCopy}>
+            <h2 id="empty-deck-library-heading">No decks have been created yet.</h2>
+            <p>
+              Create a new deck of flashcards, or import a flashcard set from a file.
+            </p>
+          </div>
+          <div className={styles.emptyLibraryActions}>
+            <Button variant="primary" onClick={controller.openDeckCreator}>
+              <Icon name="plus" size={18} /> Create deck
+            </Button>
+            <Button variant="secondary" onClick={onImportDeck}>
+              <Icon name="folder-open" size={18} /> Import from file
+            </Button>
+          </div>
+        </section>
       </div>
     );
   }
@@ -127,6 +136,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
                   onToggleCollapsed={() => controller.toggleFolder(folder.id)}
                   onOpenDeck={controller.openDeck}
                   onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
+                  onExportDeck={onExportDeck}
                   onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
                   onRename={() => controller.openFolderRenamer(folder.id)}
                   onDelete={() => void controller.removeFolder(folder.id)}
@@ -168,6 +178,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
                 controller={controller}
                 reorder={reorder}
                 onPracticeDeck={onPracticeDeck}
+                onExportDeck={onExportDeck}
               />
             ))}
           </div>
@@ -181,6 +192,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
         reorder={reorder}
         onToggle={controller.toggleArchived}
         onOpenDeck={controller.openDeck}
+        onExportDeck={onExportDeck}
         onDeleteDeck={(deckId) => void controller.removeDeck(deckId)}
         selectedIds={controller.selectedIds}
         onToggleDeckSelected={controller.toggleDeckSelected}
@@ -196,6 +208,7 @@ function UnsortedDeckItem({
   controller,
   reorder,
   onPracticeDeck,
+  onExportDeck,
 }: {
   deck: DeckSummary;
   index: number;
@@ -203,6 +216,7 @@ function UnsortedDeckItem({
   controller: DeckLibraryController;
   reorder: DeckLibraryReorderAdapter;
   onPracticeDeck(deckId: string): void | Promise<void>;
+  onExportDeck(deck: DeckSummary): void;
 }) {
   return (
     <DeckItem
@@ -215,6 +229,7 @@ function UnsortedDeckItem({
       reorder={reorder}
       onOpen={() => controller.openDeck(deck.id)}
       onPractice={() => void onPracticeDeck(deck.id)}
+      onExport={() => onExportDeck(deck)}
       onDelete={() => void controller.removeDeck(deck.id)}
       onToggleSelected={() => controller.toggleDeckSelected(deck)}
     />

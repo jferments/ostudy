@@ -4,10 +4,9 @@ import type { DeckOpenRequest } from "../../App";
 import { SourceCitationPanel } from "../../components/SourceCitationPanel";
 import type { ShowToast } from "../../components/Toast";
 import { DecksController } from "../../controllers/decksController";
-import { createOperationId, getErrorMessage } from "../../ipc/common";
+import { getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
-import { publishExport } from "../../platform/files";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { ResponsiveActionGroup } from "../../ui/patterns/ResponsiveActionGroup";
 import { LoadingState } from "../../ui/primitives/EmptyState";
@@ -19,6 +18,7 @@ import {
   type CardBrowserView,
 } from "../cards/CardBrowserWorkspace";
 import { useCardPracticeLauncher } from "../cards/CardPracticeContext";
+import { DeckTransferDialog } from "./DeckTransferDialog";
 import polishStyles from "./DeckDetailRoute.module.css";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
@@ -51,7 +51,7 @@ export function DeckDetailRoute({
   const [deck, setDeck] = useState<DeckSummary | null>(initialDeck);
   const [browserView, setBrowserView] = useState<CardBrowserView>("list");
   const [isLoading, setIsLoading] = useState(initialDeck === null);
-  const [isTransferring, setIsTransferring] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
@@ -147,25 +147,6 @@ export function DeckDetailRoute({
     }
   }
 
-  async function exportDeck(): Promise<void> {
-    if (!deck || isTransferring) return;
-    setIsTransferring(true);
-    try {
-      const prepared = await controller.prepareExport(deck.id, createOperationId());
-      const receipt = await publishExport(prepared.preparedExport.id);
-      if (receipt) {
-        showToast(
-          "success",
-          `Exported ${prepared.cardCount} ${prepared.cardCount === 1 ? "card" : "cards"}.`,
-        );
-      }
-    } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
-    } finally {
-      setIsTransferring(false);
-    }
-  }
-
   if (!deck && isLoading) return <LoadingState label="Opening deck…" />;
   if (!deck) {
     return (
@@ -216,18 +197,12 @@ export function DeckDetailRoute({
                 },
                 {
                   id: "export",
-                  label: "Export",
-                  placement: "wide-and-medium",
-                  loading: isTransferring,
-                  onSelect: () => void exportDeck(),
-                },
-                {
-                  id: "archive",
-                  label: `Archive ${deck.name}`,
-                  placement: "wide-only",
+                  label: `Export ${deck.name}`,
+                  description: "Save deck to file",
+                  placement: "always-visible",
                   presentation: "icon",
-                  icon: "archive",
-                  onSelect: () => void archive(),
+                  icon: "save",
+                  onSelect: () => setShowExportDialog(true),
                 },
                 {
                   id: "delete",
@@ -238,6 +213,14 @@ export function DeckDetailRoute({
                   icon: "delete",
                   destructive: true,
                   onSelect: () => void deleteDeck(),
+                },
+                {
+                  id: "archive",
+                  label: `Archive ${deck.name}`,
+                  placement: "wide-only",
+                  presentation: "icon",
+                  icon: "archive",
+                  onSelect: () => void archive(),
                 },
               ]}
             />
@@ -263,6 +246,15 @@ export function DeckDetailRoute({
         <footer className={polishStyles.sourceFooter}>
           <SourceCitationPanel deckId={deck.id} />
         </footer>
+      ) : null}
+
+      {showExportDialog ? (
+        <DeckTransferDialog
+          request={{ kind: "export", decks: [deck] }}
+          refreshDecks={refreshDecks}
+          onClose={() => setShowExportDialog(false)}
+          showToast={showToast}
+        />
       ) : null}
     </div>
   );
