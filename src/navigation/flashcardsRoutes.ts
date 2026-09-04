@@ -1,9 +1,4 @@
-export const flashcardsWorkspaceNames = [
-  "decks",
-  "templates",
-  "search",
-  "transfer",
-] as const;
+export const flashcardsWorkspaceNames = ["decks", "search"] as const;
 
 export type FlashcardsWorkspaceName = (typeof flashcardsWorkspaceNames)[number];
 
@@ -46,9 +41,9 @@ export function isFlashcardsWorkspaceName(value: string): value is FlashcardsWor
 }
 
 /**
- * Templates and Transfer are retained in the durable vocabulary only so old
- * checkpoints deserialize safely. Both removed workspace names now recover to
- * the Decks page; only Decks and Search/Filter are visible destinations.
+ * Templates and Transfer remain accepted as legacy checkpoint strings at
+ * runtime, but both recover to Decks. Only Decks and Search/Filter are current
+ * Flashcards destinations.
  */
 export function normalizeFlashcardsWorkspace(
   value: string | null | undefined,

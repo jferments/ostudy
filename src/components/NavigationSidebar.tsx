@@ -18,7 +18,7 @@ const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string 
   { section: "settings", icon: "settings", label: "Settings" },
 ];
 
-const COMPACT_SECTIONS = [
+const COMPACT_PRIMARY_SECTIONS = [
   "decks",
   "study-guides",
   "documents",
@@ -50,7 +50,7 @@ export function NavigationSidebar({
   }
 
   if (compact) {
-    const compactItems = COMPACT_SECTIONS.map((compactSection) =>
+    const compactItems = COMPACT_PRIMARY_SECTIONS.map((compactSection) =>
       ITEMS.find((item) => item.section === compactSection),
     ).filter((item): item is (typeof ITEMS)[number] => item !== undefined);
     return (

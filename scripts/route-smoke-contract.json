@@ -34,7 +34,7 @@
     {
       "id": "templates",
       "role": "compatibility-alias",
-      "target": "decks/templates"
+      "target": "settings"
     },
     {
       "id": "analytics",
@@ -210,10 +210,10 @@
     "primary": [
       "decks",
       "study-guides",
+      "documents",
       "analytics"
     ],
     "more": [
-      "documents",
       "settings"
     ]
   },
@@ -305,26 +305,8 @@
       }
     },
     {
-      "id": "templates",
-      "label": "Templates",
-      "smoke": {
-        "coverage": "presence",
-        "evidence": [
-          {
-            "runner": "native-webdriver",
-            "path": "tests/webdriver/ui_platform_smoke.py",
-            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
-            "presenceFragments": [
-              "for label in (\"Decks\", \"Templates\", \"Search\", \"Import/Export\"):",
-              "find_workspace_tab(session_id, label, deadline)"
-            ]
-          }
-        ]
-      }
-    },
-    {
       "id": "search",
-      "label": "Search",
+      "label": "Search/Filter",
       "smoke": {
         "coverage": "route-entry",
         "evidence": [
@@ -339,24 +321,6 @@
             "assertionFragments": [
               "main section[aria-label='Card filters']",
               "medium Search workspace"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": "transfer",
-      "label": "Import/Export",
-      "smoke": {
-        "coverage": "presence",
-        "evidence": [
-          {
-            "runner": "native-webdriver",
-            "path": "tests/webdriver/ui_platform_smoke.py",
-            "entrypoint": "tests/webdriver/ui_platform_smoke.py",
-            "presenceFragments": [
-              "for label in (\"Decks\", \"Templates\", \"Search\", \"Import/Export\"):",
-              "find_workspace_tab(session_id, label, deadline)"
             ]
           }
         ]
