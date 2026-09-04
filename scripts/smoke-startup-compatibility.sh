@@ -87,7 +87,7 @@ CREATE TABLE ai_provider_profiles_legacy (
     model_id                TEXT NOT NULL DEFAULT '' CHECK(length(model_id) <= 300),
     auth_mode               TEXT NOT NULL CHECK(auth_mode IN ('none', 'bearer')),
     enabled                 INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
-    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0, 1)),
+    allow_insecure_http     INTEGER NOT NULL DEFAULT 0 CHECK(allow_insecure_http IN (0, 1)),
     request_timeout_ms      INTEGER NOT NULL DEFAULT 60000
                             CHECK(request_timeout_ms BETWEEN 1000 AND 300000),
     credential_storage      TEXT NOT NULL DEFAULT 'none'
