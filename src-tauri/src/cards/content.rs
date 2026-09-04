@@ -1012,13 +1012,7 @@ fn collect_plain_text(value: &Value, output: &mut String) {
 
     if matches!(
         node_type,
-        "paragraph"
-            | "heading"
-            | "blockquote"
-            | "listItem"
-            | "taskItem"
-            | "codeBlock"
-            | "table"
+        "paragraph" | "heading" | "blockquote" | "listItem" | "taskItem" | "codeBlock" | "table"
     ) && !output.ends_with('\n')
     {
         output.push('\n');
