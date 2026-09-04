@@ -5,6 +5,7 @@ import { useAiProfilesController } from "../controllers/aiProfilesController";
 import { getErrorMessage } from "../ipc/common";
 import { saveSettings, type AppSettings } from "../ipc/settings";
 import { DEFAULT_FONT_PRESET } from "../ui/appearance/appearanceTypes";
+import { Icon } from "../ui/icons/Icon";
 import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { Button } from "../ui/primitives/Button";
@@ -17,6 +18,7 @@ import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
+import styles from "./SettingsScreen.module.css";
 
 const ownedStyleMaps = sharedClassMaps;
 
@@ -164,6 +166,7 @@ export function SettingsScreen({
     {
       value: "templates",
       label: "Card templates",
+      hiddenFromTabList: true,
       panel: (
         <TemplatesScreen
           onDirtyChange={setTemplateDirty}
@@ -226,6 +229,16 @@ export function SettingsScreen({
       {preferencesDirty ? (
         <InlineNotice kind="info">Previewing unsaved preferences.</InlineNotice>
       ) : null}
+
+      <div className={styles.shortcutRow} aria-label="Settings tools">
+        <Button
+          type="button"
+          variant={activeTab === "templates" ? "primary" : "secondary"}
+          onClick={() => setActiveTab("templates")}
+        >
+          <Icon name="template" size={18} /> Card templates
+        </Button>
+      </div>
 
       <Tabs
         value={activeTab}
