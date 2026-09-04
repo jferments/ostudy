@@ -45,10 +45,15 @@ export function isFlashcardsWorkspaceName(value: string): value is FlashcardsWor
   return (flashcardsWorkspaceNames as readonly string[]).includes(value);
 }
 
+/**
+ * Templates and Transfer are retained in the durable vocabulary only so old
+ * checkpoints deserialize safely. Both removed workspace names now recover to
+ * the Decks page; only Decks and Search/Filter are visible destinations.
+ */
 export function normalizeFlashcardsWorkspace(
   value: string | null | undefined,
 ): FlashcardsWorkspaceName {
-  return value && isFlashcardsWorkspaceName(value) ? value : "decks";
+  return value === "search" ? "search" : "decks";
 }
 
 export function createFlashcardsRootRoute(
@@ -56,9 +61,15 @@ export function createFlashcardsRootRoute(
   requestId: number,
   restoreDeckSelection?: TransientDeckSelectionEntry[],
 ): FlashcardsRootRoute {
+  const normalizedWorkspace = normalizeFlashcardsWorkspace(workspace);
   return restoreDeckSelection && restoreDeckSelection.length > 0
-    ? { requestId, workspace, view: "root", restoreDeckSelection }
-    : { requestId, workspace, view: "root" };
+    ? {
+        requestId,
+        workspace: normalizedWorkspace,
+        view: "root",
+        restoreDeckSelection,
+      }
+    : { requestId, workspace: normalizedWorkspace, view: "root" };
 }
 
 export function createFlashcardsDeckRoute(

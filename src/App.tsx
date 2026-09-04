@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { IncomingShareCoordinator } from "./components/IncomingShareCoordinator";
@@ -50,7 +50,19 @@ export type {
 
 function App() {
   const controller = useAppController();
+  const [studyGuidesNavigationKey, setStudyGuidesNavigationKey] = useState(0);
   const tutorialsEnabled = controller.activeSettings.tutorialsEnabled ?? false;
+
+  function navigate(section: Parameters<typeof controller.navigate>[0]): void {
+    if (
+      section === "study-guides" &&
+      controller.section === "study-guides" &&
+      controller.activeWorkflow === null
+    ) {
+      setStudyGuidesNavigationKey((current) => current + 1);
+    }
+    void controller.navigate(section);
+  }
 
   return (
     <LayoutModeProvider>
@@ -81,12 +93,13 @@ function App() {
                 <MobileAppBar
                   section={controller.section}
                   activeWorkflow={controller.activeWorkflow}
+                  onNavigate={navigate}
                 />
                 <PerformanceProfiler id="navigation">
                   <NavigationSidebar
                     section={controller.section}
                     activeWorkflow={controller.activeWorkflow}
-                    onNavigate={controller.navigate}
+                    onNavigate={navigate}
                   />
                 </PerformanceProfiler>
 
@@ -140,11 +153,11 @@ function App() {
                             onOpenDeck={controller.openFlashcardsDeck}
                             onReturnToLibrary={controller.returnToFlashcardsLibrary}
                             onCardDirtyChange={controller.setHasUnsavedCard}
-                            onTemplateDirtyChange={controller.setHasUnsavedTemplate}
                             showToast={controller.showToast}
                           />
                         ) : controller.section === "study-guides" ? (
                           <StudyGuidesRoute
+                            key={studyGuidesNavigationKey}
                             showToast={controller.showToast}
                             onPracticeCards={controller.practiceCards}
                           />
