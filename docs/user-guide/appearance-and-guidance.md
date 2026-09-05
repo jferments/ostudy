@@ -1,77 +1,55 @@
-# Appearance, accessibility, help, and guided tutorials
+# Appearance, accessibility, help, and tutorials
 
-ostudy uses one semantic visual system across desktop, tablet, Android, and future mobile targets. Themes change the visual values assigned to surfaces, borders, text, status roles, and accents; they do not change where features live or how study data behaves.
+Open **Settings → Appearance**. Presentation preferences change how ostudy looks and responds, not where your study data is stored or how reviews are scheduled. Theme and typography changes preview immediately; use **Save preferences** when shown to keep them. Provider profiles and card-template edits have their own save paths.
+
+## Navigation and available space
+
+The same application resolves compact, medium, and wide layouts from its available viewport. Wide/medium layouts use labeled navigation. Compact layouts show Flashcards, Study Guides, Documents, and Analytics in bottom navigation, with Settings in the upper-right gear.
+
+An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. The application uses native operating-system window chrome on desktop; old instructions for separate in-app maximize/full-screen buttons no longer describe the current shell. Use your window manager's supported controls and shortcuts.
+
+Compact visual spacing must preserve keyboard focus, accessible names, and touch targets. A truncated row preview does not mean stored card text was shortened; open the content to inspect it fully.
 
 ## Themes and typography
 
-The Appearance settings provide Light, Dark, Console, and Synthwave themes. Each theme implements the same complete semantic contract, so a screen cannot accidentally become functionally different under another theme.
+The built-in themes are **Light**, **Dark**, **Console**, and **Synthwave**. They share the same functional controls and semantic roles. Choosing a theme does not select a different study workflow.
 
-Interface and flashcard typography are configured separately. Interface scale and default card text size also remain separate: increasing the interface scale does not rewrite card content, and changing the card default does not enlarge navigation or dialogs.
+Interface font and default card font are independent. Interface scale and default card text size are also independent, so study material can be larger without unnecessarily enlarging navigation. Current controls expose interface scale from 80–140% and default card text from 12–32 pixels; explicit formatting within card content remains a separate concern.
 
-IBM Plex Sans is the new-install default for both interface and flashcard text.
-Older untouched system defaults adopt it automatically, while any font that
-you explicitly selected—including the system family—remains unchanged. The
-bundled face works offline in an installed app. If it is unavailable, ostudy
-falls back to the device's sans-serif system stack rather than requesting a
-remote font.
+New installations use **IBM Plex Sans** for both default font choices. Older untouched defaults can adopt it, while explicit selections—including an explicitly chosen system font—are preserved. The installed app uses a local bundled face and falls back to the device's sans-serif stack when it is unavailable; it does not fetch a runtime web font.
 
-## Desktop window controls
+A custom font-family preference relies on a font installed on the device. It does not copy that font file into the library or make it portable to another device. Restore appearance defaults is not a reset of review history, backup configuration, or AI profiles.
 
-On supported desktop builds, ostudy exposes native maximize/restore and
-full-screen controls in the shell. Their labels change to **Restore window** and
-**Exit full screen** when those native states are active. The controls use
-ordinary keyboard-focusable buttons and move from the sidebar to the app bar at
-compact desktop widths. Mobile builds and browser-only previews omit them
-instead of simulating a desktop window or browser full-screen behavior. This
-expands the shell and maintained routes into the resulting viewport. Dialogs
-remain bounded by the safe dynamic viewport; workspace dialogs such as the
-current Study Guide can fill it while preserving a narrower reading column.
-Compact guides use a full-screen presentation with content and sticky actions
-kept clear of safe areas and the on-screen keyboard.
+## Motion and materials
 
-## Motion and material effects
+Motion choices are **Follow system**, **Full motion**, **Reduced motion**, and **No nonessential motion**. Reduced/disabled motion removes nonessential spatial transitions, flips, parallax, and particle effects while preserving labels, progress, focus, and state changes.
 
-Motion has three effective levels:
+Material effects are independent: **Automatic**, **Rich materials**, and **Simple opaque materials**. Simpler materials reduce translucency/blur and retain hierarchy through borders and surfaces. Operating-system reduced-transparency or forced-colors needs take precedence over optional decoration.
 
-- **Full** uses route transitions, card flips, small interaction feedback, and optional completion celebration.
-- **Reduced** removes spatial movement and particle effects while preserving immediate state changes and focus movement.
-- **None** disables nonessential animation completely.
+Do not interpret an animation as the authoritative signal that a review committed. The native result owns that fact; effects follow semantic events and may be disabled or unavailable.
 
-The system preference can be followed automatically or overridden in Appearance settings. Material complexity is independent of motion. Rich materials may use translucency, blur, fine grain, and restrained glow; Simple materials replace those treatments with opaque surfaces, borders, and elevation. Reduced-transparency and forced-colors preferences always take precedence over decorative effects.
+## Artwork and completion feedback
 
-## Decorative artwork and study content
+**Decorative artwork** controls nonessential mascot and illustrated-state art. Functional icons, notices, controls, and educational images in cards/documents remain visible. **Celebrations** permits brief one-shot completion effects when the motion policy allows them; disabling it does not remove the completion summary or analytics.
 
-The Decorative artwork setting controls mascot illustrations and nonessential empty-state or completion artwork. Every illustrated state retains its title, explanatory text, action, and functional icon when artwork is disabled.
-
-Images that are part of a flashcard or imported study document are educational content. They are never hidden by the decorative-artwork preference.
+Platform feedback can vary by capability and preference. Unsupported audio/haptic/visual effects must not prevent ordinary studying. There is no separate Comfortable/Compact deck-density preference in the current interface.
 
 ## Contextual help
 
-Question-mark controls provide brief hover or keyboard-focus descriptions on pointer devices. Activating the control opens a responsive help sheet with the full explanation. The same topic registry supplies both presentations, so the short and detailed descriptions cannot drift apart.
+Question-mark controls provide a short hover/focus explanation where applicable. Activating Help opens its touch-friendly explanation. Short and full explanations come from the same topic registry rather than separately maintained screen copy.
 
-Help sheets may offer a related **Start guided tutorial** action. They reference the corresponding user-guide topic, but they do not open external pages or require a network connection.
+Help can identify a related guide or offer **Start guided tutorial**. Ordinary help is available without an AI provider or tutorial opt-in; reading help does not send library content to a model.
 
-## Interactive tutorials
+## Explicitly started tutorials
 
-Interactive tutorials are optional, short guided modules. **They never start automatically.** New installations leave **Interactive tutorials** off by default. To use one, enable the setting under **Settings → Appearance**, open a related Help sheet, and explicitly choose **Start guided tutorial**.
+**Interactive tutorials** default off. To use one, enable the setting, open a relevant Help topic, and explicitly start its tutorial. Current modules cover Flashcards orientation, Search filters, practice reveal/rating, and document generation.
 
-Current modules cover:
+Tutorials never auto-start because you opened a route, exposed a target, upgraded a version, or restarted the app. Observing the target of an already-running step only keeps its spotlight aligned with layout changes.
 
-- Flashcards workspace orientation;
-- Search filters and study-state scope;
-- practice card reveal and confidence rating;
-- document-to-flashcard generation.
+Escape or Android Back dismisses active guidance before ordinary navigation. Turning tutorials off closes an active tutorial and prevents new starts until re-enabled. Versioned tutorial progress/dismissals are device-local presentation state, not library content included in `.ostudybackup`. They do not change cards, schedules, providers, or credentials.
 
-Starting a tutorial is the only action that opens it. Merely navigating to a workspace, exposing a matching DOM target, upgrading to a newer tutorial version, or restarting the application does not launch guidance.
+## Other Settings sections
 
-Tutorial completion and dismissal state is device-local presentation state. Existing stored progress remains readable after upgrades. It is not library content, is not included in `.ostudybackup`, and can be dismissed or explicitly restarted without affecting decks, cards, schedules, analytics, or credentials.
+The normal tabs are Appearance, Backup/Sync, AI/LLM, Review/Scheduling, Card templates, and Diagnostics. Card templates is a full editing workspace, not a hidden advanced shortcut. Backup/Sync owns recovery and trusted-device transfer; Diagnostics owns local diagnostic configuration and troubleshooting information.
 
-While an explicitly started tutorial is open, ostudy observes its current semantic target so the spotlight follows layout changes. That observation is presentation-only and cannot initiate another tutorial.
-
-Escape and Android Back close the current tutorial before ordinary route navigation occurs. Focus returns to the control that opened the tutorial. Disabling Interactive tutorials closes any active tutorial and prevents explicit starts until the setting is enabled again; ordinary Help remains available.
-
-## Completion feedback
-
-Submitting a review or finishing a session emits a semantic feedback event. A central experience layer decides whether that event becomes a visual pulse, haptic response, audio cue, or no effect according to preferences and platform capability. The domain code does not select animation values or platform-specific effects.
-
-Completion particles are deliberately bounded and one-shot. Reduced motion or disabled celebrations remove the particles and glow without hiding the completion summary or its analytics.
+For current study routes see [Getting started](getting-started.md), for deck actions see [Flashcards](flashcards-workspace.md), and for recoverable data versus device-local presentation state see [Backups](backups-imports-and-sharing.md).

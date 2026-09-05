@@ -1,10 +1,17 @@
 # Testing and CI
 
-ostudy uses tiered validation locally and one isolated self-hosted Linux runner for automated Linux/Tauri and Android qualification. Inexpensive tiers help iteration; only the authoritative full gates qualify a merge.
+ostudy uses tiered local validation and one isolated self-hosted Linux/Android runner for pull-request qualification. The tiers provide fast feedback without pretending a narrow result proves every boundary.
 
-## Runner architecture
+Two pull-request workflows are intentionally separate:
 
-Automated qualification runs on the repository-scoped `ostudy-ci-unified` runner with:
+- **PR Contract** validates the machine-readable acceptance snapshot and review-readiness metadata.
+- **Check** validates the exact published product source SHA.
+
+A malformed PR body does not block product qualification. A green metadata check does not mean the application compiled or ran.
+
+## Unified runner
+
+Automated product qualification runs on the repository-scoped unified runner with labels:
 
 ```text
 self-hosted
@@ -13,13 +20,11 @@ x64
 ostudy-unified
 ```
 
-The runner is an Ubuntu 24.04 libvirt/QEMU/KVM virtual machine on `ML-tower`. It runs Linux/Tauri checks directly and the official Android Emulator through nested KVM. The VM has no host filesystem share, no forwarded SSH agent, no Docker/libvirt host-control socket, no signing credentials, and no personal ostudy data.
+The runner is an isolated Ubuntu 24.04 libvirt/QEMU/KVM VM. Linux/Tauri qualification runs directly; the official Android Emulator uses nested KVM. The VM has no personal ostudy library, forwarded SSH agent, host Docker/libvirt control socket, or Android release-signing credentials.
 
-See [Unified Linux and Android self-hosted runner](unified-linux-android-runner.md) for the architecture and [Unified runner setup](unified-runner-setup.md) for provisioning and recovery.
+See [Unified Linux/Android runner](unified-linux-android-runner.md) and [runner operations](unified-runner-setup.md). The older split-runner note is retained only as migration context.
 
 ## Local validation tiers
-
-Use the repository tiers in increasing order:
 
 ```bash
 ./scripts/check-changed.sh
@@ -28,281 +33,192 @@ Use the repository tiers in increasing order:
 ./scripts/check.sh
 ```
 
-`check-changed.sh` is an iteration aid. It inspects the current diff and chooses a conservative focused check when one is safe.
+### `check-changed.sh`
 
-`check-static.sh` verifies repository policy, manifests and lockfiles, migrations, typed IPC, dependency boundaries, documentation links, workflow policy, TypeScript checking, Rust formatting, startup-boundary source contracts, and script syntax/contracts.
+An impact-aware iteration aid. It inspects the current diff and chooses a conservative focused check when safe. It is not final merge qualification.
 
-`check-fast.sh` adds the complete frontend test suite, locked Rust compilation, warning-free Rust linting, and high-return document/platform contracts.
+### `check-static.sh`
 
-`check.sh` is the authoritative Linux/shared correctness suite. It adds native dependency qualification, production frontend build, Clippy, all Rust tests, standalone Tauri build, dependency verification, a **built-binary pre-public adoption smoke**, and the native WebDriver persistence/UI smoke tests.
+Verifies source/repository contracts that do not require the full runtime, including documentation organization/links, manifests/lockfiles/version mirrors, migration/repair policy, TypeScript and Rust formatting/static rules, typed IPC ownership, frontend/platform/shared-UI boundaries, route/destination inventories, AI/document ownership boundaries, external-file streaming architecture, Android static/generated-project contracts, workflow source-read-only policy, and verifier fixture tests.
 
-Wall-clock UI/WebKit performance is advisory evidence collected manually outside
-the required `Check` workflow. The retained
-`check-ui-performance-candidate.sh` tooling requires a new absolute
-runner-temporary output directory, captures the Stage 4 large-library deck-drag
-candidate with the real profiling Tauri build, and compares it with the
-immutable Stage 0 drag budgets. Before collecting those samples, a separate
-disposable driver/application session injects a real X11 mouse drag through
-XTEST and requires WebKit to report trusted mouse Pointer Events at the
-calibrated deck row, show the production drag preview, clear it on trusted
-Escape while the button remains held, and then observe native button release.
-That process is stopped before measurement begins, and the candidate manifest
-must contain the exact trusted-input attestation. A timing or trusted-input
-performance capture failure cannot block Linux/shared correctness or prevent
-Android correctness qualification from running.
+This is the minimum maintained gate for documentation-only work.
 
-The repeatable performance samples measure deterministic DOM `PointerEvent` dispatch through
-the production React drag adapter, preview, cancellation, Profiler, User Timing,
-and pointer-frame instrumentation. The preceding XTEST smoke separately
-qualifies X11-to-WebKit trusted mouse translation without contaminating those
-timings. Physical touch/pen behavior and subjective drag feel remain manual
-acceptance boundaries.
+### `check-fast.sh`
 
-The adoption smoke is intentionally different from the ordinary WebDriver tests. WebDriver scenarios use fresh isolated app-data so they can verify normal first-run and persistence behavior. The adoption smoke instead creates a real on-disk database with the exact final development lineage: all 26 immutable migration identities/checksums, all 3 repair identities/checksums, the terminal v26 schema, the historical SQLite `user_version = 0` marker, and representative deck/card/review/analytics rows. The old migration runner never assigned `PRAGMA user_version`; the immutable ledgers are therefore the authoritative version record. A separate unit test also accepts an explicitly stamped `user_version = 26` copy when every other exact-lineage check matches. The smoke launches the exact built binary and requires ostudy to:
+Adds high-return deterministic tests such as the complete frontend/controller/component suite, locked Rust compilation/lint-oriented checks, and focused native/document/platform contracts selected by the wrapper. This is the automatic draft-PR product gate.
 
-1. create a consistent SQLite backup;
-2. adopt `ostudy-public-v1` transactionally;
-3. preserve every application-table row count and the seeded deck/card/review/attribution rows;
-4. emit `pre_public_database_adoption_completed` and `application_started`;
-5. flush those startup/adoption events to the persistent JSONL log;
-6. remain alive as a usable application;
-7. avoid `application_startup_blocked`, `panic_captured`, and Tauri setup failure.
+### `check.sh`
 
-This directly covers the state that fresh WebDriver homes cannot exercise. Separate unit tests verify that unsupported pre-public databases are not modified or backed up automatically.
+The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-Native WebDriver element lookup is a read-only polling operation and tolerates a transient driver HTTP disconnect within its existing deadline. Mutating commands such as session creation, clicks, form submission, and actions are never automatically retried because the operation may already have been applied before its response was lost. Multi-stage smoke scenarios should assert already-established navigation state instead of issuing redundant clicks between adjacent layout checks. Responsive deck-toolbar checks therefore re-resolve the selected Flashcards route and Decks workspace after each resize rather than retaining element IDs across React layout replacement.
+The current public migration registry is defined by `src-tauri/src/database.rs` (public schema version 8 at the time of this guide). Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
 
-The durable-library smoke owns the native persistence path and the integrated
-Practice return contract. It creates a deck/card, launches deck-context Practice
-as an internal workflow, requires every primary destination to remain
-unselected, ends early, verifies the exact deck detail is restored, then starts
-again and completes a review before checking Analytics and restart persistence.
-`card_listing_followup_smoke.py` separately pins the complete labeled medium
-navigation order while exercising shared Deck/Search listing and authoring.
-These scenarios use fresh isolated application data and do not change scheduler
-or database policy.
+### Exact-tree reuse
 
-The UI-platform smoke waits for the shared layout mode and two animation frames
-before measuring responsive geometry. At compact, medium, and wide sizes it
-asserts the complete navigation, current Study Guides workspace, one loaded
-responsive mascot lockup, removed-motto absence, and fresh-profile IBM Plex
-interface/card variables. The shell, main scroll owner, route-transition layer,
-and selected maintained route must consume their allocated viewport without
-document-level horizontal overflow after explicit resize and separately after
-maximize, restore, full-screen, and exit-full-screen. Every native-state
-measurement waits until the window controller exposes the expected pressed
-state; dimensions are never used to infer maximize or full-screen state. Dialog
-checks measure viewport containment and confirm that the shared dialog body
-remains the vertical scroll owner.
+Successful tier stamps are keyed by relevant source tree, tracked/untracked inputs, deletions, tool versions, and platform. Force a fresh run only when evidence requires it:
 
-Stage 2 compatibility evidence remains split across its owning focused layers:
-the brand script contract pins the exact supplied PNG/import and removed motto;
-route/smoke verification binds the five visible destinations and internal
-Practice to executable runners; Rust tests own v1 compatibility and canonical
-v2 checkpoint files; controller/App tests own lifecycle snapshots, fresh return
-identities, contextual launches, and Back/exit guards; appearance/settings/font
-tests own explicit user choices and missing-font fallback; window contracts own
-desktop adapter authority plus truthful unavailable mobile capabilities; and
-Android instrumentation owns Back/process restoration. The native wrapper is
-the integrated Linux/Tauri smoke, not a replacement for those narrower
-contracts or for later Stage 8/9 Study Guide behavior.
+```bash
+OSTUDY_FORCE_CHECK=1 ./scripts/check.sh
+```
 
-Successful check stamps are keyed by the exact source tree, relevant untracked files, tool versions, and platform. Set `OSTUDY_FORCE_CHECK=1` when deliberately bypassing exact-tree reuse. A failed run with `--keep-artifacts` writes a step-specific `reproduce.sh`; use that focused replay before repeating a broader tier.
+Do not use broad forced reruns instead of diagnosing a focused deterministic failure.
 
-### Worktree stability
+## Worktree stability
 
-Qualification must not mutate source-control-visible repository state. Static, fast, full, and Android qualification take a `git status --porcelain` snapshot before work begins and compare it at test boundaries. Pre-existing local changes are tolerated as part of the baseline, but a gate that creates a new untracked file or changes a tracked file fails immediately and prints the before/after Git status diff. This is specifically intended to catch generated-source rewrites and unexplained artifacts at the gate that created them instead of discovering them later.
+Qualification must not mutate Git-visible maintained source. Static/fast/full/Android wrappers compare `git status --porcelain` around important boundaries. Tauri Android materialization has known generated-file behavior handled by the maintained Android wrapper; the worktree guard catches new unexplained source rewrites.
 
-Tauri's Android materializer is known to rewrite committed generated Android sources while constructing a build. `android-build.sh` therefore saves and restores the reviewed `AndroidManifest.xml` and `BuildTask.kt` versions on every exit. The worktree mutation guard is the backstop for any additional generated source that Tauri or Gradle begins changing in the future.
+Diagnostics belong in ignored artifact roots, not arbitrary repository files.
 
-Local diagnostic captures use `.artifacts/diagnostics/`, which is ignored by Git and excluded from release-source copies. Diagnostic tooling must not create arbitrary root-level files as an alternative artifact path.
+## Focused tests
+
+Frontend file:
+
+```bash
+pnpm exec vitest run path/to/example.test.tsx
+```
+
+Complete frontend suite:
+
+```bash
+pnpm test
+```
+
+Focused native test:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --locked <filter> -- --nocapture
+```
+
+Complete native tests:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+```
+
+Use isolated temporary databases/directories. Never point automated recovery/import/restore tests at the learner's live application data.
 
 ## Android qualification
 
-Android uses the same shared application and domain code, so ready changes must pass both the Linux full gate and the Android gates.
-
-Compile/package qualification:
+### Toolchain/emulator doctor
 
 ```bash
+pnpm android:doctor:emulator
+```
+
+### Compile/package
+
+```bash
+pnpm android:test
+# maintained wrapper:
 ./scripts/android-test.sh
 ```
 
-This verifies the pinned SDK/NDK/JDK environment and generated Android project, runs the shared test contracts required by the Android build, compiles the Android Rust targets and Kotlin/Gradle project, builds the debug APK and instrumentation package, verifies package/permission/alignment constraints, and fails if the qualification changes Git-visible source state.
-
-Official emulator qualification:
+### API 36 emulator smoke
 
 ```bash
+pnpm android:smoke
+# maintained wrapper:
 ./scripts/android-emulator-smoke.sh
 ```
 
-The smoke suite boots the pinned API 36 Google APIs x86_64 emulator using KVM acceleration and verifies native launch, SQLite migration, study workflows, persistence/restart behavior, Android Back, process restoration, and Android system document picker/import/export behavior. It uses a fresh AVD data image by default.
+The emulator suite covers representative launch/migration/study/persistence/restart/Back/compact-navigation and system file-picker behavior, plus affected Android-native bridges. It uses isolated application/AVD data.
 
-The smoke-only JavaScript bridge is enabled only for test APKs and is rejected by release package verification.
+Emulator success does not prove real-camera QR behavior, OEM storage providers, battery/thermal/low-memory behavior, physical-device screen-reader use, or release signing/store distribution. Record those as explicit manual boundaries when affected.
 
-## Automatic GitHub Actions behavior
+## `Check`: exact-source qualification
 
-`.github/workflows/check.yml` is the single automatic qualification workflow. A single serialized job matches the one-runner topology and avoids having Linux and Android jobs queue behind each other while repeating checkout/setup work.
+`.github/workflows/check.yml` is the product qualification workflow. It checks out and verifies the exact selected SHA with read-only repository credentials and never authors source.
 
-Automatic gates are intentionally conservative:
+Automatic behavior:
 
-- draft pull request: `fast`;
-- ready-for-review pull request: `all-full`;
-- non-draft reopened/synchronized pull request: `all-full`;
-- push to `main`: `all-full`.
+| Event/state | Gate |
+| --- | --- |
+| Draft PR source/lifecycle event | `fast` |
+| Ready-for-review/non-draft source event | `all-full` |
+| Push to `main` | full policy selected by the gate script |
+| PR body edited only | no product `Check` |
+| PR closed | cancel/skip obsolete automatic work |
 
-Pull-request description edits do not start product qualification. Automatic and manual runs use separate concurrency groups and check contexts so neither can evict or replace the other's pending result. A newer source/lifecycle event for the same PR or ref cancels obsolete automatic work; closing a PR enters that automatic group but skips the qualification job. A newer manual dispatch supersedes only older manual work and publishes `manual-check` diagnostic/exact-head evidence rather than the required automatic PR `check`. Dispatch manual qualification only after the automatic run is complete; if source changes afterward, cancel or disregard the now-obsolete manual run and qualify the new exact SHA.
-
-Draft source qualification does not depend on the compatibility PR acceptance snapshot. The snapshot is validated strictly only after the PR is marked ready, so malformed draft metadata cannot suppress fast source feedback.
-
-Every non-`preflight` run executes **static qualification first** as the first substantive qualification boundary, before KVM/runner preflight, dependency-graph validation, fast, Linux-full, or Android work. The later tier reuses the exact-tree static stamp instead of repeating successful static work. A static failure therefore stops expensive product gates immediately and is attributed directly to the static step rather than appearing later as a nested initialization failure.
-
-`all-full` runs, in order:
-
-```text
-check-static.sh
-→ unified runner/KVM preflight
-→ locked Rust dependency-graph validation
-→ check.sh
-   → fast qualification (reusing the static stamp)
-   → built-binary final-v26 data-preserving adoption smoke
-   → native WebDriver persistence/UI smoke
-→ android-test.sh
-→ android-emulator-smoke.sh
-```
-
-The same workflow supports manual dispatch with explicit `preflight`, `static`, `fast`, `linux-full`, `android-full`, and `all-full` gates.
-
-Wall-clock UI/WebKit performance measurements are diagnostic evidence, not required correctness gates. They run manually or as advisory work outside `Check`; a timing regression must never prevent Linux or Android correctness qualification from running.
-
-The workflow uses the minimum normal permission:
-
-```yaml
-permissions:
-  contents: read
-```
-
-The ordinary GitHub Actions check run, its exact checked-out SHA, step result, summary, and uploaded failure evidence are the authoritative remote qualification record. The workflow does not mirror Actions state through additional legacy commit-status API calls.
-
-### GitHub service incidents
-
-GitHub service incidents must be treated as control-plane failures, not as evidence that oStudy source code passed or failed.
-
-Before changing workflow permissions, triggers, PR state, or unrelated source merely because a run is missing or an API read fails, classify the evidence:
-
-- A completed local command or workflow log with a deterministic assertion is a repository or environment failure.
-- A stable `403 Resource not accessible by integration` limited to an API family while repository reads/writes work is normally a connector permission or capability boundary.
-- Repeated `5xx`, `502`, timeout, archive/raw download, Actions, webhook, pull-request, or broad API failures across unrelated operations require an official GitHub Status check.
-
-During a confirmed or suspected GitHub incident:
-
-1. preserve the exact branch head SHA;
-2. record the first failing operation, timestamp, HTTP class, and affected GitHub surface;
-3. check the official GitHub Status incident and affected components;
-4. use only bounded idempotent reads to determine whether a requested write actually landed;
-5. do not create no-op commits, edit unrelated files, close/reopen the PR, toggle draft state, widen token permissions, add status mirrors, or change triggers merely to force a workflow or webhook;
-6. do not infer an Actions result from a missing check-run, webhook, or empty legacy status response;
-7. keep the PR draft and describe the exact head as unqualified;
-8. after GitHub reports recovery, run the normal workflow on that exact head without incident-specific shims.
-
-The [August 17, 2026 GitHub outage audit](../history/github-outage-audit-2026-08-17.md) records the incident that established this policy and distinguishes legitimate ostudy fixes from outage-driven workflow changes that were removed.
-
-Every scripted CI gate automatically starts with the low-noise diagnostic filter:
-
-```text
-warn,ostudy=info
-```
-
-This captures the original internal operation timeline without an additional qualification run. A failure summary then combines wrapper/compiler output with bounded structured events and emits the smallest useful reproduction command. CI does not automatically rerun the failed gate at debug level: doing so consumes substantial runner time, may erase isolated state, and can convert nondeterministic defects into false greens.
-
-Concurrency cancellation replaces obsolete runs for the same pull request/ref. A green result qualifies only the exact head SHA it executed.
-
-The former automatic `android-check.yml` split workflow is retired. On a single runner, separate automatic Linux/Android jobs only create additional queueing and repeated setup. Android qualification is now part of the authoritative serialized `Check` job.
-
-## Shadow and runner-health qualification
-
-`.github/workflows/unified-runner-qualification.yml` is a manual-only runner-health workflow. It targets only `ostudy-unified` and can execute:
+Manual dispatch supports:
 
 ```text
 preflight
-linux-fast
+static
+fast
 linux-full
 android-full
 all-full
 ```
 
-Choose the branch or exact ref and lane explicitly through `workflow_dispatch`. Pull-request body edits and persistent markers never start this workflow, and its result does not replace the authoritative `Check` result.
+Automatic and manual runs have separate contexts/concurrency so a diagnostic dispatch does not replace the required automatic PR check.
+
+For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke.
+
+Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
+
+## `PR Contract`: metadata only
+
+`.github/workflows/pr-contract.yml` validates the acceptance snapshot independently on PR open/edit/synchronize/reopen/draft/readiness transitions.
+
+It validates schema/canonical fields/evidence requirements and, for non-draft PRs, base/head/branch identity. It does **not** compile/test product source and does not authorize, suppress, or abort `Check`.
+
+Review readiness can be the transition that triggers full product qualification. Therefore validation entries may honestly be pending at readiness; they must never be marked passed in advance merely to obtain the run.
+
+After full `Check` passes, updating the PR body with exact evidence reruns `PR Contract` only. It does not require a redundant product run because source did not change.
+
+## Source-read-only Actions
+
+All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, upload artifacts, or validate PR metadata. They must not stage, format-rewrite, create commits/trees, push refs, or finalize an agent's product implementation.
+
+The retired Orchestrator PR Ledger and branch-specific frontend source-checkpoint workflow are not part of the current development system. Source publication belongs to the branch writer; Actions qualifies published source.
+
+## Failure evidence and triage
+
+On a current-head failure:
+
+1. confirm the run's SHA equals the current PR head;
+2. read the selected gate, failed step, machine-readable result, and bounded logs/artifacts;
+3. classify product, test-contract, runner/environment, GitHub/Connector, or external/manual cause;
+4. reproduce the smallest failed boundary;
+5. repair every independently actionable finding in one coherent batch;
+6. rerun the narrow boundary before another broad gate.
+
+One unchanged-head rerun is acceptable only with evidence of a transient external cause. The same fingerprint twice requires a changed strategy. Do not create no-op commits, toggle draft/ready repeatedly, widen permissions, add sleeps/timeouts blindly, skip/weaken tests, or introduce source-writing CI to manufacture green results.
+
+See [Failure triage](../agents/FAILURE-TRIAGE.md).
+
+## Native startup/persistence and WebDriver smoke
+
+The full gate uses isolated app data and built binaries. It verifies representative first-run/public migration, supported pre-public adoption, startup reconciliation, persistence, and application workflows rather than relying only on in-memory tests.
+
+The pre-public adoption smoke seeds the exact supported final development lineage and verifies data-preserving adoption into `ostudy-public-v1`; this historical v26 input must not be confused with the current public migration count/version.
+
+Native WebDriver uses fresh isolated XDG/application data and exercises representative built-app behavior: current visible destinations/internal Practice, fresh library/authoring, deck-context Practice return and review completion, Analytics/restart persistence, responsive shell geometry, current Study Guides behavior, dialogs/focus/scroll containment, and native window behavior where applicable. Mutating interactions are not blindly retried after an ambiguous transport disconnect because the operation may already have committed.
+
+## Performance and visual evidence
+
+Wall-clock WebKit/UI performance measurements are advisory/manual rather than required correctness gates. Historical Stage 0/Stage 4 baseline records are retained as provenance for comparable measurements, not as current UI specifications. A timing-capture problem must not prevent Linux/Android correctness qualification.
+
+When performance is an acceptance criterion, collect new exact-source candidate evidence and compare against the intended stable baseline without rewriting historical data to manufacture success.
+
+## GitHub incidents
+
+GitHub control-plane failure is neither product pass nor product fail. When broad API/Actions/archive/webhook operations show repeated service failures or an official incident is active, preserve the exact branch head, determine whether ambiguous writes landed using bounded reads, keep unavailable qualification explicitly pending, and rerun the normal workflow after recovery. Do not change source, permissions, triggers, or PR state merely to force activity.
 
 ## Packaging and releases
 
-`.github/workflows/android-package.yml` is manual-only and builds unsigned QA APK/AAB artifacts on `ostudy-unified`.
+`android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. `release.yml` produces current tagged Linux artifacts. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
 
-`.github/workflows/release.yml` builds tagged Linux artifacts on the same isolated runner. It does not contain Android signing material or release secrets. Public Android distribution still requires a separately reviewed signing/Play App Signing design.
-
-## Failure evidence
-
-Qualification failures preserve bounded diagnostics rather than user study data.
-
-Long-running captured commands emit a metadata-only heartbeat every 60 seconds with the phase, elapsed time, total log bytes, and byte growth. Complete command output remains in the raw artifact; the heartbeat provides liveness without flooding Actions or Connector responses.
-
-Nested qualification wrappers share one failure-capture token, so the innermost precise failure wins and outer `initialization` traps do not create duplicate evidence. Each failing script writes its authoritative capture to the runner-temporary `OSTUDY_DIAGNOSTIC_ARTIFACT_ROOT`. A capture includes:
-
-- the failed boundary and exit status;
-- the exact commit and active filter;
-- a recommended subsystem-specific filter;
-- an executable focused `reproduce.sh`;
-- bounded launcher/application JSONL tails when they exist;
-- a bounded command log for isolated native smoke failures.
-
-Native WebDriver smoke tests use temporary XDG homes. Their application logs are copied before cleanup. A retryable transport disconnect is retained as **transient WebDriver** evidence even when the one clean-state retry succeeds, so a green check does not erase the existence of a recovered flake.
-
-The built-binary adoption smoke also uses isolated XDG state, but deliberately seeds an exact final-v26 database rather than a clean library. A failure captures its command/application logs before cleanup so backup, adoption, preservation, startup, and panic regressions are visible in the same diagnostic workflow.
-
-The Actions summary parses application JSONL and structured Android Logcat records, showing the final warning/error timeline next to the ordinary test/compiler excerpt. Vitest failures are narrowed to the identified test file; Rust failures are narrowed to the exact failed test when possible.
-
-Small structured diagnostic captures are uploaded with 7-day retention even when they contain only a recovered transient failure. Full failure wrapper logs, Gradle reports, emulator Logcat, screenshot, and UI hierarchy evidence use 14-day retention. A clean run with no capture does not produce a diagnostic artifact.
-
-Manual/advisory deterministic UI performance and trusted-mouse captures retain
-their candidate manifest, `deck-drag-v1` measurement, and bounded logs. Candidate
-evidence is never overwritten or removed merely because comparison failed, but
-it is separate from the required exact-head correctness result.
-
-Diagnostics must not contain the SQLite learner library, cards, tags, templates, managed images, source PDFs, OCR/source text, provider prompts/responses, credentials, Keystore plaintext, or Authorization headers.
-
-See [Diagnostics and debug filters](diagnostics.md) for local replay and filter escalation.
-
-## Self-hosted runner security
-
-Pull-request qualification uses read-only repository contents permission and executes untrusted repository code inside the isolated VM rather than on `ML-tower`.
-
-Do not install Codex or another autonomous code-writing process on the runner. Do not give the runner host filesystem mounts, the host SSH private key, forwarded agent access, Docker/libvirt host-control sockets, release signing keys, or personal data.
-
-The VM keeps a powered-off `pre-github-runner` snapshot from before runner registration. Restoring that snapshot removes the runner registration state; register it again with a new one-time GitHub token after a restore.
-
-## Manual acceptance
-
-Automation protects known contracts, not visual or experiential quality. For user-visible work, manually exercise the affected workflow on the relevant platform after automated qualification, including error/cancellation/restart behavior when applicable.
-
-For the public-baseline cutover, retain or restore an exact final-v26 development library and start the built desktop application with database diagnostics. The expected result is automatic backup/adoption followed by normal startup—not a blank library, reset dialog, Rust panic, or partially initialized application. Verify existing decks and Analytics, close the app, reopen it, and verify them again.
-
-If the earlier reset helper has already archived the old app-data directory, use:
-
-```bash
-python3 ./scripts/restore_pre_public_backup.py \
-  --backup-dir "/absolute/path/to/io.github.jferments.ostudy.pre-public-<timestamp>" \
-  --data-dir "/absolute/path/to/io.github.jferments.ostudy" \
-  --confirm
-```
-
-The recovery helper validates the exact final migration/repair ledgers and accepted historical SQLite marker, copies the archive back, archives the currently active directory, and leaves the original timestamped archive untouched. The next startup performs the verified adoption. `reset-pre-public-data.sh --confirm-empty-library` is only for an intentional blank-library test.
-
-A real Google Code Scanner camera scan on a Google Play services-enabled Android device and a live OpenRouter request remain manual acceptance boundaries because deterministic CI has neither a physical camera workflow nor a provider credential.
-
-## Release qualification
-
-For a release candidate, also run:
+Release candidates additionally run:
 
 ```bash
 ./scripts/release-check.sh
 ```
 
-The release check repeats the complete shared qualification from a clean source copy and verifies version/artifact assumptions. Local `.artifacts/` diagnostics are excluded from that clean source copy.
+## Privacy of evidence
+
+Tests/diagnostics must not contain the live learner SQLite database, real card/source content, managed personal images/documents, raw OCR/source text, provider prompts/responses/reasoning, API keys, authorization headers, or Android Keystore plaintext. Use generated fixtures and temporary storage; review diagnostic archives before sharing them.
+
+## Reporting evidence
+
+For every claimed pass, name the command/workflow, selected gate, exact SHA/tree, and result. Keep physical-device/live-provider/manual boundaries separate. Follow [Local testing and handoff](local-testing-and-handoff.md) for exact checkout/build/install instructions.

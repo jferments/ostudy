@@ -1,100 +1,57 @@
-# Flashcards workspaces, folders, ordering, and Search
+# Folders, deck ordering, and selection
 
-The user-facing Flashcards area contains four independently mounted workspaces:
+Organization lives in **Flashcards → Decks**. The [Flashcards guide](flashcards-workspace.md) covers authoring, Search/Filter, and contextual import/export; this guide explains how the library's folders and selection work.
 
-- **Decks** organizes and opens study decks. Single-card and bulk-card authoring are launched from the open deck.
-- **Templates** manages reusable data-only card templates.
-- **Search** finds cards across decks and supports bulk management.
-- **Import/Export** groups deck transfer and complete-library backup tasks.
+## Folders are optional
 
-Activating a workspace always opens its root, even when the same tab is already selected. Activating the primary Flashcards navigation destination opens the Decks library root. The active workspace and an explicitly open deck are stored in the device-local UI checkpoint so the app can restore a useful destination without putting card content, credentials, or runtime request identities into that checkpoint. When a resumable Practice session was launched from Search or deck detail, that logical destination is restored with a fresh route transition after the session ends.
+A deck belongs to at most one folder. Active decks with no folder appear in **Unsorted decks**. Folder membership does not alter card content, schedules, or review history.
 
-## Deck folders
+When active decks exist, the **+** beside Folders creates a folder. There is no separate full-size New folder button. The library shows Unsorted decks only when it contains decks. A completely empty library instead offers one create-deck state; an archived-only library still exposes its archived content.
 
-Folders provide one optional organization level above decks. A deck belongs to at most one folder; a deck without a folder appears under **Unsorted decks**. Folders do not own cards and do not alter scheduling or analytics attribution.
+Deleting a folder moves its decks back to Unsorted decks. It does not delete the decks or anything they own. Use deck deletion only when you intend to remove study material and its associated data.
 
-Creating, renaming, moving, reordering, or deleting a folder is a transactional native operation. Each organization snapshot has a revision number. A write based on a stale revision fails visibly instead of silently overwriting another window's change. The interface immediately reloads the authoritative organization snapshot so a subsequent action uses the current revision rather than repeatedly retrying stale state.
+## Collapse and expand
 
-Deleting a folder moves its decks to Unsorted decks. It never deletes those decks, their cards, review history, schedules, tags, assets, or analytics.
+Select a folder heading to collapse or expand it. **Collapse all** is offered when there are folders to collapse; when they are all collapsed it becomes **Expand all**. The selection control sits beside it when the current scope contains selectable decks.
 
-Deck creation, archive changes, restoration, soft deletion, and permanent purge also advance the shared organization revision. The Decks workspace refreshes organization state when those lifecycle changes appear in the deck list, including after returning from nested deck editing or using Undo. This prevents an apparently unrelated deck operation from leaving a stale drag or reorder operation eligible to commit.
+Collapse state changes presentation only. It does not remove membership, change order, alter practice availability, or mean the cards disappeared from the library. No collapse control is shown when there is nothing to collapse.
 
-Deck selection is process-local. Opening a deck and returning to the library
-preserves unchanged active selections across the route remount, but entries
-whose revision or lifecycle changed are removed. An unchanged empty deck remains
-selected so it can still be moved, archived, or deleted even though Practice is
-unavailable. Selection is never written to the device UI checkpoint.
+## Select decks deliberately
 
-## Moving and ordering
+Use a row's checkbox to select a deck. **Select all** and **Deselect all** reflect the current scope and count; they are not shown for an empty scope. A contextual selected-deck toolbar provides the valid practice, export, move, archive/restore, and delete actions.
 
-On a pointer device, start moving an active deck or folder from any open part of
-its row. Buttons, checkboxes, menus, links, editable content, and selected text
-continue to behave normally. A short movement remains an ordinary click; after
-the drag activates, the preview names the destination. Destination highlighting
-shows whether the move is valid, while a separate line marks the exact before,
-end, or empty insertion boundary.
-Folders accept a deck across their complete visible surface and can expand after
-a brief hover.
+Selection and opening are different actions. Opening a selected deck and returning can preserve unchanged active selections during the same application process. Entries that changed revision or lifecycle are removed rather than allowing a bulk operation to act on stale assumptions. The selection itself does not persist through the restart checkpoint.
 
-Dragging is an enhancement rather than a required input method. The focused
-keyboard reorder control retains these shortcuts:
+An unchanged empty deck may stay selected so it can be moved, archived, exported, or deleted, but it cannot start card practice. Archived selections cannot move or start practice until restored. A mixed active/archived selection explains which lifecycle subset Archive or Restore will affect; read that guidance before applying a bulk operation.
 
-- **Up**, **Down**, **Home**, and **End** reorder within the current group;
-- **Left** and **Right** move a deck between folders and Unsorted decks.
+## Pointer movement
 
-The compact **Move selected** sheet and screen-reader-only move actions remain
-available. Valid, invalid, and unchanged destinations are identified before a
-move is saved, and meaningful target changes and completion are announced.
+Start a drag from an open, non-interactive part of an active deck or folder row. Buttons, checkboxes, menus, links, editable content, and selected text keep their normal behavior. A small motion remains an ordinary click until the drag activates.
 
-One completed pointer gesture can issue at most one validated revisioned move;
-hovering, scrolling, cancellation, invalid destinations, and unchanged
-positions issue none. The native command receives the target folder, target
-index, and expected organization revision. It rewrites the affected sequence
-to stable spaced sort values inside one immediate transaction. If the operation
-fails, the optimistic presentation is replaced with the authoritative native
-snapshot before the interface accepts another organization mutation.
+The preview names the destination. Highlighting identifies a valid or invalid target, and a separate insertion line shows the exact before/end/empty boundary. You can reorder folders, reorder decks inside a group, or move decks between folders and Unsorted decks. A folder can expand after hovering during a drag.
 
-## Compact deck presentation
+Canceling, hovering, scrolling, dropping on an invalid target, or dropping at the unchanged position does not save an organization mutation. The completed move, not every pointer update, becomes the durable operation.
 
-Decks use one compact row presentation on every platform. The removed Comfortable/Compact preference no longer creates divergent layout states or persists an obsolete setting. Compact spacing preserves deck name, card count, ready count, keyboard movement, and study actions while coarse-pointer controls retain full touch targets.
+## Keyboard and non-drag alternatives
 
-## Search and progressive disclosure
+Dragging is not required. Focus a reorder control and use Up/Down or Home/End to move within the current group. Deck controls also support Left/Right to move between folder groups and Unsorted decks. Screen-reader move actions and the selected-deck **Move** sheet provide alternatives.
 
-Search keeps the common controls visible:
+The interface announces meaningful targets and completed moves. Compact rows retain touch-sized controls and visible keyboard focus; there is no separate Comfortable/Compact preference to change the underlying behavior.
 
-- text query;
-- deck or folder scope;
-- sort order;
-- one **All filters** action.
+## Conflicts and refreshed state
 
-The filter sheet contains less frequently changed criteria: availability, current scheduling status, local review date, individual decks, folders, and tags. Changes apply immediately, and active criteria return to the results view as removable filter chips.
+Organization operations use the revision of the library snapshot that was displayed. Another window or a deck lifecycle change may make that snapshot stale. In that case the app reloads authoritative state rather than silently overwriting the newer organization.
 
-A folder scope expands to its current active deck identifiers. It does not create a temporary deck and does not change folder membership. Archived decks remain available through their dedicated library area but are excluded from ordinary active Search scope unless the underlying Search status explicitly includes them.
+Review a conflict/error message and the refreshed layout before trying again. A temporary optimistic preview is not proof a move was saved. Creating, archiving, restoring, deleting, and undoing deck changes can also affect the organization revision, even when you did not directly drag a folder.
 
-Current tag names in **Analytics → Recent reviews** open Search with that exact
-stable tag selected. Historical tags remain plain text. Search verifies the
-current tag before loading results, so a renamed tag continues to select the
-same identity while a removed or unavailable tag cannot briefly expose an
-unfiltered list. Clear the unavailable filter explicitly if you want to
-continue with an unfiltered Search.
+## Archive, delete, and recover
 
-## Practice ownership
+Archive keeps a deck for later and removes it from ordinary study availability. Restore makes it active again subject to its cards' scheduling/availability. The archived library area is not a second place to drag active decks around.
 
-Review history and scheduling belong to generated cards, not folders. Moving a deck between folders has no effect on its cards. Moving a card between decks transfers that card and its review evidence according to the existing card-ownership rules; the folder containing either deck does not become an analytics owner.
+Deletion is different and can remove card-owned history after the recovery window is finalized. Use the offered Undo promptly when a deletion was accidental. Folder deletion never substitutes for deck deletion.
 
-The practice screen presents a decorative card stack based on cards remaining
-in the session. Only the current card is exposed to assistive technology. A
-thicker progress track displays the studied/remaining counts and rounded
-percentage inside the track; its single accessible progressbar value also names
-the current-card position. The active header does not duplicate that progress
-or show a weak-card badge. Submitted reviews are durable before the completion
-screen appears, and weak-card outcomes remain available to scheduling, Search,
-completion, and Analytics. The completion summary reports cards studied,
-average confidence, remembered percentage, difficult answers, and the fully
-labeled confidence distribution.
+## Sharing and backup
 
-## Backup and restoration
+A portable `.studydeck` is one deck's content and managed study assets, not a snapshot of its containing folder or the sender's schedules. A newly imported deck starts unsorted in the receiving library.
 
-Folders and deck placement are SQLite library state introduced in schema version 26. Complete-library backup uses the same durable database snapshot and therefore preserves folder records, membership, ordering, and organization revision together with decks, cards, templates, assets, review history, and analytics.
-
-Individual `.studydeck` exports remain deck-scoped. They do not export a containing folder because folder membership is library organization rather than a property required to study the deck. An imported deck therefore appears under Unsorted decks until the user moves it.
+A complete `.ostudybackup` preserves coherent library organization along with personal study state and managed files. Use Settings → Backup/Sync, and read [Backups, imports, and sharing](backups-imports-and-sharing.md) before restoring over an existing library.

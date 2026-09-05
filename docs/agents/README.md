@@ -1,67 +1,38 @@
 # Agent and LLM maintenance guide
 
-These files provide operational instructions for automated maintainers of **ostudy**. [`AGENTS.md`](../../AGENTS.md) is the repository-wide entry point and remains authoritative when this directory is read in isolation.
+[AGENTS.md](../../AGENTS.md) is the repository-wide entry point. This directory is an operational reference, not permission to choose a different development system or redesign unrelated features.
 
-## Default ChatGPT path
+## The operating contract
 
-For ChatGPT development, the authenticated GitHub Connector is the default source-publication and pull-request interface. Read [`GITHUB-DIRECT-DEVELOPMENT.md`](GITHUB-DIRECT-DEVELOPMENT.md) and [`SOURCE-PUBLICATION-BOUNDARY.md`](SOURCE-PUBLICATION-BOUNDARY.md) before introducing any custom developer MCP, tunnel, workspace service, Codex worker, orchestrator, or task-specific workflow into the task.
+For normal ChatGPT tasks, use **GitHub-direct only**: authenticated Connector reads, ordinary source in expected-parent Git-data commits, non-force publication, remote verification, and exact-SHA GitHub Actions qualification. Exactly one writer owns the branch. Do not introduce Codex, a workspace MCP, observer, orchestrator, exact-head service, or tunnel unless the human explicitly requests it for the current task.
 
-A custom developer MCP is optional acceleration only. It is never required to start, publish, repair, or complete ordinary oStudy work. If the ChatGPT gateway returns `FORBIDDEN: This conversation does not support developer MCPs`, an installed developer app disappears from the callable registry, or a developer-MCP write returns no usable result and later calls are rejected, trip the circuit breaker for that conversation and continue through GitHub-direct mode. Do not send the human through repeated reconnect, redeploy, or new-chat attempts.
+Read [GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md) first. It is the canonical workflow, including the prohibition on source-writing Actions and the immediate GitHub fallback after a requested MCP fails. Other guides explain individual concerns; they do not create exceptions.
 
-GitHub Actions are an execution and qualification surface. They never author, commit, or push product source, regardless of trigger. There is no manual-workflow or one-shot-applicator exception.
+## Reading map
 
-## Start here
+| Task | Maintained reference |
+| --- | --- |
+| Start, resume, publish, or integrate main | [GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md) |
+| Understand publication versus execution | [Source-publication boundary](SOURCE-PUBLICATION-BOUNDARY.md) |
+| Record acceptance, evidence, readiness, and completion | [Execution state](EXECUTION-STATE.md) |
+| Diagnose an actual failure | [Failure triage](FAILURE-TRIAGE.md) and [Connector diagnostics](GITHUB-CONNECTOR.md) |
+| Prepare a coherent implementation | [Workflow and validation](WORKFLOW-AND-VALIDATION.md) |
+| Give local build/test/install instructions | [Command runbook](COMMAND-RUNBOOK.md) and [local testing handoff](../development/local-testing-and-handoff.md) |
+| Preserve domain and dependency boundaries | [Architecture guardrails](ARCHITECTURE-GUARDRAILS.md), [code standards](CODE-STANDARDS.md), [AI provider guardrails](AI-PROVIDER-GUARDRAILS.md) |
+| Update guides, audit stale code, or reconcile plans | [Documentation maintenance](DOCUMENTATION-MAINTENANCE.md) |
 
-For a substantial task, read these in order:
+## Source of truth for the product
 
-1. [`GITHUB-DIRECT-DEVELOPMENT.md`](GITHUB-DIRECT-DEVELOPMENT.md) — the default ChatGPT read/write loop, expected-parent Git publication protocol, developer-MCP circuit breaker, and executor boundaries.
-2. [`SOURCE-PUBLICATION-BOUNDARY.md`](SOURCE-PUBLICATION-BOUNDARY.md) — the hard separation between persistent source publication and read-only GitHub Actions qualification.
-3. [`EXECUTION-STATE.md`](EXECUTION-STATE.md) — the compatibility acceptance snapshot, completion predicate, exact-head evidence vocabulary, progress checkpoints, and session-resumption protocol.
-4. [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) — failure classification, stable fingerprints, focused reproduction, retry budget, and stopping rules.
-5. [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) — how to scope, publish, implement, test, review, and hand off a change.
-6. [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) — repository access, concrete write authorization, remote verification, and connector/service failure diagnosis.
-7. [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) — the canonical short build/test/install commands. Read this before giving shell instructions instead of reconstructing commands from memory.
-8. The architecture and code standards relevant to the requested subsystem.
+The [architecture overview](../architecture/overview.md) is the comprehensive current-system document. Use its source map and the focused [UI](../architecture/ui.md), [card/data model](../architecture/card-format-and-data-model.md), [AI infrastructure](../architecture/ai-infrastructure.md), [document processing](../architecture/ai-and-document-processing.md), [platform](../architecture/platform-services.md), and [sync](../architecture/device-sync.md) references. Accepted [ADRs](../decisions/) preserve rationale; the [roadmap](../roadmap.md) distinguishes implemented features from planned work.
 
-When resuming existing work, do not begin from conversational memory. Read the open pull request's compatibility acceptance snapshot, then verify its actual remote head and exact-head qualification evidence as the authorities and enumerate incomplete acceptance criteria first.
+The [documentation index](../README.md) routes human readers to task-oriented guides. The [cleanup audit](../development/documentation-and-cleanup-audit.md) explains retained compatibility and the evidence required before further removal. Historical stage plans and dated snapshots must not override current source or the latest explicit user request.
 
-## Documents
+## Rules that prevent drift
 
-- [`GITHUB-DIRECT-DEVELOPMENT.md`](GITHUB-DIRECT-DEVELOPMENT.md) defines the plugin-independent ChatGPT workflow and prevents a developer-MCP gateway failure from becoming a project-wide development outage.
-- [`SOURCE-PUBLICATION-BOUNDARY.md`](SOURCE-PUBLICATION-BOUNDARY.md) forbids GitHub Actions source authoring and defines the only approved persistent publication paths.
-- [`EXECUTION-STATE.md`](EXECUTION-STATE.md) prevents planning, implementation, publication, validation, manual acceptance, and completion from being collapsed into one vague state.
-- [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md) defines the evidence required before another repair or broad CI run.
-- [`ARCHITECTURE-GUARDRAILS.md`](ARCHITECTURE-GUARDRAILS.md) explains the boundaries and invariants that a change must preserve.
-- [`CODE-STANDARDS.md`](CODE-STANDARDS.md) defines TypeScript/React, Rust, SQL, shell, documentation, and dependency expectations.
-- [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md) defines the reviewable contributor workflow.
-- [`GITHUB-CONNECTOR.md`](GITHUB-CONNECTOR.md) defines connector-backed repository operation without conflating read access, write authorization, publication, CI state, or service incidents.
-- [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) is the concise command source of truth for local iteration, desktop running/building, Android emulator qualification, and physical-device installation.
+Do not repeat integration discovery after tools are established. Invoke the real GitHub operation; absent approval prompts and queued CI do not establish write failure. Do not create ownership-marker commits, temporary source-transfer repositories, source-generating workflows, or opaque payloads.
 
-The maintained product and engineering references are:
+After each publication, verify the remote head. After each test, record the exact tested SHA and gate. A PR-body snapshot is not a source writer, branch lock, CI trigger, or runner controller. Record only actual workspace/process state; in GitHub-only mode there is no agent execution worktree to certify clean.
 
-- [`../README.md`](../README.md)
-- [`../roadmap.md`](../roadmap.md)
-- [`../architecture/overview.md`](../architecture/overview.md)
-- [`../architecture/card-format-and-data-model.md`](../architecture/card-format-and-data-model.md)
-- [`../architecture/ui.md`](../architecture/ui.md)
-- [`../architecture/ai-and-document-processing.md`](../architecture/ai-and-document-processing.md)
-- [`../development/guide.md`](../development/guide.md)
-- [`../development/workflow.md`](../development/workflow.md)
-- [`../development/testing-and-ci.md`](../development/testing-and-ci.md)
-- [`../decisions/`](../decisions/)
+Before a handoff, read the command runbook and inspect changed wrappers. Provide a safe checkout and exact-SHA check, a short native build/run or Android install path, and the specific acceptance observations. Never confuse `pnpm build`, a standalone Tauri build, a release package, and a passing full gate.
 
-Files under [`../history/`](../history/) are context about completed stages and superseded audits. They are not current implementation instructions.
-
-## Operating rules
-
-- Begin with the current human request, stable acceptance IDs, explicit non-goals, and the current published source.
-- Use the authenticated GitHub Connector as the normal ChatGPT source writer. Prefer one atomic expected-parent Git-data commit for a coherent multi-file change, then verify the remote head.
-- Treat local workspaces, developer MCPs, Codex, observers, and orchestration services as optional specialized tools rather than prerequisites.
-- After a developer-MCP gateway failure, stop retrying that path in the conversation and proceed through GitHub-direct mode when the required GitHub actions are present.
-- Publish the actual implementation directly to one task branch and one draft pull request. A plan, local patch, task-specific applicator, or transient CI-generated tree is not delivery.
-- Keep every GitHub Actions workflow source-read-only, including manual and push-triggered workflows. Actions must not push source, author commits, persist source-write credentials, or run maintained-source formatters in write mode.
-- Consume the machine-readable exact-head qualification result before asking the human to reproduce a CI-capable failure.
-- Use [`COMMAND-RUNBOOK.md`](COMMAND-RUNBOOK.md) before giving build/test/install commands; if it lacks a required path, inspect maintained scripts/docs before proposing a new command.
-- Do not call a task complete until acceptance, publication, exact-head automated validation, manual boundaries, and known-failure state all agree.
-
-These files do not grant permission to redesign the application. Make the smallest coherent change and preserve every unrelated invariant.
+Do not claim that code is unused from a filename alone, that a feature is shipped from its enum variant alone, or that a planned stage is complete because a PR mentions it. Trace runtime reachability, persistence and compatibility readers, tests, and platform fallbacks. Keep publication, validation, manual acceptance, and human merge as separate facts.

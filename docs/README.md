@@ -1,76 +1,72 @@
 # ostudy documentation
 
-This directory contains the maintained documentation for ostudy. It is organized by what a reader is trying to do rather than by the order in which features were implemented.
+Start with the [project introduction](../README.md) for what ostudy is and why it exists. These guides are organized around what you want to do. Current behavior is described by the maintained guides and source, not by an older implementation-stage checklist.
 
-Start with the project [README](../README.md) for a concise introduction. The guides below provide the detail needed to install, use, understand, or contribute to the application.
+## Use the application
 
-## Use ostudy
+| Task | Guide |
+| --- | --- |
+| Create a first deck and study session; find current navigation | [Getting started](user-guide/getting-started.md) |
+| Create/edit cards, use templates, search, and manage selections | [Flashcards and authoring](user-guide/flashcards-workspace.md) |
+| Organize folders, reorder decks, and understand selection/lifecycle rules | [Folders and deck organization](user-guide/flashcards-organization.md) |
+| Choose a practice scope, rate answers, control schedules, and interpret results | [Practice and analytics](user-guide/practice-and-analytics.md) |
+| Configure local/cloud models and per-profile reasoning/credentials | [AI providers](user-guide/ai-providers.md) |
+| Import source material and generate learning artifacts | [Documents and AI generation](user-guide/documents-and-ai-generation.md) |
+| Read, annotate, export, delete, and practice from generated guides | [Study guides](user-guide/study-guides.md) |
+| Adjust themes, fonts, motion, help, and explicitly started tutorials | [Appearance and guidance](user-guide/appearance-and-guidance.md) |
+| Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
+| Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
 
-- [Getting started](user-guide/getting-started.md) introduces the application, its main workspaces, and a practical first study session.
-- [AI providers](user-guide/ai-providers.md) explains local, LAN, and cloud model connections without exposing provider-specific implementation details.
-- [Documents and AI-generated flashcards](user-guide/documents-and-ai-generation.md) describes the managed-document workflow, native PDF extraction/OCR, Xberg-backed non-PDF ingestion, provider privacy, retries, and current limitations.
-- [Synchronize trusted devices](user-guide/device-sync.md) explains QR/LAN synchronization, conflict resolution, file fallback, settings, and optional credential transfer.
-- [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) explains personal backups, portable deck files, generated JSON imports, and system sharing.
+Flashcards has Decks and Search/Filter. Card templates live in Settings; transfer actions are contextual. Study Guides and Documents are separate destinations. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
 
-## Install or build ostudy
+## Install, build, and test locally
 
-- [Installation overview](installation/README.md) summarizes current platform availability and prerequisites.
-- [Linux](installation/linux.md) is the currently qualified desktop development and release path.
-- [Android](installation/android.md) explains first-time SDK/NDK setup, emulator and physical-device development, APK/AAB builds, smoke testing, and installation.
-- [Windows](installation/windows.md) describes the source-build path and its current qualification status.
-- [macOS](installation/macos.md) describes the source-build path and its current qualification status.
-- [Mobile platform status](installation/mobile.md) summarizes implemented Android support and planned iOS work.
+[Installation overview](installation/README.md) distinguishes source-build support, regular qualification, and distribution. Platform guides cover [Linux](installation/linux.md), [Android](installation/android.md), [Windows](installation/windows.md), [macOS](installation/macos.md), and [mobile status](installation/mobile.md).
 
-## Follow the project
+For a development PR, use [Local testing and handoff](development/local-testing-and-handoff.md): exact-source checkout, native build/run, Android installation, test-data isolation, and manual acceptance. The [command runbook](agents/COMMAND-RUNBOOK.md) is the compact reference. A frontend build, native hot reload, standalone application, package, and passing full gate are different results.
 
-- [Roadmap](roadmap.md) separates completed foundations, current priorities, and later product goals.
-- [Contributing](../CONTRIBUTING.md) explains how to report a problem, propose a feature, prepare a change, and validate it.
+## Understand the architecture
 
-## Understand the design
+The [comprehensive architecture](architecture/overview.md) is the current-system entry point: philosophy, ownership, data flow, persistence, study behavior, document/AI processing, platform services, security, recovery, testing, and tradeoffs. Its source map identifies the implementation owners.
 
-- [Architecture overview](architecture/overview.md) explains the frontend, native domain, persistence, and platform boundaries.
-- [Platform services](architecture/platform-services.md) defines the typed operating-system ports, opaque file flow, secure-store boundary, lifecycle/time/resource observations, and enforcement rules.
-- [Native AI provider infrastructure](architecture/ai-infrastructure.md) defines gateway transport, provider-profile ownership, capability probing, credential isolation, and the typed read models consumed by document tasks.
-- [AI and document processing](architecture/ai-and-document-processing.md) documents provider isolation and the document extraction, rendering, OCR, and generation pipeline.
-- [Document AI architecture, routing, and concurrency](architecture/document-ai-routing.md) defines the format-neutral reasoning modules, provider-transport boundary, multimodal evidence, deterministic large-job orchestration, checkpoints, and routing policy.
-- [Device synchronization](architecture/device-sync.md) documents the trusted-device identity, encrypted LAN transport, common-base merge, conflicts, and asset/credential boundaries.
-- [Card format and data model](architecture/card-format-and-data-model.md) describes notes, scheduled presentations, rich content, templates, search, and interchange formats.
-- [UI architecture](architecture/ui.md) describes shared interaction primitives, responsive layouts, accessibility, and platform adapters.
-- [Architecture Decision Records](decisions/) preserve the reasoning behind durable cross-module decisions.
+Focused references provide deeper contracts:
 
-## Develop and maintain ostudy
+| Area | Reference |
+| --- | --- |
+| Frontend state, interaction, navigation, styling, and accessibility | [UI architecture](architecture/ui.md) |
+| Notes/presentations, rich content, templates, scheduling, and interchange | [Card format and data model](architecture/card-format-and-data-model.md) |
+| Native transport, profile aggregates, probes, and credential isolation | [AI infrastructure](architecture/ai-infrastructure.md) |
+| Model-owned reasoning and task defaults | [AI model profiles](architecture/ai-model-profiles.md) |
+| Canonical sources, parsing/OCR, lifecycle, and learning artifacts | [AI and document processing](architecture/ai-and-document-processing.md) |
+| Bounded task routing, prompts, concurrency, and checkpoint policy | [Document AI routing](architecture/document-ai-routing.md) |
+| Editor adapter and validated structured content | [Rich document editor](architecture/rich-document-editor.md) |
+| File, lifecycle, time, secret, and resource ports | [Platform services](architecture/platform-services.md) |
+| One-way offers, merge semantics, and encrypted transport | [Device sync architecture](architecture/device-sync.md) |
 
-- [Development guide](development/guide.md) covers setup, repository layout, change design, and day-to-day commands.
-- [Git and pull-request workflow](development/workflow.md) defines direct-source publication, the PR acceptance ledger, exact-head review readiness, merge, release, and rollback.
-- [Testing and CI](development/testing-and-ci.md) defines validation tiers, read-only automatic qualification, machine-readable exact-head evidence, failure fingerprints, Android gates, and GitHub incident handling.
-- [UI workflow redesign performance baseline](development/ui-workflow-redesign-performance-baseline.md) defines the local-only Stage 0 timing/profiling scenarios, strict evidence contract, and distribution-derived budgets.
-- [AI infrastructure testing](development/ai-infrastructure-testing.md) gives focused gateway, profile, probe, provider-contract, static-boundary, frontend-compatibility, and manual acceptance commands.
-- [Automated-maintainer index](agents/README.md) is the operational entry point for agents and LLM maintenance tools.
-- [Agent execution state](agents/EXECUTION-STATE.md) defines the multidimensional task state, completion predicate, PR ledger, and resumption protocol.
-- [Agent failure triage](agents/FAILURE-TRIAGE.md) defines classification, focused reproduction, retry budgets, and stopping rules.
-- [GitHub Connector workflow](agents/GITHUB-CONNECTOR.md) separates repository visibility, concrete write authorization, publication, CI, and service incidents.
-- [Android development architecture](development/android.md) documents the Kotlin/Rust boundary, generated project, emulator tests, package checks, and Android workflows.
-- [Android build and install](development/android-build-and-install.md) gives the exact debug/release build, APK install, artifact, and qualification commands.
-- [Unified Linux/Android runner](development/unified-linux-android-runner.md) documents the isolated single-VM CI architecture, security boundary, nested-KVM qualification, workflow model, recovery, and rollback.
-- [Unified runner setup and operations](development/unified-runner-setup.md) gives the maintained ML-tower/libvirt provisioning, registration, service-management, snapshot, and retirement procedure.
-- [Legacy split Android runner notes](development/android-self-hosted-runner.md) records the retired split-runner topology and migration context.
-- [Platform portability inventory](development/platform-portability-inventory.md) records the current OS assumptions and the phase responsible for removing each one.
-- [Dependency audit](development/dependency-audit.md) records the pinned dependency graph and native runtime trust boundaries.
-- The remaining documents in [`development/`](development/) are focused acceptance and regression plans for high-risk subsystems.
-- [`AGENTS.md`](../AGENTS.md) remains the repository-wide instruction entry point for automated maintainers.
+[Architecture Decision Records](decisions/) preserve durable reasoning and explicit supersessions. An older ADR or parser evaluation is historical evidence when a later accepted decision replaces its implementation; it is not a second current backend choice.
 
-## Reference material
+## Develop and maintain
 
-- [Generated JSON import](reference/generated-json-import.md) defines the strict `.ostudy.json` authoring format.
-- [Flashcard import agent guide](reference/flashcard-import-agent.md) provides instructions for tools that generate compatible import files.
-- [Version 1 JSON Schema](ostudy-flashcards-v1.schema.json) and the [example import](examples/cardiovascular.ostudy.json) are machine-readable companions to the format guide.
+[CONTRIBUTING.md](../CONTRIBUTING.md) explains useful reports and reviewable changes. The [development guide](development/guide.md) maps the repository and day-to-day commands. [Git and PR workflow](development/workflow.md) defines source publication, evidence, review, merge, and rollback. [Testing and CI](development/testing-and-ci.md) defines focused/static/fast/full/platform gates and exact-head evidence.
 
-## Historical records
+Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](agents/README.md), and the canonical [GitHub-direct procedure](agents/GITHUB-DIRECT-DEVELOPMENT.md). [Execution state](agents/EXECUTION-STATE.md), [failure triage](agents/FAILURE-TRIAGE.md), and [Connector diagnostics](agents/GITHUB-CONNECTOR.md) explain evidence and resumption without turning optional services into prerequisites.
 
-Documents that explain an earlier implementation stage, completed roadmap, or dated audit live under [`history/`](history/). They are retained for project archaeology, not as current product instructions. When historical material conflicts with maintained documentation or source, the maintained documentation and current implementation take precedence.
+[Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) records concrete findings, removals, intentional compatibility, and remaining engineering observations.
 
-- [GitHub outage and PR #54 workflow audit — August 17, 2026](history/github-outage-audit-2026-08-17.md) records the service incident, retained engineering fixes, removed outage-specific workaround, and permanent incident-response rules.
+Focused development references include [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), and the [portability inventory](development/platform-portability-inventory.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
 
-## Documentation maintenance
+## CI infrastructure and performance
 
-A maintained guide should answer a reader's question in cohesive prose, link to deeper material instead of repeating it, and clearly distinguish current behavior from planned work. Implementation-stage notes and validation snapshots should move to `history/` when they stop describing the active project. Relative links and the conventional root/docs organization are checked by the static gate.
+The maintained runner topology is described in [Unified Linux/Android runner](development/unified-linux-android-runner.md) and [runner setup/operations](development/unified-runner-setup.md). [Legacy split-runner notes](development/android-self-hosted-runner.md) are migration context, not a request to redeploy that topology.
+
+[UI performance evidence](development/ui-workflow-redesign-performance-baseline.md) and [visual baseline records](development/ui-workflow-redesign-visual-baseline.md) define retained test/provenance contracts. Baseline measurements are historical comparisons, not a claim that the old UI is the current specification. Wall-clock performance remains advisory/manual rather than a substitute for correctness qualification.
+
+## External formats
+
+The [generated JSON reference](reference/generated-json-import.md), [generator-agent instructions](reference/flashcard-import-agent.md), [version-1 JSON Schema](ostudy-flashcards-v1.schema.json), and [example](examples/cardiovascular.ostudy.json) define compatible content-only imports. They are not instructions to supply internal database IDs or learner history.
+
+## Roadmap and historical material
+
+The [roadmap](roadmap.md) separates implemented foundations from limitations and planned work. [History](history/README.md) preserves earlier audits/designs. Some stage-plan paths remain in `development/` because tests and provenance refer to them; their historical status and current replacement must be explicit.
+
+A maintained document should answer its reader's question cohesively. Update the owning section rather than append a contradictory PR-specific note. Keep this index, current source links, and relative file links valid. The documentation verifier catches organization/link contracts; source review is still required to establish that prose matches the application.

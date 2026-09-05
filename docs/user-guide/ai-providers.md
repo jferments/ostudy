@@ -1,138 +1,88 @@
-# AI providers
+# AI providers and model profiles
 
-AI is optional in ostudy. The flashcard library, editor, practice scheduler, analytics, search, imports, and backups work without a model connection. An AI profile becomes relevant only when you ask the application to perform a supported model-assisted task, currently PDF-to-flashcard generation.
+AI is optional. Cards, editing, practice, scheduling, analytics, Search, imports, and backups do not need a model connection. Profiles become relevant when you request document analysis, flashcard generation, or study-guide generation.
 
-ostudy is a client of an existing model service. It does not install llama.cpp, Unsloth, Ollama, a GPU runtime, or a cloud account for you.
+ostudy connects to an existing model service. It does not install a local model, GPU runtime, or provider account, and it never silently switches a local task to a cloud provider.
 
-## Provider status
+## Implemented providers
 
-| Provider family | Current status | Notes |
-| --- | --- | --- |
-| llama.cpp / Unsloth GGUF | Available | Connects to an existing llama.cpp-compatible server and uses the server/model chat template. |
-| DeepSeek | Available | Connects to DeepSeek's official cloud API using the configured API key. |
-| OpenRouter | Available | Uses OpenRouter's fixed official API, account-visible model discovery, strict structured output, and privacy-preserving routing defaults. |
-| Ollama | Planned | Listed in the native catalog, but the adapter is not implemented. |
-| OpenAI | Planned | Listed in the native catalog, but the adapter is not implemented. |
-| Gemini | Planned | Listed in the native catalog, but the adapter is not implemented. |
-| Claude | Planned | Listed in the native catalog, but the adapter is not implemented. |
+| Provider family | Current application support |
+| --- | --- |
+| llama.cpp / Unsloth GGUF | Existing compatible local or deliberately configured LAN server |
+| DeepSeek | Fixed cloud API and configured key |
+| OpenRouter | Fixed API, account-visible model discovery, and adapter-specific routing/privacy policy |
+| Dedicated Ollama, OpenAI, Gemini, Claude | Planned catalog entries, not implemented normal Add model choices |
 
-Only providers implemented by the current build are offered by the normal **Add model** flow.
+A model available through OpenRouter is not evidence of a dedicated adapter for its original vendor. Provider/model availability outside the application can change; use the actual model discovery and connection test rather than assuming every model name is usable.
 
-## Normal setup flow
+## Add and select a model
 
-Open **Settings → AI/LLM** and select **Add model**. The ordinary setup path deliberately asks only for information needed to establish a usable connection:
+Open **Settings → AI/LLM** and choose **Add model**. Select an implemented provider. For llama.cpp enter its **Server URL**; for a key-requiring cloud provider enter the API key. Choose **Connect and load models**, select the returned model, and **Save profile**. Use **Test connection** before a long job.
 
-1. Choose the provider.
-2. For a local llama.cpp-compatible service, enter the **Server URL**. For a cloud provider that requires authentication, enter the **API key**.
-3. Select **Connect and load models**. ostudy saves the connection metadata, stores the API key according to the selected credential-storage policy, and asks the provider for its available models.
-4. Choose a model from the returned list and select **Save profile**.
-5. Select **Test connection** to verify the saved model and the capabilities needed by ostudy.
+The page is one vertical flow: default-model/task assignment, wrapping model list, selected-model controls, and advanced configuration. It is not a sticky model-sidebar workflow. The default selects a saved profile; it does not copy reasoning, credentials, timeout, or privacy settings from one profile to another.
 
-The setup screen does not expose transport-authentication jargon, a separate enable switch, or timeout policy in the normal path. Those are either fixed by the provider or kept under **Advanced settings** when they are genuinely configurable.
+The current flashcard-generation task default supplies the document learning workflows, including study guides. A separate study-guide-specific default selector is not required in the current app.
 
-A saved profile can be selected as the **Default AI model** for flashcard generation. ostudy does not silently fall back to another model or provider if that profile fails.
+## Reasoning belongs to each model profile
 
-## Advanced settings
+Reasoning effort is stored with the selected profile, not as a global appearance/application setting. Choices reflect advertised metadata for that model. The application understands Automatic and a range of explicit effort levels, but it does not assume every provider/model supports every value.
 
-Open **Advanced settings** only when you need to change an existing supported profile field. Depending on the provider, the disclosure can contain:
+Automatic lets the capability policy choose. Models that require reasoning cannot have it disabled. A saved choice that is no longer advertised must be reconciled rather than blindly sent as an unsupported request. Generation records requested and effective effort, so an adapted request is not confused with the user's original preference.
 
-- the local profile name;
-- the provider inactivity timeout;
-- secure-device versus session-only API-key storage;
-- optional API-key authentication for a llama.cpp-compatible server;
-- acknowledgement for an unencrypted HTTP server elsewhere on a private LAN;
-- **Require zero data retention** for OpenRouter;
-- saved API-key removal and profile deletion.
+Changing the default model does not overwrite either model's profile settings. A previous global reasoning preference is handled by the native migration rather than retained as a second live setting.
 
-Changing connection-affecting settings such as endpoint, authentication, LAN transport policy, OpenRouter retention policy, or API key requires reconnecting and loading the model catalog again. Changing ordinary metadata such as the profile name or inactivity timeout can be saved without pretending that the provider connection changed.
+## Credentials and advanced configuration
 
-## What a profile contains
+Advanced settings contain less common profile name, inactivity timeout, secure-device/session-only credential storage, optional llama.cpp server authentication, LAN cleartext acknowledgement, OpenRouter retention policy, testing/details, and deletion controls where applicable.
 
-A provider profile records nonsecret configuration such as:
+A newly typed key necessarily exists briefly in the entry form and crosses the write boundary to native storage. Saved keys are not read back into the form. Credential bytes are not stored in the SQLite library or ordinary backup/deck packages. Secure storage uses the platform's secret service; an explicitly selected session-only key remains in native memory and disappears when the process exits.
 
-- a stable local profile name and provider family;
-- the normalized endpoint URL;
-- the selected model identifier;
-- the provider authentication policy;
-- the provider inactivity timeout;
-- local-network transport acknowledgement where applicable;
-- an optional OpenRouter-only zero-data-retention requirement;
-- capability evidence from the most recent verification;
-- whether the profile is the default for a supported task.
+On a machine where secure storage is unavailable, a deliberate session-only credential can be used without pretending it will survive restart. Do not assume copying the library database copies keys. Connection-affecting changes invalidate old capability evidence; reconnect/test when the UI requests it. Removing/replacing keys and changing trust boundaries are deliberate operations, not an implicit side effect of choosing another default.
 
-Credential bytes are not stored in the SQLite library. Secure credentials use the operating-system credential service when available. A deliberately selected session-only credential remains in native process memory and disappears when ostudy exits. The interface never reads a saved key back into the API-key field; enter a value only when adding or replacing a key.
+## Local and LAN servers
 
-## Configure llama.cpp or an Unsloth GGUF server
-
-Start and manage the model server separately. The default ostudy endpoint is:
+The usual local llama.cpp endpoint is:
 
 ```text
 http://127.0.0.1:8080/
 ```
 
-Open **Settings → AI/LLM**, select **Add model**, leave **llama.cpp / Unsloth GGUF** selected, enter the server URL if the default is not correct, then choose **Connect and load models**. Select the model reported by the server, save the profile, and test the connection.
+Start the server separately and use its actual address, port, and base path. The server owns loading the model and its tokenizer/chat template; the WebView does not invent another model-specific template.
 
-Most local servers do not require an API key. If yours does, open **Advanced settings**, change **Server authentication** to **API key**, enter the key in the normal API-key field, and reconnect. The server remains responsible for loading the model and applying its tokenizer-specific chat template; ostudy does not guess or build a separate template in the WebView.
+Loopback means the device running ostudy. On a phone, `127.0.0.1` is the phone, not your desktop. Use a reachable trusted LAN address for a desktop server accessed from Android. Limit the server's network exposure and use authentication where appropriate. Public cleartext HTTP is not supported; non-loopback private-LAN HTTP requires explicit acknowledgement because it is not encrypted transport.
 
-A loopback endpoint keeps provider traffic on the same computer. A LAN endpoint can place document context on another machine under your control, but it also creates a network trust decision: secure the server, bind it intentionally, restrict access, and do not expose an unauthenticated inference service to an untrusted network. Unencrypted LAN HTTP requires the explicit acknowledgement under Advanced settings.
+A local server can still be unavailable, misconfigured, too small in context, or unreliable at structured output. Local ownership is a privacy choice, not a guarantee of model quality.
 
-Large local jobs are divided into bounded source windows. The application does not require the complete document to fit into one model request, but each request still has to fit the context window supported by the selected model and provider.
+## Cloud profiles
 
-## Configure DeepSeek
+DeepSeek and OpenRouter use their fixed configured provider endpoints rather than accepting an arbitrary cloud URL. API usage is billed by the provider, not by a separate ostudy subscription. Cost depends on workload, model, retries, and current provider terms; inspect those terms before transmitting sensitive material.
 
-Create a DeepSeek API key directly with that provider. In ostudy, add a model, choose **DeepSeek**, enter the API key, and select **Connect and load models**. Choose one of the models returned by the account-visible catalog, save the profile, and test it. DeepSeek uses its fixed official API base URL; ostudy does not ask for or accept an arbitrary endpoint for that provider family.
+For OpenRouter document requests, the adapter requests parameter-compatible structured output, denies provider data collection, and disables provider-side context compression. **Require zero data retention** adds a stronger routing constraint where supported. This may reduce eligible endpoints or cause a request to fail. The app must report that rather than silently relaxing the profile.
 
-Cloud requests can incur provider charges and transmit selected source context outside your computer. ostudy does not add a study-app subscription, but it cannot guarantee a particular API cost. Document size, generated-card volume, retries, model pricing, and provider behavior all matter. Review the provider's current pricing and data terms before sending sensitive material.
+These request policies are not an independent audit of the external provider. Choose an appropriate service for the material you intend to process.
 
-## Configure OpenRouter
+## Verification is more than connectivity
 
-Create an OpenRouter API key directly with that provider. In ostudy, add a model, choose **OpenRouter**, enter the API key, and select **Connect and load models**. Choose a model from the account-visible catalog, save the profile, and run the connection test. ostudy uses OpenRouter's fixed official API endpoint.
+The connection test checks endpoint/authentication, model discovery/selection, and relevant text/structured-output capabilities. Results distinguish supported, unsupported, and unknown evidence. A successful HTTP response alone does not prove that a model can satisfy the document schema.
 
-For document generation, ostudy requests strict JSON Schema output only from parameter-compatible endpoints and sets OpenRouter's provider-data-collection policy to `deny`. It explicitly disables provider-side context compression so document windows are not silently changed, and it never enables prompt/body debugging. Enable **Require zero data retention** under Advanced settings to send the stronger zero-retention routing requirement. That restriction can reduce endpoint availability, and the connection test reports the result instead of silently weakening the profile.
+Evidence is tied to profile revision, credential epoch, and model identity. Changing those invalidates older evidence. The ordinary result appears first; **Technical details** exposes probe phases and capability information for diagnosis. Fix a failing provider test before repeatedly starting document generation.
 
-## Verification and capabilities
+## Data flow and privacy
 
-Profile verification checks the configured endpoint, authentication, model discovery where supported, and the capabilities needed by ostudy's narrow task contracts. Capability evidence is tied to the profile revision, credential epoch, and model. Changing any of them invalidates older evidence rather than assuming that a previous result still applies.
+Document parsing, rendering, and OCR occur locally. Generation sends bounded source text and selected visual evidence only when supported by the chosen model. It does not upload the original source as an opaque file. Generated cards/guides and canonical source derivatives are intentionally stored in the local library.
 
-The settings screen presents the ordinary result first, such as **Connection verified**. Open **Technical details** when you need the individual probe phases and capability evidence.
+Provider requests run through the Rust gateway, not frontend HTTP. Redirects and public cleartext endpoints are rejected, response sizes are bounded, cookies are not a session mechanism, and routine diagnostics exclude keys, authorization headers, raw prompts/responses, reasoning text, and source bytes.
 
-A successful HTTP response is not enough. For document generation the provider must also support the structured-output behavior expected by its adapter. Model responses are parsed into strict native types and validated again before any card is created.
+For streamed document work, the configured timeout is an inactivity limit between observable transport events, not a total wall-clock cap on an entire large job. Responsive stream events can keep work alive; cancellation and size limits still apply.
 
-## Endpoint and transport safety
+## Backup and device transfer
 
-Provider traffic is owned by the native Rust gateway, not by frontend JavaScript. The gateway:
+A complete library backup includes nonsecret profile metadata and task defaults, but not credentials. A restored device must verify/re-enter keys as needed. Standard trusted-device synchronization excludes provider configuration. The sender may explicitly include supported profile/default metadata and available saved credentials for that offer; secure storage and authenticated encrypted transport remain required for the credential path.
 
-- rejects redirects;
-- uses bounded request and response bodies;
-- stores no cookies;
-- forbids public cleartext HTTP;
-- normalizes errors before they reach the interface;
-- does not log credentials, authorization headers, raw prompts, raw responses, or model reasoning content.
+Ordinary theme/font/application settings stay device-local during sync. No prior pairing grants permanent permission to transfer credentials. See [Device sync](device-sync.md).
 
-Loopback and intentionally configured local-network HTTP endpoints are treated differently from public internet endpoints because many local model servers do not provide TLS. A cloud provider must use HTTPS.
+## Troubleshoot at the connection boundary
 
-## No silent fallback
+Check the server/account, endpoint scheme/address/port/base path, advertised model, key availability, network reachability, LAN policy, and structured-output/context capability. A firewall, VPN, container, or emulator may change which machine an address reaches. Avoid exposing an unauthenticated server publicly as a shortcut.
 
-ostudy never changes providers because a request failed, a model was slow, or a local server was offline. Retrying a task uses the profile selected for that task unless you explicitly choose another profile. This prevents private source material intended for a local model from being sent to a cloud service unexpectedly.
-
-## What is sent during PDF generation
-
-The original PDF is stored locally and is not uploaded as an opaque file. ostudy performs local extraction, semantic organization, rendering, and OCR, then sends bounded text context and selected rendered pages when the verified provider/model supports image input. The exact amount depends on document structure, task windows, and provider capability.
-
-The application records safe progress and usage measurements needed to resume or diagnose a job, not raw provider messages or document text in diagnostic exports. During streamed document work the profile timeout is an inactivity limit: received SSE heartbeats, reasoning deltas, output deltas, and final usage events prove that the connection is responsive and reset the timer. It is not a maximum duration for a complete generation request.
-
-## Troubleshooting
-
-When connection or verification fails, check these in order:
-
-1. The model server or cloud account is actually available.
-2. For a local server, the Server URL includes the correct scheme, host, port, and base path.
-3. The provider account exposes at least one model compatible with the configured service.
-4. A required API key is present in the secure or session-only store.
-5. A firewall, proxy, VPN, or container boundary is not making `127.0.0.1` refer to the wrong machine.
-6. For LAN llama.cpp, the server is reachable from the device and the unencrypted-LAN acknowledgement is set only when intentionally using HTTP.
-7. The selected model supports the structured output and context size required by the task.
-
-Use **Test connection** before starting a long document job. A failed profile test should be fixed at the provider boundary rather than retried repeatedly through document generation.
-
-For implementation details, see [AI and document processing](../architecture/ai-and-document-processing.md).
+For a report, include the safe error, provider family/model, app build/platform, and whether discovery or a particular verification phase failed. Do not share API keys, authorization headers, private source text, or raw provider bodies. See [Documents](documents-and-ai-generation.md) and [native AI infrastructure](../architecture/ai-infrastructure.md) for the next layer.

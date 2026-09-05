@@ -1,116 +1,54 @@
 # Contributing to ostudy
 
-ostudy welcomes bug reports, feature proposals, documentation improvements, tests, and code changes. The project stores personal study data and contains long-lived compatibility boundaries, so a useful contribution starts by describing the user problem clearly and ends by showing exactly which published commit was validated.
+Contributions should start with a clear learner problem and end with reviewable source and evidence for the exact commit tested. ostudy stores personal learning material and long-lived review history; correctness, recoverability, accessibility, and privacy are part of the feature, not later cleanup.
 
-Read the [documentation index](docs/README.md) before changing a subsystem. Architecture and testing documents are maintained separately so contributors do not have to reverse-engineer historical pull requests.
+Start with the [documentation index](docs/README.md) and [current architecture](docs/architecture/overview.md). Automated maintainers also follow [AGENTS.md](AGENTS.md) and the [GitHub-direct procedure](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md).
 
-## Report a bug
+## Report a useful problem
 
-Use the bug-report form and include enough information to reproduce the behavior:
+Include the application version or exact commit, OS/device/architecture, initial state, action, expected and actual result, and the smallest reproducible sequence. Say whether it survives restart and name any failing command. For document/AI problems, include source format, scanned versus native text, provider family/model, visible phase, and safe error—not the original private document by default.
 
-- ostudy version or exact commit;
-- operating system and architecture;
-- screen/action that produced the problem;
-- expected and actual behavior;
-- whether it survives restart;
-- smallest reproducible sequence;
-- validation command or manual test that fails;
-- a privacy-conscious diagnostic archive when relevant and safe.
+Use a synthetic or redacted example whenever possible. Do not attach keys, authorization headers, private course/patient/employer material, live SQLite libraries, operating-system secret data, or unreviewed diagnostic directories. Local diagnostic exports are bounded and privacy-conscious, but metadata such as filenames can still be sensitive. Review them before sharing.
 
-Do not attach API keys, Authorization headers, private PDFs, card contents, the live SQLite library, operating-system credential data, or an unreviewed full diagnostic directory. Redact paths and excerpts that identify a patient, student, employer, or private course material.
+For a feature, explain the workflow, current workaround, desired first version, and non-goals. Identify data, accessibility, platform, privacy, and compatibility effects. An AI feature must state which source data leaves the device, who chooses the provider, and what deterministic native behavior remains authoritative. Check the [roadmap](docs/roadmap.md) without treating planned work as already implemented.
 
-For PDF/AI problems, also report provider family, model identifier, text/scanned source, OCR state, visible processing phase, and normalized error. A document can usually be diagnosed without publishing it.
+## Set up and test-drive
 
-## Propose a feature
-
-A strong request explains the workflow rather than naming a technology:
-
-1. learner/contributor problem;
-2. current workaround;
-3. desired user-visible behavior;
-4. data, privacy, accessibility, platform, and compatibility constraints;
-5. successful first version;
-6. deferred behavior.
-
-Check the [roadmap](docs/roadmap.md). A roadmap item still benefits from a focused issue when implementation is ready.
-
-AI features identify deterministic authority, source data that may leave the device, provider selection, and failure behavior. Synchronization/sharing features identify ownership, conflict, deletion, encryption, and recovery semantics before implementation.
-
-## Prepare a development environment
-
-Ubuntu/Debian Linux is the primary qualified path:
+For first-time Ubuntu/Debian development setup:
 
 ```bash
 ./scripts/setup-ubuntu.sh
 ./run-app.sh
 ```
 
-Platform instructions live under [`docs/installation/`](docs/installation/). The [development guide](docs/development/guide.md) explains repository layout and [Testing and CI](docs/development/testing-and-ci.md) explains qualification.
+For an already configured checkout after source changes:
 
-## Design the change
+```bash
+./scripts/build.sh
+./run-app.sh
+```
 
-Before editing:
+The build produces a staged standalone debug app without release bundles. The launcher verifies its source fingerprint and binary checksum; it does not rebuild or start Vite. `pnpm desktop` is native hot reload, while `pnpm dev` and `pnpm build` are frontend operations.
 
-- inspect implementation, callers, tests, migrations, transfer formats, and relevant docs;
-- assign stable `AC-##` acceptance criteria and explicit non-goals;
-- identify persistence, migration, import/export, scheduling, analytics, platform, accessibility, security, dependency, and rollback effects;
-- identify automated tests and human-only boundaries;
-- use an existing boundary/shared primitive before adding a parallel abstraction;
-- add an ADR for a durable cross-module rule.
+Linux and Android are the maintained build/test paths. See [installation](docs/installation/README.md), [Android setup](docs/installation/android.md), and [local testing/handoff](docs/development/local-testing-and-handoff.md). A new source worktree does not isolate app data. Use temporary library storage for destructive, migration, and restore tests; never silently clear/uninstall a valuable Android library to make a test pass.
 
-Do not edit released migrations or release-schema fixtures. Add a new migration/versioned repair when current data must change. Preserve compatibility for released durable formats and stored libraries, not obsolete internal commands.
+## Design a focused change
 
-## Branch and pull-request workflow
+Inspect current implementation, callers, tests, schemas, migrations, transfer formats, and relevant ADRs. Define stable `AC-##` acceptance criteria and explicit non-goals. Identify automated evidence and the remaining human-only boundaries before implementation.
 
-Never develop directly on `main`. Start from the exact current base, create one short-lived `agent/<description>` branch, publish a meaningful direct-source commit, and open one draft PR. Continue on that branch rather than creating replacements for ordinary failures.
+Reuse existing services, controllers, typed IPC, platform ports, and UI primitives. The UI can consume a bounded read model, but its current layout must not become the durable data model. Rust owns validation, transactions, scheduling, history, and provider boundaries. A new persistent representation needs migration, backup/restore, sync-scope, deletion/recovery, and privacy review.
 
-The authoritative process is [Git and pull-request workflow](docs/development/workflow.md).
+Preserve released migrations/checksums and supported durable readers. Obsolete internal commands and unmounted duplicate screens do not gain permanent compatibility status merely because they once existed. Trace real consumers and move regression coverage to the active owner before removal. Add an ADR for a durable cross-module decision.
 
-### Direct-source invariant
+## Branch and publication
 
-The PR branch contains the actual source under review. The following are not delivery:
+Use one short-lived branch and one PR, never direct development on `main`. Read the exact current base, publish a meaningful first source/test/document increment, and open a draft PR. Continue there for ordinary repairs.
 
-- a local/generated patch that was not published;
-- a task-specific applicator/finalizer;
-- a transient source tree produced only inside CI;
-- a PR description claiming target behavior that the branch does not contain.
+Human contributors may use an authenticated local checkout. Normal ChatGPT tasks use the **GitHub Connector as the sole publisher**, with expected-parent Git-data commits, non-force ref updates, and remote verification. Exactly one writer owns a branch. Codex and custom developer MCPs/workspace/orchestrator/observer services require explicit authorization for the current task; an old deployment record is not a selection policy.
 
-Automatic PR qualification is read-only. It may not persist write credentials, stage/commit/push source, or change PR readiness. Explicit manual maintenance workflows are separate and narrowly scoped.
+The PR must contain actual source, not an unpublished patch, task-specific applicator, finalizer, or transient runner-only tree. **All Actions workflows are source-read-only**, including manual maintenance. They may verify/build/test/package source and emit evidence, but must not stage, author, format-rewrite, commit, or push the reviewed source. See [Git and PR workflow](docs/development/workflow.md).
 
-### Pull-request acceptance snapshot
-
-The PR template includes one machine-readable compatibility acceptance snapshot. It records scope and evidence for current handoff tooling, but GitHub's remote branch and exact-head Actions results remain authoritative. Keep it synchronized with:
-
-- exact base, branch, and current head;
-- `currentState`;
-- per-criterion status, implementation evidence, and tests;
-- exact-head validation evidence;
-- manual/human-only boundaries;
-- known failure fingerprints and focused reproductions.
-
-Draft source qualification does not depend on this snapshot, so draft metadata can briefly lag a synchronize event. Before readiness, the snapshot must exactly match GitHub; all acceptance criteria must be terminal; static, fast, and full must pass on the current head; platform/manual requirements must be terminal; and known failures must be empty.
-
-See [Agent execution state](docs/agents/EXECUTION-STATE.md).
-
-Use **Squash and merge** after exact-head automated qualification and human acceptance. Do not force-push shared history or self-merge unless explicitly requested by the owner.
-
-## Code and documentation standards
-
-- Keep one coherent behavior per pull request.
-- Do not mix feature work with unrelated dependency upgrades or formatting churn.
-- Add a regression for a defect whenever a practical layer exists.
-- Preserve keyboard, touch, compact layout, reduced motion, themes, and assistive behavior.
-- Keep provider networking/credentials in native boundaries.
-- Keep authoritative validation, transactions, scheduling, and analytics in Rust/SQLite rather than React.
-- Use durable domain names; stage labels belong in history.
-- Write docs for a reader's task; put implementation detail in architecture/development references.
-- Update links and run the documentation verifier when files move.
-
-Automated-maintainer rules are in [`AGENTS.md`](AGENTS.md) and [`docs/agents/`](docs/agents/). Human contributors follow the same architectural/evidence constraints.
-
-## Validate the change
-
-Use the cheapest useful tier, then complete merge qualification:
+## Validate at the right layer
 
 ```bash
 ./scripts/check-changed.sh
@@ -119,45 +57,26 @@ Use the cheapest useful tier, then complete merge qualification:
 ./scripts/check.sh
 ```
 
-A documentation-only change still runs documentation/repository checks. Parse, TypeScript build, or mocked frontend tests do not substitute for native Tauri qualification when native behavior changed.
+Use focused tests and the cheapest useful tier while editing, then required final-head qualification. The changed-file helper is an aid, not a certificate. Static parsing or mocked component tests do not establish native Tauri behavior. Android compile/package and emulator smoke are separate platform gates.
 
-The automatic `Check` workflow validates the compatibility snapshot for non-draft PRs, checks out the exact head, runs static first, and uploads `ostudy-qualification-result.json` on success or failure. Draft source qualification does not depend on snapshot metadata. The artifact records step outcomes and, on failure, a stable fingerprint and focused reproduction.
+Documentation changes require documentation/repository checks and source review of claims. Removing source also requires its relevant compile/behavior/ownership checks. No tool proves all prose true or all code reachable.
 
-When a gate fails:
+The automatic **Check** workflow checks out the actual source head and qualifies it. **PR Contract** validates the acceptance metadata separately; a malformed PR body does not prevent product qualification. Draft automatic Check is fast; ready PRs and explicit full dispatches provide full platform qualification. Description edits do not run product tests.
 
-1. verify tested SHA/current head;
-2. inspect steps, logs, machine-readable result, and bounded diagnostics;
-3. identify/classify every independent failure;
-4. run the focused reproduction;
-5. repair one coherent batch;
-6. rerun the narrow boundary before broad qualification.
+Review readiness and completed qualification are different states. Never mark pending tests passed merely to trigger them. A green result belongs to its exact tested SHA, not indefinitely to a branch. Follow [Execution state](docs/agents/EXECUTION-STATE.md) and [Testing and CI](docs/development/testing-and-ci.md) for current mechanics.
 
-One unchanged-head rerun is appropriate only with evidence of a transient external failure. Repeated fingerprints require a strategy change—not no-op commits, PR-state toggles, sleeps, blanket retries, larger timeouts, skipped tests, or weakened assertions. See [Agent failure triage](docs/agents/FAILURE-TRIAGE.md).
+## Repair failures without weakening the contract
 
-After automated qualification, launch:
+Read the exact run's steps, bounded logs, and available machine-readable qualification/failure artifacts. Verify the tested SHA. Classify product, test-contract, environment, Connector, service-incident, and manual boundaries separately. Fix the smallest failed boundary and batch independent actionable findings coherently before rerunning broader gates.
 
-```bash
-./run-app.sh
-```
+One unchanged-head rerun is appropriate only with transient-cause evidence. The same fingerprint twice requires a strategy change. No no-op commits, permission expansion, PR-state toggles, sleeps, longer timeouts, skipped tests, or weakened assertions merely to obtain green CI. A runner queue is not evidence that source publication failed.
 
-Manually exercise every changed workflow at relevant widths, themes, input methods, persistence boundaries, and error states. Record what actually ran. Mark physical-device, camera, live-provider, private-credential, or hardware paths explicitly human-required when automation cannot perform them.
+## Review, handoff, and merge
 
-## Pull-request description and handoff
+Inspect the final diff for scope, secrets, generated output, unrelated formatting, stale instructions, and missing regression coverage. Keep the PR's acceptance snapshot aligned with the verified remote head and actual evidence; the snapshot is not a source writer, lock, or job scheduler.
 
-Keep the PR current. Before review it contains:
+The handoff must include the PR/base/branch/head, changed areas, acceptance/non-goals, actual checks and tested SHAs, unrun checks and reasons, manual acceptance, known failures, compatibility/rollback risks, and writer release. Supply copyable exact-source checkout and short native build/run/Android install commands with the behavior to inspect. The [handoff guide](docs/development/local-testing-and-handoff.md) provides that contract.
 
-- truthful current state and target goal;
-- exact base/head and branch;
-- stable acceptance criteria/non-goals;
-- important design choices;
-- changed files grouped by purpose;
-- tests/docs added;
-- exact commands and CI runs that passed on the current head;
-- unavailable checks and why;
-- manual workflows actually exercised or human-required;
-- migration, backup, compatibility, rollback, limitations, residual risks;
-- empty known-failure list.
+Do not make the human rerun a full matrix merely to try the UI, and do not claim a live-provider, camera, physical-device, or manual test that never happened. Use precise terms: published, inspected, passed, failed, not run, and human-required.
 
-Use precise terms: **published**, **passed**, **inspected**, **not run**, **manually verified**, and **blocked**. Do not call a task complete while required acceptance, exact-head validation, manual boundaries, or known failures remain.
-
-The pull request remains a proposal until a human reviews and merges it.
+The normal final action is human **Squash and merge** after required evidence and review. Agents must not merge, tag, force-push, delete shared branches, or push to main without an explicit request. A revert of source does not necessarily reverse a database migration; preserve a compatible backup and prefer reviewed forward repair where required.
