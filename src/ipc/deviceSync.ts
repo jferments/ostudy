@@ -52,6 +52,14 @@ export interface DeviceSyncSession {
   errorMessage: string | null;
 }
 
+export interface DeviceSyncSelection {
+  flashcards: boolean;
+  documents: boolean;
+  studyGuides: boolean;
+  apiSettings: boolean;
+  apiCredentials: boolean;
+}
+
 export interface DeviceSyncState {
   identity: DeviceSyncIdentity;
   fingerprint: string;
@@ -72,6 +80,7 @@ export interface PairingInvitation {
   expiresAt: number;
   includeApiSettings: boolean;
   credentialsAvailable: boolean;
+  selection: DeviceSyncSelection;
 }
 
 export interface DeviceSyncResult {
@@ -97,13 +106,13 @@ export function updateDeviceSyncName(displayName: string): Promise<DeviceSyncIde
 
 export function startDevicePairing(input: {
   hostOverride?: string | null;
-  includeApiSettings: boolean;
+  selection: DeviceSyncSelection;
   expiresInSeconds?: number | null;
 }): Promise<PairingInvitation> {
   return invoke<PairingInvitation>("start_device_pairing", {
     input: {
       hostOverride: input.hostOverride ?? null,
-      includeApiSettings: input.includeApiSettings,
+      selection: input.selection,
       expiresInSeconds: input.expiresInSeconds ?? null,
     },
   });

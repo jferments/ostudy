@@ -13,14 +13,15 @@ import {
   updateDeviceSyncName,
   type DeviceSyncConflict,
   type DeviceSyncResult,
+  type DeviceSyncSelection,
   type DeviceSyncSession,
   type DeviceSyncState,
   type PairingInvitation,
 } from "../../ipc/deviceSync";
 import { useConfirm } from "../../ui/overlays/overlayContext";
-import settingsStyles from "./Settings.module.css";
-import styles from "./DeviceSyncSettings.module.css";
 import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import styles from "./DeviceSyncSettings.module.css";
+import settingsStyles from "./Settings.module.css";
 
 const ownedStyleMaps = sharedClassMaps;
 
@@ -30,8 +31,16 @@ interface DeviceSyncSettingsProps {
 
 type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" | "cancelled";
 type SyncTransportChoice = "local-network" | "usb-network";
+type SyncSelectionKey = keyof DeviceSyncSelection;
 
 const ACTIVE_SESSION_STATES = new Set(["waiting", "connecting", "transferring", "merging"]);
+const DEFAULT_SELECTION: DeviceSyncSelection = {
+  flashcards: true,
+  documents: true,
+  studyGuides: true,
+  apiSettings: false,
+  apiCredentials: false,
+};
 
 export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
@@ -39,7 +48,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [hostOverride, setHostOverride] = useState("");
   const [transportChoice, setTransportChoice] = useState<SyncTransportChoice>("local-network");
   const [joinInvitation, setJoinInvitation] = useState("");
-  const [includeApiSettings, setIncludeApiSettings] = useState(false);
+  const [selection, setSelection] = useState<DeviceSyncSelection>(DEFAULT_SELECTION);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [cancelingSessionId, setCancelingSessionId] = useState<string | null>(null);
@@ -73,6 +82,14 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const hasUnclaimedSendingOffer = activeSessions.some(
     (session) => session.direction === "host" && session.peerId === null,
   );
+  const hasSelectedCategory = selection.flashcards || selection.documents || selection.apiSettings;
+
+  useEffect(() => {
+    if (!state || credentialsAvailable) return;
+    setSelection((current) =>
+      current.apiCredentials ? { ...current, apiCredentials: false } : current,
+    );
+  }, [credentialsAvailable, state]);
 
   useEffect(() => {
     const invitationWaiting = invitation !== null && invitation.expiresAt > Date.now();
@@ -80,6 +97,19 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     const interval = window.setInterval(() => void refresh(true), 1_500);
     return () => window.clearInterval(interval);
   }, [activeSessions.length, busyAction, invitation]);
+
+  function changeSelection(key: SyncSelectionKey, checked: boolean): void {
+    setSelection((current) => {
+      const next = { ...current, [key]: checked };
+      if (key === "documents" && !checked) next.studyGuides = false;
+      if (key === "studyGuides" && checked) next.documents = true;
+      if (key === "apiSettings" && !checked) next.apiCredentials = false;
+      if (key === "apiCredentials" && checked) next.apiSettings = true;
+      return next;
+    });
+    setInvitation(null);
+    setErrorMessage(null);
+  }
 
   async function saveDeviceName(): Promise<void> {
     if (busyAction) return;
@@ -98,6 +128,10 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
 
   async function hostPairing(): Promise<void> {
     if (busyAction) return;
+    if (!hasSelectedCategory) {
+      setErrorMessage("Select at least one synchronization category before creating an offer.");
+      return;
+    }
     const selectedHost = hostOverride.trim();
     if (transportChoice === "usb-network" && !selectedHost) {
       setErrorMessage(
@@ -110,7 +144,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     try {
       const created = await startDevicePairing({
         hostOverride: selectedHost || null,
-        includeApiSettings,
+        selection,
       });
       setInvitation(created);
       await refresh(true);
@@ -282,9 +316,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
         <div>
           <h2>Device synchronization</h2>
           <p>
-            Send or receive decks, cards, templates, schedules, review history, and managed images
-            over your private local network or a direct USB network bridge. Appearance and other app
-            settings always stay local to each device.
+            Send selected Flashcards, Documents and their LLM processing data, Study Guides, and
+            optional API configuration over your private local network or a direct USB network
+            bridge. Appearance and other app settings always stay local to each device.
           </p>
         </div>
         <button
@@ -332,9 +366,8 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <article className={styles.pairingPanel}>
               <h3>Send to another device</h3>
               <p>
-                Create a short-lived synchronization offer containing this device's study library.
-                The receiving device only needs to scan or accept this one invitation. Creating a
-                new waiting offer replaces the previous unclaimed offer.
+                Create a short-lived one-way offer. Choose exactly which categories this offer may
+                contain; the receiving device never uploads its own library in response.
               </p>
               <label className={settingsStyles.stackedField}>
                 Connection
@@ -363,28 +396,77 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   The cable carries the same encrypted, authenticated sync session used on Wi-Fi.
                 </p>
               ) : null}
-              <label className={ownedClassNames(ownedStyleMaps, `${settingsStyles.switchRow} ${styles.credentialToggle}`)}>
-                <span>
-                  <strong>Include API provider settings and saved credentials</strong>
-                  <small>
-                    Off by default. This is the only settings category that can be included in a
-                    sync offer. Theme, fonts, UI scale, motion, layout, and other app preferences
-                    always remain device-local.
-                  </small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={includeApiSettings}
-                  disabled={busyAction !== null}
-                  onChange={(event) => setIncludeApiSettings(event.currentTarget.checked)}
-                />
-              </label>
-              {includeApiSettings && !credentialsAvailable ? (
+
+              <fieldset className={styles.scopeFieldset}>
+                <legend>What to synchronize</legend>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.flashcards}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("flashcards", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Flashcards</strong>
+                    <small>Decks, folders, cards, templates, tags, schedules, review history, and managed card images.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.documents}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("documents", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Documents</strong>
+                    <small>Source files, canonical content, OCR/semantic data, outlines, LLM processing jobs, checkpoints, and learning-plan data.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.studyGuides}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("studyGuides", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Study Guides</strong>
+                    <small>Generated guide revisions, sections, learner overlays, and guide checkpoints. Requires Documents.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.apiSettings}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("apiSettings", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>API provider settings</strong>
+                    <small>Provider profiles and task defaults. Theme, layout, fonts, and other application preferences always stay local.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.apiCredentials}
+                    disabled={busyAction !== null || !credentialsAvailable}
+                    onChange={(event) => changeSelection("apiCredentials", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Saved API keys</strong>
+                    <small>Securely stored provider credentials. Requires API provider settings and usable secure storage on both devices.</small>
+                  </span>
+                </label>
+              </fieldset>
+              {!credentialsAvailable ? (
                 <p className={settingsStyles.securityNote}>
-                  API provider configuration will be included, but this device's secure secret
-                  store is unavailable, so saved credential bytes cannot be added to this offer.
+                  This device's secure secret store is unavailable, so saved API keys cannot be
+                  added to the offer. Provider settings can still be synchronized without keys.
                 </p>
               ) : null}
+
               <label className={settingsStyles.stackedField}>
                 {transportChoice === "usb-network"
                   ? "USB interface address"
@@ -402,7 +484,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 />
                 <span className={settingsStyles.fieldHelp}>
                   {transportChoice === "usb-network"
-                    ? "Use the private IPv4 or IPv6 address assigned to this device's USB-network interface. Automatic USB-interface discovery is intentionally kept outside the sync protocol so platform-specific adapters can evolve independently."
+                    ? "Use the private IPv4 or IPv6 address assigned to this device's USB-network interface. Automatic USB-interface discovery stays outside the sync protocol so Android, desktop, and future iOS adapters can evolve independently."
                     : "Enter a private IP only when automatic LAN-address detection fails."}
                 </span>
               </label>
@@ -412,6 +494,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 disabled={
                   busyAction !== null ||
                   !state.localNetworkAvailable ||
+                  !hasSelectedCategory ||
                   (transportChoice === "usb-network" && !hostOverride.trim())
                 }
                 onClick={() => void hostPairing()}
@@ -437,12 +520,13 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                     </span>
                     <code>{formatFingerprint(invitation.fingerprint)}</code>
                     <p className={styles.scanHint}>
-                      Sends study-library data from this device. {invitation.includeApiSettings
-                        ? invitation.credentialsAvailable
-                          ? "API provider settings and saved credentials are also offered."
-                          : "API provider settings are also offered; no saved credential bytes are available."
-                        : "API provider settings and credentials are not included."}
+                      Includes: {describeSelection(invitation.selection)}.
                     </p>
+                    {invitation.selection.apiCredentials && !invitation.credentialsAvailable ? (
+                      <p className={styles.scanHint}>
+                        Saved API keys were selected, but this device has no securely stored credential bytes available for this offer.
+                      </p>
+                    ) : null}
                     <p className={styles.scanHint}>
                       Keep the entire white border visible. Scanning this code accepts the offer and
                       starts receiving immediately.
@@ -666,6 +750,16 @@ function prettyPayload(payload: string): string {
   } catch {
     return payload;
   }
+}
+
+function describeSelection(selection: DeviceSyncSelection): string {
+  const items: string[] = [];
+  if (selection.flashcards) items.push("Flashcards and review history");
+  if (selection.documents) items.push("Documents and LLM processing data");
+  if (selection.studyGuides) items.push("Study Guides");
+  if (selection.apiSettings) items.push("API provider settings");
+  if (selection.apiCredentials) items.push("saved API keys");
+  return items.join(", ");
 }
 
 function formatFingerprint(value: string): string {

@@ -132,6 +132,36 @@ pub(crate) fn load_profile_snapshot(
     load_profile(connection, profile_id).map(|profile| ProfileSnapshot::from(&profile))
 }
 
+/// Sanitize provider-profile state inside a copied transfer snapshot.
+///
+/// Credential bytes never live in these rows, but credential-storage/epoch
+/// metadata is still device-local. Operation identities are also local retry
+/// evidence rather than learner configuration. When profiles were not selected
+/// for transfer, remove them after task defaults and probe evidence have already
+/// been cleared by their owning modules.
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &Connection,
+    include_profiles: bool,
+) -> Result<(), CommandError> {
+    connection
+        .execute("DELETE FROM ai_profile_operations", [])
+        .map_err(CommandError::database)?;
+    if include_profiles {
+        connection
+            .execute(
+                "UPDATE ai_provider_profiles
+                 SET credential_storage = 'none', credential_epoch = 0",
+                [],
+            )
+            .map_err(CommandError::database)?;
+    } else {
+        connection
+            .execute("DELETE FROM ai_provider_profiles", [])
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
 pub(super) fn create_profile(
     connection: &mut Connection,
     input: CreateAiProviderProfileInput,

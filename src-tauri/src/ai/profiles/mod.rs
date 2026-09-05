@@ -13,5 +13,13 @@ pub(crate) use contracts::{ProfileRequestSnapshot, ProfileSnapshot};
 pub(crate) use repository::load_profile_snapshot;
 pub(crate) use service::{load_default_profile_request, load_profile_request};
 
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &rusqlite::Connection,
+    include_profiles: bool,
+) -> Result<(), crate::error::CommandError> {
+    defaults::sanitize_for_device_transfer(connection, include_profiles)?;
+    repository::sanitize_for_device_transfer(connection, include_profiles)
+}
+
 #[cfg(test)]
 mod tests;

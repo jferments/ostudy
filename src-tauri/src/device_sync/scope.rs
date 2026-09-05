@@ -159,9 +159,6 @@ pub(crate) fn sanitize_snapshot(
         .execute_batch(
             "PRAGMA foreign_keys = OFF;
              DELETE FROM app_settings;
-             DELETE FROM ai_provider_probe_results;
-             DELETE FROM ai_provider_capabilities;
-             DELETE FROM ai_profile_operations;
              DELETE FROM card_search_fts;",
         )
         .map_err(CommandError::database)?;
@@ -232,6 +229,16 @@ pub(crate) fn sanitize_snapshot(
             .map_err(CommandError::database)?;
     }
 
+    if selection.documents && !selection.api_settings {
+        connection
+            .execute_batch(
+                "UPDATE document_outlines SET profile_id = NULL;
+                 UPDATE document_generation_jobs SET profile_id = NULL;
+                 UPDATE document_artifact_jobs SET profile_id = NULL;",
+            )
+            .map_err(CommandError::database)?;
+    }
+
     if !selection.documents {
         connection
             .execute_batch(
@@ -263,31 +270,10 @@ pub(crate) fn sanitize_snapshot(
             .map_err(CommandError::database)?;
     }
 
-    if selection.documents && !selection.api_settings {
-        connection
-            .execute_batch(
-                "UPDATE document_outlines SET profile_id = NULL;
-                 UPDATE document_generation_jobs SET profile_id = NULL;
-                 UPDATE document_artifact_jobs SET profile_id = NULL;",
-            )
-            .map_err(CommandError::database)?;
-    }
-
-    if selection.api_settings {
-        connection
-            .execute_batch(
-                "UPDATE ai_provider_profiles
-                 SET credential_storage = 'none', credential_epoch = 0;",
-            )
-            .map_err(CommandError::database)?;
-    } else {
-        connection
-            .execute_batch(
-                "DELETE FROM ai_task_defaults;
-                 DELETE FROM ai_provider_profiles;",
-            )
-            .map_err(CommandError::database)?;
-    }
+    // AI subdomains own their own SQLite schema. Sync asks them to produce a
+    // safe transfer projection instead of duplicating provider/probe SQL here.
+    crate::ai::probes::sanitize_for_device_transfer(connection)?;
+    crate::ai::profiles::sanitize_for_device_transfer(connection, selection.api_settings)?;
 
     connection
         .execute_batch("PRAGMA foreign_keys = ON;")

@@ -56,7 +56,8 @@ expectContains(qrCommand, "pub async fn scan_device_pairing_qr_async", "async QR
 expectContains(qrCommand, "tauri::async_runtime::spawn_blocking", "QR mobile-plugin worker handoff");
 expectContains(frontendIpc, 'invoke<string | null>("scan_device_pairing_qr_async")', "frontend async QR invocation");
 expectContains(frontendIpc, 'invoke<void>("cancel_device_sync_session"', "frontend session cancellation invocation");
-expectContains(frontendIpc, "includeApiSettings", "sender-controlled API settings scope");
+expectContains(frontendIpc, "export interface DeviceSyncSelection", "typed granular sender selection");
+expectContains(frontendIpc, "selection: input.selection", "granular selection IPC projection");
 expectNotContains(frontendIpc, "includeCredentials", "removed receiver credential consent field");
 expectContains(
   compositionRoot,
@@ -79,7 +80,15 @@ expectContains(settingsUi, "Retry connection", "failed automatic scan retry acti
 expectContains(settingsUi, "connection did not complete", "failed automatic scan explanation");
 expectContains(settingsUi, "Replace waiting offer", "single unclaimed outgoing offer behavior");
 expectContains(settingsUi, 'aria-label={`Cancel ${session.direction', "active-session cancellation affordance");
-expectContains(settingsUi, "Include API provider settings and saved credentials", "sender API scope control");
+expectContains(settingsUi, "What to synchronize", "sender category selection group");
+expectContains(settingsUi, "Flashcards", "Flashcards scope checkbox");
+expectContains(settingsUi, "Documents", "Documents scope checkbox");
+expectContains(settingsUi, "Study Guides", "Study Guides scope checkbox");
+expectContains(settingsUi, "API provider settings", "API provider settings scope checkbox");
+expectContains(settingsUi, "Saved API keys", "saved API credential scope checkbox");
+expectContains(settingsUi, 'changeSelection("documents"', "Documents dependency handler");
+expectContains(settingsUi, 'changeSelection("studyGuides"', "Study Guide dependency handler");
+expectContains(settingsUi, 'changeSelection("apiCredentials"', "API credential dependency handler");
 expectContainsNormalized(settingsUi, "app settings always stay local", "device-local app-settings explanation");
 expectContains(settingsUi, "entire white border visible", "host-side QR framing guidance");
 expectContains(settingsUi, '<option value="usb-network">USB cable</option>', "explicit USB transport choice");
@@ -87,6 +96,7 @@ expectContains(settingsUi, "USB interface address", "USB endpoint fallback field
 expectContains(settingsUi, "startDevicePairing({", "shared pairing command for LAN and USB offers");
 expectContains(settingsUi, "same authenticated synchronization protocol", "USB protocol-reuse explanation");
 expectContains(settingsCss, "width: min(100%, 340px);", "large desktop pairing QR presentation");
+expectContains(settingsCss, ".scopeFieldset", "granular sync scope presentation");
 expectContains(
   settingsCss,
   "background: var(--ostudy-color-neutral-0);",
@@ -148,7 +158,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share authenticated pairing while secure framing and cancellation stay transport-neutral; selected Flashcards, Documents/LLM processing, Study Guides, API settings, and credential scopes are native-owned; document files reuse the validated backup ledger; local app settings stay off the wire/merge allowlist; diagnostics persist through a bounded asynchronous writer.",
+  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share authenticated pairing while secure framing and cancellation stay transport-neutral; sender checkboxes select Flashcards, Documents/LLM processing, Study Guides, API settings, and credential scopes; document files reuse the validated backup ledger; local app settings stay off the wire/merge allowlist; diagnostics persist through a bounded asynchronous writer.",
 );
 
 async function read(relativePath) {

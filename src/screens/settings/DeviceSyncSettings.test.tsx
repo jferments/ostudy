@@ -18,6 +18,13 @@ vi.mock("../../ipc/deviceSync", () => ({
 
 const localId = "1".repeat(32);
 const peerId = "2".repeat(32);
+const defaultSelection: syncIpc.DeviceSyncSelection = {
+  flashcards: true,
+  documents: true,
+  studyGuides: true,
+  apiSettings: false,
+  apiCredentials: false,
+};
 
 function state(): syncIpc.DeviceSyncState {
   return {
@@ -98,6 +105,7 @@ describe("DeviceSyncSettings", () => {
       expiresAt: Date.now() + 300_000,
       includeApiSettings: false,
       credentialsAvailable: false,
+      selection: defaultSelection,
     });
     vi.mocked(syncIpc.scanDevicePairingQr).mockResolvedValue("ostudy-sync://pair/scanned");
     vi.mocked(syncIpc.joinDevicePairing).mockResolvedValue({
@@ -114,7 +122,7 @@ describe("DeviceSyncSettings", () => {
     vi.mocked(syncIpc.resolveDeviceSyncConflict).mockResolvedValue(undefined);
   });
 
-  it("creates a one-way sender offer with API sharing off by default", async () => {
+  it("creates a one-way sender offer with learning data on and API sharing off by default", async () => {
     renderSync();
     expect(await screen.findByText("Android phone")).toBeTruthy();
     expect(screen.getByText(/Appearance and other app settings always stay local/iu)).toBeTruthy();
@@ -124,12 +132,12 @@ describe("DeviceSyncSettings", () => {
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
         hostOverride: null,
-        includeApiSettings: false,
+        selection: defaultSelection,
       });
     });
     expect(await screen.findByAltText(/QR code containing the short-lived ostudy synchronization offer/u)).toBeTruthy();
     expect(screen.getByText(/192\.168\.1\.10:44000/u)).toBeTruthy();
-    expect(screen.getByText(/API provider settings and credentials are not included/iu)).toBeTruthy();
+    expect(screen.getByText(/Flashcards and review history, Documents and LLM processing data, Study Guides/iu)).toBeTruthy();
     expect(screen.getByText(/scanning this code accepts the offer/iu)).toBeTruthy();
   });
 
@@ -152,27 +160,80 @@ describe("DeviceSyncSettings", () => {
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
         hostOverride: "192.168.42.17",
-        includeApiSettings: false,
+        selection: defaultSelection,
       });
     });
     expect(screen.getByText(/USB · 192\.168\.1\.10:44000/u)).toBeTruthy();
   });
 
-  it("lets the sender explicitly add API settings to the offer", async () => {
+  it("lets the sender select provider settings and saved API keys independently", async () => {
     renderSync();
     await screen.findByText("Android phone");
-    const apiToggle = screen.getByRole("checkbox", {
-      name: /Include API provider settings and saved credentials/iu,
-    });
-    fireEvent.click(apiToggle);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /API provider settings/iu }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Saved API keys/iu }));
     fireEvent.click(screen.getByRole("button", { name: "Create sync offer" }));
 
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
         hostOverride: null,
-        includeApiSettings: true,
+        selection: {
+          ...defaultSelection,
+          apiSettings: true,
+          apiCredentials: true,
+        },
       });
     });
+  });
+
+  it("keeps Study Guides dependent on Documents", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+    const documents = screen.getByRole("checkbox", { name: /Documents/iu }) as HTMLInputElement;
+    const guides = screen.getByRole("checkbox", { name: /Study Guides/iu }) as HTMLInputElement;
+
+    fireEvent.click(documents);
+    expect(documents.checked).toBe(false);
+    expect(guides.checked).toBe(false);
+
+    fireEvent.click(guides);
+    expect(guides.checked).toBe(true);
+    expect(documents.checked).toBe(true);
+  });
+
+  it("keeps saved API keys dependent on provider settings", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+    const settings = screen.getByRole("checkbox", { name: /API provider settings/iu }) as HTMLInputElement;
+    const keys = screen.getByRole("checkbox", { name: /Saved API keys/iu }) as HTMLInputElement;
+
+    fireEvent.click(keys);
+    expect(keys.checked).toBe(true);
+    expect(settings.checked).toBe(true);
+
+    fireEvent.click(settings);
+    expect(settings.checked).toBe(false);
+    expect(keys.checked).toBe(false);
+  });
+
+  it("requires at least one selected synchronization category", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Flashcards/iu }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Documents/iu }));
+    expect((screen.getByRole("button", { name: "Create sync offer" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disables saved API key transfer when secure storage is unavailable", async () => {
+    vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue({
+      ...state(),
+      secureCredentialsAvailable: false,
+    });
+    renderSync();
+    await screen.findByText("Android phone");
+    const keys = screen.getByRole("checkbox", { name: /Saved API keys/iu }) as HTMLInputElement;
+    expect(keys.disabled).toBe(true);
+    expect(screen.getByText(/secure secret store is unavailable/iu)).toBeTruthy();
   });
 
   it("shows one active waiting offer as replaceable and lets the user cancel it", async () => {
@@ -234,7 +295,7 @@ describe("DeviceSyncSettings", () => {
       conflictCount: 0,
       transferredCredentialCount: 0,
       credentialWarning:
-        "Study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed.",
+        "Selected study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed.",
       sentPackageBytes: 0,
       receivedPackageBytes: 20,
     });
@@ -248,18 +309,14 @@ describe("DeviceSyncSettings", () => {
     await waitFor(() => expect(syncIpc.joinDevicePairing).toHaveBeenCalledTimes(1));
     expect(showToast).toHaveBeenCalledWith(
       "info",
-      expect.stringContaining("Study data synchronized, but saved API credentials could not be stored securely"),
+      expect.stringContaining("saved API credentials could not be stored securely"),
     );
   });
 
-  it("accepts pasted invitation text without a receiver-side API toggle", async () => {
+  it("accepts pasted invitation text without receiver-side scope controls", async () => {
     renderSync();
     await screen.findByText("Android phone");
-    expect(
-      screen.getAllByRole("checkbox", {
-        name: /Include API provider settings and saved credentials/iu,
-      }),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole("checkbox", { name: /Saved API keys/iu })).toHaveLength(1);
 
     fireEvent.change(screen.getByLabelText("Synchronization invitation"), {
       target: { value: "ostudy-sync://pair/pasted" },
@@ -289,8 +346,8 @@ describe("DeviceSyncSettings", () => {
     renderSync();
     expect(await screen.findByText("Notes")).toBeTruthy();
     expect(screen.getByText("front_text")).toBeTruthy();
-    expect(screen.getByText(/Local/u)).toBeTruthy();
-    expect(screen.getByText(/Remote/u)).toBeTruthy();
+    expect(screen.getByText(/"value": "Local"/u)).toBeTruthy();
+    expect(screen.getByText(/"value": "Remote"/u)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Keep left" }));
     await waitFor(() => {

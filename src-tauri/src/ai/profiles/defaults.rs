@@ -24,6 +24,20 @@ pub(super) fn load_task_defaults(
     })
 }
 
+/// Task defaults are provider configuration, not transient device state. Keep
+/// them only when the sender explicitly selected API provider settings.
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &Connection,
+    include_defaults: bool,
+) -> Result<(), CommandError> {
+    if !include_defaults {
+        connection
+            .execute("DELETE FROM ai_task_defaults", [])
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
+}
+
 pub(super) fn set_task_default(
     connection: &mut Connection,
     input: SetAiTaskDefaultInput,
