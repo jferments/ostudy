@@ -2,123 +2,62 @@
 
 ![ostudy](assets/images/github_banner.png)
 
-**ostudy** is a free, open-source study application that combines flexible flashcards, spaced repetition, learning analytics, and optional AI-assisted authoring. Your library lives on your own computer or mobile device, core study features do not require an account, and AI is used only through a provider that you explicitly configure.
+**ostudy is a free, open-source, local-first study app.** Create flashcards, practice with spaced repetition, turn source documents into study material, and understand your progress without handing your library to a subscription platform.
 
-The project is being built for learners who want the convenience of modern AI study tools without giving a single subscription service permanent control over their notes, review history, or choice of model. You can connect ostudy to an existing local model server or to a supported cloud API. When you use a paid API, you pay that provider directly rather than buying a separate study-app subscription; for many light or moderate study workflows this can be substantially less expensive, although the actual cost depends on the model, document size, and usage.
+Your cards, documents, schedules, and review history live on your device. Ordinary studying works offline and does not require an account or an AI provider. Optional AI authoring connects to a model server you control or a supported cloud API that you choose explicitly. There is no silent switch from local processing to a cloud model.
 
-ostudy is under active development. Linux is the primary qualified desktop path, and Android now has a qualified source-build/debug-install path with API-36 emulator coverage. Windows, macOS, and iOS still need regular platform qualification and release packaging. See [Platform availability](#platform-availability) and the [roadmap](docs/roadmap.md) for current status rather than assuming every planned platform has a public signed release.
+## Study your way
 
-## Why ostudy
+**Create and organize.** Write formatted Basic, Reverse, and Fill in the blank cards, use reusable templates, organize decks into folders, and search or filter your library. Add cards individually or in bulk, apply tags, and move or copy material between decks.
 
-- **Free and open source.** The application can be inspected, modified, and built without paying for a proprietary study-platform subscription.
-- **Local first.** Decks, cards, documents, schedules, review history, settings, and analytics remain in your local library.
-- **Choice of AI.** Current builds support existing llama.cpp/Unsloth GGUF servers and DeepSeek. Ollama, OpenAI, Gemini, and Claude integrations are planned.
-- **Local models and direct API access.** Use a free model running on hardware you control, or pay a supported model provider directly instead of adding another monthly study-app fee.
-- **No forced cloud fallback.** A local provider is never silently replaced with a cloud provider. ostudy sends requests only to the profile selected for the task.
-- **Portable data.** Share individual decks, import generated cards, make complete local backups, and explicitly synchronize study data between trusted devices on a private LAN.
-- **Detailed learning feedback.** Spaced repetition, scheduling controls, search, tags, and analytics are part of the study system rather than separate paid add-ons.
-- **Built for major platforms.** Linux and Android share the same study/domain core; Windows, macOS, and iOS remain in the cross-platform roadmap.
+**Practice and remember.** Start a session from your decks or another learning context. Reveal an answer and rate it Wrong, Hard, Medium, or Easy. Spaced repetition, interval previews, daily limits, and scheduling controls help you decide what to study next. Analytics show your activity, review outcomes, workload, and areas that need attention.
 
-## Features
+**Learn from documents.** Keep source documents in a managed local library, generate flashcards and source-linked study guides, and return to retained material for further learning. Generated content remains editable study material, not an unquestionable answer: check it against the source, especially for consequential subjects.
 
-### Create and organize study material
+**Keep control of your data.** Share individual decks without sharing personal review history, import structured generated-card files, make whole-library backups, and explicitly synchronize study data between trusted devices. Sharing a deck, restoring a backup, and synchronizing devices are different operations with different privacy and recovery implications.
 
-- Create **Basic**, **Reverse**, and **Fill in the blank** flashcards with formatted text, lists, links, and images.
-- Build reusable card templates for subjects that follow a consistent structure.
-- Organize material with decks and tags, search the full library, and filter cards by schedule or study history.
-- Add cards one at a time or in bulk, detect duplicates, and move or copy cards between decks.
-- Import decks shared by other ostudy users or card files generated by another authoring tool.
+**Choose a comfortable interface.** Flashcards brings together Decks and Search/Filter. Study Guides, Documents, and Analytics have their own destinations; card templates live in Settings. Themes, text sizing, optional guidance, and optional visual feedback let you adapt the interface without changing how your study data works.
 
-### Learn with spaced repetition
+## Optional AI, without a study-app subscription
 
-- Use spaced repetition so difficult cards return sooner and well-known cards return later.
-- Practice one deck or combine several decks into a study session.
-- Rate each answer as **Wrong**, **Hard**, **Medium**, or **Easy** and preview when the card will return.
-- Suspend, bury, reset, or manually reschedule cards, set daily limits, and identify material that needs more practice.
-- Follow your progress with detailed analytics for study time, retention, confidence, workload, decks, tags, and recent sessions.
+Current provider adapters support **llama.cpp / Unsloth GGUF servers**, **DeepSeek**, and **OpenRouter**. A local server may run on this computer or another trusted computer on your network. ostudy connects to an existing server; it does not install or host the model itself.
 
-### Generate flashcards with AI
+When you use a paid API, billing is between you and that provider. Cost and capability depend on the chosen model and workload. Provider credentials are handled separately from ordinary library content and are excluded from shared decks and library backups. Credential transfer during trusted-device synchronization requires explicit sender consent.
 
-- Import a PDF into your personal document library and ask AI to create a new flashcard deck automatically.
-- Use an existing local model server, a model running on another computer you control, or a supported cloud API.
-- Stop a long-running generation job, retry a failed job, or generate additional cards from the same retained document.
-- Edit or delete generated cards through the same ordinary deck tools used for manually created cards.
-- On Android, native `PdfRenderer` plus bundled ML Kit Text Recognition v2 provides the mobile PDF/OCR path without requiring Tesseract.
+Dedicated Ollama, OpenAI, Gemini, and Claude adapters remain planned. A model available through OpenRouter is not the same as a dedicated integration with its original provider. See [AI providers](docs/user-guide/ai-providers.md) for configuration and current limitations.
 
-PDF processing is one of the newest parts of ostudy and is still being hardened. The [document-generation guide](docs/user-guide/documents-and-ai-generation.md) explains the current workflow and limitations. The lower-level extraction, rendering, OCR, and model design is documented separately in [AI and document processing](docs/architecture/ai-and-document-processing.md).
+## Availability
 
-### Own, back up, share, and synchronize your library
+ostudy is under active development. **Linux and Android are the maintained build-and-test paths.** Linux has desktop build/release tooling; Android has source-build, debug-install, and emulator-test tooling. These statements do not promise a public signed installer or app-store release for every platform.
 
-- Share a portable deck with a friend without including your personal review history.
-- Import structured card files created by an LLM or another authoring tool.
-- Create a complete backup of your local library and managed files.
-- Send study-library changes directly to another trusted ostudy installation over an authenticated encrypted private-LAN session.
-- Keep ordinary appearance/application settings device-local during synchronization.
-- Include API provider settings and saved credentials only when the **sending device explicitly opts in** for that synchronization offer.
-- Keep AI credentials out of shared decks, complete backup files, and ordinary synchronization packages.
-
-## Planned study tools
-
-The document platform is intended to support more than flashcard generation. Planned work includes source-grounded study guides, practice tests and quizzes, interactive AI tutoring, regularly qualified Windows and macOS releases, and native iOS support. These are roadmap items, not current feature claims. See the [project roadmap](docs/roadmap.md) for priorities and status.
-
-## Platform availability
-
-| Platform | Current status |
-| --- | --- |
-| Ubuntu/Debian Linux | Primary qualified development path; Linux release automation is present. |
-| Other Linux distributions | May build from source, but package and native-dependency setup varies by distribution. |
-| Windows | Source-build support is in progress and is not yet continuously qualified. |
-| macOS | Source-build support is in progress and is not yet continuously qualified. |
-| Android | Qualified source-build/debug-install path with Android 9/API 28 minimum, API 36 target, and API-36 emulator qualification; public signed distribution is not yet provided. |
-| iOS | Planned; no installable mobile application is currently provided. |
-
-Detailed and platform-specific instructions live in the [installation guide](docs/installation/README.md). Android developers can go directly to [Build and install ostudy for Android](docs/installation/android.md).
+Windows and macOS need regular platform qualification and release packaging. iOS remains planned. See the [installation overview](docs/installation/README.md), [Linux guide](docs/installation/linux.md), and [Android guide](docs/installation/android.md) before choosing a build path.
 
 ## Build and run on Ubuntu or Debian
 
-The repository currently provides a complete setup path for Ubuntu and Debian development systems. From the repository root:
+From an authenticated checkout of this repository, run the first-time setup from the repository root:
 
 ```bash
 ./scripts/setup-ubuntu.sh
 ./run-app.sh
 ```
 
-The setup script installs the required system packages, pinned development tools, JavaScript and Rust dependencies, and the PDF rendering runtime, then creates an initial standalone debug build. OCR support for scanned or damaged PDFs is an additional installation step described in the [Linux guide](docs/installation/linux.md). `run-app.sh` starts the existing build without rebuilding it.
-
-After changing source code:
+For an already configured checkout after source changes:
 
 ```bash
 ./scripts/build.sh
 ./run-app.sh
 ```
 
-Before proposing a change:
+`run-app.sh` launches a current standalone build; it does not rebuild the app. Setup, optional document-processing dependencies, troubleshooting, and platform-specific installation details belong in the [installation guides](docs/installation/README.md). Contributor validation commands belong in [Testing and CI](docs/development/testing-and-ci.md).
 
-```bash
-./scripts/check-changed.sh  # quick iteration aid
-./scripts/check-static.sh   # repository, type, link, and format contracts
-./scripts/check-fast.sh     # frontend tests and Rust compile checking
-./scripts/check.sh          # complete merge qualification
-```
+## Learn more
 
-See [Linux installation](docs/installation/linux.md) for prerequisites and troubleshooting, and [Testing and CI](docs/development/testing-and-ci.md) for the purpose of each validation tier.
+Start with [Getting started](docs/user-guide/getting-started.md) or the [documentation index](docs/README.md). The documentation includes [flashcard organization](docs/user-guide/flashcards-organization.md), [documents and AI generation](docs/user-guide/documents-and-ai-generation.md), [backups and sharing](docs/user-guide/backups-imports-and-sharing.md), and [trusted-device synchronization](docs/user-guide/device-sync.md).
 
-## Documentation
+For the project's design, read the [architecture overview](docs/architecture/overview.md). The [roadmap](docs/roadmap.md) separates implemented foundations from planned work, including additional study tools and platform support.
 
-The [documentation index](docs/README.md) is the starting point for all detailed material. Major sections include:
+## Contribute
 
-- [Getting started](docs/user-guide/getting-started.md)
-- [Backups, imports, and sharing](docs/user-guide/backups-imports-and-sharing.md)
-- [Synchronize trusted devices](docs/user-guide/device-sync.md)
-- [AI providers](docs/user-guide/ai-providers.md)
-- [Roadmap](docs/roadmap.md)
-- [Installation](docs/installation/README.md)
-- [Architecture](docs/architecture/overview.md)
-- [Development guide](docs/development/guide.md)
-- [Contributing and issue reports](CONTRIBUTING.md)
-
-## Contributing
-
-Bug reports, feature proposals, documentation improvements, tests, and code contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. It explains how to submit a useful issue, how the repository is organized, and which checks protect the current data and architecture contracts.
+Bug reports, documentation improvements, tests, and code contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a useful issue and prepare a change. Automated maintainers start at [AGENTS.md](AGENTS.md); operational instructions are deliberately kept out of this introduction.
 
 ostudy is licensed under the [MIT License](LICENSE).
