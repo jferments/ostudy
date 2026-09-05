@@ -7,12 +7,22 @@ use std::{
 
 use crate::error::CommandError;
 
+use super::transport::SyncIo;
+
 pub(crate) const LISTENER_PORT_START: u16 = 49_251;
 pub(crate) const LISTENER_PORT_END: u16 = 49_258;
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn listener_ports() -> RangeInclusive<u16> {
     LISTENER_PORT_START..=LISTENER_PORT_END
+}
+
+impl SyncIo for TcpStream {
+    fn prepare_for_sync(&self, timeout: Duration) -> Result<(), CommandError> {
+        self.set_read_timeout(Some(timeout)).map_err(CommandError::io)?;
+        self.set_write_timeout(Some(timeout)).map_err(CommandError::io)?;
+        self.set_nodelay(true).map_err(CommandError::io)
+    }
 }
 
 pub(crate) fn bind_listener() -> Result<TcpListener, CommandError> {
