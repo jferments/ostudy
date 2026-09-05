@@ -1,234 +1,98 @@
 # AGENTS.md
 
-This file is the repository-wide entry point for AI coding agents, LLMs, and automated maintenance tools working on **ostudy**. It applies to the entire repository unless a more specific `AGENTS.md` in a subdirectory adds stricter rules.
+Repository-wide instructions for automated maintainers of **ostudy**. More specific `AGENTS.md` files may add constraints. These instructions do not grant permission to merge, change infrastructure, or expand the human's requested product scope.
 
-## Instruction priority
+## Start here: the workflow is GitHub-direct
 
-When instructions conflict, follow this order:
+Read [GitHub-direct development](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md) and [the command runbook](docs/agents/COMMAND-RUNBOOK.md). The authenticated GitHub Connector is the normal reader and **sole normal source publisher**. GitHub is authoritative for source, branches, PRs, reviews, and Actions state. Actions qualify published source and are never source writers.
 
-1. the current human request and its explicit acceptance criteria;
-2. accepted Architecture Decision Records in `docs/decisions/`;
-3. `docs/architecture/overview.md`, `docs/architecture/ui.md`, `docs/architecture/card-format-and-data-model.md`, and `docs/architecture/ai-and-document-processing.md`;
-4. `docs/development/guide.md`, `docs/development/workflow.md`, and `docs/development/testing-and-ci.md`;
-5. the guidance in `docs/agents/`;
-6. existing local code conventions.
+Do not use Codex, `dev-workspace-v1`, the orchestrator, observer, exact-head MCP, Secure MCP Tunnel, or any custom developer MCP unless the human explicitly requests it for the current task. Do not infer authorization from an old conversation, available tool, or historical deployment. If an explicitly requested MCP fails or disappears, stop that path, verify GitHub, and continue GitHub-direct rather than debugging plugins.
 
-Do not silently reinterpret a requirement to make implementation easier. Report a genuine conflict before changing an accepted invariant.
+### Required execution sequence
 
-## Execution hot path
+1. Read the exact current base or PR head through GitHub. Inspect the relevant source and tests at that SHA.
+2. Define stable `AC-##` acceptance criteria and explicit non-goals. Conversation establishes intent, not current implementation or test success.
+3. Use one short-lived `agent/<description>` branch and one draft PR. Publish a meaningful first increment, not an ownership marker or no-op access test.
+4. Keep exactly one source writer per branch. For each publication use `create_blob` → `create_tree` based on the expected parent's tree → `create_commit` naming that parent → immediate remote-head check → non-force `update_ref` → remote-head verification.
+5. Stop on head drift. Inspect the competing commit and reconcile writer ownership; never force or silently replace the tree. A plain ref update is not an atomic compare-and-swap API.
+6. Publish ordinary source and documentation, not task-specific applicators, patch payloads, finalizers, or runner-only product trees. No workflow may author or push source, even when manually dispatched.
+7. Validate the exact published SHA, first at the smallest affected boundary and then through required repository/platform gates. Read failures before another repair or broad run.
+8. Reconcile the PR acceptance snapshot, report publication/qualification/manual acceptance separately, provide local test instructions, and release writer ownership at handoff.
 
-For ChatGPT, the authenticated GitHub Connector is the default repository reader, source publisher, pull-request interface, and CI-inspection interface. Read [`docs/agents/GITHUB-DIRECT-DEVELOPMENT.md`](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md) before introducing any custom developer MCP, Secure MCP Tunnel, workspace service, Codex worker, observer, exact-head service, or full orchestrator into an ordinary task.
+On resumption, read the actual PR, remote head, unresolved review state, and exact-head runs before editing. Do not reconstruct current task state from memory. A snapshot is progress metadata, not a branch lock, job scheduler, or source authority.
 
-A custom developer MCP is optional acceleration only. It is never required to start, publish, repair, or complete ordinary oStudy work. If the ChatGPT gateway returns `FORBIDDEN: This conversation does not support developer MCPs`, an installed developer app disappears from the callable registry, or a developer-MCP write returns no usable result and later calls are rejected, trip the conversation-local circuit breaker immediately: stop retrying that MCP path, verify the actual GitHub state, and continue through GitHub-direct mode when the required GitHub actions are present. Do not send the human through repeated reconnect, redeploy, or replacement-chat attempts.
+## Authority and required reading
 
-For every substantial code task:
+Within repository policy, the current human request and explicit acceptance criteria take precedence over older plans. Accepted ADRs describe durable decisions; maintained architecture describes current ownership; development and agent guides describe execution. Historical documents are evidence, not active instructions. Report a genuine invariant conflict rather than silently reinterpreting it.
 
-1. Turn the human request into stable `AC-##` acceptance criteria and explicit non-goals.
-2. Use the authenticated GitHub Connector as the default ChatGPT execution mode. A human/local checkout or optional execution workspace may accelerate local checks when it is genuinely available, but neither is a prerequisite for source publication.
-3. Read and record the exact base SHA.
-4. Create one short-lived `agent/<description>` branch, publish a meaningful first commit, and open one draft pull request.
-5. Keep the PR's machine-readable acceptance snapshot current for compatibility. It records evidence but does not own source, job, or runner state.
-6. Publish actual reviewable source directly. For coherent multi-file Connector changes, bind the commit to the exact expected parent and update the task ref without force. CI must not be the only place where product source exists and must not author the PR branch.
-7. Implement in coherent vertical commits; update acceptance evidence and tests as each criterion becomes real.
-8. Consume exact failure evidence and use focused reproduction before another broad qualification run.
-9. Escalate through `check-changed`, static, fast, full, platform, and manual acceptance. A green result qualifies only the exact SHA it tested.
-10. Report publication, automated validation, and manual acceptance as separate states. Never say complete until the completion predicate in [`docs/agents/EXECUTION-STATE.md`](docs/agents/EXECUTION-STATE.md) holds.
+Read [the documentation index](docs/README.md), [agent index](docs/agents/README.md), [execution state](docs/agents/EXECUTION-STATE.md), [failure triage](docs/agents/FAILURE-TRIAGE.md), [architecture guardrails](docs/agents/ARCHITECTURE-GUARDRAILS.md), [code standards](docs/agents/CODE-STANDARDS.md), and the current architecture/ADRs relevant to the change. Use [documentation maintenance](docs/agents/DOCUMENTATION-MAINTENANCE.md) for documentation or cleanup work.
 
-Exactly one source writer owns the task branch at a time. Before every publication, re-read the remote head, require it as the expected parent, and update without force. A mismatch is a stop-and-handoff boundary, not permission to overwrite or start a competing repair.
+## Product principles
 
-When work resumes after interruption or in another conversation, first read the open PR acceptance snapshot, verify the actual remote head, inspect exact-head CI, enumerate incomplete criteria, and continue from that evidence. Do not reconstruct task state from conversational memory.
+**Local first and user controlled.** Core study must remain useful without an account, network, paid API, telemetry service, or hosted database. Optional AI connects only to a deliberately selected provider. Never silently replace a local provider with cloud processing. Distinguish implemented adapters from catalog placeholders and roadmap ambitions.
 
-## Required reading
+**Deterministic authority.** Rust and ordinary SQL own durable rules, scheduling, validation, and analytics. AI can propose learning material; it cannot execute code, write arbitrary storage, or become the hidden source of truth.
 
-Before editing code, read:
+**Focused changes.** Prefer cohesive, reviewable changes at an existing boundary over framework expansion, speculative abstractions, or whole-project rewrites. New dependencies need explicit need, license/platform review, exact pins, and qualification. Do not mix unrelated dependency or formatting churn into a feature or documentation task.
 
-- `docs/README.md`;
-- `docs/agents/README.md`;
-- `docs/agents/GITHUB-DIRECT-DEVELOPMENT.md` when ChatGPT is the active implementation agent;
-- `docs/agents/EXECUTION-STATE.md`;
-- `docs/agents/FAILURE-TRIAGE.md`;
-- `docs/agents/ARCHITECTURE-GUARDRAILS.md`;
-- `docs/agents/CODE-STANDARDS.md`;
-- `docs/agents/WORKFLOW-AND-VALIDATION.md`;
-- `docs/agents/GITHUB-CONNECTOR.md` when operating through an authenticated GitHub Connector;
-- the active architecture, development, reference, testing, and ADR documents relevant to the requested change.
+**Calm, capable UI.** Keep common actions shallow and advanced detail contextual. Do not restore empty-state clutter, obsolete navigation tabs, duplicate controls, or implementation diagnostics to ordinary user screens. Simplicity must preserve accessibility and functionality rather than hide necessary actions.
 
-Documents under `docs/history/` are project archaeology, not current instructions.
+## Architecture invariants
 
-## Core product principles
+- React renders data and intent. Typed native command gateways live under `src/ipc/`; direct `invoke()` elsewhere is forbidden. There is no monolithic `src/ipc.ts` ownership convention.
+- Controllers coordinate reads, mutations, navigation, and reconciliation. Some feature-local controllers are colocated with their workspace; ownership matters more than forcing every hook into one directory.
+- Shared UI under `src/ui/` must not import IPC, feature controllers, or Tauri APIs. Operating-system capability adapters live under `src/platform/` and native platform ports. Do not fork product workflows by user-agent or operating-system name.
+- Use shared Dialog, Sheet, confirmation, Menu, and overflow primitives. Do not create ad-hoc backdrops, focus traps, ordinary `window.confirm()` calls, or another overlay stack.
+- `src/main.tsx` has one global foundation CSS entry point. Feature/component styles use owned CSS Modules and semantic tokens, not new global or stage-specific stylesheets.
+- Preserve keyboard, touch/coarse-pointer, reduced-motion, theme, focus, safe-area, and compact-screen behavior. A smaller visual control is not permission to shrink its interactive target or clip its label.
+- Optional visual/audio/haptic effects consume semantic feedback; durable operations do not depend on effects succeeding.
+- Independent reads use independent latest-request lanes. Obsolete results and errors must not overwrite newer state. Do not apply stale-read cancellation semantics to durable mutations.
+- A committed mutation remains successful when a later refresh fails. Report reconciliation trouble separately; do not invite a second write or allocate a new retry identity to repeat it.
+- `CardNote` is editable source; `CardPresentation` is a rendered scheduled/search identity. Do not collapse them into a generic card DTO. Notes own source and tags; cards own independently studyable presentations.
+- Rust validates IPC, imports, rich content, identifiers, and external file handles. The frontend does not execute SQL, read saved credentials, contact providers, or calculate authoritative FSRS schedules.
+- SQLite owns durable structured data; controlled managed files own document/image bytes. Rich content is validated, versioned Tiptap/ProseMirror JSON, never arbitrary executable HTML.
+- `scheduler.rs` isolates `rs-fsrs`. `card_schedules` is mutable state; `review_events` is append-only review evidence while its owning material is retained. Explicit finalized deletion/purge is a separate policy, not a license to rewrite retained history.
+- Review submission and multi-step mutations remain transactional and retry-safe. Preserve preview revisions, operation/submission identities, stable session-card snapshots, and calendar semantics.
+- `.studydeck` transfers content with fresh local schedules and no donor review history. `.ostudy.json` is strict whole-file validated authoring input; do not restore an import-preview step that the product removed. Whole-library backup and trusted-device synchronization are distinct contracts.
+- Released migrations and released schema fixtures are immutable. New migrations and registered checksums are one coherent change. Keep versioned data repairs and supported legacy readers explicit.
+- Provider HTTP stays in the native AI gateway; credentials stay behind the native secret boundary. Parser, renderer, OCR, provider, and authoring implementations exchange application-owned contracts.
+- Keep the stable application identifier `io.github.jferments.ostudy`; changing identifiers or data locations requires a migration plan. Android debug installation uses a separate `.dev` application ID.
 
-- **Local first:** decks, cards, documents, review history, settings, analytics, and managed assets remain on the learner's device.
-- **No required account or hosted service:** core study behavior must not depend on a paid API, proprietary cloud, telemetry service, or network connection.
-- **Free/open-source foundation:** direct dependencies require explicit justification, compatible licensing, exact version pins, and separate review.
-- **User control and inspectability:** deterministic code and ordinary SQL own authoritative application behavior. AI may assist or interpret; it must not become the hidden source of truth for scheduling, analytics, or stored data.
-- **Explicit provider choice:** local work never silently falls back to a cloud model, and only currently implemented adapters may be presented as available.
-- **Incremental development:** prefer focused, reviewable vertical changes over whole-project rewrites or speculative frameworks.
-- **Truthful documentation:** distinguish shipped behavior, source-build work, known limitations, and roadmap items.
+## Current UI contracts to preserve
 
-## Non-negotiable architecture
+Flashcards exposes **Decks** and **Search/Filter**, not standalone Templates or Import/Export tabs. Card templates are a normal Settings tab. Deck import/export is contextual. Compact navigation exposes Flashcards, Study Guides, Documents, and Analytics directly, with Settings in the upper-right gear. Practice is an internal contextual workflow, not a standing navigation destination.
 
-- React displays state and communicates user intent.
-- Typed Tauri gateways live under `src/ipc/`, split by domain. Direct `@tauri-apps/api/core` `invoke()` calls outside that directory are forbidden and mechanically checked.
-- Desktop/mobile capability adapters live under `src/platform/`. Feature screens and shared UI must not import Tauri dialog/opener plugins directly.
-- Workflow-heavy screens delegate native reads/mutations and stale-read policy to focused controllers under `src/controllers/`; presentational components do not own persistence orchestration.
-- Shared interaction and accessibility primitives live under `src/ui/`. They may not import IPC domains, feature controllers, or Tauri APIs.
-- Feature code must use the shared Dialog, ConfirmDialog/confirmation service, Sheet, Menu, and other overlay primitives. Do not hand-write backdrops, focus traps, `role="dialog"`, or ordinary `window.confirm()` calls.
-- Only `src/ui/foundations/index.css` is imported globally by `src/main.tsx`. New component and feature styling uses CSS Modules and semantic design tokens; do not add another feature-global or stage-named stylesheet.
-- Every UI workflow must remain usable with keyboard, touch/coarse pointers, reduced motion, and compact layouts around 360–430 CSS pixels. Respect dynamic viewport height and safe-area insets for fixed or sticky UI.
-- Optional animations, sounds, and haptics subscribe to semantic feedback events. Durable controllers must not call a specific effect or wait for an effect to complete.
-- Obsolete async reads may finish in Rust but must not overwrite newer frontend state. Use independent request lanes for independent read concerns; do not use stale-read cancellation semantics for durable mutations.
-- A committed mutation remains successful even if later view reconciliation fails. Surface reconciliation failure separately rather than inviting a retry of an already committed write.
-- Editable source-note transport is `CardNote`; rendered scheduled/search study transport is `CardPresentation`. Do not collapse them into one generic card DTO.
-- Rust validates all data crossing the IPC boundary and owns durable behavior, domain rules, AI task boundaries, and multi-step transactions.
-- The frontend must not execute SQL, contact a provider directly, read credentials, or calculate the authoritative FSRS schedule.
-- SQLite owns durable structured data; the managed filesystem owns controlled image and document bytes.
-- Rich card content is validated, versioned Tiptap/ProseMirror JSON, not arbitrary HTML.
-- Notes own editable content; cards own studyable presentations.
-- `src-tauri/src/scheduler.rs` remains the adapter boundary around `rs-fsrs`.
-- `card_schedules` is mutable current state; `review_events` is the append-only historical ledger.
-- Review submission must remain transactional and idempotent.
-- Imported decks receive fresh local schedules and do not import another learner's personal review history.
-- Analytics remain deterministic and reproducible from stored data.
-- Released migrations and release-schema fixtures are append-only and must never be edited after their release is tagged.
-- Provider HTTP is confined to the native AI gateway; operating-system credentials are confined to the native secret boundary.
-- Document parser, renderer, OCR, provider, and authoring implementations exchange ostudy-owned data rather than exposing third-party types across boundaries.
-- The Tauri identifier is `io.github.jferments.ostudy`. A future identifier change is a storage-compatibility decision and requires an explicit migration plan.
+A truly empty deck library has one useful create-deck state, not empty folder/unsorted tiles or meaningless selection/collapse controls. Folders use a `+` action; collapse/expand and select/deselect controls appear only for meaningful scopes. Archived-only libraries are not empty libraries. Study Guides navigation returns to its library rather than trapping the learner in an open viewer.
 
-## Change discipline
+Do not delete legacy route/checkpoint compatibility simply because its old label disappeared. Trace production callers and durable serialized readers before declaring code dead. See [the current architecture](docs/architecture/overview.md) and [cleanup audit](docs/development/documentation-and-cleanup-audit.md).
 
-- Never develop directly on `main`.
-- Start from a named current base commit and use one short-lived `agent/<description>` branch and one pull request for the task.
-- Publish a meaningful first commit and open a draft pull request before substantial implementation.
-- Write stable acceptance IDs, concrete acceptance criteria, non-goals, expected tests, and manual boundaries.
-- Keep the PR's `currentState`, per-criterion status, known failures, and validation evidence truthful as the branch changes.
-- A planning ADR, scaffold, generated patch, or source-rewriting script is not the product implementation.
-- Product source must be committed directly to the task branch. Do not create task-specific applicators, finalizers, source-generating Actions workflows, or transient runner-only product trees.
-- Automatic PR qualification is read-only. It may not persist write credentials, push, create commits, stage a generated tree, or change PR draft/readiness state.
-- Do not mix feature work, dependency upgrades, broad refactors, documentation churn, and formatting churn unless the task explicitly requires that coherent combination.
-- Inspect existing implementations, callers, tests, migrations, transfer formats, and documentation before adding a new abstraction.
-- Prefer an existing UI primitive, controller pattern, domain service, or platform adapter before adding a parallel path.
-- Prefer straightforward code over clever compression or premature generalization.
-- Preserve accessibility, keyboard behavior, themes, responsive behavior, provider choice, import compatibility, and stable application-data identities unless the task explicitly changes them.
-- A new or changed overlay must test initial focus, topmost dismissal, focus containment/restoration, and busy/non-dismissible behavior where applicable.
-- A new or materially changed layout must be checked at compact phone, tablet, and desktop widths and must not introduce document-level horizontal overflow.
-- Add a regression test for every defect when a practical test layer exists.
-- Update affected documentation and add an ADR for durable cross-module decisions.
-- Generated-import, backup, and document tests must use isolated temporary storage and must never point at the user's live ostudy data directory.
-- Do not describe planned providers, platforms, sync, tutoring, quizzes, or study guides as shipped.
+## Validation and failure discipline
 
-## Failure discipline
-
-Follow [`docs/agents/FAILURE-TRIAGE.md`](docs/agents/FAILURE-TRIAGE.md).
-
-- Classify product, test-contract, runner/environment, Connector, GitHub-incident, and external-manual failures separately.
-- Treat a developer-MCP `FORBIDDEN` response or disappearing custom-app namespace as a ChatGPT tool-gateway failure, not as a repository or VM failure. Trip the circuit breaker and continue GitHub-direct when possible.
-- Read the exact-head machine-readable qualification result and bounded logs before changing source.
-- Use the focused reproduction and repair all independent actionable failures exposed by the run in one coherent batch.
-- An unchanged head may be rerun once only when evidence supports a transient external cause.
-- The same failure fingerprint twice requires a strategy change before another broad run.
-- Do not create no-op commits, toggle PR state, expand permissions, increase timeouts, add sleeps, skip tests, or weaken assertions merely to obtain another run or a green result.
-
-## GitHub Connector discipline
-
-When operating through an authenticated GitHub Connector on this private repository:
-
-- use Connector reads as the source of truth for the repository, intended base, branch, pull request, and remote head state;
-- use expected-parent Git-data publication as the normal ChatGPT path for coherent multi-file source changes;
-- do not use `gh`, anonymous HTTP, scraping, temporary transfer repositories, an unrelated local checkout, or CI runner availability to infer Connector access;
-- treat repository visibility, repository-level permission, exposure of a particular connector action, authorization for a concrete mutation, remote publication, and CI validation as separate states;
-- do not infer that writes are unavailable merely because an approval prompt has not appeared or a write action has not yet been invoked;
-- do not change the Connector to permanent or unrestricted write access merely to bypass per-change authorization;
-- at the first intended mutation, invoke the actual Connector write operation and let its authorization boundary handle any required approval;
-- only an actual rejected Connector mutation establishes a Connector write failure; report the exact operation and error;
-- treat the concrete named session or workspace as the branch's only source writer until explicit handoff, and before starting or resuming confirm the prior writer released ownership with no unpublished source or active task job;
-- immediately before publication, verify the expected remote head and use a non-force update; stop if it changed;
-- after every meaningful publication step, verify the remote branch/head through GitHub before claiming that a commit or file change exists;
-- keep publication state separate from CI state: a missing or mismatched runner may block validation but does not establish that branch, commit, or PR writes are unavailable.
-
-Good status language:
-
-```text
-Authenticated repository reads succeed and GitHub reports push permission.
-No mutation has been attempted in this session, so concrete write authorization is untested.
-```
-
-Or, after a failure:
-
-```text
-create_file on agent/example was rejected with <exact connector error>.
-```
-
-Bad language:
-
-```text
-I do not have GitHub access.
-```
-
-unless the relevant operation was actually attempted and the exact failure supports that narrow statement.
-
-A local patch, generated diff, custom-MCP worktree edit, or proposed commit message is not remote publication. Follow `docs/agents/GITHUB-DIRECT-DEVELOPMENT.md` and `docs/agents/GITHUB-CONNECTOR.md` for the complete Connector-backed workflow.
-
-## Documentation discipline
-
-- `README.md` is a product overview and quick start, not an implementation ledger.
-- Put task-oriented material under `docs/user-guide/` and platform setup under `docs/installation/`.
-- Put ownership, data flow, trust boundaries, and implementation tradeoffs under `docs/architecture/`.
-- Put contributor commands, CI, dependencies, and acceptance plans under `docs/development/`.
-- Put exact external formats under `docs/reference/`.
-- Move completed stage plans and dated audits to `docs/history/` rather than leaving stale files at the repository root.
-- Keep `docs/README.md` and all relative links current. Run the documentation verifier after moves or renames.
-- Root files are reserved for conventional repository entry points and tool-discovered configuration. Do not add a new top-level report because it is convenient for one pull request.
-
-## Repository safety
-
-Never commit:
-
-- secrets, credentials, tokens, or `.env` files;
-- `node_modules/`, `dist/`, or `src-tauri/target/`;
-- the live `library.sqlite3`;
-- personal imported documents or managed image libraries;
-- provisioned native binaries except intentional release assets;
-- generated artifacts that are not intentional lockfiles, fixtures, or release evidence.
-
-Do not use destructive Git commands, force-push, rewrite shared history, merge a pull request, or push directly to `main` unless the human explicitly requests that exact operation.
-
-## Required validation
-
-Use the repository's tiered model instead of repeatedly running the most expensive gate while editing:
+Use maintained wrappers:
 
 ```bash
-./scripts/check-changed.sh  # iteration aid based on the current diff
-./scripts/check-static.sh   # repository, docs, IPC, type, and format contracts
-./scripts/check-fast.sh     # static + complete frontend tests + Rust compile
-./scripts/check.sh          # authoritative full merge qualification
+./scripts/check-changed.sh
+./scripts/check-static.sh
+./scripts/check-fast.sh
+./scripts/check.sh
 ```
 
-Draft pull requests run the fast tier; ready pull requests run the full tier on the self-hosted runner. PR-body edits do not trigger product qualification, and wall-clock performance measurements remain manual/advisory rather than required correctness gates. A green result qualifies only the exact commit SHA it ran against. Use `OSTUDY_FORCE_CHECK=1` when an exact-tree cache must be bypassed. For release qualification, also run `./scripts/release-check.sh`.
+`check-changed` is an iteration aid, not merge qualification. Static is not native runtime testing. Draft `Check` uses fast qualification; ready PRs or explicit full dispatches run the full required platform gates. `PR Contract` validates metadata independently; it does not block product qualification. Review readiness and merge qualification are distinct states. Follow [Execution state](docs/agents/EXECUTION-STATE.md), not an old claim that pending CI must be marked passed to trigger CI.
 
-The full Rust tier includes generated `.ostudy.json` conformance, migrations, package/backup behavior, scheduling and analytics invariants, provider contracts, document-processing tests, and native WebDriver persistence. Manually exercise every affected user workflow. Static inspection or a successful frontend build must never be reported as a successful native Tauri test.
+A green result qualifies its exact tested SHA only. Use `OSTUDY_FORCE_CHECK=1` only when deliberately bypassing a qualified-tree cache. Performance measurements are advisory/manual, not a substitute for correctness gates. Do not claim live-provider, physical-device, screenshot, accessibility, or manual acceptance that was not actually exercised.
 
-For non-draft pull requests, the `Check` workflow validates the PR acceptance snapshot before qualification and always uploads a machine-readable exact-head result. Draft fast qualification does not depend on compatibility snapshot metadata. Static, fast, and full must pass on the current head before a PR can truthfully record `readyForReview`; Android may be `notRequired` only when the change does not affect Android qualification surfaces.
+Classify product, test-contract, runner/environment, Connector, GitHub-incident, and human-only failures separately. One unchanged-head rerun is permitted only with transient-cause evidence. The same fingerprint twice requires a strategy change. No no-op commits, permission expansion, PR-state toggles, timeouts, sleeps, skips, or weakened assertions merely to obtain green CI.
 
-See `docs/development/testing-and-ci.md` for authoritative mechanics.
+## Documentation and cleanup
 
-## Required handoff
+`README.md` is the human-readable product introduction and short start path, not a PR diary or implementation ledger. Task instructions belong in user/installation guides; ownership and rationale in architecture; contributor commands in development; exact external formats in reference; historical proposals in history or clearly marked records.
 
-Every completed change must report:
+Update existing canonical sections instead of appending contradictory stage notes. Update indexes and links together. Source-check UI labels, wrappers, provider availability, data formats, and security claims. Preserve valuable historical provenance without presenting it as current behavior. Remove demonstrably dead code with its exclusive styles/tests/contracts; do not remove live compatibility, platform fallbacks, or regression fixtures to make the tree look smaller.
 
-- exact base commit SHA, branch, head SHA, and pull-request number;
-- selected source writer/execution mode and its last expected remote SHA;
-- unpublished workspace clean/dirty state and any active PID/job;
-- acceptance criteria and non-goals addressed;
-- changed files grouped by purpose;
-- tests and documentation added or updated;
-- exact commands actually run and their results;
-- commands not run and why;
-- exact-head CI state;
-- manual behavior actually exercised or still required;
-- known limitations, migration/compatibility effects, rollback concerns, and residual risks;
-- the requested merge method;
-- explicit release or transfer of task-branch writer ownership.
+## Safety and final handoff
 
-For Connector-backed work, verify every claimed remote mutation through GitHub and report publication state separately from CI/runner state.
+Never commit secrets, tokens, personal documents, live `library.sqlite3`, managed libraries, build output, provisioned binaries, or `.env` files. Use temporary isolated data for destructive/import/restore tests. Never instruct the human to clear app data or uninstall as routine setup without warning about data loss and backup.
 
-An agent's work is a proposal until a human reviews and merges it.
+Every handoff includes exact base, branch, remote head, PR state, last expected parent, changed areas, acceptance/non-goals, actual checks and tested SHAs, unrun checks with reasons, manual boundaries, compatibility/rollback risks, and writer release. Report no workspace when none was used; do not invent clean/dirty state or an active process.
+
+Provide copyable local checkout/SHA verification, build/run or Android install instructions, and the concrete behavior to inspect. Read [Local testing and handoff](docs/development/local-testing-and-handoff.md) before composing commands. A published implementation is a proposal until a human reviews and merges it.

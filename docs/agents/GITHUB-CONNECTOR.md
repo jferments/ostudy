@@ -1,233 +1,68 @@
-# GitHub Connector workflow
+# GitHub Connector operation and diagnostics
 
-This document defines the repository-access workflow for ChatGPT or another agent operating through an authenticated GitHub Connector rather than a normal local checkout.
+[GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md) owns the publication protocol. This reference explains access and failure evidence. It does not authorize an alternate source writer or a manual Actions source-writing exception.
 
-The repository invariants in [`../../AGENTS.md`](../../AGENTS.md), [`EXECUTION-STATE.md`](EXECUTION-STATE.md), [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md), [`WORKFLOW-AND-VALIDATION.md`](WORKFLOW-AND-VALIDATION.md), and [`../development/workflow.md`](../development/workflow.md) still apply. This document only defines how to establish and verify GitHub state in a connector-backed environment.
+## Use the authenticated repository connection
 
-## 1. Choose connector mode explicitly
+For `jferments/ostudy`, use the GitHub Connector for repository/source reads, branch creation, Git-data publication, PR updates, and Actions inspection. Do not infer repository access from `gh`, an unrelated checkout, anonymous HTTP, scraping, a transfer repository, or runner availability. Discover the needed action once, then use it; do not repeatedly rediscover a working integration.
 
-When an authenticated GitHub Connector is available for `jferments/ostudy`, use it as the source of truth for remote repository state.
+Record `executionMode: githubConnector` for ordinary ChatGPT tasks. Other snapshot modes describe explicitly selected environments, not permission to introduce a developer MCP. In the ordinary mode, no remote execution worktree, PID, or workspace clean state is implied.
 
-Do not substitute:
+## Keep independent states independent
 
-- `gh` CLI availability;
-- an unrelated local checkout;
-- anonymous HTTP, scraping, or raw unauthenticated URLs;
-- temporary transfer repositories;
-- guessed branch state;
-- CI runner availability.
+| Concern | Evidence |
+| --- | --- |
+| Repository visibility | Authenticated repository/source read succeeds |
+| Repository-level permission | GitHub's returned permission metadata |
+| Action exposure | The required action exists in the callable Connector surface |
+| Concrete mutation authorization | The actual requested mutation succeeds or is rejected |
+| Publication | A subsequent GitHub read confirms the branch/PR head |
+| Qualification | A completed run proves the named gate on that exact SHA |
+| Manual acceptance | The tester actually exercised the named workflow |
 
-Those mechanisms do not establish whether the Connector can read or write the private repository.
+No approval prompt does not mean no write access. A missing loaded action does not mean the repository is read-only. A queued runner does not prevent commits. An empty legacy status list does not mean Actions checks are absent. A 403 reading one Actions endpoint does not prove that the workflow failed or never ran.
 
-Record `executionMode: githubConnector` in the pull-request acceptance snapshot. Use `githubConnectorWithExecutionWorkspace` only when a separate workspace can execute the exact published source; that workspace is never the sole location of the implementation.
+At the first intended mutation, invoke that real operation and let the Connector handle authorization. Do not create a throwaway access-test commit or ask for broader permissions without a concrete rejection.
 
-## 2. Model GitHub state as separate dimensions
+## Publication evidence
 
-Do not collapse these states into a single phrase such as "GitHub access":
+Read the exact current head, prepare complete source files from that ref, create blobs and a parent-based tree, create a commit naming the expected parent, re-check the remote ref, update without force, and re-read the resulting head. See the canonical protocol for details, deletions, and drift handling.
 
-| State | Evidence |
-|---|---|
-| Repository visibility | An authenticated repository read succeeds |
-| Repository-level permission | GitHub reports the account/app permission |
-| Connector action exposure | The relevant connector operation exists in the current tool surface |
-| Concrete write authorization | The actual mutation is accepted or rejected |
-| Publication | GitHub confirms the resulting remote branch/head |
-| Validation | CI or an execution environment tests that exact head |
+A blob, tree, unreferenced commit, local patch, or tool acknowledgement alone is not a published branch. If an acknowledgement is lost, read GitHub before retrying. Stop on branch movement and reconcile writer ownership. Do not force, silently replay an unreviewed tree, or let another chat repair the same branch concurrently.
 
-None of these states proves another. In particular:
+Every source commit uses expected-parent Git-data publication, not sequential Contents API updates. All Actions remain source-read-only regardless of trigger. A named maintenance workflow is not an exception.
 
-- successful reads do not prove or disprove a later write authorization;
-- an action missing from a currently loaded tool list is a tool-surface limitation, not a repository permission result;
-- the absence of an approval prompt is not evidence that writes are unavailable;
-- a queued, offline, or mismatched runner says nothing about branch/commit/PR publication;
-- a local checkout that lacks a remote commit says nothing about the connector-backed branch;
-- an Actions API limitation does not prove that a workflow did or did not run.
+## Evidence after a CI failure
 
-## 3. Establish repository and base state with reads
+Resolve the actual PR head and relevant run, then inspect job steps and bounded decoded logs. Read available `ostudy-qualification-result.json`, failure summaries, and raw-log artifacts when the supported Connector surface permits it. Do not claim an artifact was read just because its filename appeared in a run.
 
-Before editing, use Connector reads to:
+Choose the smallest failed boundary and follow [Failure triage](FAILURE-TRIAGE.md). A workflow's dispatch ref can move before execution; verify the recorded `QUALIFIED_SHA`/checkout rather than assuming dispatch proves the intended SHA. Runs for predecessor commits remain historical.
 
-1. resolve `jferments/ostudy`;
-2. confirm the default branch and repository permissions exposed by the Connector;
-3. fetch the intended base, normally current `main`;
-4. record the exact base commit SHA;
-5. inspect the relevant files, active pull request, compatibility acceptance snapshot, and branch state.
+## Classify actual access failures
 
-When resuming work, also read the actual PR head, exact-head workflow state, unresolved review threads, and incomplete acceptance criteria before changing source.
+**Missing action:** state the exact missing action and what remains possible. Do not call it a repository outage.
 
-## 4. Cross the write boundary with the real mutation
+**Rejected mutation:** report the operation, repository/ref/path, exact error, and whether reads still succeed. Do not generalize one invalid request into total GitHub unavailability.
 
-When the task reaches its first intended repository mutation, invoke the actual Connector write operation, such as creating the task branch or creating/updating a file on that branch.
+**Endpoint-specific 403:** a stable `Resource not accessible by integration` can be an endpoint/permission boundary. Use another already-authorized GitHub read surface where possible. Do not widen workflow permissions to work around Connector read authorization.
 
-Let the Connector authorization layer handle any required user approval. Do not simulate the write locally and then infer that GitHub is inaccessible. Do not change the Connector to permanent or unrestricted write access merely to avoid a write prompt.
+**Broad service failure:** unrelated 5xx/timeouts/webhook/Actions failures require checking official GitHub Status. Preserve the exact head and first failing operation/time. During an incident, use bounded idempotent reads to resolve ambiguous writes; do not mutate unrelated source, triggers, permissions, or PR state to force a result.
 
-Only an actual failed mutation establishes a mutation failure. Report:
+**Requested developer MCP failure:** stop that tool path and continue through GitHub after verifying actual state. Tool disappearance or conversation-gateway rejection is not evidence that the repository or CI VM is broken. Do not reconnect, redeploy, or debug plugins unless separately requested.
 
-- the exact connector operation;
-- the target repository/branch/path;
-- the exact error;
-- whether repository reads still succeed;
-- and whether the failure is authorization, unsupported action family, invalid request, or suspected GitHub incident.
-
-### Truthful status examples
-
-Before a mutation:
+## Useful status language
 
 ```text
-Authenticated repository reads succeed and GitHub reports push permission.
-No mutation has been attempted in this session, so concrete write authorization is untested.
+Published head: <full SHA>, verified through GitHub.
+Check: <gate/run>, <pending/passed/failed>, tested <full SHA>.
+Manual acceptance: <concrete path still required>.
 ```
 
-After successful publication:
+For a real failure:
 
 ```text
-create_file succeeded on agent/example. GitHub now reports remote head abc123.
-CI state is separate and currently queued.
+<operation> on <repository/ref> returned <exact error>.
+<Other operation> still succeeds. The unavailable boundary is <specific capability>.
 ```
 
-After a rejected write:
-
-```text
-create_file on agent/example/path was rejected with <exact connector error>.
-Repository reads still succeed. This establishes failure of that concrete operation, not a general GitHub outage.
-```
-
-Unsupported statement:
-
-```text
-I do not have GitHub access.
-```
-
-unless the relevant operation was actually attempted and the exact evidence supports that narrow statement.
-
-## 5. Publish the actual source through GitHub
-
-For a normal change:
-
-1. create one short-lived `agent/<description>` branch from the recorded base SHA;
-2. make the first meaningful source/test/ADR commit through Git-data operations that bind the verified branch head;
-3. verify the remote branch head;
-4. open one draft pull request against `main`;
-5. initialize the compatibility acceptance snapshot with stable `AC-##` criteria and truthful current status;
-6. continue direct source changes on the same branch and PR;
-7. verify the new remote head after every meaningful publication step.
-
-### Expected-head publication protocol
-
-The selected Connector session or execution workspace is the branch's only source writer until handoff. Immediately before a commit/ref mutation:
-
-1. fetch the remote branch head;
-2. require it to equal the last verified expected head;
-3. create the new commit with that head as its parent;
-4. update the ref without force;
-5. read the remote head again and record the confirmed SHA.
-
-If step 2 or 4 fails, stop. Do not force-update, replay an unreviewed local tree, or let another chat independently repair the same branch. Read the competing head and explicitly resume or hand off from it.
-
-For every task-branch source publication after branch creation, including the first meaningful commit, use Git-data operations that name the expected parent (`create_tree` → `create_commit(parent_sha=expected)` → non-force `update_ref`). A Contents API file update binds a file blob, not the branch head, so it cannot satisfy this stop-on-branch-mismatch protocol.
-
-A generated patch, proposed commit message, transient execution workspace, task-specific applicator, or CI-generated product tree is not delivery. The branch must contain the actual reviewable source before qualification.
-
-Automatic pull-request CI is read-only and may not author commits, push source, persist write credentials, or change PR readiness. Explicit manual maintenance workflows are separate from ordinary qualification and may never push directly to `main`.
-
-## 6. Keep the PR acceptance snapshot current
-
-After each coherent publication checkpoint:
-
-- verify the actual remote head;
-- update criterion evidence and tests;
-- update `currentState`;
-- record known failure fingerprints and focused reproductions;
-- record only validation that actually passed, with the exact tested SHA;
-- preserve pending human-only boundaries explicitly.
-
-A draft synchronize event can race a PR-body edit, so the verifier warns rather than fails when the compatibility snapshot temporarily lags the actual head. The snapshot records acceptance evidence but does not own branch, runner, or workflow state. Before readiness, it must exactly match the GitHub base, branch, and head, and static, fast, and full must pass on that head.
-
-## 7. Keep CI and repository access independent
-
-CI runner state does not determine Connector access.
-
-A missing, offline, busy, or mismatched self-hosted runner may prevent validation, but it does not prevent branch creation, commits, or pull-request updates. Conversely, a healthy runner does not prove that the Connector can mutate the repository.
-
-Report these separately:
-
-- **Repository publication state:** branch, head SHA, PR state.
-- **Validation state:** workflow run, runner availability, gate, tested SHA, result, and failure fingerprint.
-- **Manual acceptance state:** concrete workflow exercised or still assigned to the human.
-
-## 8. Consume exact-head evidence before another repair
-
-When the `Check` workflow fails:
-
-1. verify which SHA ran and whether it is still the PR head;
-2. fetch the job steps and decoded logs;
-3. inspect the uploaded `ostudy-qualification-result.json` and bounded diagnostic evidence when connector access permits;
-4. classify the failure using [`FAILURE-TRIAGE.md`](FAILURE-TRIAGE.md);
-5. use the recorded focused reproduction before another broad run;
-6. update `knownFailures` with the stable fingerprint and attempt count;
-7. publish a coherent repair batch on the same branch.
-
-Do not ask the human to copy logs that the connector can already read. Do not rerun the complete matrix while a narrower deterministic failure remains.
-
-## 9. Distinguish repository defects, connector limitations, and GitHub incidents
-
-### Repository or workflow defect
-
-Evidence points to the repository when a deterministic local command or completed workflow log reports a concrete source, test, manifest, permission, or runner-contract error. Fix that defect and add the narrowest useful regression.
-
-### Connector permission or capability boundary
-
-A stable `403 Resource not accessible by integration` from one API family while ordinary repository reads and writes continue to succeed usually indicates that the connected GitHub App does not expose that endpoint or permission. It does **not** prove that GitHub Actions failed to run and must not be worked around by expanding the repository workflow token.
-
-Record the unsupported read and use another already-authorized GitHub surface when human verification is required. Keep publication state and validation state separate.
-
-### GitHub service incident
-
-Repeated `5xx`, `502`, timeout, archive/raw download, webhook, pull-request, Actions, or broad API failures across otherwise unrelated operations require an official GitHub Status check before repository changes are made.
-
-During a confirmed or strongly suspected service incident:
-
-1. record the exact branch head SHA and the first failing operation, timestamp, HTTP class, and affected GitHub surface;
-2. check the official GitHub Status incident and note the affected components;
-3. retry only bounded, idempotent reads needed to determine whether a write landed;
-4. do not create no-op commits, close/reopen the PR, toggle draft state, edit unrelated files, widen workflow permissions, add status-mirroring calls, or change triggers merely to force acknowledgement;
-5. do not interpret a missing Actions run, check-run, webhook, or empty legacy commit-status response as a product-code result;
-6. continue only work that can be validated independently of the degraded service;
-7. keep the PR draft and report the exact head as unqualified;
-8. after recovery, run the normal exact-head workflow without incident-specific shims.
-
-The dated audit in [`../history/github-outage-audit-2026-08-17.md`](../history/github-outage-audit-2026-08-17.md) records why these rules were added.
-
-## 10. Required connector-mode handoff
-
-In addition to the normal handoff requirements, report:
-
-- the base SHA read through GitHub;
-- the task branch name;
-- the current remote head SHA;
-- the selected writer/execution mode and last expected remote SHA;
-- any execution-workspace dirty state or active PID/job;
-- the pull-request number and draft/ready state;
-- whether each claimed mutation was verified remotely;
-- any Connector operation that failed and its exact error;
-- whether an official GitHub incident affected the work window;
-- CI state separately from publication state;
-- the exact head SHA that passed each required gate;
-- manual acceptance performed or still assigned to the human.
-- explicit release or transfer of task-branch writer ownership.
-
-## Non-negotiable reasoning rules
-
-Do not make these inferences:
-
-- "My local checkout does not show it, therefore GitHub does not have it."
-- "I have not seen an approval prompt, therefore writes are unavailable."
-- "The tool list does not currently show a write action, therefore the repository is read-only."
-- "CI has no runner, therefore I cannot commit."
-- "The Connector can read, so I should change its permanent permission setting before trying a write."
-- "The Actions API returned 403, therefore the workflow did not run."
-- "The legacy commit-status list is empty, therefore the Actions check is absent."
-- "GitHub is degraded, therefore I should mutate the PR or workflow until a run appears."
-- "A source patch exists in a runner, therefore it has been published."
-
-The normal sequence is: **read and restore durable task state, invoke the real mutation when needed, verify the remote result, consume exact-head evidence, classify failures, and keep publication, validation, and manual acceptance separate.**
+Avoid unsupported blanket claims such as “no GitHub access,” “fully tested,” or “the workflow did not run.” The [handoff guide](../development/local-testing-and-handoff.md) defines the final evidence and local testing instructions.

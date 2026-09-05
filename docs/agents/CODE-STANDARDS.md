@@ -1,109 +1,59 @@
 # Code standards for agents
 
-The goal is code that is explicit, inspectable, testable, and difficult to
-misuse. Match nearby conventions unless doing so would violate an accepted
-invariant.
+Write explicit, inspectable, testable code with one clear owner for each rule. Follow nearby conventions unless they violate an accepted invariant. Read [architecture guardrails](ARCHITECTURE-GUARDRAILS.md) and the owning architecture/ADR before changing a cross-module contract.
 
-## General standards
+## General
 
-- Prefer small cohesive functions and modules with one clear responsibility.
-- Use descriptive domain names instead of vague names such as `data`, `item`,
-  `thing`, or `handler` when a more precise term exists.
-- Prefer explicit control flow over compressed or clever expressions.
-- Do not introduce an abstraction until the current change demonstrates a real
-  repeated boundary or policy.
-- Do not perform unrelated renames, formatting passes, or file moves.
-- Surface errors with useful context while preserving stable user-facing error
-  codes.
-- Never silently ignore an error that can affect durable state.
-- Comments explain **why**: invariants, ordering, trust boundaries, lifecycle
-  traps, compatibility, and retry behavior. Do not narrate obvious syntax.
-- Delete or update stale comments in the same change that invalidates them.
+Prefer cohesive functions and modules, descriptive domain names, and straightforward control flow. Introduce an abstraction only for a demonstrated boundary or repeated policy; splitting by arbitrary line count is not improved architecture. Do not mix unrelated renames, formatting, dependency upgrades, or speculative frameworks into the requested task.
 
-- Do not use `#[allow(dead_code)]` to preserve removed product behavior. A
-  dead-code allowance needs a specific compiler or platform reason.
-- Use `deny_unknown_fields` on revised IPC request DTOs when silently accepting
-  a removed or misspelled field would hide a caller defect.
+Comments explain why: trust boundaries, ordering, lifecycle traps, compatibility, retry identity, or a non-obvious invariant. Update stale comments with the behavior that invalidates them. Surface recoverable errors with useful context and stable user-facing codes. Do not silently swallow failures that affect durable state.
+
+Do not use `#[allow(dead_code)]` to retain removed product behavior. A target-specific allowance needs a concrete platform/compiler reason. A revised internal request DTO should reject unknown fields when accepting removed or misspelled input would hide a caller defect.
 
 ## TypeScript and React
 
-- Preserve strict typing. Do not use `any` to bypass a type problem.
-- Keep Tauri calls inside typed wrappers in `src/ipc.ts`.
-- Components own rendering and interaction state, not durable domain logic.
-- Prefer derived values over duplicated state that can become inconsistent.
-- Keep effects narrowly scoped, declare dependencies honestly, and clean up
-  subscriptions, timers, and asynchronous work.
-- Capture values from React events before entering deferred callbacks or state
-  updaters.
-- Guard pending mutations so repeated clicks cannot issue duplicate writes.
-- Handle empty, loading, error, and success states intentionally.
-- Preserve semantic HTML, labels, focus order, keyboard access, and visible
-  focus.
-- Verify behavior under Light, Dark, Console, and Synthwave themes when UI or
-  styling changes.
-- Reuse the canonical editor configuration and serialization helpers; do not
-  create alternate rich-content formats inside components.
+Preserve strict typing; do not use `any` to hide a contract mismatch. Direct native command invocation belongs only in **domain gateway modules under `src/ipc/`**. Platform-specific capabilities belong in `src/platform/`. There is no monolithic IPC-file convention.
 
-- Remove obsolete feature code end-to-end: UI state, typed wrappers, Rust commands,
-  request fields, tests, verification rules, and documentation. Do not keep an
-  ignored field or alias solely so an old internal caller can appear to succeed.
-- Compatibility shims require a documented durable-data or external-format need
-  and regression coverage. Bundled frontend/Rust IPC is not an external API by
-  default; a removed option should fail visibly.
+Components render views and interaction state; controllers coordinate reads/mutations and reconciliation. Feature-local controller hooks may be colocated with their workspace when that is the current ownership pattern. Derive view-only values rather than duplicating authoritative state. Independent reads need independent stale-result lanes; obsolete successes and errors must not overwrite newer state.
 
-## Rust
+Keep effects narrow, declare dependencies accurately, and clean up listeners, timers, and asynchronous subscriptions. Capture event values before deferred callbacks. Guard pending mutations against repeated submission, preserve operation identity across ambiguous retries, and distinguish a committed write from a later failed refresh.
 
-- Format with `rustfmt` and pass Clippy with warnings denied.
-- Represent domain concepts with explicit application-owned types.
-- Validate all IPC and imported data at the Rust boundary.
-- Return `Result` values and stable application errors; do not panic on
-  recoverable runtime input.
-- Avoid `unwrap`, `expect`, unchecked indexing, and lossy conversions in
-  production paths unless an invariant makes failure impossible and the reason
-  is documented.
-- Keep transaction boundaries visible. A multi-step durable operation either
-  commits completely or leaves no partial structured state.
-- Preserve idempotency for operations that can be retried.
-- Keep scheduler-crate types inside the scheduler adapter.
-- Keep SQL and filesystem side effects out of presentation-oriented command
-  plumbing when a domain module already owns the use case.
+Handle empty/loading/error/success states deliberately. Reuse semantic HTML, accessible labels, shared overlays, focus restoration, keyboard access, and visible focus. Check compact touch layouts, themes, text scaling, safe areas, and reduced motion. Do not shrink interactive targets merely to remove visual clutter. Shared UI must not import feature controllers, IPC domains, or Tauri APIs.
 
-## SQL and migrations
+Use CSS Modules and semantic tokens under the existing ownership system. The application has one foundation CSS entry point; do not add global feature or stage stylesheets. Reuse the canonical editor adapter/configuration and rich-content serialization; do not create a parallel storage format in a screen.
 
-- Use explicit columns, constraints, and indexes that encode durable invariants.
-- Parameterize values; never construct SQL from untrusted string fragments.
-- Add append-only numbered migrations. Never modify a released migration.
-- Update the migration checksum registry and migration tests together.
-- Test fresh creation, upgrade behavior, rollback on failure, and relevant
-  uniqueness or foreign-key constraints.
-- Treat the immutable review ledger as append-only; do not rewrite history to
-  simplify analytics.
+Remove obsolete internal behavior end-to-end: UI state, gateways, native commands, request fields, exclusive styles, tests, verifiers, and documentation. Compatibility must name a supported durable-data or external-format consumer and preserve its regression coverage. Bundled frontend/native IPC is not automatically a public external API.
 
-## Shell and verification scripts
+## Rust and domain services
 
-- Use `#!/usr/bin/env bash` and `set -Eeuo pipefail` for Bash scripts.
-- Quote expansions unless intentional word splitting is required and explained.
-- Resolve paths relative to the script rather than assuming the current working
-  directory.
-- Fail loudly with actionable messages.
-- Keep verification deterministic and non-interactive.
+Use application-owned types at boundaries. External scheduler, parser, renderer, OCR, and HTTP-library types must not define durable schemas or leak throughout unrelated modules. `scheduler.rs` remains the `rs-fsrs` adapter.
 
-## Dependencies
+Validate IPC/imported content, identifiers, rich-text structure, file handles, limits, and paths natively. Return `Result` and stable errors for recoverable input; avoid panics, unchecked indexing, `unwrap`, `expect`, and lossy conversions in production unless a documented invariant makes failure impossible.
 
-- Prefer the standard library and existing dependencies.
-- Any new direct dependency requires a written need, free/open-source license
-  review, exact version pin, platform review, and tests.
-- Keep dependency upgrades separate from feature changes whenever practical.
-- Do not introduce a hosted or paid service as a requirement for core behavior.
+Keep use-case transactions visible. Helpers receive a connection/transaction rather than secretly committing. Validate the logical unit before changing it. Do not hold broad database locks across provider HTTP, document parsing, file pickers, or other unbounded external work. Preserve revision/conflict checks, operation identity, and response-after-commit semantics.
 
-## Documentation
+Format with rustfmt and pass applicable Clippy warnings-as-errors checks. When changing a shared struct/enum, inspect production constructors, tests, fixtures, serialization, compatibility readers, and verifier inventories together. Successful frontend tests do not prove native test code compiles.
 
-- Use the product name **ostudy** for human-facing project references.
-- Preserve literal technical identifiers when compatibility depends on them,
-  including package names, schema identifiers, and URI schemes, unless the task
-  includes an explicit migration. The current Tauri application identifier is
-  `io.github.jferments.ostudy`.
-- Update architecture documentation when boundaries change.
-- Add or supersede an ADR when a durable cross-module decision changes.
-- State what was actually tested. Do not convert inference into a validation
-  claim.
+## SQL, history, and managed files
+
+Use explicit columns, constraints, indexes, bound values, and transactions. Rust-owned query construction may choose SQL structure; untrusted text must not become executable SQL.
+
+Append numbered migrations and registered checksums coherently. Never rewrite a released migration or released fixture. Test fresh and supported upgrade paths, failure rollback, uniqueness, foreign keys, and data preservation. Keep versioned repairs distinct from schema migrations.
+
+Retained review history is append-only evidence; do not rewrite it to simplify analytics. Finalized deletion/purge follows its own explicit ownership contract. Managed images/documents use controlled identifiers and relative locations, not arbitrary remote URLs or local filesystem paths in rich content.
+
+Database and filesystem changes need staging/reconciliation rather than a false claim that a SQL transaction rolls back arbitrary file I/O. Tests must use isolated temporary storage, never the learner's live library.
+
+## Scripts and dependencies
+
+Use Bash with `set -Eeuo pipefail` where appropriate, quote expansions, resolve repository paths explicitly, and fail with actionable messages. Verification must be deterministic and non-interactive. Prefer maintained wrappers over invented Cargo/Tauri/Gradle/ADB alternatives.
+
+GitHub Actions are source-read-only. Formatter/generator verification uses check-only modes; fixes are published by the branch writer. Do not add task-specific applicators, finalizers, encoded source payloads, or source-authoring workflows.
+
+Prefer existing dependencies and standard libraries. New direct dependencies require a written need, compatible license review, exact pins, platform review, and tests. Do not add paid/hosted services as requirements for core local study.
+
+## Documentation and handoff
+
+Use **ostudy** for prose and preserve literal compatibility identifiers, including `io.github.jferments.ostudy`, package names, format/schema identifiers, and URI schemes. Update owning architecture/docs when boundaries change; add or supersede an ADR for a durable cross-module decision.
+
+Follow [documentation maintenance](DOCUMENTATION-MAINTENANCE.md), [the command runbook](COMMAND-RUNBOOK.md), and [GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md). State what was inspected, published, executed, or manually verified; never convert inference or a supplied command into a passing-test claim.
