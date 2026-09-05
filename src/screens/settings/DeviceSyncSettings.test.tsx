@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as syncIpc from "../../ipc/deviceSync";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
@@ -91,6 +91,8 @@ function renderSync(showToast = vi.fn()) {
   );
   return showToast;
 }
+
+afterEach(cleanup);
 
 describe("DeviceSyncSettings", () => {
   beforeEach(() => {
