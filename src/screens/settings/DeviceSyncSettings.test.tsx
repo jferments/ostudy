@@ -172,8 +172,8 @@ describe("DeviceSyncSettings", () => {
     renderSync();
     await screen.findByText("Android phone");
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /API provider settings/iu }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Saved API keys/iu }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^API provider settings/iu }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Saved API keys/iu }));
     fireEvent.click(screen.getByRole("button", { name: "Create sync offer" }));
 
     await waitFor(() => {
@@ -191,8 +191,8 @@ describe("DeviceSyncSettings", () => {
   it("keeps Study Guides dependent on Documents", async () => {
     renderSync();
     await screen.findByText("Android phone");
-    const documents = screen.getByRole("checkbox", { name: /Documents/iu }) as HTMLInputElement;
-    const guides = screen.getByRole("checkbox", { name: /Study Guides/iu }) as HTMLInputElement;
+    const documents = screen.getByRole("checkbox", { name: /^Documents/iu }) as HTMLInputElement;
+    const guides = screen.getByRole("checkbox", { name: /^Study Guides/iu }) as HTMLInputElement;
 
     fireEvent.click(documents);
     expect(documents.checked).toBe(false);
@@ -206,8 +206,8 @@ describe("DeviceSyncSettings", () => {
   it("keeps saved API keys dependent on provider settings", async () => {
     renderSync();
     await screen.findByText("Android phone");
-    const settings = screen.getByRole("checkbox", { name: /API provider settings/iu }) as HTMLInputElement;
-    const keys = screen.getByRole("checkbox", { name: /Saved API keys/iu }) as HTMLInputElement;
+    const settings = screen.getByRole("checkbox", { name: /^API provider settings/iu }) as HTMLInputElement;
+    const keys = screen.getByRole("checkbox", { name: /^Saved API keys/iu }) as HTMLInputElement;
 
     fireEvent.click(keys);
     expect(keys.checked).toBe(true);
@@ -221,8 +221,8 @@ describe("DeviceSyncSettings", () => {
   it("requires at least one selected synchronization category", async () => {
     renderSync();
     await screen.findByText("Android phone");
-    fireEvent.click(screen.getByRole("checkbox", { name: /Flashcards/iu }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Documents/iu }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Flashcards/iu }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Documents/iu }));
     expect((screen.getByRole("button", { name: "Create sync offer" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -233,7 +233,7 @@ describe("DeviceSyncSettings", () => {
     });
     renderSync();
     await screen.findByText("Android phone");
-    const keys = screen.getByRole("checkbox", { name: /Saved API keys/iu }) as HTMLInputElement;
+    const keys = screen.getByRole("checkbox", { name: /^Saved API keys/iu }) as HTMLInputElement;
     expect(keys.disabled).toBe(true);
     expect(screen.getByText(/secure secret store is unavailable/iu)).toBeTruthy();
   });
@@ -318,7 +318,7 @@ describe("DeviceSyncSettings", () => {
   it("accepts pasted invitation text without receiver-side scope controls", async () => {
     renderSync();
     await screen.findByText("Android phone");
-    expect(screen.getAllByRole("checkbox", { name: /Saved API keys/iu })).toHaveLength(1);
+    expect(screen.getAllByRole("checkbox", { name: /^Saved API keys/iu })).toHaveLength(1);
 
     fireEvent.change(screen.getByLabelText("Synchronization invitation"), {
       target: { value: "ostudy-sync://pair/pasted" },
