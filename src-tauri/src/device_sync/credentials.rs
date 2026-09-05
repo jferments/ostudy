@@ -11,7 +11,7 @@ use crate::{
     util::{unix_time_millis, validate_entity_id},
 };
 
-use super::{merge::MergeSummary, package::PackageSummary, store::ConflictRecord};
+use super::{merge::MergeSummary, store::ConflictRecord};
 
 const MAX_CREDENTIAL_BYTES: usize = 8 * 1024;
 const MAX_CREDENTIAL_RECORDS: usize = 32;
@@ -200,30 +200,6 @@ impl<'de> Deserialize<'de> for MergeSummary {
             changed_row_count: value.changed_row_count,
             conflict_count: value.conflict_count,
             conflict_ids: value.conflict_ids,
-        })
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PackageSummaryWire {
-    database_bytes: u64,
-    asset_count: usize,
-    asset_bytes: u64,
-    package_bytes: u64,
-}
-
-impl<'de> Deserialize<'de> for PackageSummary {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = PackageSummaryWire::deserialize(deserializer)?;
-        Ok(Self {
-            database_bytes: value.database_bytes,
-            asset_count: value.asset_count,
-            asset_bytes: value.asset_bytes,
-            package_bytes: value.package_bytes,
         })
     }
 }
