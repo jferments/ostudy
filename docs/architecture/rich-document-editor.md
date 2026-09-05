@@ -1,92 +1,47 @@
 # Rich-document editor boundary and schema version 2
 
-## Purpose
+## Contract and current consumers
 
-The public authoring surfaces depend on `EditorAdapter`, `EditorCapabilities`,
-`EditorCommandRequest`, and canonical `RichDocument`. They do not receive a
-Tiptap editor instance, import Tiptap extension names, or construct command
-chains. The current Tiptap implementation lives under `src/editor/tiptap/` and
-may be replaced without changing card, template, Study Guide, or practice
-feature contracts.
+Rich authoring uses `EditorAdapter`, `EditorCapabilities`, `EditorCommandRequest`, and canonical `RichDocument`. Features using the rich editor do not receive a Tiptap editor instance or construct private extension command chains. The current implementation is under `src/editor/tiptap/`; `src/editor/adapter.ts` is the reusable contract and `src/editor/tiptapAdapter.ts` implements it.
 
-`src/editor/adapter.ts` is the reusable contract and
-`src/editor/tiptapAdapter.ts` is the concrete implementation. Toolbar groups are
-created from declared capabilities so adding or removing an editor backend does
-not silently leave unsupported buttons in feature screens.
+Toolbar groups follow advertised capabilities. Cards and templates consume the rich editor; renderers consume its validated structured content. **The current Study Guide reader uses plain-text textarea entry for notes/section overrides backed by rich-document storage.** A reusable adapter or schema capability is not proof that the full rich toolbar is exposed in every feature. Extending that UI would be separate product work.
 
-## Canonical rich-document schema
+## Independent schema versions
 
-The document root carries `attrs.schemaVersion = 2`. Version 2 adds:
+Canonical roots can carry `attrs.schemaVersion = 2`. Supported older schema-1 documents remain readable. The existing database `content_schema_version` remains the released `tiptap-json` transport-envelope version; the canonical rich-root version is independent.
 
-- `subscript` and `superscript` marks, which are mutually exclusive;
-- `table`, `tableRow`, `tableHeader`, and `tableCell` nodes;
-- `taskList` and `taskItem` nodes;
-- `taskList.attrs.mode`, either `ordinary` or `answer_key`;
-- `taskItem.attrs.checked` and an optional stable `itemId`;
-- table `colspan`, `rowspan`, and `colwidth` attributes.
+Version 2 adds mutually exclusive subscript/superscript marks; table/row/header/cell nodes; task lists/items; ordinary or answer-key task-list mode; checked state and stable item IDs; and validated table span/column-width attributes.
 
-Rust remains authoritative. It validates the version, every node and mark,
-parent/child structure, spans, widths, checklist modes, item identities, image
-references, links, and style bounds before writing. Authoritative search text is
-derived from the validated document, including table cell separation and task
-checkbox state.
-
-The existing database `content_schema_version` remains the released
-`tiptap-json` transport-envelope version. The independently versioned canonical
-document root controls rich-node compatibility and allows old schema-1 documents
-to continue opening without a destructive data migration.
+Rust validates root/version, nodes/marks/attributes, parent-child structure, table shape, checklist identities/mode, image references, links, style bounds, size, and depth. It derives authoritative searchable text, including table separators and task state. A frontend plain-text snapshot is not trusted as the canonical content. See [card/data model](card-format-and-data-model.md) and [native validator](../../src-tauri/src/cards/content.rs).
 
 ## Tables
 
-Tables are keyboard-reachable through their editable cells. The editor provides
-insert, header-row toggle, add/remove row, add/remove column, and delete-table
-commands. Compact readers and editors scroll the table horizontally rather than
-shrinking text below a readable size.
+Editable cells are keyboard-reachable. Supported commands insert a table, toggle its header row, add/remove rows and columns, and delete the table. Compact layouts allow local horizontal table scrolling rather than shrinking text or causing document-level overflow.
 
-Cell merge and split are deliberately not advertised. Correct rectangular cell
-selection and span-normalization require a dedicated table-selection model; a
-partial implementation would risk corrupting persisted table shape.
+Cell merge/split is intentionally not advertised. Safe rectangular selection and span normalization need a complete interaction model; partial support risks corrupting persisted shape. Native validation still checks the spans and widths that existing supported content can contain.
 
-## Task and answer-key checklists
+## Ordinary and answer-key task lists
 
-Ordinary task lists preserve their authored checked state in editing, card
-preview, practice, import/export, and backup.
+Ordinary task lists retain authored checked state through editing, reading, practice, interchange, and backup.
 
-Answer-key checklists use the same stable item identities on both sides of a
-Basic card. The author marks correct choices in the question editor and activates
-**Copy checklist to answer**. That operation:
+Answer-key lists pair stable item identities across a Basic note's question and answer. **Copy checklist to answer** repairs missing/duplicate IDs, copies the complete checklist, clears persisted question boxes, keeps the authored correct boxes on the answer, and replaces previous answer-key lists so repeated use is idempotent.
 
-1. repairs missing or duplicate item identities;
-2. copies the complete checklist to the answer;
-3. clears every persisted checkbox on the question;
-4. preserves the marked correct boxes on the answer;
-5. replaces previous answer-key lists, making repeated use idempotent.
+Rust rejects differing paired lists, absent/duplicate IDs, checked question boxes, and answer keys with no correct option. The question therefore renders disabled empty boxes and the answer reveals the key. This is a safe authored card pattern, not arbitrary executable quiz markup.
 
-Rust rejects a save when the question and answer lists differ, identities are
-missing or duplicated, a question box is still marked, or an answer list has no
-correct option. Therefore the question always presents disabled empty boxes and
-the answer reveals the author-marked key after the card is flipped.
+## Formatting organization
 
-## Low-noise formatting
+Frequently used formatting remains direct: bold, italic, underline, subscript, superscript, lists, and task lists. Insert contains tables, answer checklists, and horizontal rules. Advanced formatting contains less frequent undo/redo, strike, inline code, blockquote, and code-block operations. Contextual table controls appear only inside a table.
 
-Bold, italic, underline, subscript, superscript, lists, and task lists remain
-immediately available. Tables, answer checklists, and horizontal rules live in
-an Insert menu. Undo/redo, strike, inline code, blockquote, and code block live
-in Advanced formatting. Contextual table controls appear only while the cursor
-is in a table.
+Font family/size, alignment, indentation, text color, and highlight continue through adapter commands and native style bounds. Template field placeholders are a supported private-adapter/canonical-template feature, not arbitrary provider HTML or generic executable expressions.
 
-## Evaluated and deferred additions
+## Images, links, and lifecycle
 
-- **Mathematics/KaTeX:** deferred. A safe mathematics node needs a typed source
-  grammar, sanitizer policy, native/PDF renderer parity, accessibility text, and
-  import/export compatibility. Raw provider HTML is not an acceptable shortcut.
-- **Typography:** the existing font-family, font-size, alignment, indentation,
-  text-color, and highlight controls remain supported through adapter commands.
-- **Character count:** deferred until a product-level limit or writing workflow
-  makes a persistent counter useful; the native size limits remain enforced.
-- **Find/replace:** deferred because browser/editor selection semantics and
-  replacement across table/checklist boundaries require a dedicated interaction
-  design.
-- **Placeholders:** template field placeholders remain supported by the private
-  adapter and canonical template schema; generic authoring placeholders are not
-  added.
+Images enter through managed asset acquisition and become controlled `study-asset://` identities. Editors must not persist arbitrary desktop paths, Android content URIs, remote image URLs, or raw provider image locations. Draft-owned staged images and canonical committed images have separate native lifecycles.
+
+Allowed links and structured formatting are validated at save/import boundaries. A safe editor implementation is not a reason to trust imported JSON without native validation. A draft autosave and a committed card/template are different results; exact draft revision, canonical transaction, asset promotion, and retry identity must stay coherent.
+
+## Deferred capabilities
+
+Mathematics rendering needs a typed source grammar, sanitizer/validation policy, native/PDF parity, accessibility text, and format compatibility; raw provider HTML is not a shortcut. Find/replace across tables/checklists needs dedicated selection semantics. A persistent character counter should follow an actual authoring need rather than clutter every screen; native bounds already apply.
+
+Future backend replacement must preserve schema compatibility and adapter behavior across card, template, read-only, draft, interchange, and native validation tests. It does not require exposing third-party editor types to every consumer or changing SQLite to match toolbar layout.

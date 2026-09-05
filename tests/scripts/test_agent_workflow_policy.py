@@ -341,32 +341,54 @@ jobs:
             ROOT / "docs" / "agents" / "SOURCE-PUBLICATION-BOUNDARY.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("authenticated GitHub Connector is the default", agents)
+        # Check the current operating contract, including the stricter explicit
+        # request requirement. The previous optional-acceleration wording was
+        # not permission to choose an MCP or Codex for an ordinary task.
+        self.assertIn("authenticated GitHub Connector", agents)
+        self.assertIn("sole normal source publisher", agents)
         self.assertIn("GITHUB-DIRECT-DEVELOPMENT.md", agents)
-        self.assertIn("FORBIDDEN: This conversation does not support developer MCPs", agents)
-        self.assertIn("expected-parent Git-data publication", agents)
-        self.assertIn("update without force", agents)
+        self.assertIn("unless the human explicitly requests it for the current task", agents)
+        self.assertIn("verify GitHub, and continue GitHub-direct", agents)
+        self.assertIn("exactly one source writer per branch", agents)
+        self.assertIn("immediate remote-head check", agents)
+        self.assertIn("non-force `update_ref`", agents)
+        self.assertIn("remote-head verification", agents)
 
-        self.assertIn("authenticated GitHub Connector is the default source-publication", index)
+        self.assertIn("GitHub-direct only", index)
         self.assertIn("SOURCE-PUBLICATION-BOUNDARY.md", index)
-        self.assertIn("custom developer MCP is optional acceleration only", index)
-        self.assertIn(
-            "Do not send the human through repeated reconnect, redeploy, or new-chat attempts",
-            index,
-        )
+        self.assertIn("unless the human explicitly requests it for the current task", index)
+        self.assertIn("immediate GitHub fallback", index)
+        self.assertIn("Do not repeat integration discovery", index)
 
-        self.assertIn("no custom or developer MCP dependency", direct)
-        self.assertIn("Developer-MCP circuit breaker", direct)
-        self.assertIn("Create one blob", direct)
-        self.assertIn("Create one tree", direct)
-        self.assertIn("Create one commit", direct)
-        self.assertIn("update_ref", direct)
-        self.assertIn("non-force", direct)
+        self.assertIn("sole normal source publisher", direct)
+        self.assertIn("unless the human explicitly requests that tool for the current task", direct)
+        self.assertIn("conversation-local circuit breaker", direct)
+        self.assertIn("Do not debug plugins", direct)
+        self.assertIn("create_blob", direct)
+        self.assertIn("create_tree(base_tree_sha=T", direct)
+        self.assertIn("create_commit(parent_sha=H", direct)
+        self.assertIn("update_ref(new commit, force=false)", direct)
+        self.assertIn("re-read remote ref; require new commit", direct)
+        self.assertIn("does not expose a compare-and-swap", direct)
+        self.assertIn("All workflows are source-read-only", direct)
 
         self.assertIn("GitHub Actions never author product source", boundary)
         self.assertIn("expected parent", boundary)
         self.assertIn("No applicator escape hatch", boundary)
         self.assertIn("check-only", boundary)
+
+    def test_local_handoff_requires_provenance_and_data_safety(self) -> None:
+        runbook = (ROOT / "docs/agents/COMMAND-RUNBOOK.md").read_text(encoding="utf-8")
+        handoff = (ROOT / "docs/development/local-testing-and-handoff.md").read_text(encoding="utf-8")
+        self.assertIn("without bundles", runbook)
+        self.assertIn("run-app.sh", runbook)
+        self.assertIn("does **not** prove", runbook)
+        self.assertIn("--serial", runbook)
+        self.assertIn("EXPECTED_SHA", handoff)
+        self.assertIn("git worktree add --detach", handoff)
+        self.assertIn("A code checkout does not isolate application data", handoff)
+        self.assertIn("not a guarantee", handoff)
+        self.assertIn("not a test result", handoff)
 
 
 if __name__ == "__main__":

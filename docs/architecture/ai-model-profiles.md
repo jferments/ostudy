@@ -1,76 +1,39 @@
-# AI model profiles and per-model reasoning
+# AI model profiles and reasoning ownership
 
-## Ownership boundary
+A model profile is the unit of connection, model selection, credential policy, reasoning effort, timeout, and provider-routing preference. A task default selects a profile ID; it does not become a second store for the profile's configuration. [AI infrastructure](ai-infrastructure.md) defines aggregate ownership and transport/probe boundaries.
 
-Each configured AI model is represented by one `ai_provider_profiles` row. The
-profile owns its provider endpoint, model identity, credential reference,
-privacy policy, request timeout, and requested reasoning effort. Application
-appearance and scheduling settings do not own AI reasoning behavior.
+## Per-profile reasoning
 
-The requested reasoning vocabulary is:
+`ai_profiles.reasoning_effort` stores the selected effort. The native vocabulary includes Automatic and explicit effort levels, but a particular provider/model may advertise only a subset. The UI offers supported choices from model metadata rather than assuming that all values work everywhere.
 
-- `automatic`
-- `none`
-- `minimal`
-- `low`
-- `medium`
-- `high`
-- `xhigh`
-- `max`
+Automatic resolves through capability policy. A model that requires reasoning cannot have it disabled. A stored choice no longer advertised by the selected model is reconciled against the valid advertised set; it must not be blindly emitted as an unsupported parameter. The policy does not invent an optional reasoning capability absent from evidence.
 
-`automatic` asks the provider/model capability layer to choose its advertised
-default. Explicit values remain requests rather than unchecked wire values:
-document generation resolves them against the current model capability record.
-A model that requires reasoning cannot be disabled; a stale or unsupported
-request resolves to the lowest advertised valid effort. Optional models never
-have an unsupported effort silently promoted.
+Generation provenance records **requested** and **effective** reasoning effort. This makes capability adaptation visible to diagnosis instead of pretending the exact requested value was always used. Reasoning output itself is not a generic frontend result or routine diagnostic payload.
 
-Both the requested and effective effort are recorded in document-job
-provenance. Switching the default model changes only the selected profile
-identity. It never copies reasoning, timeout, retention, or credential state
-between profiles.
+Changing a task's default model leaves each profile's effort/key/timeout/privacy settings intact. Current document learning, including study guides, uses the flashcard-generation default; there is no requirement for a separate study-guide task-default UI in the current application.
 
-## Migration
+## Migration from the legacy global setting
 
-Public migration `0008_ai_profile_reasoning.sql` adds
-`ai_provider_profiles.reasoning_effort`. For an existing installation, the last
-valid legacy `app_settings.aiReasoningEffort` value is copied to every existing
-profile. Invalid or missing legacy values become `low`. The global key is then
-deleted.
+Migration `0008_ai_profile_reasoning.sql` adds profile-owned reasoning state, adopts a valid prior global preference for existing profiles according to its migration policy, uses the defined default where needed, and removes the old `app_settings.aiReasoningEffort` key. The released migration is not a file to rewrite for cosmetic cleanup.
 
-The application-settings IPC no longer accepts or persists reasoning. The
-TypeScript type retains an optional transitional property only so old fixtures
-and in-memory objects can be saved safely; the wrapper strips it before IPC.
+The frontend's transitional optional input is removed before current Settings IPC rather than retained as a second authoritative global setting. Supported old input is compatibility at a boundary, not permission to show a global reasoning control again.
 
-## Settings information architecture
+## Current Settings flow
 
-The AI/LLM tab is one vertical flow:
+Settings → AI/LLM is a vertical flow with task/default assignment, wrapping model list, selected-model controls, and advanced configuration. Add model asks for the implemented provider, relevant endpoint/key, connection/model discovery, model selection, and profile save/test. Less frequent trust/timeout/storage/routing choices remain contextual.
 
-1. default model/task assignment;
-2. AI model list with Add model;
-3. selected model connection and model/reasoning controls;
-4. advanced provider, timeout, privacy, credential, test, and deletion controls.
+Only implemented adapters appear as normal choices: llama.cpp/Unsloth, DeepSeek, and OpenRouter. Other catalog enum entries remain planned. Nonsecret endpoint/model metadata is legitimate frontend state; saved credential bytes are not.
 
-The model list is a wrapping grid rather than a sticky sidebar or nested
-horizontal scroller. The selected profile remains visible directly above its
-configuration. Compact layouts collapse to one column.
+## Credentials, probes, and transfer
 
-Reasoning choices are generated from the selected model's advertised metadata.
-Mandatory models omit `none`. When a provider catalog changes and an old value
-is no longer supported, the UI requires selecting Automatic or another
-advertised value before saving.
+A newly typed key exists transiently in its input form and is written through the native secret boundary. The saved value is never read back into the form. Secure-store or explicitly selected session-only storage owns its subsequent lifetime. Ordinary SQLite library data, drafts, backups, and shared decks exclude key bytes.
 
-## Credential availability
+Probe evidence is tied to profile revision, credential epoch, and selected model. Connection/trust/model edits invalidate old verification. A task must not treat an obsolete successful probe as current capability evidence.
 
-Credential bytes never enter SQLite or frontend state. Secure storage remains
-preferred. When Secret Service or KWallet is unavailable, the user may enter a
-session-only credential. The in-memory credential takes precedence for the
-running process, and cleanup of an inaccessible prior secure entry is deferred
-without blocking the session.
+Library backup includes allowed nonsecret profile metadata/defaults, not credentials. Normal device sync excludes provider configuration. A sender can explicitly opt into supported API metadata and available saved keys for one authenticated encrypted offer; the credential path is separate from ordinary package storage and requires secure storage at the receiving side. No pairing creates permanent consent.
 
-## Backup and synchronization
+## Sources and tests
 
-Full local-library backups include AI profile metadata through SQLite while
-credentials remain outside the database. Device sync deliberately excludes AI
-profiles, task defaults, and credentials because endpoints and trust decisions
-are device-local.
+Native ownership lives in `src-tauri/src/ai/profiles/`, `ai/reasoning.rs`, `ai/probes/`, and provider dialect modules. Frontend DTOs/controllers live in `src/ipc/aiProfiles.ts`, `src/controllers/aiProfilesController.ts`, and `src/screens/settings/AiLlmSettings.tsx`. Migration/contract tests protect legacy adoption and per-profile serialization; provider/probe tests protect capability resolution and staleness.
+
+See [AI provider user guide](../user-guide/ai-providers.md), [native infrastructure](ai-infrastructure.md), and [device sync](device-sync.md). Profile structure must remain independent of the current Settings layout.
