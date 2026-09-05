@@ -1,307 +1,85 @@
-# Documents, study guides, and AI-generated flashcards
+# Documents and AI-generated learning material
 
-The Documents workspace turns a retained local source into reusable learning
-artifacts. It supports PDF plus Word, PowerPoint, OpenDocument, EPUB, RTF, Excel,
-ODS, and CSV sources. From one managed source, oStudy can create an interactive
-study guide, ordinary flashcards, or both. Source parsing and AI generation are
-assisted-authoring tools: unusual formatting, malformed files, OCR, provider
-differences, and imperfect model output can still require review.
+The **Documents** workspace keeps a managed local source and turns it into reusable flashcards or study guides. The two learning artifacts can be generated independently from the same retained source and shared learning plan. Generated cards remain ordinary editable study cards; generated guide content remains separate from learner-owned notes and edits.
 
-Generated cards use the normal deck/card workflow. Edit inaccurate cards and
-delete material that is redundant or not useful. Study guides keep generated
-source-grounded content separate from learner-owned notes and edits so a later
-regeneration cannot silently overwrite your annotations.
+## Before you begin
 
-## Before importing a document
+Use material you are allowed to process and choose a provider appropriate for its privacy requirements. Configure and test an implemented model profile in **Settings → AI/LLM**. The current flashcard-generation default also supplies the document learning workflows; there is not a separate required study-guide provider setup.
 
-Confirm that:
+For a scanned/damaged PDF on desktop, install the required OCR runtime and trained data described in the platform guide. Android's bundled Latin text-recognition model does not require a separate Tesseract installation. A missing platform capability can make the Documents workspace unavailable rather than silently sending the original file elsewhere.
 
-- the source is material you are allowed to process;
-- the selected AI profile verifies successfully;
-- a cloud provider is appropriate for the source's privacy requirements;
-- the model has enough context and structured-output capability for the task;
-- on desktop, Tesseract and the needed trained data are available when a PDF may
-  require OCR;
-- on Android, no separate PDF OCR installation is required because ML Kit Text
-  Recognition v2 is bundled with the app;
-- a current library backup exists before testing an unfamiliar development
-  build.
+The original document is not uploaded to the model as an opaque file. ostudy stages a local copy, parses it, and sends bounded selected source context through the chosen provider. Selecting a local model never authorizes a cloud fallback.
 
-The original document is not sent to the provider as an opaque uploaded file.
-oStudy copies it into the managed local library and parses it locally before
-bounded source context is sent through the selected profile.
+## Import and generate
 
-## Import and generation workflow
+Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and use the active task's stop control when cancellation is needed.
 
-1. Open **Documents** and choose **Upload document**.
-2. Select a supported file. There is no parser/type selector; oStudy detects the
-   source automatically.
-3. Use the actions beside that document to create the learning artifact you want.
-   **Generate study guide** creates or regenerates the document's guide;
-   flashcard generation creates or extends its ordinary study deck. The two
-   artifacts share the same source-grounded learning plan but can be generated
-   independently.
-4. Watch progress or use the relevant stop action to cancel the active document
-   task deliberately.
-5. Open **Study Guides** to read a generated guide, annotate or edit it,
-   export it, or start topic-linked card practice. Open a generated deck to manage
-   its cards like any other deck.
+Open generated cards from Flashcards and generated guides from **Study Guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
 
-There is no separate approval queue. Valid cards are written transactionally
-after generation and curation complete. A study guide is published only after a
-complete validated revision is ready, so a failed regeneration does not replace
-the last active guide.
+Review source-grounded output for factual errors, weak questions, duplicated concepts, and missing nuance. A source citation and valid schema are useful evidence, not proof of factual correctness.
 
 ## Supported source families
 
-Current document sources include:
+The current registry supports PDF; Word DOC/DOCX-family files; PowerPoint PPT/PPTX-family files; OpenDocument ODT/ODP/ODS; EPUB; RTF; Excel XLS/XLSX-family files; and CSV.
 
-- PDF;
-- Word (`.doc` and DOCX-family files);
-- PowerPoint (`.ppt` and PPTX-family files);
-- OpenDocument text/presentation/spreadsheet (`.odt`, `.odp`, `.ods`);
-- EPUB;
-- RTF;
-- Excel (`.xls` and XLSX-family files);
-- CSV.
+PDF uses the native PDF adapter. Supported non-PDF formats use **Xberg**, with immediate normalization into ostudy's own canonical representation. AnyDoc is a retired parser, not a selectable alternative or fallback.
 
-Signature-bearing formats are detected from their content rather than trusted
-from a renamed extension. CSV is the deliberate exception because it has no
-unique binary signature; a `.csv` filename is required for CSV parsing.
+Detection uses source content where a signature/container identifies the format. Legacy OLE formats additionally require an authorized DOC/PPT/XLS filename hint; CSV requires its filename hint because it lacks a unique binary signature. Renaming arbitrary bytes does not make them a supported format. HTML/web-page acquisition, audio transcription, and every format an underlying library might support are not automatically enabled product features.
 
-PDF continues through oStudy's native PDF adapter. The other formats use a pinned
-in-process AnyDoc parser and are normalized immediately into the same oStudy-owned
-canonical document model consumed by AI generation.
+## Local processing and source labels
 
-## What happens locally
+The application stores a managed source copy and extracts bounded source units, semantic blocks, supported images, and chunks. Those derivatives support a reusable outline and learning plan. Stable learning-topic identities connect guide sections with cards generated for those topics.
 
-For every source, oStudy:
+PDF processing can extract native text, render relevant pages, and selectively recover text through OCR. Desktop uses its configured PDFium/Tesseract path; Android uses platform PdfRenderer and bundled ML Kit recognition. OCR is a recovery tool, not a guarantee that every diagram or table was understood.
 
-- stores an immutable managed copy;
-- detects and records the document format;
-- extracts bounded canonical source units, semantic blocks, and chunks;
-- retains supported embedded source images as multimodal evidence when available;
-- builds a reusable document outline and source-grounded learning plan;
-- gives learnable topics stable local identities with source locators and evidence
-  fingerprints;
-- uses that shared learning plan to organize study-guide sections and link newly
-  generated flashcards to the topics they teach;
-- records safe progress, checkpoints, and failure state in the local library.
+Current non-PDF canonical provenance is persisted as **sections**. Xberg may expose richer internal slide/sheet boundaries and names, but the app does not promote all such details into exact authored page/slide/chapter promises without a coordinated locator/schema change. Non-PDF visual evidence is supported embedded images, not fabricated whole-slide renders. External image relationships are not fetched.
 
-For non-PDF AnyDoc sources, current public provenance is expressed as
-deterministic **sections**. oStudy does not label inferred boundaries as exact
-slides or chapters when the parser's generic model cannot prove those authored
-boundaries. Presentation and EPUB imports can therefore be marked as having
-inferred/degraded section segmentation while still preserving their structured
-content.
+The guide/source action opens the retained original through the platform. It does not guarantee that an external viewer can jump to an exact page, slide, or section.
 
-PDF has additional local processing. oStudy extracts page text, renders pages
-when visual recovery is needed, and selectively runs OCR on pages whose native
-text cannot be trusted. Desktop uses the qualified PDFium/Tesseract path; Android
-uses the platform `PdfRenderer` and bundled ML Kit Text Recognition v2.
+## What the provider receives
 
-These PDF-specific details matter because a visible page and its embedded text
-layer can disagree. They are not applied to Word, PowerPoint, EPUB, or spreadsheet
-sources.
+A request contains a bounded portion of canonical text, relevant outline/plan context, and selected source images only when the verified model supports image input. Large sources are processed through bounded requests rather than an unbounded prompt. Source analysis, topic planning, generation, validation, and curation are distinct stages.
 
-## What is sent to the provider
+The native provider gateway handles transport. Model output has no direct SQLite, filesystem, shell, or application-command authority. Generated content is checked for structure, limits, allowed rich content, tags, cloze grammar, and duplicates before durable use.
 
-Each request contains a bounded portion of canonical source content, relevant
-outline/learning-plan context, and selected canonical images only when the
-verified model supports image input. Large documents are handled through multiple
-bounded requests instead of one unbounded prompt.
+Diagnostics are designed to keep credentials, raw prompts/responses, reasoning text, source text, and image bytes out of ordinary logs. Still review any diagnostic export before sharing it, especially when it contains filenames or operational metadata.
 
-oStudy does not silently switch providers, and diagnostics do not log
-credentials, authorization headers, raw prompts, raw responses, reasoning
-content, source text, or source image bytes.
+## Progress and cancellation
 
-## Generated card forms
+Progress reports the phases the application can actually observe. Non-PDF native extraction may be indeterminate until the parser returns known source-unit totals. Do not interpret an indeterminate indicator as a stalled or failed task merely because a percentage is unavailable.
 
-The document task may produce:
+Stop controls request cancellation of their task. The current generating control can become the stop action rather than adding a second permanent button. Cancellation is cooperative: local extraction, network work, validation, and publication have explicit boundaries. Already committed reusable derivatives are retained, and a canceled guide regeneration leaves the previous published guide available.
 
-- conceptual Basic questions;
-- definitions;
-- multiple-choice questions represented as safe Basic cards with an explanation;
-- application or scenario questions;
-- Fill in the blank cards.
+On Android, a user-started long document task uses a foreground service, visible notification, and bounded wake-lock support so work can continue when the Activity is backgrounded. This is not immunity to process termination, resource pressure, device reboot, or explicit stop. Reopening relies on durable task/checkpoint reconciliation, not a surviving WebView promise.
 
-Accepted output passes through the same native content, tag, duplicate, cloze,
-and scheduling validation used by ordinary authoring. Model output has no direct
-database access.
+On desktop, closing while document processing is active warns about interrupting in-flight work. Restart does not automatically authorize sending more source data to a provider. Retry deliberately after reviewing the state. Whole-library backup is blocked while active processing could make files and database snapshots incoherent.
 
-When reliable source provenance is available, newly generated notes are linked to
-one primary learning topic and may also have supporting topic relationships. The
-relationship is native provenance, not an editable tag. Moving or renaming the
-card does not turn a tag label into its source identity, and existing cards are
-not assigned topics by guessing from their text.
+## Retry, more cards, and regeneration
 
-## Interactive study guides
+Retry reuses valid source/outline/generation checkpoints only when their versioned identities still match. Changed parser, prompt, schema, or source evidence can require rebuilding derivatives. A stale checkpoint is not trusted simply because it exists.
 
-A study guide is a durable, source-grounded **high-yield outline** over the
-document's shared learning plan. The guide begins with the document-level
-overview, learning objectives, and key concepts, then presents ordered topic
-sections with natural source labels such as page or section ranges. Newly
-generated topic sections deliberately favor a one- or two-sentence overview and
-roughly three to seven prioritized key points over long narrative prose. The
-provider receives a much smaller completion budget than the source-analysis
-passes, and native validation rejects overlong section fields or total section
-content so the single repair attempt has to condense rather than merely rephrase
-an essay. Mechanism explanations, terms, processes, comparisons,
-misconceptions, and visual explanations are included only when they add distinct
-learning value rather than repeating the source.
+**Generate more cards** uses retained understanding and current deck coverage. An unchanged source should not be reparsed/rerendered simply to request additional cards. Changed embedded assets receive immutable versioned managed paths, avoiding deletion of the last committed evidence before a replacement succeeds.
 
-Open generated guides from the top-level **Study Guides** destination. Use the
-table of contents to move through a guide and **Open source** to open the managed
-original document.
+Regenerate a guide from the relevant document action. The reader does not need a permanent regenerate button or internal revision badge. Compatible topic work can be reused; a complete new validated guide replaces the active generated revision atomically. Learner annotations follow the separate rules in [Study guides](study-guides.md).
 
-The guide stores generated base content as immutable revisions. Learner-owned
-changes are separate overlays:
+## Source relationships and lifecycles
 
-- **guide notes** belong to the document as a whole;
-- **topic notes** belong to a stable learning topic and therefore survive ordinary
-  guide regeneration;
-- **section edits** are non-destructive overrides tied to the exact generated base
-  content they edited.
+Generated notes can carry primary/supporting learning-topic provenance and citations. These are stable native relationships, not guesses inferred later from text or mutable tag labels. Renaming or moving a card does not turn a tag name into its source identity.
 
-If regeneration changes the underlying generated section enough that an old
-section override can no longer be applied safely, oStudy preserves the old edit
-as an explicit conflict for review rather than silently attaching it to different
-content. The generated source-grounded revision remains recoverable underneath
-the learner overlay.
+Archiving a document retains its source, derivatives, learning plan, guide/annotation graph, and generation history. Restoring it can return it to ready state when a live artifact still exists. A guide-only document is valid; it does not need an artificial flashcard deck.
 
-Each section also shows the count of linked cards when topic-linked flashcards are
-available. **Study linked cards** starts practice with the exact card IDs currently
-linked to that topic; it does not create a temporary tag-based approximation. A
-study guide can exist without a generated flashcard deck, and a document with a
-published guide remains a valid ready document.
+Permanent source deletion is separate from deleting generated cards. It removes document-owned files and processing/artifact state when no active task conflicts. Already generated decks/cards remain ordinary study content, with text-only citation provenance where a live source link can no longer exist. Deleting a generated deck does not automatically delete its source document.
 
-### PDF export
+Deleting only a study guide has a narrower scope: it removes generated guide revisions, guide-specific edits/conflicts, checkpoints, and prepared exports while preserving the source, learning plan, linked cards, and stable guide/topic notes. Read the explicit confirmation.
 
-Choose **Export PDF** from an open study guide to produce a local selectable-text
-PDF. The export is rendered locally from a frozen effective guide snapshot; it
-does not send another provider request and does not mutate the guide lifecycle.
-You can choose whether learner annotations are included. The resulting file uses
-the normal prepared-export/platform save boundary, so the operating system owns
-the final save/share destination.
+## Backup, sync, and limitations
 
-The automated export contract verifies selectable Unicode text. Pagination, font
-appearance, complex source-specific typography, and final visual fidelity should
-still be inspected on the target device before relying on an exported guide for
-high-stakes distribution.
+Whole-library backups include the coherent document/learning-artifact database graph and required managed sources/images/renders. Supported older backup representations remain readable. Provider credentials are excluded.
 
-## Progress, stopping, backgrounding, and restart
+Do not assume trusted-device sync transfers every source document, study-guide revision, overlay, or topic relationship. Its supported merge graph is narrower than whole-library backup and requires a separate versioned extension for the new learning-artifact graph.
 
-Document records show the major processing/generation phases, canonical source
-unit progress, request/token activity, and safe error information. PDF records
-also show page rendering/OCR progress when those stages are applicable.
+Malformed, encrypted/protected, unsupported, oversized, or poorly recognized sources can fail before generation. OCR quality, model reliability, extraction fidelity, document size, context limits, and provider cost remain practical limits. A local parse is not a full sandbox for hostile files; process only sources you intend to trust with the application.
 
-**Stop generation** cancels flashcard work. A running guide exposes its own
-**Stop study guide** action beside the document. Either cancellation leaves
-already committed reusable source derivatives intact. A canceled or failed guide
-regeneration leaves any previously published guide available, and valid per-topic
-checkpoints may be reused on retry when their versioned contract still matches.
+Report a defect with the source format, phase, platform/build, provider family/model, safe error, and retry result. Distinguish extraction/OCR trouble from generated wording, citations, overlays, or PDF export. Use a synthetic or redacted source rather than publishing private material.
 
-On Android, a user-started long-running document task acquires a foreground
-service with a visible processing notification and a bounded partial wake lock.
-The Activity may move to the background while local parsing/rendering/OCR,
-provider work, and durable commits continue.
-
-Android can still terminate the entire process under exceptional resource
-pressure or after a restart. Durable document/job checkpoints remain in SQLite
-so reopening the app can resume or retry from saved state rather than relying on
-an untracked WebView promise.
-
-On desktop, closing the main window while document work is active warns that the
-in-flight request will be interrupted. Startup reconciliation can mark the
-durable state retryable. Provider transmission is never resumed automatically
-after restart.
-
-Complete-library backup is blocked while document work is active so the SQLite
-snapshot and managed source files cannot be captured at different points in the
-operation.
-
-## Retry and Generate More
-
-**Retry generation** reuses valid extraction/outline/generation checkpoints when
-their versioned contracts still match. It rebuilds stale or invalid derivatives
-rather than trusting output from a changed backend contract.
-
-For AnyDoc embedded images, retries write changed image content to immutable,
-versioned managed paths; a failed retry does not delete the last committed visual
-evidence first.
-
-**Generate more cards** uses retained document understanding and current deck
-coverage to request additional material. An unchanged source should not be
-reparsed or rerendered merely because more cards are requested.
-
-Click **Generate study guide** again beside a document to regenerate its guide.
-Regeneration reuses the shared outline/learning plan and compatible topic
-checkpoints, while prompt/schema version changes intentionally invalidate stale
-AI derivatives. Publication is atomic: incomplete replacement content cannot
-supersede the active guide.
-
-A failed generation remains in the document library so its error and retry state
-are not lost.
-
-## Archiving, deleting, backup, and restore
-
-Archiving is reversible and retains the source, canonical derivatives, learning
-plan/topics, study-guide revisions and learner overlays, generation history, and
-deck provenance. Restoring an archived document returns it to ready state when a
-live learning artifact still exists.
-
-Permanent document deletion removes the managed source and document-owned
-processing/learning-artifact graph when no task is active. Generated decks/cards
-that already exist remain ordinary study content; their source relationship is
-preserved as a text citation instead of a live file link where applicable.
-
-Deleting a generated deck does not automatically delete its source document. The
-deck and document have separate lifecycles. A guide-only document therefore does
-not need a generated deck merely to remain usable.
-
-Complete-library backups include the coherent SQLite snapshot containing learning
-plans, topics, guides, overlays, and note-topic provenance, together with generic
-managed document sources, PDF page renders, and retained canonical source images.
-Restore reinstalls those relationships and managed files together. Older backups
-that stored document sources as PDF-specific rows remain compatible under their
-supported backup versions.
-
-## Current limitations
-
-- The guide retains exact source-unit locators and displays natural page/slide/
-  chapter/section labels, but the generic cross-platform **Open source** boundary
-  opens the canonical file rather than guaranteeing an exact deep-link to that
-  page, slide, or section in an external application.
-- AnyDoc-backed presentations and EPUB files currently use deterministic section
-  provenance rather than claiming exact authored slide/chapter boundaries when
-  the parser cannot prove those boundaries.
-- Whole-slide rendering is not fabricated; non-PDF multimodal evidence currently
-  comes from embedded images exposed by the parser.
-- External images/relationships in packaged documents are not fetched.
-- Desktop PDF OCR currently expects Tesseract and appropriate trained data.
-- Android PDF OCR currently uses the bundled ML Kit Latin text recognizer;
-  additional script-specific models are not yet packaged.
-- OCR quality depends on scan resolution, layout, language, and source quality.
-- Encrypted/protected, malformed, unsupported, or resource-limit-exceeding source
-  files may fail locally before AI generation.
-- Local-model quality and structured-output reliability vary by model/server.
-- Native study-guide generation now enforces a concise outline shape and bounded
-  section length, but a model can still produce factually weak or poorly
-  prioritized content that requires learner review.
-- Very large documents can require many bounded provider requests and substantial
-  local processing time.
-- Study-guide/topic state is included in complete-library backup/restore. Peer
-  device synchronization of the new learning-artifact graph is not part of the
-  current study-guide release and requires a separate versioned sync change.
-
-When reporting a defect, include the displayed phase, source format, provider
-family/model, platform, a redacted safe error message, and whether retry
-reproduced the result. For PDFs, also note whether OCR was used. For study-guide
-issues, note whether the problem is generated base content, a learner overlay, a
-topic-card link, or PDF export. Do not attach private source material or
-credentials to a public issue.
-
-The implementation design is documented in [AI and document
-processing](../architecture/ai-and-document-processing.md), [the AnyDoc adapter
-contract](../architecture/anydoc-adapter-implementation.md), and [ADR 0043:
-study guides and topic-linked learning](../decisions/0043-study-guides-and-topic-linked-learning.md).
+For implementation details, see [AI and document processing](../architecture/ai-and-document-processing.md), [document AI routing](../architecture/document-ai-routing.md), and the [current architecture](../architecture/overview.md).
