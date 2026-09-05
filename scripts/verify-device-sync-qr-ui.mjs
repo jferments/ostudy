@@ -40,6 +40,7 @@ const [
 ]);
 const failures = [];
 const referenceTokenData = JSON.parse(referenceTokens);
+const syncTransportProduction = syncTransport.split("\n#[cfg(test)]", 1)[0];
 
 expectContains(nativeScanner, "GmsBarcodeScanning.getClient(activity, options)", "Google Code Scanner client");
 expectContains(nativeScanner, ".setBarcodeFormats(Barcode.FORMAT_QR_CODE)", "QR-only native scan format");
@@ -101,8 +102,8 @@ expectContains(syncCore, "network::connect_to_sender", "actionable LAN connectio
 expectContains(syncCore, "cancel_superseded_unclaimed_hosts", "replacement of stale unclaimed sender offers");
 expectContains(syncCore, "cancellation::claim_peer", "same-peer active-session claim enforcement");
 expectContains(syncCore, "sent_package_bytes: 0", "receiver does not upload a package during offer acceptance");
-expectContains(syncTransport, "pub(crate) trait SyncIo", "transport-neutral synchronization byte-stream boundary");
-expectNotContains(syncTransport, "TcpStream", "TCP ownership removed from secure framing");
+expectContains(syncTransportProduction, "pub(crate) trait SyncIo", "transport-neutral synchronization byte-stream boundary");
+expectNotContains(syncTransportProduction, "TcpStream", "TCP ownership removed from production secure framing");
 expectContains(syncCancellation, "device_sync_peer_busy", "same-peer overlap rejection");
 expectContains(syncCancellation, "trait SyncAbort", "transport-neutral cancellation capability");
 expectContains(syncCancellation, "abort.abort()", "active transport interruption dispatch on cancellation");
