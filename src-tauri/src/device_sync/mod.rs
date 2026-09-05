@@ -565,7 +565,11 @@ pub fn scan_device_pairing_qr(app: AppHandle) -> Result<Option<String>, CommandE
                     format!("The native QR scanner failed: {error}"),
                 )
             })?;
-        Ok(if result.cancelled { None } else { result.contents })
+        Ok(if result.cancelled {
+            None
+        } else {
+            result.contents
+        })
     }
     #[cfg(not(mobile))]
     {
@@ -766,8 +770,12 @@ fn handle_host_connection(
     cancel_signal.check()?;
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "send")?;
     let outgoing_package = workspace.path.join("outgoing.syncpkg");
-    let outgoing_summary =
-        package::create_package(database.inner(), paths.inner(), &outgoing_package, selection)?;
+    let outgoing_summary = package::create_package(
+        database.inner(),
+        paths.inner(),
+        &outgoing_package,
+        selection,
+    )?;
     cancel_signal.check()?;
     let outgoing_credentials = if credentials_included {
         credentials::collect_credentials(database.inner(), runtime.secure_secret_store())?

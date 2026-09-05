@@ -167,7 +167,12 @@ pub(crate) fn create_package(
             ("applicationVersion", env!("CARGO_PKG_VERSION").to_string()),
             (
                 "includeApiSettings",
-                if selection.api_settings { "true" } else { "false" }.to_string(),
+                if selection.api_settings {
+                    "true"
+                } else {
+                    "false"
+                }
+                .to_string(),
             ),
             ("selectionJson", selection_json),
         ] {
@@ -302,8 +307,10 @@ pub(crate) fn extract_package(
     let selection = if format_version == LEGACY_PACKAGE_VERSION {
         SyncSelection::legacy(include_api_settings)
     } else {
-        let selection: SyncSelection = serde_json::from_str(&metadata_value(&package, "selectionJson")?)
-            .map_err(|_| invalid_package("The synchronization package selection is invalid."))?;
+        let selection: SyncSelection =
+            serde_json::from_str(&metadata_value(&package, "selectionJson")?).map_err(|_| {
+                invalid_package("The synchronization package selection is invalid.")
+            })?;
         let selection = selection
             .validate()
             .map_err(|_| invalid_package("The synchronization package selection is invalid."))?;
@@ -428,9 +435,8 @@ fn extract_document_files(
     database_path: &Path,
     staging_root: &Path,
 ) -> Result<Vec<ExtractedDocumentFile>, CommandError> {
-    let snapshot =
-        Connection::open_with_flags(database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .map_err(CommandError::database)?;
+    let snapshot = Connection::open_with_flags(database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(CommandError::database)?;
     let extraction_root = staging_root.join("document-files");
     fs::create_dir_all(&extraction_root).map_err(CommandError::io)?;
     document_backup::validate_document_files(package, &snapshot, Some(&extraction_root))?;
@@ -754,7 +760,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
             .unwrap();
         let ai_default_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(app_setting_count, 0);
         assert_eq!(ai_default_count, 0);
@@ -777,7 +785,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
             .unwrap();
         let ai_default_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(app_setting_count, 0);
         assert_eq!(ai_default_count, 1);

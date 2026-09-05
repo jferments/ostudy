@@ -72,7 +72,6 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("source_citation_snapshots", &["id"]),
     TableSpec::new("deck_source_citations", &["deck_id", "citation_id"]),
     TableSpec::new("note_source_citations", &["note_id"]),
-
     // Provider metadata is a parent of optional document processing records.
     TableSpec {
         name: "ai_provider_profiles",
@@ -81,7 +80,6 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         excluded_columns: &["credential_storage", "credential_epoch"],
     },
     TableSpec::new("ai_task_defaults", &["task_kind"]),
-
     // Canonical Documents + durable LLM processing/checkpoint graph.
     TableSpec::new("documents", &["id"]),
     TableSpec::new("document_source_files", &["document_id", "file_ordinal"]),
@@ -112,26 +110,18 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     ),
     TableSpec::new("document_learning_plans", &["id"]),
     TableSpec::new("document_learning_topics", &["id"]),
-    TableSpec::new(
-        "document_learning_plan_topics",
-        &["plan_id", "topic_id"],
-    ),
+    TableSpec::new("document_learning_plan_topics", &["plan_id", "topic_id"]),
     TableSpec::new("document_artifact_jobs", &["id"]),
     TableSpec::new("document_artifact_metadata", &["document_id"]),
-
     // Study Guide artifact graph. `SyncSelection` only enables these when the
     // Study Guides category is selected (which itself requires Documents).
     TableSpec::new("document_study_guides", &["id"]),
-    TableSpec::new(
-        "document_study_guide_sections",
-        &["guide_id", "topic_id"],
-    ),
+    TableSpec::new("document_study_guide_sections", &["guide_id", "topic_id"]),
     TableSpec::new("document_study_guide_overlays", &["id"]),
     TableSpec::new(
         "document_study_guide_checkpoints",
         &["document_id", "contract_key", "topic_id"],
     ),
-
     // Cross-domain provenance is only enabled when both Documents and
     // Flashcards are selected.
     TableSpec::new("document_decks", &["document_id", "deck_id"]),
@@ -444,7 +434,11 @@ fn merge_present_rows(
             left_value.or(right_value)
         } else if key_columns.contains(&column.as_str()) {
             conflicts.push(column.clone());
-            if prefer_left { left_value } else { right_value }
+            if prefer_left {
+                left_value
+            } else {
+                right_value
+            }
         } else {
             let left_changed = left_value != base_value;
             let right_changed = right_value != base_value;
@@ -454,7 +448,11 @@ fn merge_present_rows(
                 (false, false) => left_value.or(right_value),
                 (true, true) => {
                     conflicts.push(column.clone());
-                    if prefer_left { left_value } else { right_value }
+                    if prefer_left {
+                        left_value
+                    } else {
+                        right_value
+                    }
                 }
             }
         };
