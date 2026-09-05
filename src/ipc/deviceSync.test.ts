@@ -17,17 +17,24 @@ describe("device synchronization IPC", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
   });
 
-  it("starts a bounded one-way sender offer with explicit API-settings scope", async () => {
+  it("starts a bounded one-way sender offer with explicit granular scope", async () => {
+    const selection = {
+      flashcards: true,
+      documents: true,
+      studyGuides: true,
+      apiSettings: true,
+      apiCredentials: true,
+    };
     await startDevicePairing({
       hostOverride: "192.168.1.42",
-      includeApiSettings: true,
+      selection,
       expiresInSeconds: 300,
     });
 
     expect(invoke).toHaveBeenCalledWith("start_device_pairing", {
       input: {
         hostOverride: "192.168.1.42",
-        includeApiSettings: true,
+        selection,
         expiresInSeconds: 300,
       },
     });
