@@ -6,19 +6,23 @@ use std::{
 };
 
 use rusqlite::{backup::Backup, params, Connection, OpenFlags};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
     assets::detect_image_bytes,
     database::{Database, LATEST_SCHEMA_VERSION},
+    document_backup,
     error::CommandError,
     paths::AppPaths,
     util::unix_time_millis,
 };
 
+use super::scope::{self, SyncSelection};
+
 const PACKAGE_FORMAT: &str = "ostudy-device-sync";
-const PACKAGE_VERSION: i64 = 2;
+const PACKAGE_VERSION: i64 = 3;
+const LEGACY_PACKAGE_VERSION: i64 = 2;
 const MAX_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_DATABASE_BYTES: usize = 1_500 * 1024 * 1024;
 const MAX_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
@@ -40,14 +44,36 @@ CREATE TABLE asset_files (
     sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
     data BLOB NOT NULL
 ) STRICT;
+CREATE TABLE document_files (
+    file_key TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL CHECK(length(document_id) = 32),
+    page_number INTEGER CHECK(page_number IS NULL OR page_number >= 1),
+    file_kind TEXT NOT NULL CHECK(file_kind IN (
+        'source_pdf', 'source_document', 'page_render', 'source_asset'
+    )),
+    relative_path TEXT NOT NULL UNIQUE,
+    mime_type TEXT NOT NULL CHECK(length(mime_type) BETWEEN 3 AND 160),
+    byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+    sha256 TEXT NOT NULL CHECK(length(sha256) = 64),
+    data BLOB NOT NULL,
+    CHECK(
+        (file_kind = 'page_render' AND page_number IS NOT NULL)
+        OR
+        (file_kind IN ('source_pdf', 'source_document', 'source_asset') AND page_number IS NULL)
+    )
+) STRICT;
 "#;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PackageSummary {
     pub database_bytes: u64,
     pub asset_count: usize,
     pub asset_bytes: u64,
+    #[serde(default)]
+    pub document_file_count: usize,
+    #[serde(default)]
+    pub document_file_bytes: u64,
     pub package_bytes: u64,
 }
 
@@ -62,18 +88,28 @@ pub(crate) struct ExtractedAsset {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct ExtractedDocumentFile {
+    pub relative_path: String,
+    pub byte_size: u64,
+    pub sha256: String,
+    pub staged_path: PathBuf,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct ExtractedPackage {
     pub database_path: PathBuf,
     pub assets: Vec<ExtractedAsset>,
-    pub include_api_settings: bool,
+    pub document_files: Vec<ExtractedDocumentFile>,
+    pub selection: SyncSelection,
 }
 
 pub(crate) fn create_package(
     database: &Database,
     paths: &AppPaths,
     destination: &Path,
-    include_api_settings: bool,
+    selection: SyncSelection,
 ) -> Result<PackageSummary, CommandError> {
+    let selection = selection.validate()?;
     let parent = destination.parent().ok_or_else(|| {
         CommandError::new(
             "device_sync_package_path_invalid",
@@ -97,12 +133,12 @@ pub(crate) fn create_package(
                 .run_to_completion(128, Duration::from_millis(10), None)
                 .map_err(CommandError::database)
         })?;
-        sanitize_snapshot(&snapshot_path, include_api_settings)?;
+        sanitize_snapshot(&snapshot_path, selection)?;
         let database_bytes = fs::read(&snapshot_path).map_err(CommandError::io)?;
         if database_bytes.is_empty() || database_bytes.len() > MAX_DATABASE_BYTES {
             return Err(CommandError::new(
                 "device_sync_database_too_large",
-                "The local SQLite library is too large for device synchronization.",
+                "The selected SQLite synchronization snapshot is too large.",
             ));
         }
 
@@ -121,6 +157,8 @@ pub(crate) fn create_package(
             .map_err(CommandError::database)?;
         let transaction = package.transaction().map_err(CommandError::database)?;
         let created_at = unix_time_millis()?;
+        let selection_json =
+            serde_json::to_string(&selection).map_err(CommandError::serialization)?;
         for (key, value) in [
             ("format", PACKAGE_FORMAT.to_string()),
             ("formatVersion", PACKAGE_VERSION.to_string()),
@@ -129,13 +167,9 @@ pub(crate) fn create_package(
             ("applicationVersion", env!("CARGO_PKG_VERSION").to_string()),
             (
                 "includeApiSettings",
-                if include_api_settings {
-                    "true"
-                } else {
-                    "false"
-                }
-                .to_string(),
+                if selection.api_settings { "true" } else { "false" }.to_string(),
             ),
+            ("selectionJson", selection_json),
         ] {
             transaction
                 .execute(
@@ -154,7 +188,30 @@ pub(crate) fn create_package(
         let snapshot =
             Connection::open_with_flags(&snapshot_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(CommandError::database)?;
-        let (asset_count, asset_bytes) = export_assets(&snapshot, paths, &transaction)?;
+        let (asset_count, asset_bytes) = if selection.flashcards {
+            export_assets(&snapshot, paths, &transaction)?
+        } else {
+            (0, 0)
+        };
+        let document_file_count = if selection.documents {
+            usize::try_from(document_backup::export_document_files(
+                &snapshot,
+                paths,
+                &transaction,
+            )?)
+            .map_err(|_| invalid_package("The document file count is invalid."))?
+        } else {
+            0
+        };
+        let document_file_bytes: i64 = transaction
+            .query_row(
+                "SELECT COALESCE(SUM(byte_size), 0) FROM document_files",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        let document_file_bytes = u64::try_from(document_file_bytes)
+            .map_err(|_| invalid_package("The document file size is invalid."))?;
         transaction.commit().map_err(CommandError::database)?;
         let integrity: String = package
             .query_row("PRAGMA integrity_check", [], |row| row.get(0))
@@ -179,6 +236,8 @@ pub(crate) fn create_package(
             database_bytes: u64::try_from(database_bytes.len()).unwrap_or(u64::MAX),
             asset_count,
             asset_bytes,
+            document_file_count,
+            document_file_bytes,
             package_bytes,
         })
     })();
@@ -210,12 +269,17 @@ pub(crate) fn extract_package(
     let integrity: String = package
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(CommandError::database)?;
-    if integrity != "ok"
-        || metadata_value(&package, "format")? != PACKAGE_FORMAT
-        || metadata_value(&package, "formatVersion")? != PACKAGE_VERSION.to_string()
-    {
+    if integrity != "ok" || metadata_value(&package, "format")? != PACKAGE_FORMAT {
         return Err(invalid_package(
             "This is not a supported ostudy device synchronization package.",
+        ));
+    }
+    let format_version = metadata_value(&package, "formatVersion")?
+        .parse::<i64>()
+        .map_err(|_| invalid_package("The package format version is invalid."))?;
+    if format_version != PACKAGE_VERSION && format_version != LEGACY_PACKAGE_VERSION {
+        return Err(invalid_package(
+            "This ostudy synchronization package version is not supported.",
         ));
     }
     let schema_version = metadata_value(&package, "schemaVersion")?
@@ -235,6 +299,21 @@ pub(crate) fn extract_package(
             ))
         }
     };
+    let selection = if format_version == LEGACY_PACKAGE_VERSION {
+        SyncSelection::legacy(include_api_settings)
+    } else {
+        let selection: SyncSelection = serde_json::from_str(&metadata_value(&package, "selectionJson")?)
+            .map_err(|_| invalid_package("The synchronization package selection is invalid."))?;
+        let selection = selection
+            .validate()
+            .map_err(|_| invalid_package("The synchronization package selection is invalid."))?;
+        if selection.api_settings != include_api_settings {
+            return Err(invalid_package(
+                "The synchronization package contains inconsistent API-settings scope metadata.",
+            ));
+        }
+        selection
+    };
 
     let database_bytes: Vec<u8> = package
         .query_row(
@@ -250,8 +329,6 @@ pub(crate) fn extract_package(
     }
     let database_path = staging_root.join("library.sqlite3");
     write_new_file(&database_path, &database_bytes)?;
-    // Opening through the application database boundary applies any supported
-    // forward migrations before the merge engine inspects rows.
     let migrated = Database::open(&database_path).map_err(|message| {
         invalid_package(format!(
             "The synchronized SQLite snapshot is invalid: {message}"
@@ -259,6 +336,29 @@ pub(crate) fn extract_package(
     })?;
     drop(migrated);
 
+    let assets = extract_assets(&package, staging_root)?;
+    let document_files = if format_version >= PACKAGE_VERSION {
+        extract_document_files(&package, &database_path, staging_root)?
+    } else {
+        Vec::new()
+    };
+    if !selection.documents && !document_files.is_empty() {
+        return Err(invalid_package(
+            "The synchronization package contains document files outside its selected scope.",
+        ));
+    }
+    Ok(ExtractedPackage {
+        database_path,
+        assets,
+        document_files,
+        selection,
+    })
+}
+
+fn extract_assets(
+    package: &Connection,
+    staging_root: &Path,
+) -> Result<Vec<ExtractedAsset>, CommandError> {
     let assets_root = staging_root.join("assets");
     fs::create_dir_all(&assets_root).map_err(CommandError::io)?;
     let mut statement = package
@@ -320,11 +420,57 @@ pub(crate) fn extract_package(
             staged_path,
         });
     }
-    Ok(ExtractedPackage {
-        database_path,
-        assets,
-        include_api_settings,
-    })
+    Ok(assets)
+}
+
+fn extract_document_files(
+    package: &Connection,
+    database_path: &Path,
+    staging_root: &Path,
+) -> Result<Vec<ExtractedDocumentFile>, CommandError> {
+    let snapshot =
+        Connection::open_with_flags(database_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(CommandError::database)?;
+    let extraction_root = staging_root.join("document-files");
+    fs::create_dir_all(&extraction_root).map_err(CommandError::io)?;
+    document_backup::validate_document_files(package, &snapshot, Some(&extraction_root))?;
+
+    let mut statement = package
+        .prepare(
+            "SELECT relative_path, byte_size, sha256
+             FROM document_files ORDER BY file_key",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let mut files = Vec::with_capacity(rows.len());
+    let mut aggregate = 0_u64;
+    for (relative_path, byte_size, sha256) in rows {
+        let byte_size = u64::try_from(byte_size)
+            .map_err(|_| invalid_package("A document file size is invalid."))?;
+        aggregate = aggregate.saturating_add(byte_size);
+        if aggregate > MAX_PACKAGE_BYTES {
+            return Err(invalid_package(
+                "The synchronized document payload exceeds the supported size limit.",
+            ));
+        }
+        files.push(ExtractedDocumentFile {
+            staged_path: extraction_root.join(&relative_path),
+            relative_path,
+            byte_size,
+            sha256,
+        });
+    }
+    Ok(files)
 }
 
 pub(crate) fn install_assets(
@@ -332,71 +478,73 @@ pub(crate) fn install_assets(
     assets: &[ExtractedAsset],
 ) -> Result<(), CommandError> {
     for asset in assets {
-        let target = paths.resolve_relative(&asset.relative_path);
-        let parent = target
-            .parent()
-            .ok_or_else(|| invalid_package("An asset path is invalid."))?;
-        fs::create_dir_all(parent).map_err(CommandError::io)?;
-        if target.is_file() {
-            let existing = fs::read(&target).map_err(CommandError::io)?;
-            let existing_sha = format!("{:x}", Sha256::digest(&existing));
-            if existing_sha == asset.sha256 {
-                continue;
-            }
-            return Err(CommandError::new(
-                "device_sync_asset_identity_conflict",
-                "A local managed image has the same identity but different bytes.",
-            ));
-        }
-        let temporary = target.with_extension(format!("sync.{}.tmp", std::process::id()));
-        remove_file_if_exists(&temporary)?;
-        fs::copy(&asset.staged_path, &temporary).map_err(CommandError::io)?;
-        sync_file(&temporary)?;
-        replace_file(&temporary, &target)?;
+        install_staged_file(
+            paths,
+            &asset.relative_path,
+            &asset.staged_path,
+            &asset.sha256,
+            "device_sync_asset_identity_conflict",
+            "A local managed image has the same identity but different bytes.",
+        )?;
     }
     Ok(())
 }
 
-fn sanitize_snapshot(path: &Path, include_api_settings: bool) -> Result<(), CommandError> {
-    let connection = Connection::open(path).map_err(CommandError::database)?;
-    // Device-local application settings (theme, typography, UI scale, motion,
-    // layout, and other platform preferences) must never be part of a sync
-    // payload. AI provider configuration is a separate opt-in scope and secret
-    // bytes remain outside SQLite even when that scope is enabled.
-    connection
-        .execute_batch(
-            "PRAGMA foreign_keys = OFF;
-             DELETE FROM app_settings;
-             DELETE FROM ai_provider_probe_results;
-             DELETE FROM ai_provider_capabilities;
-             DELETE FROM ai_profile_operations;",
-        )
-        .map_err(CommandError::database)?;
-    if include_api_settings {
-        connection
-            .execute_batch(
-                "UPDATE ai_provider_profiles
-                 SET credential_storage = 'none', credential_epoch = 0;",
-            )
-            .map_err(CommandError::database)?;
-    } else {
-        connection
-            .execute_batch(
-                "DELETE FROM ai_task_defaults;
-                 DELETE FROM ai_provider_profiles;",
-            )
-            .map_err(CommandError::database)?;
+pub(crate) fn install_document_files(
+    paths: &AppPaths,
+    files: &[ExtractedDocumentFile],
+) -> Result<(), CommandError> {
+    for file in files {
+        install_staged_file(
+            paths,
+            &file.relative_path,
+            &file.staged_path,
+            &file.sha256,
+            "device_sync_document_identity_conflict",
+            "A local managed document file has the same path but different bytes.",
+        )?;
     }
-    connection
-        .execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(CommandError::database)?;
+    Ok(())
+}
+
+fn install_staged_file(
+    paths: &AppPaths,
+    relative_path: &str,
+    staged_path: &Path,
+    expected_sha256: &str,
+    conflict_code: &'static str,
+    conflict_message: &'static str,
+) -> Result<(), CommandError> {
+    let target = paths.resolve_relative(relative_path);
+    let parent = target
+        .parent()
+        .ok_or_else(|| invalid_package("A managed sync path is invalid."))?;
+    fs::create_dir_all(parent).map_err(CommandError::io)?;
+    if target.is_file() {
+        let existing = fs::read(&target).map_err(CommandError::io)?;
+        let existing_sha = format!("{:x}", Sha256::digest(&existing));
+        if existing_sha == expected_sha256 {
+            return Ok(());
+        }
+        return Err(CommandError::new(conflict_code, conflict_message));
+    }
+    let temporary = target.with_extension(format!("sync.{}.tmp", std::process::id()));
+    remove_file_if_exists(&temporary)?;
+    fs::copy(staged_path, &temporary).map_err(CommandError::io)?;
+    sync_file(&temporary)?;
+    replace_file(&temporary, &target)
+}
+
+fn sanitize_snapshot(path: &Path, selection: SyncSelection) -> Result<(), CommandError> {
+    let connection = Connection::open(path).map_err(CommandError::database)?;
+    scope::sanitize_snapshot(&connection, selection)?;
     let integrity: String = connection
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(CommandError::database)?;
     if integrity != "ok" {
         return Err(CommandError::new(
             "device_sync_snapshot_invalid",
-            "The local synchronization snapshot failed its integrity check.",
+            "The selected synchronization snapshot failed its integrity check.",
         ));
     }
     Ok(())
@@ -590,40 +738,46 @@ mod tests {
             .expect("fixture rows should save");
 
         let without_api = root.join("without-api.syncpkg");
-        create_package(&database, &paths, &without_api, false)
+        let selection = SyncSelection {
+            api_settings: false,
+            api_credentials: false,
+            ..SyncSelection::default()
+        };
+        create_package(&database, &paths, &without_api, selection)
             .expect("package without API settings should build");
         let extracted_without = extract_package(&without_api, &root.join("without-api"))
             .expect("package without API settings should extract");
-        assert!(!extracted_without.include_api_settings);
+        assert!(!extracted_without.selection.api_settings);
         let connection = Connection::open(&extracted_without.database_path)
             .expect("extracted database should open");
         let app_setting_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
             .unwrap();
         let ai_default_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
             .unwrap();
         assert_eq!(app_setting_count, 0);
         assert_eq!(ai_default_count, 0);
         drop(connection);
 
         let with_api = root.join("with-api.syncpkg");
-        create_package(&database, &paths, &with_api, true)
+        let selection = SyncSelection {
+            api_settings: true,
+            api_credentials: false,
+            ..SyncSelection::default()
+        };
+        create_package(&database, &paths, &with_api, selection)
             .expect("package with API settings should build");
         let extracted_with = extract_package(&with_api, &root.join("with-api"))
             .expect("package with API settings should extract");
-        assert!(extracted_with.include_api_settings);
+        assert!(extracted_with.selection.api_settings);
         let connection = Connection::open(&extracted_with.database_path)
             .expect("extracted database should open");
         let app_setting_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM app_settings", [], |row| row.get(0))
             .unwrap();
         let ai_default_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT COUNT(*) FROM ai_task_defaults", [], |row| row.get(0))
             .unwrap();
         assert_eq!(app_setting_count, 0);
         assert_eq!(ai_default_count, 1);

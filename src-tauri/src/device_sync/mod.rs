@@ -1,14 +1,15 @@
-//! Explicit trusted-device synchronization over the local network.
+//! Explicit trusted-device synchronization over local or USB-backed networking.
 //!
 //! A pairing invitation is a short-lived one-way offer created by the device
-//! that will SEND its study library. The receiving device scans or pastes that
-//! offer, authenticates the sender, and merges the offered data locally. A
+//! that will SEND selected learner data. The receiving device scans or pastes
+//! that offer, authenticates the sender, and merges the offered data locally. A
 //! reverse transfer is a separate explicit offer; accepting one invitation
 //! never uploads the recipient's library back to the sender.
 //!
 //! General application/appearance settings are device-local and never belong in
-//! a synchronization package. AI provider configuration and secure credentials
-//! are an independent sender-controlled opt-in scope.
+//! a synchronization package. Flashcards, Documents, Study Guides, API provider
+//! settings, and saved API credentials are independent sender-controlled scopes
+//! with explicit dependency rules in `scope`.
 
 mod cancellation;
 mod credentials;
@@ -16,6 +17,7 @@ mod crypto;
 mod merge;
 mod network;
 mod package;
+mod scope;
 mod store;
 mod transport;
 
@@ -44,6 +46,7 @@ use self::{
     credentials::CredentialRecord,
     crypto::{EphemeralKey, IdentityKey, SessionRole},
     package::PackageSummary,
+    scope::SyncSelection,
     store::{ConflictRecord, DeviceIdentityRecord, PeerRecord, SessionRecord, SyncStore},
     transport::{read_plain_json, write_plain_json, SecureChannel, FRAME_COMPLETE, FRAME_METADATA},
 };
@@ -60,7 +63,9 @@ const MAX_INVITATION_CHARS: usize = 8 * 1024;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartDevicePairingInput {
     pub host_override: Option<String>,
-    pub include_api_settings: bool,
+    /// Legacy bundled UI compatibility. New callers send `selection`.
+    pub include_api_settings: Option<bool>,
+    pub selection: Option<SyncSelection>,
     pub expires_in_seconds: Option<i64>,
 }
 
@@ -120,6 +125,7 @@ pub struct PairingInvitationDto {
     pub expires_at: i64,
     pub include_api_settings: bool,
     pub credentials_available: bool,
+    pub selection: SyncSelection,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -296,6 +302,20 @@ pub fn start_device_pairing(
 ) -> Result<PairingInvitationDto, CommandError> {
     let store = SyncStore::open(paths.inner())?;
     let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
+    let selection = match input.selection {
+        Some(selection) => selection,
+        None => {
+            let include_api = input.include_api_settings.unwrap_or(false);
+            SyncSelection {
+                flashcards: true,
+                documents: false,
+                study_guides: false,
+                api_settings: include_api,
+                api_credentials: include_api,
+            }
+        }
+    }
+    .validate()?;
     for superseded in cancellation::cancel_superseded_unclaimed_hosts(paths.inner())? {
         crate::logging::info(
             "device_sync_offer_superseded",
@@ -314,7 +334,7 @@ pub fn start_device_pairing(
     let pairing_secret = crypto::random_pairing_secret()?;
     let ephemeral = EphemeralKey::generate()?;
     let session_id = random_id(&pairing_secret[..16]);
-    let credentials_available = input.include_api_settings
+    let credentials_available = selection.api_credentials
         && matches!(
             runtime.capabilities().services.secure_secrets.state,
             CapabilityState::Available
@@ -330,7 +350,7 @@ pub fn start_device_pairing(
         endpoint: endpoint.clone(),
         pairing_secret: BASE64_STANDARD.encode(pairing_secret),
         expires_at,
-        include_api_settings: input.include_api_settings,
+        include_api_settings: selection.api_settings,
         credentials_available,
     };
     let invitation_json =
@@ -351,8 +371,12 @@ pub fn start_device_pairing(
     crate::logging::info(
         "device_sync_offer_created",
         format!(
-            "session={session_id} endpoint={endpoint} api_scope={}",
-            input.include_api_settings
+            "session={session_id} endpoint={endpoint} flashcards={} documents={} study_guides={} api_settings={} api_credentials={}",
+            selection.flashcards,
+            selection.documents,
+            selection.study_guides,
+            selection.api_settings,
+            selection.api_credentials,
         ),
     );
     let host_app = app.clone();
@@ -369,6 +393,7 @@ pub fn start_device_pairing(
                     invitation_payload,
                     pairing_secret,
                     ephemeral,
+                    selection,
                     worker_signal.clone(),
                 ),
             );
@@ -436,8 +461,9 @@ pub fn start_device_pairing(
         endpoint,
         fingerprint: identity_key.fingerprint(),
         expires_at,
-        include_api_settings: input.include_api_settings,
+        include_api_settings: selection.api_settings,
         credentials_available,
+        selection,
     })
 }
 
@@ -539,11 +565,7 @@ pub fn scan_device_pairing_qr(app: AppHandle) -> Result<Option<String>, CommandE
                     format!("The native QR scanner failed: {error}"),
                 )
             })?;
-        Ok(if result.cancelled {
-            None
-        } else {
-            result.contents
-        })
+        Ok(if result.cancelled { None } else { result.contents })
     }
     #[cfg(not(mobile))]
     {
@@ -604,6 +626,7 @@ fn run_host_listener(
     invitation: PairingInvitation,
     pairing_secret: [u8; 32],
     ephemeral: EphemeralKey,
+    selection: SyncSelection,
     cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
     let deadline = Instant::now()
@@ -640,6 +663,7 @@ fn run_host_listener(
                     invitation,
                     pairing_secret,
                     ephemeral,
+                    selection,
                     cancel_signal.clone(),
                 );
                 return cancellation::normalize_result(&cancel_signal, result);
@@ -664,6 +688,7 @@ fn handle_host_connection(
     invitation: PairingInvitation,
     pairing_secret: [u8; 32],
     ephemeral: EphemeralKey,
+    selection: SyncSelection,
     cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
     cancel_signal.check()?;
@@ -685,7 +710,8 @@ fn handle_host_connection(
         SessionRole::Host,
     )?;
     let mut channel = SecureChannel::new(stream, keys)?;
-    let credentials_included = invitation.include_api_settings
+    let credentials_included = selection.api_credentials
+        && invitation.include_api_settings
         && invitation.credentials_available
         && hello.secure_credentials_available;
     let identity_fingerprint = identity_key.fingerprint();
@@ -740,12 +766,8 @@ fn handle_host_connection(
     cancel_signal.check()?;
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "send")?;
     let outgoing_package = workspace.path.join("outgoing.syncpkg");
-    let outgoing_summary = package::create_package(
-        database.inner(),
-        paths.inner(),
-        &outgoing_package,
-        invitation.include_api_settings,
-    )?;
+    let outgoing_summary =
+        package::create_package(database.inner(), paths.inner(), &outgoing_package, selection)?;
     cancel_signal.check()?;
     let outgoing_credentials = if credentials_included {
         credentials::collect_credentials(database.inner(), runtime.secure_secret_store())?
@@ -786,7 +808,7 @@ fn handle_host_connection(
         )?;
         let snapshot =
             Connection::open(&extracted.database_path).map_err(CommandError::database)?;
-        merge::remember_sent_database(&snapshot, &store, &peer.id)
+        merge::remember_sent_database(&snapshot, &store, &peer.id, extracted.selection)
     })();
     if let Err(error) = baseline_result {
         crate::logging::error(
@@ -947,14 +969,15 @@ fn run_join_session(
 
         let extracted =
             package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
-        if extracted.include_api_settings != invitation.include_api_settings {
+        if extracted.selection.api_settings != invitation.include_api_settings {
             return Err(CommandError::new(
                 "device_sync_protocol_error",
-                "The synchronization package scope did not match the accepted invitation.",
+                "The synchronization package API-settings scope did not match the accepted invitation.",
             ));
         }
         log_staged_assets("receive", &extracted.assets);
         package::install_assets(paths.inner(), &extracted.assets)?;
+        package::install_document_files(paths.inner(), &extracted.document_files)?;
         cancel_signal.check()?;
 
         let remote_database =
@@ -962,11 +985,11 @@ fn run_join_session(
         remote_database
             .execute_batch("PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS app_settings;")
             .map_err(CommandError::database)?;
-        if !invitation.include_api_settings {
+        if !extracted.selection.api_settings {
             remote_database
                 .execute_batch(
                     "DROP TABLE IF EXISTS ai_task_defaults;
-                 DROP TABLE IF EXISTS ai_provider_profiles;",
+                     DROP TABLE IF EXISTS ai_provider_profiles;",
                 )
                 .map_err(CommandError::database)?;
         }
@@ -977,7 +1000,15 @@ fn run_join_session(
         cancel_signal.check()?;
         crate::logging::info(
             "device_sync_merge_started",
-            format!("session={} sender={}", invitation.session_id, sender.id),
+            format!(
+                "session={} sender={} flashcards={} documents={} study_guides={} api_settings={}",
+                invitation.session_id,
+                sender.id,
+                extracted.selection.flashcards,
+                extracted.selection.documents,
+                extracted.selection.study_guides,
+                extracted.selection.api_settings,
+            ),
         );
         let merge = database.with_connection(|local| {
             merge::merge_remote_database(
@@ -986,6 +1017,7 @@ fn run_join_session(
                 &store,
                 &identity.device_id,
                 &sender.id,
+                extracted.selection,
             )
         })?;
         crate::logging::info(
@@ -1005,22 +1037,22 @@ fn run_join_session(
                 Ok(count) => (count, None),
                 Err(error) => {
                     crate::logging::warn_target(
-                    "device_sync.credentials",
-                    "device_sync_credentials_not_applied",
-                    "Study-library synchronization completed, but optional saved API credentials could not be stored on the receiving device.",
-                    serde_json::json!({
-                        "session": invitation.session_id.as_str(),
-                        "sender": sender.id.as_str(),
-                        "code": error.code.as_str(),
-                    }),
-                );
+                        "device_sync.credentials",
+                        "device_sync_credentials_not_applied",
+                        "Study synchronization completed, but optional saved API credentials could not be stored on the receiving device.",
+                        serde_json::json!({
+                            "session": invitation.session_id.as_str(),
+                            "sender": sender.id.as_str(),
+                            "code": error.code.as_str(),
+                        }),
+                    );
                     (
-                    0,
-                    Some(
-                        "Study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed."
-                            .to_string(),
-                    ),
-                )
+                        0,
+                        Some(
+                            "Selected study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed."
+                                .to_string(),
+                        ),
+                    )
                 }
             }
         } else {
@@ -1059,9 +1091,6 @@ fn run_join_session(
                 "code": error.code.as_str(),
             }),
         );
-        // Once authentication has established the encrypted channel, send the
-        // peer the safe typed failure before closing. A broken socket may make
-        // this best-effort notification fail; the original local error wins.
         let _ = channel.send_error(error);
     }
     transfer_result
@@ -1345,7 +1374,7 @@ fn resolve_host_ip(override_value: Option<&str>) -> Result<IpAddr, CommandError>
     } else {
         Err(CommandError::new(
             "device_sync_host_unavailable",
-            "ostudy could not determine a private LAN address. Enter this device's LAN IP in the advanced host field.",
+            "ostudy could not determine a private LAN address. Enter this device's LAN or USB-network IP in the advanced host field.",
         ))
     }
 }
