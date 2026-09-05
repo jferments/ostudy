@@ -1,13 +1,17 @@
 use std::{
     io,
-    net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream},
     ops::RangeInclusive,
+    sync::Arc,
     time::Duration,
 };
 
 use crate::error::CommandError;
 
-use super::transport::SyncIo;
+use super::{
+    cancellation::{SyncAbort, SyncAbortSource},
+    transport::SyncIo,
+};
 
 pub(crate) const LISTENER_PORT_START: u16 = 49_251;
 pub(crate) const LISTENER_PORT_END: u16 = 49_258;
@@ -17,10 +21,31 @@ fn listener_ports() -> RangeInclusive<u16> {
     LISTENER_PORT_START..=LISTENER_PORT_END
 }
 
+#[derive(Debug)]
+struct TcpStreamAbort {
+    stream: TcpStream,
+}
+
+impl SyncAbort for TcpStreamAbort {
+    fn abort(&self) {
+        let _ = self.stream.shutdown(Shutdown::Both);
+    }
+}
+
+impl SyncAbortSource for TcpStream {
+    fn sync_abort_handle(&self) -> Result<Arc<dyn SyncAbort>, CommandError> {
+        Ok(Arc::new(TcpStreamAbort {
+            stream: self.try_clone().map_err(CommandError::io)?,
+        }))
+    }
+}
+
 impl SyncIo for TcpStream {
     fn prepare_for_sync(&self, timeout: Duration) -> Result<(), CommandError> {
-        self.set_read_timeout(Some(timeout)).map_err(CommandError::io)?;
-        self.set_write_timeout(Some(timeout)).map_err(CommandError::io)?;
+        self.set_read_timeout(Some(timeout))
+            .map_err(CommandError::io)?;
+        self.set_write_timeout(Some(timeout))
+            .map_err(CommandError::io)?;
         self.set_nodelay(true).map_err(CommandError::io)
     }
 }
