@@ -20,6 +20,9 @@ const [
   syncPackage,
   syncScope,
   syncMerge,
+  aiProfileRepository,
+  aiDefaults,
+  aiProbeRepository,
   logging,
   referenceTokens,
 ] = await Promise.all([
@@ -37,6 +40,9 @@ const [
   read("src-tauri/src/device_sync/package.rs"),
   read("src-tauri/src/device_sync/scope.rs"),
   read("src-tauri/src/device_sync/merge.rs"),
+  read("src-tauri/src/ai/profiles/repository.rs"),
+  read("src-tauri/src/ai/profiles/defaults.rs"),
+  read("src-tauri/src/ai/probes/repository.rs"),
   read("src-tauri/src/logging.rs"),
   read("src/ui/tokens/source/reference.tokens.json"),
 ]);
@@ -129,8 +135,13 @@ expectContains(syncNetwork, "LISTENER_PORT_END: u16 = 49_258", "stable LAN port 
 expectContains(syncNetwork, "TCP path is blocked or unreachable", "network-specific connection failure guidance");
 expectContains(syncNetwork, "ports {LISTENER_PORT_START}-{LISTENER_PORT_END}", "firewall port guidance");
 expectContains(syncScope, "DELETE FROM app_settings;", "app settings removed before package transmission");
-expectContains(syncScope, "DELETE FROM ai_task_defaults;", "API settings excluded when sender leaves scope off");
-expectContains(syncScope, "DELETE FROM ai_provider_profiles;", "API profiles excluded when sender leaves scope off");
+expectContains(syncScope, "crate::ai::profiles::sanitize_for_device_transfer", "AI profile transfer policy delegated to AI ownership");
+expectContains(syncScope, "crate::ai::probes::sanitize_for_device_transfer", "AI probe transfer policy delegated to AI ownership");
+expectContains(aiDefaults, "DELETE FROM ai_task_defaults", "API task defaults removed by their owning module when scope is off");
+expectContains(aiProfileRepository, "DELETE FROM ai_provider_profiles", "API profiles removed by their owning module when scope is off");
+expectContains(aiProfileRepository, "DELETE FROM ai_profile_operations", "profile operation cache excluded from transfer");
+expectContains(aiProbeRepository, "DELETE FROM ai_provider_probe_results", "probe evidence excluded from transfer");
+expectContains(aiProbeRepository, "DELETE FROM ai_provider_capabilities", "capability evidence excluded from transfer");
 expectContains(syncScope, '"documents"', "Documents synchronization scope");
 expectContains(syncScope, '"document_study_guides"', "Study Guide synchronization scope");
 expectContains(syncScope, "api_credentials", "separate saved-credential scope");
@@ -158,7 +169,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share authenticated pairing while secure framing and cancellation stay transport-neutral; sender checkboxes select Flashcards, Documents/LLM processing, Study Guides, API settings, and credential scopes; document files reuse the validated backup ledger; local app settings stay off the wire/merge allowlist; diagnostics persist through a bounded asynchronous writer.",
+  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share authenticated pairing while secure framing and cancellation stay transport-neutral; sender checkboxes select Flashcards, Documents/LLM processing, Study Guides, API settings, and credential scopes; AI transfer sanitization stays inside AI-owned repositories; document files reuse the validated backup ledger; local app settings stay off the wire/merge allowlist; diagnostics persist through a bounded asynchronous writer.",
 );
 
 async function read(relativePath) {
