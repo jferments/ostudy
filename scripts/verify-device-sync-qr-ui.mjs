@@ -16,6 +16,7 @@ const [
   syncCore,
   syncCancellation,
   syncNetwork,
+  syncTransport,
   syncPackage,
   syncMerge,
   logging,
@@ -31,6 +32,7 @@ const [
   read("src-tauri/src/device_sync/mod.rs"),
   read("src-tauri/src/device_sync/cancellation.rs"),
   read("src-tauri/src/device_sync/network.rs"),
+  read("src-tauri/src/device_sync/transport.rs"),
   read("src-tauri/src/device_sync/package.rs"),
   read("src-tauri/src/device_sync/merge.rs"),
   read("src-tauri/src/logging.rs"),
@@ -75,8 +77,12 @@ expectContains(settingsUi, "connection did not complete", "failed automatic scan
 expectContains(settingsUi, "Replace waiting offer", "single unclaimed outgoing offer behavior");
 expectContains(settingsUi, 'aria-label={`Cancel ${session.direction', "active-session cancellation affordance");
 expectContains(settingsUi, "Include API provider settings and saved credentials", "sender API scope control");
-expectContains(settingsUi, "app settings always stay local", "device-local app-settings explanation");
+expectContainsNormalized(settingsUi, "app settings always stay local", "device-local app-settings explanation");
 expectContains(settingsUi, "entire white border visible", "host-side QR framing guidance");
+expectContains(settingsUi, '<option value="usb-network">USB cable</option>', "explicit USB transport choice");
+expectContains(settingsUi, "USB interface address", "USB endpoint fallback field");
+expectContains(settingsUi, "startDevicePairing({", "shared pairing command for LAN and USB offers");
+expectContains(settingsUi, "same authenticated synchronization protocol", "USB protocol-reuse explanation");
 expectContains(settingsCss, "width: min(100%, 340px);", "large desktop pairing QR presentation");
 expectContains(
   settingsCss,
@@ -95,12 +101,15 @@ expectContains(syncCore, "network::connect_to_sender", "actionable LAN connectio
 expectContains(syncCore, "cancel_superseded_unclaimed_hosts", "replacement of stale unclaimed sender offers");
 expectContains(syncCore, "cancellation::claim_peer", "same-peer active-session claim enforcement");
 expectContains(syncCore, "sent_package_bytes: 0", "receiver does not upload a package during offer acceptance");
+expectContains(syncTransport, "pub(crate) trait SyncIo", "transport-neutral synchronization byte-stream boundary");
+expectNotContains(syncTransport, "TcpStream", "TCP ownership removed from secure framing");
 expectContains(syncCancellation, "device_sync_peer_busy", "same-peer overlap rejection");
 expectContains(syncCancellation, "trait SyncAbort", "transport-neutral cancellation capability");
 expectContains(syncCancellation, "abort.abort()", "active transport interruption dispatch on cancellation");
 expectNotContains(syncCancellation, "TcpStream", "TCP ownership removed from cancellation registry");
 expectContains(syncCancellation, "device_sync_process_interrupted", "restart reconciliation for stale sessions");
 expectContains(syncCancellation, "CANCELLABLE_STATES_SQL", "non-cancelable atomic merge boundary");
+expectContains(syncNetwork, "impl SyncIo for TcpStream", "TCP implementation of the generic sync stream");
 expectContains(syncNetwork, "Shutdown::Both", "LAN adapter interrupts active TCP streams");
 expectContains(syncNetwork, "LISTENER_PORT_START: u16 = 49_251", "stable LAN port range start");
 expectContains(syncNetwork, "LISTENER_PORT_END: u16 = 49_258", "stable LAN port range end");
@@ -128,7 +137,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; one scan accepts a sender-scoped offer, failed connects are retryable, LAN listeners use the stable 49251-49258 range, active sessions use transport-neutral cancellation with TCP interruption owned by the LAN adapter, same-peer overlap is rejected, local app settings stay off the wire/merge allowlist, diagnostics persist through a bounded asynchronous writer, and API settings are sender opt-in.",
+  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share protocol-v2 pairing while secure framing and cancellation stay transport-neutral; LAN listeners use the stable 49251-49258 range, same-peer overlap is rejected, local app settings stay off the wire/merge allowlist, diagnostics persist through a bounded asynchronous writer, and API settings are sender opt-in.",
 );
 
 async function read(relativePath) {
@@ -137,6 +146,11 @@ async function read(relativePath) {
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectContainsNormalized(source, expected, label) {
+  const normalized = source.replace(/\s+/gu, " ");
+  if (!normalized.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
 }
 
 function expectNotContains(source, forbidden, label) {
