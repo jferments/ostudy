@@ -24,12 +24,12 @@ import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership
 
 const ownedStyleMaps = sharedClassMaps;
 
-
 interface DeviceSyncSettingsProps {
   showToast: ShowToast;
 }
 
 type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" | "cancelled";
+type SyncTransportChoice = "local-network" | "usb-network";
 
 const ACTIVE_SESSION_STATES = new Set(["waiting", "connecting", "transferring", "merging"]);
 
@@ -37,6 +37,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
   const [deviceName, setDeviceName] = useState("");
   const [hostOverride, setHostOverride] = useState("");
+  const [transportChoice, setTransportChoice] = useState<SyncTransportChoice>("local-network");
   const [joinInvitation, setJoinInvitation] = useState("");
   const [includeApiSettings, setIncludeApiSettings] = useState(false);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
@@ -97,11 +98,18 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
 
   async function hostPairing(): Promise<void> {
     if (busyAction) return;
+    const selectedHost = hostOverride.trim();
+    if (transportChoice === "usb-network" && !selectedHost) {
+      setErrorMessage(
+        "USB synchronization needs this device's private USB-network IP address. Connect the cable, enable USB tethering or Personal Hotspot over USB, then enter that interface address below.",
+      );
+      return;
+    }
     setBusyAction("host");
     setErrorMessage(null);
     try {
       const created = await startDevicePairing({
-        hostOverride: hostOverride.trim() || null,
+        hostOverride: selectedHost || null,
         includeApiSettings,
       });
       setInvitation(created);
@@ -110,7 +118,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
         "info",
         hasUnclaimedSendingOffer
           ? "The previous waiting offer was canceled and replaced with a new five-minute offer."
-          : "Sync offer is ready on this device for five minutes.",
+          : transportChoice === "usb-network"
+            ? "USB sync offer is ready on this device for five minutes."
+            : "Sync offer is ready on this device for five minutes.",
       );
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -273,8 +283,8 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
           <h2>Device synchronization</h2>
           <p>
             Send or receive decks, cards, templates, schedules, review history, and managed images
-            over your private local network. Appearance and other app settings always stay local to
-            each device.
+            over your private local network or a direct USB network bridge. Appearance and other app
+            settings always stay local to each device.
           </p>
         </div>
         <button
@@ -326,6 +336,33 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 The receiving device only needs to scan or accept this one invitation. Creating a
                 new waiting offer replaces the previous unclaimed offer.
               </p>
+              <label className={settingsStyles.stackedField}>
+                Connection
+                <select
+                  value={transportChoice}
+                  disabled={busyAction !== null}
+                  onChange={(event) => {
+                    setTransportChoice(event.currentTarget.value as SyncTransportChoice);
+                    setInvitation(null);
+                    setErrorMessage(null);
+                  }}
+                >
+                  <option value="local-network">Local network (Wi-Fi or Ethernet)</option>
+                  <option value="usb-network">USB cable</option>
+                </select>
+                <span className={settingsStyles.fieldHelp}>
+                  {transportChoice === "usb-network"
+                    ? "USB uses the operating system's point-to-point USB networking, while ostudy reuses the same authenticated synchronization protocol."
+                    : "Local-network sync advertises the private LAN address detected by ostudy."}
+                </span>
+              </label>
+              {transportChoice === "usb-network" ? (
+                <p className={settingsStyles.securityNote}>
+                  Connect the devices with a data-capable cable and enable USB tethering or Personal
+                  Hotspot over USB. Enter this sending device's private USB-interface address below.
+                  The cable carries the same encrypted, authenticated sync session used on Wi-Fi.
+                </p>
+              ) : null}
               <label className={ownedClassNames(ownedStyleMaps, `${settingsStyles.switchRow} ${styles.credentialToggle}`)}>
                 <span>
                   <strong>Include API provider settings and saved credentials</strong>
@@ -349,29 +386,43 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 </p>
               ) : null}
               <label className={settingsStyles.stackedField}>
-                Advanced LAN address override
+                {transportChoice === "usb-network"
+                  ? "USB interface address"
+                  : "Advanced LAN address override"}
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="Usually detected automatically"
+                  placeholder={
+                    transportChoice === "usb-network"
+                      ? "Private address on the USB link"
+                      : "Usually detected automatically"
+                  }
                   value={hostOverride}
                   onChange={(event) => setHostOverride(event.currentTarget.value)}
                 />
                 <span className={settingsStyles.fieldHelp}>
-                  Enter a private IP only when automatic LAN-address detection fails.
+                  {transportChoice === "usb-network"
+                    ? "Use the private IPv4 or IPv6 address assigned to this device's USB-network interface. Automatic USB-interface discovery is intentionally kept outside the sync protocol so platform-specific adapters can evolve independently."
+                    : "Enter a private IP only when automatic LAN-address detection fails."}
                 </span>
               </label>
               <button
                 type="button"
                 className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                disabled={busyAction !== null || !state.localNetworkAvailable}
+                disabled={
+                  busyAction !== null ||
+                  !state.localNetworkAvailable ||
+                  (transportChoice === "usb-network" && !hostOverride.trim())
+                }
                 onClick={() => void hostPairing()}
               >
                 {busyAction === "host"
                   ? "Opening listener…"
                   : hasUnclaimedSendingOffer
                     ? "Replace waiting offer"
-                    : "Create sync offer"}
+                    : transportChoice === "usb-network"
+                      ? "Create USB sync offer"
+                      : "Create sync offer"}
               </button>
 
               {invitation && qrSource ? (
@@ -381,7 +432,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   </div>
                   <div className={styles.invitationDetails}>
                     <strong>Expires {formatDateTime(invitation.expiresAt)}</strong>
-                    <span>{invitation.endpoint}</span>
+                    <span>
+                      {transportChoice === "usb-network" ? "USB" : "Local network"} · {invitation.endpoint}
+                    </span>
                     <code>{formatFingerprint(invitation.fingerprint)}</code>
                     <p className={styles.scanHint}>
                       Sends study-library data from this device. {invitation.includeApiSettings
@@ -405,8 +458,10 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <article className={styles.pairingPanel}>
               <h3>Receive from another device</h3>
               <p>
-                Scan a synchronization offer on Android or paste invitation text. The sending device
-                controls the offered data; accepting an offer never uploads this device's library back.
+                Scan a synchronization offer on Android or paste invitation text. The invitation's
+                endpoint determines whether the connection follows a LAN or USB-network path; the
+                authenticated receive and merge flow is otherwise identical. Accepting an offer
+                never uploads this device's library back.
               </p>
               {state.qrScanAvailable ? (
                 <>

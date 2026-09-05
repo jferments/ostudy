@@ -128,9 +128,34 @@ describe("DeviceSyncSettings", () => {
       });
     });
     expect(await screen.findByAltText(/QR code containing the short-lived ostudy synchronization offer/u)).toBeTruthy();
-    expect(screen.getByText("192.168.1.10:44000")).toBeTruthy();
+    expect(screen.getByText(/192\.168\.1\.10:44000/u)).toBeTruthy();
     expect(screen.getByText(/API provider settings and credentials are not included/iu)).toBeTruthy();
     expect(screen.getByText(/scanning this code accepts the offer/iu)).toBeTruthy();
+  });
+
+  it("uses the same authenticated pairing command for USB-network synchronization", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+
+    fireEvent.change(screen.getByLabelText(/Connection/iu), {
+      target: { value: "usb-network" },
+    });
+    const usbButton = screen.getByRole("button", { name: "Create USB sync offer" });
+    expect((usbButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText(/USB interface address/iu), {
+      target: { value: "192.168.42.17" },
+    });
+    expect((usbButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(usbButton);
+
+    await waitFor(() => {
+      expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+        hostOverride: "192.168.42.17",
+        includeApiSettings: false,
+      });
+    });
+    expect(screen.getByText(/USB · 192\.168\.1\.10:44000/u)).toBeTruthy();
   });
 
   it("lets the sender explicitly add API settings to the offer", async () => {

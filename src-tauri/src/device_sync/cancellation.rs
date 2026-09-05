@@ -61,10 +61,7 @@ impl SyncCancellationSignal {
         }
     }
 
-    pub(crate) fn attach_stream<S: SyncAbortSource>(
-        &self,
-        stream: &S,
-    ) -> Result<(), CommandError> {
+    pub(crate) fn attach_stream<S: SyncAbortSource>(&self, stream: &S) -> Result<(), CommandError> {
         let abort = stream.sync_abort_handle()?;
         let mut active = self.inner.abort.lock().map_err(|_| registry_error())?;
         if self.is_canceled() {
@@ -533,7 +530,9 @@ mod tests {
             tripped: Arc::clone(&tripped),
         };
         let signal = SyncCancellationSignal::new();
-        signal.attach_stream(&source).expect("abort handle should attach");
+        signal
+            .attach_stream(&source)
+            .expect("abort handle should attach");
         signal.cancel();
         assert!(signal.is_canceled());
         assert!(tripped.load(Ordering::SeqCst));
