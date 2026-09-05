@@ -39,7 +39,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Agent workflow policy: every workflow is source-read-only, product source is published directly with an expected parent, and task-specific applicators are absent.",
+  "OK   Agent workflow policy: Actions do not author product source or mutate pull-request metadata, product source is published directly with an expected parent, and task-specific applicators are absent.",
 );
 
 function parseRoot(argumentsList) {
@@ -68,6 +68,11 @@ function validateWorkflow(name, rawText, output) {
   }
   if (hasContentsWritePermissions(text)) {
     output.push(`${name}: workflows may not request contents write permission; Actions are not source writers.`);
+  }
+  if (hasPullRequestWritePermissions(text)) {
+    output.push(
+      `${name}: workflows may not request pull-requests write permission; pull-request metadata is maintained explicitly by the interactive publisher, not an automatic projector.`,
+    );
   }
   if (pullRequestTriggered && hasAnyWritePermissions(text)) {
     output.push(`${name}: automatic pull-request workflows may not request write permissions.`);
@@ -181,6 +186,16 @@ function hasContentsWritePermissions(text) {
     ({ name, value }) =>
       value === "write-all" ||
       (name === "contents" && value === "write") ||
+      (name === "permissions" && value === "write-all"),
+  );
+}
+
+function hasPullRequestWritePermissions(text) {
+  const permissions = permissionEntries(text);
+  return permissions.some(
+    ({ name, value }) =>
+      value === "write-all" ||
+      (name === "pull-requests" && value === "write") ||
       (name === "permissions" && value === "write-all"),
   );
 }

@@ -1,179 +1,136 @@
 # Development guide
 
-This guide explains how to work in the ostudy repository without having to reconstruct the project from completed stage plans. It covers the active source layout, ordinary local commands, and the boundaries a change is expected to preserve. Pull-request publication is described in [Workflow](workflow.md); validation mechanics are described in [Testing and CI](testing-and-ci.md).
+This guide maps the current ostudy repository and ordinary development loop. [Architecture](../architecture/overview.md) owns the system design, [Git workflow](workflow.md) owns publication/review, [Testing and CI](testing-and-ci.md) owns qualification, and [local testing/handoff](local-testing-and-handoff.md) owns safe review-checkout and install instructions.
 
-## Development status
+## Current implementation and platform status
 
-Ubuntu/Debian Linux is the primary qualified environment. The repository uses a self-hosted Linux runner for pull-request and release validation. Windows and macOS source-build paths exist but are not yet continuously qualified, and mobile projects are planned rather than present.
+ostudy is a React/TypeScript frontend in a Tauri Rust application with a local SQLite library. Linux and Android are the maintained build/test paths. Android includes a native shell, Kotlin platform plugin, packaging, physical-device debug install, document/AI/synchronization integrations, and emulator instrumentation; it is not merely a planned mobile project. Windows/macOS need regular target qualification and packaging. iOS remains planned.
 
-The application version is currently `0.1.0`. The project is under active development, so a successful source build is not the same as a broadly supported platform release.
+Source-build support, automated qualification, physical-device acceptance, signed packaging, and public distribution are distinct facts. Read current manifests for exact version/tool pins rather than duplicating transient values across prose.
 
 ## Repository map
 
 ```text
-src/                         React/TypeScript application
-  screens/                   feature workspaces
-  controllers/               workflow orchestration and stale-read policy
-  ipc/                       typed native command gateways
-  platform/                  operating-system/WebView capability adapters
-  ui/                        shared interaction and visual foundations
+src/
+  screens/                 feature workspaces and colocated feature logic
+  controllers/             shared workflow/read/reconciliation controllers
+  ipc/                     typed native command gateways
+  navigation/              application-owned destination/workflow requests
+  platform/                frontend OS/capability adapters
+  editor/                  application editor contracts and Tiptap implementation
+  ui/                      shared interaction, tokens, styles, guidance, effects
 
 src-tauri/
-  src/                       Rust domain, services, commands, and startup
-  migrations/                append-only SQLite schema migrations
-  tests/                     integration and release-schema fixtures
-  capabilities/              Tauri permissions
-  resources/                 staged native runtime resources (mostly ignored)
+  src/                     Rust commands, services, persistence, and startup
+  migrations/              ordered versioned SQLite migrations
+  tests/                   integration and compatibility fixtures
+  capabilities/            Tauri permission configuration
+  gen/android/             reviewed Android shell/project and instrumentation
 
-scripts/                     setup, build, checks, release, diagnostics, policy
- tests/                      cross-language fixtures and script tests
- docs/                       user, installation, architecture, development,
-                             reference, decision, agent, and historical material
-.github/                     pull-request, issue, CI, and release configuration
+plugins/ostudy-platform/    narrow native plugin, including Android Kotlin adapters
+scripts/                    setup/build/check/package/diagnostic/policy wrappers
+tests/                      script contracts, native WebDriver, fixtures/baselines
+docs/                       user/install/architecture/development/reference/
+                            agent/decision/history documentation
+.github/workflows/          source-read-only qualification and packaging workflows
 ```
 
-Root-level files are limited to conventional project entry points and files that build tools discover there: README, license, contribution/agent guidance, package and toolchain manifests, frontend configuration, the launcher, and authoritative version pins. Subject-specific reports and guides belong under `docs/`.
+A filename left from an earlier implementation is not proof of its current role. Trace imports, command registration, durable readers, platform selection, and tests before removing an apparent leftover. Feature-local deck-library controllers are deliberately colocated; current native document code still has focused facades plus active root `document_*` owners.
 
 ## Sources of truth
 
-Several values are intentionally mirrored for tool compatibility. The verifier prevents them from drifting.
+`versions.env` owns pinned tool/direct-dependency versions, mirrored where standard tools need conventional files. `package.json`/pnpm lockfiles own the JavaScript graph; Cargo manifests/lockfiles own Rust; `database.rs` registers migrations/checksums; `lib.rs` registers the Tauri command surface. Current source establishes implementation; maintained architecture and accepted ADRs explain durable intent.
 
-- `versions.env` is authoritative for pinned tool and direct dependency versions.
-- `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml` own the JavaScript graph.
-- `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock` own the Rust graph.
-- `rust-toolchain.toml`, `.node-version`, and `.nvmrc` mirror the pinned language versions for standard tooling.
-- `src-tauri/src/database.rs` registers every migration checksum.
-- `src-tauri/src/lib.rs` registers the native command surface.
-- `docs/architecture/` and accepted ADRs describe durable ownership rules.
+GitHub is authoritative for published source, PRs, reviews, and exact-head Actions evidence. Normal ChatGPT work uses the GitHub Connector as sole source publisher. Custom developer MCPs, Codex, workspaces, observers, and orchestrators require an explicit current-task request and are not prerequisites. See [GitHub-direct development](../agents/GITHUB-DIRECT-DEVELOPMENT.md).
 
-Do not “simplify” a mirrored version file merely because another file contains the same number. It may exist because a different tool discovers that conventional filename, and the manifest verifier documents the relationship.
+## Setup and local execution
 
-## One-time Linux setup
+First-time Ubuntu/Debian setup:
 
 ```bash
 ./scripts/setup-ubuntu.sh
-./scripts/install-native-deps.sh --with-tesseract
+./run-app.sh
 ```
 
-The first command installs the qualified build environment and creates an initial standalone build. The second ensures OCR fallback is available for corrupted or scanned PDFs. See [Linux installation](../installation/linux.md) for prerequisites and troubleshooting.
-
-## Day-to-day commands
+On an already configured checkout after source changes:
 
 ```bash
-./run-app.sh                     # start the existing standalone build
-./scripts/build.sh               # rebuild after source changes
-pnpm desktop                     # live Tauri/Vite development session
-./scripts/export-diagnostics.sh  # create a privacy-conscious support archive
+./scripts/build.sh
+./run-app.sh
 ```
 
-`run-app.sh` does not compile. It verifies that the standalone build matches the source tree and refuses to launch a stale binary as though it were current.
+The build wrapper stages a standalone debug application without release bundles. `run-app.sh` verifies source/build provenance and launches that existing artifact; it does not compile or start Vite. Do not bypass a stale-build refusal by launching Cargo's mutable debug executable.
 
-Cargo uses its incremental cache across builds. `CARGO_BUILD_JOBS` defaults to the machine's logical processor count and may be capped for memory-constrained or shared systems.
+`pnpm desktop` starts native hot reload. `pnpm dev` is Vite and `pnpm build` builds frontend assets. Android setup/install/testing is documented in [Android installation](../installation/android.md). `pnpm android:install` is the normal physical-device debug build/install; `pnpm android:dev` is deliberate hot reload.
 
-## Validation while editing
+Before switching code, inspect local changes and verify the intended SHA. A separate source worktree does not isolate the learner library. Use [local-testing data isolation](local-testing-and-handoff.md) and disposable Android data for destructive/migration/restore/fresh-install tests.
 
-Use the smallest useful tier during iteration:
+## Iteration and qualification
 
 ```bash
+pnpm verify:docs
 ./scripts/check-changed.sh
 ./scripts/check-static.sh
 ./scripts/check-fast.sh
 ./scripts/check.sh
 ```
 
-The complete gate is required before merge. Exact-tree stamps allow a later tier to reuse a successful earlier tier only when tracked and relevant untracked source, deletions, tools, and platform still match. Set `OSTUDY_FORCE_CHECK=1` when diagnosing the gate itself or when an exact-tree cache must be bypassed.
+Use focused tests and the cheapest useful tier while editing, then required final-head qualification. `check-changed` depends on the diff and is not final certification. Exact-tree stamps can reuse valid previous tiers only when their source/tool/platform identity matches; `OSTUDY_FORCE_CHECK=1` is an explicit evidence/diagnostic override, not a substitute for understanding what was tested.
 
-The static tier includes documentation links and top-level organization. Moving a guide is therefore a code-reviewable change: references must be updated in the same commit rather than left for a future cleanup.
+GitHub Actions qualifies published source at an exact SHA. Draft automatic `Check` uses the fast gate. Ready PRs and explicit full dispatches provide full/platform qualification. `PR Contract` validates acceptance metadata separately and is not a prerequisite for product `Check`. Every Actions workflow is source-read-only.
 
-See [Testing and CI](testing-and-ci.md) for every command and what it does.
+When a gate fails, inspect the exact tested SHA, bounded logs/evidence, and smallest failing boundary. Fix that boundary before another broad matrix. Native compilation, frontend mocks, WebDriver persistence, Android package verification, emulator instrumentation, physical-device behavior, and live-provider calls establish different evidence.
 
-## Working on the frontend
+## Frontend changes
 
-Screens render state and express user intent. Workflow-heavy logic belongs in a focused controller, and native calls belong in typed domain gateways under `src/ipc/`.
+Screens render data and intent. Controllers coordinate workflow identity, stale-read policy, mutations, and reconciliation. Typed native calls stay under `src/ipc/`; shared `src/ui/` does not import feature IPC/controllers/Tauri APIs. `src/platform/` owns presentation-facing OS integration.
 
-Before adding a component:
+Use shared overlays, focus/Back handling, keyboard alternatives, CSS Modules, semantic tokens, and responsive patterns. Preserve compact touch targets, enlarged text, themes, safe areas, reduced motion, and dirty-state guards. Independent async reads use independent lanes. A committed mutation must remain distinguishable from a following failed refresh.
 
-1. check whether `src/ui/` already owns the needed accessibility or interaction behavior;
-2. keep domain rules out of the shared primitive;
-3. use CSS Modules and semantic tokens;
-4. test keyboard, touch/coarse pointer, compact layout, reduced motion, and all themes where relevant;
-5. preserve stale-read and committed-mutation semantics.
+Current main information architecture is Flashcards, Study Guides, Documents, Analytics, and Settings. Flashcards has Decks and Search/Filter. Card templates live in Settings. Transfer is contextual. Practice is an internal contextual workflow. Do not restore retired permanent tabs or empty-state clutter because an old stage document still contains them.
 
-Direct `invoke()`, provider `fetch()`, raw dialogs, ordinary browser confirmations, extra global stylesheets, and feature-local focus traps are rejected by repository policy.
+## Native data and learning changes
 
-## Working on Rust and SQLite
+Rust owns bounded command validation, application services, transaction scope, and safe errors. SQLite is the structured authority; managed files use staged/reconciled lifecycle protocols. A SQL transaction does not make external filesystem/secret/network work atomic.
 
-Rust owns validation, domain rules, task orchestration, and transactions. A command should accept a bounded typed request, validate it, call a domain/service boundary, and return a bounded DTO or normalized error.
+Append migrations and register checksums coherently. Preserve released migration/repair identities, supported readers, and upgrade fixtures. Define rollback, deletion, backup/import/export, sync allowlist, and compatibility effects explicitly. Avoid broad database locks across provider requests, OCR, or file pickers.
 
-When changing storage:
+Notes own editable source; cards own independent study presentations. `scheduler.rs` isolates `rs-fsrs`; current schedules and retained review evidence are different entities. Scheduling controls must not fabricate reviews. Calendar semantics, preview revisions, operation identity, historical attribution, and finalized deletion need native regression coverage.
 
-- append a numbered migration rather than editing a released file;
-- register the migration and SHA-256 checksum;
-- add or update release-schema upgrade coverage;
-- use a versioned data repair for one-time canonicalization that is not a schema change;
-- define deletion, backup, import/export, and rollback effects;
-- keep helpers transaction-neutral unless they are the explicit operation owner.
+## AI and document changes
 
-Warnings are denied in the full Rust gate. Do not use dead-code or unused suppressions to hide an incomplete refactor.
+Gateway transport, profile aggregates, capability probes, provider dialects, ingestion adapters, canonical source reasoning, and authoring publication have separate owners. Current non-PDF ingestion uses Xberg; PDF has native text/render/OCR paths with desktop and Android adapters. Convert third-party types into ostudy-owned contracts before crossing subsystem boundaries.
 
-## Working on scheduling and analytics
+A model can propose bounded structured material, not execute native commands or SQL. Saved credentials stay behind the native secret store; a newly entered key is transient write input, not a saved-secret readback API. Raw prompts/responses/reasoning stay out of routine logs; validated learning content is intentionally stored in the library.
 
-`src-tauri/src/scheduler.rs` is the adapter around `rs-fsrs`. ostudy-owned types remain the durable and IPC contract.
+Study Guides are current first-class artifacts. They share stable learning topics with generated cards while preserving generated revisions, learner notes/section overrides, and conflicts independently. Whole-library backup covers a broader document/guide graph than current device sync. Extend external formats and sync scope deliberately rather than assuming every table transfers automatically.
 
-Review submission updates the current schedule and appends historical evidence transactionally. Schedule controls that are not reviews must not invent review events. Analytics must remain reproducible from stored events/sessions and must honor stable identity, move, rename, archive, and finalized-deletion semantics.
+## Platform changes
 
-A change in this area needs explicit tests for retry identity, transaction boundaries, local calendar behavior, and historical attribution.
+Native/platform adapters own file selection/publication, secure storage, lifecycle, clock/time-zone facts, resource observations, Back, sharing, PDF/OCR, QR acquisition, and other OS behavior. Android Kotlin/plugin code must not implement scheduling, analytics, SQLite migrations, package validation, provider fallback, or sync merge policy.
 
-## Working on AI and documents
+Current Android QR acquisition uses Google Code Scanner through Play services; document OCR uses ML Kit and is a separate capability. A real unavailable-capability fallback is not dead code simply because the primary development machine does not display it.
 
-Provider networking is confined to the native AI gateway, and credential access is confined to the native secret boundary. Features request narrow tasks; they do not receive a generic completion endpoint.
+## Documentation and cleanup
 
-Document work should preserve the separation between:
+Write for the reader:
 
-- source-format ingestion;
-- text/semantic extraction;
-- page rendering;
-- OCR;
-- document outline and bounded source windows;
-- provider task execution;
-- canonical card authoring and persistence.
+- root README — product purpose/current features/platform status/short start;
+- user guides — tasks and concepts;
+- installation — prerequisites and honest qualification/distribution status;
+- architecture — ownership, data flow, trust, invariants, tradeoffs;
+- development/agents — commands, publication, evidence, diagnostics;
+- reference — exact external/versioned formats;
+- decisions/history — durable rationale and completed/superseded stages.
 
-A parser, renderer, OCR engine, or model response must be converted into ostudy-owned data before crossing its boundary. See [AI and document processing](../architecture/ai-and-document-processing.md) and the focused document test plans in this directory.
+Update canonical paragraphs instead of appending contradictory PR notes. Keep indexes/links current. Move completed stage/checkpoint records to history or leave only a clear pointer when a stable old path is worth preserving.
 
-## Imports, backups, and compatibility
+Trace production, test, dynamic, platform, and durable-compatibility consumers before deleting code. Remove exclusive styles/tests/scripts when their owner is proven unused, but keep released readers/migrations and real platform fallbacks. See [Documentation maintenance](../agents/DOCUMENTATION-MAINTENANCE.md) and [cleanup audit](documentation-and-cleanup-audit.md).
 
-Treat `.studydeck`, `.ostudy.json`, and `.ostudybackup` as different external contracts. A change must state which format versions it reads and writes, how old content is adapted, what personal data is excluded, and whether a failed import or restore can leave partial state.
+## Dependencies, diagnostics, and release
 
-Use isolated temporary storage in import/conformance tests. Never point a test at the live application data directory.
+Direct dependencies are pinned and need demonstrated need, license/trust/platform review, and qualification. Initial provisioning can use the network even though installed core study is local-first. See [Dependency audit](dependency-audit.md).
 
-## Documentation changes
+Diagnostics preserve bounded operational context without the learner database, source bytes, raw provider payloads, reasoning, or credentials. Review exported metadata before sharing. See [Diagnostics](diagnostics.md).
 
-Write for the intended reader:
-
-- README: product purpose, current features, platform status, quick start, and links;
-- user guide: tasks and concepts in ordinary language;
-- installation: platform-specific prerequisites and qualification status;
-- architecture: ownership, data flow, invariants, and tradeoffs;
-- development: commands, tests, diagnostics, and contribution process;
-- reference: versioned formats and exact contracts;
-- history: completed stage plans, dated audits, and superseded validation records.
-
-Avoid lists of implementation trivia in the product overview. Avoid claiming that a roadmap item is shipped. A moved or renamed file must update every relative link, agent instruction, script reference, and issue template. Run the documentation verifier before treating a reorganization as complete.
-
-## Dependencies
-
-Direct dependencies are exactly pinned and lockfiles are committed. Upgrade dependencies separately from feature behavior when practical. Explain why the dependency is needed, its license and trust boundary, lifecycle scripts, native code or network behavior, and how it will be maintained.
-
-The current graph and PDFium/Tesseract provisioning policy are documented in [Dependency audit](dependency-audit.md).
-
-## Diagnostics and privacy
-
-Application runs emit bounded structured records. Diagnostic export includes environment, versions, Git state, and bounded recent errors, but excludes the SQLite library, card content, managed images, source PDFs, OCR text, provider prompts/responses, and credentials.
-
-A developer should still review an archive before sharing it. Do not solve a diagnostic problem by expanding logs to include private study material or authorization data.
-
-## Releases
-
-A release starts from a clean tagged commit whose version matches `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. The release gate repeats full qualification from a clean source copy. The current workflow produces Linux artifacts; other platform pipelines remain future work.
-
-Normal feature merges do not change the version automatically. See [Workflow](workflow.md) for tagging, artifacts, and rollback.
+A handoff names exact base/branch/head/PR, changed areas, actual checks and tested SHAs, unrun/manual boundaries, known failures, compatibility/rollback risk, and writer release. It supplies a short exact checkout/build/run/Android install path and concrete observations. A normal feature merge does not automatically tag/release/version-bump. See [Git workflow](workflow.md), [Testing and CI](testing-and-ci.md), and [local testing](local-testing-and-handoff.md).

@@ -1,78 +1,77 @@
 # Android and iOS status
 
-Android and iOS remain separate delivery targets over one shared ostudy application core.
+Android and iOS are separate delivery targets over one shared ostudy application core. Android is implemented and qualified from source; iOS remains planned.
 
 ## Android
 
-Android is implemented as a source-build Tauri application. The repository contains a generated Tauri Android project, a private Kotlin platform plugin, pinned Android SDK/NDK tooling, APK/AAB build wrappers, official-emulator smoke tests, and self-hosted GitHub workflows.
+The repository contains a Tauri Android project, private Kotlin platform plugin, pinned SDK/NDK/JDK/Rust tooling, APK/AAB wrappers, physical-device install path, official API 36 emulator smoke, and self-hosted Actions qualification.
 
 The Android application supports:
 
-- deck, card, tag, template, search, and bulk authoring;
-- managed card/template images;
-- practice, scheduling controls, interrupted-session restoration, and analytics;
-- durable authoring drafts after backgrounding or process death;
-- `.studydeck`, generated `.ostudy.json`, complete `.ostudybackup`, and PDF import;
-- system document-picker export and restore;
-- Android Sharesheet send and confirmed incoming share import;
-- Android Keystore-backed AI-provider credentials;
-- cloud and LAN AI-provider profile connectivity;
-- native PDF page rendering through Android `PdfRenderer`;
-- selective on-device PDF OCR through bundled ML Kit Text Recognition v2;
-- foreground document processing for user-started long-running PDF jobs;
-- encrypted same-LAN device synchronization with QR pairing, common-base merging, and explicit conflicts;
-- optional encrypted AI-credential transfer between trusted devices.
+- deck/folder/card/tag/template authoring, Search/Filter, bulk operations, and managed images;
+- Practice, scheduling controls, Analytics, and interrupted-session restoration;
+- durable authoring drafts and complete personal backup/restore;
+- `.studydeck` and generated `.ostudy.json` import, system picker/export, Sharesheet send, and confirmed incoming shares;
+- Android Keystore-backed AI credentials plus local/LAN/cloud provider profiles;
+- PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV document ingestion through the shared canonical document model;
+- native PDF rendering through Android `PdfRenderer` and selective bundled ML Kit Text Recognition v2 OCR;
+- source-grounded flashcard generation and Study Guides through shared Rust/provider task boundaries;
+- foreground execution for user-started long document work with durable restart/checkpoint semantics;
+- encrypted same-LAN trusted-device synchronization with one-way offers, common-base merge, explicit conflicts, and optional per-offer API credential transfer;
+- Google Code Scanner through Play services for device-sync QR acquisition, with pasted invitation fallback.
 
-Android does not package Tesseract or `tessdata`. Shared Rust keeps usable embedded PDF text and calls the Android ML Kit adapter only for pages that require visual text recovery.
+Android does not package desktop PDFium or Tesseract/tessdata. Shared Rust owns document planning, OCR selection, provider task semantics, validation, scheduling, synchronization merge, and durable database transactions. Kotlin is an operating-system adapter rather than a separate study-domain implementation.
 
-See [Build and install ostudy for Android](android.md), [Android build and install](../development/android-build-and-install.md), and [Android development architecture](../development/android.md).
+See [Android installation](android.md), [Android build/install](../development/android-build-and-install.md), and [Android architecture](../development/android.md).
 
 ## iOS
 
-iOS remains planned. The shared runtime and Android work validate the ports, merge protocol, document boundaries, and mobile UI patterns that a future Swift implementation can reuse, but there is no generated iOS project, installable application, native adapter set, or supported iOS build procedure yet.
+iOS remains planned. Shared runtime/platform ports and Android experience provide reusable boundaries, but there is no generated iOS project, installable application, native adapter set, signing pipeline, or supported iOS build procedure yet.
+
+A future iOS target needs file/document-provider integration, protected credentials, lifecycle/background behavior, system share/Back-equivalent navigation behavior, native PDF/OCR decisions, network permissions, signing, store packaging, and exact platform qualification without forking shared study semantics.
 
 ## Shared portability foundation
 
-The following behavior remains common across desktop and mobile:
+Desktop and Android share:
 
-- card, deck, tag, template, scheduling, and analytics domain rules;
-- SQLite migrations and data repairs;
-- validated rich-content and import formats;
+- deck/note/card/tag/template, scheduling, review history, analytics, and deletion rules;
+- SQLite migrations/data repairs and managed-file lifecycle;
+- validated rich-content/import/backup formats;
 - provider-profile metadata and narrow AI task contracts;
-- React feature views, controllers, and adaptive shared UI;
-- staged-import, prepared-export, durable-draft, backup, and operation-identity state machines;
-- document extraction planning, OCR selection, checkpoints, and generation semantics;
-- trusted-device snapshot, merge, conflict, and encrypted-transport contracts.
+- React feature views/controllers and adaptive UI foundations;
+- staged-import, prepared-export, durable-draft, operation/retry, and startup-recovery state machines;
+- canonical document source/learning-plan/topic/generation semantics;
+- Study Guide revision/annotation/topic-link behavior;
+- trusted-device package, merge, conflict, and encrypted-transport contracts.
 
-## Native mobile adapters
+Platform expansion should implement the required ports and qualify them rather than duplicate these rules.
 
-Platform-specific code remains limited to operating-system boundaries:
+## Native mobile boundaries
+
+Mobile-specific adapters can own:
 
 - Android content URIs and future iOS document-provider URLs;
-- lifecycle, process restoration, system Back, safe areas, and software keyboards;
+- Activity/application lifecycle, foreground/background execution, safe areas, software keyboards, and system navigation;
 - protected credential storage;
-- Sharesheets and incoming intents;
-- connectivity and local-network access;
-- PDF rasterization and OCR;
-- QR camera acquisition;
-- foreground/background execution policy;
-- signing, store packaging, and upgrade testing.
+- Sharesheets/incoming intents;
+- camera/QR acquisition and local-network permissions;
+- native PDF rasterization/OCR;
+- signing/store packaging and upgrade behavior.
 
-Kotlin and future Swift code do not write the ostudy database or implement scheduling, analytics, package validation, synchronization merge semantics, or authoring transactions.
+They do not own SQLite migrations, FSRS scheduling, analytics attribution, package validation, authoring transactions, document-learning schemas, provider fallback, or synchronization merge/conflict policy.
 
-## Mobile acceptance requirements
+## Mobile acceptance
 
-A mobile application is considered usable only after end-to-end qualification for:
+Representative mobile qualification includes:
 
-- first launch, migration, restart, and upgrade persistence;
-- compact navigation, overlays, focus, keyboard, and screen-reader behavior;
-- card authoring, practice, scheduling controls, and analytics;
-- import, export, backup, restore, and system sharing;
+- first launch, migration, restart, upgrade/persistence;
+- compact navigation, overlays, focus, keyboard/IME, system Back, and accessibility;
+- authoring, Practice, scheduling controls, and Analytics;
+- import/export/backup/restore/sharing;
 - provider credentials and mobile network policy;
-- PDF rendering, OCR, cancellation, and durable recovery;
-- device pairing, encrypted transfer, merge conflicts, and asset synchronization;
-- cancellation and recovery when backgrounded or terminated;
+- representative document parsing, PDF rendering/OCR, cancellation, foreground/background recovery;
+- device pairing, encrypted transfer, conflicts, assets, and credential opt-in;
 - battery, memory, storage, and representative phone/tablet layouts;
-- package permissions and native-library compatibility.
+- package permissions/native-library compatibility and signing where applicable.
 
-The maintained Android qualification path combines shared Linux/Tauri checks, Android compile/package checks, and the official API 36 emulator smoke suite on the unified self-hosted runner.
+The maintained automated Android baseline combines compile/package checks and API 36 emulator smoke on the unified runner. Real camera/Google Code Scanner, OEM file providers, thermal/battery pressure, physical-device screen-reader behavior, and public signing/store distribution remain manual or separately qualified boundaries unless actually exercised.

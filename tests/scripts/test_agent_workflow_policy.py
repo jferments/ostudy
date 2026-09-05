@@ -87,7 +87,7 @@ permissions:
   contents: write
 jobs:
   check:
-    runs-on: [self-hosted]
+    runs-on: [self-hosted, linux]
     steps:
       - run: |
           git add -A
@@ -168,6 +168,7 @@ jobs:
         )
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("contents write permission", completed.stderr)
+        self.assertIn("pull-requests write permission", completed.stderr)
         self.assertIn("write permissions", completed.stderr)
 
     def test_pull_request_metadata_write_is_rejected(self) -> None:
@@ -188,7 +189,31 @@ jobs:
             }
         )
         self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("pull-requests write permission", completed.stderr)
         self.assertIn("write permissions", completed.stderr)
+
+    def test_workflow_run_cannot_project_pull_request_metadata(self) -> None:
+        completed = self.run_policy(
+            {
+                "project.yml": """name: Project PR metadata
+on:
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  project:
+    runs-on: [self-hosted]
+    steps:
+      - run: echo projector
+"""
+            }
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("pull-requests write permission", completed.stderr)
+        self.assertIn("interactive publisher", completed.stderr)
 
     def test_write_all_is_rejected_for_any_trigger(self) -> None:
         completed = self.run_policy(
@@ -207,6 +232,7 @@ jobs:
         )
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("contents write permission", completed.stderr)
+        self.assertIn("pull-requests write permission", completed.stderr)
 
     def test_pull_request_workflow_cannot_mutate_readiness(self) -> None:
         completed = self.run_policy(
@@ -341,9 +367,6 @@ jobs:
             ROOT / "docs" / "agents" / "SOURCE-PUBLICATION-BOUNDARY.md"
         ).read_text(encoding="utf-8")
 
-        # Check the current operating contract, including the stricter explicit
-        # request requirement. The previous optional-acceleration wording was
-        # not permission to choose an MCP or Codex for an ordinary task.
         self.assertIn("authenticated GitHub Connector", agents)
         self.assertIn("sole normal source publisher", agents)
         self.assertIn("GITHUB-DIRECT-DEVELOPMENT.md", agents)

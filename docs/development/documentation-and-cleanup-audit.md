@@ -1,59 +1,97 @@
 # Documentation and cleanup audit
 
-## Scope and source baseline
+## Scope and evidence standard
 
-This is a maintainer's audit record for the documentation refresh after merged PR #86. The inspected baseline is `2e284a9f084b3bce41c2f7fe40950d1846a61a4b`. Current descriptions belong in the [architecture](../architecture/overview.md), [user guides](../README.md), and [GitHub-direct workflow](../agents/GITHUB-DIRECT-DEVELOPMENT.md); this record explains cleanup decisions and evidence, not a second product specification.
+This audit accompanies the repository-wide documentation refresh after merged PR #86. The original inspected baseline is `2e284a9f084b3bce41c2f7fe40950d1846a61a4b`. Current product descriptions belong in the [architecture](../architecture/overview.md), [user guide index](../README.md), [roadmap](../roadmap.md), and [GitHub-direct workflow](../agents/GITHUB-DIRECT-DEVELOPMENT.md); this file records why stale material was changed, removed, retained, or moved to history.
 
-The audit combines the repository tree, active entry points, typed command registration, relevant contracts/tests, and targeted reference searches. It is not a line-by-line security review of every implementation or proof that no unreachable code exists. Exact final qualification belongs to the PR's current-head Actions evidence.
+The audit used active composition/route code, native command and migration owners, targeted repository searches, current tests, workflow definitions, manifests, and exact-head CI. It is not a proof that no unreachable line exists or a substitute for a security audit. Cleanup claims below identify a concrete owner/caller check rather than relying only on filenames.
 
-## Confirmed documentation drift
+## Documentation drift corrected
 
-| Finding at the baseline | Current source authority | Resolution owner |
+| Baseline drift | Current authority / correction |
+| --- | --- |
+| README called Study Guides future and omitted OpenRouter | Current Study Guide screens/native services and AI catalog; README/roadmap now describe shipped Guides and OpenRouter |
+| Getting Started described four Flashcards workspaces and compact More | Current Flashcards/navigation code; docs now describe Decks + Search/Filter, direct compact destinations, Settings gear |
+| Templates/transfer pointed to removed standing tabs | Settings Card templates and contextual deck transfer now documented |
+| Empty deck library implied folder/unsorted/selection/collapse UI existed | Current quiet empty-state contract documented |
+| Appearance docs duplicated and still described old window/guide behavior | `appearance-and-guidance.md` is canonical; `interface-appearance-and-guidance.md` is a compatibility pointer |
+| Roadmap listed Study Guides as future and understated document/provider support | Roadmap now separates shipped Guides/Xberg/non-PDF/OpenRouter/Android capabilities from future quizzes/tutoring/new provider adapters |
+| Installation overview said Android document processing was a stub | Platform matrix now reflects the implemented shared Android document/AI/sync application and API 36 qualification |
+| Development guide said mobile projects were planned | Current Android project/tooling/runtime path documented |
+| CI guide blurred current public schema with the historical final-v26 pre-public adoption input | Current public version and pre-public adoption purpose explicitly separated |
+| Android multi-device examples passed a standalone `--` to a parser that rejects it | Current docs call `android-install.sh --serial` directly and explain no-build provenance limits |
+| Agent docs allowed optional MCP/Codex selection without an explicit current request | GitHub-direct-only normal mode is explicit; custom developer tooling requires current-task authorization |
+| Workflow prose made PR metadata a prerequisite for product Check | `PR Contract` and exact-source `Check` are now documented as independent |
+| Code standards referenced the removed monolithic `src/ipc.ts` | Current domain gateways under `src/ipc/` documented |
+| Current architecture was fragmented and sometimes described intended rather than implemented ownership | `docs/architecture/overview.md` is now the comprehensive source-linked current-system architecture; focused references align with it |
+
+## Proven source/workflow cleanup
+
+### Orphan Android share-panel stylesheet
+
+`src/components/AndroidDeckSharePanel.module.css` had no corresponding component/import; `AndroidDeckSharePanel` and its selectors were not active owners. Current sharing is contextual through `DeckTransferDialog`/controller paths. The orphan stylesheet was removed.
+
+### Duplicate Study Guide implementations
+
+The active owner is `StudyGuidesScreen` + `useStudyGuidesController` + the current inline `StudyGuideDialog` reader. Repository/caller inspection showed `StudyGuideWorkspace.*` and `StudyGuideLibrarySection.*` were unmounted predecessor implementations with their own duplicate styles/tests. They were removed; regression coverage was retained on the active reader/library and an active-library empty-state test was added.
+
+This cleanup intentionally does **not** rename `StudyGuideDialog.tsx` merely because the reader is now inline. That filename is awkward but live; renaming it is an ownership/refactor task, not dead-code removal.
+
+### Automatic Orchestrator PR Ledger
+
+`.github/workflows/orchestrator-pr-ledger.yml` was the only workflow requesting `pull-requests: write`. It ran after successful `Check` and automatically PATCHed PR bodies through the dedicated `scripts/project-orchestrator-checklist.mjs`. Repository search showed that script was owned only by that workflow plus its dedicated test.
+
+The current development model does not need an automatic orchestrator to project checklists into PR metadata: the branch writer updates PR evidence directly, `PR Contract` validates metadata independently, and `Check` qualifies source. The workflow, dedicated projector script, and its exclusive test are removed. Workflow policy is hardened so pull-request write permission cannot quietly reappear as another metadata writer.
+
+### Completed frontend-refactor source checkpoint
+
+`.github/workflows/frontend-refactor-source-checkpoint.yml` targeted only completed PR #75/#76-era branches/paths and uploaded a one-day source snapshot. It no longer participates in current development. The workflow is removed.
+
+Its useful completion record, `frontend-css-refactor-checkpoint.md`, is preserved under `docs/history/` rather than retained in current development guidance.
+
+### Completed UI redesign stage documents
+
+The full Stage 0/redesign roadmap, pre-change characterization, affected-surface inventory, performance baseline, and visual baseline are historical evidence. Their full records are preserved under `docs/history/`; old `docs/development/ui-workflow-redesign-*.md` paths remain short explicit historical pointers where stable paths are useful for test/provenance references. They no longer compete with current architecture/roadmap/user guides.
+
+## Intentional compatibility and live-looking leftovers
+
+| Apparent leftover | Why it remains | Removal condition |
 | --- | --- | --- |
-| README describes study guides as planned and omits OpenRouter | `src/App.tsx`, `src/screens/StudyGuidesScreen.tsx`, `src-tauri/src/ai/catalog.rs` | Product introduction and roadmap |
-| Getting started still describes four Flashcards tabs and a compact More menu | `src/screens/flashcards/FlashcardsWorkspace.tsx`, navigation components | Getting started and Flashcards guide |
-| Templates and transfer instructions point to removed standing tabs | `src/screens/SettingsScreen.tsx`, `src/screens/flashcards/DeckTransferDialog.tsx` | Settings and backup/transfer guidance |
-| Empty-library instructions imply empty folder/unsorted controls are always present | `src/screens/flashcards/deck-library/DeckLibraryView.tsx` | Organization guide |
-| Runbook calls `build:app` a bundle build | `package.json`, `scripts/build.sh`, `scripts/build-state.sh` | Command runbook and local handoff |
-| Serial-install examples risk passing an unsupported extra argument; no-build path lacks provenance warning | `scripts/android-install.sh` | Command runbook and Android handoff |
-| Agent guides permit optional MCP/Codex detours without a current request | Latest explicit GitHub-direct operating requirements | AGENTS and canonical agent workflow |
-| Some guides permit manual Actions source-writing | `scripts/verify-agent-workflow-policy.mjs`, source-publication policy | Contributor/agent workflow |
-| AGENTS and workflow prose make PR metadata a prerequisite for Check | `.github/workflows/check.yml`, separate `pr-contract.yml`, execution-state contract | Workflow and CI documentation |
-| Code standards name the removed monolithic `src/ipc.ts` boundary | `src/ipc/`, IPC verifier | Code standards |
-| Architecture describes a frontend window-control adapter absent from the current source topology | Current App/platform tree and native window configuration | Architecture and UI guide |
+| Legacy `templates` application section/route values | Normalizes/redirects supported old navigation into Settings → Card templates | Remove only with coordinated checkpoint/route compatibility change and regression coverage |
+| Legacy Flashcards workspace values | Current UI has two tabs; supported old state still needs normalization | Versioned retirement of all durable route/checkpoint consumers |
+| Schema-v1 UI checkpoint reader | Can recover a real supported old session while normalizing to schema v2 | Explicit supported-data retirement decision |
+| `DocumentsDevelopmentStub` | Actively renders the unavailable-native-document-capability state | Replacement must preserve honest unavailable/degraded behavior |
+| PDF-prefixed compatibility names | Some remain active command/checkpoint/internal compatibility owners | Trace native/IPC/test/durable consumers and migrate coherently |
+| Migration filename containing `anydoc` | Applied migration identity/checksum is durable history; current runtime parser is Xberg | Never rename/rewrite released migration history |
+| Older parser fixtures | Capture supported inputs/regressions independent of current backend | Replace only when the supported behavior/fixture itself is intentionally retired |
+| `documents/` facade plus root `document_*` modules | Root modules remain registered/active behind current facade/service boundaries | Separately scoped ownership refactor with all consumers/verifiers/tests updated |
+| `StudyGuideDialog.tsx` name | File is active; implementation renders an inline workspace despite old name | Optional rename/refactor, not dead-code cleanup |
+| Legacy split-runner note | Explicitly documents migration context and warns against old labels | Could move to history if all current operator links are redirected |
+| Performance/visual baseline files | Stable provenance/comparison evidence, not current UI spec | Keep or version when new benchmark methodology supersedes them |
 
-## Confirmed isolated source cleanup
-
-`src/components/AndroidDeckSharePanel.module.css` is an orphan of the previous share-panel implementation. The baseline tree contains no corresponding component. Reference search for `AndroidDeckSharePanel` finds no importer; selector search for `deck-share-panel` finds only that stylesheet. The current contextual share path is `DeckTransferDialog` and `DeckTransferController`, not this panel.
-
-Remove the orphan stylesheet as an isolated cleanup and run the style/manifest/static and frontend gates. Do not infer that every file with an old component name is equally unused. The PR diff and exact-head qualification determine whether the deletion is published and validated; this record supplies its rationale.
-
-## Intentionally retained boundaries
-
-| Apparent leftover | Why it is live or compatibility-relevant | Removal condition |
-| --- | --- | --- |
-| Legacy `templates` application section | `App.tsx` routes it to Settings → Card templates; saved/legacy navigation can still enter it | Prove all supported checkpoint/route consumers are migrated and preserve their regression behavior |
-| Legacy Flashcards workspace values | Current visible tabs are two, while route normalization handles older state | Coordinate checkpoint/route normalization, tests, and transport changes |
-| Schema-v1 UI checkpoint reader | Existing saved session hints must normalize to schema v2 without losing a real resumable session | Only after an explicit supported-data retirement decision |
-| `DocumentsDevelopmentStub` | `DocumentsSection` actively renders it when native PDF rendering is unavailable; UI policy also governs it | A replacement must handle the same unavailable-capability state |
-| `pdf_*` command/helper names | Some names remain registered or used by PDF compatibility and generation paths | Trace all native/IPC/test consumers; rename as a coherent internal-contract change, not cosmetic deletion |
-| Numbered migrations with `anydoc` in the filename | Applied migration identity and checksum are durable evidence even though Xberg is now the non-PDF runtime adapter | Do not rename or rewrite released/applied migration history |
-| Older parser fixtures and regression tests | They capture supported input and previous defects independently of today's parser implementation | Replace coverage only when the supported behavior itself changes explicitly |
-| `documents/` facade alongside root `document_*` modules | The facade delegates to current lifecycle/repository/task owners; many root modules remain registered and active | A separately scoped ownership refactor must update all consumers and boundary verifiers |
-| Metadata projection workflows and scripts | A historical name does not grant source ownership; inspect actual read/write scope | Remove only after checking consumers and preserving required evidence/metadata behavior |
-
-Compatibility is not permission for unlimited legacy code. Each retained boundary needs a concrete consumer and tests, not merely the phrase “backward compatibility.” Conversely, a documentation refresh must not erase durable readers or unsupported-platform feedback to make a directory look tidy.
+Compatibility must name a real consumer. Conversely, an old name or historical fixture is not automatically dead code.
 
 ## Follow-up engineering observations
 
-The current architecture is not a claim that every screen is a pure view or every native service has reached its ideal final module layout. Feature-local controller hooks coexist with `src/controllers/`; `DocumentsScreen`, the application controller, and several native document services still contain substantial orchestration. Their responsibilities should be made explicit rather than hidden behind a diagram that suggests otherwise.
+The current architecture is deliberately truthful about remaining concentration. `useAppController`, document workflow code, and several native document services still coordinate substantial behavior. Feature-local controller hooks coexist with `src/controllers/`. Future decomposition should isolate one reason-to-change at a time and preserve behavior tests rather than inventing another framework solely to make files smaller.
 
-The Android no-build installer selects the newest APK for the chosen build mode by modification time. It does not attest Git SHA or select a previously built artifact by target ABI. The documentation therefore recommends a fresh normal build/install for PR acceptance. Adding explicit artifact provenance/selection would be a separate tested tooling improvement, not a behavior silently promised by this refresh.
+The Android no-build installer chooses the newest matching APK by modification time. It does not attest Git SHA/ABI provenance. Current handoff docs therefore recommend a fresh normal build/install for PR acceptance. Explicit artifact-provenance selection would be a separate tooling improvement.
 
-Source-level comments or old stage records may preserve names that no longer describe visible UI. Evaluate whether each is historical provenance, an active regression contract, or actually obsolete before deleting. Do not mass-delete stage-named tests, rewrite checksums, or remove a live compatibility route on the strength of a filename search.
+Current peer synchronization is intentionally narrower than complete backup for the new document/Study Guide learning-artifact graph. Do not “fix documentation” by claiming those tables/files sync automatically; a versioned protocol/allowlist/merge extension is required.
 
-## Maintenance exit criteria
+Current non-PDF canonical provenance remains section-oriented despite Xberg exposing richer internal structure. Promoting slide/sheet/chapter identities into public citations requires coordinated schema, backup, UI, and compatibility work.
 
-The maintained documentation must have one discoverable owner for each current workflow, no contradictory executor policy, and no product claims inferred from roadmap text. All published relative links and required canonical paths must pass the documentation verifier. Any source cleanup must be narrow, caller-checked, and qualified on the final SHA.
+## Exit criteria for this refresh
 
-Keep historical evidence labeled and separate from current instructions. Report unresolved engineering observations openly rather than claiming an absolute absence of stale code. [Documentation maintenance](../agents/DOCUMENTATION-MAINTENANCE.md) defines how future changes repeat this audit without recreating documentation drift.
+The refresh is ready for review when:
+
+- README remains a human product introduction rather than implementation ledger;
+- user/install/roadmap claims match active source/platform boundaries;
+- one comprehensive current architecture is discoverable with focused supporting references;
+- agent/contributor docs converge on one-writer GitHub-direct publication, independent PR Contract/Check, exact-SHA evidence, and safe local handoff;
+- completed stage/checkpoint material is labeled historical;
+- only caller-checked obsolete code/workflows are removed;
+- documentation/workflow/static/fast/full/platform gates required by the final exact head pass;
+- remaining manual review is explicitly identified rather than inferred from automation.
+
+This audit intentionally does not claim mathematical proof that no unreachable code remains. [Documentation maintenance](../agents/DOCUMENTATION-MAINTENANCE.md) defines how future reviews continue the evidence-based cleanup without recreating documentation drift.
