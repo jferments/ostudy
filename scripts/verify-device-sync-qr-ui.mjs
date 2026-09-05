@@ -18,6 +18,7 @@ const [
   syncNetwork,
   syncTransport,
   syncPackage,
+  syncScope,
   syncMerge,
   logging,
   referenceTokens,
@@ -34,6 +35,7 @@ const [
   read("src-tauri/src/device_sync/network.rs"),
   read("src-tauri/src/device_sync/transport.rs"),
   read("src-tauri/src/device_sync/package.rs"),
+  read("src-tauri/src/device_sync/scope.rs"),
   read("src-tauri/src/device_sync/merge.rs"),
   read("src-tauri/src/logging.rs"),
   read("src/ui/tokens/source/reference.tokens.json"),
@@ -116,10 +118,18 @@ expectContains(syncNetwork, "LISTENER_PORT_START: u16 = 49_251", "stable LAN por
 expectContains(syncNetwork, "LISTENER_PORT_END: u16 = 49_258", "stable LAN port range end");
 expectContains(syncNetwork, "TCP path is blocked or unreachable", "network-specific connection failure guidance");
 expectContains(syncNetwork, "ports {LISTENER_PORT_START}-{LISTENER_PORT_END}", "firewall port guidance");
-expectContains(syncPackage, "DELETE FROM app_settings;", "app settings removed before package transmission");
-expectContains(syncPackage, "DELETE FROM ai_task_defaults;", "API settings excluded when sender leaves scope off");
-expectContains(syncPackage, "DELETE FROM ai_provider_profiles;", "API profiles excluded when sender leaves scope off");
+expectContains(syncScope, "DELETE FROM app_settings;", "app settings removed before package transmission");
+expectContains(syncScope, "DELETE FROM ai_task_defaults;", "API settings excluded when sender leaves scope off");
+expectContains(syncScope, "DELETE FROM ai_provider_profiles;", "API profiles excluded when sender leaves scope off");
+expectContains(syncScope, '"documents"', "Documents synchronization scope");
+expectContains(syncScope, '"document_study_guides"', "Study Guide synchronization scope");
+expectContains(syncScope, "api_credentials", "separate saved-credential scope");
+expectContains(syncPackage, "const PACKAGE_VERSION: i64 = 3;", "granular sync package version");
+expectContains(syncPackage, "document_backup::export_document_files", "document managed-file export reuse");
+expectContains(syncPackage, "document_backup::validate_document_files", "document managed-file validation reuse");
 expectNotContains(syncMerge, 'TableSpec::new("app_settings"', "app settings in merge allowlist");
+expectContains(syncMerge, 'TableSpec::new("documents"', "Documents merge graph");
+expectContains(syncMerge, 'TableSpec::new("document_study_guides"', "Study Guide merge graph");
 expectContains(
   syncMerge,
   "first_contact_remote_creation_is_not_a_delete_conflict",
@@ -138,7 +148,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share protocol-v2 pairing while secure framing and cancellation stay transport-neutral; LAN listeners use the stable 49251-49258 range, same-peer overlap is rejected, local app settings stay off the wire/merge allowlist, diagnostics persist through a bounded asynchronous writer, and API settings are sender opt-in.",
+  "OK   Device-sync QR uses permissionless Google Code Scanner with bounded nonblocking delivery; LAN and USB-network offers share authenticated pairing while secure framing and cancellation stay transport-neutral; selected Flashcards, Documents/LLM processing, Study Guides, API settings, and credential scopes are native-owned; document files reuse the validated backup ledger; local app settings stay off the wire/merge allowlist; diagnostics persist through a bounded asynchronous writer.",
 );
 
 async function read(relativePath) {
