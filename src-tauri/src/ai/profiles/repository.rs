@@ -132,6 +132,10 @@ pub(crate) fn load_profile_snapshot(
     load_profile(connection, profile_id).map(|profile| ProfileSnapshot::from(&profile))
 }
 
+pub(crate) fn is_device_transfer_table(table: &str) -> bool {
+    table == "ai_provider_profiles"
+}
+
 /// Sanitize provider-profile state inside a copied transfer snapshot.
 ///
 /// Credential bytes never live in these rows, but credential-storage/epoch

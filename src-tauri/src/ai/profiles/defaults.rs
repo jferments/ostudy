@@ -24,6 +24,10 @@ pub(super) fn load_task_defaults(
     })
 }
 
+pub(crate) fn is_device_transfer_table(table: &str) -> bool {
+    table == "ai_task_defaults"
+}
+
 /// Task defaults are provider configuration, not transient device state. Keep
 /// them only when the sender explicitly selected API provider settings.
 pub(crate) fn sanitize_for_device_transfer(

@@ -78,7 +78,7 @@ impl SyncSelection {
         if CROSS_DOCUMENT_FLASHCARD_TABLES.contains(&table) {
             return self.documents && self.flashcards;
         }
-        if API_TABLES.contains(&table) {
+        if crate::ai::profiles::is_device_transfer_table(table) {
             return self.api_settings;
         }
         false
@@ -143,8 +143,6 @@ pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
 
 pub(crate) const CROSS_DOCUMENT_FLASHCARD_TABLES: &[&str] =
     &["document_decks", "document_note_topics"];
-
-pub(crate) const API_TABLES: &[&str] = &["ai_provider_profiles", "ai_task_defaults"];
 
 /// Remove every unselected domain from a copied SQLite snapshot before the
 /// snapshot becomes transfer material. The copied database is deliberately
@@ -270,8 +268,9 @@ pub(crate) fn sanitize_snapshot(
             .map_err(CommandError::database)?;
     }
 
-    // AI subdomains own their own SQLite schema. Sync asks them to produce a
-    // safe transfer projection instead of duplicating provider/probe SQL here.
+    // AI subdomains own their own SQLite schema and transfer-table identity.
+    // Sync asks them for a safe transfer projection rather than duplicating
+    // provider/probe schema knowledge here.
     crate::ai::probes::sanitize_for_device_transfer(connection)?;
     crate::ai::profiles::sanitize_for_device_transfer(connection, selection.api_settings)?;
 
