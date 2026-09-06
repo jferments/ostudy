@@ -28,7 +28,7 @@
           "libusb-1.0-0"
         ],
         "files": {
-          "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "../packaging/linux/70-ostudy-android-usb.rules"
+          "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "packaging/linux/70-ostudy-android-usb.rules"
         }
       }
     }

@@ -60,7 +60,7 @@ const [
   read("src-tauri/src/logging.rs"),
   read("scripts/setup-ubuntu.sh"),
   read("src-tauri/tauri.linux.conf.json"),
-  read("packaging/linux/70-ostudy-android-usb.rules"),
+  read("src-tauri/packaging/linux/70-ostudy-android-usb.rules"),
   read("plugins/ostudy-platform/android/src/main/res/xml/ostudy_usb_accessory_filter.xml"),
   read("src/ui/tokens/source/reference.tokens.json"),
 ]);

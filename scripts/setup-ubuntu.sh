@@ -45,7 +45,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   xvfb \
   xz-utils
 
-USB_RULE_SOURCE="$ROOT_DIR/packaging/linux/70-ostudy-android-usb.rules"
+USB_RULE_SOURCE="$ROOT_DIR/src-tauri/packaging/linux/70-ostudy-android-usb.rules"
 if [[ -f "$USB_RULE_SOURCE" ]] && command -v udevadm >/dev/null 2>&1; then
   log "Installing Linux permissions for direct Android USB synchronization"
   sudo install -m 0644 "$USB_RULE_SOURCE" /etc/udev/rules.d/70-ostudy-android-usb.rules
