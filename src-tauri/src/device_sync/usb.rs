@@ -4,10 +4,10 @@ pub(crate) const fn host_available() -> bool {
     cfg!(target_os = "linux")
 }
 
-#[cfg(target_os = "linux")]
-pub(crate) use linux::{open_host_accessory, HostUsbStream};
 #[cfg(target_os = "android")]
 pub(crate) use android::{from_accessory_fd, AndroidUsbStream};
+#[cfg(target_os = "linux")]
+pub(crate) use linux::{open_host_accessory, HostUsbStream};
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -172,10 +172,7 @@ mod linux {
             device: *mut LibUsbDevice,
             descriptor: *mut LibUsbDeviceDescriptor,
         ) -> c_int;
-        fn libusb_open(
-            device: *mut LibUsbDevice,
-            handle: *mut *mut LibUsbDeviceHandle,
-        ) -> c_int;
+        fn libusb_open(device: *mut LibUsbDevice, handle: *mut *mut LibUsbDeviceHandle) -> c_int;
         fn libusb_close(handle: *mut LibUsbDeviceHandle);
         fn libusb_control_transfer(
             handle: *mut LibUsbDeviceHandle,
@@ -230,7 +227,9 @@ mod linux {
             if status != 0 || context.is_null() {
                 return Err(usb_command_error(
                     "device_sync_usb_unavailable",
-                    format!("The Linux USB subsystem could not initialize (libusb status {status})."),
+                    format!(
+                        "The Linux USB subsystem could not initialize (libusb status {status})."
+                    ),
                 ));
             }
             Ok(Self(context))
@@ -800,10 +799,7 @@ mod linux {
         })
     }
 
-    fn read_ascii_string(
-        handle: *mut LibUsbDeviceHandle,
-        index: u8,
-    ) -> Option<String> {
+    fn read_ascii_string(handle: *mut LibUsbDeviceHandle, index: u8) -> Option<String> {
         if index == 0 {
             return None;
         }
@@ -920,7 +916,9 @@ mod android {
 
     impl fmt::Debug for AndroidUsbStream {
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.debug_struct("AndroidUsbStream").finish_non_exhaustive()
+            formatter
+                .debug_struct("AndroidUsbStream")
+                .finish_non_exhaustive()
         }
     }
 

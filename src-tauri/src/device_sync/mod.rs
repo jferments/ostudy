@@ -626,7 +626,9 @@ async fn join_attached_usb_device(
         )
     })??;
     let invitation = parse_invitation(&bootstrap.invitation)?;
-    if invitation.transport != PairingTransport::Usb || invitation.endpoint != usb::USB_ENDPOINT_HINT {
+    if invitation.transport != PairingTransport::Usb
+        || invitation.endpoint != usb::USB_ENDPOINT_HINT
+    {
         return Err(CommandError::new(
             "device_sync_usb_invitation_invalid",
             "The attached USB accessory did not present a direct-USB ostudy synchronization offer.",
@@ -730,11 +732,7 @@ pub fn resolve_device_sync_conflict(
     store.resolve_conflict(&input.conflict_id, &input.resolution)
 }
 
-fn finish_host_worker(
-    app: &AppHandle,
-    session_id: &str,
-    result: &Result<String, CommandError>,
-) {
+fn finish_host_worker(app: &AppHandle, session_id: &str, result: &Result<String, CommandError>) {
     let paths = app.state::<AppPaths>();
     match result {
         Ok(peer_id) => {
@@ -884,7 +882,12 @@ fn run_host_usb(
     cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
     let paths = app.state::<AppPaths>();
-    SyncStore::open(paths.inner())?.update_session(&invitation.session_id, None, "connecting", None)?;
+    SyncStore::open(paths.inner())?.update_session(
+        &invitation.session_id,
+        None,
+        "connecting",
+        None,
+    )?;
     let deadline = invitation_deadline(&invitation)?;
     let mut stream = usb::open_host_accessory(&invitation.session_id, &cancel_signal, deadline)?;
     cancel_signal.check()?;
