@@ -5,6 +5,19 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/android-env.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/check-state.sh"
+export OSTUDY_ROOT_DIR="$ROOT_DIR"
+
+if [[ "${OSTUDY_ALLOW_QUALIFICATION_REUSE:-0}" == "1" ]] \
+  && [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
+  && ostudy_check_stamp_is_current static \
+  && ostudy_check_stamp_is_current android-smoke; then
+  reuse_sha="$(ostudy_check_stamp_source_sha android-smoke || true)"
+  printf '\n\033[1;32mREUSE Android Emulator smoke qualification from %s: the current exact source passed static qualification and the Android product fingerprint is unchanged.\033[0m\n' \
+    "${reuse_sha:-an earlier qualified source}"
+  exit 0
+fi
 
 # The public qualification entrypoint owns the postbuild contract even though
 # setup and installation are kept in a bounded sourced helper.
@@ -151,5 +164,6 @@ if ((${#failed_cases[@]} > 0)); then
   exit 1
 fi
 
+ostudy_write_check_stamp android-smoke
 printf '\nOK   Android Emulator smoke suite passed on %s.\n' "$SERIAL"
 printf 'Diagnostics: %s\n' "$ARTIFACT_DIR"

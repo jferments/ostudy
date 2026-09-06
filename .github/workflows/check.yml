@@ -20,6 +20,11 @@ on:
           - linux-full
           - android-full
           - all-full
+      force_requalification:
+        description: Ignore reusable qualification stamps and rerun the selected gate
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'automatic' }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -35,7 +40,10 @@ permissions:
 # Pull-request metadata is validated independently by pr-contract.yml so a
 # malformed compatibility ledger can never block source qualification.
 # Draft source updates stay fast. Ready pull requests and explicit manual
-# dispatches are the only paths to terminal full qualification.
+# dispatches are the only paths to terminal full qualification. Static always
+# validates the exact current source. Expensive Linux/Android tiers may reuse
+# a prior runner-local pass only when their product/toolchain fingerprint is
+# unchanged; a manual dispatch can force a fresh execution.
 
 jobs:
   check:
@@ -55,6 +63,8 @@ jobs:
       OSTUDY_DIAGNOSTICS_ACTIVE: "1"
       OSTUDY_DIAGNOSTICS_AUTOMATIC: "1"
       OSTUDY_KEEP_FAILURE_ARTIFACTS: "1"
+      OSTUDY_ALLOW_QUALIFICATION_REUSE: "1"
+      OSTUDY_FORCE_CHECK: ${{ github.event_name == 'workflow_dispatch' && inputs.force_requalification && '1' || '0' }}
 
     steps:
       - name: Check out exact source head

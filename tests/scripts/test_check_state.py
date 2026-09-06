@@ -26,6 +26,7 @@ class WorktreeMutationGuardTests(unittest.TestCase):
         # baseline. Every subprocess-backed unit test must exercise a fresh
         # guard instance rather than inheriting that one-shot reporting state.
         environment.pop("OSTUDY_WORKTREE_BASELINE_REPORTED", None)
+        environment.pop("ANDROID_HOME", None)
         return environment
 
     def run_guard(self, repo: Path, body: str) -> subprocess.CompletedProcess[str]:
@@ -48,7 +49,16 @@ class WorktreeMutationGuardTests(unittest.TestCase):
         )
         path.chmod(0o755)
 
-    def fingerprint(self, repo: Path, fake_bin: Path) -> str:
+    def prepare_fake_toolchain(self, fake_bin: Path) -> None:
+        self.write_command(fake_bin / "node", "v24.18.0")
+        self.write_command(fake_bin / "npm", "11.16.0")
+        self.write_command(fake_bin / "pnpm", "11.14.0")
+        self.write_command(fake_bin / "rustc", "rustc 1.97.1 fake")
+        self.write_command(fake_bin / "cargo", "cargo 1.97.1 fake")
+        self.write_command(fake_bin / "java", "openjdk fake")
+        self.write_command(fake_bin / "javac", "javac fake")
+
+    def fingerprint(self, repo: Path, fake_bin: Path, tier: str = "exact") -> str:
         environment = self.isolated_environment()
         environment["OSTUDY_ROOT_DIR"] = str(repo)
         environment["PATH"] = f"{fake_bin}:/usr/bin:/bin"
@@ -56,7 +66,7 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             [
                 "bash",
                 "-c",
-                f"source {shlex.quote(str(CHECK_STATE))}; ostudy_check_fingerprint",
+                f"source {shlex.quote(str(CHECK_STATE))}; ostudy_check_fingerprint {shlex.quote(tier)}",
             ],
             capture_output=True,
             text=True,
@@ -119,17 +129,62 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             fake_bin = Path(raw_directory) / "bin"
             repo.mkdir()
             self.initialize_repo(repo)
-            self.write_command(fake_bin / "node", "v24.18.0")
-            self.write_command(fake_bin / "npm", "11.16.0")
-            self.write_command(fake_bin / "pnpm", "11.14.0")
-            self.write_command(fake_bin / "rustc", "rustc 1.97.1 fake")
-            self.write_command(fake_bin / "cargo", "cargo 1.97.1 fake")
+            self.prepare_fake_toolchain(fake_bin)
 
             before = self.fingerprint(repo, fake_bin)
             self.write_command(fake_bin / "npm", "11.19.0")
             after = self.fingerprint(repo, fake_bin)
 
             self.assertNotEqual(before, after)
+
+    def test_product_fingerprint_ignores_only_maintained_markdown_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            fake_bin = Path(raw_directory) / "bin"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            self.prepare_fake_toolchain(fake_bin)
+            (repo / "docs").mkdir()
+            (repo / "docs" / "guide.md").write_text("before\n", encoding="utf-8")
+            (repo / "README.md").write_text("before\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "docs/guide.md", "README.md"], check=True)
+
+            static_before = self.fingerprint(repo, fake_bin, "static")
+            full_before = self.fingerprint(repo, fake_bin, "full")
+            android_before = self.fingerprint(repo, fake_bin, "android-compile")
+
+            (repo / "docs" / "guide.md").write_text("after\n", encoding="utf-8")
+            (repo / "README.md").write_text("after\n", encoding="utf-8")
+
+            self.assertNotEqual(static_before, self.fingerprint(repo, fake_bin, "static"))
+            self.assertEqual(full_before, self.fingerprint(repo, fake_bin, "full"))
+            self.assertEqual(android_before, self.fingerprint(repo, fake_bin, "android-compile"))
+
+    def test_product_fingerprint_changes_for_source_and_other_repository_files(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            fake_bin = Path(raw_directory) / "bin"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            self.prepare_fake_toolchain(fake_bin)
+            (repo / "src").mkdir()
+            (repo / "src" / "source.ts").write_text("before\n", encoding="utf-8")
+            (repo / ".github").mkdir()
+            (repo / ".github" / "policy.md").write_text("before\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(repo), "add", "src/source.ts", ".github/policy.md"],
+                check=True,
+            )
+
+            before = self.fingerprint(repo, fake_bin, "full")
+            (repo / "src" / "source.ts").write_text("after\n", encoding="utf-8")
+            after_source = self.fingerprint(repo, fake_bin, "full")
+            self.assertNotEqual(before, after_source)
+
+            (repo / "src" / "source.ts").write_text("before\n", encoding="utf-8")
+            (repo / ".github" / "policy.md").write_text("after\n", encoding="utf-8")
+            after_policy = self.fingerprint(repo, fake_bin, "full")
+            self.assertNotEqual(before, after_policy)
 
 
 if __name__ == "__main__":

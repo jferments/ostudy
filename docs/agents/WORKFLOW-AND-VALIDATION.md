@@ -18,6 +18,14 @@ A vertical increment includes its necessary callers, contracts, tests, and docum
 
 Keep dependency upgrades, unrelated formatting, infrastructure repair, and speculative refactors out of the task. A local scratch file, patch proposal, generated applicator, or transient CI tree is not published implementation.
 
+## Freeze the candidate before terminal qualification
+
+Treat terminal Linux/Android qualification as validation of a finished candidate, not as another discovery phase. Before requesting `all-full` or moving a PR into the state that triggers it, complete the implementation audit: compare the full remote diff with the original acceptance criteria, review maintained documentation for stale claims, reconcile architecture and user guidance, remove temporary cleanup, and finish the PR handoff/ledger facts that can be established without the terminal run.
+
+Once terminal qualification starts, the candidate is frozen. While it is running, observe results and prepare failure diagnosis or handoff evidence; do not continue broad documentation searches, opportunistic cleanup, refactors, formatting, or "one more thing" edits. A failed gate can reopen implementation for the owning fix. A newly noticed non-blocking cleanup belongs in a follow-up change.
+
+If a genuinely blocking prose defect is found after a green terminal run, classify it before editing. A root-level or `docs/` Markdown-only correction may be made as one coherent documentation commit; the new exact head must still pass static qualification, while previously passed expensive product gates may be reused only when the maintained product/toolchain fingerprint proves that no qualification-bearing input changed. Any source, test, workflow, configuration, asset, lockfile, or other non-neutral change invalidates that reuse and requires the applicable expensive qualification again.
+
 ## Validate the smallest useful boundary
 
 Use [the command runbook](COMMAND-RUNBOOK.md) rather than inventing commands:
@@ -31,9 +39,11 @@ Use [the command runbook](COMMAND-RUNBOOK.md) rather than inventing commands:
 
 The changed-file helper is an iteration aid. Static verifies repository, documentation, policy, type, and format contracts. Fast adds frontend behavior tests and native compile/check coverage. Full is authoritative Linux/Tauri qualification; Android compile/package and emulator gates are additional platform evidence. The exact contents of each tier are the maintained scripts, not a remembered command summary.
 
-A pure documentation change still needs link/policy validation and a truthful record of broader qualification. Any source deletion requires checking production and test consumers, dynamic imports, platform compilation, and enforcing inventories. Do not claim a complete native application test from parsing, a frontend build, or mocked component tests.
+A pure documentation change still needs link/policy validation and a truthful record of broader qualification. Static and fast use the exact source-tree fingerprint. Full Linux and Android use a conservative product fingerprint that excludes only root-level Markdown and Markdown under `docs/`; every other repository path is qualification-bearing by default. Android fingerprints also include the relevant Java/Android toolchain. Reuse is permitted only after the current exact source has passed static qualification, only when the applicable expensive-tier fingerprint is unchanged, and only when the workflow has explicitly enabled qualification reuse. `OSTUDY_FORCE_CHECK=1` disables reuse and forces fresh execution.
 
-All evidence belongs to the exact tested commit. After another publication, old green runs remain historical evidence only. Report an actual cache reuse as such, and deliberately use `OSTUDY_FORCE_CHECK=1` only when a fresh execution is needed.
+A source deletion requires checking production and test consumers, dynamic imports, platform compilation, and enforcing inventories. Do not claim a complete native application test from parsing, a frontend build, or mocked component tests.
+
+All evidence belongs to the exact current workflow run and the source it checked. After another publication, an older green run remains historical evidence only; if the current run safely reuses an expensive result, report that reuse explicitly together with the original qualified source recorded in the cache. Never relabel an older run as though it executed the new commit.
 
 ## Consume failure evidence
 
@@ -51,8 +61,8 @@ Follow [Execution state](EXECUTION-STATE.md) for the exact schema and readiness 
 
 ## Review and hand off
 
-Inspect the final remote changed-file list and diff. Verify that the PR contains ordinary reviewable source, no secrets/personal data/build output, no unintended lockfile or migration changes, and no leftover applicators. Reconcile the acceptance snapshot to the verified head.
+The broad implementation/documentation audit belongs before candidate freeze. After qualification, verify rather than reopen the scope: inspect the final remote changed-file list and diff for source identity and unintended files, reconcile the acceptance snapshot to the verified head, and confirm that qualification evidence matches the current run. Do not turn this final verification into another cleanup pass; defer non-blocking improvements instead of invalidating a qualified candidate.
 
-Report changes grouped by purpose, exact base/branch/head/PR, actual check commands and run IDs, checks not run, manual acceptance, compatibility/rollback risks, and writer release. Provide the copyable local checkout/build/run/install path and task-specific observations from [Local testing and handoff](../development/local-testing-and-handoff.md).
+Verify that the PR contains ordinary reviewable source, no secrets/personal data/build output, no unintended lockfile or migration changes, and no leftover applicators. Report changes grouped by purpose, exact base/branch/head/PR, actual check commands and run IDs, checks not run, manual acceptance, compatibility/rollback risks, and writer release. Provide the copyable local checkout/build/run/install path and task-specific observations from [Local testing and handoff](../development/local-testing-and-handoff.md).
 
 The human reviews and normally squash-merges. Do not merge, tag, delete shared branches, or push to `main` without explicit authorization. Post-merge cleanup must preserve unmerged local work; a squash merge does not make `git branch -d` universally succeed and does not justify automatically forcing deletion.
