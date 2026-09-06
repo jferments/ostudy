@@ -241,6 +241,14 @@ struct ReceiverAcknowledgement {
     transferred_credential_count: usize,
 }
 
+struct HostConnectionState {
+    invitation: PairingInvitation,
+    pairing_secret: [u8; 32],
+    ephemeral: EphemeralKey,
+    selection: SyncSelection,
+    cancel_signal: cancellation::SyncCancellationSignal,
+}
+
 pub(crate) fn reconcile_startup(paths: &AppPaths) -> Result<(), CommandError> {
     let _store = SyncStore::open(paths)?;
     cancellation::reconcile_startup(paths)
@@ -660,16 +668,15 @@ fn run_host_listener(
                     ));
                 }
                 cancel_signal.attach_stream(&stream)?;
-                let result = handle_host_connection(
-                    app,
-                    stream,
-                    remote_address,
+                let connection_state = HostConnectionState {
                     invitation,
                     pairing_secret,
                     ephemeral,
                     selection,
-                    cancel_signal.clone(),
-                );
+                    cancel_signal: cancel_signal.clone(),
+                };
+                let result =
+                    handle_host_connection(app, stream, remote_address, connection_state);
                 return cancellation::normalize_result(&cancel_signal, result);
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -689,12 +696,15 @@ fn handle_host_connection(
     app: AppHandle,
     mut stream: TcpStream,
     remote_address: SocketAddr,
-    invitation: PairingInvitation,
-    pairing_secret: [u8; 32],
-    ephemeral: EphemeralKey,
-    selection: SyncSelection,
-    cancel_signal: cancellation::SyncCancellationSignal,
+    state: HostConnectionState,
 ) -> Result<String, CommandError> {
+    let HostConnectionState {
+        invitation,
+        pairing_secret,
+        ephemeral,
+        selection,
+        cancel_signal,
+    } = state;
     cancel_signal.check()?;
     let paths = app.state::<AppPaths>();
     let database = app.state::<Database>();
@@ -981,6 +991,18 @@ fn run_join_session(
             return Err(CommandError::new(
                 "device_sync_protocol_error",
                 "The synchronization package API-settings scope did not match the accepted invitation.",
+            ));
+        }
+        let document_file_bytes = extracted
+            .document_files
+            .iter()
+            .fold(0_u64, |total, file| total.saturating_add(file.byte_size));
+        if extracted.document_files.len() != metadata.package.document_file_count
+            || document_file_bytes != metadata.package.document_file_bytes
+        {
+            return Err(CommandError::new(
+                "device_sync_protocol_error",
+                "The synchronized document files did not match the authenticated transfer summary.",
             ));
         }
         log_staged_assets("receive", &extracted.assets);
