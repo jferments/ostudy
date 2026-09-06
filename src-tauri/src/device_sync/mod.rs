@@ -1,10 +1,10 @@
-//! Explicit trusted-device synchronization over local or USB-backed networking.
+//! Explicit trusted-device synchronization over local networking or direct USB.
 //!
 //! A pairing invitation is a short-lived one-way offer created by the device
-//! that will SEND selected learner data. The receiving device scans or pastes
-//! that offer, authenticates the sender, and merges the offered data locally. A
-//! reverse transfer is a separate explicit offer; accepting one invitation
-//! never uploads the recipient's library back to the sender.
+//! that will SEND selected learner data. LAN receivers scan or paste that offer;
+//! direct-USB receivers obtain the same authenticated invitation over the cable
+//! bootstrap. A reverse transfer is a separate explicit offer; accepting one
+//! invitation never uploads the recipient's library back to the sender.
 //!
 //! General application/appearance settings are device-local and never belong in
 //! a synchronization package. Flashcards, Documents, Study Guides, API provider
@@ -20,10 +20,11 @@ mod package;
 mod scope;
 mod store;
 mod transport;
+mod usb;
 
 use std::{
     fs,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream, UdpSocket},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, UdpSocket},
     path::PathBuf,
     thread,
     time::{Duration, Instant},
@@ -43,25 +44,37 @@ use crate::{
 };
 
 use self::{
+    cancellation::SyncAbortSource,
     credentials::CredentialRecord,
     crypto::{EphemeralKey, IdentityKey, SessionRole},
     package::PackageSummary,
     scope::SyncSelection,
     store::{ConflictRecord, DeviceIdentityRecord, PeerRecord, SessionRecord, SyncStore},
-    transport::{read_plain_json, write_plain_json, SecureChannel, FRAME_COMPLETE, FRAME_METADATA},
+    transport::{
+        read_plain_json, write_plain_json, SecureChannel, SyncIo, FRAME_COMPLETE, FRAME_METADATA,
+    },
 };
 
-const PROTOCOL_VERSION: u32 = 2;
+const PROTOCOL_VERSION: u32 = 3;
 const INVITATION_PREFIX: &str = "ostudy-sync://pair/";
+const USB_AUTO_JOIN_INVITATION: &str = "ostudy-sync://usb-attached";
 const DEFAULT_EXPIRY_SECONDS: i64 = 300;
 const MIN_EXPIRY_SECONDS: i64 = 60;
 const MAX_EXPIRY_SECONDS: i64 = 900;
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_INVITATION_CHARS: usize = 8 * 1024;
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PairingTransport {
+    LocalNetwork,
+    Usb,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartDevicePairingInput {
+    pub transport: Option<PairingTransport>,
     pub host_override: Option<String>,
     /// Legacy bundled UI compatibility. New callers send `selection`.
     pub include_api_settings: Option<bool>,
@@ -110,6 +123,7 @@ pub struct DeviceSyncStateDto {
     pub conflicts: Vec<ConflictRecord>,
     pub sessions: Vec<SessionRecord>,
     pub local_network_available: bool,
+    pub usb_host_available: bool,
     pub qr_scan_available: bool,
     pub secure_credentials_available: bool,
 }
@@ -121,6 +135,7 @@ pub struct PairingInvitationDto {
     pub invitation: String,
     pub qr_svg: String,
     pub endpoint: String,
+    pub transport: PairingTransport,
     pub fingerprint: String,
     pub expires_at: i64,
     pub include_api_settings: bool,
@@ -145,6 +160,7 @@ pub struct DeviceSyncResultDto {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PairingInvitation {
     protocol_version: u32,
+    transport: PairingTransport,
     session_id: String,
     host_device_id: String,
     host_display_name: String,
@@ -156,6 +172,12 @@ struct PairingInvitation {
     expires_at: i64,
     include_api_settings: bool,
     credentials_available: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UsbSyncBootstrap {
+    invitation: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -176,6 +198,7 @@ struct ClientHello {
 #[serde(rename_all = "camelCase")]
 struct UnsignedClientHello<'a> {
     protocol_version: u32,
+    transport: PairingTransport,
     session_id: &'a str,
     host_device_id: &'a str,
     host_identity_public_key: &'a str,
@@ -249,6 +272,11 @@ struct HostConnectionState {
     cancel_signal: cancellation::SyncCancellationSignal,
 }
 
+enum HostTransportSetup {
+    LocalNetwork(TcpListener),
+    Usb,
+}
+
 pub(crate) fn reconcile_startup(paths: &AppPaths) -> Result<(), CommandError> {
     let _store = SyncStore::open(paths)?;
     cancellation::reconcile_startup(paths)
@@ -279,6 +307,7 @@ pub fn get_device_sync_state(
             capabilities.services.local_network.state,
             CapabilityState::Available
         ),
+        usb_host_available: usb::host_available(),
         qr_scan_available: matches!(
             capabilities.services.qr_scan.state,
             CapabilityState::Available | CapabilityState::PermissionRequired
@@ -308,6 +337,7 @@ pub fn start_device_pairing(
     runtime: State<'_, PlatformRuntime>,
     input: StartDevicePairingInput,
 ) -> Result<PairingInvitationDto, CommandError> {
+    let transport = input.transport.unwrap_or(PairingTransport::LocalNetwork);
     let store = SyncStore::open(paths.inner())?;
     let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
     let selection = match input.selection {
@@ -335,10 +365,37 @@ pub fn start_device_pairing(
         .unwrap_or(DEFAULT_EXPIRY_SECONDS)
         .clamp(MIN_EXPIRY_SECONDS, MAX_EXPIRY_SECONDS);
     let expires_at = unix_time_millis()?.saturating_add(expiry_seconds.saturating_mul(1_000));
-    let listener = network::bind_listener()?;
-    let port = listener.local_addr().map_err(CommandError::io)?.port();
-    let host_ip = resolve_host_ip(input.host_override.as_deref())?;
-    let endpoint = SocketAddr::new(host_ip, port).to_string();
+    let (endpoint, host_transport) = match transport {
+        PairingTransport::LocalNetwork => {
+            let listener = network::bind_listener()?;
+            let port = listener.local_addr().map_err(CommandError::io)?.port();
+            let host_ip = resolve_host_ip(input.host_override.as_deref())?;
+            (
+                SocketAddr::new(host_ip, port).to_string(),
+                HostTransportSetup::LocalNetwork(listener),
+            )
+        }
+        PairingTransport::Usb => {
+            if input
+                .host_override
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty())
+            {
+                return Err(CommandError::new(
+                    "device_sync_usb_host_override_invalid",
+                    "USB synchronization does not use a network address override.",
+                ));
+            }
+            if !usb::host_available() {
+                return Err(CommandError::new(
+                    "device_sync_usb_unavailable",
+                    "Direct USB synchronization is not available in this desktop build.",
+                ));
+            }
+            (usb::USB_ENDPOINT_HINT.to_string(), HostTransportSetup::Usb)
+        }
+    };
     let pairing_secret = crypto::random_pairing_secret()?;
     let ephemeral = EphemeralKey::generate()?;
     let session_id = random_id(&pairing_secret[..16]);
@@ -349,6 +406,7 @@ pub fn start_device_pairing(
         );
     let invitation_payload = PairingInvitation {
         protocol_version: PROTOCOL_VERSION,
+        transport,
         session_id: session_id.clone(),
         host_device_id: identity.device_id.clone(),
         host_display_name: identity.display_name.clone(),
@@ -370,16 +428,20 @@ pub fn start_device_pairing(
     if invitation.len() > MAX_INVITATION_CHARS {
         return Err(CommandError::new(
             "device_sync_invitation_too_large",
-            "The synchronization invitation exceeds the supported QR-code size.",
+            "The synchronization invitation exceeds the supported size.",
         ));
     }
-    let qr_svg = render_pairing_qr(&invitation)?;
+    let qr_svg = if transport == PairingTransport::LocalNetwork {
+        render_pairing_qr(&invitation)?
+    } else {
+        String::new()
+    };
     store.create_session(&session_id, "host", &endpoint, expires_at)?;
     let cancel_signal = cancellation::begin(&session_id)?;
     crate::logging::info(
         "device_sync_offer_created",
         format!(
-            "session={session_id} endpoint={endpoint} flashcards={} documents={} study_guides={} api_settings={} api_credentials={}",
+            "session={session_id} transport={transport:?} endpoint={endpoint} flashcards={} documents={} study_guides={} api_settings={} api_credentials={}",
             selection.flashcards,
             selection.documents,
             selection.study_guides,
@@ -390,12 +452,12 @@ pub fn start_device_pairing(
     let host_app = app.clone();
     let host_session = session_id.clone();
     let worker_signal = cancel_signal.clone();
+    let bootstrap_invitation = invitation.clone();
     let spawn_result = thread::Builder::new()
         .name(format!("ostudy-sync-send-{}", &session_id[..8]))
         .spawn(move || {
-            let result = cancellation::normalize_result(
-                &worker_signal,
-                run_host_listener(
+            let result = match host_transport {
+                HostTransportSetup::LocalNetwork(listener) => run_host_listener(
                     host_app.clone(),
                     listener,
                     invitation_payload,
@@ -404,53 +466,25 @@ pub fn start_device_pairing(
                     selection,
                     worker_signal.clone(),
                 ),
-            );
-            let paths = host_app.state::<AppPaths>();
-            match &result {
-                Ok(peer_id) => {
-                    let _ = cancellation::finish_terminal(
-                        paths.inner(),
-                        &host_session,
-                        Some(peer_id),
-                        "completed",
-                        None,
-                    );
-                }
-                Err(error) if error.code == "device_sync_invitation_expired" => {
-                    let _ = cancellation::finish_terminal(
-                        paths.inner(),
-                        &host_session,
-                        None,
-                        "expired",
-                        Some((&error.code, &error.message)),
-                    );
-                }
-                Err(error) if error.code == "device_sync_canceled" => {
-                    let _ = cancellation::finish_terminal(
-                        paths.inner(),
-                        &host_session,
-                        None,
-                        "canceled",
-                        Some((&error.code, &error.message)),
-                    );
-                }
-                Err(error) => {
-                    let _ = cancellation::finish_terminal(
-                        paths.inner(),
-                        &host_session,
-                        None,
-                        "failed",
-                        Some((&error.code, &error.message)),
-                    );
-                }
-            }
+                HostTransportSetup::Usb => run_host_usb(
+                    host_app.clone(),
+                    invitation_payload,
+                    &bootstrap_invitation,
+                    pairing_secret,
+                    ephemeral,
+                    selection,
+                    worker_signal.clone(),
+                ),
+            };
+            let result = cancellation::normalize_result(&worker_signal, result);
+            finish_host_worker(&host_app, &host_session, &result);
             cancellation::finish(&host_session);
         });
     if let Err(error) = spawn_result {
         cancellation::finish(&session_id);
         let command_error = CommandError::new(
             "device_sync_listener_failed",
-            format!("The local synchronization worker could not start: {error}"),
+            format!("The synchronization worker could not start: {error}"),
         );
         let _ = cancellation::finish_terminal(
             paths.inner(),
@@ -467,6 +501,7 @@ pub fn start_device_pairing(
         invitation,
         qr_svg,
         endpoint,
+        transport,
         fingerprint: identity_key.fingerprint(),
         expires_at,
         include_api_settings: selection.api_settings,
@@ -481,11 +516,33 @@ pub async fn join_device_pairing(
     paths: State<'_, AppPaths>,
     runtime: State<'_, PlatformRuntime>,
     input: JoinDevicePairingInput,
-) -> Result<DeviceSyncResultDto, CommandError> {
+) -> Result<Option<DeviceSyncResultDto>, CommandError> {
+    if input.invitation.trim() == USB_AUTO_JOIN_INVITATION {
+        return join_attached_usb_device(app, paths.inner(), runtime.inner()).await;
+    }
+
     let invitation = parse_invitation(&input.invitation)?;
-    cancellation::ensure_peer_available(paths.inner(), &invitation.host_device_id)?;
-    let store = SyncStore::open(paths.inner())?;
-    ensure_identity(&store, runtime.inner())?;
+    if invitation.transport != PairingTransport::LocalNetwork {
+        return Err(CommandError::new(
+            "device_sync_usb_invitation_requires_cable",
+            "A direct USB synchronization invitation can only be accepted from the attached USB cable.",
+        ));
+    }
+    execute_join_session(app, paths.inner(), runtime.inner(), invitation, None)
+        .await
+        .map(Some)
+}
+
+async fn execute_join_session(
+    app: AppHandle,
+    paths: &AppPaths,
+    runtime: &PlatformRuntime,
+    invitation: PairingInvitation,
+    usb_stream: Option<UsbJoinStream>,
+) -> Result<DeviceSyncResultDto, CommandError> {
+    cancellation::ensure_peer_available(paths, &invitation.host_device_id)?;
+    let store = SyncStore::open(paths)?;
+    ensure_identity(&store, runtime)?;
     store.create_session(
         &invitation.session_id,
         "join",
@@ -497,15 +554,25 @@ pub async fn join_device_pairing(
     crate::logging::info(
         "device_sync_receive_started",
         format!(
-            "session={} sender={} endpoint={}",
-            invitation.session_id, invitation.host_device_id, invitation.endpoint
+            "session={} sender={} transport={:?} endpoint={}",
+            invitation.session_id,
+            invitation.host_device_id,
+            invitation.transport,
+            invitation.endpoint
         ),
     );
     let session_id = invitation.session_id.clone();
     let worker_app = app.clone();
     let worker_signal = cancel_signal.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_join_session(worker_app, invitation, worker_signal)
+    let result = tauri::async_runtime::spawn_blocking(move || match usb_stream {
+        Some(stream) => run_join_session_with_stream(
+            worker_app,
+            invitation,
+            stream,
+            usb::USB_ENDPOINT_HINT,
+            worker_signal,
+        ),
+        None => run_join_network_session(worker_app, invitation, worker_signal),
     })
     .await
     .map_err(|_| {
@@ -515,37 +582,68 @@ pub async fn join_device_pairing(
         )
     })?;
     let result = cancellation::normalize_result(&cancel_signal, result);
-    match &result {
-        Ok(value) => {
-            cancellation::finish_terminal(
-                paths.inner(),
-                &session_id,
-                Some(&value.peer.id),
-                "completed",
-                None,
-            )?;
-        }
-        Err(error) if error.code == "device_sync_canceled" => {
-            cancellation::finish_terminal(
-                paths.inner(),
-                &session_id,
-                None,
-                "canceled",
-                Some((&error.code, &error.message)),
-            )?;
-        }
-        Err(error) => {
-            cancellation::finish_terminal(
-                paths.inner(),
-                &session_id,
-                None,
-                "failed",
-                Some((&error.code, &error.message)),
-            )?;
-        }
-    }
+    finish_join_worker(paths, &session_id, &result)?;
     cancellation::finish(&session_id);
     result
+}
+
+#[cfg(target_os = "android")]
+type UsbJoinStream = usb::AndroidUsbStream;
+
+#[cfg(not(target_os = "android"))]
+struct UsbJoinStream;
+
+#[cfg(target_os = "android")]
+async fn join_attached_usb_device(
+    app: AppHandle,
+    paths: &AppPaths,
+    runtime: &PlatformRuntime,
+) -> Result<Option<DeviceSyncResultDto>, CommandError> {
+    use tauri_plugin_ostudy_platform::OstudyPlatformExt;
+
+    let fd = app
+        .ostudy_platform()
+        .take_usb_accessory_fd()
+        .map_err(|error| {
+            CommandError::new(
+                "device_sync_usb_open_failed",
+                format!("The Android USB accessory could not be claimed: {error}"),
+            )
+        })?;
+    let Some(fd) = fd else {
+        return Ok(None);
+    };
+    let mut stream = usb::from_accessory_fd(fd)?;
+    let (bootstrap, stream) = tauri::async_runtime::spawn_blocking(move || {
+        let bootstrap: UsbSyncBootstrap = read_plain_json(&mut stream)?;
+        Ok::<_, CommandError>((bootstrap, stream))
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "device_sync_worker_interrupted",
+            "The USB bootstrap worker ended before returning the synchronization invitation.",
+        )
+    })??;
+    let invitation = parse_invitation(&bootstrap.invitation)?;
+    if invitation.transport != PairingTransport::Usb || invitation.endpoint != usb::USB_ENDPOINT_HINT {
+        return Err(CommandError::new(
+            "device_sync_usb_invitation_invalid",
+            "The attached USB accessory did not present a direct-USB ostudy synchronization offer.",
+        ));
+    }
+    execute_join_session(app, paths, runtime, invitation, Some(stream))
+        .await
+        .map(Some)
+}
+
+#[cfg(not(target_os = "android"))]
+async fn join_attached_usb_device(
+    _app: AppHandle,
+    _paths: &AppPaths,
+    _runtime: &PlatformRuntime,
+) -> Result<Option<DeviceSyncResultDto>, CommandError> {
+    Ok(None)
 }
 
 #[tauri::command]
@@ -632,6 +730,95 @@ pub fn resolve_device_sync_conflict(
     store.resolve_conflict(&input.conflict_id, &input.resolution)
 }
 
+fn finish_host_worker(
+    app: &AppHandle,
+    session_id: &str,
+    result: &Result<String, CommandError>,
+) {
+    let paths = app.state::<AppPaths>();
+    match result {
+        Ok(peer_id) => {
+            let _ = cancellation::finish_terminal(
+                paths.inner(),
+                session_id,
+                Some(peer_id),
+                "completed",
+                None,
+            );
+        }
+        Err(error) if error.code == "device_sync_invitation_expired" => {
+            let _ = cancellation::finish_terminal(
+                paths.inner(),
+                session_id,
+                None,
+                "expired",
+                Some((&error.code, &error.message)),
+            );
+        }
+        Err(error) if error.code == "device_sync_canceled" => {
+            let _ = cancellation::finish_terminal(
+                paths.inner(),
+                session_id,
+                None,
+                "canceled",
+                Some((&error.code, &error.message)),
+            );
+        }
+        Err(error) => {
+            let _ = cancellation::finish_terminal(
+                paths.inner(),
+                session_id,
+                None,
+                "failed",
+                Some((&error.code, &error.message)),
+            );
+        }
+    }
+}
+
+fn finish_join_worker(
+    paths: &AppPaths,
+    session_id: &str,
+    result: &Result<DeviceSyncResultDto, CommandError>,
+) -> Result<(), CommandError> {
+    match result {
+        Ok(value) => cancellation::finish_terminal(
+            paths,
+            session_id,
+            Some(&value.peer.id),
+            "completed",
+            None,
+        ),
+        Err(error) if error.code == "device_sync_canceled" => cancellation::finish_terminal(
+            paths,
+            session_id,
+            None,
+            "canceled",
+            Some((&error.code, &error.message)),
+        ),
+        Err(error) => cancellation::finish_terminal(
+            paths,
+            session_id,
+            None,
+            "failed",
+            Some((&error.code, &error.message)),
+        ),
+    }
+}
+
+fn invitation_deadline(invitation: &PairingInvitation) -> Result<Instant, CommandError> {
+    Ok(Instant::now()
+        + Duration::from_millis(
+            u64::try_from(
+                invitation
+                    .expires_at
+                    .saturating_sub(unix_time_millis()?)
+                    .max(0),
+            )
+            .unwrap_or_default(),
+        ))
+}
+
 fn run_host_listener(
     app: AppHandle,
     listener: TcpListener,
@@ -641,16 +828,7 @@ fn run_host_listener(
     selection: SyncSelection,
     cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
-    let deadline = Instant::now()
-        + Duration::from_millis(
-            u64::try_from(
-                invitation
-                    .expires_at
-                    .saturating_sub(unix_time_millis()?)
-                    .max(0),
-            )
-            .unwrap_or_default(),
-        );
+    let deadline = invitation_deadline(&invitation)?;
     loop {
         cancel_signal.check()?;
         if Instant::now() >= deadline || unix_time_millis()? >= invitation.expires_at {
@@ -667,7 +845,6 @@ fn run_host_listener(
                         "The synchronization connection did not originate from a private local-network address.",
                     ));
                 }
-                cancel_signal.attach_stream(&stream)?;
                 let connection_state = HostConnectionState {
                     invitation,
                     pairing_secret,
@@ -675,7 +852,12 @@ fn run_host_listener(
                     selection,
                     cancel_signal: cancel_signal.clone(),
                 };
-                let result = handle_host_connection(app, stream, remote_address, connection_state);
+                let result = handle_host_connection(
+                    app,
+                    stream,
+                    remote_address.to_string(),
+                    connection_state,
+                );
                 return cancellation::normalize_result(&cancel_signal, result);
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -691,12 +873,62 @@ fn run_host_listener(
     }
 }
 
-fn handle_host_connection(
+#[cfg(target_os = "linux")]
+fn run_host_usb(
     app: AppHandle,
-    mut stream: TcpStream,
-    remote_address: SocketAddr,
-    state: HostConnectionState,
+    invitation: PairingInvitation,
+    bootstrap_invitation: &str,
+    pairing_secret: [u8; 32],
+    ephemeral: EphemeralKey,
+    selection: SyncSelection,
+    cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<String, CommandError> {
+    let paths = app.state::<AppPaths>();
+    SyncStore::open(paths.inner())?.update_session(&invitation.session_id, None, "connecting", None)?;
+    let deadline = invitation_deadline(&invitation)?;
+    let mut stream = usb::open_host_accessory(&invitation.session_id, &cancel_signal, deadline)?;
+    cancel_signal.check()?;
+    write_plain_json(
+        &mut stream,
+        &UsbSyncBootstrap {
+            invitation: bootstrap_invitation.to_string(),
+        },
+    )?;
+    let state = HostConnectionState {
+        invitation,
+        pairing_secret,
+        ephemeral,
+        selection,
+        cancel_signal,
+    };
+    handle_host_connection(app, stream, usb::USB_ENDPOINT_HINT.to_string(), state)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_host_usb(
+    _app: AppHandle,
+    _invitation: PairingInvitation,
+    _bootstrap_invitation: &str,
+    _pairing_secret: [u8; 32],
+    _ephemeral: EphemeralKey,
+    _selection: SyncSelection,
+    _cancel_signal: cancellation::SyncCancellationSignal,
+) -> Result<String, CommandError> {
+    Err(CommandError::new(
+        "device_sync_usb_unavailable",
+        "Direct USB synchronization is not available in this desktop build.",
+    ))
+}
+
+fn handle_host_connection<S>(
+    app: AppHandle,
+    mut stream: S,
+    endpoint_hint: String,
+    state: HostConnectionState,
+) -> Result<String, CommandError>
+where
+    S: SyncIo + SyncAbortSource + 'static,
+{
     let HostConnectionState {
         invitation,
         pairing_secret,
@@ -704,6 +936,7 @@ fn handle_host_connection(
         selection,
         cancel_signal,
     } = state;
+    cancel_signal.attach_stream(&stream)?;
     cancel_signal.check()?;
     let paths = app.state::<AppPaths>();
     let database = app.state::<Database>();
@@ -761,7 +994,7 @@ fn handle_host_connection(
         &hello.display_name,
         &hello.identity_public_key,
         &peer_fingerprint,
-        &remote_address.to_string(),
+        &endpoint_hint,
     )?;
     let peer = store.peer(&hello.device_id)?.ok_or_else(|| {
         CommandError::new(
@@ -837,7 +1070,7 @@ fn handle_host_connection(
         );
     }
 
-    store.mark_peer_synced(&peer.id, &remote_address.to_string())?;
+    store.mark_peer_synced(&peer.id, &endpoint_hint)?;
     crate::logging::info(
         "device_sync_sender_completed",
         format!(
@@ -851,17 +1084,17 @@ fn handle_host_connection(
     Ok(peer.id)
 }
 
-fn run_join_session(
+fn run_join_network_session(
     app: AppHandle,
     invitation: PairingInvitation,
     cancel_signal: cancellation::SyncCancellationSignal,
 ) -> Result<DeviceSyncResultDto, CommandError> {
-    cancel_signal.check()?;
-    let paths = app.state::<AppPaths>();
-    let database = app.state::<Database>();
-    let runtime = app.state::<PlatformRuntime>();
-    let store = SyncStore::open(paths.inner())?;
-    let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
+    if invitation.transport != PairingTransport::LocalNetwork {
+        return Err(CommandError::new(
+            "device_sync_invitation_invalid",
+            "A non-network synchronization invitation was routed to the LAN adapter.",
+        ));
+    }
     let address: SocketAddr = invitation.endpoint.parse().map_err(|_| {
         CommandError::new(
             "device_sync_invitation_invalid",
@@ -874,14 +1107,33 @@ fn run_join_session(
             "Device synchronization is restricted to private local-network addresses.",
         ));
     }
-    let mut stream = network::connect_to_sender(address, &invitation.endpoint)?;
+    let stream = network::connect_to_sender(address, &invitation.endpoint)?;
+    let endpoint_hint = invitation.endpoint.clone();
+    run_join_session_with_stream(app, invitation, stream, &endpoint_hint, cancel_signal)
+}
+
+fn run_join_session_with_stream<S>(
+    app: AppHandle,
+    invitation: PairingInvitation,
+    mut stream: S,
+    endpoint_hint: &str,
+    cancel_signal: cancellation::SyncCancellationSignal,
+) -> Result<DeviceSyncResultDto, CommandError>
+where
+    S: SyncIo + SyncAbortSource + 'static,
+{
     cancel_signal.attach_stream(&stream)?;
     cancel_signal.check()?;
+    let paths = app.state::<AppPaths>();
+    let database = app.state::<Database>();
+    let runtime = app.state::<PlatformRuntime>();
+    let store = SyncStore::open(paths.inner())?;
+    let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
     crate::logging::info(
         "device_sync_receive_connected",
         format!(
-            "session={} endpoint={}",
-            invitation.session_id, invitation.endpoint
+            "session={} transport={:?} endpoint={}",
+            invitation.session_id, invitation.transport, endpoint_hint
         ),
     );
     let pairing_secret = crypto::decode_standard(&invitation.pairing_secret, "pairing secret")?;
@@ -897,6 +1149,7 @@ fn run_join_session(
     let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
     let unsigned = UnsignedClientHello {
         protocol_version: PROTOCOL_VERSION,
+        transport: invitation.transport,
         session_id: &invitation.session_id,
         host_device_id: &invitation.host_device_id,
         host_identity_public_key: &invitation.host_identity_public_key,
@@ -934,6 +1187,7 @@ fn run_join_session(
     )?;
     let mut channel = SecureChannel::new(stream, keys)?;
     let receiver_session_id = invitation.session_id.clone();
+    let endpoint_hint = endpoint_hint.to_string();
     let transfer_result = (|| -> Result<DeviceSyncResultDto, CommandError> {
         let server: ServerHello = channel.receive_json(FRAME_METADATA)?;
         cancel_signal.check()?;
@@ -948,7 +1202,7 @@ fn run_join_session(
             &server.display_name,
             &server.identity_public_key,
             &server.identity_fingerprint,
-            &invitation.endpoint,
+            &endpoint_hint,
         )?;
         let sender = store.peer(&server.device_id)?.ok_or_else(|| {
             CommandError::new(
@@ -1017,8 +1271,7 @@ fn run_join_session(
         if !extracted.selection.api_settings {
             remote_database
                 .execute_batch(
-                    "DROP TABLE IF EXISTS ai_task_defaults;
-                     DROP TABLE IF EXISTS ai_provider_profiles;",
+                    "DROP TABLE IF EXISTS ai_task_defaults;\n                     DROP TABLE IF EXISTS ai_provider_profiles;",
                 )
                 .map_err(CommandError::database)?;
         }
@@ -1088,7 +1341,7 @@ fn run_join_session(
             (0, None)
         };
         cancel_signal.check()?;
-        store.mark_peer_synced(&sender.id, &invitation.endpoint)?;
+        store.mark_peer_synced(&sender.id, &endpoint_hint)?;
         channel.send_json(
             FRAME_COMPLETE,
             &ReceiverAcknowledgement {
@@ -1133,7 +1386,7 @@ fn ensure_identity(
     let identity = store.identity()?.ok_or_else(|| {
         CommandError::new(
             "device_sync_store_error",
-            "The local device identity was not persisted.",
+            "The local device identity was not persisted after initialization.",
         )
     })?;
     let identity_key = IdentityKey::load_or_create(runtime.secure_secret_store().as_ref())?;
@@ -1211,17 +1464,29 @@ fn parse_invitation(value: &str) -> Result<PairingInvitation, CommandError> {
             "The synchronization invitation contains an invalid credential scope.",
         ));
     }
-    let address: SocketAddr = invitation.endpoint.parse().map_err(|_| {
-        CommandError::new(
-            "device_sync_invitation_invalid",
-            "The synchronization invitation contains an invalid local-network endpoint.",
-        )
-    })?;
-    if !is_private_address(address.ip()) {
-        return Err(CommandError::new(
-            "device_sync_address_rejected",
-            "The synchronization invitation does not point to a private local-network address.",
-        ));
+    match invitation.transport {
+        PairingTransport::LocalNetwork => {
+            let address: SocketAddr = invitation.endpoint.parse().map_err(|_| {
+                CommandError::new(
+                    "device_sync_invitation_invalid",
+                    "The synchronization invitation contains an invalid local-network endpoint.",
+                )
+            })?;
+            if !is_private_address(address.ip()) {
+                return Err(CommandError::new(
+                    "device_sync_address_rejected",
+                    "The synchronization invitation does not point to a private local-network address.",
+                ));
+            }
+        }
+        PairingTransport::Usb => {
+            if invitation.endpoint != usb::USB_ENDPOINT_HINT {
+                return Err(CommandError::new(
+                    "device_sync_usb_invitation_invalid",
+                    "The direct-USB synchronization invitation contains an invalid transport endpoint.",
+                ));
+            }
+        }
     }
     let host_public = crypto::decode_standard(
         &invitation.host_identity_public_key,
@@ -1300,7 +1565,7 @@ fn validate_server_hello(
     {
         return Err(CommandError::new(
             "device_sync_handshake_failed",
-            "The sending device identity or offered synchronization scope did not match the scanned invitation.",
+            "The sending device identity or offered synchronization scope did not match the accepted invitation.",
         ));
     }
     let unsigned = UnsignedServerHello {
@@ -1348,6 +1613,7 @@ fn client_transcript(
 ) -> Result<Vec<u8>, CommandError> {
     serde_json::to_vec(&UnsignedClientHello {
         protocol_version: hello.protocol_version,
+        transport: invitation.transport,
         session_id: &hello.session_id,
         host_device_id: &invitation.host_device_id,
         host_identity_public_key: &invitation.host_identity_public_key,
@@ -1403,7 +1669,7 @@ fn resolve_host_ip(override_value: Option<&str>) -> Result<IpAddr, CommandError>
     } else {
         Err(CommandError::new(
             "device_sync_host_unavailable",
-            "ostudy could not determine a private LAN address. Enter this device's LAN or USB-network IP in the advanced host field.",
+            "ostudy could not determine a private LAN address. Enter this device's LAN IP in the advanced host field.",
         ))
     }
 }
@@ -1492,6 +1758,7 @@ mod tests {
     fn test_invitation(include_api_settings: bool) -> PairingInvitation {
         PairingInvitation {
             protocol_version: PROTOCOL_VERSION,
+            transport: PairingTransport::LocalNetwork,
             session_id: "a".repeat(32),
             host_device_id: "b".repeat(32),
             host_display_name: "Sender".to_string(),
@@ -1506,26 +1773,41 @@ mod tests {
         }
     }
 
+    fn encode_invitation(payload: &PairingInvitation) -> String {
+        let encoded =
+            crypto::encode_url(&serde_json::to_vec(payload).expect("invitation should serialize"));
+        format!("{INVITATION_PREFIX}{encoded}")
+    }
+
     #[test]
     fn invitation_round_trip_rejects_public_endpoints() {
         let mut payload = test_invitation(false);
         payload.endpoint = "203.0.113.10:4444".to_string();
-        let encoded =
-            crypto::encode_url(&serde_json::to_vec(&payload).expect("invitation should serialize"));
-        assert!(parse_invitation(&format!("{INVITATION_PREFIX}{encoded}")).is_err());
+        assert!(parse_invitation(&encode_invitation(&payload)).is_err());
+    }
+
+    #[test]
+    fn direct_usb_invitation_uses_symbolic_transport_endpoint() {
+        let mut payload = test_invitation(false);
+        payload.transport = PairingTransport::Usb;
+        payload.endpoint = usb::USB_ENDPOINT_HINT.to_string();
+        let parsed = parse_invitation(&encode_invitation(&payload)).unwrap();
+        assert_eq!(parsed.transport, PairingTransport::Usb);
+        assert_eq!(parsed.endpoint, usb::USB_ENDPOINT_HINT);
+
+        payload.endpoint = "192.168.42.1:49251".to_string();
+        assert!(parse_invitation(&encode_invitation(&payload)).is_err());
     }
 
     #[test]
     fn invitation_rejects_credentials_without_api_scope() {
         let mut payload = test_invitation(false);
         payload.credentials_available = true;
-        let encoded =
-            crypto::encode_url(&serde_json::to_vec(&payload).expect("invitation should serialize"));
-        assert!(parse_invitation(&format!("{INVITATION_PREFIX}{encoded}")).is_err());
+        assert!(parse_invitation(&encode_invitation(&payload)).is_err());
     }
 
     #[test]
-    fn client_transcript_binds_sender_selected_api_scope() {
+    fn client_transcript_binds_sender_selected_api_scope_and_transport() {
         let hello = ClientHello {
             protocol_version: PROTOCOL_VERSION,
             session_id: "a".repeat(32),
@@ -1540,6 +1822,12 @@ mod tests {
         let without_api = client_transcript(&test_invitation(false), &hello).unwrap();
         let with_api = client_transcript(&test_invitation(true), &hello).unwrap();
         assert_ne!(without_api, with_api);
+
+        let mut usb_invitation = test_invitation(false);
+        usb_invitation.transport = PairingTransport::Usb;
+        usb_invitation.endpoint = usb::USB_ENDPOINT_HINT.to_string();
+        let usb_transcript = client_transcript(&usb_invitation, &hello).unwrap();
+        assert_ne!(without_api, usb_transcript);
     }
 
     #[test]

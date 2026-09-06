@@ -25,6 +25,7 @@ The audit used active composition/route code, native command and migration owner
 | Code standards referenced the removed monolithic `src/ipc.ts` | Current domain gateways under `src/ipc/` documented |
 | Current architecture was fragmented and sometimes described intended rather than implemented ownership | `docs/architecture/overview.md` is now the comprehensive source-linked current-system architecture; focused references align with it |
 | Peer-sync docs warned that Documents/Study Guides were outside the supported graph | Device-sync package v3 now exposes explicit Flashcards, Documents, Study Guides, API-provider settings, and Saved API key scopes; current sync docs describe the implemented allowlist/dependencies rather than the old limitation |
+| Initial USB-sync docs exposed USB tethering, interface discovery, manual IP entry, QR reuse, and firewall troubleshooting as product steps | The maintained Linux→Android cable path now uses Android Open Accessory bulk I/O below `SyncIo`; current docs describe the product contract as plug in one phone, select scopes, click **USB Sync**, with OS USB permissions handled by installation/platform integration rather than the sync UI |
 
 ## Proven source/workflow cleanup
 
@@ -79,6 +80,8 @@ The current architecture is deliberately truthful about remaining concentration.
 The Android no-build installer chooses the newest matching APK by modification time. It does not attest Git SHA/ABI provenance. Current handoff docs therefore recommend a fresh normal build/install for PR acceptance. Explicit artifact-provenance selection would be a separate tooling improvement.
 
 Device synchronization has since gained the versioned granular-scope extension that the original audit said was required: Documents, their managed source/derived files and durable processing/LLM graph, and Study Guides are explicit selectable domains in package v3. The architectural rule behind the old warning still stands: a new table is **not** synchronized merely because it exists. Future learner-data domains still require an explicit scope/allowlist decision, coherent graph/package handling, compatibility policy, merge semantics, tests, and documentation.
+
+The first USB synchronization proof-of-concept also demonstrated why transport-neutral architecture is not the same thing as acceptable platform UX. Reusing TCP over USB tethering preserved crypto/package/merge ownership but exposed transport plumbing to the user. The corrected maintained design keeps that upper-layer reuse while replacing the cable adapter with direct Android Open Accessory I/O. Linux libusb and Android `UsbManager` now own device discovery/opening; `SyncIo` owns only the byte-stream contract; platform installation owns USB access rules. Future platform-specific USB work should preserve that separation and must not reintroduce manual networking configuration as a normal product workflow.
 
 Current non-PDF canonical provenance remains section-oriented despite Xberg exposing richer internal structure. Promoting slide/sheet/chapter identities into public citations requires coordinated schema, backup, UI, and compatibility work.
 

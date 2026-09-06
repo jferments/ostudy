@@ -63,6 +63,7 @@ function state(): syncIpc.DeviceSyncState {
     ],
     sessions: [],
     localNetworkAvailable: true,
+    usbHostAvailable: true,
     qrScanAvailable: true,
     secureCredentialsAvailable: true,
   };
@@ -103,6 +104,7 @@ describe("DeviceSyncSettings", () => {
       invitation: "ostudy-sync://pair/example",
       qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
       endpoint: "192.168.1.10:44000",
+      transport: "local-network",
       fingerprint: "a".repeat(64),
       expiresAt: Date.now() + 300_000,
       includeApiSettings: false,
@@ -124,48 +126,74 @@ describe("DeviceSyncSettings", () => {
     vi.mocked(syncIpc.resolveDeviceSyncConflict).mockResolvedValue(undefined);
   });
 
-  it("creates a one-way sender offer with learning data on and API sharing off by default", async () => {
+  it("creates a one-way network offer with learning data on and API sharing off by default", async () => {
     renderSync();
     expect(await screen.findByText("Android phone")).toBeTruthy();
     expect(screen.getByText(/Appearance and other app settings always stay local/iu)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Create sync offer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create network sync offer" }));
 
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+        transport: "local-network",
         hostOverride: null,
         selection: defaultSelection,
       });
     });
     expect(await screen.findByAltText(/QR code containing the short-lived ostudy synchronization offer/u)).toBeTruthy();
-    expect(screen.getByText(/192\.168\.1\.10:44000/u)).toBeTruthy();
+    expect(screen.getByText(/Local network · 192\.168\.1\.10:44000/u)).toBeTruthy();
     expect(screen.getByText(/Flashcards and review history, Documents and LLM processing data, Study Guides/iu)).toBeTruthy();
     expect(screen.getByText(/scanning this code accepts the offer/iu)).toBeTruthy();
   });
 
-  it("uses the same authenticated pairing command for USB-network synchronization", async () => {
-    renderSync();
+  it("starts direct USB sync with one click and no USB networking controls", async () => {
+    const showToast = renderSync();
     await screen.findByText("Android phone");
 
-    fireEvent.change(screen.getByLabelText(/Connection/iu), {
-      target: { value: "usb-network" },
-    });
-    const usbButton = screen.getByRole("button", { name: "Create USB sync offer" });
-    expect((usbButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByLabelText(/USB interface address/iu)).toBeNull();
+    expect(screen.queryByLabelText(/^Connection$/iu)).toBeNull();
+    expect(screen.getByText(/no tethering, IP address, QR code/iu)).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText(/USB interface address/iu), {
-      target: { value: "192.168.42.17" },
-    });
-    expect((usbButton as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(usbButton);
+    fireEvent.click(screen.getByRole("button", { name: "USB Sync" }));
 
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+        transport: "usb",
+        selection: defaultSelection,
+      });
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      "info",
+      expect.stringContaining("USB sync started"),
+    );
+  });
+
+  it("hides the USB action when this desktop build has no native USB host adapter", async () => {
+    vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue({
+      ...state(),
+      usbHostAvailable: false,
+    });
+    renderSync();
+    await screen.findByText("Android phone");
+    expect(screen.queryByRole("button", { name: "USB Sync" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Create network sync offer" })).toBeTruthy();
+  });
+
+  it("keeps the advanced host override LAN-only", async () => {
+    renderSync();
+    await screen.findByText("Android phone");
+    fireEvent.change(screen.getByLabelText(/Advanced LAN address override/iu), {
+      target: { value: "192.168.42.17" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create network sync offer" }));
+
+    await waitFor(() => {
+      expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+        transport: "local-network",
         hostOverride: "192.168.42.17",
         selection: defaultSelection,
       });
     });
-    expect(screen.getByText(/USB · 192\.168\.1\.10:44000/u)).toBeTruthy();
   });
 
   it("lets the sender select provider settings and saved API keys independently", async () => {
@@ -174,10 +202,11 @@ describe("DeviceSyncSettings", () => {
 
     fireEvent.click(screen.getByRole("checkbox", { name: /^API provider settings/iu }));
     fireEvent.click(screen.getByRole("checkbox", { name: /^Saved API keys/iu }));
-    fireEvent.click(screen.getByRole("button", { name: "Create sync offer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create network sync offer" }));
 
     await waitFor(() => {
       expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({
+        transport: "local-network",
         hostOverride: null,
         selection: {
           ...defaultSelection,
@@ -223,7 +252,8 @@ describe("DeviceSyncSettings", () => {
     await screen.findByText("Android phone");
     fireEvent.click(screen.getByRole("checkbox", { name: /^Flashcards/iu }));
     fireEvent.click(screen.getByRole("checkbox", { name: /^Documents/iu }));
-    expect((screen.getByRole("button", { name: "Create sync offer" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Create network sync offer" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "USB Sync" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("disables saved API key transfer when secure storage is unavailable", async () => {
@@ -245,7 +275,7 @@ describe("DeviceSyncSettings", () => {
       .mockResolvedValue(state());
     const showToast = renderSync();
 
-    expect(await screen.findByRole("button", { name: "Replace waiting offer" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Replace with network offer" })).toBeTruthy();
     expect(screen.getByText(/Waiting/u)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cancel sending request" }));
 
@@ -255,7 +285,16 @@ describe("DeviceSyncSettings", () => {
     expect(showToast).toHaveBeenCalledWith("info", "Sending request canceled.");
   });
 
-  it("accepts a scanned offer immediately without a second pairing action", async () => {
+  it("labels an unclaimed direct-USB session without exposing a network endpoint", async () => {
+    vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue({
+      ...state(),
+      sessions: [{ ...activeHostSession(), endpointHint: "usb", state: "connecting" }],
+    });
+    renderSync();
+    expect(await screen.findByText(/Connecting · USB cable/u)).toBeTruthy();
+  });
+
+  it("accepts a scanned network offer immediately without a second pairing action", async () => {
     const showToast = renderSync();
     await screen.findByText("Android phone");
     fireEvent.click(screen.getByRole("button", { name: "Scan and receive" }));

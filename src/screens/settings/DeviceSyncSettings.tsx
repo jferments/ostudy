@@ -30,7 +30,6 @@ interface DeviceSyncSettingsProps {
 }
 
 type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" | "cancelled";
-type SyncTransportChoice = "local-network" | "usb-network";
 type SyncSelectionKey = keyof DeviceSyncSelection;
 
 const ACTIVE_SESSION_STATES = new Set(["waiting", "connecting", "transferring", "merging"]);
@@ -46,10 +45,10 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
   const [deviceName, setDeviceName] = useState("");
   const [hostOverride, setHostOverride] = useState("");
-  const [transportChoice, setTransportChoice] = useState<SyncTransportChoice>("local-network");
   const [joinInvitation, setJoinInvitation] = useState("");
   const [selection, setSelection] = useState<DeviceSyncSelection>(DEFAULT_SELECTION);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
+  const [usbSessionId, setUsbSessionId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [cancelingSessionId, setCancelingSessionId] = useState<string | null>(null);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
@@ -98,6 +97,23 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     return () => window.clearInterval(interval);
   }, [activeSessions.length, busyAction, invitation]);
 
+  useEffect(() => {
+    if (!usbSessionId || !state) return;
+    const session = state.sessions.find((candidate) => candidate.id === usbSessionId);
+    if (!session || ACTIVE_SESSION_STATES.has(session.state)) return;
+    if (session.state === "completed") {
+      showToast("success", "USB synchronization completed.");
+    } else if (session.state === "canceled") {
+      showToast("info", "USB synchronization was canceled.");
+    } else {
+      showToast(
+        "error",
+        session.errorMessage ?? "USB synchronization did not complete. Reconnect the phone and try again.",
+      );
+    }
+    setUsbSessionId(null);
+  }, [showToast, state, usbSessionId]);
+
   function changeSelection(key: SyncSelectionKey, checked: boolean): void {
     setSelection((current) => {
       const next = { ...current, [key]: checked };
@@ -132,18 +148,12 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
       setErrorMessage("Select at least one synchronization category before creating an offer.");
       return;
     }
-    const selectedHost = hostOverride.trim();
-    if (transportChoice === "usb-network" && !selectedHost) {
-      setErrorMessage(
-        "USB synchronization needs this device's private USB-network IP address. Connect the cable, enable USB tethering or Personal Hotspot over USB, then enter that interface address below.",
-      );
-      return;
-    }
     setBusyAction("host");
     setErrorMessage(null);
     try {
       const created = await startDevicePairing({
-        hostOverride: selectedHost || null,
+        transport: "local-network",
+        hostOverride: hostOverride.trim() || null,
         selection,
       });
       setInvitation(created);
@@ -151,11 +161,30 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
       showToast(
         "info",
         hasUnclaimedSendingOffer
-          ? "The previous waiting offer was canceled and replaced with a new five-minute offer."
-          : transportChoice === "usb-network"
-            ? "USB sync offer is ready on this device for five minutes."
-            : "Sync offer is ready on this device for five minutes.",
+          ? "The previous waiting offer was canceled and replaced with a new five-minute network offer."
+          : "Network sync offer is ready for five minutes.",
       );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function startUsbSync(): Promise<void> {
+    if (busyAction) return;
+    if (!hasSelectedCategory) {
+      setErrorMessage("Select at least one synchronization category before starting USB sync.");
+      return;
+    }
+    setBusyAction("usb");
+    setInvitation(null);
+    setErrorMessage(null);
+    try {
+      const created = await startDevicePairing({ transport: "usb", selection });
+      setUsbSessionId(created.sessionId);
+      await refresh(true);
+      showToast("info", "USB sync started. Keep the Android phone connected while ostudy transfers the selected data.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -236,6 +265,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     try {
       await cancelDeviceSyncSession(session.id);
       if (invitation?.sessionId === session.id) setInvitation(null);
+      if (usbSessionId === session.id) setUsbSessionId(null);
       await refresh(true);
       showToast(
         "info",
@@ -306,7 +336,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     }
   }
 
-  const qrSource = invitation
+  const qrSource = invitation?.qrSvg
     ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(invitation.qrSvg)}`
     : null;
 
@@ -317,8 +347,8 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
           <h2>Device synchronization</h2>
           <p>
             Send selected Flashcards, Documents and their LLM processing data, Study Guides, and
-            optional API configuration over your private local network or a direct USB network
-            bridge. Appearance and other app settings always stay local to each device.
+            optional API configuration over your private local network or directly through a USB
+            cable. Appearance and other app settings always stay local to each device.
           </p>
         </div>
         <button
@@ -366,36 +396,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <article className={styles.pairingPanel}>
               <h3>Send to another device</h3>
               <p>
-                Create a short-lived one-way offer. Choose exactly which categories this offer may
-                contain; the receiving device never uploads its own library in response.
+                Choose exactly which categories this one-way transfer may contain. The receiving
+                device never uploads its own library in response.
               </p>
-              <label className={settingsStyles.stackedField}>
-                Connection
-                <select
-                  value={transportChoice}
-                  disabled={busyAction !== null}
-                  onChange={(event) => {
-                    setTransportChoice(event.currentTarget.value as SyncTransportChoice);
-                    setInvitation(null);
-                    setErrorMessage(null);
-                  }}
-                >
-                  <option value="local-network">Local network (Wi-Fi or Ethernet)</option>
-                  <option value="usb-network">USB cable</option>
-                </select>
-                <span className={settingsStyles.fieldHelp}>
-                  {transportChoice === "usb-network"
-                    ? "USB uses the operating system's point-to-point USB networking, while ostudy reuses the same authenticated synchronization protocol."
-                    : "Local-network sync advertises the private LAN address detected by ostudy."}
-                </span>
-              </label>
-              {transportChoice === "usb-network" ? (
-                <p className={settingsStyles.securityNote}>
-                  Connect the devices with a data-capable cable and enable USB tethering or Personal
-                  Hotspot over USB. Enter this sending device's private USB-interface address below.
-                  The cable carries the same encrypted, authenticated sync session used on Wi-Fi.
-                </p>
-              ) : null}
 
               <fieldset className={styles.scopeFieldset}>
                 <legend>What to synchronize</legend>
@@ -467,45 +470,51 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                 </p>
               ) : null}
 
+              {state.usbHostAvailable ? (
+                <>
+                  <p className={settingsStyles.securityNote}>
+                    <strong>USB cable:</strong> plug an Android phone into this computer with a
+                    data-capable cable, then click USB Sync. ostudy discovers the phone and uses a
+                    direct encrypted USB accessory channel—no tethering, IP address, QR code,
+                    developer mode, or USB debugging setup is required. Android may ask once which
+                    app should handle the newly attached ostudy accessory.
+                  </p>
+                  <button
+                    type="button"
+                    className={ownedClassNames(ownedStyleMaps, "primary-button")}
+                    disabled={busyAction !== null || !hasSelectedCategory}
+                    onClick={() => void startUsbSync()}
+                  >
+                    {busyAction === "usb" ? "Connecting phone…" : "USB Sync"}
+                  </button>
+                </>
+              ) : null}
+
               <label className={settingsStyles.stackedField}>
-                {transportChoice === "usb-network"
-                  ? "USB interface address"
-                  : "Advanced LAN address override"}
+                Advanced LAN address override
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder={
-                    transportChoice === "usb-network"
-                      ? "Private address on the USB link"
-                      : "Usually detected automatically"
-                  }
+                  placeholder="Usually detected automatically"
                   value={hostOverride}
                   onChange={(event) => setHostOverride(event.currentTarget.value)}
                 />
                 <span className={settingsStyles.fieldHelp}>
-                  {transportChoice === "usb-network"
-                    ? "Use the private IPv4 or IPv6 address assigned to this device's USB-network interface. Automatic USB-interface discovery stays outside the sync protocol so Android, desktop, and future iOS adapters can evolve independently."
-                    : "Enter a private IP only when automatic LAN-address detection fails."}
+                  Only needed if automatic private LAN-address detection fails. This field is never
+                  used for USB synchronization.
                 </span>
               </label>
               <button
                 type="button"
-                className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                disabled={
-                  busyAction !== null ||
-                  !state.localNetworkAvailable ||
-                  !hasSelectedCategory ||
-                  (transportChoice === "usb-network" && !hostOverride.trim())
-                }
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                disabled={busyAction !== null || !state.localNetworkAvailable || !hasSelectedCategory}
                 onClick={() => void hostPairing()}
               >
                 {busyAction === "host"
                   ? "Opening listener…"
                   : hasUnclaimedSendingOffer
-                    ? "Replace waiting offer"
-                    : transportChoice === "usb-network"
-                      ? "Create USB sync offer"
-                      : "Create sync offer"}
+                    ? "Replace with network offer"
+                    : "Create network sync offer"}
               </button>
 
               {invitation && qrSource ? (
@@ -515,9 +524,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   </div>
                   <div className={styles.invitationDetails}>
                     <strong>Expires {formatDateTime(invitation.expiresAt)}</strong>
-                    <span>
-                      {transportChoice === "usb-network" ? "USB" : "Local network"} · {invitation.endpoint}
-                    </span>
+                    <span>Local network · {invitation.endpoint}</span>
                     <code>{formatFingerprint(invitation.fingerprint)}</code>
                     <p className={styles.scanHint}>
                       Includes: {describeSelection(invitation.selection)}.
@@ -542,16 +549,16 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <article className={styles.pairingPanel}>
               <h3>Receive from another device</h3>
               <p>
-                Scan a synchronization offer on Android or paste invitation text. The invitation's
-                endpoint determines whether the connection follows a LAN or USB-network path; the
-                authenticated receive and merge flow is otherwise identical. Accepting an offer
-                never uploads this device's library back.
+                Network offers can be scanned on Android or pasted below. Direct USB transfers are
+                accepted automatically by the Android app when the desktop starts USB Sync; there is
+                no QR or network setup on the cable path. Accepting a transfer never uploads this
+                device's library back.
               </p>
               {state.qrScanAvailable ? (
                 <>
                   <p className={styles.scanHint}>
                     Center the complete QR code inside the camera frame and hold the phone steady.
-                    After detection, ostudy accepts the offer and begins receiving automatically.
+                    After detection, ostudy accepts the network offer and begins receiving automatically.
                   </p>
                   <button
                     type="button"
@@ -778,7 +785,7 @@ function humanizeState(value: string): string {
 }
 
 function sessionPeerLabel(session: DeviceSyncSession, state: DeviceSyncState): string {
-  if (!session.peerId) return session.endpointHint;
+  if (!session.peerId) return session.endpointHint === "usb" ? "USB cable" : session.endpointHint;
   return state.peers.find((peer) => peer.id === session.peerId)?.displayName ?? session.endpointHint;
 }
 

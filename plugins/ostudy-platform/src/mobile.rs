@@ -1,4 +1,4 @@
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize};
 use tauri::{
     plugin::{PluginApi, PluginHandle},
     AppHandle, Manager, Runtime,
@@ -8,6 +8,13 @@ use crate::{models::*, qr_models::*, Result};
 
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "io.github.jferments.ostudy.platform";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TakeUsbAccessoryResult {
+    available: bool,
+    fd: Option<i32>,
+}
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
     app: &AppHandle<R>,
@@ -45,8 +52,20 @@ pub(super) fn init_qr<R: Runtime, C: DeserializeOwned>(
     Ok(OstudyQr(qr))
 }
 
+pub(super) fn init_usb<R: Runtime, C: DeserializeOwned>(
+    _app: &AppHandle<R>,
+    api: PluginApi<R, C>,
+) -> Result<OstudyUsb<R>> {
+    #[cfg(target_os = "android")]
+    let usb = api.register_android_plugin(PLUGIN_IDENTIFIER, "OstudyUsbPlugin")?;
+    #[cfg(target_os = "ios")]
+    compile_error!("The ostudy USB plugin does not yet provide an iOS implementation.");
+    Ok(OstudyUsb(usb))
+}
+
 pub(super) struct OstudyDocuments<R: Runtime>(PluginHandle<R>);
 pub(super) struct OstudyQr<R: Runtime>(PluginHandle<R>);
+pub(super) struct OstudyUsb<R: Runtime>(PluginHandle<R>);
 
 pub struct OstudyPlatform<R: Runtime> {
     app: AppHandle<R>,
@@ -150,6 +169,16 @@ impl<R: Runtime> OstudyPlatform<R> {
         self.platform
             .run_mobile_plugin("dismissIncomingShare", IncomingShareRequest { token })
             .map_err(Into::into)
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn take_usb_accessory_fd(&self) -> Result<Option<i32>> {
+        let usb = self.app.state::<OstudyUsb<R>>();
+        let result: TakeUsbAccessoryResult = usb
+            .0
+            .run_mobile_plugin("takeUsbAccessory", ())
+            .map_err(crate::Error::from)?;
+        Ok(if result.available { result.fd } else { None })
     }
 
     pub fn scan_qr_code(&self, request: ScanQrCodeRequest) -> Result<ScanQrCodeResult> {

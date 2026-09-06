@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
+const USB_AUTO_JOIN_INVITATION = "ostudy-sync://usb-attached";
+
+export type DeviceSyncTransport = "local-network" | "usb";
+
 export interface DeviceSyncIdentity {
   deviceId: string;
   displayName: string;
@@ -67,6 +71,7 @@ export interface DeviceSyncState {
   conflicts: DeviceSyncConflict[];
   sessions: DeviceSyncSession[];
   localNetworkAvailable: boolean;
+  usbHostAvailable: boolean;
   qrScanAvailable: boolean;
   secureCredentialsAvailable: boolean;
 }
@@ -76,6 +81,7 @@ export interface PairingInvitation {
   invitation: string;
   qrSvg: string;
   endpoint: string;
+  transport: DeviceSyncTransport;
   fingerprint: string;
   expiresAt: number;
   includeApiSettings: boolean;
@@ -105,12 +111,14 @@ export function updateDeviceSyncName(displayName: string): Promise<DeviceSyncIde
 }
 
 export function startDevicePairing(input: {
+  transport?: DeviceSyncTransport;
   hostOverride?: string | null;
   selection: DeviceSyncSelection;
   expiresInSeconds?: number | null;
 }): Promise<PairingInvitation> {
   return invoke<PairingInvitation>("start_device_pairing", {
     input: {
+      transport: input.transport ?? "local-network",
       hostOverride: input.hostOverride ?? null,
       selection: input.selection,
       expiresInSeconds: input.expiresInSeconds ?? null,
@@ -118,9 +126,17 @@ export function startDevicePairing(input: {
   });
 }
 
-export function joinDevicePairing(invitation: string): Promise<DeviceSyncResult> {
-  return invoke<DeviceSyncResult>("join_device_pairing", {
+export async function joinDevicePairing(invitation: string): Promise<DeviceSyncResult> {
+  const result = await invoke<DeviceSyncResult | null>("join_device_pairing", {
     input: { invitation },
+  });
+  if (!result) throw new Error("No synchronization invitation was available.");
+  return result;
+}
+
+export function joinUsbDevicePairing(): Promise<DeviceSyncResult | null> {
+  return invoke<DeviceSyncResult | null>("join_device_pairing", {
+    input: { invitation: USB_AUTO_JOIN_INVITATION },
   });
 }
 

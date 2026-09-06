@@ -17,7 +17,7 @@ die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 [[ "$(uname -s)" == "Linux" ]] || die "This setup script is for Ubuntu/Debian Linux only."
 command -v apt-get >/dev/null 2>&1 || die "apt-get was not found."
 
-log "Installing Ubuntu/Debian packages required by Tauri and the native smoke test"
+log "Installing Ubuntu/Debian packages required by Tauri, direct USB sync, and the native smoke test"
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   build-essential \
@@ -29,6 +29,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libayatana-appindicator3-dev \
   librsvg2-dev \
   libssl-dev \
+  libusb-1.0-0-dev \
   libwebkit2gtk-4.1-dev \
   libxdo-dev \
   openbox \
@@ -43,6 +44,16 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   x11-utils \
   xvfb \
   xz-utils
+
+USB_RULE_SOURCE="$ROOT_DIR/packaging/linux/70-ostudy-android-usb.rules"
+if [[ -f "$USB_RULE_SOURCE" ]] && command -v udevadm >/dev/null 2>&1; then
+  log "Installing Linux permissions for direct Android USB synchronization"
+  sudo install -m 0644 "$USB_RULE_SOURCE" /etc/udev/rules.d/70-ostudy-android-usb.rules
+  sudo udevadm control --reload-rules
+  # Re-evaluate attached USB devices when possible. Replugging remains the most
+  # deterministic way to apply a newly installed rule to an existing device.
+  sudo udevadm trigger --subsystem-match=usb --action=change || true
+fi
 
 LOCAL_BIN="$HOME/.local/bin"
 LOCAL_OPT="$HOME/.local/opt"
@@ -145,11 +156,11 @@ Open the developer console with:
   ./scripts/ostudy-dev
 
 Start the existing build quickly with:
-  ./run-app.sh
+  ./scripts/ostudy-dev run
 
 After changing source code, rebuild with:
-  ./scripts/build.sh
+  ./scripts/ostudy-dev build
 
-Before committing a change, run the complete one-command gate:
-  ./scripts/check.sh
+For focused validation after a small change:
+  ./scripts/ostudy-dev check-changed
 SETUP_DONE

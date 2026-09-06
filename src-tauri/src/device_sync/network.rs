@@ -98,6 +98,71 @@ pub(crate) fn connect_to_sender(
     })
 }
 
+// `execute_join_session` has one cross-platform type shape. Non-Android builds
+// can never construct the USB branch, but the compiler still type-checks it.
+// This unreachable stub supplies that type boundary without introducing USB
+// behavior into the network adapter or a fake runtime fallback.
+#[cfg(not(target_os = "android"))]
+mod unavailable_usb_join_stub {
+    use std::{
+        io::{self, Read, Write},
+        sync::Arc,
+        time::Duration,
+    };
+
+    use crate::error::CommandError;
+
+    use super::super::{
+        cancellation::{SyncAbort, SyncAbortSource},
+        transport::SyncIo,
+        UsbJoinStream,
+    };
+
+    #[derive(Debug)]
+    struct UnavailableUsbAbort;
+
+    impl SyncAbort for UnavailableUsbAbort {
+        fn abort(&self) {}
+    }
+
+    impl Read for UsbJoinStream {
+        fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Android USB join streams do not exist on this platform.",
+            ))
+        }
+    }
+
+    impl Write for UsbJoinStream {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Android USB join streams do not exist on this platform.",
+            ))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SyncIo for UsbJoinStream {
+        fn prepare_for_sync(&self, _timeout: Duration) -> Result<(), CommandError> {
+            Err(CommandError::new(
+                "device_sync_usb_unavailable",
+                "Android USB join streams do not exist on this platform.",
+            ))
+        }
+    }
+
+    impl SyncAbortSource for UsbJoinStream {
+        fn sync_abort_handle(&self) -> Result<Arc<dyn SyncAbort>, CommandError> {
+            Ok(Arc::new(UnavailableUsbAbort))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

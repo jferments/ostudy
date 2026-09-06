@@ -5,6 +5,7 @@ import { IncomingShareCoordinator } from "./components/IncomingShareCoordinator"
 import { MobileAppBar } from "./components/MobileAppBar";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
+import { UsbSyncCoordinator } from "./components/UsbSyncCoordinator";
 import { useAppController } from "./controllers/useAppController";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
@@ -91,6 +92,10 @@ function App() {
               <AmbientBackdrop />
               <div className={shellStyles.shell} data-ui-root="true">
                 <IncomingShareCoordinator
+                  refreshDecks={controller.refreshDecks}
+                  showToast={controller.showToast}
+                />
+                <UsbSyncCoordinator
                   refreshDecks={controller.refreshDecks}
                   showToast={controller.showToast}
                 />

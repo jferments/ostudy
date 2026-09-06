@@ -124,7 +124,8 @@ pub fn run() {
     #[cfg(mobile)]
     let builder = builder
         .plugin(tauri_plugin_ostudy_platform::init_documents())
-        .plugin(tauri_plugin_ostudy_platform::init_qr());
+        .plugin(tauri_plugin_ostudy_platform::init_qr())
+        .plugin(tauri_plugin_ostudy_platform::init_usb());
 
     let result = builder
         .plugin(tauri_plugin_dialog::init())

@@ -1,0 +1,30 @@
+# oStudy direct Android USB synchronization.
+#
+# The desktop must be able to open the phone before Android Open Accessory (AOA)
+# mode starts so it can issue the AOA vendor requests on endpoint zero. Grant the
+# active local desktop session access to the same conservative Android OEM vendor
+# set that the native adapter probes. Once AOA starts, Android re-enumerates under
+# Google's reserved accessory IDs, which are listed explicitly at the end.
+#
+# TAG+="uaccess" scopes access through logind to the active local user; this is
+# intentionally not MODE="0666" and does not require membership in an adb group.
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="0502", TAG+="uaccess" # Acer
+SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", TAG+="uaccess" # Samsung
+SUBSYSTEM=="usb", ATTR{idVendor}=="0b05", TAG+="uaccess" # ASUS
+SUBSYSTEM=="usb", ATTR{idVendor}=="0bb4", TAG+="uaccess" # HTC
+SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", TAG+="uaccess" # Sony
+SUBSYSTEM=="usb", ATTR{idVendor}=="1004", TAG+="uaccess" # LG
+SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", TAG+="uaccess" # Huawei
+SUBSYSTEM=="usb", ATTR{idVendor}=="17ef", TAG+="uaccess" # Lenovo
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", TAG+="uaccess" # Google / Pixel
+SUBSYSTEM=="usb", ATTR{idVendor}=="19d2", TAG+="uaccess" # ZTE
+SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", TAG+="uaccess" # Motorola
+SUBSYSTEM=="usb", ATTR{idVendor}=="22d9", TAG+="uaccess" # OPPO
+SUBSYSTEM=="usb", ATTR{idVendor}=="2717", TAG+="uaccess" # Xiaomi
+SUBSYSTEM=="usb", ATTR{idVendor}=="2a70", TAG+="uaccess" # OnePlus
+SUBSYSTEM=="usb", ATTR{idVendor}=="2d95", TAG+="uaccess" # vivo
+
+# Android Open Accessory re-enumeration IDs.
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", ATTR{idProduct}=="2d00", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", ATTR{idProduct}=="2d01", TAG+="uaccess"

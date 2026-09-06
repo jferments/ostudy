@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Match only the identity advertised by the desktop AOA host. Version is
+         intentionally omitted from the filter; Android recommends not filtering
+         on the optional accessory version field. -->
+    <usb-accessory
+        manufacturer="oStudy"
+        model="oStudy USB Sync" />
+</resources>
