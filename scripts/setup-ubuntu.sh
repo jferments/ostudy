@@ -5,8 +5,13 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/console-events.bash"
 
-log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+log() {
+  ostudy_console_stage setup "$*"
+  printf '\n\033[1;34m==> %s\033[0m\n' "$*"
+}
 die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Linux" ]] || die "This setup script is for Ubuntu/Debian Linux only."
@@ -135,6 +140,9 @@ Setup is complete.
 
 The initial standalone application build used ${CARGO_BUILD_JOBS} Cargo jobs.
 Cargo also reuses compiled dependencies on later builds.
+
+Open the developer console with:
+  ./scripts/ostudy-dev
 
 Start the existing build quickly with:
   ./run-app.sh
