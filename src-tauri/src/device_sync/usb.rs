@@ -7,7 +7,7 @@ pub(crate) const fn host_available() -> bool {
 #[cfg(target_os = "android")]
 pub(crate) use android::{from_accessory_fd, AndroidUsbStream};
 #[cfg(target_os = "linux")]
-pub(crate) use linux::{open_host_accessory, HostUsbStream};
+pub(crate) use linux::open_host_accessory;
 
 #[cfg(target_os = "linux")]
 mod linux {
