@@ -1,12 +1,12 @@
 # Linux developer console
 
-`./ostudy-dev` is the human-facing terminal dashboard for Linux development. It does **not** replace the maintained build/test/run scripts or create a second qualification system. It starts those same wrappers, watches a small structured stage stream, summarizes useful test output, and writes the child process output to a durable plain-text log.
+`./scripts/ostudy-dev` is the human-facing terminal dashboard for Linux development. It does **not** replace the maintained build/test/run scripts or create a second qualification system. It starts those same wrappers, watches a small structured stage stream, summarizes useful test output, and writes the child process output to a durable plain-text log.
 
 ## Why Ratatui
 
 The console uses [Ratatui](https://ratatui.rs/) with Crossterm rather than a Python/Textual application. Textual has a strong high-level widget system, including progress, logging, and sparkline widgets, and would have been a reasonable UI choice. Ratatui fits ostudy better because the project already pins a Rust toolchain, the console can compile into one small native executable, and it avoids making Python package management part of ordinary interactive development.
 
-The TUI lives in the separate `tools/ostudy-tui/` Cargo package. It is deliberately **not** a dependency of `src-tauri`: Android/mobile/application builds do not carry terminal UI code or its dependencies.
+The TUI lives in the separate `scripts/developer-console/` Cargo package. It is deliberately **not** a dependency of `src-tauri`: Android/mobile/application builds do not carry terminal UI code or its dependencies.
 
 Direct terminal dependencies are exact-pinned through `versions.env` and the console manifest. The console package is built and tested from a cache/temporary source copy so Cargo's generated developer-tool lock state never mutates maintained source during a build or qualification run.
 
@@ -15,7 +15,7 @@ Direct terminal dependencies are exact-pinned through `versions.env` and the con
 From the repository root on an already configured Linux checkout:
 
 ```bash
-./ostudy-dev
+./scripts/ostudy-dev
 ```
 
 The menu currently exposes:
@@ -34,22 +34,22 @@ setup
 A workflow can also be launched directly:
 
 ```bash
-./ostudy-dev build
-./ostudy-dev check-fast
-./ostudy-dev run
+./scripts/ostudy-dev build
+./scripts/ostudy-dev check-fast
+./scripts/ostudy-dev run
 ```
 
 `--plain` bypasses the dashboard and runs the same underlying wrapper normally:
 
 ```bash
-./ostudy-dev check-fast --plain
+./scripts/ostudy-dev check-fast --plain
 ```
 
 Non-interactive invocations automatically use plain mode when a workflow was supplied. This keeps pipes, CI, redirected output, and terminal-less automation predictable. GitHub Actions continues to call the maintained scripts directly.
 
 ## First-time setup
 
-The first `./ostudy-dev setup` has a bootstrapping constraint: Ratatui is a Rust program, while the setup workflow is responsible for installing Rust. If Cargo is not available yet, the launcher therefore runs `scripts/setup-ubuntu.sh` in the ordinary terminal. Once setup completes, the console can compile into the user's XDG cache and future setup/build/test sessions can use the dashboard.
+The first `./scripts/ostudy-dev setup` has a bootstrapping constraint: Ratatui is a Rust program, while the setup workflow is responsible for installing Rust. If Cargo is not available yet, the launcher therefore runs `scripts/setup-ubuntu.sh` in the ordinary terminal. Once setup completes, the console can compile into the user's XDG cache and future setup/build/test sessions can use the dashboard.
 
 When Rust is already present, the launcher performs `sudo -v` **before** entering the alternate terminal screen. Password prompts therefore remain normal shell prompts instead of corrupting the dashboard.
 

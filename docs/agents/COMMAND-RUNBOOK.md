@@ -7,26 +7,26 @@ Read this before giving shell instructions. Commands below are maintained reposi
 For ordinary human Linux development, the preferred front door is the Ratatui dashboard:
 
 ```bash
-./ostudy-dev
+./scripts/ostudy-dev
 ```
 
 It launches the same maintained wrappers described below while keeping build/test output in stable tiles, showing stage/test progress, and preserving complete plain-text logs. Direct workflow shortcuts include:
 
 ```bash
-./ostudy-dev build
-./ostudy-dev run
-./ostudy-dev check-changed
-./ostudy-dev check-static
-./ostudy-dev check-fast
-./ostudy-dev check
+./scripts/ostudy-dev build
+./scripts/ostudy-dev run
+./scripts/ostudy-dev check-changed
+./scripts/ostudy-dev check-static
+./scripts/ostudy-dev check-fast
+./scripts/ostudy-dev check
 ```
 
-`./ostudy-dev <workflow> --plain` bypasses the dashboard. Non-interactive automation should continue to call the underlying scripts directly. See [Linux developer console](../development/developer-console.md) for controls, logging, bootstrap behavior, and the presentation/qualification boundary.
+`./scripts/ostudy-dev <workflow> --plain` bypasses the dashboard. Non-interactive automation should continue to call the underlying scripts directly. See [Linux developer console](../development/developer-console.md) for controls, logging, bootstrap behavior, and the presentation/qualification boundary.
 
 ## First-time Linux setup
 
 ```bash
-./ostudy-dev setup
+./scripts/ostudy-dev setup
 ```
 
 Because the TUI itself is written in Rust, the very first invocation falls back to the ordinary setup shell while Rust is being installed; subsequent workflows use the console. The underlying maintained setup path remains:
@@ -41,8 +41,8 @@ The setup wrapper installs/provisions the pinned development environment and mak
 ## Existing Linux checkout: build and test-drive
 
 ```bash
-./ostudy-dev build
-./ostudy-dev run
+./scripts/ostudy-dev build
+./scripts/ostudy-dev run
 ```
 
 The equivalent plain wrappers are:
@@ -69,7 +69,7 @@ node ./scripts/verify-agent-workflow-policy.mjs
 ./scripts/check.sh
 ```
 
-Interactive equivalents for the four maintained check wrappers are available through `./ostudy-dev`. The wrapper command remains the qualification identity in evidence and GitHub Actions.
+Interactive equivalents for the four maintained check wrappers are available through `./scripts/ostudy-dev`. The wrapper command remains the qualification identity in evidence and GitHub Actions.
 
 Choose the smallest relevant command during iteration. The first two are focused documentation/workflow checks; they do not replace broader gates when required. `check-changed` selects by the current diff, so a clean checkout with no relevant diff can do little. Use explicit static/fast/full wrappers when certifying a particular tier.
 

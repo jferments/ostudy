@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-TOOL_DIR="$ROOT_DIR/tools/ostudy-tui"
+TOOL_DIR="$SCRIPT_DIR/developer-console"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/versions.env"
 

@@ -142,7 +142,7 @@ The initial standalone application build used ${CARGO_BUILD_JOBS} Cargo jobs.
 Cargo also reuses compiled dependencies on later builds.
 
 Open the developer console with:
-  ./ostudy-dev
+  ./scripts/ostudy-dev
 
 Start the existing build quickly with:
   ./run-app.sh

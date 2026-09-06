@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-TOOL_DIR="$ROOT_DIR/tools/ostudy-tui"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+TOOL_DIR="$SCRIPT_DIR/developer-console"
 CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}/ostudy/developer-console"
 SOURCE_DIR="$CACHE_BASE/source"
 TARGET_DIR="$CACHE_BASE/target"
@@ -31,7 +32,7 @@ if ! command -v cargo >/dev/null 2>&1; then
     exit 0
   fi
   printf 'The ostudy developer console needs the pinned Rust toolchain.\n' >&2
-  printf 'Run ./ostudy-dev setup for first-time Ubuntu/Debian setup.\n' >&2
+  printf 'Run ./scripts/ostudy-dev setup for first-time Ubuntu/Debian setup.\n' >&2
   exit 2
 fi
 
