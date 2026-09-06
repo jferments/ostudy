@@ -10,6 +10,8 @@ source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/console-events.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
@@ -18,4 +20,5 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   exit 2
 fi
 cd "$ROOT_DIR"
+ostudy_console_stage desktop "Starting Tauri hot-reload development server"
 exec pnpm tauri dev -- --locked

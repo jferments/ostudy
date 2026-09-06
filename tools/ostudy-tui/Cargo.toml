@@ -1,0 +1,17 @@
+[package]
+name = "ostudy-developer-console"
+version = "0.1.0"
+edition = "2024"
+publish = false
+rust-version = "1.88"
+license = "MIT"
+description = "Linux developer terminal console for ostudy build, test, setup, and run workflows"
+
+[dependencies]
+crossterm = "=0.29.0"
+ratatui = "=0.30.2"
+
+[profile.release]
+strip = "debuginfo"
+lto = "thin"
+codegen-units = 1
