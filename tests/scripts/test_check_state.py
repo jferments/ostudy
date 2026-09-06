@@ -186,6 +186,56 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             after_policy = self.fingerprint(repo, fake_bin, "full")
             self.assertNotEqual(before, after_policy)
 
+    def test_product_fingerprint_changes_for_committed_file_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            fake_bin = Path(raw_directory) / "bin"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            self.prepare_fake_toolchain(fake_bin)
+            (repo / "scripts").mkdir()
+            tool = repo / "scripts" / "tool.sh"
+            tool.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "scripts/tool.sh"], check=True)
+
+            before = self.fingerprint(repo, fake_bin, "full")
+            subprocess.run(
+                ["git", "-C", str(repo), "update-index", "--chmod=+x", "scripts/tool.sh"],
+                check=True,
+            )
+            after = self.fingerprint(repo, fake_bin, "full")
+
+            self.assertNotEqual(before, after)
+
+    def test_full_stamp_survives_docs_only_edit_but_static_stamp_does_not(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            state = Path(raw_directory) / "state"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            (repo / "docs").mkdir()
+            guide = repo / "docs" / "guide.md"
+            guide.write_text("before\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "docs/guide.md"], check=True)
+
+            prefix = f"export OSTUDY_CHECK_STATE_DIR={shlex.quote(str(state))}; "
+            written = self.run_guard(
+                repo,
+                prefix + "ostudy_write_check_stamp static; ostudy_write_check_stamp full",
+            )
+            self.assertEqual(written.returncode, 0, written.stderr)
+
+            guide.write_text("after\n", encoding="utf-8")
+            checked = self.run_guard(
+                repo,
+                prefix
+                + "if ostudy_check_stamp_is_current full; then echo full-current; else echo full-stale; fi; "
+                + "if ostudy_check_stamp_is_current static; then echo static-current; else echo static-stale; fi",
+            )
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertIn("full-current", checked.stdout)
+            self.assertIn("static-stale", checked.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

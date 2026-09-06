@@ -78,7 +78,20 @@ ostudy_check_fingerprint() {
 
   (
     cd "$OSTUDY_ROOT_DIR"
+    printf 'fingerprint_schema=2\n'
     printf 'scope=%s\n' "$scope"
+
+    # Include committed index metadata as well as file bytes. The index record
+    # carries the Git file mode, so a mode-only source change cannot silently
+    # reuse a qualification whose scripts or symlinks have different semantics.
+    while IFS= read -r -d '' record; do
+      path="${record#*$'\t'}"
+      if [[ "$scope" == product ]] && ostudy_qualification_neutral_path "$path"; then
+        continue
+      fi
+      printf 'index=%s\n' "$record"
+    done < <(git ls-files --stage -z)
+
     {
       git ls-files -z
       git ls-files --others --exclude-standard -z
