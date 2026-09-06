@@ -100,6 +100,8 @@ Do not add a standalone `--` before `--serial`; `android-install.sh` does not ac
 
 The debug ID is `io.github.jferments.ostudy.dev`; release is `io.github.jferments.ostudy`. Replacement installation preserves app data. Uninstall/clear-data is destructive and not routine troubleshooting without backup/explicit consent.
 
+Developer options/USB debugging are needed here only to install and inspect a development APK with ADB. They are **not** required by ostudy's product USB synchronization workflow after the app is installed.
+
 ## 4. Optional hot reload
 
 ```bash
@@ -151,15 +153,42 @@ A user-started long document task can acquire a foreground service with a visibl
 
 ## 7. Trusted-device synchronization
 
-Open **Settings → Backup/Sync → Device synchronization** on both installations. Devices must be mutually reachable on the same trusted private network.
+Open **Settings → Backup/Sync → Device synchronization** on both installations. For normal LAN sync, devices must be mutually reachable on the same trusted private network. For USB sync, the current implementation uses an operating-system-provided point-to-point USB network interface and the same authenticated protocol over that private link.
 
-An invitation is a one-way offer from the device that created it. The sender can choose whether to include supported API-provider settings/available saved credentials for that offer. The receiver accepts by pasted invitation or, on Android, **Google Code Scanner through Play services**. A successful scan supplies decoded invitation data to ostudy; native protocol/identity/expiry/cryptographic validation still decides whether the offer is accepted.
+An invitation is a one-way offer from the device that created it. The sender chooses the data categories for that offer with five checkboxes:
 
-Receiving does not upload the receiver's library back to the sender. To transfer Android-side changes later, create a new offer from Android and accept it on the other device.
+- **Flashcards**;
+- **Documents**;
+- **Study Guides**;
+- **API provider settings**;
+- **Saved API keys**.
 
-Shared Rust authenticates/encrypts the session, validates the versioned allowlisted package, merges from saved common-base state, and records explicit conflicts. Ordinary app/appearance settings stay device-local. Provider profile/default metadata and saved credentials are excluded by default and require fresh sender opt-in for each offer; credential bytes travel separately through the authenticated encrypted channel into the receiving secure store.
+Flashcards, Documents, and Study Guides are selected by default. API provider settings and Saved API keys are off by default for each new offer. Study Guides require Documents. Saved API keys require API provider settings. The native backend validates these dependencies again rather than trusting only the checkbox state.
 
-Current peer sync does not imply that every newer document/Study Guide table/file is automatically synchronized. Whole-library backup has a broader recovery graph.
+Selecting Documents transfers the managed source/page/source-asset files and the durable document-processing graph needed on the other device, including canonical source/semantic state, OCR-derived data, outlines/checkpoints, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document artifact metadata. Study Guides are a separate selectable domain covering generated guides, sections, overlays, and guide checkpoints.
+
+The receiver accepts by pasted invitation or, on Android, **Google Code Scanner through Play services**. A successful scan supplies decoded invitation data to ostudy; native protocol/identity/expiry/cryptographic validation still decides whether the offer is accepted. The receiver does not get a second independent scope selector for the same offer: the authenticated sender selection defines the package being sent.
+
+Receiving does not upload the receiver's library back to the sender. To transfer Android-side changes later, create a new offer from Android and accept it on the other device. That reverse offer can select a different set of categories or use a different transport.
+
+Shared Rust authenticates/encrypts the session, validates the versioned allowlisted package, merges from saved common-base state, and records explicit conflicts. Unselected domains are removed from the copied synchronization snapshot before transmission. Ordinary app/appearance settings stay device-local. Transient AI probe evidence is not synchronized.
+
+API provider settings and saved credentials are distinct permissions. Selecting provider settings transfers eligible profile/default metadata without key bytes. Saved key bytes travel only when **Saved API keys** is separately selected, the sender can read them from secure storage, and the receiver has usable secure storage. Credential bytes travel through the authenticated encrypted live channel rather than being inserted into the SQLite snapshot or complete backup.
+
+### USB-network synchronization
+
+Product USB synchronization does not require ADB, Developer options, or USB debugging. Those are development-install/debug tools only.
+
+For the current USB-network path:
+
+1. connect the devices with a data-capable USB cable;
+2. enable the operating system's USB networking feature, such as Android **USB tethering** where supported;
+3. identify the private IP address assigned to the sending device's USB-network interface;
+4. choose **USB cable** in ostudy and enter that address in **USB interface address**;
+5. select the desired transfer categories;
+6. create the USB sync offer and scan/paste it on the receiver.
+
+The invitation, pairing identity, encryption, package validation, merge rules, conflicts, baselines, and cancellation behavior are the same as for LAN sync. Automatic cross-platform USB-interface discovery is intentionally deferred; explicit private-address entry is the deterministic fallback rather than guessing from platform-specific adapter names.
 
 See [device sync user guide](../user-guide/device-sync.md) and [sync architecture](../architecture/device-sync.md).
 
@@ -191,7 +220,7 @@ Android Auto Backup/device-transfer backup is disabled for the application sandb
 
 Saved provider credentials use the Android Keystore-backed secure-store implementation; session-only credentials disappear with process lifetime. Credential bytes are excluded from learner SQLite, drafts, deck exports, complete backups, routine diagnostics, and ordinary file shares.
 
-Device synchronization can transfer supported saved credentials only after explicit sender opt-in for the individual authenticated encrypted offer.
+Device synchronization can transfer supported saved credentials only after explicit sender opt-in for **Saved API keys** on the individual authenticated encrypted offer, with **API provider settings** included as its required parent scope.
 
 ## Manual acceptance for Android-affecting changes
 
@@ -207,9 +236,10 @@ Use the maintained install wrapper and test only the relevant real-device paths.
 8. representative text/scanned document processing;
 9. long document foreground execution/cancel/retry;
 10. Google Code Scanner receive/send direction on a real Play-services device;
-11. portrait/landscape, system Back, and accessibility behavior.
+11. real USB-network send/receive with a data-capable cable, including selected/unselected sync categories and cancellation;
+12. portrait/landscape, system Back, and accessibility behavior.
 
-Emulator success must not be reported as physical-camera/OEM-provider/battery/screen-reader acceptance.
+Emulator success must not be reported as physical-camera/OEM-provider/battery/screen-reader/USB-cable acceptance.
 
 ## Troubleshooting
 

@@ -87,21 +87,35 @@ Android uses **Google Code Scanner through Play services**, not the retired ZXin
 
 This is separate from ML Kit document OCR. Scanner success is not invitation acceptance until the decoded value passes expiry, identity, scope, and authentication checks. The frontend does not possess private signing keys merely to render or consume the QR.
 
-## Allowed data graph
+## Allowed data graph and sender-selected scopes
 
-The sync store/merge code explicitly owns its allowlist. Supported study data includes decks/folders, notes/cards, tags, templates, managed images, schedules, practice sessions and their card records, review history, and associated historical attribution.
+Synchronization does not inherit every SQLite table automatically. The sender creates a package from an explicit, versioned selection of application-owned domains. The current package-v3 scope model exposes five categories:
 
-**The current document/study-guide learning-artifact graph is not a full supported sync promise.** Source document files, canonical derivatives, generated guide revisions, learner overlays, and topic relationships require a coordinated versioned sync extension. Their existence in a newer local database or whole-library backup does not put them automatically on the merge allowlist.
+- **Flashcards** — deck folders/decks, notes/cards, tags, templates, managed card images, schedules, practice sessions/snapshots, review history, and portable source-citation records.
+- **Documents** — canonical document records, managed source/page/source-asset files, source units/blocks/assets, page and semantic/OCR-derived state, outlines/checkpoints, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document artifact metadata.
+- **Study Guides** — generated guide revisions, sections, overlays, guide checkpoints, and guide artifact state. Study Guides require Documents because the guide graph is rooted in document/topic identity.
+- **API provider settings** — supported provider profile metadata and task defaults.
+- **Saved API keys** — eligible secure-store credential bytes. Keys are a separate opt-in and require API provider settings.
 
-A coherent outgoing snapshot is sanitized rather than sending a raw live database. Ordinary `app_settings` are excluded/stripped, keeping appearance and application preferences device-local. Probe/operation caches and unrelated transient state are not learner-data merge authority. Version/schema validation and graph checks prevent unsupported package contents from being silently interpreted as a complete library replacement.
+Flashcards, Documents, and Study Guides are selected by default for a normal study-data offer. API provider settings and Saved API keys default off for each offer. Native validation rejects an empty selection or invalid dependency combinations even if a manipulated frontend bypasses checkbox behavior.
+
+Cross-domain provenance is conditional rather than implicit. Document↔deck and document↔note/topic relationships are merged only when both Documents and Flashcards are selected. Documents can therefore move without pulling generated flashcards, while selecting both preserves the supported provenance graph.
+
+A coherent outgoing snapshot is **sanitized before transmission**. Unselected domains are removed from the copied SQLite snapshot rather than merely ignored during merge. `app_settings` are always stripped, keeping appearance and device-local application preferences local. AI profile/probe owners sanitize their own transient or unselected state so device sync does not become a second owner of AI persistence policy.
+
+Managed document files use the same validated document-file ledger as complete backup: expected managed paths, file roles, byte sizes, and SHA-256 hashes are checked before transfer/install. The receiver also compares extracted document-file count and aggregate bytes with the authenticated transfer summary before installation. A same-identity file with different bytes fails instead of being silently overwritten.
+
+Package v3 records the granular selection explicitly. The reader retains compatibility with earlier package-v2 flashcard/API-settings packages, but older packages do not acquire Documents or Study Guides merely because a newer receiver has those tables.
 
 ## Optional API settings and credential transfer
 
-Normal offers exclude provider configuration. The sender can explicitly opt into supported provider-profile metadata, task defaults, and available saved credentials **for that offer**. Consent defaults off each time; a previous pairing does not imply permanent authorization.
+**API provider settings** and **Saved API keys** are separate sender choices. Provider settings can be synchronized without authorizing credential bytes. Selecting Saved API keys also requires/selects provider settings; turning provider settings off removes the dependent key selection.
 
-Credential bytes travel through a separate authenticated secure-store boundary. They are not written into the SQLite snapshot, ordinary file fallback, shared deck, or complete backup. Eligible profile references and required key availability are validated. The receiving device must have usable secure storage for the saved-key path; a missing secret service is not permission to store keys in plaintext settings.
+Credential bytes travel through a separate authenticated secure-store boundary. They are not written into the SQLite snapshot, ordinary file fallback, shared deck, or complete backup. Key bytes are collected only when Saved API keys is selected, the sender can read the eligible secret from secure storage, the receiver reports usable secure storage, and the authenticated session metadata agrees that credentials are enabled.
 
 A newly entered key can exist transiently in a form, but saved keys are not read back into the UI. Standard nonsecret profile metadata and endpoint/model projections are different from credential bytes. The [AI infrastructure reference](ai-infrastructure.md) explains their ownership.
+
+If study-data merge succeeds but the receiver cannot store an optional credential securely, the successful learner-data merge remains committed and the UI reports a credential warning. Lack of a secret service is never permission to persist the key as plaintext.
 
 USB does not broaden this scope. A credential that would not be included in a LAN offer is not included merely because a cable is attached.
 
@@ -109,9 +123,9 @@ USB does not broaden this scope. A credential that would not be included in a LA
 
 The receiver compares local and incoming rows with a stored common base. One-sided changes can apply, independent field changes can merge, and concurrent changes to the same field or delete-versus-edit cases become explicit conflicts. This is a versioned application merge policy, not a generic last-writer-wins database copy.
 
-Managed-image identity collisions or byte/integrity disagreement fail rather than silently selecting an arbitrary file. The final merge validates the complete allowed graph and commits it transactionally. Related entities must remain consistent with foreign keys, schedule/history identities, and current lifecycle policy.
+Managed-image identity collisions, managed-document file collisions, or byte/integrity disagreement fail rather than silently selecting arbitrary bytes. The final merge validates the selected relational graph and commits it transactionally. Related entities must remain consistent with foreign keys, schedules/history identities, document/topic relationships, and current lifecycle policy.
 
-Removing trust deletes the relationship/baseline state according to the native policy, not cards or history already imported into the local learner's library. Sync is not remote revocation of another person's data.
+Removing trust deletes the relationship/baseline state according to the native policy, not cards, documents, guides, or history already imported into the local learner's library. Sync is not remote revocation of another person's data.
 
 ## Cancellation and restart
 
@@ -123,16 +137,16 @@ Startup reconciles stale process-local sessions; old sockets, USB handles, and i
 
 ## File fallback and backup distinctions
 
-The supported file fallback exchanges the versioned study-data package and its validated managed assets, not a live SQL database mounted by both devices. Saved credentials remain excluded from that ordinary file path. Validate package version and scope rather than inferring that a filename is a safe full backup.
+The supported file/package boundary exchanges the versioned selected study-data graph and its validated managed files, not a live SQL database mounted by both devices. Saved credentials remain excluded from ordinary file backup/share paths and are transferred only through the explicitly authorized authenticated live session. Validate package version and scope rather than inferring that a filename is a safe full backup.
 
-A `.studydeck` imports content with new local schedules. `.ostudybackup` replaces a coherent personal library through staged restart recovery. Sync merges its narrower allowed study graph using identities/common bases. These operations cannot be substituted without changing history/privacy semantics.
+A `.studydeck` imports portable deck content with new local schedules. `.ostudybackup` replaces a coherent personal library through staged restart recovery. Device sync merges only the sender-selected, explicitly allowlisted domains using identities/common bases. Even though Documents and Study Guides are now supported sync domains, backup and sync still have different recovery, replacement, privacy, and conflict semantics.
 
 A USB cable does not turn a mounted phone directory or MTP folder into a shared database. File-copy USB fallback, if added later, must still exchange a versioned package through an explicit import boundary rather than opening the same SQLite file from two devices.
 
 ## Ownership, diagnostics, and tests
 
-Native owners are `device_sync/mod.rs`, `store.rs`, `merge.rs`, `package.rs`, `transport.rs`, `crypto.rs`, `credentials.rs`, `network.rs`, and `cancellation.rs`. `transport.rs` owns transport-neutral framing; `network.rs` owns TCP-specific behavior. The frontend Settings component presents state and intent; platform adapters own OS-specific USB discovery/setup when implemented. None of those presentation/platform owners may acquire crypto or relational merge rules.
+Native owners are `device_sync/mod.rs`, `store.rs`, `merge.rs`, `package.rs`, `scope.rs`, `transport.rs`, `crypto.rs`, `credentials.rs`, `network.rs`, and `cancellation.rs`. `transport.rs` owns transport-neutral framing; `network.rs` owns TCP-specific behavior; `scope.rs` owns sender-selected domain/dependency policy while AI repositories retain ownership of AI-specific sanitization. The frontend Settings component presents state and intent; platform adapters own OS-specific USB discovery/setup when implemented. None of those presentation/platform owners may acquire crypto or relational merge rules.
 
-Tests cover protocol/identity framing, transport-neutral handshake framing, package/graph validation, field conflicts, baseline handling, managed-image integrity, credential opt-in, cancellation and overlap. Static checks enforce the stream/cancellation boundary, QR acquisition, stable port, and UI scope contracts. Android instrumentation checks native plugin routes; real peer/OEM/firewall/cable behavior remains explicit manual acceptance when not exercised.
+Tests cover protocol/identity framing, transport-neutral handshake framing, package/graph validation, field conflicts, baseline handling, managed-image and managed-document-file integrity, granular scope/dependency behavior, credential opt-in, cancellation, and overlap. Static checks enforce the stream/cancellation boundary, QR acquisition, stable port, AI ownership, and UI scope contracts. Android instrumentation checks native plugin routes; real peer/OEM/firewall/cable behavior remains explicit manual acceptance when not exercised.
 
 Diagnostics report safe phase, endpoint/session outcome, and bounded errors without keys, invitation secrets, raw package contents, or personal source text. A storage/details screen identifies local diagnostic paths. Review exported diagnostics before sharing; metadata may still identify a device, model, interface, or filename.
