@@ -159,7 +159,11 @@ mod linux {
         extra_length: c_int,
     }
 
-    #[link(name = "usb-1.0")]
+    #[link(
+        name = "libusb-1.0.so.0",
+        kind = "dylib",
+        modifiers = "+verbatim"
+    )]
     unsafe extern "C" {
         fn libusb_init(context: *mut *mut LibUsbContext) -> c_int;
         fn libusb_exit(context: *mut LibUsbContext);
