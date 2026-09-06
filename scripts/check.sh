@@ -26,6 +26,18 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0)); then
   exit 2
 fi
 cd "$ROOT_DIR"
+
+if [[ "${OSTUDY_ALLOW_QUALIFICATION_REUSE:-0}" == "1" ]] \
+  && [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
+  && ostudy_frontend_prerequisites_present \
+  && ostudy_check_stamp_is_current static \
+  && ostudy_check_stamp_is_current full; then
+  reuse_sha="$(ostudy_check_stamp_source_sha full || true)"
+  printf '\n\033[1;32mREUSE Full Linux qualification from %s: the current exact source passed static qualification and the product qualification fingerprint is unchanged.\033[0m\n' \
+    "${reuse_sha:-an earlier qualified source}"
+  exit 0
+fi
+
 prepare_cargo_target "$ROOT_DIR"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"

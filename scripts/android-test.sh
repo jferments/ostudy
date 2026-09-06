@@ -31,6 +31,27 @@ for argument in "${OSTUDY_DIAGNOSTIC_REMAINDER[@]}"; do
 done
 
 cd "$ROOT_DIR"
+
+if [[ "${OSTUDY_ALLOW_QUALIFICATION_REUSE:-0}" == "1" ]] \
+  && [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
+  && ostudy_frontend_prerequisites_present \
+  && ostudy_check_stamp_is_current static; then
+  if ((RUN_EMULATOR == 0)) && ostudy_check_stamp_is_current android-compile; then
+    reuse_sha="$(ostudy_check_stamp_source_sha android-compile || true)"
+    printf '\n\033[1;32mREUSE Android compile/package qualification from %s: the current exact source passed static qualification and the Android product fingerprint is unchanged.\033[0m\n' \
+      "${reuse_sha:-an earlier qualified source}"
+    exit 0
+  fi
+  if ((RUN_EMULATOR == 1)) \
+    && ostudy_check_stamp_is_current android-compile \
+    && ostudy_check_stamp_is_current android-smoke; then
+    reuse_sha="$(ostudy_check_stamp_source_sha android-smoke || true)"
+    printf '\n\033[1;32mREUSE Android compile/package and emulator qualification from %s: the current exact source passed static qualification and the Android product fingerprint is unchanged.\033[0m\n' \
+      "${reuse_sha:-an earlier qualified source}"
+    exit 0
+  fi
+fi
+
 WORKTREE_BASELINE="$(mktemp -t ostudy-android-worktree.XXXXXXXX)"
 cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
 trap cleanup_worktree_baseline EXIT
@@ -141,6 +162,7 @@ if ((RUN_EMULATOR == 1)); then
   ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Emulator smoke qualification"
   verify_gradle_contracts
   ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android Gradle contract verification"
+  ostudy_write_check_stamp android-compile
   trap - ERR
   printf 'OK   Android shared checks, emulator instrumentation, and Gradle contracts passed.\n'
   exit 0
@@ -178,5 +200,6 @@ if [[ -z "$test_apk" || ! -f "$test_apk" ]]; then
 fi
 bash ./scripts/verify-android-package.sh "$app_apk" debug
 ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "Android compile/package qualification"
+ostudy_write_check_stamp android-compile
 trap - ERR
 printf 'OK   Android compile, parallel unit-test, Gradle-contract, instrumentation-package, and APK checks passed.\n'

@@ -53,13 +53,52 @@ ostudy_reset_worktree_baseline() {
   ostudy_report_worktree_baseline "$baseline"
 }
 
+ostudy_qualification_scope() {
+  local tier="${1:-exact}"
+  case "$tier" in
+    full|android-compile|android-smoke)
+      printf 'product\n'
+      ;;
+    *)
+      printf 'exact\n'
+      ;;
+  esac
+}
+
+ostudy_qualification_neutral_path() {
+  local path="$1"
+  [[ "$path" == *.md ]] || return 1
+  [[ "$path" != */* || "$path" == docs/* ]]
+}
+
 ostudy_check_fingerprint() {
+  local tier="${1:-exact}"
+  local scope
+  scope="$(ostudy_qualification_scope "$tier")"
+
   (
     cd "$OSTUDY_ROOT_DIR"
+    printf 'fingerprint_schema=2\n'
+    printf 'scope=%s\n' "$scope"
+
+    # Include committed index metadata as well as file bytes. The index record
+    # carries the Git file mode, so a mode-only source change cannot silently
+    # reuse a qualification whose scripts or symlinks have different semantics.
+    while IFS= read -r -d '' record; do
+      path="${record#*$'\t'}"
+      if [[ "$scope" == product ]] && ostudy_qualification_neutral_path "$path"; then
+        continue
+      fi
+      printf 'index=%s\n' "$record"
+    done < <(git ls-files --stage -z)
+
     {
       git ls-files -z
       git ls-files --others --exclude-standard -z
     } | sort -zu | while IFS= read -r -d '' path; do
+      if [[ "$scope" == product ]] && ostudy_qualification_neutral_path "$path"; then
+        continue
+      fi
       if [[ -f "$path" ]]; then
         sha256sum "$path"
       else
@@ -73,6 +112,24 @@ ostudy_check_fingerprint() {
     printf 'rustc='; command -v rustc >/dev/null 2>&1 && rustc -Vv || printf 'missing\n'
     printf 'cargo='; command -v cargo >/dev/null 2>&1 && cargo --version || printf 'missing\n'
     printf 'platform='; uname -srm
+
+    if [[ "$tier" == android-* ]]; then
+      printf 'java='; command -v java >/dev/null 2>&1 && java -version 2>&1 || printf 'missing\n'
+      printf 'javac='; command -v javac >/dev/null 2>&1 && javac -version 2>&1 || printf 'missing\n'
+      printf 'android_home=%s\n' "${ANDROID_HOME:-missing}"
+      if [[ -n "${ANDROID_HOME:-}" && -x "${ANDROID_HOME}/platform-tools/adb" ]]; then
+        printf 'adb='
+        "${ANDROID_HOME}/platform-tools/adb" version 2>&1
+      else
+        printf 'adb=missing\n'
+      fi
+      if [[ -n "${ANDROID_HOME:-}" && -x "${ANDROID_HOME}/emulator/emulator" ]]; then
+        printf 'emulator='
+        "${ANDROID_HOME}/emulator/emulator" -version 2>&1
+      else
+        printf 'emulator=missing\n'
+      fi
+    fi
   ) | sha256sum | awk '{print $1}'
 }
 
@@ -90,17 +147,31 @@ ostudy_check_stamp_is_current() {
   local recorded current
   recorded="$(sed -n 's/^fingerprint=//p' "$stamp" | head -n 1)"
   [[ -n "$recorded" ]] || return 1
-  current="$(ostudy_check_fingerprint)"
+  current="$(ostudy_check_fingerprint "$tier")"
   [[ "$recorded" == "$current" ]]
+}
+
+ostudy_check_stamp_source_sha() {
+  local tier="$1"
+  local stamp
+  stamp="$(ostudy_check_stamp_path "$tier")"
+  [[ -f "$stamp" ]] || return 1
+  sed -n 's/^source_sha=//p' "$stamp" | head -n 1
 }
 
 ostudy_write_check_stamp() {
   local tier="$1"
-  local fingerprint="${2:-$(ostudy_check_fingerprint)}"
+  local fingerprint="${2:-$(ostudy_check_fingerprint "$tier")}"
+  local source_sha="unrecorded"
+  if git -C "$OSTUDY_ROOT_DIR" rev-parse --verify HEAD >/dev/null 2>&1; then
+    source_sha="$(git -C "$OSTUDY_ROOT_DIR" rev-parse HEAD)"
+  fi
   mkdir -p "$OSTUDY_CHECK_STATE_DIR"
   cat > "$(ostudy_check_stamp_path "$tier")" <<STAMP
 root=$OSTUDY_ROOT_DIR
 tier=$tier
+scope=$(ostudy_qualification_scope "$tier")
+source_sha=$source_sha
 fingerprint=$fingerprint
 STAMP
 }
@@ -122,5 +193,7 @@ ostudy_clear_check_stamps() {
   rm -f -- \
     "$(ostudy_check_stamp_path static)" \
     "$(ostudy_check_stamp_path fast)" \
-    "$(ostudy_check_stamp_path full)"
+    "$(ostudy_check_stamp_path full)" \
+    "$(ostudy_check_stamp_path android-compile)" \
+    "$(ostudy_check_stamp_path android-smoke)"
 }
