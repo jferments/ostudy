@@ -1,9 +1,3 @@
-use std::time::Instant;
-
-use crate::error::CommandError;
-
-use super::cancellation::SyncCancellationSignal;
-
 pub(crate) const USB_ENDPOINT_HINT: &str = "usb";
 
 pub(crate) const fn host_available() -> bool {
@@ -18,7 +12,6 @@ pub(crate) use android::{from_accessory_fd, AndroidUsbStream};
 #[cfg(target_os = "linux")]
 mod linux {
     use std::{
-        ffi::c_void,
         fmt,
         io::{self, Read, Write},
         os::raw::{c_int, c_uchar, c_uint, c_ushort},
@@ -861,11 +854,6 @@ mod linux {
     fn usb_command_error(code: &str, message: impl Into<String>) -> CommandError {
         CommandError::new(code, message)
     }
-
-    #[allow(dead_code)]
-    fn _assert_ffi_types() {
-        let _: *mut c_void = ptr::null_mut();
-    }
 }
 
 #[cfg(target_os = "android")]
@@ -1058,14 +1046,3 @@ mod android {
         }
     }
 }
-
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
-pub(crate) fn unsupported_host_error() -> CommandError {
-    CommandError::new(
-        "device_sync_usb_unavailable",
-        "Direct USB synchronization is not available in this desktop build yet. Use local-network synchronization on this platform.",
-    )
-}
-
-#[allow(dead_code)]
-fn _keep_shared_imports(_deadline: Instant, _cancellation: &SyncCancellationSignal) {}
