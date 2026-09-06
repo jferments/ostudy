@@ -165,21 +165,16 @@ fn draw_run(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
     draw_session(frame, model, rows[0]);
     draw_progress(frame, model, rows[1]);
 
-    if rows[2].width >= 94 {
-        let lower = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(44), Constraint::Percentage(56)])
-            .split(rows[2]);
-        draw_tests(frame, model, lower[0]);
-        draw_output(frame, model, lower[1]);
-    } else {
-        let lower = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(48), Constraint::Percentage(52)])
-            .split(rows[2]);
-        draw_tests(frame, model, lower[0]);
-        draw_output(frame, model, lower[1]);
-    }
+    let lower = run_detail_rows(rows[2]);
+    draw_tests(frame, model, lower[0]);
+    draw_output(frame, model, lower[1]);
+}
+
+fn run_detail_rows(area: Rect) -> std::rc::Rc<[Rect]> {
+    Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+        .split(area)
 }
 
 fn draw_session(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
@@ -466,7 +461,9 @@ fn format_duration(duration: Duration) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::WORDMARK;
+    use ratatui::layout::Rect;
+
+    use super::{WORDMARK, run_detail_rows};
 
     #[test]
     fn wordmark_rows_stay_aligned() {
@@ -475,5 +472,18 @@ mod tests {
             .map(|line| line.chars().count())
             .collect::<Vec<_>>();
         assert!(widths.iter().all(|width| *width == widths[0]), "{widths:?}");
+    }
+
+    #[test]
+    fn run_details_are_stacked_full_width_for_copyable_errors() {
+        let area = Rect::new(4, 10, 120, 30);
+        let rows = run_detail_rows(area);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].x, area.x);
+        assert_eq!(rows[1].x, area.x);
+        assert_eq!(rows[0].width, area.width);
+        assert_eq!(rows[1].width, area.width);
+        assert_eq!(rows[0].y + rows[0].height, rows[1].y);
+        assert_eq!(rows[1].y + rows[1].height, area.y + area.height);
     }
 }
