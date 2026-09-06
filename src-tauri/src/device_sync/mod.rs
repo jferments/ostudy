@@ -675,8 +675,7 @@ fn run_host_listener(
                     selection,
                     cancel_signal: cancel_signal.clone(),
                 };
-                let result =
-                    handle_host_connection(app, stream, remote_address, connection_state);
+                let result = handle_host_connection(app, stream, remote_address, connection_state);
                 return cancellation::normalize_result(&cancel_signal, result);
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
