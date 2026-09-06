@@ -10,8 +10,6 @@ source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/console-events.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
@@ -27,7 +25,6 @@ if [[ -z "$BASE" ]]; then
   fi
 fi
 
-ostudy_console_stage changed "Inspecting changed files"
 mapfile -t CHANGED < <(
   {
     if [[ "$BASE" != "HEAD" ]] || git rev-parse --verify --quiet HEAD^ >/dev/null; then
@@ -75,14 +72,12 @@ for path in "${CHANGED[@]}"; do
 done
 
 if [[ "$is_docs_only" == "1" ]]; then
-  ostudy_console_stage changed "Documentation verification"
   printf '\nDocs-only change: verifying documentation links and repository organization.\n'
   node "$SCRIPT_DIR/verify-documentation.mjs"
   exit 0
 fi
 
 if [[ "$document_only" == "1" ]]; then
-  ostudy_console_stage changed "Document-platform contracts"
   printf '\nDocument-platform-only change detected; running focused cross-layer contracts.\n'
   bash "$SCRIPT_DIR/check-static.sh"
   prepare_cargo_target "$ROOT_DIR"
@@ -107,13 +102,11 @@ if [[ "$document_only" == "1" ]]; then
 fi
 
 if [[ "$requires_fast" == "1" ]]; then
-  ostudy_console_stage changed "Escalating to fast qualification"
   printf '\nInfrastructure, manifest, or migration change detected; escalating to check-fast.sh.\n'
   exec bash "$SCRIPT_DIR/check-fast.sh"
 fi
 
 if [[ "$is_frontend_only" == "1" ]]; then
-  ostudy_console_stage changed "Frontend changed-file tests"
   bash "$SCRIPT_DIR/check-static.sh"
   printf '\n==> Frontend tests related to changed files\n'
   pnpm exec vitest run --changed "$BASE" --passWithNoTests
@@ -121,7 +114,6 @@ if [[ "$is_frontend_only" == "1" ]]; then
 fi
 
 if [[ "$is_rust_only" == "1" ]]; then
-  ostudy_console_stage changed "Rust changed-file tests"
   bash "$SCRIPT_DIR/check-static.sh"
   prepare_cargo_target "$ROOT_DIR"
   printf '\n==> Rust compile check for the current tree\n'
@@ -131,6 +123,5 @@ if [[ "$is_rust_only" == "1" ]]; then
   exit 0
 fi
 
-ostudy_console_stage changed "Escalating mixed change to fast qualification"
 printf '\nMixed or cross-layer change detected; escalating to check-fast.sh.\n'
 exec bash "$SCRIPT_DIR/check-fast.sh"

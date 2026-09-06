@@ -3,73 +3,94 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
-TOOL_DIR="$SCRIPT_DIR/developer-console"
-CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}/ostudy/developer-console"
-SOURCE_DIR="$CACHE_BASE/source"
-TARGET_DIR="$CACHE_BASE/target"
-BINARY="$TARGET_DIR/release/ostudy-developer-console"
-STAMP="$CACHE_BASE/source.sha256"
-BOOTSTRAP_LOG="$CACHE_BASE/bootstrap.log"
+cd "$ROOT_DIR"
 
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+usage() {
+  cat <<'USAGE'
+ostudy plain-text developer commands
 
-is_setup_request=0
-for arg in "$@"; do
-  case "$arg" in
-    setup) is_setup_request=1; break ;;
-    --root) break ;;
-  esac
-done
+Usage:
+  ./scripts/ostudy-dev <command> [arguments]
 
-if ! command -v cargo >/dev/null 2>&1; then
-  if [[ "$is_setup_request" == "1" ]]; then
-    printf 'Rust is not installed yet; the first setup pass uses the plain bootstrap.\n'
-    printf 'The Ratatui developer console becomes available as soon as setup finishes.\n\n'
-    bash "$ROOT_DIR/scripts/setup-ubuntu.sh"
-    if [[ -t 0 && -t 1 ]]; then
-      exec "$0"
-    fi
-    exit 0
-  fi
-  printf 'The ostudy developer console needs the pinned Rust toolchain.\n' >&2
-  printf 'Run ./scripts/ostudy-dev setup for first-time Ubuntu/Debian setup.\n' >&2
-  exit 2
-fi
+Linux:
+  setup           Install/provision the Ubuntu/Debian development environment.
+  build           Build the standalone desktop application.
+  run             Run the existing standalone desktop build.
+  desktop         Run Tauri desktop hot reload for deliberate development use.
 
-[[ -f "$TOOL_DIR/Cargo.toml" && -d "$TOOL_DIR/src" ]] || {
-  printf 'Developer console source is missing from %s.\n' "$TOOL_DIR" >&2
-  exit 2
+Checks:
+  check-changed   Run the smallest check selected from the current diff.
+  check-static    Run static repository/type/format checks.
+  check-fast      Run the maintained fast qualification gate.
+  check           Run the maintained full Linux qualification gate.
+
+Android:
+  android-doctor  Verify the Android development environment.
+  android-build   Build a debug ARM64 APK by default; accepts android-build.sh options.
+  android-install Build/install on a connected device; accepts android-install.sh options.
+  android-test    Run Android compile/package qualification.
+  android-smoke   Run the Android emulator smoke test.
+
+Other:
+  help            Show this help.
+
+This wrapper is intentionally plain text. It never enters terminal raw mode,
+an alternate screen, or a full-screen TUI. The underlying scripts remain the
+canonical build/test/install implementations and receive any extra arguments.
+USAGE
 }
 
-mkdir -p "$CACHE_BASE" "$TARGET_DIR"
-source_hash="$({
-  sha256sum "$TOOL_DIR/Cargo.toml"
-  find "$TOOL_DIR/src" -type f -name '*.rs' -print0 | sort -z | xargs -0 sha256sum
-} | sha256sum | awk '{print $1}')"
-
-current_hash=""
-[[ -f "$STAMP" ]] && current_hash="$(cat "$STAMP")"
-if [[ ! -x "$BINARY" || "$source_hash" != "$current_hash" ]]; then
-  printf 'Preparing ostudy developer console…\n'
-  rm -rf "$SOURCE_DIR"
-  mkdir -p "$SOURCE_DIR/src"
-  cp "$TOOL_DIR/Cargo.toml" "$SOURCE_DIR/Cargo.toml"
-  cp "$TOOL_DIR"/src/*.rs "$SOURCE_DIR/src/"
-  if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo build \
-    --release \
-    --manifest-path "$SOURCE_DIR/Cargo.toml" \
-    >"$BOOTSTRAP_LOG" 2>&1; then
-    printf 'Developer console bootstrap failed. Full compiler output:\n\n' >&2
-    cat "$BOOTSTRAP_LOG" >&2
-    exit 1
-  fi
-  printf '%s\n' "$source_hash" > "$STAMP"
+command="${1:-help}"
+if (($#)); then
+  shift
 fi
 
-# The setup workflow invokes sudo. Authenticate before entering the alternate
-# screen so password prompts stay in the normal terminal.
-if [[ "$is_setup_request" == "1" && -t 0 && -t 1 ]]; then
-  sudo -v
-fi
-
-exec "$BINARY" --root "$ROOT_DIR" "$@"
+case "$command" in
+  help|-h|--help)
+    usage
+    ;;
+  setup)
+    exec "$SCRIPT_DIR/setup-ubuntu.sh" "$@"
+    ;;
+  build)
+    exec "$SCRIPT_DIR/build.sh" "$@"
+    ;;
+  run)
+    exec "$ROOT_DIR/run-app.sh" "$@"
+    ;;
+  desktop|dev)
+    exec "$SCRIPT_DIR/dev.sh" "$@"
+    ;;
+  check-changed)
+    exec "$SCRIPT_DIR/check-changed.sh" "$@"
+    ;;
+  check-static)
+    exec "$SCRIPT_DIR/check-static.sh" "$@"
+    ;;
+  check-fast|test)
+    exec "$SCRIPT_DIR/check-fast.sh" "$@"
+    ;;
+  check|test-full)
+    exec "$SCRIPT_DIR/check.sh" "$@"
+    ;;
+  android-doctor)
+    exec "$SCRIPT_DIR/android-doctor.sh" "$@"
+    ;;
+  android-build)
+    exec "$SCRIPT_DIR/android-build.sh" "$@"
+    ;;
+  android-install)
+    exec "$SCRIPT_DIR/android-install.sh" "$@"
+    ;;
+  android-test)
+    exec "$SCRIPT_DIR/android-test.sh" "$@"
+    ;;
+  android-smoke)
+    exec "$SCRIPT_DIR/android-emulator-smoke.sh" "$@"
+    ;;
+  *)
+    printf 'Unknown ostudy developer command: %s\n\n' "$command" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

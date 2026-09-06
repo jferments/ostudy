@@ -2,17 +2,13 @@
 
 Read this before giving shell instructions. Commands below are maintained repository entry points, not evidence that they have already run. Execute them from the repository root after checking out the intended source. [Local testing and handoff](../development/local-testing-and-handoff.md) provides safe checkout, SHA verification, isolated data, and acceptance-report guidance.
 
-## Interactive Linux developer console
+## Plain-text developer commands
 
-For ordinary human Linux development, the preferred front door is the Ratatui dashboard:
-
-```bash
-./scripts/ostudy-dev
-```
-
-It launches the same maintained wrappers described below while keeping build/test output in stable tiles, showing stage/test progress, and preserving complete plain-text logs. Direct workflow shortcuts include:
+Normal Linux development uses ordinary terminal output. `scripts/ostudy-dev` is a small convenience dispatcher only; it does not enter raw terminal mode, use an alternate screen, or launch a full-screen interface.
 
 ```bash
+./scripts/ostudy-dev help
+./scripts/ostudy-dev setup
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
 ./scripts/ostudy-dev check-changed
@@ -21,7 +17,7 @@ It launches the same maintained wrappers described below while keeping build/tes
 ./scripts/ostudy-dev check
 ```
 
-`./scripts/ostudy-dev <workflow> --plain` bypasses the dashboard. Non-interactive automation should continue to call the underlying scripts directly. See [Linux developer console](../development/developer-console.md) for controls, logging, bootstrap behavior, and the presentation/qualification boundary.
+The underlying maintained wrappers remain authoritative and can always be called directly. Extra arguments are passed through by the convenience dispatcher. The retired Ratatui developer-console prototype is preserved under `scripts/archive/linux-developer-console/` as historical code only; it is not part of normal setup, build, test, or qualification.
 
 ## First-time Linux setup
 
@@ -29,11 +25,10 @@ It launches the same maintained wrappers described below while keeping build/tes
 ./scripts/ostudy-dev setup
 ```
 
-Because the TUI itself is written in Rust, the very first invocation falls back to the ordinary setup shell while Rust is being installed; subsequent workflows use the console. The underlying maintained setup path remains:
+The equivalent underlying command is:
 
 ```bash
 ./scripts/setup-ubuntu.sh
-./run-app.sh
 ```
 
 The setup wrapper installs/provisions the pinned development environment and makes an initial standalone debug build. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
@@ -45,7 +40,7 @@ The setup wrapper installs/provisions the pinned development environment and mak
 ./scripts/ostudy-dev run
 ```
 
-The equivalent plain wrappers are:
+The equivalent underlying commands are:
 
 ```bash
 ./scripts/build.sh
@@ -56,7 +51,7 @@ The equivalent plain wrappers are:
 
 `run-app.sh` does not build or start a Vite server. It verifies the source fingerprint, checkout, and staged binary checksum, then launches the existing standalone artifact. Do not bypass a stale-build error by launching Cargo's mutable `debug/ostudy` output. Rebuild with the maintained wrapper.
 
-Use `pnpm desktop` only for deliberate Tauri hot-reload development. `pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
+Use `./scripts/ostudy-dev desktop` or `pnpm desktop` only for deliberate Tauri hot-reload development. `pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
 
 ## Validation
 
@@ -69,7 +64,7 @@ node ./scripts/verify-agent-workflow-policy.mjs
 ./scripts/check.sh
 ```
 
-Interactive equivalents for the four maintained check wrappers are available through `./scripts/ostudy-dev`. The wrapper command remains the qualification identity in evidence and GitHub Actions.
+The same maintained check wrappers can be reached through `./scripts/ostudy-dev check-changed`, `check-static`, `check-fast`, and `check`. The wrapper command itself remains the qualification identity in evidence and GitHub Actions.
 
 Choose the smallest relevant command during iteration. The first two are focused documentation/workflow checks; they do not replace broader gates when required. `check-changed` selects by the current diff, so a clean checkout with no relevant diff can do little. Use explicit static/fast/full wrappers when certifying a particular tier.
 
@@ -84,6 +79,15 @@ pnpm android:test
 pnpm android:smoke
 ```
 
+Plain-text convenience equivalents are available for the common paths:
+
+```bash
+./scripts/ostudy-dev android-doctor
+./scripts/ostudy-dev android-build
+./scripts/ostudy-dev android-test
+./scripts/ostudy-dev android-smoke
+```
+
 First-time SDK/NDK/JDK and emulator setup is in [Android installation](../installation/android.md). Compile/package tests and emulator smoke are different gates. Neither proves physical-device camera, OEM, or live-provider acceptance.
 
 ## Android physical-device test-drive
@@ -91,6 +95,12 @@ First-time SDK/NDK/JDK and emulator setup is in [Android installation](../instal
 ```bash
 adb devices -l
 pnpm android:install
+```
+
+The equivalent convenience command is:
+
+```bash
+./scripts/ostudy-dev android-install
 ```
 
 With exactly one authorized compatible device, the install wrapper builds a normal ARM64 debug APK, verifies it, installs with non-streaming `adb install -r`, and launches `io.github.jferments.ostudy.dev`. It does not use the dev-server/hot-reload workflow.

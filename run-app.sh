@@ -7,8 +7,6 @@ export OSTUDY_ROOT_DIR="$ROOT_DIR"
 source "$ROOT_DIR/scripts/build-state.sh"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/diagnostics.bash"
-# shellcheck disable=SC1091
-source "$ROOT_DIR/scripts/lib/console-events.bash"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_parse_diagnostic_args "$@"
 if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
@@ -24,7 +22,6 @@ LOG_PATH="$LOG_DIR/ostudy.jsonl"
 VERSION="$(ostudy_stamp_value version)"
 mkdir -p "$LOG_DIR"
 
-ostudy_console_stage run "Launching current standalone build"
 printf 'Starting ostudy %s from the existing build.\n' "$VERSION"
 printf 'Launcher log: %s\n' "$LOG_PATH"
 printf 'Application filter: %s\n\n' "${OSTUDY_LOG:-info}"

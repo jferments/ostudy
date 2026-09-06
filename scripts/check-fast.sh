@@ -14,8 +14,6 @@ source "$SCRIPT_DIR/check-state.sh"
 source "$SCRIPT_DIR/cargo-target.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/console-events.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check-fast.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -39,7 +37,6 @@ step() {
   fi
   CURRENT_STEP="$*"
   ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
-  ostudy_console_stage fast "$CURRENT_STEP"
   printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
 }
 trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
@@ -72,9 +69,6 @@ step "Provision audited PDFium runtime"
 prepare_cargo_target "$ROOT_DIR"
 printf 'Cargo target: %s\n' "$CARGO_TARGET_DIR"
 printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
-
-step "Developer console tests"
-bash "$SCRIPT_DIR/check-developer-console.sh"
 
 step "React tests"
 pnpm test
