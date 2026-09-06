@@ -17,9 +17,23 @@ die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 [[ "$(uname -s)" == "Linux" ]] || die "This setup script is for Ubuntu/Debian Linux only."
 command -v apt-get >/dev/null 2>&1 || die "apt-get was not found."
 
+# Setup can be selected from inside the developer-console menu, in which case
+# the launcher never had an opportunity to pre-authenticate sudo. Never let a
+# sudo prompt race Ratatui for stdin: request exclusive terminal ownership when
+# credentials are needed, then use non-interactive sudo for captured commands.
+log "Authorizing Ubuntu/Debian setup privileges"
+ostudy_console_require_sudo
+
+log "Refreshing Ubuntu/Debian package metadata"
+sudo -n apt-get update
+ostudy_console_require_sudo
+
+# Package installation is the one setup boundary most likely to invoke a
+# distribution-owned configuration UI. Give it the real terminal for the whole
+# boundary. The dashboard is restored automatically when apt exits.
 log "Installing Ubuntu/Debian packages required by Tauri and the native smoke test"
-sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+ostudy_console_takeover "Ubuntu/Debian package installation and configuration" \
+  sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   build-essential \
   ca-certificates \
   curl \

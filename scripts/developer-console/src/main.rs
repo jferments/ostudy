@@ -5,17 +5,17 @@ mod ui;
 mod workflow;
 
 use std::env;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::DefaultTerminal;
 
 use model::{AppModel, RunStatus};
-use parser::{ParsedLine, parse_line};
+use parser::{ConsoleControl, ParsedLine, parse_line};
 use runner::{RunnerEvent, RunningChild, create_log_path, spawn_workflow, terminate_process_group};
 use workflow::{WORKFLOWS, Workflow};
 
@@ -35,6 +35,12 @@ struct RunSummary {
     skipped: usize,
     log_path: Option<PathBuf>,
     errors: Vec<String>,
+}
+
+#[derive(Debug)]
+enum TuiBoundary {
+    Finished,
+    Takeover(String),
 }
 
 fn main() -> ExitCode {
@@ -62,7 +68,7 @@ fn real_main() -> io::Result<i32> {
         return run_plain(workflow, &cli.root);
     }
 
-    let summary = ratatui::run(|terminal| run_tui(terminal, &cli.root, cli.workflow))?;
+    let summary = run_interactive(&cli.root, cli.workflow)?;
     print_summary(&summary);
     Ok(summary.exit_code)
 }
@@ -116,11 +122,7 @@ fn parse_cli() -> io::Result<Option<Cli>> {
     }))
 }
 
-fn run_tui(
-    terminal: &mut DefaultTerminal,
-    root: &Path,
-    initial_workflow: Option<Workflow>,
-) -> io::Result<RunSummary> {
+fn run_interactive(root: &Path, initial_workflow: Option<Workflow>) -> io::Result<RunSummary> {
     let mut model = AppModel::default();
     let mut running: Option<RunningChild> = None;
     let mut exit_code = 0;
@@ -130,37 +132,33 @@ fn run_tui(
     }
 
     loop {
-        drain_runner(&mut model, &mut running)?;
-        if model.status == RunStatus::Failed {
-            exit_code = model.exit_code.unwrap_or(1);
-        } else if model.status == RunStatus::Passed {
-            exit_code = 0;
-        } else if model.status == RunStatus::Cancelled {
-            exit_code = 130;
-        }
-
-        terminal.draw(|frame| ui::draw(frame, &model))?;
-
-        // Successful workflows immediately restore the normal terminal and
-        // leave a concise summary in shell scrollback. Failures stay open so
-        // the user can inspect/copy the dedicated error pane before exiting.
-        if model.status == RunStatus::Passed {
-            break;
-        }
-
-        if event::poll(Duration::from_millis(100))?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-            && handle_key(key, &mut model, &mut running, root, &mut exit_code)?
-        {
-            break;
+        let boundary = ratatui::run(|terminal| {
+            run_tui_segment(terminal, root, &mut model, &mut running, &mut exit_code)
+        })?;
+        match boundary {
+            TuiBoundary::Finished => break,
+            TuiBoundary::Takeover(message) => {
+                println!("\n[oStudy] Terminal control: {message}");
+                io::stdout().flush()?;
+                let acknowledge = running
+                    .as_ref()
+                    .ok_or_else(|| io::Error::other("terminal takeover requested without a workflow"))?
+                    .acknowledge_takeover();
+                if let Err(error) = acknowledge {
+                    stop_running(&mut running);
+                    return Err(error);
+                }
+                if let Err(error) = wait_for_takeover_end(&mut model, &mut running) {
+                    stop_running(&mut running);
+                    return Err(error);
+                }
+                println!("\n[oStudy] Returning to the developer console…");
+                io::stdout().flush()?;
+            }
         }
     }
 
-    if let Some(child) = running.as_mut() {
-        terminate_process_group(&mut child.child);
-        let _ = child.child.wait();
-    }
+    stop_running(&mut running);
 
     Ok(RunSummary {
         workflow: model.workflow,
@@ -173,6 +171,35 @@ fn run_tui(
         log_path: model.log_path.clone(),
         errors: model.errors.iter().cloned().collect(),
     })
+}
+
+fn run_tui_segment(
+    terminal: &mut DefaultTerminal,
+    root: &Path,
+    model: &mut AppModel,
+    running: &mut Option<RunningChild>,
+    exit_code: &mut i32,
+) -> io::Result<TuiBoundary> {
+    loop {
+        if let Some(message) = drain_runner(model, running)? {
+            return Ok(TuiBoundary::Takeover(message));
+        }
+        update_exit_code(model, exit_code);
+
+        terminal.draw(|frame| ui::draw(frame, model))?;
+
+        if model.status == RunStatus::Passed {
+            return Ok(TuiBoundary::Finished);
+        }
+
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
+            && handle_key(key, model, running, root, exit_code)?
+        {
+            return Ok(TuiBoundary::Finished);
+        }
+    }
 }
 
 fn start_workflow(
@@ -189,28 +216,74 @@ fn start_workflow(
     Ok(())
 }
 
-fn drain_runner(model: &mut AppModel, running: &mut Option<RunningChild>) -> io::Result<()> {
+fn process_runner_event(
+    model: &mut AppModel,
+    child: &mut RunningChild,
+    event: RunnerEvent,
+) -> Option<ConsoleControl> {
+    match event {
+        RunnerEvent::Line(_kind, line) => model.apply(parse_line(&line)),
+        RunnerEvent::Control(control) => return Some(control),
+        RunnerEvent::ReadError(error) => {
+            model.apply(ParsedLine::Error(format!("console stream read error: {error}")));
+        }
+        RunnerEvent::StreamClosed(_kind) => child.closed_streams += 1,
+    }
+    None
+}
+
+fn refresh_child_exit(child: &mut RunningChild) -> io::Result<Option<i32>> {
+    if child.exit_code.is_none()
+        && let Some(status) = child.child.try_wait()?
+    {
+        child.exit_code = Some(status.code().unwrap_or(1));
+    }
+    if child.closed_streams >= 2 {
+        Ok(child.exit_code)
+    } else {
+        Ok(None)
+    }
+}
+
+fn finish_running(model: &mut AppModel, running: &mut Option<RunningChild>, code: i32) {
+    if let Some(child) = running.as_ref() {
+        child.cleanup_takeover_ack();
+    }
+    model.finish(code);
+    *running = None;
+}
+
+fn drain_runner(model: &mut AppModel, running: &mut Option<RunningChild>) -> io::Result<Option<String>> {
     let mut finished = None;
+    let mut takeover = None;
     {
         let Some(child) = running.as_mut() else {
-            return Ok(());
+            return Ok(None);
         };
         loop {
             match child.receiver.try_recv() {
-                Ok(RunnerEvent::Line(_kind, line)) => model.apply(parse_line(&line)),
-                Ok(RunnerEvent::ReadError(error)) => {
-                    model.apply(ParsedLine::Error(format!("console stream read error: {error}")));
+                Ok(event) => {
+                    if let Some(control) = process_runner_event(model, child, event) {
+                        match control {
+                            ConsoleControl::TakeoverStart { message } => {
+                                takeover = Some(message);
+                                break;
+                            }
+                            ConsoleControl::TakeoverEnd { exit_code, message } => {
+                                let line = format!(
+                                    "interactive terminal command returned unexpectedly: {message} (exit {exit_code})"
+                                );
+                                model.apply(if exit_code == 0 {
+                                    ParsedLine::Output(line)
+                                } else {
+                                    ParsedLine::Error(line)
+                                });
+                            }
+                        }
+                    }
                 }
-                Ok(RunnerEvent::StreamClosed(_kind)) => child.closed_streams += 1,
                 Err(TryRecvError::Empty) => {
-                    if child.exit_code.is_none()
-                        && let Some(status) = child.child.try_wait()?
-                    {
-                        child.exit_code = Some(status.code().unwrap_or(1));
-                    }
-                    if child.closed_streams >= 2 {
-                        finished = child.exit_code;
-                    }
+                    finished = refresh_child_exit(child)?;
                     break;
                 }
                 Err(TryRecvError::Disconnected) => {
@@ -227,10 +300,84 @@ fn drain_runner(model: &mut AppModel, running: &mut Option<RunningChild>) -> io:
     }
 
     if let Some(code) = finished {
-        model.finish(code);
-        *running = None;
+        finish_running(model, running, code);
     }
-    Ok(())
+    Ok(takeover)
+}
+
+fn wait_for_takeover_end(model: &mut AppModel, running: &mut Option<RunningChild>) -> io::Result<()> {
+    loop {
+        let mut finished = None;
+        let mut returned = false;
+        {
+            let Some(child) = running.as_mut() else {
+                return Ok(());
+            };
+            match child.receiver.recv_timeout(Duration::from_millis(100)) {
+                Ok(event) => {
+                    if let Some(control) = process_runner_event(model, child, event) {
+                        match control {
+                            ConsoleControl::TakeoverStart { message } => {
+                                return Err(io::Error::other(format!(
+                                    "nested terminal takeover is not supported: {message}"
+                                )));
+                            }
+                            ConsoleControl::TakeoverEnd { exit_code, message } => {
+                                let line = format!(
+                                    "interactive terminal command finished: {message} (exit {exit_code})"
+                                );
+                                model.apply(if exit_code == 0 {
+                                    ParsedLine::Output(line)
+                                } else {
+                                    ParsedLine::Error(line)
+                                });
+                                returned = true;
+                            }
+                        }
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    let code = if let Some(code) = child.exit_code {
+                        code
+                    } else {
+                        child.child.wait()?.code().unwrap_or(1)
+                    };
+                    finished = Some(code);
+                }
+            }
+            if finished.is_none() {
+                finished = refresh_child_exit(child)?;
+            }
+        }
+
+        if let Some(code) = finished {
+            finish_running(model, running, code);
+            return Ok(());
+        }
+        if returned {
+            return Ok(());
+        }
+    }
+}
+
+fn update_exit_code(model: &AppModel, exit_code: &mut i32) {
+    if model.status == RunStatus::Failed {
+        *exit_code = model.exit_code.unwrap_or(1);
+    } else if model.status == RunStatus::Passed {
+        *exit_code = 0;
+    } else if model.status == RunStatus::Cancelled {
+        *exit_code = 130;
+    }
+}
+
+fn stop_running(running: &mut Option<RunningChild>) {
+    if let Some(child) = running.as_mut() {
+        child.cleanup_takeover_ack();
+        terminate_process_group(&mut child.child);
+        let _ = child.child.wait();
+    }
+    *running = None;
 }
 
 fn handle_key(

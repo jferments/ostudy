@@ -2,6 +2,12 @@ use std::borrow::Cow;
 
 pub const EVENT_PREFIX: &str = "@@OSTUDY:TUI@@";
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConsoleControl {
+    TakeoverStart { message: String },
+    TakeoverEnd { exit_code: i32, message: String },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TestStatus {
     Passed,
@@ -81,6 +87,26 @@ pub fn strip_ansi(input: &str) -> Cow<'_, str> {
         }
     }
     Cow::Owned(output)
+}
+
+pub fn parse_console_control(raw: &str) -> Option<ConsoleControl> {
+    let clean = strip_ansi(raw);
+    let line = clean.trim();
+    let rest = line.strip_prefix(EVENT_PREFIX)?.trim_start_matches('\t');
+    let mut fields = rest.splitn(4, '\t');
+    if fields.next()? != "takeover" {
+        return None;
+    }
+    match fields.next()? {
+        "start" => Some(ConsoleControl::TakeoverStart {
+            message: fields.next()?.to_owned(),
+        }),
+        "end" => Some(ConsoleControl::TakeoverEnd {
+            exit_code: fields.next()?.parse().ok()?,
+            message: fields.next()?.to_owned(),
+        }),
+        _ => None,
+    }
 }
 
 pub fn parse_line(raw: &str) -> ParsedLine {
@@ -273,6 +299,31 @@ mod tests {
                 scope: "fast".into(),
                 name: "React tests".into(),
             }
+        );
+    }
+
+    #[test]
+    fn parses_terminal_takeover_events() {
+        assert_eq!(
+            parse_console_control("@@OSTUDY:TUI@@\ttakeover\tstart\tsudo authentication"),
+            Some(ConsoleControl::TakeoverStart {
+                message: "sudo authentication".into(),
+            })
+        );
+        assert_eq!(
+            parse_console_control("@@OSTUDY:TUI@@\ttakeover\tend\t0\tpackage configuration"),
+            Some(ConsoleControl::TakeoverEnd {
+                exit_code: 0,
+                message: "package configuration".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn stage_events_are_not_terminal_control_events() {
+        assert_eq!(
+            parse_console_control("@@OSTUDY:TUI@@\tstage\tfast\tReact tests"),
+            None
         );
     }
 

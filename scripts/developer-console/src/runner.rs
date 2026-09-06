@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
-use crate::parser::{EVENT_PREFIX, strip_ansi};
+use crate::parser::{ConsoleControl, EVENT_PREFIX, parse_console_control, strip_ansi};
 use crate::workflow::Workflow;
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +22,7 @@ pub enum StreamKind {
 #[derive(Debug)]
 pub enum RunnerEvent {
     Line(StreamKind, String),
+    Control(ConsoleControl),
     ReadError(String),
     StreamClosed(StreamKind),
 }
@@ -31,6 +32,23 @@ pub struct RunningChild {
     pub receiver: mpsc::Receiver<RunnerEvent>,
     pub closed_streams: usize,
     pub exit_code: Option<i32>,
+    takeover_ack_path: PathBuf,
+}
+
+impl RunningChild {
+    pub fn acknowledge_takeover(&self) -> io::Result<()> {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&self.takeover_ack_path)?;
+        file.write_all(b"ready\n")?;
+        file.flush()
+    }
+
+    pub fn cleanup_takeover_ack(&self) {
+        let _ = std::fs::remove_file(&self.takeover_ack_path);
+    }
 }
 
 pub fn create_log_path(workflow: Workflow) -> io::Result<PathBuf> {
@@ -48,8 +66,14 @@ pub fn create_log_path(workflow: Workflow) -> io::Result<PathBuf> {
 }
 
 pub fn spawn_workflow(root: &Path, workflow: Workflow, log_path: &Path) -> io::Result<RunningChild> {
+    let takeover_ack_path = log_path.with_extension("takeover-ready");
+    let _ = std::fs::remove_file(&takeover_ack_path);
+
     let mut command = workflow.command(root, true);
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .env("OSTUDY_CONSOLE_TAKEOVER_ACK", &takeover_ack_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(unix)]
     command.process_group(0);
 
@@ -88,6 +112,7 @@ pub fn spawn_workflow(root: &Path, workflow: Workflow, log_path: &Path) -> io::R
         receiver,
         closed_streams: 0,
         exit_code: None,
+        takeover_ack_path,
     })
 }
 
@@ -120,6 +145,12 @@ fn spawn_reader<R>(
             match line {
                 Ok(line) => {
                     let clean = strip_ansi(&line).into_owned();
+                    if let Some(control) = parse_console_control(&clean) {
+                        if sender.send(RunnerEvent::Control(control)).is_err() {
+                            return;
+                        }
+                        continue;
+                    }
                     if !clean.trim_start().starts_with(EVENT_PREFIX)
                         && let Ok(mut file) = log.lock()
                     {
