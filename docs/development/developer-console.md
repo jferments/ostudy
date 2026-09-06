@@ -67,7 +67,9 @@ The running view contains:
 
 The TUI intentionally does not try to reimplement every test runner's protocol. It recognizes stable high-value output shapes and treats the complete log as the source for anything it cannot summarize. A test runner that does not expose a current test name cannot be made to expose one by the dashboard; in that case the console shows the current repository stage and the latest completed tests instead.
 
-Press `e` while running or after completion to toggle recent output and captured errors. `q`, `Esc`, or `Ctrl-C` terminates the workflow process group rather than leaving a compiler/test child detached in the background.
+Press `e` while a workflow is running, or while inspecting a failed/cancelled workflow, to toggle recent output and captured errors. `q`, `Esc`, or `Ctrl-C` terminates a running workflow process group rather than leaving a compiler/test child detached in the background.
+
+A **successful** workflow does not wait at a completion screen. The alternate-screen dashboard is restored immediately to the normal shell and leaves a compact summary in scrollback containing the workflow result, elapsed time, observed test counts when applicable, and full log path. Failed workflows stay open so the error pane can be inspected and copied before exiting.
 
 ## Logs
 
@@ -79,7 +81,7 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/ostudy/dev-console/
 
 Set `OSTUDY_DEV_LOG_DIR` to redirect these developer-console logs. The existing application launcher continues to maintain its independent structured application log at `~/.local/state/ostudy/ostudy.jsonl` (or the equivalent XDG state path).
 
-After the TUI restores the normal terminal, failed workflows print the log path plus a short error tail so the important diagnostics remain easy to select and paste into an issue or chat.
+After the TUI restores the normal terminal, successful workflows print their compact result summary and log path. Failed workflows print the log path plus a short error tail after the user exits the error view, so the important diagnostics remain easy to select and paste into an issue or chat.
 
 ## Relationship to the maintained scripts
 
@@ -99,6 +101,6 @@ This is preferable to scraping blue `==>` headings forever: presentation can cha
 
 `check-fast.sh` contains a dedicated **Developer console tests** stage. `scripts/check-developer-console.sh` copies the console crate into a temporary directory, then runs its unit tests and warnings-as-errors Clippy gate. This design exercises dependency resolution and compilation without allowing Cargo to add a lockfile to maintained source during a supposedly read-only qualification.
 
-Parser tests cover ANSI removal, structured stage events, Rust test results, Vitest file/count summaries, and copyable compiler errors. The normal repository script syntax/worktree guards continue to cover the shell integration.
+Parser tests cover ANSI removal, structured stage events, Rust test results, Vitest file/count summaries, and copyable compiler errors. The UI tests also keep the block wordmark rows aligned. The normal repository script syntax/worktree guards continue to cover the shell integration.
 
 The dashboard is currently a Linux developer experience. The underlying scripts remain the portable contract; Windows/macOS/mobile distribution is expected to use prebuilt packages rather than this source-build console.

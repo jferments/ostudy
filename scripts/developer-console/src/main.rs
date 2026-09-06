@@ -29,6 +29,10 @@ struct RunSummary {
     workflow: Option<Workflow>,
     status: RunStatus,
     exit_code: i32,
+    elapsed: Duration,
+    passed: usize,
+    failed: usize,
+    skipped: usize,
     log_path: Option<PathBuf>,
     errors: Vec<String>,
 }
@@ -137,6 +141,13 @@ fn run_tui(
 
         terminal.draw(|frame| ui::draw(frame, &model))?;
 
+        // Successful workflows immediately restore the normal terminal and
+        // leave a concise summary in shell scrollback. Failures stay open so
+        // the user can inspect/copy the dedicated error pane before exiting.
+        if model.status == RunStatus::Passed {
+            break;
+        }
+
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
@@ -155,6 +166,10 @@ fn run_tui(
         workflow: model.workflow,
         status: model.status,
         exit_code,
+        elapsed: model.elapsed(),
+        passed: model.passed,
+        failed: model.failed,
+        skipped: model.skipped,
         log_path: model.log_path.clone(),
         errors: model.errors.iter().cloned().collect(),
     })
@@ -287,13 +302,34 @@ fn print_summary(summary: &RunSummary) {
         return;
     };
     match summary.status {
-        RunStatus::Passed => eprintln!("✓ {} passed.", workflow.title),
-        RunStatus::Failed => eprintln!("✗ {} failed (exit {}).", workflow.title, summary.exit_code),
-        RunStatus::Cancelled => eprintln!("○ {} cancelled.", workflow.title),
+        RunStatus::Passed => println!(
+            "✓ {} passed in {}.",
+            workflow.title,
+            format_duration(summary.elapsed)
+        ),
+        RunStatus::Failed => eprintln!(
+            "✗ {} failed after {} (exit {}).",
+            workflow.title,
+            format_duration(summary.elapsed),
+            summary.exit_code
+        ),
+        RunStatus::Cancelled => eprintln!(
+            "○ {} cancelled after {}.",
+            workflow.title,
+            format_duration(summary.elapsed)
+        ),
         _ => return,
     }
+
+    let total_tests = summary.passed + summary.failed + summary.skipped;
+    if total_tests > 0 {
+        println!(
+            "Tests: {} passed, {} failed, {} skipped ({} total).",
+            summary.passed, summary.failed, summary.skipped, total_tests
+        );
+    }
     if let Some(log_path) = &summary.log_path {
-        eprintln!("Full log: {}", log_path.display());
+        println!("Full log: {}", log_path.display());
     }
     if summary.status == RunStatus::Failed && !summary.errors.is_empty() {
         eprintln!("\nCopy/paste error tail:");
@@ -304,10 +340,19 @@ fn print_summary(summary: &RunSummary) {
     }
 }
 
+fn format_duration(duration: Duration) -> String {
+    let seconds = duration.as_secs();
+    if seconds >= 60 {
+        format!("{}m {:02}s", seconds / 60, seconds % 60)
+    } else {
+        format!("{seconds}s")
+    }
+}
+
 fn print_help() {
     println!("ostudy developer console");
     println!();
-    println!("Usage: ./ostudy-dev [workflow] [--plain]");
+    println!("Usage: ./scripts/ostudy-dev [workflow] [--plain]");
     println!();
     println!("With no workflow, an interactive Linux TUI opens. Workflows:");
     for workflow in WORKFLOWS {

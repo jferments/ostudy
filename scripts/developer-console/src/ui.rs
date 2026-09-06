@@ -19,11 +19,11 @@ const FAILURE: Color = Color::Rgb(248, 113, 113);
 const CYAN: Color = Color::Rgb(103, 232, 249);
 
 const WORDMARK: [&str; 5] = [
-    " ██████  ███████ ████████ ██    ██ ██████  ██    ██ ",
-    "██    ██ ██         ██    ██    ██ ██   ██  ██    ██ ",
-    "██    ██ ███████    ██    ██    ██ ██   ██   ██████  ",
-    "██    ██      ██    ██    ██    ██ ██   ██     ██    ",
-    " ██████  ███████    ██     ██████  ██████      ██    ",
+    " ██████  ███████ ████████ ██    ██ ██████  ██    ██",
+    "██    ██ ██         ██    ██    ██ ██   ██  ██  ██ ",
+    "██    ██ ███████    ██    ██    ██ ██   ██   ████  ",
+    "██    ██      ██    ██    ██    ██ ██   ██    ██   ",
+    " ██████  ███████    ██     ██████  ██████     ██   ",
 ];
 
 const RACCOON: [&str; 8] = [
@@ -386,7 +386,8 @@ fn draw_footer(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
     let hint = match model.status {
         RunStatus::Menu => "↑/↓ or j/k  select    Enter  run    q  quit",
         RunStatus::Running => "e  errors/output    q/Esc  cancel    Ctrl-C  stop",
-        RunStatus::Passed | RunStatus::Failed | RunStatus::Cancelled => {
+        RunStatus::Passed => "complete — returning to shell…",
+        RunStatus::Failed | RunStatus::Cancelled => {
             "e  errors/output    Enter  workflows    q/Esc  quit"
         }
     };
@@ -404,7 +405,7 @@ fn draw_compact(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
     let status = match model.status {
         RunStatus::Menu => "Choose a workflow; enlarge the terminal for the full console.",
         RunStatus::Running => "Running — enlarge terminal for progress and logs.",
-        RunStatus::Passed => "Passed.",
+        RunStatus::Passed => "Passed — returning to shell.",
         RunStatus::Failed => "Failed — error lines will print after exit.",
         RunStatus::Cancelled => "Cancelled.",
     };
@@ -460,5 +461,19 @@ fn format_duration(duration: Duration) -> String {
         format!("{}m {:02}s", seconds / 60, seconds % 60)
     } else {
         format!("{seconds}s")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WORDMARK;
+
+    #[test]
+    fn wordmark_rows_stay_aligned() {
+        let widths = WORDMARK
+            .iter()
+            .map(|line| line.chars().count())
+            .collect::<Vec<_>>();
+        assert!(widths.iter().all(|width| *width == widths[0]), "{widths:?}");
     }
 }
