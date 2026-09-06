@@ -17,6 +17,8 @@ const SUCCESS: Color = Color::Rgb(74, 222, 128);
 const WARNING: Color = Color::Rgb(251, 191, 36);
 const FAILURE: Color = Color::Rgb(248, 113, 113);
 const CYAN: Color = Color::Rgb(103, 232, 249);
+const KEYCAP_TEXT: Color = Color::Rgb(13, 17, 24);
+const CONTROL_TEXT: Color = Color::Rgb(233, 237, 245);
 
 const WORDMARK: [&str; 5] = [
     " ██████  ███████ ████████ ██    ██ ██████  ██    ██",
@@ -378,21 +380,91 @@ fn draw_output(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
 }
 
 fn draw_footer(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
-    let hint = match model.status {
-        RunStatus::Menu => "↑/↓ or j/k  select    Enter  run    q  quit",
-        RunStatus::Running => "e  errors/output    q/Esc  cancel    Ctrl-C  stop",
-        RunStatus::Passed => "complete — returning to shell…",
-        RunStatus::Failed | RunStatus::Cancelled => {
-            "e  errors/output    Enter  workflows    q/Esc  quit"
+    frame.render_widget(Paragraph::new(footer_controls(model.status)), area);
+}
+
+fn footer_controls(status: RunStatus) -> Line<'static> {
+    let mut spans = vec![Span::styled(
+        " CONTROLS ",
+        Style::default()
+            .fg(KEYCAP_TEXT)
+            .bg(CYAN)
+            .add_modifier(Modifier::BOLD),
+    )];
+
+    match status {
+        RunStatus::Menu => {
+            push_control(&mut spans, "↑/↓", "select", CYAN);
+            push_control(&mut spans, "j/k", "select", CYAN);
+            push_control(&mut spans, "Enter", "run", OSTUDY_PURPLE);
+            push_control(&mut spans, "q", "quit", FAILURE);
         }
-    };
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("● ", Style::default().fg(OSTUDY_PURPLE)),
-            Span::styled(hint, Style::default().fg(DIM)),
-        ])),
-        area,
-    );
+        RunStatus::Running => {
+            push_control(&mut spans, "e", "errors/output", CYAN);
+            push_control(&mut spans, "q / Esc", "cancel", FAILURE);
+            push_control(&mut spans, "Ctrl-C", "stop", FAILURE);
+        }
+        RunStatus::Passed => spans.push(Span::styled(
+            "  complete — returning to shell…",
+            Style::default().fg(SUCCESS).add_modifier(Modifier::BOLD),
+        )),
+        RunStatus::Failed | RunStatus::Cancelled => {
+            push_control(&mut spans, "e", "errors/output", CYAN);
+            push_control(&mut spans, "Enter", "workflows", OSTUDY_PURPLE);
+            push_control(&mut spans, "q / Esc", "quit", FAILURE);
+        }
+    }
+
+    Line::from(spans)
+}
+
+fn compact_controls(status: RunStatus) -> Line<'static> {
+    let mut spans = Vec::new();
+    match status {
+        RunStatus::Menu => {
+            push_control(&mut spans, "Enter", "run", OSTUDY_PURPLE);
+            push_control(&mut spans, "q", "quit", FAILURE);
+        }
+        RunStatus::Running => {
+            push_control(&mut spans, "e", "errors", CYAN);
+            push_control(&mut spans, "q / Esc", "cancel", FAILURE);
+        }
+        RunStatus::Passed => spans.push(Span::styled(
+            "returning to shell…",
+            Style::default().fg(SUCCESS).add_modifier(Modifier::BOLD),
+        )),
+        RunStatus::Failed | RunStatus::Cancelled => {
+            push_control(&mut spans, "e", "errors", CYAN);
+            push_control(&mut spans, "q / Esc", "quit", FAILURE);
+        }
+    }
+    Line::from(spans)
+}
+
+fn push_control(
+    spans: &mut Vec<Span<'static>>,
+    key: &'static str,
+    label: &'static str,
+    background: Color,
+) {
+    spans.push(Span::raw("  "));
+    spans.push(keycap(key, background));
+    spans.push(Span::styled(
+        format!(" {label}"),
+        Style::default()
+            .fg(CONTROL_TEXT)
+            .add_modifier(Modifier::BOLD),
+    ));
+}
+
+fn keycap(key: &'static str, background: Color) -> Span<'static> {
+    Span::styled(
+        format!(" {key} "),
+        Style::default()
+            .fg(KEYCAP_TEXT)
+            .bg(background)
+            .add_modifier(Modifier::BOLD),
+    )
 }
 
 fn draw_compact(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
@@ -414,7 +486,7 @@ fn draw_compact(frame: &mut Frame<'_>, model: &AppModel, area: Rect) {
             )),
             Line::from(workflow),
             Line::from(Span::styled(status, Style::default().fg(CYAN))),
-            Line::from(Span::styled("q/Esc quit • Enter select/run", Style::default().fg(DIM))),
+            compact_controls(model.status),
         ])
         .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(PANEL))),
         area,
