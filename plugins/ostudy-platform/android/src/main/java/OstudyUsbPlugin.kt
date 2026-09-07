@@ -54,8 +54,11 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
                 permissionRequestInFlight = false
             }
 
+            // requestPermission() is specified to return the exact accessory in
+            // EXTRA_ACCESSORY. Never substitute UsbManager.accessoryList here:
+            // Android can retain a stale logical accessory after a failed AOA
+            // transition even though the host has already returned to MTP/ADB.
             val accessory = accessoryFromIntent(intent)
-                ?: manager.accessoryList?.firstOrNull(::isOstudyAccessory)
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
             val hasPermission = accessory != null && manager.hasPermission(accessory)
             logUsb(
@@ -102,7 +105,7 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     fun takeUsbAccessory(invoke: Invoke) {
         try {
             logAccessorySnapshot("take-command-start")
-            var current = synchronized(lock) {
+            val current = synchronized(lock) {
                 val value = pending
                 pending = null
                 value
@@ -114,25 +117,15 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
                     "fd=${current.fd} manufacturer=${diagnosticValue(current.manufacturer)} " +
                         "model=${diagnosticValue(current.model)} serialPresent=${current.serialNumber != null}",
                 )
-            }
-            if (current == null) {
-                val accessory = manager.accessoryList
-                    ?.firstOrNull(::isOstudyAccessory)
-                if (accessory != null) {
-                    val hasPermission = manager.hasPermission(accessory)
-                    logUsb(
-                        Log.INFO,
-                        "take_command_accessory_found",
-                        "hasPermission=$hasPermission ${describeAccessory(accessory)}",
-                    )
-                    if (hasPermission) {
-                        current = openAccessory(manager, accessory)
-                    } else {
-                        requestAccessoryPermission(manager, accessory)
-                    }
-                } else {
-                    logUsb(Log.INFO, "take_command_no_accessory", "available=false")
-                }
+            } else {
+                // A descriptor is claimable only after an actual
+                // ACTION_USB_ACCESSORY_ATTACHED intent (or its permission result)
+                // prepared it. UsbManager.accessoryList is deliberately not a
+                // fallback: Pixel/Android can expose a stale accessory object
+                // while the physical link is still MTP/ADB, and opening that
+                // stale object monopolizes /dev/usb_accessory before the next
+                // AOA START transition can complete.
+                logUsb(Log.INFO, "take_command_no_pending_attachment", "available=false")
             }
 
             val result = JSObject()
