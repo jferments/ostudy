@@ -7,6 +7,7 @@
 //! complete graph before staging files or mutating the library, then commit one
 //! deck transaction with a retry-safe operation identity and fresh schedules.
 
+mod anki;
 mod export;
 mod import;
 mod read;
@@ -149,6 +150,19 @@ pub struct ImportResultDto {
     pub asset_count: i64,
 }
 
+/// Additive command response; the internal transactional import result and old
+/// serialized consumed-transfer receipts retain their existing shape.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedDeckDto {
+    #[serde(flatten)]
+    pub result: ImportResultDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anki_report: Option<anki::ImportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_commit_warning: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DeckExportSummary {
@@ -226,11 +240,11 @@ pub fn import_deck(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: ImportDeckInput,
-) -> Result<ImportResultDto, CommandError> {
+) -> Result<ImportedDeckDto, CommandError> {
     validate_entity_id(&input.operation_id, "deck import operation")?;
     validate_entity_id(&input.staged_file_id, "staged deck")?;
     if let Some(result) = database.with_connection(|connection| {
-        crate::external_files::consumed_import_result::<ImportResultDto>(
+        crate::external_files::consumed_import_result::<ImportedDeckDto>(
             connection,
             &input.staged_file_id,
         )
@@ -243,28 +257,43 @@ pub fn import_deck(
             paths.inner(),
             &input.staged_file_id,
             crate::external_files::ExternalImportPurpose::StudyContent,
-            &[crate::external_files::ExternalFileKind::Studydeck],
+            &[
+                crate::external_files::ExternalFileKind::Studydeck,
+                crate::external_files::ExternalFileKind::AnkiApkg,
+            ],
         )
     })?;
     let fingerprint = hash_file(&staged.path)?;
-    let package = read::read_package(&staged.path)?;
+    let is_anki = staged.path.extension().is_some_and(|extension| extension == "apkg");
+    let (package, anki_report) = if is_anki {
+        let (package, report) = anki::read_package(&staged.path, &staged.display_name)?;
+        (package, Some(report))
+    } else {
+        (read::read_package(&staged.path)?, None)
+    };
+    // An Anki transfer is keyed to its staged identity even if a transport or
+    // receipt-storage failure causes the frontend to allocate a new attempt ID.
+    let operation_id = if is_anki { &input.staged_file_id } else { &input.operation_id };
+    let consumed_at = unix_time_millis()?;
     let result = database.with_connection(|connection| {
-        import::import_package(
-            connection,
-            &paths,
-            &input.operation_id,
-            &fingerprint,
-            package,
-        )
+        import::import_package(connection, &paths, operation_id, &fingerprint, package)
     })?;
-    database.with_connection(|connection| {
+    let mut result = ImportedDeckDto { result, anki_report, post_commit_warning: None };
+    let receipt = database.with_connection(|connection| {
         crate::external_files::mark_import_consumed(
             connection,
             &input.staged_file_id,
             &result,
-            unix_time_millis()?,
+            consumed_at,
         )
-    })?;
+    });
+    if receipt.is_err() {
+        // The import transaction already committed. Do not invite a duplicate
+        // write by turning receipt reconciliation into a failed import.
+        result.post_commit_warning = Some(
+            "The deck was imported, but its transfer receipt could not be saved. Do not import it again; reopen the deck library to inspect the imported content.".to_string(),
+        );
+    }
     Ok(result)
 }
 

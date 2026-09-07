@@ -340,11 +340,11 @@ fn import_request(purpose: ExternalImportPurpose) -> ExternalFileRequest {
             }],
         },
         ExternalImportPurpose::StudyContent => ExternalFileRequest {
-            title: "Import ostudy content".to_string(),
+            title: "Import flashcards".to_string(),
             suggested_filename: None,
             filters: vec![FileFilter {
-                name: "ostudy deck or generated JSON".to_string(),
-                extensions: vec!["studydeck".to_string(), "json".to_string()],
+                name: "ostudy, Anki deck, or generated JSON".to_string(),
+                extensions: vec!["studydeck".to_string(), "apkg".to_string(), "json".to_string()],
             }],
         },
         ExternalImportPurpose::LibraryBackup => ExternalFileRequest {
@@ -627,6 +627,11 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
     let read = File::open(path)
         .and_then(|mut file| file.read(&mut signature))
         .map_err(CommandError::io)?;
+    if signature[..read].starts_with(b"PK\x03\x04") {
+        // Staging identifies the container only. The Anki adapter validates all
+        // members, collection versions, and content before importing anything.
+        return Ok(ExternalFileKind::AnkiApkg);
+    }
     if read == signature.len() && &signature == b"SQLite format 3\0" {
         let format = sqlite_metadata(path, "package_metadata", "format")?;
         return if format.as_deref() == Some("studydeck-sqlite") {
@@ -643,7 +648,7 @@ fn detect_study_content(path: &Path) -> Result<ExternalFileKind, CommandError> {
     let value: serde_json::Value = serde_json::from_reader(file).map_err(|_| {
         CommandError::new(
             "invalid_flashcard_import_json",
-            "The selected content is neither an ostudy deck nor valid generated JSON.",
+            "Select an ostudy deck, an Anki .apkg deck, or valid generated JSON.",
         )
     })?;
     if value.get("format").and_then(serde_json::Value::as_str) == Some("ostudy-flashcards")
@@ -843,6 +848,16 @@ mod tests {
             assert!(!request.filters.is_empty());
             assert!(maximum_import_bytes(purpose) > 0);
         }
+    }
+
+    #[test]
+    fn anki_containers_are_staged_with_the_anki_kind_and_picker_extension() {
+        let path = test_file(b"PK\x03\x04container");
+        assert_eq!(detect_study_content(&path).unwrap(), ExternalFileKind::AnkiApkg);
+        let request = import_request(ExternalImportPurpose::StudyContent);
+        assert!(request.filters.iter().any(|filter| filter.extensions.iter().any(|extension| extension == "apkg")));
+        assert_eq!(ExternalFileKind::parse("anki_apkg").unwrap().extension(), "apkg");
+        let _ = fs::remove_file(path);
     }
 
     #[test]
