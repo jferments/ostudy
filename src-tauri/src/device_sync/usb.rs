@@ -44,7 +44,6 @@ mod linux {
     const LIBUSB_ENDPOINT_IN: u8 = 0x80;
     const LIBUSB_ERROR_ACCESS: c_int = -3;
     const LIBUSB_ERROR_NO_DEVICE: c_int = -4;
-    const LIBUSB_ERROR_BUSY: c_int = -6;
     const LIBUSB_ERROR_TIMEOUT: c_int = -7;
     const LIBUSB_ERROR_INTERRUPTED: c_int = -10;
     const LIBUSB_ERROR_NOT_SUPPORTED: c_int = -12;
@@ -189,8 +188,6 @@ mod linux {
             config: *mut *const LibUsbConfigDescriptor,
         ) -> c_int;
         fn libusb_free_config_descriptor(config: *const LibUsbConfigDescriptor);
-        fn libusb_set_configuration(handle: *mut LibUsbDeviceHandle, configuration: c_int)
-            -> c_int;
         fn libusb_set_auto_detach_kernel_driver(
             handle: *mut LibUsbDeviceHandle,
             enable: c_int,
@@ -487,14 +484,11 @@ mod linux {
                     detach,
                 ));
             }
-            let configuration = unsafe { libusb_set_configuration(self.handle.0, 1) };
-            if configuration != 0 && configuration != LIBUSB_ERROR_BUSY {
-                return Err(libusb_command_error(
-                    "device_sync_usb_open_failed",
-                    "select the Android accessory configuration",
-                    configuration,
-                ));
-            }
+            // AOA has already re-enumerated with its active configuration. Do
+            // not reset the whole device here: PID 0x2d01 exposes ADB as a
+            // sibling interface, and libusb_set_configuration would disrupt
+            // that interface even though oStudy needs only the accessory bulk
+            // interface below.
             let claim = unsafe { libusb_claim_interface(self.handle.0, self.interface_number) };
             if claim != 0 {
                 return Err(libusb_command_error(

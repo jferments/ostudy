@@ -10,6 +10,7 @@ import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.util.Log
 import android.webkit.WebView
 import androidx.core.content.ContextCompat
@@ -26,6 +27,7 @@ private const val OSTUDY_ACCESSORY_MANUFACTURER = "oStudy"
 private const val OSTUDY_ACCESSORY_MODEL = "oStudy USB Sync"
 private const val USB_PERMISSION_ACTION_SUFFIX = ".ostudy.USB_ACCESSORY_PERMISSION"
 private const val USB_DIAGNOSTIC_TAG = "oStudyUsb"
+private const val EMPTY_CLAIM_LOG_INTERVAL_MILLIS = 15_000L
 
 /**
  * Owns only Android's USB-accessory lifecycle and native file-descriptor handoff.
@@ -46,6 +48,7 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     private var permissionRequestInFlight = false
     private var permissionReceiverRegistered = false
     private var lifecycleObserver: DefaultLifecycleObserver? = null
+    private var lastEmptyClaimLogElapsed = -EMPTY_CLAIM_LOG_INTERVAL_MILLIS
 
     private val permissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -104,20 +107,36 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun takeUsbAccessory(invoke: Invoke) {
         try {
-            logAccessorySnapshot("take-command-start")
             val current = synchronized(lock) {
                 val value = pending
                 pending = null
                 value
             }
+            val logIdle = current == null && shouldLogEmptyClaim()
             if (current != null) {
+                logAccessorySnapshot("take-command-claimed")
                 logUsb(
                     Log.INFO,
                     "pending_accessory_claimed",
                     "fd=${current.fd} manufacturer=${diagnosticValue(current.manufacturer)} " +
                         "model=${diagnosticValue(current.model)} serialPresent=${current.serialNumber != null}",
                 )
-            } else {
+                try {
+                    OstudyUsbSyncService.begin(activity, current.fd)
+                    logUsb(Log.INFO, "usb_transfer_foreground_guard_requested", "fd=${current.fd}")
+                } catch (error: Exception) {
+                    current.close()
+                    logUsb(
+                        Log.ERROR,
+                        "usb_transfer_foreground_guard_failed",
+                        "error=${diagnosticValue(safeUsbMessage(error))}",
+                    )
+                    invoke.reject(
+                        "Android could not keep the USB synchronization active: ${safeUsbMessage(error)}",
+                    )
+                    return
+                }
+            } else if (logIdle) {
                 // A descriptor is claimable only after an actual
                 // ACTION_USB_ACCESSORY_ATTACHED intent (or its permission result)
                 // prepared it. UsbManager.accessoryList is deliberately not a
@@ -125,6 +144,7 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
                 // while the physical link is still MTP/ADB, and opening that
                 // stale object monopolizes /dev/usb_accessory before the next
                 // AOA START transition can complete.
+                logAccessorySnapshot("take-command-idle")
                 logUsb(Log.INFO, "take_command_no_pending_attachment", "available=false")
             }
 
@@ -135,7 +155,7 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
                 result.put("manufacturer", null)
                 result.put("model", null)
                 result.put("serialNumber", null)
-                logUsb(Log.INFO, "take_command_result", "available=false")
+                if (logIdle) logUsb(Log.INFO, "take_command_result", "available=false")
             } else {
                 result.put("available", true)
                 result.put("fd", current.fd)
@@ -160,7 +180,12 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     private fun processAccessoryIntent(intent: Intent?, announce: Boolean) {
-        val action = intent?.action
+        val actualIntent = intent
+        if (actualIntent == null) {
+            logUsb(Log.INFO, "accessory_intent_ignored", "action=null reason=not-accessory-attach")
+            return
+        }
+        val action = actualIntent.action
         if (action != UsbManager.ACTION_USB_ACCESSORY_ATTACHED) {
             logUsb(
                 Log.INFO,
@@ -169,7 +194,7 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
             )
             return
         }
-        val accessory = intent?.let(::accessoryFromIntent)
+        val accessory = accessoryFromIntent(actualIntent)
         if (accessory == null) {
             logUsb(Log.WARN, "accessory_intent_missing_extra", "announce=$announce")
             return
@@ -311,8 +336,8 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
             )
             PendingAccessory(
                 fd = rawFd,
-                manufacturer = accessory.manufacturer ?: OSTUDY_ACCESSORY_MANUFACTURER,
-                model = accessory.model ?: OSTUDY_ACCESSORY_MODEL,
+                manufacturer = accessory.manufacturer,
+                model = accessory.model,
                 serialNumber = serial,
             )
         } finally {
@@ -366,6 +391,18 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
         }
         lifecycleObserver = null
         logUsb(Log.INFO, "plugin_cleanup_complete")
+    }
+
+    private fun shouldLogEmptyClaim(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        return synchronized(lock) {
+            if (now - lastEmptyClaimLogElapsed < EMPTY_CLAIM_LOG_INTERVAL_MILLIS) {
+                false
+            } else {
+                lastEmptyClaimLogElapsed = now
+                true
+            }
+        }
     }
 
     private fun logAccessorySnapshot(stage: String) {

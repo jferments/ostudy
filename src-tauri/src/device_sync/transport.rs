@@ -101,7 +101,16 @@ impl SecureChannel {
         &mut self,
         expected_type: u8,
     ) -> Result<T, CommandError> {
-        let (frame_type, bytes) = self.receive_frame()?;
+        let (frame_type, bytes) = match self.receive_frame() {
+            Ok(frame) => frame,
+            Err(error)
+                if expected_type == FRAME_COMPLETE
+                    && error.code == "device_sync_connection_failed" =>
+            {
+                return Err(completion_unconfirmed_error());
+            }
+            Err(error) => return Err(error),
+        };
         if frame_type == FRAME_ERROR {
             return Err(decode_remote_error(&bytes));
         }
@@ -253,11 +262,28 @@ impl SecureChannel {
                 "A synchronization frame exceeds the transport range.",
             )
         })?;
-        self.stream
+        let write_result = self
+            .stream
             .write_all(&length.to_be_bytes())
             .and_then(|_| self.stream.write_all(&sealed))
-            .and_then(|_| self.stream.flush())
-            .map_err(CommandError::io)
+            .and_then(|_| self.stream.flush());
+        match write_result {
+            Ok(()) => Ok(()),
+            Err(error) if frame_type == FRAME_COMPLETE => {
+                // FRAME_COMPLETE is emitted only after the receiver has
+                // durably committed the merge and peer baseline. Losing the
+                // physical link while returning that final receipt must not
+                // reclassify the already-committed receiver session as failed.
+                crate::logging::warn_target(
+                    "device_sync.transport",
+                    "device_sync_completion_acknowledgement_lost",
+                    "The synchronized data was committed, but the completion acknowledgement could not be delivered.",
+                    serde_json::json!({ "ioError": error.to_string() }),
+                );
+                Ok(())
+            }
+            Err(error) => Err(transport_io_error("write a synchronization frame", error)),
+        }
     }
 
     fn receive_frame(&mut self) -> Result<(u8, Vec<u8>), CommandError> {
@@ -376,6 +402,13 @@ fn protocol_error(message: impl Into<String>) -> CommandError {
     CommandError::new("device_sync_protocol_error", message)
 }
 
+fn completion_unconfirmed_error() -> CommandError {
+    CommandError::new(
+        "device_sync_completion_unconfirmed",
+        "The selected data was fully sent, but the receiving device disconnected before confirming the committed synchronization. Check the receiving device before retrying.",
+    )
+}
+
 fn transport_crypto_error() -> CommandError {
     CommandError::new(
         "device_sync_crypto_unavailable",
@@ -460,6 +493,40 @@ mod tests {
         }
     }
 
+    struct FailingWriteSyncIo;
+
+    impl Read for FailingWriteSyncIo {
+        fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl Write for FailingWriteSyncIo {
+        fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "simulated disconnected peer",
+            ))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SyncIo for FailingWriteSyncIo {
+        fn prepare_for_sync(&self, _timeout: Duration) -> Result<(), CommandError> {
+            Ok(())
+        }
+    }
+
+    fn test_keys() -> SessionKeys {
+        SessionKeys {
+            send_key: [17_u8; 32],
+            receive_key: [19_u8; 32],
+        }
+    }
+
     #[test]
     fn plain_handshake_framing_is_transport_neutral() {
         let mut stream = MemorySyncIo::new();
@@ -468,6 +535,34 @@ mod tests {
         stream.bytes.set_position(0);
         let decoded: String = read_plain_json(&mut stream).expect("handshake should read");
         assert_eq!(decoded, "hello over any byte stream");
+    }
+
+    #[test]
+    fn missing_final_receipt_has_completion_unconfirmed_semantics() {
+        let stream = MemorySyncIo::new();
+        let mut channel = SecureChannel::new(stream, test_keys()).expect("channel should open");
+        let error = channel
+            .receive_json::<String>(FRAME_COMPLETE)
+            .expect_err("missing final receipt should remain distinguishable from transfer failure");
+        assert_eq!(error.code, "device_sync_completion_unconfirmed");
+        assert!(error.message.contains("fully sent"));
+        assert!(error.message.contains("before retrying"));
+    }
+
+    #[test]
+    fn committed_receiver_does_not_fail_when_final_receipt_cannot_be_written() {
+        let mut channel =
+            SecureChannel::new(FailingWriteSyncIo, test_keys()).expect("channel should open");
+        channel
+            .send_json(FRAME_COMPLETE, &"committed")
+            .expect("a lost post-commit receipt must not roll back receiver success");
+
+        let mut non_terminal =
+            SecureChannel::new(FailingWriteSyncIo, test_keys()).expect("channel should open");
+        let error = non_terminal
+            .send_json(FRAME_METADATA, &"not committed")
+            .expect_err("ordinary frame write failures must still fail the transfer");
+        assert_eq!(error.code, "device_sync_connection_failed");
     }
 
     #[test]

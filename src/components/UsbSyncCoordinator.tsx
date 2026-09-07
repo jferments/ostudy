@@ -11,7 +11,9 @@ interface UsbSyncCoordinatorProps {
   showToast: ShowToast;
 }
 
-const USB_CLAIM_POLL_INTERVAL_MS = 500;
+const USB_CLAIM_FAST_POLL_INTERVAL_MS = 750;
+const USB_CLAIM_IDLE_POLL_INTERVAL_MS = 5_000;
+const USB_CLAIM_FAST_WINDOW_MS = 12_000;
 
 /**
  * Claims Android Open Accessory connections as soon as the native platform
@@ -19,10 +21,11 @@ const USB_CLAIM_POLL_INTERVAL_MS = 500;
  * synchronization protocol as LAN; there is no QR, IP address, tethering, ADB,
  * or WebView-owned transfer protocol on the USB path.
  *
- * The native event subscription is best-effort because the dedicated Android
- * USB plugin shares one Rust crate/ACL namespace with the broader platform
- * plugin. A short foreground poll is therefore the compatibility path that
- * makes descriptor claiming independent of WebView plugin-listener ACLs.
+ * Android normally brings the activity to the foreground for an accessory
+ * attachment. The native listener is therefore only a fast path; an adaptive
+ * foreground poll covers plugin-listener ACL differences without waking the
+ * WebView twice per second indefinitely. While a transfer is active the claim
+ * call itself remains pending, so no additional polls are scheduled.
  */
 export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinatorProps) {
   const capabilities = usePlatformCapabilities();
@@ -33,7 +36,29 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     if (!android) return;
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    let pollTimer: number | undefined;
+    let fastUntil = Date.now() + USB_CLAIM_FAST_WINDOW_MS;
     let reportedReceiveError = false;
+
+    function pollDelay(): number {
+      return document.visibilityState === "visible" && Date.now() < fastUntil
+        ? USB_CLAIM_FAST_POLL_INTERVAL_MS
+        : USB_CLAIM_IDLE_POLL_INTERVAL_MS;
+    }
+
+    function schedulePoll(delay = pollDelay()): void {
+      if (disposed) return;
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+      pollTimer = window.setTimeout(() => {
+        pollTimer = undefined;
+        void receivePending().finally(() => schedulePoll());
+      }, delay);
+    }
+
+    function armFastPolling(): void {
+      fastUntil = Date.now() + USB_CLAIM_FAST_WINDOW_MS;
+      schedulePoll(0);
+    }
 
     async function receivePending(): Promise<void> {
       if (disposed || receiving.current) return;
@@ -60,16 +85,22 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
       }
     }
 
-    // Claim a descriptor that may have arrived while the WebView was starting,
-    // then keep a bounded-rate compatibility poll alive for accessory intents
-    // that arrive later. A null result is the ordinary "nothing attached" path.
-    void receivePending();
-    const poll = window.setInterval(() => void receivePending(), USB_CLAIM_POLL_INTERVAL_MS);
+    const handleFocus = (): void => armFastPolling();
+    const handleVisibility = (): void => {
+      if (document.visibilityState === "visible") armFastPolling();
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Claim a descriptor that may have arrived while the WebView was starting.
+    void receivePending().finally(() => schedulePoll());
 
     // Keep the native event fast path when the runtime exposes its listener ACL.
-    // Current Android builds may reject this separate plugin namespace; the poll
-    // above is intentionally sufficient on its own, so that rejection is quiet.
-    void listenToAndroidUsbSync(() => void receivePending())
+    // The adaptive poll above remains sufficient when that namespace is denied.
+    void listenToAndroidUsbSync(() => {
+      armFastPolling();
+      void receivePending();
+    })
       .then((dispose) => {
         if (disposed) dispose();
         else unlisten = dispose;
@@ -78,7 +109,9 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
 
     return () => {
       disposed = true;
-      window.clearInterval(poll);
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
       unlisten?.();
     };
   }, [android, refreshDecks, showToast]);
