@@ -11,7 +11,10 @@ use sha2::{Digest, Sha256};
 
 use crate::error::CommandError;
 
-use super::store::{BaselineRecord, NewConflict, SyncStore};
+use super::{
+    scope::SyncSelection,
+    store::{BaselineRecord, NewConflict, SyncStore},
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct TableSpec {
@@ -21,7 +24,10 @@ pub(crate) struct TableSpec {
     pub excluded_columns: &'static [&'static str],
 }
 
+/// Dependency order is deliberate: parents appear before children for upserts,
+/// and `apply_plans` walks the list in reverse for deletes.
 pub(crate) const SYNC_TABLES: &[TableSpec] = &[
+    // Flashcard/study graph.
     TableSpec::new("deck_folders", &["id"]),
     TableSpec::new("decks", &["id"]),
     TableSpec::new("tags", &["id"]),
@@ -63,6 +69,10 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         "review_event_tag_attributions",
         &["review_event_id", "tag_id"],
     ),
+    TableSpec::new("source_citation_snapshots", &["id"]),
+    TableSpec::new("deck_source_citations", &["deck_id", "citation_id"]),
+    TableSpec::new("note_source_citations", &["note_id"]),
+    // Provider metadata is a parent of optional document processing records.
     TableSpec {
         name: "ai_provider_profiles",
         key_columns: &["id"],
@@ -70,6 +80,52 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         excluded_columns: &["credential_storage", "credential_epoch"],
     },
     TableSpec::new("ai_task_defaults", &["task_kind"]),
+    // Canonical Documents + durable LLM processing/checkpoint graph.
+    TableSpec::new("documents", &["id"]),
+    TableSpec::new("document_source_files", &["document_id", "file_ordinal"]),
+    TableSpec::new("document_source_units", &["document_id", "unit_number"]),
+    TableSpec::new("document_source_blocks", &["document_id", "block_index"]),
+    TableSpec::new("document_source_assets", &["document_id", "asset_id"]),
+    TableSpec::new("document_pages", &["document_id", "page_number"]),
+    TableSpec::new(
+        "document_semantic_elements",
+        &["document_id", "element_index"],
+    ),
+    TableSpec::new("document_semantic_chunks", &["document_id", "chunk_index"]),
+    TableSpec::new(
+        "document_semantic_chunk_sources",
+        &["document_id", "chunk_index"],
+    ),
+    TableSpec::new("document_outlines", &["document_id"]),
+    TableSpec::new(
+        "document_outline_checkpoints",
+        &["document_id", "contract_key", "window_index"],
+    ),
+    TableSpec::new("document_generation_jobs", &["id"]),
+    TableSpec::new("document_generation_units", &["job_id", "page_number"]),
+    TableSpec::new("document_generation_windows", &["job_id", "window_index"]),
+    TableSpec::new(
+        "document_generation_checkpoints",
+        &["document_id", "contract_key", "window_index"],
+    ),
+    TableSpec::new("document_learning_plans", &["id"]),
+    TableSpec::new("document_learning_topics", &["id"]),
+    TableSpec::new("document_learning_plan_topics", &["plan_id", "topic_id"]),
+    TableSpec::new("document_artifact_jobs", &["id"]),
+    TableSpec::new("document_artifact_metadata", &["document_id"]),
+    // Study Guide artifact graph. `SyncSelection` only enables these when the
+    // Study Guides category is selected (which itself requires Documents).
+    TableSpec::new("document_study_guides", &["id"]),
+    TableSpec::new("document_study_guide_sections", &["guide_id", "topic_id"]),
+    TableSpec::new("document_study_guide_overlays", &["id"]),
+    TableSpec::new(
+        "document_study_guide_checkpoints",
+        &["document_id", "contract_key", "topic_id"],
+    ),
+    // Cross-domain provenance is only enabled when both Documents and
+    // Flashcards are selected.
+    TableSpec::new("document_decks", &["document_id", "deck_id"]),
+    TableSpec::new("document_note_topics", &["note_id", "topic_id"]),
 ];
 
 impl TableSpec {
@@ -126,10 +182,15 @@ pub(crate) fn merge_remote_database(
     store: &SyncStore,
     local_device_id: &str,
     remote_device_id: &str,
+    selection: SyncSelection,
 ) -> Result<MergeSummary, CommandError> {
+    let selection = selection.validate()?;
     let mut plans = Vec::with_capacity(SYNC_TABLES.len());
     for spec in SYNC_TABLES {
-        if !table_exists(local, spec.name)? || !table_exists(remote, spec.name)? {
+        if !selection.includes_table(spec.name)
+            || !table_exists(local, spec.name)?
+            || !table_exists(remote, spec.name)?
+        {
             continue;
         }
         let local_rows = load_table(local, spec)?;
@@ -174,9 +235,11 @@ pub(crate) fn remember_sent_database(
     snapshot: &Connection,
     store: &SyncStore,
     peer_id: &str,
+    selection: SyncSelection,
 ) -> Result<(), CommandError> {
+    let selection = selection.validate()?;
     for spec in SYNC_TABLES {
-        if !table_exists(snapshot, spec.name)? {
+        if !selection.includes_table(spec.name) || !table_exists(snapshot, spec.name)? {
             continue;
         }
         let rows = load_table(snapshot, spec)?;
@@ -330,16 +393,9 @@ fn merge_rows(
     match (left, right) {
         (None, None) => (None, Vec::new()),
         (Some(payload), None) | (None, Some(payload)) if base.is_none() => {
-            // With no saved baseline, a row that exists on only one device is
-            // an independent creation, not a delete-vs-edit race. First-contact
-            // offers must be able to add sender rows to a new receiver without
-            // manufacturing a conflict for every deck/card/template.
             (Some(payload.clone()), Vec::new())
         }
         (Some(payload), None) | (None, Some(payload)) => {
-            // Once a common baseline exists, preserving the edited/remaining
-            // row while recording a conflict prevents delete-vs-edit races from
-            // silently losing content.
             (Some(payload.clone()), vec!["$row".to_string()])
         }
         (Some(left), Some(right)) => merge_present_rows(
@@ -838,5 +894,20 @@ mod tests {
         );
         assert!(merged.is_some());
         assert_eq!(conflicts, vec!["$row"]);
+    }
+
+    #[test]
+    fn document_and_study_guide_tables_are_scope_gated() {
+        let docs = SyncSelection {
+            flashcards: false,
+            documents: true,
+            study_guides: false,
+            api_settings: false,
+            api_credentials: false,
+        };
+        assert!(docs.includes_table("documents"));
+        assert!(docs.includes_table("document_generation_checkpoints"));
+        assert!(!docs.includes_table("document_study_guides"));
+        assert!(!docs.includes_table("document_note_topics"));
     }
 }

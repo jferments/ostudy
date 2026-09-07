@@ -1,11 +1,17 @@
 use std::{
     io,
-    net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
+    net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream},
     ops::RangeInclusive,
+    sync::Arc,
     time::Duration,
 };
 
 use crate::error::CommandError;
+
+use super::{
+    cancellation::{SyncAbort, SyncAbortSource},
+    transport::SyncIo,
+};
 
 pub(crate) const LISTENER_PORT_START: u16 = 49_251;
 pub(crate) const LISTENER_PORT_END: u16 = 49_258;
@@ -13,6 +19,35 @@ pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn listener_ports() -> RangeInclusive<u16> {
     LISTENER_PORT_START..=LISTENER_PORT_END
+}
+
+#[derive(Debug)]
+struct TcpStreamAbort {
+    stream: TcpStream,
+}
+
+impl SyncAbort for TcpStreamAbort {
+    fn abort(&self) {
+        let _ = self.stream.shutdown(Shutdown::Both);
+    }
+}
+
+impl SyncAbortSource for TcpStream {
+    fn sync_abort_handle(&self) -> Result<Arc<dyn SyncAbort>, CommandError> {
+        Ok(Arc::new(TcpStreamAbort {
+            stream: self.try_clone().map_err(CommandError::io)?,
+        }))
+    }
+}
+
+impl SyncIo for TcpStream {
+    fn prepare_for_sync(&self, timeout: Duration) -> Result<(), CommandError> {
+        self.set_read_timeout(Some(timeout))
+            .map_err(CommandError::io)?;
+        self.set_write_timeout(Some(timeout))
+            .map_err(CommandError::io)?;
+        self.set_nodelay(true).map_err(CommandError::io)
+    }
 }
 
 pub(crate) fn bind_listener() -> Result<TcpListener, CommandError> {
@@ -61,6 +96,71 @@ pub(crate) fn connect_to_sender(
             ),
         )
     })
+}
+
+// `execute_join_session` has one cross-platform type shape. Non-Android builds
+// can never construct the USB branch, but the compiler still type-checks it.
+// This unreachable stub supplies that type boundary without introducing USB
+// behavior into the network adapter or a fake runtime fallback.
+#[cfg(not(target_os = "android"))]
+mod unavailable_usb_join_stub {
+    use std::{
+        io::{self, Read, Write},
+        sync::Arc,
+        time::Duration,
+    };
+
+    use crate::error::CommandError;
+
+    use super::super::{
+        cancellation::{SyncAbort, SyncAbortSource},
+        transport::SyncIo,
+        UsbJoinStream,
+    };
+
+    #[derive(Debug)]
+    struct UnavailableUsbAbort;
+
+    impl SyncAbort for UnavailableUsbAbort {
+        fn abort(&self) {}
+    }
+
+    impl Read for UsbJoinStream {
+        fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Android USB join streams do not exist on this platform.",
+            ))
+        }
+    }
+
+    impl Write for UsbJoinStream {
+        fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "Android USB join streams do not exist on this platform.",
+            ))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SyncIo for UsbJoinStream {
+        fn prepare_for_sync(&self, _timeout: Duration) -> Result<(), CommandError> {
+            Err(CommandError::new(
+                "device_sync_usb_unavailable",
+                "Android USB join streams do not exist on this platform.",
+            ))
+        }
+    }
+
+    impl SyncAbortSource for UsbJoinStream {
+        fn sync_abort_handle(&self) -> Result<Arc<dyn SyncAbort>, CommandError> {
+            Ok(Arc::new(UnavailableUsbAbort))
+        }
+    }
 }
 
 #[cfg(test)]

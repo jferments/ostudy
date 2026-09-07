@@ -1,7 +1,6 @@
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
-    net::TcpStream,
     path::Path,
     time::Duration,
 };
@@ -28,6 +27,15 @@ const FILE_CHUNK_BYTES: usize = 768 * 1024;
 const MAX_TRANSFER_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const IO_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// The byte-stream boundary used by the synchronization protocol.
+///
+/// Framing, authentication, package transfer, and merge coordination must not
+/// know whether bytes travel over LAN TCP, a USB bridge, or a future platform
+/// transport. Implementations own only transport-specific stream preparation.
+pub(crate) trait SyncIo: Read + Write + Send {
+    fn prepare_for_sync(&self, timeout: Duration) -> Result<(), CommandError>;
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct FileHeader {
@@ -46,7 +54,7 @@ struct RemoteErrorFrame {
 }
 
 pub(crate) struct SecureChannel {
-    stream: TcpStream,
+    stream: Box<dyn SyncIo>,
     send_key: aead::LessSafeKey,
     receive_key: aead::LessSafeKey,
     send_sequence: u64,
@@ -54,14 +62,11 @@ pub(crate) struct SecureChannel {
 }
 
 impl SecureChannel {
-    pub(crate) fn new(stream: TcpStream, keys: SessionKeys) -> Result<Self, CommandError> {
-        stream
-            .set_read_timeout(Some(IO_TIMEOUT))
-            .map_err(CommandError::io)?;
-        stream
-            .set_write_timeout(Some(IO_TIMEOUT))
-            .map_err(CommandError::io)?;
-        stream.set_nodelay(true).map_err(CommandError::io)?;
+    pub(crate) fn new<S>(stream: S, keys: SessionKeys) -> Result<Self, CommandError>
+    where
+        S: SyncIo + 'static,
+    {
+        stream.prepare_for_sync(IO_TIMEOUT)?;
         let send_key = aead::UnboundKey::new(&aead::CHACHA20_POLY1305, &keys.send_key)
             .map(aead::LessSafeKey::new)
             .map_err(|_| transport_crypto_error())?;
@@ -69,7 +74,7 @@ impl SecureChannel {
             .map(aead::LessSafeKey::new)
             .map_err(|_| transport_crypto_error())?;
         Ok(Self {
-            stream,
+            stream: Box::new(stream),
             send_key,
             receive_key,
             send_sequence: 0,
@@ -96,7 +101,16 @@ impl SecureChannel {
         &mut self,
         expected_type: u8,
     ) -> Result<T, CommandError> {
-        let (frame_type, bytes) = self.receive_frame()?;
+        let (frame_type, bytes) = match self.receive_frame() {
+            Ok(frame) => frame,
+            Err(error)
+                if expected_type == FRAME_COMPLETE
+                    && error.code == "device_sync_connection_failed" =>
+            {
+                return Err(completion_unconfirmed_error());
+            }
+            Err(error) => return Err(error),
+        };
         if frame_type == FRAME_ERROR {
             return Err(decode_remote_error(&bytes));
         }
@@ -248,11 +262,28 @@ impl SecureChannel {
                 "A synchronization frame exceeds the transport range.",
             )
         })?;
-        self.stream
+        let write_result = self
+            .stream
             .write_all(&length.to_be_bytes())
             .and_then(|_| self.stream.write_all(&sealed))
-            .and_then(|_| self.stream.flush())
-            .map_err(CommandError::io)
+            .and_then(|_| self.stream.flush());
+        match write_result {
+            Ok(()) => Ok(()),
+            Err(error) if frame_type == FRAME_COMPLETE => {
+                // FRAME_COMPLETE is emitted only after the receiver has
+                // durably committed the merge and peer baseline. Losing the
+                // physical link while returning that final receipt must not
+                // reclassify the already-committed receiver session as failed.
+                crate::logging::warn_target(
+                    "device_sync.transport",
+                    "device_sync_completion_acknowledgement_lost",
+                    "The synchronized data was committed, but the completion acknowledgement could not be delivered.",
+                    serde_json::json!({ "ioError": error.to_string() }),
+                );
+                Ok(())
+            }
+            Err(error) => Err(transport_io_error("write a synchronization frame", error)),
+        }
     }
 
     fn receive_frame(&mut self) -> Result<(u8, Vec<u8>), CommandError> {
@@ -295,13 +326,11 @@ impl SecureChannel {
     }
 }
 
-pub(crate) fn write_plain_json<T: Serialize>(
-    stream: &mut TcpStream,
+pub(crate) fn write_plain_json<T: Serialize, S: SyncIo + ?Sized>(
+    stream: &mut S,
     value: &T,
 ) -> Result<(), CommandError> {
-    stream
-        .set_write_timeout(Some(IO_TIMEOUT))
-        .map_err(CommandError::io)?;
+    stream.prepare_for_sync(IO_TIMEOUT)?;
     let bytes = serde_json::to_vec(value).map_err(CommandError::serialization)?;
     if bytes.is_empty() || bytes.len() > MAX_PLAIN_JSON_BYTES {
         return Err(protocol_error(
@@ -318,12 +347,10 @@ pub(crate) fn write_plain_json<T: Serialize>(
         .map_err(CommandError::io)
 }
 
-pub(crate) fn read_plain_json<T: DeserializeOwned>(
-    stream: &mut TcpStream,
+pub(crate) fn read_plain_json<T: DeserializeOwned, S: SyncIo + ?Sized>(
+    stream: &mut S,
 ) -> Result<T, CommandError> {
-    stream
-        .set_read_timeout(Some(IO_TIMEOUT))
-        .map_err(CommandError::io)?;
+    stream.prepare_for_sync(IO_TIMEOUT)?;
     let mut length_bytes = [0_u8; 4];
     stream
         .read_exact(&mut length_bytes)
@@ -375,6 +402,13 @@ fn protocol_error(message: impl Into<String>) -> CommandError {
     CommandError::new("device_sync_protocol_error", message)
 }
 
+fn completion_unconfirmed_error() -> CommandError {
+    CommandError::new(
+        "device_sync_completion_unconfirmed",
+        "The selected data was fully sent, but the receiving device disconnected before confirming the committed synchronization. Check the receiving device before retrying.",
+    )
+}
+
 fn transport_crypto_error() -> CommandError {
     CommandError::new(
         "device_sync_crypto_unavailable",
@@ -419,7 +453,117 @@ fn decode_remote_error(bytes: &[u8]) -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{net::TcpListener, thread};
+    use std::{
+        io::{Cursor, Read, Write},
+        net::{TcpListener, TcpStream},
+        thread,
+    };
+
+    struct MemorySyncIo {
+        bytes: Cursor<Vec<u8>>,
+    }
+
+    impl MemorySyncIo {
+        fn new() -> Self {
+            Self {
+                bytes: Cursor::new(Vec::new()),
+            }
+        }
+    }
+
+    impl Read for MemorySyncIo {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.bytes.read(buffer)
+        }
+    }
+
+    impl Write for MemorySyncIo {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.bytes.write(buffer)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.bytes.flush()
+        }
+    }
+
+    impl SyncIo for MemorySyncIo {
+        fn prepare_for_sync(&self, _timeout: Duration) -> Result<(), CommandError> {
+            Ok(())
+        }
+    }
+
+    struct FailingWriteSyncIo;
+
+    impl Read for FailingWriteSyncIo {
+        fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl Write for FailingWriteSyncIo {
+        fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "simulated disconnected peer",
+            ))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl SyncIo for FailingWriteSyncIo {
+        fn prepare_for_sync(&self, _timeout: Duration) -> Result<(), CommandError> {
+            Ok(())
+        }
+    }
+
+    fn test_keys() -> SessionKeys {
+        SessionKeys {
+            send_key: [17_u8; 32],
+            receive_key: [19_u8; 32],
+        }
+    }
+
+    #[test]
+    fn plain_handshake_framing_is_transport_neutral() {
+        let mut stream = MemorySyncIo::new();
+        write_plain_json(&mut stream, &"hello over any byte stream")
+            .expect("handshake should write");
+        stream.bytes.set_position(0);
+        let decoded: String = read_plain_json(&mut stream).expect("handshake should read");
+        assert_eq!(decoded, "hello over any byte stream");
+    }
+
+    #[test]
+    fn missing_final_receipt_has_completion_unconfirmed_semantics() {
+        let stream = MemorySyncIo::new();
+        let mut channel = SecureChannel::new(stream, test_keys()).expect("channel should open");
+        let error = channel.receive_json::<String>(FRAME_COMPLETE).expect_err(
+            "missing final receipt should remain distinguishable from transfer failure",
+        );
+        assert_eq!(error.code, "device_sync_completion_unconfirmed");
+        assert!(error.message.contains("fully sent"));
+        assert!(error.message.contains("before retrying"));
+    }
+
+    #[test]
+    fn committed_receiver_does_not_fail_when_final_receipt_cannot_be_written() {
+        let mut channel =
+            SecureChannel::new(FailingWriteSyncIo, test_keys()).expect("channel should open");
+        channel
+            .send_json(FRAME_COMPLETE, &"committed")
+            .expect("a lost post-commit receipt must not roll back receiver success");
+
+        let mut non_terminal =
+            SecureChannel::new(FailingWriteSyncIo, test_keys()).expect("channel should open");
+        let error = non_terminal
+            .send_json(FRAME_METADATA, &"not committed")
+            .expect_err("ordinary frame write failures must still fail the transfer");
+        assert_eq!(error.code, "device_sync_connection_failed");
+    }
 
     #[test]
     fn encrypted_channel_propagates_typed_remote_failure_before_eof() {

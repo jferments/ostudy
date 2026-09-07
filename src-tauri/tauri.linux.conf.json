@@ -1,4 +1,5 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
   "app": {
     "windows": [
       {
@@ -17,8 +18,19 @@
     ]
   },
   "bundle": {
+    "targets": ["deb", "appimage"],
     "resources": {
       "resources/native/pdfium/*": "native/pdfium/"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libusb-1.0-0"
+        ],
+        "files": {
+          "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "packaging/linux/70-ostudy-android-usb.rules"
+        }
+      }
     }
   }
 }

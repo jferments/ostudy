@@ -72,6 +72,69 @@
   overflow-wrap: anywhere;
 }
 
+.scopeFieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--ostudy-color-border-subtle);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--ostudy-color-surface-base);
+}
+
+.scopeFieldset legend {
+  padding: 0 5px;
+  color: var(--ostudy-color-text-primary);
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+
+.scopeOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border-radius: 9px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.scopeOption:hover {
+  background: var(--ostudy-color-surface-raised);
+}
+
+.scopeOption:has(input:focus-visible) {
+  outline: 2px solid var(--ostudy-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.scopeOption input {
+  margin-top: 3px;
+}
+
+.scopeOption > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.scopeOption strong {
+  color: var(--ostudy-color-text-primary);
+  font-size: 0.86rem;
+}
+
+.scopeOption small {
+  color: var(--ostudy-color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.42;
+}
+
+.scopeOption:has(input:disabled) {
+  cursor: default;
+  opacity: 0.68;
+}
+
 .invitationPanel {
   display: grid;
   justify-items: center;
@@ -180,13 +243,6 @@
 
 .scanStatus[data-state="cancelled"] .scanStatusDot {
   background: var(--ostudy-color-text-muted);
-}
-
-.credentialToggle {
-  border: 1px solid var(--ostudy-color-border-subtle);
-  border-radius: 12px;
-  padding: 14px;
-  background: var(--ostudy-color-surface-raised);
 }
 
 .sessionStrip {

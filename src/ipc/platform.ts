@@ -6,6 +6,7 @@ import {
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 const PLATFORM_PLUGIN = "ostudy-platform";
+const USB_PLUGIN = "ostudy-usb";
 
 export type CapabilityState =
   | "available"
@@ -87,6 +88,12 @@ export interface IncomingShareSummary {
   byteSize: number;
 }
 
+export interface AndroidUsbSyncAttachment {
+  manufacturer: string;
+  model: string;
+  serialNumber: string | null;
+}
+
 export async function getNativePlatformSnapshot(): Promise<NativePlatformSnapshot> {
   return invoke<NativePlatformSnapshot>("get_platform_capabilities");
 }
@@ -139,6 +146,14 @@ export async function listenToIncomingShare(
 ): Promise<UnlistenFn> {
   return pluginUnlisten(
     await addPluginListener<IncomingShareSummary>(PLATFORM_PLUGIN, "incoming-share", listener),
+  );
+}
+
+export async function listenToAndroidUsbSync(
+  listener: (attachment: AndroidUsbSyncAttachment) => void,
+): Promise<UnlistenFn> {
+  return pluginUnlisten(
+    await addPluginListener<AndroidUsbSyncAttachment>(USB_PLUGIN, "usb-sync-ready", listener),
   );
 }
 

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::{Shutdown, TcpStream},
+    fmt::Debug,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, LazyLock, Mutex,
@@ -15,6 +15,19 @@ use crate::{error::CommandError, paths::AppPaths, util::unix_time_millis};
 const ACTIVE_STATES_SQL: &str = "'waiting', 'connecting', 'transferring', 'merging'";
 const CANCELLABLE_STATES_SQL: &str = "'waiting', 'connecting', 'transferring'";
 
+/// Transport-neutral handle capable of interrupting a blocking synchronization stream.
+///
+/// The cancellation registry owns only this capability. TCP shutdown, USB transfer
+/// cancellation, and future platform-specific teardown remain transport concerns.
+pub(crate) trait SyncAbort: Send + Sync + Debug {
+    fn abort(&self);
+}
+
+/// A synchronization byte stream that can expose an independently owned abort handle.
+pub(crate) trait SyncAbortSource {
+    fn sync_abort_handle(&self) -> Result<Arc<dyn SyncAbort>, CommandError>;
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct SyncCancellationSignal {
     inner: Arc<SignalInner>,
@@ -23,7 +36,7 @@ pub(crate) struct SyncCancellationSignal {
 #[derive(Debug)]
 struct SignalInner {
     canceled: AtomicBool,
-    stream: Mutex<Option<TcpStream>>,
+    abort: Mutex<Option<Arc<dyn SyncAbort>>>,
 }
 
 impl SyncCancellationSignal {
@@ -31,7 +44,7 @@ impl SyncCancellationSignal {
         Self {
             inner: Arc::new(SignalInner {
                 canceled: AtomicBool::new(false),
-                stream: Mutex::new(None),
+                abort: Mutex::new(None),
             }),
         }
     }
@@ -48,22 +61,22 @@ impl SyncCancellationSignal {
         }
     }
 
-    pub(crate) fn attach_stream(&self, stream: &TcpStream) -> Result<(), CommandError> {
-        let clone = stream.try_clone().map_err(CommandError::io)?;
-        let mut active = self.inner.stream.lock().map_err(|_| registry_error())?;
+    pub(crate) fn attach_stream<S: SyncAbortSource>(&self, stream: &S) -> Result<(), CommandError> {
+        let abort = stream.sync_abort_handle()?;
+        let mut active = self.inner.abort.lock().map_err(|_| registry_error())?;
         if self.is_canceled() {
-            let _ = clone.shutdown(Shutdown::Both);
+            abort.abort();
             return Err(canceled_error());
         }
-        *active = Some(clone);
+        *active = Some(abort);
         Ok(())
     }
 
     fn cancel(&self) {
         self.inner.canceled.store(true, Ordering::SeqCst);
-        if let Ok(active) = self.inner.stream.lock() {
-            if let Some(stream) = active.as_ref() {
-                let _ = stream.shutdown(Shutdown::Both);
+        if let Ok(active) = self.inner.abort.lock() {
+            if let Some(abort) = active.as_ref() {
+                abort.abort();
             }
         }
     }
@@ -393,7 +406,7 @@ pub(crate) fn finish_terminal(
 }
 
 pub(crate) fn reconcile_startup(paths: &AppPaths) -> Result<(), CommandError> {
-    // Network sockets and in-memory cancellation handles cannot survive a
+    // Transport handles and in-memory cancellation state cannot survive a
     // process restart. Persisted nonterminal rows from the previous process are
     // therefore historical interruptions, not currently active requests.
     let connection = open_store(paths, "reconcile_startup")?;
@@ -474,6 +487,29 @@ mod tests {
     use super::*;
     use crate::paths::AppPaths;
 
+    #[derive(Debug)]
+    struct TestAbort {
+        tripped: Arc<AtomicBool>,
+    }
+
+    impl SyncAbort for TestAbort {
+        fn abort(&self) {
+            self.tripped.store(true, Ordering::SeqCst);
+        }
+    }
+
+    struct TestAbortSource {
+        tripped: Arc<AtomicBool>,
+    }
+
+    impl SyncAbortSource for TestAbortSource {
+        fn sync_abort_handle(&self) -> Result<Arc<dyn SyncAbort>, CommandError> {
+            Ok(Arc::new(TestAbort {
+                tripped: Arc::clone(&self.tripped),
+            }))
+        }
+    }
+
     fn test_paths(label: &str) -> AppPaths {
         let root = std::env::temp_dir().join(format!(
             "ostudy-sync-cancel-{label}-{}-{}",
@@ -485,6 +521,21 @@ mod tests {
 
     fn initialize_store(paths: &AppPaths) {
         super::super::store::SyncStore::open(paths).expect("store should initialize");
+    }
+
+    #[test]
+    fn cancellation_interrupts_transport_neutral_abort_handle() {
+        let tripped = Arc::new(AtomicBool::new(false));
+        let source = TestAbortSource {
+            tripped: Arc::clone(&tripped),
+        };
+        let signal = SyncCancellationSignal::new();
+        signal
+            .attach_stream(&source)
+            .expect("abort handle should attach");
+        signal.cancel();
+        assert!(signal.is_canceled());
+        assert!(tripped.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -522,7 +573,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_marks_persisted_session_and_signals_running_socket() {
+    fn cancel_marks_persisted_session_and_signals_running_transport() {
         let paths = test_paths("cancel");
         initialize_store(&paths);
         let session_id = "3".repeat(32);
@@ -536,8 +587,15 @@ mod tests {
             )
             .unwrap();
         let signal = begin(&session_id).unwrap();
+        let tripped = Arc::new(AtomicBool::new(false));
+        signal
+            .attach_stream(&TestAbortSource {
+                tripped: Arc::clone(&tripped),
+            })
+            .unwrap();
         cancel_session(&paths, &session_id).unwrap();
         assert!(signal.is_canceled());
+        assert!(tripped.load(Ordering::SeqCst));
         finish(&session_id);
         let state: String = open_store(&paths, "fixture")
             .unwrap()

@@ -3,6 +3,24 @@
   "exceptions": [
     {
       "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/device_sync/mod.rs",
+      "retireInPhase": "device-sync platform-port extraction",
+      "reason": "The transport-neutral device-sync orchestrator currently selects the Android accessory receive stream and Linux USB host entry point at compile time while preserving one authenticated protocol/session engine. Move this target selection behind a platform-owned device-sync port when direct USB support expands beyond Linux desktop to Android."
+    },
+    {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/device_sync/network.rs",
+      "retireInPhase": "device-sync platform-port extraction",
+      "reason": "Non-Android builds need an unreachable compile-time UsbJoinStream stub so the shared generic join-session type checks without exposing a fake runtime USB fallback. Remove the stub when USB stream construction is fully hidden behind a platform-owned device-sync port."
+    },
+    {
+      "rule": "rust-target-os-branch",
+      "path": "src-tauri/src/device_sync/usb.rs",
+      "retireInPhase": "device-sync platform-port extraction",
+      "reason": "This module is itself the physical USB transport adapter: Linux owns libusb/AOA host I/O and Android owns the raw accessory file-descriptor stream. Move the OS-specific implementations under the central platform module when additional desktop/mobile USB adapters are introduced."
+    },
+    {
+      "rule": "rust-target-os-branch",
       "path": "src-tauri/src/external_file_commands.rs",
       "retireInPhase": "iOS external-file adapter",
       "reason": "The command facade must delegate desktop path dialogs and Android URI streaming while preserving one shared transfer ledger and IPC name. Move the target selection into a platform-owned command adapter when the iOS implementation is added."

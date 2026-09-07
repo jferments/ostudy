@@ -14,6 +14,20 @@ use super::{
     },
 };
 
+/// Probe results and capability observations describe one device's verification
+/// history. They are neither provider configuration nor learner data and must
+/// never hitchhike in a device-transfer snapshot.
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &rusqlite::Connection,
+) -> Result<(), CommandError> {
+    connection
+        .execute_batch(
+            "DELETE FROM ai_provider_probe_results;
+             DELETE FROM ai_provider_capabilities;",
+        )
+        .map_err(CommandError::database)
+}
+
 pub(super) fn persist_selected_model_declarations(
     database: &Database,
     profile: &ProfileSnapshot,

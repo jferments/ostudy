@@ -63,3 +63,14 @@ pub fn init_qr<R: Runtime>() -> TauriPlugin<R> {
         })
         .build()
 }
+
+#[cfg(mobile)]
+pub fn init_usb<R: Runtime>() -> TauriPlugin<R> {
+    Builder::new("ostudy-usb")
+        .setup(|app, api| {
+            let usb = mobile::init_usb(app, api)?;
+            app.manage(usb);
+            Ok(())
+        })
+        .build()
+}

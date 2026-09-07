@@ -1,71 +1,202 @@
 # Trusted-device synchronization architecture
 
-Sync is an explicit local-network exchange between trusted installations. It is not a hosted account, automatic cloud backup, continuous background replication, shared SQLite file, or generic merge of every table in the application. [The user guide](../user-guide/device-sync.md) describes the actual offer/receive workflow; [the comprehensive architecture](overview.md) describes the full data graph.
+Synchronization is an explicit exchange between trusted ostudy installations. It is not a hosted account, automatic cloud backup, continuous background replication, shared SQLite file, or generic merge of every table in the application. [The user guide](../user-guide/device-sync.md) describes the actual workflow; [the comprehensive architecture](overview.md) describes the wider application data graph.
+
+The synchronization architecture deliberately separates **sync semantics** from **transport mechanics**. Local-network TCP and direct USB are only ways to establish a duplex byte path; neither transport owns identity, cryptography, packages, conflict policy, credentials, or merge behavior.
+
+## Layering and ownership
+
+The synchronization subsystem has four conceptual layers:
+
+1. **Sync orchestration and protocol** own one-way offers, session state, pairing transcripts, peer identity, acknowledgements, and progress/error transitions.
+2. **Secure framing** owns handshake framing, authenticated encrypted frames, bounded control messages, package streaming, and file hashes.
+3. **Transport adapters** own how bytes are read/written and how a blocked transfer is interrupted. `SyncIo` is the byte-stream boundary; `SyncAbort`/`SyncAbortSource` are the cancellation boundary.
+4. **Package and merge services** own the explicit data allowlist, common-baseline comparison, conflicts, managed assets, credential scope, integrity validation, and atomic commit.
+
+The core invariant is:
+
+> A transport may establish, configure, read, write, close, or abort a connection. It must not acquire synchronization semantics.
+
+`SecureChannel` therefore does not own `TcpStream`, and the cancellation registry does not own a TCP socket or a USB handle. TCP shutdown remains in `network.rs`; direct USB cancellation remains in `usb.rs`. Both hand the same `SyncIo` implementation to the protocol layer.
 
 ## Offer, receive, acknowledge
 
-The sender creates one short-lived outgoing offer and displays a QR plus text invitation. The receiver scans or explicitly submits the text. A successful scan accepts that sender-scoped offer, begins the authenticated connection, and imports/merges its allowed data after any necessary conflict decisions. Acceptance never secretly uploads the receiver's whole library in reverse.
+The sender creates a short-lived, one-way offer. How the receiver obtains that offer depends on transport:
 
-A reverse exchange is a separate new offer from the other installation. The sender records the exact acknowledged snapshot as its baseline; the receiver records its post-merge baseline. This preserves meaningful subsequent common-base comparisons without pretending the initial one-way transfer was bidirectional.
+- **LAN** renders the invitation as QR/text and advertises a private TCP endpoint.
+- **Direct USB** sends the same kind of authenticated invitation as a bounded bootstrap message over the already attached USB accessory stream. The user never sees or transfers that invitation manually.
 
-Only one unclaimed outgoing offer is retained; a new one replaces that unclaimed invitation. Overlapping sessions for the same peer are rejected while active. A failed connect can retry a still-valid invitation rather than leaving the UI permanently stuck in an attempt state.
+After the invitation is accepted, both paths execute the same client/server hello, authenticated key derivation, encrypted framing, package transfer, validation, merge, acknowledgement, and baseline update.
 
-## Identity and authenticated transport
+A reverse exchange is a separate explicit transfer from the other installation. Accepting one transfer never uploads the receiving device's library in reverse.
 
-The native protocol uses stable Ed25519 identity, fresh X25519 exchange material, HKDF-derived session keys, ChaCha20-Poly1305 authenticated frames, and a one-time pairing secret. The signed/bound invitation/session context includes peer/endpoint/expiry and relevant scope. A QR is a short-lived capability to accept an offer, not a permanent password.
+Only one unclaimed outgoing offer is retained; a newer outgoing action replaces the old one. Overlapping active sessions for the same peer are rejected.
 
-Transport is framed encrypted TCP over an explicitly reachable private network. The listener uses the bounded port range **49251–49258**. The receiver connects to the sender; the party displaying the QR needs the reachable inbound listener for that offer. A successful transfer in one direction does not prove the opposite direction's firewall/routing is configured.
+## Protocol v3 and transport binding
 
-Do not expose the listener directly to the public Internet, disable authentication, or treat being on the same Wi-Fi as sufficient trust. A VPN, AP client isolation, host firewall, container/VM routing, or multi-interface address choice can still prevent private reachability. Encryption does not make the receiving device trustworthy or erase content after it is transferred.
+Protocol v3 adds a typed transport to the ephemeral pairing invitation:
+
+- `local-network` invitations contain a private IP/socket endpoint.
+- `usb` invitations use only the symbolic endpoint `usb`.
+
+The selected transport is part of the authenticated pairing transcript. A USB invitation cannot be relabeled as LAN without invalidating the transcript, and normal pasted/QR acceptance rejects a USB invitation. Conversely, Android accepts a direct-USB invitation only after it is received from the attached accessory descriptor.
+
+This is intentionally separate from the synchronization **package** version. Package v3 remains the granular data-scope format; bumping the short-lived pairing protocol does not invalidate persistent peer identities, merge baselines, or package compatibility rules.
+
+## Identity and authenticated channel
+
+The native protocol uses stable Ed25519 identity, fresh X25519 exchange material, HKDF-derived session keys, ChaCha20-Poly1305 authenticated frames, and a one-time pairing secret. The invitation/session context binds the sender identity, ephemeral key, transport, endpoint, expiry, and relevant scope.
+
+LAN carries the framed channel over private TCP. The listener uses **49251–49258**. Direct USB carries exactly the same framing over USB bulk I/O instead of an IP stack.
+
+Physical cable presence is not treated as sufficient trust. USB retains the same identity verification, pairing proof, encryption, replay/expiry checks, package integrity validation, and merge policy as LAN.
+
+## Direct USB architecture
+
+### Why raw USB replaced USB networking
+
+The original proof-of-concept reused TCP over an operating-system USB-tethering interface. That preserved protocol reuse but produced an unacceptable product workflow: users had to enable tethering, identify an adapter, discover an IP address, type it into ostudy, and potentially adjust firewall rules.
+
+The maintained USB design removes USB networking entirely:
+
+```text
+                         synchronization protocol
+                identity / crypto / package / merge
+                                  |
+                              SecureChannel
+                                  |
+                         SyncIo + SyncAbort
+                           /              \
+                        TCP               USB
+                         |                 |
+                  private LAN       Android Open Accessory
+                                     bulk IN / bulk OUT
+```
+
+No TCP socket, IP address, tethering interface, QR code, or firewall rule exists on the cable path.
+
+### Linux desktop host
+
+Linux is currently the maintained desktop USB-host implementation. `device_sync/usb.rs` uses system `libusb-1.0` to implement Android Open Accessory (AOA) host mode.
+
+The host:
+
+1. discovers a compatible attached Android USB device;
+2. queries AOA support with vendor request **51**;
+3. supplies the oStudy accessory identity with request **52**;
+4. starts accessory mode with request **53**;
+5. waits for Android to re-enumerate as Google's AOA VID/PID (`18d1:2d00` or `18d1:2d01`);
+6. claims the accessory interface and its bulk IN/OUT endpoints;
+7. exposes those endpoints as `HostUsbStream: SyncIo + SyncAbortSource`.
+
+The temporary session id is also advertised as the AOA serial identity so the re-enumerated accessory can be associated with the initiating host session when practical.
+
+`libusb_bulk_transfer` uses short bounded wait slices. Cancellation does not require the synchronization core to know a libusb handle: `UsbAbort` flips the adapter's cancellation flag, and the transfer loop observes it between slices.
+
+### Android accessory side
+
+The private `ostudy-usb` Android plugin owns only Android platform mechanics:
+
+- declares `android.hardware.usb.accessory` support;
+- matches manufacturer `oStudy` and model `oStudy USB Sync`;
+- receives `USB_ACCESSORY_ATTACHED`;
+- opens the accessory through `UsbManager.openAccessory()`;
+- detaches the `ParcelFileDescriptor` raw fd;
+- hands that fd to Rust exactly once;
+- emits `usb-sync-ready` so the React coordinator can claim an attachment that arrives while the app is already running.
+
+Rust wraps that fd in `AndroidUsbStream`, using cancel-aware `poll/read/write`. Kotlin does not parse invitations, perform cryptography, inspect packages, or merge data.
+
+The Android coordinator also performs an immediate claim when it mounts, covering the startup race where Android launched ostudy because the accessory was attached before the WebView listener existed.
+
+### Cable bootstrap
+
+After the Linux host opens the AOA stream, it sends one bounded plain framing message containing the short-lived protocol-v3 invitation. Android parses and validates it natively, confirms the transport is `usb`, and then enters the same authenticated client-hello flow used by LAN.
+
+The bootstrap is not an unauthenticated data transfer. It only replaces QR/text delivery of the short-lived invitation; all study data still moves after the authenticated encrypted channel is established.
+
+### Product UX and system integration
+
+The intended product sequence is:
+
+1. plug in one Android phone;
+2. choose data scopes;
+3. click **USB Sync**.
+
+No product flow requires ADB, Android developer mode, USB debugging, USB tethering, an IP address, interface-name selection, or a firewall change.
+
+Android may show its standard first-association chooser/permission prompt for the `oStudy USB Sync` accessory identity. That is an operating-system accessory trust decision, not developer authorization.
+
+Linux needs permission to open the phone both before and after AOA re-enumeration. oStudy therefore owns a constrained udev rule covering the same supported Android OEM vendor IDs that the native adapter probes plus Google's AOA accessory IDs. Developer setup installs that rule under `/etc/udev/rules.d`; the Debian bundle installs it under `/usr/lib/udev/rules.d` and declares only the `libusb-1.0-0` runtime dependency. Product USB Sync does not depend on ADB or Android SDK packages. System USB permissions belong to installation/packaging, not to the synchronization screen.
+
+The current direct-USB host implementation is Linux→Android. Other desktop/mobile combinations can add platform adapters behind `SyncIo` without changing pairing, encryption, packages, or merge code. Unsupported desktops report `usbHostAvailable = false` and do not show a fake/manual USB fallback.
 
 ## Android QR acquisition
 
-Android uses **Google Code Scanner through Play services**, not the retired ZXing-based acquisition description. The scanner owns its UI/camera permission; ostudy receives a bounded decoded result and validates its protocol natively. Pasted invitation text is the supported fallback when scanner/Play-services availability prevents scanning.
+QR acquisition remains a **LAN** feature. Android uses Google Code Scanner through Play services, not the retired ZXing path. The scanner owns its UI/camera permission; ostudy receives a bounded decoded result and validates its protocol natively. Pasted invitation text remains the LAN fallback when scanning is unavailable.
 
-This is separate from ML Kit document OCR. Scanner success is not invitation acceptance until the decoded value passes expiry, identity, scope, and authentication checks. The frontend does not possess private signing keys merely to render or consume the QR.
+Direct USB does not use the camera scanner.
 
-## Allowed data graph
+## Allowed data graph and sender-selected scopes
 
-The sync store/merge code explicitly owns its allowlist. Supported study data includes decks/folders, notes/cards, tags, templates, managed images, schedules, practice sessions and their card records, review history, and associated historical attribution.
+Synchronization never inherits every SQLite table automatically. The sender creates a package from an explicit, versioned selection of application-owned domains. Package v3 exposes five categories:
 
-**The current document/study-guide learning-artifact graph is not a full supported sync promise.** Source document files, canonical derivatives, generated guide revisions, learner overlays, and topic relationships require a coordinated versioned sync extension. Their existence in a newer local database or whole-library backup does not put them automatically on the merge allowlist.
+- **Flashcards** — deck folders/decks, notes/cards, tags, templates, managed card images, schedules, practice sessions/snapshots, review history, and portable source-citation records.
+- **Documents** — canonical records, managed source/page/source-asset files, source units/blocks/assets, page and semantic/OCR-derived state, outlines/checkpoints, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document artifact metadata.
+- **Study Guides** — guide revisions, sections, overlays, checkpoints, and guide artifact state. Study Guides require Documents.
+- **API provider settings** — supported provider profile metadata and task defaults.
+- **Saved API keys** — eligible secure-store credential bytes. Keys are separate opt-in data and require API provider settings.
 
-A coherent outgoing snapshot is sanitized rather than sending a raw live database. Ordinary `app_settings` are excluded/stripped, keeping appearance and application preferences device-local. Probe/operation caches and unrelated transient state are not learner-data merge authority. Version/schema validation and graph checks prevent unsupported package contents from being silently interpreted as a complete library replacement.
+Flashcards, Documents, and Study Guides default on. API provider settings and Saved API keys default off. Native validation rejects empty selections and invalid dependency combinations.
 
-## Optional API settings and credential transfer
+Cross-domain provenance is conditional. Document↔deck and document↔note/topic relationships move only when both Documents and Flashcards are selected.
 
-Normal offers exclude provider configuration. The sender can explicitly opt into supported provider-profile metadata, task defaults, and available saved credentials **for that offer**. Consent defaults off each time; a previous pairing does not imply permanent authorization.
+The copied outgoing SQLite snapshot is **sanitized before transmission**. Unselected domains are removed. `app_settings` are always stripped. AI profile/probe owners sanitize their own transient or unselected state.
 
-Credential bytes travel through a separate authenticated secure-store boundary. They are not written into the SQLite snapshot, ordinary file fallback, shared deck, or complete backup. Eligible profile references and required key availability are validated. The receiving device must have usable secure storage for the saved-key path; a missing secret service is not permission to store keys in plaintext settings.
+Managed document files reuse the complete-backup document-file ledger: expected managed paths, roles, byte sizes, and SHA-256 hashes are validated before transfer/install. Same-identity/different-byte collisions fail.
 
-A newly entered key can exist transiently in a form, but saved keys are not read back into the UI. Standard nonsecret profile metadata and endpoint/model projections are different from credential bytes. The [AI infrastructure reference](ai-infrastructure.md) explains their ownership.
+Package v3 records the granular selection explicitly while retaining read compatibility for the earlier package-v2 flashcard/API-settings shape.
+
+## Optional API settings and credentials
+
+**API provider settings** and **Saved API keys** are separate sender choices. Provider settings can move without credentials. Selecting Saved API keys requires provider settings.
+
+Credential bytes never enter the SQLite snapshot, `.studydeck`, or `.ostudybackup`. They move only when explicitly selected, readable from sender secure storage, supported by receiver secure storage, and enabled by authenticated session metadata.
+
+A credential-store failure after a successful learner-data merge reports a warning rather than rolling back the study-data merge. Lack of secure storage is never permission to write keys as plaintext.
+
+USB does not broaden credential scope.
 
 ## Merge semantics
 
-The receiver compares local and incoming rows with a stored common base. One-sided changes can apply, independent field changes can merge, and concurrent changes to the same field or delete-versus-edit cases become explicit conflicts. This is a versioned application merge policy, not a generic last-writer-wins database copy.
+The receiver compares local and incoming rows with a stored common base. One-sided edits apply; independent field edits can merge; concurrent edits to the same field and delete-versus-edit cases become explicit conflicts.
 
-Managed-image identity collisions or byte/integrity disagreement fail rather than silently selecting an arbitrary file. The final merge validates the complete allowed graph and commits it transactionally. Related entities must remain consistent with foreign keys, schedule/history identities, and current lifecycle policy.
+Managed-image or managed-document-file identity/integrity disagreement fails rather than silently choosing arbitrary bytes. The final selected relational graph is validated and committed transactionally.
 
-Removing trust deletes the relationship/baseline state according to the native policy, not cards or history already imported into the local learner's library. Sync is not remote revocation of another person's data.
+Removing trust removes peer/baseline state, not data already merged into the local library.
 
 ## Cancellation and restart
 
-Waiting, connecting, and transferring sessions can be canceled through the task/session signal and socket shutdown. Per-peer exclusivity prevents a second action racing the same baseline while one is active.
+Waiting, connecting, and transferring sessions can be canceled through the session signal plus transport-neutral abort handle. TCP aborts by socket shutdown. USB adapters own their own cancel-aware I/O interruption.
 
-The short final database merge is intentionally non-cancellable. Interrupting it halfway would be a worse data contract than finishing one atomic commit. UI wording must distinguish a cancelable transfer from that final applying boundary.
+The final **Merging** database commit is intentionally non-cancellable.
 
-Startup reconciles stale process-local sessions; old sockets and invitation acceptance callbacks do not survive process death. A retry uses actual current native state. The frontend must not make an obsolete completion overwrite a newer session's display.
+Startup reconciles stale process-local sessions because TCP sockets, USB descriptors, and accessory callbacks cannot survive process death.
 
-## File fallback and backup distinctions
+## Backup/file boundaries
 
-The supported file fallback exchanges the versioned study-data package and its validated managed assets, not a live SQL database mounted by both devices. Saved credentials remain excluded from that ordinary file path. Validate package version and scope rather than inferring that a filename is a safe full backup.
+`.studydeck`, `.ostudybackup`, and live device sync are distinct operations. Device sync merges only sender-selected allowlisted domains using peer identity/common baselines. Backup performs staged coherent-library recovery; `.studydeck` imports portable deck content.
 
-A `.studydeck` imports content with new local schedules. `.ostudybackup` replaces a coherent personal library through staged restart recovery. Sync merges its narrower allowed study graph using identities/common bases. These operations cannot be substituted without changing history/privacy semantics.
+A USB cable never exposes or mounts the live SQLite database and does not turn MTP into a shared storage backend.
 
 ## Ownership, diagnostics, and tests
 
-Native owners are `device_sync/mod.rs`, `store.rs`, `merge.rs`, `package.rs`, `transport.rs`, `crypto.rs`, `credentials.rs`, `network.rs`, and `cancellation.rs`. The frontend Settings component presents state and intent; the platform QR plugin acquires input. Neither owns crypto or relational merge rules.
+Native synchronization owners are `device_sync/mod.rs`, `store.rs`, `merge.rs`, `package.rs`, `scope.rs`, `transport.rs`, `crypto.rs`, `credentials.rs`, `network.rs`, `usb.rs`, and `cancellation.rs`.
 
-Tests cover protocol/identity framing, package/graph validation, field conflicts, baseline handling, managed-image integrity, credential opt-in, cancellation and overlap. Static checks enforce QR acquisition, stable port and UI scope contracts. Android instrumentation checks the native plugin route; real peer/OEM/firewall/Play-services behavior remains explicit manual acceptance when not exercised.
+Android platform USB mechanics live in `plugins/ostudy-platform/android/.../OstudyUsbPlugin.kt`; frontend attachment coordination lives in `UsbSyncCoordinator.tsx`. Neither owns cryptography or relational merge policy.
 
-Diagnostics report safe phase, endpoint/session outcome, and bounded errors without keys, invitation secrets, raw package contents, or personal source text. A storage/details screen identifies local diagnostic paths. Review exported diagnostics before sharing; metadata may still identify a device, model, or filename.
+Static contracts assert that USB uses AOA requests/bulk I/O, both Linux and Android USB streams implement `SyncIo`, TCP remains isolated to the LAN adapter, manual USB-network UI does not reappear, Android accessory intent/filter wiring exists, and Linux packaging includes the USB runtime/rules integration without acquiring an ADB runtime dependency.
+
+Unit/UI tests cover transport projection, sender scopes/dependencies, invitation transport confinement, package/privacy/merge rules, cancellation, and network QR behavior. Physical real-device cable acceptance remains human-required because CI cannot emulate a real USB controller, Android re-enumeration, cable quality, or host udev permissions.
+
+Diagnostics report bounded phase/session/transport outcomes without keys, invitation secrets, raw package contents, or personal source text.

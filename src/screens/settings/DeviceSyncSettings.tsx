@@ -13,33 +13,42 @@ import {
   updateDeviceSyncName,
   type DeviceSyncConflict,
   type DeviceSyncResult,
+  type DeviceSyncSelection,
   type DeviceSyncSession,
   type DeviceSyncState,
   type PairingInvitation,
 } from "../../ipc/deviceSync";
 import { useConfirm } from "../../ui/overlays/overlayContext";
-import settingsStyles from "./Settings.module.css";
-import styles from "./DeviceSyncSettings.module.css";
 import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import styles from "./DeviceSyncSettings.module.css";
+import settingsStyles from "./Settings.module.css";
 
 const ownedStyleMaps = sharedClassMaps;
-
 
 interface DeviceSyncSettingsProps {
   showToast: ShowToast;
 }
 
 type ScanFeedback = "idle" | "scanning" | "detected" | "receiving" | "received" | "cancelled";
+type SyncSelectionKey = keyof DeviceSyncSelection;
 
 const ACTIVE_SESSION_STATES = new Set(["waiting", "connecting", "transferring", "merging"]);
+const DEFAULT_SELECTION: DeviceSyncSelection = {
+  flashcards: true,
+  documents: true,
+  studyGuides: true,
+  apiSettings: false,
+  apiCredentials: false,
+};
 
 export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [state, setState] = useState<DeviceSyncState | null>(null);
   const [deviceName, setDeviceName] = useState("");
   const [hostOverride, setHostOverride] = useState("");
   const [joinInvitation, setJoinInvitation] = useState("");
-  const [includeApiSettings, setIncludeApiSettings] = useState(false);
+  const [selection, setSelection] = useState<DeviceSyncSelection>(DEFAULT_SELECTION);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
+  const [usbSessionId, setUsbSessionId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [cancelingSessionId, setCancelingSessionId] = useState<string | null>(null);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
@@ -72,6 +81,14 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const hasUnclaimedSendingOffer = activeSessions.some(
     (session) => session.direction === "host" && session.peerId === null,
   );
+  const hasSelectedCategory = selection.flashcards || selection.documents || selection.apiSettings;
+
+  useEffect(() => {
+    if (!state || credentialsAvailable) return;
+    setSelection((current) =>
+      current.apiCredentials ? { ...current, apiCredentials: false } : current,
+    );
+  }, [credentialsAvailable, state]);
 
   useEffect(() => {
     const invitationWaiting = invitation !== null && invitation.expiresAt > Date.now();
@@ -79,6 +96,36 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     const interval = window.setInterval(() => void refresh(true), 1_500);
     return () => window.clearInterval(interval);
   }, [activeSessions.length, busyAction, invitation]);
+
+  useEffect(() => {
+    if (!usbSessionId || !state) return;
+    const session = state.sessions.find((candidate) => candidate.id === usbSessionId);
+    if (!session || ACTIVE_SESSION_STATES.has(session.state)) return;
+    if (session.state === "completed") {
+      showToast("success", "USB synchronization completed.");
+    } else if (session.state === "canceled") {
+      showToast("info", "USB synchronization was canceled.");
+    } else {
+      showToast(
+        "error",
+        session.errorMessage ?? "USB synchronization did not complete. Reconnect the phone and try again.",
+      );
+    }
+    setUsbSessionId(null);
+  }, [showToast, state, usbSessionId]);
+
+  function changeSelection(key: SyncSelectionKey, checked: boolean): void {
+    setSelection((current) => {
+      const next = { ...current, [key]: checked };
+      if (key === "documents" && !checked) next.studyGuides = false;
+      if (key === "studyGuides" && checked) next.documents = true;
+      if (key === "apiSettings" && !checked) next.apiCredentials = false;
+      if (key === "apiCredentials" && checked) next.apiSettings = true;
+      return next;
+    });
+    setInvitation(null);
+    setErrorMessage(null);
+  }
 
   async function saveDeviceName(): Promise<void> {
     if (busyAction) return;
@@ -97,21 +144,47 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
 
   async function hostPairing(): Promise<void> {
     if (busyAction) return;
+    if (!hasSelectedCategory) {
+      setErrorMessage("Select at least one synchronization category before creating an offer.");
+      return;
+    }
     setBusyAction("host");
     setErrorMessage(null);
     try {
       const created = await startDevicePairing({
+        transport: "local-network",
         hostOverride: hostOverride.trim() || null,
-        includeApiSettings,
+        selection,
       });
       setInvitation(created);
       await refresh(true);
       showToast(
         "info",
         hasUnclaimedSendingOffer
-          ? "The previous waiting offer was canceled and replaced with a new five-minute offer."
-          : "Sync offer is ready on this device for five minutes.",
+          ? "The previous waiting offer was canceled and replaced with a new five-minute network offer."
+          : "Network sync offer is ready for five minutes.",
       );
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function startUsbSync(): Promise<void> {
+    if (busyAction) return;
+    if (!hasSelectedCategory) {
+      setErrorMessage("Select at least one synchronization category before starting USB sync.");
+      return;
+    }
+    setBusyAction("usb");
+    setInvitation(null);
+    setErrorMessage(null);
+    try {
+      const created = await startDevicePairing({ transport: "usb", selection });
+      setUsbSessionId(created.sessionId);
+      await refresh(true);
+      showToast("info", "USB sync started. Keep the Android phone connected while ostudy transfers the selected data.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -192,6 +265,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     try {
       await cancelDeviceSyncSession(session.id);
       if (invitation?.sessionId === session.id) setInvitation(null);
+      if (usbSessionId === session.id) setUsbSessionId(null);
       await refresh(true);
       showToast(
         "info",
@@ -262,7 +336,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     }
   }
 
-  const qrSource = invitation
+  const qrSource = invitation?.qrSvg
     ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(invitation.qrSvg)}`
     : null;
 
@@ -272,9 +346,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
         <div>
           <h2>Device synchronization</h2>
           <p>
-            Send or receive decks, cards, templates, schedules, review history, and managed images
-            over your private local network. Appearance and other app settings always stay local to
-            each device.
+            Send selected Flashcards, Documents and their LLM processing data, Study Guides, and
+            optional API configuration over your private local network or directly through a USB
+            cable. Appearance and other app settings always stay local to each device.
           </p>
         </div>
         <button
@@ -322,32 +396,100 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <article className={styles.pairingPanel}>
               <h3>Send to another device</h3>
               <p>
-                Create a short-lived synchronization offer containing this device's study library.
-                The receiving device only needs to scan or accept this one invitation. Creating a
-                new waiting offer replaces the previous unclaimed offer.
+                Choose exactly which categories this one-way transfer may contain. The receiving
+                device never uploads its own library in response.
               </p>
-              <label className={ownedClassNames(ownedStyleMaps, `${settingsStyles.switchRow} ${styles.credentialToggle}`)}>
-                <span>
-                  <strong>Include API provider settings and saved credentials</strong>
-                  <small>
-                    Off by default. This is the only settings category that can be included in a
-                    sync offer. Theme, fonts, UI scale, motion, layout, and other app preferences
-                    always remain device-local.
-                  </small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={includeApiSettings}
-                  disabled={busyAction !== null}
-                  onChange={(event) => setIncludeApiSettings(event.currentTarget.checked)}
-                />
-              </label>
-              {includeApiSettings && !credentialsAvailable ? (
+
+              <fieldset className={styles.scopeFieldset}>
+                <legend>What to synchronize</legend>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.flashcards}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("flashcards", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Flashcards</strong>
+                    <small>Decks, folders, cards, templates, tags, schedules, review history, and managed card images.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.documents}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("documents", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Documents</strong>
+                    <small>Source files, canonical content, OCR/semantic data, outlines, LLM processing jobs, checkpoints, and learning-plan data.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.studyGuides}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("studyGuides", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Study Guides</strong>
+                    <small>Generated guide revisions, sections, learner overlays, and guide checkpoints. Requires Documents.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.apiSettings}
+                    disabled={busyAction !== null}
+                    onChange={(event) => changeSelection("apiSettings", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>API provider settings</strong>
+                    <small>Provider profiles and task defaults. Theme, layout, fonts, and other application preferences always stay local.</small>
+                  </span>
+                </label>
+                <label className={styles.scopeOption}>
+                  <input
+                    type="checkbox"
+                    checked={selection.apiCredentials}
+                    disabled={busyAction !== null || !credentialsAvailable}
+                    onChange={(event) => changeSelection("apiCredentials", event.currentTarget.checked)}
+                  />
+                  <span>
+                    <strong>Saved API keys</strong>
+                    <small>Securely stored provider credentials. Requires API provider settings and usable secure storage on both devices.</small>
+                  </span>
+                </label>
+              </fieldset>
+              {!credentialsAvailable ? (
                 <p className={settingsStyles.securityNote}>
-                  API provider configuration will be included, but this device's secure secret
-                  store is unavailable, so saved credential bytes cannot be added to this offer.
+                  This device's secure secret store is unavailable, so saved API keys cannot be
+                  added to the offer. Provider settings can still be synchronized without keys.
                 </p>
               ) : null}
+
+              {state.usbHostAvailable ? (
+                <>
+                  <p className={settingsStyles.securityNote}>
+                    <strong>USB cable:</strong> plug an Android phone into this computer with a
+                    data-capable cable, then click USB Sync. ostudy discovers the phone and uses a
+                    direct encrypted USB accessory channel—no tethering, IP address, QR code,
+                    developer mode, or USB debugging setup is required. Android may ask once which
+                    app should handle the newly attached ostudy accessory.
+                  </p>
+                  <button
+                    type="button"
+                    className={ownedClassNames(ownedStyleMaps, "primary-button")}
+                    disabled={busyAction !== null || !hasSelectedCategory}
+                    onClick={() => void startUsbSync()}
+                  >
+                    {busyAction === "usb" ? "Connecting phone…" : "USB Sync"}
+                  </button>
+                </>
+              ) : null}
+
               <label className={settingsStyles.stackedField}>
                 Advanced LAN address override
                 <input
@@ -358,20 +500,21 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   onChange={(event) => setHostOverride(event.currentTarget.value)}
                 />
                 <span className={settingsStyles.fieldHelp}>
-                  Enter a private IP only when automatic LAN-address detection fails.
+                  Only needed if automatic private LAN-address detection fails. This field is never
+                  used for USB synchronization.
                 </span>
               </label>
               <button
                 type="button"
-                className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                disabled={busyAction !== null || !state.localNetworkAvailable}
+                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                disabled={busyAction !== null || !state.localNetworkAvailable || !hasSelectedCategory}
                 onClick={() => void hostPairing()}
               >
                 {busyAction === "host"
                   ? "Opening listener…"
                   : hasUnclaimedSendingOffer
-                    ? "Replace waiting offer"
-                    : "Create sync offer"}
+                    ? "Replace with network offer"
+                    : "Create network sync offer"}
               </button>
 
               {invitation && qrSource ? (
@@ -381,15 +524,16 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
                   </div>
                   <div className={styles.invitationDetails}>
                     <strong>Expires {formatDateTime(invitation.expiresAt)}</strong>
-                    <span>{invitation.endpoint}</span>
+                    <span>Local network · {invitation.endpoint}</span>
                     <code>{formatFingerprint(invitation.fingerprint)}</code>
                     <p className={styles.scanHint}>
-                      Sends study-library data from this device. {invitation.includeApiSettings
-                        ? invitation.credentialsAvailable
-                          ? "API provider settings and saved credentials are also offered."
-                          : "API provider settings are also offered; no saved credential bytes are available."
-                        : "API provider settings and credentials are not included."}
+                      Includes: {describeSelection(invitation.selection)}.
                     </p>
+                    {invitation.selection.apiCredentials && !invitation.credentialsAvailable ? (
+                      <p className={styles.scanHint}>
+                        Saved API keys were selected, but this device has no securely stored credential bytes available for this offer.
+                      </p>
+                    ) : null}
                     <p className={styles.scanHint}>
                       Keep the entire white border visible. Scanning this code accepts the offer and
                       starts receiving immediately.
@@ -405,14 +549,16 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             <article className={styles.pairingPanel}>
               <h3>Receive from another device</h3>
               <p>
-                Scan a synchronization offer on Android or paste invitation text. The sending device
-                controls the offered data; accepting an offer never uploads this device's library back.
+                Network offers can be scanned on Android or pasted below. Direct USB transfers are
+                accepted automatically by the Android app when the desktop starts USB Sync; there is
+                no QR or network setup on the cable path. Accepting a transfer never uploads this
+                device's library back.
               </p>
               {state.qrScanAvailable ? (
                 <>
                   <p className={styles.scanHint}>
                     Center the complete QR code inside the camera frame and hold the phone steady.
-                    After detection, ostudy accepts the offer and begins receiving automatically.
+                    After detection, ostudy accepts the network offer and begins receiving automatically.
                   </p>
                   <button
                     type="button"
@@ -613,6 +759,16 @@ function prettyPayload(payload: string): string {
   }
 }
 
+function describeSelection(selection: DeviceSyncSelection): string {
+  const items: string[] = [];
+  if (selection.flashcards) items.push("Flashcards and review history");
+  if (selection.documents) items.push("Documents and LLM processing data");
+  if (selection.studyGuides) items.push("Study Guides");
+  if (selection.apiSettings) items.push("API provider settings");
+  if (selection.apiCredentials) items.push("saved API keys");
+  return items.join(", ");
+}
+
 function formatFingerprint(value: string): string {
   return value.match(/.{1,4}/g)?.slice(0, 8).join(" ") ?? value;
 }
@@ -629,7 +785,7 @@ function humanizeState(value: string): string {
 }
 
 function sessionPeerLabel(session: DeviceSyncSession, state: DeviceSyncState): string {
-  if (!session.peerId) return session.endpointHint;
+  if (!session.peerId) return session.endpointHint === "usb" ? "USB cable" : session.endpointHint;
   return state.peers.find((peer) => peer.id === session.peerId)?.displayName ?? session.endpointHint;
 }
 
