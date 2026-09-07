@@ -38,7 +38,12 @@ expectContains(
 
 expectNotContains(
   usbHost,
-  "libusb_set_configuration",
+  "fn libusb_set_configuration(",
+  "Linux AOA host does not declare whole-device configuration reset",
+);
+expectNotContains(
+  usbHost,
+  "libusb_set_configuration(self.handle",
   "Linux AOA host does not reset the whole composite USB configuration",
 );
 expectContains(
