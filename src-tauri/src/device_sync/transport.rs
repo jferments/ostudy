@@ -541,9 +541,9 @@ mod tests {
     fn missing_final_receipt_has_completion_unconfirmed_semantics() {
         let stream = MemorySyncIo::new();
         let mut channel = SecureChannel::new(stream, test_keys()).expect("channel should open");
-        let error = channel
-            .receive_json::<String>(FRAME_COMPLETE)
-            .expect_err("missing final receipt should remain distinguishable from transfer failure");
+        let error = channel.receive_json::<String>(FRAME_COMPLETE).expect_err(
+            "missing final receipt should remain distinguishable from transfer failure",
+        );
         assert_eq!(error.code, "device_sync_completion_unconfirmed");
         assert!(error.message.contains("fully sent"));
         assert!(error.message.contains("before retrying"));
