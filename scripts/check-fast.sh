@@ -132,7 +132,16 @@ cargo test \
   --locked \
   --all-features \
   --lib \
-  database::tests::public_baseline_is_idempotent_and_matches_manifest \
+  database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable \
+  -- --exact
+
+step "Anki APKG staging migration regression"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::tests::anki_apkg_migration_preserves_existing_staging_rows_and_accepts_apkg \
   -- --exact
 
 step "Public migration immutability contract"
