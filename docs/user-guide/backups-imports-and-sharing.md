@@ -7,6 +7,7 @@ A deck shared with a classmate, generated card input, a personal disaster-recove
 | Format or operation | Use it for | Personal review history | Saved AI credentials |
 | --- | --- | --- | --- |
 | `.studydeck` | One portable deck | Excluded | Excluded |
+| Compatible Anki `.apkg` | Convert existing Anki card presentations | Not imported | Not imported |
 | `.ostudy.json` | Strict generated-card authoring input | Excluded | Excluded |
 | `.ostudybackup` | Whole-library recovery | Included | Excluded |
 | Trusted-device sync offer | Explicit one-way exchange of the supported study-data graph | Included within supported scope | Separate sender opt-in and secure-store requirements |
@@ -15,7 +16,7 @@ A backup is not automatically encrypted just because credentials are excluded. I
 
 ## Import a deck or generated cards
 
-Open **Flashcards → Decks** and use the **Import deck from file** icon. It accepts `.studydeck` and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
+Open **Flashcards → Decks** and use the **Import deck from file** icon. It accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
 
 A new imported deck starts in **Unsorted decks** until you organize it locally. The receiving library owns folder membership and schedules.
 
@@ -25,13 +26,25 @@ This versioned SQLite interchange package contains one deck's notes, active pres
 
 The importer validates the package graph and assigns fresh local schedules. The receiver studies the shared content using their own history, not the sender's due dates. A portable deck is therefore useful for sharing content but is not sufficient to recover a personal library.
 
+### Anki `.apkg`
+
+Choose an Anki deck package through the same import dialog. Older-compatible packages can be converted directly without installing Anki libraries in ostudy. When a newer package is rejected, open it in Anki and export an **Anki Deck Package (.apkg)** with **Support older Anki versions** and **Include media** enabled. Renaming a file does not convert its format. Compressed modern collections, collection backups, and arbitrary standalone Anki databases are not supported by this first adapter.
+
+The importer follows the cards actually stored in the package. Common Basic, reverse, optional-reverse, and ordinary cloze presentations become independent editable Basic cards in ostudy, with fresh schedules. Their Anki note-editing relationships and review history do not carry over. Subdecks are combined into one imported deck, with source deck paths retained as tags rather than recreated as folders. Tag count and length limits can shorten or omit tags; the report explains this.
+
+Supported local images and readable text formatting are converted to native content. Arbitrary CSS, JavaScript, add-ons, audio/video, TTS, image occlusion, nested cloze, and unsupported template filters are not reproduced. A card that depends on unsupported behavior or has a missing required image is skipped rather than replaced with a misleading placeholder. Some tables, headings, and other HTML structure are simplified.
+
+After the import commits, the dialog stays open with an **Anki import report**. It shows imported, skipped, and simplified-card counts, and expandable compatibility details. Read this report before opening the deck; review converted cards against the source before studying. If no compatible cards are found, no deck is created. Nothing in the package is executed or fetched from the network.
+
+The compatibility report is a post-import result, not an approval preview. Do not import the same file again merely because some cards were skipped. See the [Anki adapter reference](../reference/anki-import.md) for exact format and resource limits.
+
 ### Generated `.ostudy.json`
 
 This is strict UTF-8 data-only input. It creates one named deck or appends to exactly one matching active deck according to the format. Basic/Reverse and Fill in the blank content use restricted Markdown and the supported cloze grammar.
 
 The entire file is validated before one transaction. An invalid card leaves the library unchanged and produces a path-specific error; exact duplicates are skipped automatically. The file cannot supply arbitrary internal IDs, SQL, HTML, local paths, images, schedules, reviews, settings, analytics, or deletion/overwrite instructions.
 
-See the [format reference](../reference/generated-json-import.md), [generator instructions](../reference/flashcard-import-agent.md), [JSON Schema](../ostudy-flashcards-v1.schema.json), and [example](../examples/cardiovascular.ostudy.json). Document ingestion of CSV as source material is a separate feature and does not imply a CSV-to-flashcard interchange importer. Do not assume an Anki or other format is supported merely because another tool can export it.
+See the [format reference](../reference/generated-json-import.md), [generator instructions](../reference/flashcard-import-agent.md), [JSON Schema](../ostudy-flashcards-v1.schema.json), and [example](../examples/cardiovascular.ostudy.json). Document ingestion of CSV as source material is a separate feature and does not imply a CSV-to-flashcard interchange importer. Other interchange formats are supported only where explicitly documented.
 
 ## Export or share decks
 

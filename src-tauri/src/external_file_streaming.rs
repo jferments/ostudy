@@ -344,7 +344,11 @@ fn import_request(purpose: ExternalImportPurpose) -> ExternalFileRequest {
             suggested_filename: None,
             filters: vec![FileFilter {
                 name: "ostudy, Anki deck, or generated JSON".to_string(),
-                extensions: vec!["studydeck".to_string(), "apkg".to_string(), "json".to_string()],
+                extensions: vec![
+                    "studydeck".to_string(),
+                    "apkg".to_string(),
+                    "json".to_string(),
+                ],
             }],
         },
         ExternalImportPurpose::LibraryBackup => ExternalFileRequest {
@@ -853,10 +857,19 @@ mod tests {
     #[test]
     fn anki_containers_are_staged_with_the_anki_kind_and_picker_extension() {
         let path = test_file(b"PK\x03\x04container");
-        assert_eq!(detect_study_content(&path).unwrap(), ExternalFileKind::AnkiApkg);
+        assert_eq!(
+            detect_study_content(&path).unwrap(),
+            ExternalFileKind::AnkiApkg
+        );
         let request = import_request(ExternalImportPurpose::StudyContent);
-        assert!(request.filters.iter().any(|filter| filter.extensions.iter().any(|extension| extension == "apkg")));
-        assert_eq!(ExternalFileKind::parse("anki_apkg").unwrap().extension(), "apkg");
+        assert!(request.filters.iter().any(|filter| filter
+            .extensions
+            .iter()
+            .any(|extension| extension == "apkg")));
+        assert_eq!(
+            ExternalFileKind::parse("anki_apkg").unwrap().extension(),
+            "apkg"
+        );
         let _ = fs::remove_file(path);
     }
 

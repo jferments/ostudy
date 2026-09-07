@@ -48,18 +48,29 @@ impl Archive {
         let mut entries = BTreeMap::new();
         let mut expanded = 0_u64;
         for index in 0..zip.len() {
-            let entry = zip.by_index(index).map_err(|_| failure("Unreadable or encrypted Anki archive entry."))?;
+            let entry = zip
+                .by_index(index)
+                .map_err(|_| failure("Unreadable or encrypted Anki archive entry."))?;
             let name = entry.name();
-            let valid_name = matches!(name, "collection.anki2" | "collection.anki21"
-                | "collection.anki21b" | "media" | "meta")
-                || (!name.is_empty() && name.len() <= 20 && name.bytes().all(|byte| byte.is_ascii_digit()));
-            if !valid_name || !entry.is_file() || entry.encrypted()
+            let valid_name = matches!(
+                name,
+                "collection.anki2" | "collection.anki21" | "collection.anki21b" | "media" | "meta"
+            ) || (!name.is_empty()
+                && name.len() <= 20
+                && name.bytes().all(|byte| byte.is_ascii_digit()));
+            if !valid_name
+                || !entry.is_file()
+                || entry.encrypted()
                 || entry.enclosed_name().is_none()
                 || entries.insert(name.to_string(), index).is_some()
             {
-                return Err(failure("Anki archive contains an unsafe, duplicate, or unsupported entry."));
+                return Err(failure(
+                    "Anki archive contains an unsafe, duplicate, or unsupported entry.",
+                ));
             }
-            expanded = expanded.checked_add(entry.size()).ok_or_else(|| failure("Invalid archive size."))?;
+            expanded = expanded
+                .checked_add(entry.size())
+                .ok_or_else(|| failure("Invalid archive size."))?;
             if expanded > MAX_EXPANDED_BYTES {
                 return Err(failure("Expanded Anki package exceeds the 768 MiB limit."));
             }
@@ -74,11 +85,18 @@ impl Archive {
         } else if entries.contains_key("collection.anki2") {
             "collection.anki2"
         } else {
-            return Err(failure("The archive does not contain an Anki deck collection."));
-        }.to_string();
+            return Err(failure(
+                "The archive does not contain an Anki deck collection.",
+            ));
+        }
+        .to_string();
         let mut archive = Self {
-            zip, entries, media: BTreeMap::new(), collection_name,
-            assets: BTreeMap::new(), asset_bytes: 0,
+            zip,
+            entries,
+            media: BTreeMap::new(),
+            collection_name,
+            assets: BTreeMap::new(),
+            asset_bytes: 0,
         };
         if archive.entries.contains_key("meta") {
             let metadata = archive.read_entry("meta", 64)?;
@@ -89,19 +107,28 @@ impl Archive {
         if archive.entries.contains_key("media") {
             let bytes = archive.read_entry("media", MAX_MEDIA_MAP_BYTES)?;
             let mut deserializer = serde_json::Deserializer::from_slice(&bytes);
-            let mapping = deserializer.deserialize_map(MediaMapVisitor)
+            let mapping = deserializer
+                .deserialize_map(MediaMapVisitor)
                 .map_err(|_| failure("Invalid or duplicate entries in the Anki JSON media map."))?;
-            deserializer.end().map_err(|_| failure("Unexpected data after the Anki media map."))?;
+            deserializer
+                .end()
+                .map_err(|_| failure("Unexpected data after the Anki media map."))?;
             for (entry, filename) in mapping {
-                if filename.len() > 1024 || filename.is_empty()
+                if filename.len() > 1024
+                    || filename.is_empty()
                     || filename.chars().any(char::is_control)
-                    || filename.contains('/') || filename.contains('\\')
-                    || filename == "." || filename == ".."
-                    || !entry.bytes().all(|byte| byte.is_ascii_digit()) || entry.is_empty()
+                    || filename.contains('/')
+                    || filename.contains('\\')
+                    || filename == "."
+                    || filename == ".."
+                    || !entry.bytes().all(|byte| byte.is_ascii_digit())
+                    || entry.is_empty()
                     || !archive.entries.contains_key(&entry)
                     || archive.media.insert(filename, entry).is_some()
                 {
-                    return Err(failure("Anki media map has unsafe, missing, or ambiguous filenames."));
+                    return Err(failure(
+                        "Anki media map has unsafe, missing, or ambiguous filenames.",
+                    ));
                 }
             }
         }
@@ -118,17 +145,29 @@ impl Archive {
     }
 
     fn read_entry(&mut self, name: &str, maximum: u64) -> Result<Vec<u8>, CommandError> {
-        let index = *self.entries.get(name).ok_or_else(|| failure("Missing Anki archive entry."))?;
-        let mut entry = self.zip.by_index(index).map_err(|_| failure("Unreadable Anki archive entry."))?;
+        let index = *self
+            .entries
+            .get(name)
+            .ok_or_else(|| failure("Missing Anki archive entry."))?;
+        let mut entry = self
+            .zip
+            .by_index(index)
+            .map_err(|_| failure("Unreadable Anki archive entry."))?;
         let expected = entry.size();
         if expected > maximum {
-            return Err(failure("An Anki archive entry exceeds its decompressed size limit."));
+            return Err(failure(
+                "An Anki archive entry exceeds its decompressed size limit.",
+            ));
         }
         let mut bytes = Vec::new();
-        Read::by_ref(&mut entry).take(maximum + 1).read_to_end(&mut bytes)
+        Read::by_ref(&mut entry)
+            .take(maximum + 1)
+            .read_to_end(&mut bytes)
             .map_err(|_| failure("Corrupt or truncated Anki archive entry."))?;
         if bytes.len() as u64 != expected || bytes.len() as u64 > maximum {
-            return Err(failure("Anki entry did not match its declared decompressed size."));
+            return Err(failure(
+                "Anki entry did not match its declared decompressed size.",
+            ));
         }
         Ok(bytes)
     }
@@ -141,27 +180,41 @@ impl Archive {
         } else {
             decode_filename(filename)?
         };
-        let entry = self.media.get(&filename).cloned()
+        let entry = self
+            .media
+            .get(&filename)
+            .cloned()
             .ok_or("A referenced local image is missing, external, or unsupported.")?;
         let id = source_id("asset", &entry);
         if !self.assets.contains_key(&id) {
-            let bytes = self.read_entry(&entry, MAX_IMAGE_BYTES).map_err(|_| "An image is corrupt or too large.")?;
+            let bytes = self
+                .read_entry(&entry, MAX_IMAGE_BYTES)
+                .map_err(|_| "An image is corrupt or too large.")?;
             if bytes.len() > MAX_IMAGES_BYTES.saturating_sub(self.asset_bytes) {
                 return Err("Imported images exceed the 256 MiB memory limit.".into());
             }
             let (mime, extension) = crate::assets::detect_image_bytes(&bytes)
                 .map_err(|_| "An image uses an unsupported format; use PNG, JPEG, GIF, or WebP.")?;
             self.asset_bytes += bytes.len();
-            self.assets.insert(id.clone(), PackageAsset {
-                source_id: id.clone(), original_filename: format!("anki-{entry}.{extension}"),
-                mime_type: mime.to_string(), byte_size: bytes.len() as i64, data: bytes,
-            });
+            self.assets.insert(
+                id.clone(),
+                PackageAsset {
+                    source_id: id.clone(),
+                    original_filename: format!("anki-{entry}.{extension}"),
+                    mime_type: mime.to_string(),
+                    byte_size: bytes.len() as i64,
+                    data: bytes,
+                },
+            );
         }
         Ok(json!({"type": "image", "attrs": {"assetId": id, "src": format!("study-asset://{id}")}}))
     }
 
     pub fn take_assets(self, used: &BTreeSet<String>) -> Vec<PackageAsset> {
-        self.assets.into_values().filter(|asset| used.contains(&asset.source_id)).collect()
+        self.assets
+            .into_values()
+            .filter(|asset| used.contains(&asset.source_id))
+            .collect()
     }
 }
 
@@ -178,7 +231,9 @@ impl<'de> Visitor<'de> for MediaMapVisitor {
         let mut result = BTreeMap::new();
         while let Some((key, value)) = access.next_entry::<String, String>()? {
             if result.len() >= MAX_ENTRIES || result.insert(key, value).is_some() {
-                return Err(serde::de::Error::custom("duplicate or excessive media entries"));
+                return Err(serde::de::Error::custom(
+                    "duplicate or excessive media entries",
+                ));
             }
         }
         Ok(result)
@@ -191,8 +246,12 @@ fn decode_filename(value: &str) -> Result<String, String> {
     let mut position = 0;
     while position < bytes.len() {
         if bytes[position] == b'%' {
-            let high = bytes.get(position + 1).and_then(|byte| (*byte as char).to_digit(16));
-            let low = bytes.get(position + 2).and_then(|byte| (*byte as char).to_digit(16));
+            let high = bytes
+                .get(position + 1)
+                .and_then(|byte| (*byte as char).to_digit(16));
+            let low = bytes
+                .get(position + 2)
+                .and_then(|byte| (*byte as char).to_digit(16));
             let (Some(high), Some(low)) = (high, low) else {
                 return Err("An image filename contains invalid URL encoding.".into());
             };

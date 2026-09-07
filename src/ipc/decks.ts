@@ -66,10 +66,21 @@ export interface PreparedDeckExport {
   assetCount: number;
 }
 
+export interface AnkiImportReport {
+  sourceCardCount: number;
+  importedCardCount: number;
+  skippedCardCount: number;
+  simplifiedCardCount: number;
+  issues: { sourceCardId: string; message: string }[];
+  omittedIssueCount: number;
+}
+
 export interface ImportResult {
   deck: DeckSummary;
   cardCount: number;
   assetCount: number;
+  ankiReport?: AnkiImportReport;
+  postCommitWarning?: string;
 }
 
 export async function listDecks(): Promise<DeckSummary[]> {

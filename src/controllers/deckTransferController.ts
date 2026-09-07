@@ -1,5 +1,5 @@
 import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
-import type { DeckSummary } from "../ipc/decks";
+import type { AnkiImportReport, DeckSummary } from "../ipc/decks";
 import type { PublishReceipt, ShareLaunch, StagedExternalFile } from "../ipc/externalFiles";
 import {
   publishExport,
@@ -12,6 +12,7 @@ export interface DeckImportOutcome {
   deckId: string;
   committedDeck: DeckSummary | null;
   message: string;
+  ankiReport?: AnkiImportReport;
 }
 
 export interface DeckExportOutcome {
@@ -70,7 +71,7 @@ export class DeckTransferController {
     const selected = await this.#dependencies.selectImport();
     if (!selected) return null;
 
-    if (selected.detectedKind === "studydeck") {
+    if (selected.detectedKind === "studydeck" || selected.detectedKind === "anki_apkg") {
       const pending =
         this.#pendingStudydeckImport?.stagedFileId === selected.id
           ? this.#pendingStudydeckImport
@@ -82,12 +83,17 @@ export class DeckTransferController {
       try {
         const result = await this.#decks.importStudydeck(selected.id, pending.operationId);
         this.#pendingStudydeckImport = null;
+        const compatibility = result.ankiReport
+          ? ` ${result.ankiReport.skippedCardCount} Anki cards skipped; ${result.ankiReport.simplifiedCardCount} imported cards have simplified formatting.`
+          : "";
+        const warning = result.postCommitWarning ? ` ${result.postCommitWarning}` : "";
         return {
           deckId: result.deck.id,
           committedDeck: result.deck,
           message: `Imported “${result.deck.name}” with ${result.cardCount} ${
             result.cardCount === 1 ? "card" : "cards"
-          }.`,
+          }.${compatibility}${warning}`,
+          ...(result.ankiReport ? { ankiReport: result.ankiReport } : {}),
         };
       } catch (error: unknown) {
         if (getErrorCode(error) !== null) this.#pendingStudydeckImport = null;
@@ -116,7 +122,7 @@ export class DeckTransferController {
     }
 
     this.#pendingStudydeckImport = null;
-    throw new Error("Select an ostudy deck or generated-card file.");
+    throw new Error("Select an ostudy deck, an Anki .apkg deck, or a generated-card file.");
   }
 
   async exportDeck(deck: DeckSummary): Promise<DeckExportOutcome | null> {

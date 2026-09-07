@@ -13,7 +13,11 @@ const MAX_TOKENS: usize = 4096;
 enum Node {
     Literal(String),
     Field(String),
-    Section { name: String, inverted: bool, children: Vec<Node> },
+    Section {
+        name: String,
+        inverted: bool,
+        children: Vec<Node>,
+    },
 }
 
 pub(super) struct Rendered {
@@ -34,7 +38,10 @@ pub(super) fn render(
     let mut position = 0;
     let mut tokens = 0;
     let nodes = parse(source, &mut position, None, 0, &mut tokens)?;
-    let mut rendered = Rendered { html: String::new(), matched_cloze: false };
+    let mut rendered = Rendered {
+        html: String::new(),
+        matched_cloze: false,
+    };
     evaluate(&nodes, fields, ordinal, answer, front, &mut rendered)?;
     Ok(rendered)
 }
@@ -65,7 +72,8 @@ fn parse(
             nodes.push(Node::Literal(remaining[..offset].to_string()));
         }
         *position += offset + 2;
-        let end = source[*position..].find("}}")
+        let end = source[*position..]
+            .find("}}")
             .ok_or("Template contains an unfinished replacement.")?;
         let token = source[*position..*position + end].trim();
         *position += end + 2;
@@ -118,8 +126,13 @@ fn evaluate(
     for node in nodes {
         match node {
             Node::Literal(value) => append(&mut result.html, value)?,
-            Node::Section { name, inverted, children } => {
-                let value = fields.get(name)
+            Node::Section {
+                name,
+                inverted,
+                children,
+            } => {
+                let value = fields
+                    .get(name)
                     .ok_or_else(|| format!("Unknown conditional field: {}.", label(name)))?;
                 let present = !super::html::plain_text(value)?.trim().is_empty()
                     || value.to_ascii_lowercase().contains("<img")
@@ -137,7 +150,8 @@ fn evaluate(
                 }
                 let parts: Vec<&str> = token.split(':').collect();
                 let name = parts.last().copied().unwrap_or_default();
-                let mut value = fields.get(name)
+                let mut value = fields
+                    .get(name)
                     .ok_or_else(|| format!("Unknown template field: {}.", label(name)))?
                     .clone();
                 for filter in parts[..parts.len() - 1].iter().rev() {
@@ -159,7 +173,10 @@ fn evaluate(
 }
 
 fn cloze(source: &str, target: u32, answer: bool) -> Result<Rendered, String> {
-    let mut result = Rendered { html: String::new(), matched_cloze: false };
+    let mut result = Rendered {
+        html: String::new(),
+        matched_cloze: false,
+    };
     let mut remaining = source;
     while let Some(start) = remaining.find("{{c") {
         append(&mut result.html, &remaining[..start])?;
@@ -189,7 +206,10 @@ fn cloze(source: &str, target: u32, answer: bool) -> Result<Rendered, String> {
             } else {
                 append(&mut result.html, "[")?;
                 let hint = super::html::plain_text(hint)?;
-                append(&mut result.html, &escape(if hint.trim().is_empty() { "..." } else { &hint }))?;
+                append(
+                    &mut result.html,
+                    &escape(if hint.trim().is_empty() { "..." } else { &hint }),
+                )?;
                 append(&mut result.html, "]")?;
             }
         } else {
@@ -202,12 +222,20 @@ fn cloze(source: &str, target: u32, answer: bool) -> Result<Rendered, String> {
 }
 
 pub(super) fn escape(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-        .replace('"', "&quot;").replace('\'', "&#39;")
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn label(value: &str) -> String {
-    value.chars().filter(|character| !character.is_control()).take(80).collect()
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(80)
+        .collect()
 }
 
 #[cfg(test)]
@@ -226,8 +254,14 @@ mod tests {
     fn conditionals_front_side_and_nonrecursive_fields() {
         let mut fields = fields();
         fields.insert("Back".into(), "{{Front}}".into());
-        let value = render("{{#Front}}{{^Optional}}{{FrontSide}}: {{Back}}{{/Optional}}{{/Front}}",
-            &fields, 0, true, "Rendered question").unwrap();
+        let value = render(
+            "{{#Front}}{{^Optional}}{{FrontSide}}: {{Back}}{{/Optional}}{{/Front}}",
+            &fields,
+            0,
+            true,
+            "Rendered question",
+        )
+        .unwrap();
         assert_eq!(value.html, "Rendered question: {{Front}}");
         assert!(render("{{#Front}}x{{/Back}}", &fields, 0, false, "").is_err());
         assert!(render("{{unknown:Front}}", &fields, 0, false, "").is_err());
@@ -235,13 +269,18 @@ mod tests {
 
     #[test]
     fn cloze_selects_existing_card_ordinal_without_leaking_answer() {
-        let fields = BTreeMap::from([("Text".into(),
-            "{{c1::first::hint}} and {{c2::second}} and {{c1::third}}".into())]);
+        let fields = BTreeMap::from([(
+            "Text".into(),
+            "{{c1::first::hint}} and {{c2::second}} and {{c1::third}}".into(),
+        )]);
         let question = render("{{cloze:Text}}", &fields, 0, false, "").unwrap();
         assert_eq!(question.html, "[hint] and second and [...]");
         assert!(question.matched_cloze);
         let answer = render("{{cloze:Text}}", &fields, 0, true, "").unwrap();
-        assert_eq!(answer.html, "<strong>first</strong> and second and <strong>third</strong>");
+        assert_eq!(
+            answer.html,
+            "<strong>first</strong> and second and <strong>third</strong>"
+        );
     }
 
     #[test]

@@ -26,6 +26,7 @@ export type ExternalFileKind =
   | "ods"
   | "csv"
   | "studydeck"
+  | "anki_apkg"
   | "generated_json"
   | "ostudybackup";
 

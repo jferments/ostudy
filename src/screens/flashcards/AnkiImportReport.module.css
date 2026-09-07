@@ -1,0 +1,35 @@
+@layer components {
+  .report {
+    display: grid;
+    gap: var(--ostudy-space-3);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .report p {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .details {
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-small);
+    padding: var(--ostudy-space-3);
+    background: var(--ostudy-color-surface-soft);
+  }
+
+  .details summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .issues {
+    max-height: min(36vh, 320px);
+    overflow: auto;
+    padding-left: var(--ostudy-space-5);
+  }
+
+  .issues li + li {
+    margin-top: var(--ostudy-space-2);
+  }
+}

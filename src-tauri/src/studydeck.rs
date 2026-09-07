@@ -28,7 +28,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::{
     assets::{detect_image_bytes, validate_original_filename},
@@ -236,7 +236,20 @@ pub fn prepare_deck_export(
 }
 
 #[tauri::command]
-pub fn import_deck(
+pub async fn import_deck(
+    app: AppHandle,
+    input: ImportDeckInput,
+) -> Result<ImportedDeckDto, CommandError> {
+    // Decompression, template conversion, and native asset writes must not run
+    // on the UI thread. The worker still uses the single managed database.
+    tauri::async_runtime::spawn_blocking(move || {
+        import_deck_blocking(app.state::<Database>(), app.state::<AppPaths>(), input)
+    })
+    .await
+    .map_err(|error| CommandError::new("deck_import_worker_failed", error.to_string()))?
+}
+
+fn import_deck_blocking(
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     input: ImportDeckInput,
@@ -264,7 +277,10 @@ pub fn import_deck(
         )
     })?;
     let fingerprint = hash_file(&staged.path)?;
-    let is_anki = staged.path.extension().is_some_and(|extension| extension == "apkg");
+    let is_anki = staged
+        .path
+        .extension()
+        .is_some_and(|extension| extension == "apkg");
     let (package, anki_report) = if is_anki {
         let (package, report) = anki::read_package(&staged.path, &staged.display_name)?;
         (package, Some(report))
@@ -273,12 +289,20 @@ pub fn import_deck(
     };
     // An Anki transfer is keyed to its staged identity even if a transport or
     // receipt-storage failure causes the frontend to allocate a new attempt ID.
-    let operation_id = if is_anki { &input.staged_file_id } else { &input.operation_id };
+    let operation_id = if is_anki {
+        &input.staged_file_id
+    } else {
+        &input.operation_id
+    };
     let consumed_at = unix_time_millis()?;
     let result = database.with_connection(|connection| {
         import::import_package(connection, &paths, operation_id, &fingerprint, package)
     })?;
-    let mut result = ImportedDeckDto { result, anki_report, post_commit_warning: None };
+    let mut result = ImportedDeckDto {
+        result,
+        anki_report,
+        post_commit_warning: None,
+    };
     let receipt = database.with_connection(|connection| {
         crate::external_files::mark_import_consumed(
             connection,
