@@ -10,18 +10,13 @@ source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/cargo-target.sh"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/console-events.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
 
-log() {
-  ostudy_console_stage build "$*"
-  printf '\n\033[1;34m==> %s\033[0m\n' "$*"
-}
+log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 trap 'printf "\n\033[1;31mBuild failed near line %s.\033[0m\n" "${BASH_LINENO[0]:-${LINENO:-unknown}}" >&2' ERR
 

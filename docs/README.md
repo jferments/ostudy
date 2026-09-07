@@ -23,9 +23,9 @@ Flashcards has Decks and Search/Filter. Card templates live in Settings; transfe
 
 [Installation overview](installation/README.md) distinguishes source-build support, regular qualification, and distribution. Platform guides cover [Linux](installation/linux.md), [Android](installation/android.md), [Windows](installation/windows.md), [macOS](installation/macos.md), and [mobile status](installation/mobile.md).
 
-Linux developers can use the [Ratatui developer console](development/developer-console.md) as a clean interactive front end for setup/build/run/check workflows while retaining the existing scripts as the qualification contract and preserving full plain-text logs.
+Local development uses ordinary plain-text shell output. The [command runbook](agents/COMMAND-RUNBOOK.md) lists the small `scripts/ostudy-dev` convenience dispatcher as well as the underlying setup/build/run/check scripts; those maintained wrappers remain the qualification contract.
 
-For a development PR, use [Local testing and handoff](development/local-testing-and-handoff.md): exact-source checkout, native build/run, Android installation, test-data isolation, and manual acceptance. The [command runbook](agents/COMMAND-RUNBOOK.md) is the compact reference. A frontend build, native hot reload, standalone application, package, and passing full gate are different results.
+For a development PR, use [Local testing and handoff](development/local-testing-and-handoff.md): exact-source checkout, native build/run, Android installation, test-data isolation, and manual acceptance. A frontend build, native hot reload, standalone application, package, and passing full gate are different results.
 
 ## Understand the architecture
 
@@ -55,7 +55,7 @@ Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](ag
 
 [Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) records concrete findings, removals, intentional compatibility, and remaining engineering observations.
 
-Focused development references include the [Linux developer console](development/developer-console.md), [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), and the [portability inventory](development/platform-portability-inventory.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
+Focused development references include [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), and the [portability inventory](development/platform-portability-inventory.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
 
 ## CI infrastructure and performance
 

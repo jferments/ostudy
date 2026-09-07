@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+TOOL_DIR="$SCRIPT_DIR/developer-console"
+CACHE_BASE="${XDG_CACHE_HOME:-$HOME/.cache}/ostudy/developer-console"
+SOURCE_DIR="$CACHE_BASE/source"
+TARGET_DIR="$CACHE_BASE/target"
+BINARY="$TARGET_DIR/release/ostudy-developer-console"
+STAMP="$CACHE_BASE/source.sha256"
+BOOTSTRAP_LOG="$CACHE_BASE/bootstrap.log"
+
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+is_setup_request=0
+for arg in "$@"; do
+  case "$arg" in
+    setup) is_setup_request=1; break ;;
+    --root) break ;;
+  esac
+done
+
+if ! command -v cargo >/dev/null 2>&1; then
+  if [[ "$is_setup_request" == "1" ]]; then
+    printf 'Rust is not installed yet; the first setup pass uses the plain bootstrap.\n'
+    printf 'The Ratatui developer console becomes available as soon as setup finishes.\n\n'
+    bash "$ROOT_DIR/scripts/setup-ubuntu.sh"
+    if [[ -t 0 && -t 1 ]]; then
+      exec "$0"
+    fi
+    exit 0
+  fi
+  printf 'The ostudy developer console needs the pinned Rust toolchain.\n' >&2
+  printf 'Run ./scripts/ostudy-dev setup for first-time Ubuntu/Debian setup.\n' >&2
+  exit 2
+fi
+
+[[ -f "$TOOL_DIR/Cargo.toml" && -d "$TOOL_DIR/src" ]] || {
+  printf 'Developer console source is missing from %s.\n' "$TOOL_DIR" >&2
+  exit 2
+}
+
+mkdir -p "$CACHE_BASE" "$TARGET_DIR"
+source_hash="$({
+  sha256sum "$TOOL_DIR/Cargo.toml"
+  find "$TOOL_DIR/src" -type f -name '*.rs' -print0 | sort -z | xargs -0 sha256sum
+} | sha256sum | awk '{print $1}')"
+
+current_hash=""
+[[ -f "$STAMP" ]] && current_hash="$(cat "$STAMP")"
+if [[ ! -x "$BINARY" || "$source_hash" != "$current_hash" ]]; then
+  printf 'Preparing ostudy developer console…\n'
+  rm -rf "$SOURCE_DIR"
+  mkdir -p "$SOURCE_DIR/src"
+  cp "$TOOL_DIR/Cargo.toml" "$SOURCE_DIR/Cargo.toml"
+  cp "$TOOL_DIR"/src/*.rs "$SOURCE_DIR/src/"
+  if ! CARGO_TARGET_DIR="$TARGET_DIR" cargo build \
+    --release \
+    --manifest-path "$SOURCE_DIR/Cargo.toml" \
+    >"$BOOTSTRAP_LOG" 2>&1; then
+    printf 'Developer console bootstrap failed. Full compiler output:\n\n' >&2
+    cat "$BOOTSTRAP_LOG" >&2
+    exit 1
+  fi
+  printf '%s\n' "$source_hash" > "$STAMP"
+fi
+
+# The setup workflow invokes sudo. Authenticate before entering the alternate
+# screen so password prompts stay in the normal terminal.
+if [[ "$is_setup_request" == "1" && -t 0 && -t 1 ]]; then
+  sudo -v
+fi
+
+exec "$BINARY" --root "$ROOT_DIR" "$@"
