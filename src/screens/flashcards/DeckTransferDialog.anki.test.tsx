@@ -53,15 +53,15 @@ describe("Anki import completion", () => {
   it("keeps the post-commit report visible until the user opens the imported deck", async () => {
     const { close, open } = mount();
     fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
-    expect(await screen.findByRole("dialog", { name: "Anki import complete" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Anki import report")).toHaveTextContent("5 of 6 Anki cards imported");
-    expect(screen.queryByRole("button", { name: /Choose file/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Anki import complete" })).not.toBeNull();
+    expect(screen.getByLabelText("Anki import report").textContent).toContain("5 of 6 Anki cards imported");
+    expect(screen.queryByRole("button", { name: /Choose file/ })).toBeNull();
     expect(close).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("Compatibility details (1)"));
-    expect(screen.getByText(/not executable/)).toHaveTextContent("<script>not executable</script>");
+    expect(screen.getByText(/not executable/).textContent).toContain("<script>not executable</script>");
     expect(document.querySelector("script")).toBeNull();
-    expect(screen.getByText(/2 additional details omitted/)).toBeInTheDocument();
+    expect(screen.getByText(/2 additional details omitted/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open imported deck" }));
     await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
     expect(close).toHaveBeenCalledOnce();
@@ -73,8 +73,8 @@ describe("Anki import completion", () => {
     const { toast } = mount(refresh);
     fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
     await screen.findByRole("dialog", { name: "Anki import complete" });
-    expect(screen.getByRole("status")).toHaveTextContent("refresh unavailable");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("status").textContent).toContain("refresh unavailable");
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(toast).toHaveBeenCalledWith("info", expect.stringContaining("Imported Examples"));
     expect(mocks.importFromFile).toHaveBeenCalledOnce();
   });
@@ -93,7 +93,7 @@ describe("Anki import completion", () => {
     mocks.importFromFile.mockRejectedValue(new Error("Export with Support older Anki versions enabled."));
     const { close } = mount();
     fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Support older Anki versions");
+    expect((await screen.findByRole("alert")).textContent).toContain("Support older Anki versions");
     expect(close).not.toHaveBeenCalled();
   });
 });
