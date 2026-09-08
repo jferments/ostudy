@@ -6,11 +6,17 @@ Practice is a contextual workflow: start from a deck, selected decks, Search res
 
 **Scheduled practice** selects studyable due work within the chosen deck/tag scope and daily new/review limits. The workload display separates available due work from work omitted by those limits.
 
-**Extra practice** is an explicit choice to study eligible material beyond the scheduled queue. A direct deck Practice action follows the deck-practice scope rather than merely opening an editor. It does not make suspended, buried, archived, or otherwise unavailable cards studyable.
+**Extra practice** is an explicit choice to study eligible material beyond the scheduled queue. A direct deck Practice action follows the deck-practice scope rather than merely opening an editor. It does not make suspended, buried, archived, or otherwise unavailable cards studyable. Extra practice is not capped at an arbitrary 10,000-card prefix: the whole studyable selected scope can become the session.
 
-**Selected-card practice** uses exact card identities resolved from a current Search selection or study-guide topic link. It is not a temporary deck or a guess based on a tag's display name.
+**Selected-card practice** uses exact card identities resolved from a current Search selection or study-guide topic link. It is not a temporary deck or a guess based on a tag's display name. Explicit custom-card requests retain a defensive request-size bound because they carry every card identity across the command boundary.
 
 Read the scope and workload before starting. A loading or failed workload request is not an empty library. Folder membership is a way to select decks; it does not own schedules or create its own review history.
+
+### Large sessions stay windowed
+
+A large selected session does not send the whole deck's rich card content to React. oStudy stores deterministic per-card session snapshots for resume/edit/history semantics, but creates those rich snapshots in bounded backend batches. The practice screen reads 50-card windows and discards consumed selected-session windows instead of accumulating every visited card in memory.
+
+Starting a very large session is still linear work because durable snapshot rows must be created for the selected cards; it is not intended to pretend that 50,000 cards cost the same as 50. The important boundary is that rich card documents and managed-asset references are processed in bounded batches rather than materialized as one giant in-memory deck payload.
 
 ## Reveal, rate, and continue
 
@@ -25,7 +31,9 @@ Try recalling the answer before revealing it. Choose the outcome that reflects w
 
 Space or Enter reveals the answer when the practice controls own the interaction. Rating shortcuts are not meant to intercept typing in an editor or an active overlay. The displayed interval previews show the schedule consequences supplied by the native scheduler.
 
-The stored confidence choices map to the scheduler's Again, Hard, Good, and Easy ratings. Rating is a durable review, not a cosmetic button response. ostudy validates the previewed schedule revision, appends the review event, updates the current schedule, and advances the session transactionally. Supported retry identities prevent the same submission from counting twice.
+By default, a Basic card shows the **question on the front and the answer on the revealed back**. Enable **Settings → Review/Scheduling → Display both question and answer when card is flipped** if you prefer to keep the Basic question visible beside the answer. Fill in the blank content keeps the blank/context as part of its revealed content so multi-blank questions remain understandable without requiring that global preference.
+
+The stored confidence choices map to the scheduler's Again, Hard, Good, and Easy ratings. Rating is a durable review, not a cosmetic button response. oStudy validates the previewed schedule revision, appends the review event, updates the current schedule, and advances the session transactionally. Supported retry identities prevent the same submission from counting twice.
 
 A Basic note's forward and reverse presentations have separate schedules even though their editable content and tags are shared. A Fill in the blank note has one scheduled presentation; the hidden group selected for a session remains stable through reveal and resume.
 
@@ -67,6 +75,6 @@ Analytics is derived deterministically from stored data, not an LLM assessment. 
 
 ## Troubleshooting scope surprises
 
-When fewer cards appear than expected, check whether the session is scheduled, extra, or exact-card; whether the daily limit is reached; and whether cards are archived, suspended, buried, deleted, or outside the selected scope. Check whether you selected visible rows or all matching results.
+When fewer cards appear than expected, check whether the session is scheduled, extra, or exact-card; whether the daily limit is reached; and whether cards are archived, suspended, buried, deleted, or outside the selected scope. Check whether you selected visible rows or all matching results. An extra session over a large deck should report the full eligible scope rather than stopping at 10,000 cards.
 
 Do not fix a missing-card surprise by resetting schedules or deleting data before understanding the filter and availability rules. For a defect report, include the scope, mode, displayed counts, exact application build, and a synthetic reproduction where possible. [Backups](backups-imports-and-sharing.md) and [local test isolation](../development/local-testing-and-handoff.md) protect valuable review history during investigation.

@@ -14,7 +14,7 @@ Your cards, documents, schedules, and review history live on your device. Ordina
 
 **Learn from documents.** Keep source documents in a managed local library, generate flashcards and source-linked study guides, and return to retained material for further learning. Generated content remains editable study material, not an unquestionable answer: check it against the source, especially for consequential subjects.
 
-**Keep control of your data.** Share individual decks without sharing personal review history, import structured generated-card files, make whole-library backups, and explicitly synchronize study data between trusted devices. Sharing a deck, restoring a backup, and synchronizing devices are different operations with different privacy and recovery implications.
+**Keep control of your data.** Share individual decks without sharing personal review history, import compatible **Anki `.apkg` decks** and structured generated-card files, make whole-library backups, and explicitly synchronize study data between trusted devices. Sharing a deck, converting an Anki deck, restoring a backup, and synchronizing devices are different operations with different privacy and recovery implications.
 
 **Choose a comfortable interface.** Flashcards brings together Decks and Search/Filter. Study Guides, Documents, and Analytics have their own destinations; card templates live in Settings. Themes, text sizing, optional guidance, and optional visual feedback let you adapt the interface without changing how your study data works.
 
@@ -52,7 +52,7 @@ For an already configured checkout after source changes:
 
 ## Learn more
 
-Start with [Getting started](docs/user-guide/getting-started.md) or the [documentation index](docs/README.md). The documentation includes [flashcard organization](docs/user-guide/flashcards-organization.md), [documents and AI generation](docs/user-guide/documents-and-ai-generation.md), [backups and sharing](docs/user-guide/backups-imports-and-sharing.md), and [trusted-device synchronization](docs/user-guide/device-sync.md).
+Start with [Getting started](docs/user-guide/getting-started.md) or the [documentation index](docs/README.md). The documentation includes [flashcard organization](docs/user-guide/flashcards-organization.md), [practice and scheduling](docs/user-guide/practice-and-analytics.md), [documents and AI generation](docs/user-guide/documents-and-ai-generation.md), [Anki import](docs/reference/anki-import.md), [backups and sharing](docs/user-guide/backups-imports-and-sharing.md), and [trusted-device synchronization](docs/user-guide/device-sync.md).
 
 For the project's design, read the [architecture overview](docs/architecture/overview.md). The [roadmap](docs/roadmap.md) separates implemented foundations from planned work, including additional study tools and platform support.
 

@@ -22,6 +22,8 @@ export interface AppSettings {
   reduceMotion?: boolean;
   confirmDeletions: boolean;
   practiceShuffle: boolean;
+  /** Show the question again beside the answer after revealing a Basic card. */
+  displayQuestionOnAnswer?: boolean;
   desiredRetention: number;
   dailyNewLimit: number;
   dailyReviewLimit: number;
@@ -48,7 +50,12 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(input: AppSettings): Promise<AppSettings> {
   const { aiReasoningEffort: _legacyReasoning, ...persisted } = input;
-  return invoke<AppSettings>("save_settings", { input: persisted });
+  return invoke<AppSettings>("save_settings", {
+    input: {
+      ...persisted,
+      displayQuestionOnAnswer: input.displayQuestionOnAnswer ?? false,
+    },
+  });
 }
 
 export async function getAppInfo(): Promise<AppInfo> {

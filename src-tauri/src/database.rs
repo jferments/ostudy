@@ -75,9 +75,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "2f0f9e010842ab62f1f9896441974f792fd621bf152d38ad11b129aa848ecc9d",
         sql: include_str!("../migrations/0008_ai_profile_reasoning.sql"),
     },
+    Migration {
+        version: 9,
+        name: "anki_apkg_staging",
+        checksum: "a1dfeff574e2d6da17420e0544d0b363de3e232a7793d393024bb4a3432a1019",
+        sql: include_str!("../migrations/0009_anki_apkg_staging.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 8;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 9;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -584,6 +590,58 @@ mod tests {
                 Ok(())
             })
             .expect("generic staged document should satisfy migration 3");
+    }
+
+    #[test]
+    fn anki_apkg_migration_preserves_existing_staging_rows_and_accepts_apkg() {
+        let mut connection = public_baseline_connection().expect("baseline database should open");
+        for migration in &MIGRATIONS[1..8] {
+            apply_transactional_migration(&mut connection, migration)
+                .expect("pre-Anki migrations should apply");
+        }
+
+        connection
+            .execute(
+                "INSERT INTO staged_external_imports (
+                     id, operation_id, purpose, detected_kind, display_name,
+                     media_type, byte_size, sha256, relative_path, state,
+                     result_json, created_at, updated_at, expires_at
+                 ) VALUES (?1, ?1, 'study_content', 'studydeck', 'existing.studydeck',
+                           'application/octet-stream', 1, ?2,
+                           'transfers/imports/existing.studydeck', 'staged', '', 1, 1, 2)",
+                params!["c".repeat(32), "d".repeat(64)],
+            )
+            .expect("schema 8 should accept an existing staged studydeck");
+
+        apply_transactional_migration(&mut connection, &MIGRATIONS[8])
+            .expect("Anki staging migration should apply");
+
+        let preserved: String = connection
+            .query_row(
+                "SELECT detected_kind FROM staged_external_imports WHERE id = ?1",
+                ["c".repeat(32)],
+                |row| row.get(0),
+            )
+            .expect("existing staged row should survive the table rebuild");
+        assert_eq!(preserved, "studydeck");
+
+        connection
+            .execute(
+                "INSERT INTO staged_external_imports (
+                     id, operation_id, purpose, detected_kind, display_name,
+                     media_type, byte_size, sha256, relative_path, state,
+                     result_json, created_at, updated_at, expires_at
+                 ) VALUES (?1, ?1, 'study_content', 'anki_apkg', 'deck.apkg',
+                           'application/octet-stream', 1, ?2,
+                           'transfers/imports/deck.apkg', 'staged', '', 1, 1, 2)",
+                params!["e".repeat(32), "f".repeat(64)],
+            )
+            .expect("schema 9 should accept staged Anki packages");
+
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("schema version should be readable");
+        assert_eq!(version, 9);
     }
 
     #[test]

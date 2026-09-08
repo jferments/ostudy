@@ -7,6 +7,7 @@
 //! complete graph before staging files or mutating the library, then commit one
 //! deck transaction with a retry-safe operation identity and fresh schedules.
 
+mod anki;
 mod export;
 mod import;
 mod read;
@@ -27,7 +28,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     assets::{detect_image_bytes, validate_original_filename},
@@ -49,6 +50,7 @@ const MAX_PACKAGE_CARDS: usize = 200_000;
 const MAX_PACKAGE_TAGS: usize = 100_000;
 const MAX_TAGS_PER_NOTE: usize = 32;
 const MAX_CLOZE_SOURCE_CHARS: usize = 200_000;
+const OPERATION_PROGRESS_EVENT: &str = "ostudy-operation-progress";
 
 const PACKAGE_SCHEMA: &str = r#"
 PRAGMA foreign_keys = ON;
@@ -135,6 +137,43 @@ pub struct ImportDeckInput {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct OperationProgressDto {
+    schema_version: u8,
+    operation_id: String,
+    operation_kind: String,
+    phase: String,
+    processed: Option<usize>,
+    total: Option<usize>,
+    succeeded: usize,
+    failed: usize,
+}
+
+fn emit_operation_progress(
+    app: &AppHandle,
+    operation_id: &str,
+    phase: &str,
+    processed: Option<usize>,
+    total: Option<usize>,
+    succeeded: usize,
+    failed: usize,
+) {
+    let _ = app.emit(
+        OPERATION_PROGRESS_EVENT,
+        OperationProgressDto {
+            schema_version: 1,
+            operation_id: operation_id.to_string(),
+            operation_kind: "anki_import".to_string(),
+            phase: phase.to_string(),
+            processed,
+            total,
+            succeeded,
+            failed,
+        },
+    );
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ExportResultDto {
     pub(crate) destination_path: String,
     pub(crate) card_count: i64,
@@ -147,6 +186,19 @@ pub struct ImportResultDto {
     pub deck: DeckSummaryDto,
     pub card_count: i64,
     pub asset_count: i64,
+}
+
+/// Additive command response; the internal transactional import result and old
+/// serialized consumed-transfer receipts retain their existing shape.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedDeckDto {
+    #[serde(flatten)]
+    pub result: ImportResultDto,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anki_report: Option<anki::ImportReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_commit_warning: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -222,15 +274,27 @@ pub fn prepare_deck_export(
 }
 
 #[tauri::command]
-pub fn import_deck(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
+pub async fn import_deck(
+    app: AppHandle,
     input: ImportDeckInput,
-) -> Result<ImportResultDto, CommandError> {
+) -> Result<ImportedDeckDto, CommandError> {
+    // Decompression, template conversion, and native asset writes must not run
+    // on the UI thread. The worker still uses the single managed database.
+    tauri::async_runtime::spawn_blocking(move || import_deck_blocking(&app, input))
+        .await
+        .map_err(|error| CommandError::new("deck_import_worker_failed", error.to_string()))?
+}
+
+fn import_deck_blocking(
+    app: &AppHandle,
+    input: ImportDeckInput,
+) -> Result<ImportedDeckDto, CommandError> {
+    let database = app.state::<Database>();
+    let paths = app.state::<AppPaths>();
     validate_entity_id(&input.operation_id, "deck import operation")?;
     validate_entity_id(&input.staged_file_id, "staged deck")?;
     if let Some(result) = database.with_connection(|connection| {
-        crate::external_files::consumed_import_result::<ImportResultDto>(
+        crate::external_files::consumed_import_result::<ImportedDeckDto>(
             connection,
             &input.staged_file_id,
         )
@@ -243,28 +307,81 @@ pub fn import_deck(
             paths.inner(),
             &input.staged_file_id,
             crate::external_files::ExternalImportPurpose::StudyContent,
-            &[crate::external_files::ExternalFileKind::Studydeck],
+            &[
+                crate::external_files::ExternalFileKind::Studydeck,
+                crate::external_files::ExternalFileKind::AnkiApkg,
+            ],
         )
     })?;
     let fingerprint = hash_file(&staged.path)?;
-    let package = read::read_package(&staged.path)?;
-    let result = database.with_connection(|connection| {
-        import::import_package(
-            connection,
-            &paths,
+    let is_anki = staged
+        .path
+        .extension()
+        .is_some_and(|extension| extension == "apkg");
+    let (package, anki_report) = if is_anki {
+        let progress_operation_id = input.operation_id.clone();
+        let mut publish_progress = |progress: anki::Progress| {
+            emit_operation_progress(
+                app,
+                &progress_operation_id,
+                progress.phase.as_str(),
+                progress.processed,
+                progress.total,
+                progress.succeeded,
+                progress.failed,
+            );
+        };
+        let (package, report) = anki::read_package_with_progress(
+            &staged.path,
+            &staged.display_name,
+            &mut publish_progress,
+        )?;
+        (package, Some(report))
+    } else {
+        (read::read_package(&staged.path)?, None)
+    };
+    if let Some(report) = anki_report.as_ref() {
+        emit_operation_progress(
+            app,
             &input.operation_id,
-            &fingerprint,
-            package,
-        )
+            "saving_deck",
+            Some(report.source_card_count),
+            Some(report.source_card_count),
+            report.imported_card_count,
+            report.skipped_card_count,
+        );
+    }
+    // An Anki transfer is keyed to its staged identity even if a transport or
+    // receipt-storage failure causes the frontend to allocate a new attempt ID.
+    let operation_id = if is_anki {
+        &input.staged_file_id
+    } else {
+        &input.operation_id
+    };
+    let consumed_at = unix_time_millis()?;
+    let result = database.with_connection(|connection| {
+        import::import_package(connection, &paths, operation_id, &fingerprint, package)
     })?;
-    database.with_connection(|connection| {
+    let mut result = ImportedDeckDto {
+        result,
+        anki_report,
+        post_commit_warning: None,
+    };
+    let receipt = database.with_connection(|connection| {
         crate::external_files::mark_import_consumed(
             connection,
             &input.staged_file_id,
             &result,
-            unix_time_millis()?,
+            consumed_at,
         )
-    })?;
+    });
+    if receipt.is_err() {
+        // The import transaction already committed. Do not invite a duplicate
+        // write by turning receipt reconciliation into a failed import.
+        result.post_commit_warning = Some(
+            "The deck was imported, but its transfer receipt could not be saved. Do not import it again; reopen the deck library to inspect the imported content.".to_string(),
+        );
+    }
     Ok(result)
 }
 

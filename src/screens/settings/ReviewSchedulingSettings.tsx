@@ -65,6 +65,26 @@ export function ReviewSchedulingSettings({
           </Button>
         </div>
       </section>
+
+      <section className={styles.settingsCard}>
+        <h2>Card reveal</h2>
+        <label className={styles.switchRow}>
+          <span>
+            <strong>Display both question and answer when card is flipped</strong>
+            <small>
+              Basic cards show only the answer by default. Fill in the blank cards always keep
+              their question context visible after reveal so multiple blanks remain understandable.
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            checked={draft.displayQuestionOnAnswer ?? false}
+            onChange={(event) =>
+              update({ displayQuestionOnAnswer: event.currentTarget.checked })
+            }
+          />
+        </label>
+      </section>
     </div>
   );
 }

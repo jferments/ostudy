@@ -7,11 +7,14 @@ import {
 } from "../../controllers/deckTransferController";
 import { getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
+import type { OperationProgress } from "../../ipc/operationProgress";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { Icon } from "../../ui/icons/Icon";
 import { Dialog } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { Progress } from "../../ui/primitives/Progress";
+import { AnkiImportReportView } from "./AnkiImportReport";
 import styles from "./DeckTransferDialog.module.css";
 
 export type DeckTransferDialogRequest =
@@ -39,6 +42,8 @@ export function DeckTransferDialog({
   const capabilities = usePlatformCapabilities();
   const [busy, setBusy] = useState<"import" | "export" | "share" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [importedOutcome, setImportedOutcome] = useState<DeckImportOutcome | null>(null);
+  const [importProgress, setImportProgress] = useState<OperationProgress | null>(null);
   const exportDecks = request.kind === "export" ? request.decks : [];
   const canShare =
     exportDecks.length === 1 &&
@@ -46,28 +51,46 @@ export function DeckTransferDialog({
 
   useEffect(() => () => controller.invalidate(), [controller]);
 
+  async function openImportedDeck(outcome: DeckImportOutcome): Promise<void> {
+    onClose();
+    try {
+      await onImportedDeck?.(outcome);
+    } catch (error: unknown) {
+      // Navigation is after the durable import boundary, not a failed import.
+      showToast("info", `The deck was imported but could not be opened: ${getErrorMessage(error)}`);
+    }
+  }
+
   async function importDeck(): Promise<void> {
-    if (busy) return;
+    if (busy || importedOutcome) return;
     setBusy("import");
     setErrorMessage(null);
+    setImportProgress(null);
     try {
-      const outcome = await controller.importFromFile();
-      if (!outcome) return;
+      const outcome = await controller.importFromFile(setImportProgress);
+      if (!outcome) {
+        setImportProgress(null);
+        return;
+      }
       let refreshError: string | null = null;
       try {
         await refreshDecks();
       } catch (error: unknown) {
         refreshError = getErrorMessage(error);
       }
-      showToast(
-        refreshError ? "info" : "success",
-        refreshError
-          ? `${outcome.message} The library could not refresh immediately: ${refreshError}`
-          : outcome.message,
-      );
-      onClose();
-      await onImportedDeck?.(outcome);
+      const message = refreshError
+        ? `${outcome.message} The library could not refresh immediately: ${refreshError}`
+        : outcome.message;
+      showToast(refreshError ? "info" : "success", message);
+      if (outcome.ankiReport) {
+        // This is a post-commit report, never an import preview. Keep it visible
+        // until the user closes it or chooses to open the new deck.
+        setImportedOutcome({ ...outcome, message });
+      } else {
+        await openImportedDeck(outcome);
+      }
     } catch (error: unknown) {
+      setImportProgress(null);
       setErrorMessage(getErrorMessage(error));
     } finally {
       setBusy(null);
@@ -131,16 +154,24 @@ export function DeckTransferDialog({
   }
 
   const importing = request.kind === "import";
-  const title = importing
-    ? "Import deck from file"
-    : exportDecks.length === 1
-      ? `Export “${exportDecks[0]?.name ?? "deck"}”`
-      : `Export ${exportDecks.length} selected decks`;
-  const description = importing
-    ? "Import an ostudy .studydeck backup or generated-card JSON file into this library."
-    : exportDecks.length === 1
-      ? "Save a portable .studydeck file, or share it through the operating system when available."
-      : "Each selected deck is saved as its own portable .studydeck file.";
+  const activeAnkiProgress =
+    importing && busy === "import" && importProgress?.operationKind === "anki_import"
+      ? importProgress
+      : null;
+  const title = importedOutcome
+    ? "Anki import complete"
+    : importing
+      ? "Import deck from file"
+      : exportDecks.length === 1
+        ? `Export “${exportDecks[0]?.name ?? "deck"}”`
+        : `Export ${exportDecks.length} selected decks`;
+  const description = importedOutcome
+    ? "The deck has been saved. Review conversion details before studying."
+    : importing
+      ? "Import an ostudy .studydeck file, a compatible Anki .apkg deck, or generated-card JSON."
+      : exportDecks.length === 1
+        ? "Save a portable .studydeck file, or share it through the operating system when available."
+        : "Each selected deck is saved as its own portable .studydeck file.";
 
   return (
     <Dialog
@@ -154,7 +185,14 @@ export function DeckTransferDialog({
       <div className={styles.content}>
         {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
 
-        {importing ? (
+        {importedOutcome?.ankiReport ? (
+          <AnkiImportReportView
+            report={importedOutcome.ankiReport}
+            message={importedOutcome.message}
+          />
+        ) : activeAnkiProgress ? (
+          <AnkiProgressView progress={activeAnkiProgress} />
+        ) : importing ? (
           <div className={styles.callout}>
             <span className={styles.icon} aria-hidden="true">
               <Icon name="folder-open" size={28} />
@@ -162,8 +200,9 @@ export function DeckTransferDialog({
             <div>
               <strong>Choose a flashcard file</strong>
               <p>
-                Supported imports include complete ostudy deck backups and validated generated-card
-                JSON files.
+                Import an ostudy deck, compatible Anki .apkg deck, or validated generated-card
+                JSON file. For newer Anki exports, enable “Support older Anki versions” and
+                “Include media” when exporting from Anki.
               </p>
             </div>
           </div>
@@ -185,15 +224,20 @@ export function DeckTransferDialog({
 
         <div className={styles.actions}>
           <Button variant="ghost" disabled={busy !== null} onClick={onClose}>
-            Cancel
+            {importedOutcome ? "Close" : "Cancel"}
           </Button>
-          {importing ? (
+          {importedOutcome ? (
+            <Button variant="primary" onClick={() => void openImportedDeck(importedOutcome)}>
+              {onImportedDeck ? "Open imported deck" : "Done"}
+            </Button>
+          ) : importing ? (
             <Button
               variant="primary"
               loading={busy === "import"}
               onClick={() => void importDeck()}
             >
-              <Icon name="folder-open" size={18} /> Choose file
+              <Icon name="folder-open" size={18} />
+              {busy === "import" ? "Importing…" : "Choose file"}
             </Button>
           ) : (
             <>
@@ -222,4 +266,51 @@ export function DeckTransferDialog({
       </div>
     </Dialog>
   );
+}
+
+function AnkiProgressView({ progress }: { progress: OperationProgress }) {
+  const total = progress.total;
+  const processed = progress.processed ?? 0;
+  const determinate = total !== null && total > 0;
+  const valueText = determinate
+    ? `${processed} of ${total} cards processed; ${progress.succeeded} imported; ${progress.failed} skipped`
+    : phaseLabel(progress.phase);
+
+  return (
+    <section className={styles.progressPanel} aria-label="Anki import progress">
+      <div className={styles.progressHeader}>
+        <strong>{phaseLabel(progress.phase)}</strong>
+        <span>{determinate ? `${processed} / ${total}` : "Preparing…"}</span>
+      </div>
+      <Progress
+        value={determinate ? processed : 0}
+        max={determinate ? total : 1}
+        label="Anki import progress"
+        valueText={valueText}
+        size="large"
+      />
+      {determinate ? (
+        <p className={styles.progressCounts}>
+          {progress.succeeded} imported · {progress.failed} skipped
+        </p>
+      ) : (
+        <p className={styles.progressCounts}>Reading the package and counting cards…</p>
+      )}
+    </section>
+  );
+}
+
+function phaseLabel(phase: string): string {
+  switch (phase) {
+    case "reading_package":
+      return "Reading Anki package…";
+    case "converting_cards":
+      return "Converting cards…";
+    case "importing_media":
+      return "Importing media…";
+    case "saving_deck":
+      return "Saving deck…";
+    default:
+      return "Importing Anki deck…";
+  }
 }

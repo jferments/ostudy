@@ -68,6 +68,7 @@ pub enum ExternalFileKind {
     Ods,
     Csv,
     Studydeck,
+    AnkiApkg,
     GeneratedJson,
     Ostudybackup,
 }
@@ -92,6 +93,7 @@ impl ExternalFileKind {
             Self::Ods => "ods",
             Self::Csv => "csv",
             Self::Studydeck => "studydeck",
+            Self::AnkiApkg => "anki_apkg",
             Self::GeneratedJson => "generated_json",
             Self::Ostudybackup => "ostudybackup",
         }
@@ -116,6 +118,7 @@ impl ExternalFileKind {
             Self::Ods => "ods",
             Self::Csv => "csv",
             Self::Studydeck => "studydeck",
+            Self::AnkiApkg => "apkg",
             Self::GeneratedJson => "json",
             Self::Ostudybackup => "ostudybackup",
         }
@@ -142,6 +145,7 @@ impl ExternalFileKind {
             Self::Ods => "application/vnd.oasis.opendocument.spreadsheet",
             Self::Csv => "text/csv",
             Self::Studydeck => "application/vnd.ostudy.studydeck",
+            Self::AnkiApkg => "application/octet-stream",
             Self::GeneratedJson => "application/json",
             Self::Ostudybackup => "application/vnd.ostudy.backup",
         }
@@ -166,6 +170,7 @@ impl ExternalFileKind {
             "ods" => Ok(Self::Ods),
             "csv" => Ok(Self::Csv),
             "studydeck" => Ok(Self::Studydeck),
+            "anki_apkg" => Ok(Self::AnkiApkg),
             "generated_json" => Ok(Self::GeneratedJson),
             "ostudybackup" => Ok(Self::Ostudybackup),
             _ => Err(CommandError::new(
@@ -307,8 +312,7 @@ pub fn release_prepared_export(
         if relative.is_some() {
             connection
                 .execute(
-                    "UPDATE prepared_exports
-                     SET state = 'released', released_at = ?1, updated_at = ?1
+                    "UPDATE prepared_exports SET state = 'released', released_at = ?1, updated_at = ?1
                      WHERE id = ?2",
                     params![unix_time_millis()?, input.prepared_export_id],
                 )

@@ -20,6 +20,7 @@ use crate::{
     paths::AppPaths,
     practice::{PracticeCardWindowDto, PracticeSessionDto},
     projections::{
+        learning_signals as signal_projection,
         practice::{
             insert_session_snapshot, load_practice_window, prepare_new_session_cards,
             PreparedPracticeCard, PRACTICE_WINDOW_MAX,
@@ -40,7 +41,8 @@ use crate::{
 
 const MAX_SESSION_DECKS: usize = 100;
 const MAX_SESSION_TAGS: usize = 32;
-const MAX_SESSION_CARDS: usize = 10_000;
+const MAX_CUSTOM_SESSION_CARDS: usize = 10_000;
+const SESSION_PREPARE_BATCH: usize = 256;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -404,26 +406,19 @@ fn create_practice_session(
     request_fingerprint: String,
     selected_deck_ids: Vec<String>,
     selected_tag_ids: Vec<String>,
-    planned: Vec<PlannedCard>,
+    mut planned: Vec<PlannedCard>,
     shuffle: bool,
     mode: &str,
     time: &StudyTimeContext,
 ) -> Result<PracticeSessionDto, CommandError> {
-    if planned.len() > MAX_SESSION_CARDS {
-        return Err(CommandError::new(
-            "too_many_practice_cards",
-            format!("A practice session can contain at most {MAX_SESSION_CARDS} cards."),
-        ));
-    }
     let previous_first = if shuffle {
         previous_first_card_for_request(connection, &request_fingerprint)?
     } else {
         None
     };
     let session_id = generate_id(connection)?;
-    let mut prepared = prepare_new_session_cards(connection, &planned, time)?;
     if shuffle {
-        prepared.sort_by_key(|card| {
+        planned.sort_by_key(|card| {
             let due_date = time
                 .local_date_for_timestamp(card.due_at)
                 .unwrap_or(time.local_date);
@@ -434,16 +429,14 @@ fn create_practice_session(
                 shuffle_key(&session_id, &card.card_id),
             )
         });
-        avoid_repeating_previous_first(&mut prepared, previous_first.as_deref(), time);
+        avoid_repeating_previous_first(&mut planned, previous_first.as_deref(), time);
     }
 
-    // Build the entire fallible first response window before durable success.
-    let first_window = first_window_from_prepared(connection, paths, &prepared)?;
     let selected_deck_ids_json =
         serde_json::to_string(&selected_deck_ids).map_err(CommandError::serialization)?;
     let selected_tag_ids_json =
         serde_json::to_string(&selected_tag_ids).map_err(CommandError::serialization)?;
-    let card_count = i64::try_from(prepared.len()).unwrap_or(i64::MAX);
+    let card_count = i64::try_from(planned.len()).unwrap_or(i64::MAX);
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
@@ -467,22 +460,41 @@ fn create_practice_session(
             ],
         )
         .map_err(CommandError::database)?;
-    for (position, card) in prepared.iter().enumerate() {
-        transaction
-            .execute(
-                "INSERT INTO practice_session_cards (
-                     session_id, card_id, position, presentation_variant
-                 ) VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    session_id,
-                    card.card_id,
-                    i64::try_from(position).unwrap_or(i64::MAX),
-                    card.presentation_variant,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        insert_session_snapshot(&transaction, &session_id, card, time.now_utc_millis)?;
+
+    // Keep immutable per-card snapshots for deterministic resume/analytics, but
+    // render them in bounded batches so a large deck never becomes one giant
+    // rich-content allocation. Only the first UI window survives each batch.
+    let window_size = usize::try_from(PRACTICE_WINDOW_MAX).unwrap_or(50);
+    let mut first_prepared = Vec::with_capacity(window_size.min(planned.len()));
+    for (batch_index, batch) in planned.chunks(SESSION_PREPARE_BATCH).enumerate() {
+        let prepared = prepare_new_session_cards(&transaction, batch, time)?;
+        if first_prepared.len() < window_size {
+            let remaining = window_size - first_prepared.len();
+            first_prepared.extend(prepared.iter().take(remaining).cloned());
+        }
+        let batch_start = batch_index.saturating_mul(SESSION_PREPARE_BATCH);
+        for (offset, card) in prepared.iter().enumerate() {
+            let position = batch_start.saturating_add(offset);
+            transaction
+                .execute(
+                    "INSERT INTO practice_session_cards (
+                         session_id, card_id, position, presentation_variant
+                     ) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        session_id,
+                        card.card_id,
+                        i64::try_from(position).unwrap_or(i64::MAX),
+                        card.presentation_variant,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            insert_session_snapshot(&transaction, &session_id, card, time.now_utc_millis)?;
+        }
     }
+
+    // Build the entire fallible first response window before durable success.
+    let first_window =
+        first_window_from_prepared(&transaction, paths, &first_prepared, planned.len())?;
     transaction.commit().map_err(CommandError::database)?;
 
     Ok(PracticeSessionDto {
@@ -516,14 +528,14 @@ fn previous_first_card_for_request(
 }
 
 fn avoid_repeating_previous_first(
-    prepared: &mut [PreparedPracticeCard],
+    planned: &mut [PlannedCard],
     previous_first: Option<&str>,
     time: &StudyTimeContext,
 ) {
     let Some(previous_first) = previous_first else {
         return;
     };
-    let Some(first) = prepared.first() else {
+    let Some(first) = planned.first() else {
         return;
     };
     if first.card_id != previous_first {
@@ -534,7 +546,7 @@ fn avoid_repeating_previous_first(
         .unwrap_or(time.local_date);
     let weak = first.needs_more_practice;
     let is_new = first.state == 0;
-    if let Some(index) = prepared
+    if let Some(index) = planned
         .iter()
         .enumerate()
         .skip(1)
@@ -548,7 +560,7 @@ fn avoid_repeating_previous_first(
                 .then_some(index)
         })
     {
-        prepared.swap(0, index);
+        planned.swap(0, index);
     }
 }
 
@@ -557,7 +569,7 @@ fn refresh_practice_after_card_edit_in_connection(
     paths: &AppPaths,
     input: RefreshPracticeAfterCardEditInput,
 ) -> Result<PracticeEditRefreshDto, CommandError> {
-    let session_open: Option<i64> = connection
+    let existing_card_count: i64 = connection
         .query_row(
             "SELECT card_count FROM practice_sessions
              WHERE id = ?1 AND completed_at IS NULL",
@@ -565,13 +577,13 @@ fn refresh_practice_after_card_edit_in_connection(
             |row| row.get(0),
         )
         .optional()
-        .map_err(CommandError::database)?;
-    if session_open.is_none() {
-        return Err(CommandError::new(
-            "practice_session_not_found",
-            "That active practice session no longer exists.",
-        ));
-    }
+        .map_err(CommandError::database)?
+        .ok_or_else(|| {
+            CommandError::new(
+                "practice_session_not_found",
+                "That active practice session no longer exists.",
+            )
+        })?;
 
     let existing_rows = {
         let mut statement = connection
@@ -604,10 +616,11 @@ fn refresh_practice_after_card_edit_in_connection(
     let active_planned = {
         let mut statement = connection
             .prepare(
-                "SELECT c.deck_id, c.id
+                "SELECT c.deck_id, c.id, s.due_at, s.state
                  FROM cards c
                  JOIN notes n ON n.id = c.note_id
                  JOIN decks d ON d.id = c.deck_id
+                 JOIN card_schedules s ON s.card_id = c.id
                  WHERE c.note_id = ?1
                    AND c.deleted_at IS NULL
                    AND n.deleted_at IS NULL
@@ -620,6 +633,9 @@ fn refresh_practice_after_card_edit_in_connection(
                 Ok(PlannedCard {
                     deck_id: row.get(0)?,
                     card_id: row.get(1)?,
+                    due_at: row.get(2)?,
+                    state: row.get(3)?,
+                    needs_more_practice: false,
                 })
             })
             .map_err(CommandError::database)?
@@ -678,10 +694,13 @@ fn refresh_practice_after_card_edit_in_connection(
             .map_err(CommandError::database)?;
         rows
     };
+    let position_offset = existing_card_count
+        .saturating_add(i64::try_from(remaining.len()).unwrap_or(i64::MAX))
+        .saturating_add(1);
     transaction
         .execute(
             "UPDATE practice_session_cards SET position = position + ?1 WHERE session_id = ?2",
-            params![MAX_SESSION_CARDS as i64 + 1, input.session_id],
+            params![position_offset, input.session_id],
         )
         .map_err(CommandError::database)?;
     for (position, card_id) in remaining.iter().enumerate() {
@@ -754,6 +773,7 @@ fn first_window_from_prepared(
     connection: &Connection,
     paths: &AppPaths,
     prepared: &[PreparedPracticeCard],
+    total_card_count: usize,
 ) -> Result<PracticeCardWindowDto, CommandError> {
     let window_size = usize::try_from(PRACTICE_WINDOW_MAX).unwrap_or(50);
     let first = prepared.iter().take(window_size).collect::<Vec<_>>();
@@ -769,7 +789,7 @@ fn first_window_from_prepared(
     Ok(PracticeCardWindowDto {
         start_position: 0,
         cards,
-        has_more: prepared.len() > window_size,
+        has_more: total_card_count > window_size,
     })
 }
 
@@ -787,11 +807,17 @@ fn load_exact_planned_cards(
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
-            "SELECT c.deck_id, c.id
+            "WITH {signals}
+             SELECT c.deck_id, c.id, s.due_at, s.state, {signal_value}
              FROM cards c
              JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = c.deck_id
+             JOIN card_schedules s ON s.card_id = c.id
+             {signal_join}
              WHERE c.id IN ({placeholders}) AND {studyable}",
+            signals = signal_projection::LEARNING_SIGNAL_CTES,
+            signal_value = signal_projection::value_sql(),
+            signal_join = signal_projection::join_sql(),
             studyable = studyability::studyable_card_sql("?1"),
         );
         let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
@@ -800,6 +826,9 @@ fn load_exact_planned_cards(
                 Ok(PlannedCard {
                     deck_id: row.get(0)?,
                     card_id: row.get(1)?,
+                    due_at: row.get(2)?,
+                    state: row.get(3)?,
+                    needs_more_practice: row.get::<_, i64>(4)? != 0,
                 })
             })
             .map_err(CommandError::database)?
@@ -922,10 +951,12 @@ fn validate_card_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {
             "Select at least one card for the practice session.",
         ));
     }
-    if unique.len() > MAX_SESSION_CARDS {
+    if unique.len() > MAX_CUSTOM_SESSION_CARDS {
         return Err(CommandError::new(
             "too_many_practice_cards",
-            format!("A temporary practice session can contain at most {MAX_SESSION_CARDS} cards."),
+            format!(
+                "A temporary custom-card request can contain at most {MAX_CUSTOM_SESSION_CARDS} cards."
+            ),
         ));
     }
     Ok(unique)
