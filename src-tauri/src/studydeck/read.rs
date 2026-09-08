@@ -288,11 +288,9 @@ pub(super) fn validate_package_data(
                 "The deck contains invalid or excessive managed-asset data.",
             ));
         }
-        let detected = crate::assets::detect_managed_asset_bytes(
-            &asset.data,
-            &asset.original_filename,
-        )
-        .map_err(|error| CommandError::invalid_package(error.message))?;
+        let detected =
+            crate::assets::detect_managed_asset_bytes(&asset.data, &asset.original_filename)
+                .map_err(|error| CommandError::invalid_package(error.message))?;
         if detected.mime_type != asset.mime_type {
             return Err(CommandError::invalid_package(
                 "A managed asset does not match its declared file type.",
