@@ -98,6 +98,7 @@ pub(super) struct Progress {
     pub(super) failed: usize,
 }
 
+#[cfg(test)]
 pub(super) fn read_package(
     path: &Path,
     display_name: &str,
@@ -361,7 +362,7 @@ fn publish_conversion_progress(
     total: usize,
     report: &ImportReport,
 ) {
-    if processed == total || processed % PROGRESS_INTERVAL_CARDS == 0 {
+    if processed == total || processed.is_multiple_of(PROGRESS_INTERVAL_CARDS) {
         progress(Progress {
             phase: ProgressPhase::ConvertingCards,
             processed: Some(processed),
