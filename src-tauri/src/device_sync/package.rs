@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    assets::detect_image_bytes,
+    assets::detect_managed_asset_bytes,
     database::{Database, LATEST_SCHEMA_VERSION},
     document_backup,
     error::CommandError,
@@ -393,29 +393,30 @@ fn extract_assets(
             || expected_sha.len() != 64
         {
             return Err(invalid_package(
-                "A synchronized managed image has an invalid size record.",
+                "A synchronized managed asset has an invalid size record.",
             ));
         }
         let actual_sha = format!("{:x}", Sha256::digest(&data));
         if actual_sha != expected_sha {
             return Err(invalid_package(
-                "A synchronized managed image failed its content hash check.",
+                "A synchronized managed asset failed its content hash check.",
             ));
         }
-        let (detected_mime, _) = detect_image_bytes(&data)?;
-        if detected_mime != mime_type {
+        let detected = detect_managed_asset_bytes(&data, &relative_path)
+            .map_err(|error| invalid_package(error.message))?;
+        if detected.mime_type != mime_type {
             return Err(invalid_package(
-                "A synchronized managed image has an invalid file type.",
+                "A synchronized managed asset has an invalid file type.",
             ));
         }
         aggregate_bytes =
             aggregate_bytes.saturating_add(u64::try_from(data.len()).unwrap_or(u64::MAX));
         if aggregate_bytes > MAX_PACKAGE_BYTES {
             return Err(invalid_package(
-                "The synchronized image payload exceeds the supported size limit.",
+                "The synchronized managed-asset payload exceeds the supported size limit.",
             ));
         }
-        let staged_path = assets_root.join(format!("{asset_id}.image"));
+        let staged_path = assets_root.join(format!("{asset_id}.asset"));
         write_new_file(&staged_path, &data)?;
         assets.push(ExtractedAsset {
             asset_id,
@@ -490,7 +491,7 @@ pub(crate) fn install_assets(
             &asset.staged_path,
             &asset.sha256,
             "device_sync_asset_identity_conflict",
-            "A local managed image has the same identity but different bytes.",
+            "A local managed asset has the same identity but different bytes.",
         )?;
     }
     Ok(())
@@ -581,7 +582,7 @@ fn export_assets(
         let data = fs::read(paths.resolve_relative(&relative_path)).map_err(|_| {
             CommandError::new(
                 "device_sync_asset_missing",
-                "A managed image is missing. Repair it before synchronizing devices.",
+                "A managed asset is missing. Repair it before synchronizing devices.",
             )
         })?;
         if data.is_empty()
@@ -590,14 +591,14 @@ fn export_assets(
         {
             return Err(CommandError::new(
                 "device_sync_asset_invalid",
-                "A managed image does not match its database size record.",
+                "A managed asset does not match its database size record.",
             ));
         }
-        let (detected_mime, _) = detect_image_bytes(&data)?;
-        if detected_mime != mime_type {
+        let detected = detect_managed_asset_bytes(&data, &relative_path)?;
+        if detected.mime_type != mime_type {
             return Err(CommandError::new(
                 "device_sync_asset_invalid",
-                "A managed image does not match its database file type.",
+                "A managed asset does not match its database file type.",
             ));
         }
         let sha256 = format!("{:x}", Sha256::digest(&data));
@@ -621,7 +622,7 @@ fn export_assets(
         if aggregate > MAX_PACKAGE_BYTES {
             return Err(CommandError::new(
                 "device_sync_package_too_large",
-                "The managed image library is too large for device synchronization.",
+                "The managed asset library is too large for device synchronization.",
             ));
         }
     }
@@ -652,7 +653,7 @@ fn validate_asset_path(relative: &str, asset_id: &str) -> Result<(), CommandErro
             .is_some_and(|name| name.starts_with(&format!("{asset_id}.")))
     {
         return Err(invalid_package(
-            "A synchronized managed image path is invalid.",
+            "A synchronized managed asset path is invalid.",
         ));
     }
     Ok(())
