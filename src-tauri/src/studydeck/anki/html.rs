@@ -466,7 +466,7 @@ mod tests {
             .iter()
             .any(|warning| warning.contains("CSS")));
         let answer = document("<hr id=answer>Answer", &mut |_| unreachable!()).unwrap();
-        assert_eq!(answer.value["content"].len(), 1);
+        assert_eq!(answer.value["content"].as_array().unwrap().len(), 1);
         assert_eq!(answer.value["content"][0]["type"], "paragraph");
     }
 

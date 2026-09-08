@@ -418,7 +418,17 @@ fn create_practice_session(
     };
     let session_id = generate_id(connection)?;
     if shuffle {
-        planned.sort_by_key(|card| planned_sort_key(card, &session_id, time));
+        planned.sort_by_key(|card| {
+            let due_date = time
+                .local_date_for_timestamp(card.due_at)
+                .unwrap_or(time.local_date);
+            (
+                due_date,
+                !card.needs_more_practice,
+                card.state == 0,
+                shuffle_key(&session_id, &card.card_id),
+            )
+        });
         avoid_repeating_previous_first(&mut planned, previous_first.as_deref(), time);
     }
 
@@ -495,22 +505,6 @@ fn create_practice_session(
         mode: mode.to_string(),
         started_at: time.now_utc_millis,
     })
-}
-
-fn planned_sort_key(
-    card: &PlannedCard,
-    session_id: &str,
-    time: &StudyTimeContext,
-) -> (time::Date, bool, bool, u64) {
-    let due_date = time
-        .local_date_for_timestamp(card.due_at)
-        .unwrap_or(time.local_date);
-    (
-        due_date,
-        !card.needs_more_practice,
-        card.state == 0,
-        shuffle_key(session_id, &card.card_id),
-    )
 }
 
 fn previous_first_card_for_request(
@@ -602,13 +596,14 @@ fn refresh_practice_after_card_edit_in_connection(
                  ORDER BY psc.position",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map(params![input.session_id, input.note_id], |row| {
                 row.get::<_, String>(0)
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     if existing_rows.is_empty() {
         return Err(CommandError::new(
@@ -633,7 +628,7 @@ fn refresh_practice_after_card_edit_in_connection(
                    AND d.archived_at IS NULL",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([input.note_id.as_str()], |row| {
                 Ok(PlannedCard {
                     deck_id: row.get(0)?,
@@ -645,7 +640,8 @@ fn refresh_practice_after_card_edit_in_connection(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let prepared = prepare_new_session_cards(connection, &active_planned, &time)?;
     let prepared_by_id = prepared
@@ -691,11 +687,12 @@ fn refresh_practice_after_card_edit_in_connection(
                  WHERE session_id = ?1 ORDER BY position",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([input.session_id.as_str()], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let position_offset = existing_card_count
         .saturating_add(i64::try_from(remaining.len()).unwrap_or(i64::MAX))
