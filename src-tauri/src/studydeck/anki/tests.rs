@@ -318,7 +318,10 @@ fn converts_packaged_audio_video_and_math_to_native_nodes() {
         .iter()
         .any(|note| contains_math_latex(&note.back_doc, r"\frac{a}{b}")));
     for asset in &package.assets {
-        assert!(package.note_assets.iter().any(|(_, linked, _)| linked == &asset.source_id));
+        assert!(package
+            .note_assets
+            .iter()
+            .any(|(_, linked, _)| linked == &asset.source_id));
     }
     read::validate_package_data(&package, true).unwrap();
 }
