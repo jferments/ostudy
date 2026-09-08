@@ -153,6 +153,14 @@ pub(crate) fn sanitize_snapshot(
     selection: SyncSelection,
 ) -> Result<(), CommandError> {
     let selection = selection.validate()?;
+    // A sync package is not a complete-library backup. Remove private learning
+    // state before deleting selected-domain parents, including serialized source
+    // projections which can otherwise carry unselected material as plain text.
+    connection
+        .execute_batch("PRAGMA secure_delete = ON;")
+        .map_err(CommandError::database)?;
+    crate::tutor::sanitize_for_device_transfer(connection)?;
+    crate::knowledge::sanitize_for_device_transfer(connection)?;
     connection
         .execute_batch(
             "PRAGMA foreign_keys = OFF;
@@ -288,8 +296,18 @@ pub(crate) fn sanitize_snapshot(
             "The selected synchronization categories would produce an incomplete relational graph.",
         ));
     }
+    // The package contains the SQLite file, not just live rows. Deleted private
+    // text must not survive in free pages or an uncheckpointed WAL snapshot.
+    // This connection belongs to the transfer copy, never the live library.
+    connection
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE; VACUUM;")
+        .map_err(CommandError::database)?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "privacy_tests.rs"]
+mod privacy_tests;
 
 #[cfg(test)]
 mod tests {

@@ -27,3 +27,19 @@ pub(crate) fn reconcile_startup(
 ) -> Result<(), crate::error::CommandError> {
     preparation_store::reconcile_startup(database)
 }
+
+/// Derived semantic projections are device-local until their own merge contract
+/// exists. Canonical documents, LLM-generated guides and cards still transfer
+/// through their selected domains. Full backups retain the shared graph.
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &rusqlite::Connection,
+) -> Result<(), crate::error::CommandError> {
+    connection
+        .execute_batch(
+            "DELETE FROM knowledge_artifact_links;
+         DELETE FROM knowledge_units;
+         DELETE FROM knowledge_sources;
+         DELETE FROM knowledge_preparations;",
+        )
+        .map_err(crate::error::CommandError::database)
+}

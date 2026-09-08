@@ -19,3 +19,18 @@ pub(crate) fn reconcile_startup(
 ) -> Result<(), crate::error::CommandError> {
     turns::reconcile_startup(database)
 }
+
+/// Chat sharing is not one of the device-sync consent categories. Complete
+/// library backups retain chats; synchronization must never include them.
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &rusqlite::Connection,
+) -> Result<(), crate::error::CommandError> {
+    connection
+        .execute_batch(
+            "DELETE FROM tutor_turn_sources;
+         DELETE FROM knowledge_sources WHERE kind = 'conversation';
+         DELETE FROM tutor_turns;
+         DELETE FROM tutor_conversations;",
+        )
+        .map_err(crate::error::CommandError::database)
+}
