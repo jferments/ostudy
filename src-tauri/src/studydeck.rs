@@ -1,7 +1,7 @@
 //! Canonical `.studydeck` package boundary.
 //!
 //! Version 2 writes core content, tags, generated-card metadata, and managed
-//! images from one SQLite read snapshot. Version 1 packages remain readable
+//! assets from one SQLite read snapshot. Version 1 packages remain readable
 //! through the tolerant reader in this module, but no current export is built by
 //! layering optional tables onto an already-finished file. Imports validate the
 //! complete graph before staging files or mutating the library, then commit one
@@ -609,24 +609,30 @@ fn rewrite_asset_ids(
             }
         }
         Value::Object(object) => {
-            if object.get("type").and_then(Value::as_str) == Some("image") {
+            let is_managed_asset = matches!(
+                object.get("type").and_then(Value::as_str),
+                Some("image" | "audio" | "video")
+            );
+            if is_managed_asset {
                 let attrs = object
                     .get_mut("attrs")
                     .and_then(Value::as_object_mut)
                     .ok_or_else(|| {
-                        CommandError::invalid_package("An imported image node has no attributes.")
+                        CommandError::invalid_package(
+                            "An imported managed-asset node has no attributes.",
+                        )
                     })?;
                 let source_id = attrs
                     .get("assetId")
                     .and_then(Value::as_str)
                     .ok_or_else(|| {
                         CommandError::invalid_package(
-                            "An imported image is missing its asset identifier.",
+                            "An imported managed asset is missing its asset identifier.",
                         )
                     })?;
                 let mapped = asset_map.get(source_id).ok_or_else(|| {
                     CommandError::invalid_package(
-                        "An imported card refers to an image not contained in the package.",
+                        "An imported card refers to an asset not contained in the package.",
                     )
                 })?;
                 attrs.insert("assetId".to_string(), Value::String(mapped.clone()));

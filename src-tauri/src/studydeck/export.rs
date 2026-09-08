@@ -435,35 +435,35 @@ fn load_snapshot(
             let data = fs::read(&path).map_err(|_| {
                 CommandError::new(
                     "missing_asset",
-                    format!("The image '{}' is missing from the local library.", row.1),
+                    format!("The asset '{}' is missing from the local library.", row.1),
                 )
             })?;
             if data.is_empty() || data.len() > MAX_PACKAGE_SINGLE_ASSET_BYTES {
                 return Err(CommandError::new(
                     "asset_too_large",
-                    format!("The image '{}' is empty or exceeds 25 MB.", row.1),
+                    format!("The asset '{}' is empty or exceeds 25 MB.", row.1),
                 ));
             }
             total_bytes = total_bytes.checked_add(data.len()).ok_or_else(|| {
-                CommandError::new("deck_too_large", "The deck contains too much image data.")
+                CommandError::new("deck_too_large", "The deck contains too much asset data.")
             })?;
             if total_bytes > MAX_PACKAGE_ASSET_BYTES {
                 return Err(CommandError::new(
                     "deck_too_large",
-                    "This deck contains more than 512 MB of images.",
+                    "This deck contains more than 512 MB of managed assets.",
                 ));
             }
             if i64::try_from(data.len()).unwrap_or(i64::MAX) != row.3 {
                 return Err(CommandError::new(
                     "asset_size_mismatch",
-                    format!("The image '{}' does not match its size record.", row.1),
+                    format!("The asset '{}' does not match its size record.", row.1),
                 ));
             }
-            let (mime, _) = detect_image_bytes(&data)?;
-            if mime != row.2 {
+            let detected = crate::assets::detect_managed_asset_bytes(&data, &row.1)?;
+            if detected.mime_type != row.2 {
                 return Err(CommandError::new(
                     "asset_type_mismatch",
-                    format!("The image '{}' does not match its file type.", row.1),
+                    format!("The asset '{}' does not match its file type.", row.1),
                 ));
             }
             assets.push(PackageAsset {

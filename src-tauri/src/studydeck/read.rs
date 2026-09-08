@@ -108,7 +108,7 @@ pub(super) fn validate_package_data(
         .collect::<BTreeSet<_>>();
     if asset_ids.len() != data.assets.len() {
         return Err(CommandError::invalid_package(
-            "The deck contains duplicate image identifiers.",
+            "The deck contains duplicate managed-asset identifiers.",
         ));
     }
     let tag_ids = data
@@ -218,7 +218,7 @@ pub(super) fn validate_package_data(
     let actual_assets = data.note_assets.iter().cloned().collect::<BTreeSet<_>>();
     if expected_assets != actual_assets {
         return Err(CommandError::invalid_package(
-            "Image references do not match the packaged rich documents.",
+            "Managed-asset references do not match the packaged rich documents.",
         ));
     }
     for (note_id, asset_id, side) in &data.note_assets {
@@ -227,7 +227,7 @@ pub(super) fn validate_package_data(
             || !matches!(side.as_str(), "front" | "back")
         {
             return Err(CommandError::invalid_package(
-                "The deck contains an invalid image relationship.",
+                "The deck contains an invalid managed-asset relationship.",
             ));
         }
     }
@@ -275,23 +275,27 @@ pub(super) fn validate_package_data(
             .map_err(|error| CommandError::invalid_package(error.message))?;
         if asset.data.is_empty() || asset.data.len() > MAX_PACKAGE_SINGLE_ASSET_BYTES {
             return Err(CommandError::invalid_package(
-                "An image is empty or exceeds the 25 MB per-image limit.",
+                "A managed asset is empty or exceeds the 25 MB per-asset limit.",
             ));
         }
         total_asset_bytes = total_asset_bytes
             .checked_add(asset.data.len())
-            .ok_or_else(|| CommandError::invalid_package("The deck's images are too large."))?;
+            .ok_or_else(|| CommandError::invalid_package("The deck's assets are too large."))?;
         if total_asset_bytes > MAX_PACKAGE_ASSET_BYTES
             || i64::try_from(asset.data.len()).unwrap_or(i64::MAX) != asset.byte_size
         {
             return Err(CommandError::invalid_package(
-                "The deck contains invalid or excessive image data.",
+                "The deck contains invalid or excessive managed-asset data.",
             ));
         }
-        let (mime, _) = detect_image_bytes(&asset.data)?;
-        if mime != asset.mime_type {
+        let detected = crate::assets::detect_managed_asset_bytes(
+            &asset.data,
+            &asset.original_filename,
+        )
+        .map_err(|error| CommandError::invalid_package(error.message))?;
+        if detected.mime_type != asset.mime_type {
             return Err(CommandError::invalid_package(
-                "An image does not match its declared file type.",
+                "A managed asset does not match its declared file type.",
             ));
         }
     }
