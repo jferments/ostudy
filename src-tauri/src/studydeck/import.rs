@@ -166,19 +166,27 @@ fn stage_package_assets(
     let now = unix_time_millis()?;
     let mut mapping = HashMap::new();
     for asset in assets {
-        let (mime, extension) = detect_image_bytes(&asset.data)?;
-        if mime != asset.mime_type {
+        let detected = crate::assets::detect_managed_asset_bytes(
+            &asset.data,
+            &asset.original_filename,
+        )?;
+        if detected.mime_type != asset.mime_type {
             return Err(CommandError::invalid_package(
-                "An imported image has an invalid file type.",
+                "An imported managed asset has an invalid file type.",
             ));
         }
         let mut new_id = choose_id(connection, "assets", &asset.source_id)?;
         loop {
-            let relative_path = AppPaths::image_relative_path(&new_id, extension);
+            // Keep the existing managed-file directory for storage compatibility;
+            // the database MIME type, not this legacy directory name, is authoritative.
+            let relative_path = AppPaths::image_relative_path(&new_id, detected.extension);
             let final_path = paths.resolve_relative(&relative_path);
             if !final_path.exists() {
-                let staged_relative =
-                    AppPaths::staged_asset_relative_path(draft_id, &new_id, extension);
+                let staged_relative = AppPaths::staged_asset_relative_path(
+                    draft_id,
+                    &new_id,
+                    detected.extension,
+                );
                 let staged_path = paths.resolve_relative(&staged_relative);
                 let _ = fs::remove_file(&staged_path);
                 write_new_file(&staged_path, &asset.data)?;
@@ -216,7 +224,7 @@ fn stage_package_assets(
                             generate_id(connection)?,
                             new_id,
                             staged_relative,
-                            "studydeck import asset staged",
+                            "studydeck import managed asset staged",
                             now,
                         ],
                     )
@@ -367,10 +375,10 @@ fn apply_package_transaction(
 
     for (source_note_id, source_asset_id, side) in &package.note_assets {
         let note_id = note_map.get(source_note_id).ok_or_else(|| {
-            CommandError::invalid_package("An image relationship refers to a missing note.")
+            CommandError::invalid_package("A managed-asset relationship refers to a missing note.")
         })?;
         let asset_id = asset_map.get(source_asset_id).ok_or_else(|| {
-            CommandError::invalid_package("An image relationship refers to a missing image.")
+            CommandError::invalid_package("A managed-asset relationship refers to a missing asset.")
         })?;
         transaction
             .execute(
@@ -407,9 +415,6 @@ fn apply_package_transaction(
         insert_new_schedule(&transaction, &card_id, imported_at)?;
     }
 
-    // Build the complete response before the commit. Once SQLite commits, no
-    // hydration or serialization failure may reclassify the durable import as a
-    // failed user action and encourage a duplicate retry.
     let result_card_count = i64::try_from(package.cards.len()).unwrap_or(i64::MAX);
     let result_asset_count = i64::try_from(package.assets.len()).unwrap_or(i64::MAX);
     let result_deck = get_deck_from_connection(&transaction, &deck_id)?;
@@ -539,12 +544,11 @@ fn cleanup_operation_drafts(
                  WHERE purpose = 'import' AND owner_id = ?1 AND committed_at IS NULL",
             )
             .map_err(CommandError::database)?;
-        let rows = statement
+        statement
             .query_map([operation_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        rows
+            .map_err(CommandError::database)?
     };
     for draft_id in draft_ids {
         cleanup_draft(connection, paths, &draft_id)?;
@@ -564,7 +568,7 @@ fn cleanup_draft(
                  FROM assets WHERE draft_id = ?1",
             )
             .map_err(CommandError::database)?;
-        let rows = statement
+        statement
             .query_map([draft_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -574,8 +578,7 @@ fn cleanup_draft(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        rows
+            .map_err(CommandError::database)?
     };
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)

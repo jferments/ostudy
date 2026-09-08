@@ -14,14 +14,18 @@ use zip::ZipArchive;
 
 use super::super::PackageAsset;
 use super::{failure, source_id};
-use crate::error::CommandError;
+use crate::{
+    assets::{detect_managed_asset_bytes, ManagedAssetKind},
+    error::CommandError,
+};
 
 const MAX_ARCHIVE_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 768 * 1024 * 1024;
 const MAX_COLLECTION_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_MEDIA_MAP_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
-const MAX_IMAGES_BYTES: usize = 256 * 1024 * 1024;
+const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
+const MAX_MEDIA_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_ASSET_BYTES: usize = 512 * 1024 * 1024;
 const MAX_ENTRIES: usize = 100_004;
 
 pub(super) const COMPATIBILITY_EXPORT: &str = "This Anki package version is not supported. In Anki, export an Anki Deck Package (.apkg) with Support older Anki versions and Include media enabled; then import that file.";
@@ -75,8 +79,6 @@ impl Archive {
                 return Err(failure("Expanded Anki package exceeds the 768 MiB limit."));
             }
         }
-        // Modern exports can contain a dummy legacy collection. Never fall back
-        // to it when the actual collection requires an unsupported decoder.
         if entries.contains_key("collection.anki21b") {
             return Err(failure(COMPATIBILITY_EXPORT));
         }
@@ -172,9 +174,10 @@ impl Archive {
         Ok(bytes)
     }
 
+    /// Resolves one media-map filename into an application-owned native node.
+    /// The HTML converter, not the archive reader, enforces whether the source
+    /// context expected image/audio/video.
     pub fn image(&mut self, filename: &str) -> Result<Value, String> {
-        // Prefer an exact filename; percent-decoding is only a fallback for an
-        // encoded HTML URL. Neither spelling is ever used as a filesystem path.
         let filename = if self.media.contains_key(filename) {
             filename.to_string()
         } else {
@@ -184,30 +187,51 @@ impl Archive {
             .media
             .get(&filename)
             .cloned()
-            .ok_or("A referenced local image is missing, external, or unsupported.")?;
+            .ok_or("A referenced packaged media file is missing or external.")?;
         let id = source_id("asset", &entry);
         if !self.assets.contains_key(&id) {
             let bytes = self
-                .read_entry(&entry, MAX_IMAGE_BYTES)
-                .map_err(|_| "An image is corrupt or too large.")?;
-            if bytes.len() > MAX_IMAGES_BYTES.saturating_sub(self.asset_bytes) {
-                return Err("Imported images exceed the 256 MiB memory limit.".into());
+                .read_entry(&entry, MAX_MEDIA_BYTES)
+                .map_err(|_| "An Anki media file is corrupt or exceeds its 128 MiB size limit.")?;
+            if bytes.len() > MAX_ASSET_BYTES.saturating_sub(self.asset_bytes) {
+                return Err("Imported Anki media exceed the 512 MiB in-memory conversion limit.".into());
             }
-            let (mime, extension) = crate::assets::detect_image_bytes(&bytes)
-                .map_err(|_| "An image uses an unsupported format; use PNG, JPEG, GIF, or WebP.")?;
+            let detected = detect_managed_asset_bytes(&bytes, &filename).map_err(|_| {
+                "An Anki media file uses an unsupported image, audio, video, or container format."
+                    .to_string()
+            })?;
+            if detected.kind == ManagedAssetKind::Image && bytes.len() > MAX_IMAGE_BYTES {
+                return Err("An imported image exceeds the 25 MiB image limit.".into());
+            }
             self.asset_bytes += bytes.len();
             self.assets.insert(
                 id.clone(),
                 PackageAsset {
                     source_id: id.clone(),
-                    original_filename: format!("anki-{entry}.{extension}"),
-                    mime_type: mime.to_string(),
+                    original_filename: format!("anki-{entry}.{}", detected.extension),
+                    mime_type: detected.mime_type.to_string(),
                     byte_size: bytes.len() as i64,
                     data: bytes,
                 },
             );
         }
-        Ok(json!({"type": "image", "attrs": {"assetId": id, "src": format!("study-asset://{id}")}}))
+        let asset = self.assets.get(&id).expect("asset was inserted");
+        let src = format!("study-asset://{id}");
+        Ok(if asset.mime_type.starts_with("image/") {
+            json!({"type": "image", "attrs": {"assetId": id, "src": src}})
+        } else if asset.mime_type.starts_with("audio/") {
+            json!({
+                "type": "audio",
+                "attrs": {"assetId": id, "src": src, "title": filename}
+            })
+        } else if asset.mime_type.starts_with("video/") {
+            json!({
+                "type": "video",
+                "attrs": {"assetId": id, "src": src, "title": filename, "width": null, "height": null}
+            })
+        } else {
+            return Err("An imported media asset has an unsupported MIME type.".into());
+        })
     }
 
     pub fn take_assets(self, used: &BTreeSet<String>) -> Vec<PackageAsset> {
@@ -253,7 +277,7 @@ fn decode_filename(value: &str) -> Result<String, String> {
                 .get(position + 2)
                 .and_then(|byte| (*byte as char).to_digit(16));
             let (Some(high), Some(low)) = (high, low) else {
-                return Err("An image filename contains invalid URL encoding.".into());
+                return Err("A media filename contains invalid URL encoding.".into());
             };
             decoded.push((high * 16 + low) as u8);
             position += 3;
@@ -262,5 +286,5 @@ fn decode_filename(value: &str) -> Result<String, String> {
             position += 1;
         }
     }
-    String::from_utf8(decoded).map_err(|_| "An image filename is not UTF-8.".into())
+    String::from_utf8(decoded).map_err(|_| "A media filename is not UTF-8.".into())
 }
