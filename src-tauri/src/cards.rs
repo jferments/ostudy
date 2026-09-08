@@ -5,9 +5,11 @@
 
 #[path = "cards/content.rs"]
 mod content;
+#[path = "cards/rich_media.rs"]
+mod rich_media;
 
 pub use content::CardPresentationDto;
-pub(crate) use content::{
+pub(crate) use rich_media::{
     collect_asset_ids, validate_content, validate_document, ValidatedContent,
 };
 
