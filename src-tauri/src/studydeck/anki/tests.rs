@@ -210,7 +210,10 @@ fn progress_reports_card_totals_successes_failures_and_phases() {
     })
     .unwrap();
     assert_eq!(report.imported_card_count, 7);
-    assert_eq!(updates.first().unwrap().phase, ProgressPhase::ReadingPackage);
+    assert_eq!(
+        updates.first().unwrap().phase,
+        ProgressPhase::ReadingPackage
+    );
     assert!(updates.iter().any(|update| {
         update.phase == ProgressPhase::ConvertingCards
             && update.processed == Some(0)
