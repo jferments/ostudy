@@ -58,6 +58,9 @@ function controller(): AiProfilesController {
     refreshModels: vi.fn(),
     testProfile: vi.fn(),
     setFlashcardDefault: vi.fn().mockResolvedValue(undefined),
+    setTaskDefault: vi.fn().mockResolvedValue(undefined),
+    pendingTaskDefault: null,
+    retryTaskDefault: vi.fn().mockResolvedValue(undefined),
     discardDraft: vi.fn(),
     reload: vi.fn().mockResolvedValue(undefined),
   };
@@ -69,8 +72,8 @@ describe("DefaultAiModelSettings", () => {
 
     expect(screen.getByRole("heading", { name: "Default AI model" })).toBeTruthy();
     expect(
-      screen.getByRole("option", { name: "Local nursing model — Qwen-medical" }),
-    ).toBeTruthy();
+      screen.getAllByRole("option", { name: "Local nursing model — Qwen-medical" }),
+    ).toHaveLength(3);
     expect(screen.getByText(/profile's request timeout/u)).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "Document reasoning effort" })).toBeNull();
     expect(screen.getByText(/Each profile stores its own reasoning preference/u)).toBeTruthy();
@@ -87,4 +90,14 @@ describe("DefaultAiModelSettings", () => {
     expect(value.setFlashcardDefault).toHaveBeenCalledWith(null);
     expect(screen.getByText(/does not copy settings between models/u)).toBeTruthy();
   });
+  it("selects tutor and embedding defaults without replacing generation", () => {
+    const value = controller();
+    render(<DefaultAiModelSettings controller={value} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Interactive tutor" }), { target: { value: profileId } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Semantic embeddings" }), { target: { value: profileId } });
+    expect(value.setTaskDefault).toHaveBeenNthCalledWith(1, "tutor", profileId);
+    expect(value.setTaskDefault).toHaveBeenNthCalledWith(2, "embeddings", profileId);
+    expect(value.setFlashcardDefault).not.toHaveBeenCalled();
+  });
+
 });

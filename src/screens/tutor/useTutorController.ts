@@ -8,6 +8,7 @@ import {
   createTutorConversation, deleteTutorConversation, getTutorConversation, listTutorConversations, sendTutorTurn,
   type ConversationDetail, type ConversationSummary, type TutorMode, type TutorTarget, type TutorTurnInput,
 } from "../../ipc/tutor";
+import { useMaterialPreparation } from "./useMaterialPreparation";
 
 const GENERAL: StudyScope = { kind: "general", id: null };
 
@@ -23,6 +24,7 @@ export function useTutorController() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [defaultTutorProfileId, setDefaultTutorProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export function useTutorController() {
   const bootstrapLane = useRequestLane();
   const detailLane = useRequestLane();
   const historyLane = useRequestLane();
+  const preparation = useMaterialPreparation(scope);
 
   useEffect(() => {
     alive.current = true;
@@ -64,7 +67,8 @@ export function useTutorController() {
       setConversations(saved);
       setProfiles(available);
       setChoices(materials);
-      setProfileId((selected) => selected ?? defaults.tutorProfileId ?? null);
+      // null is a live default assignment, not a copy of the old default ID.
+      setDefaultTutorProfileId(defaults.tutorProfileId ?? null);
     } catch (failure: unknown) {
       if (bootstrapLane.isCurrent(token)) setError(getErrorMessage(failure));
     } finally {
@@ -94,7 +98,7 @@ export function useTutorController() {
   }
 
   function canSwitch(): boolean {
-    if (mutating.current || pendingRef.current || creating.current) {
+    if (mutating.current || pendingRef.current || creating.current || preparation.locked) {
       setError("Resolve the current request before changing conversations. Closing the panel does not discard it.");
       return false;
     }
@@ -175,7 +179,7 @@ export function useTutorController() {
   }
 
   async function send(mode: TutorMode, text = draft): Promise<void> {
-    if (mutating.current || loading || pendingRef.current || needsRefresh) return;
+    if (mutating.current || loading || pendingRef.current || needsRefresh || preparation.locked) return;
     if (!text.trim() && mode !== "quiz") return;
     mutating.current = true;
     detailLane.invalidate();
@@ -267,8 +271,8 @@ export function useTutorController() {
   }
 
   return {
-    conversations, profiles, choices, detail, scope, target, panelOpen, draft, profileId,
-    loading, busy, error, pending, needsRefresh, initialize, refresh, selectConversation,
+    conversations, profiles, choices, detail, scope, target, panelOpen, draft, profileId, defaultTutorProfileId,
+    loading, busy, error, pending, needsRefresh, preparation, initialize, refresh, selectConversation,
     newConversation, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
     send, retryPending, cancel, loadEarlier, removeConversation,
   };

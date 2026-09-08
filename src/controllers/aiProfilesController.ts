@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ShowToast } from "../components/Toast";
 import {
@@ -12,7 +12,6 @@ import {
   listAiProviderModels,
   listAiProviderProfiles,
   setAiProviderCredential,
-  setFlashcardGenerationProfile,
   testAiProviderProfile,
   updateAiProviderProfile,
   type AiCredentialPersistence,
@@ -25,7 +24,8 @@ import {
   type AiProviderProfileSummary,
   type AiTaskDefaults,
 } from "../ipc/aiProfiles";
-import { getErrorMessage } from "../ipc/common";
+import { createOperationId, getErrorMessage } from "../ipc/common";
+import { setAiTaskDefault, type AiTaskDefaultInput, type AiTaskKind } from "../ipc/aiTaskDefaults";
 import { useRequestLane } from "./requestLane";
 
 const EMPTY_DEFAULTS: AiTaskDefaults = { flashcardGenerationProfileId: null };
@@ -61,6 +61,9 @@ export interface AiProfilesController {
   refreshModels: () => Promise<void>;
   testProfile: () => Promise<void>;
   setFlashcardDefault: (profileId: string | null) => Promise<void>;
+  setTaskDefault: (task: AiTaskKind, profileId: string | null) => Promise<void>;
+  pendingTaskDefault: AiTaskDefaultInput | null;
+  retryTaskDefault: () => Promise<void>;
   discardDraft: () => void;
   reload: () => Promise<void>;
 }
@@ -83,6 +86,9 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [testing, setTesting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingTaskDefault, setPendingTaskDefault] = useState<AiTaskDefaultInput | null>(null);
+  const taskWrite = useRef<AiTaskDefaultInput | null>(null);
+  const taskWriting = useRef(false);
   const listLane = useRequestLane();
   const detailLane = useRequestLane();
   const modelLane = useRequestLane();
@@ -110,33 +116,16 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
         setModels(result.models);
         setModelsLoaded(true);
 
-        const selectedStillAvailable = result.models.some((model) => model.id === profile.modelId);
-        if (result.models.length === 1 && result.models[0]?.id !== profile.modelId) {
-          const serverModelId = result.models[0]?.id;
-          if (serverModelId) {
-            setDraft((current) =>
-              current
-                ? {
-                    ...current,
-                    modelId: serverModelId,
-                    reasoningEffort: compatibleReasoningEffort(
-                      current.reasoningEffort,
-                      result.models[0] ?? null,
-                    ),
-                  }
-                : current,
-            );
-            if (announceChanges) {
-              showToast("info", "The provider reports one available model. ostudy selected it.");
-            }
-          }
-        } else if (profile.modelId && !selectedStillAvailable) {
-          setDraft((current) => (current ? { ...current, modelId: "" } : current));
-          if (announceChanges) {
-            showToast(
-              "info",
-              "The saved model is not in the provider's current model list. Choose one of the reported models.",
-            );
+        // A chat catalog need not contain embedding models. Discovery is a
+        // read, not permission to clear or replace an existing model selection.
+        if (!profile.modelId && result.models.length === 1) {
+          const model = result.models[0];
+          if (model) {
+            setDraft((current) => current && !current.modelId ? {
+              ...current, modelId: model.id,
+              reasoningEffort: compatibleReasoningEffort(current.reasoningEffort, model),
+            } : current);
+            if (announceChanges) showToast("info", "The provider reports one available model. ostudy selected it.");
           }
         }
       } catch (error: unknown) {
@@ -356,9 +345,11 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setModels([]);
       setModelsLoaded(false);
       setProbeResult(null);
-      if (defaults.flashcardGenerationProfileId === selectedProfile.id) {
-        setDefaults(EMPTY_DEFAULTS);
-      }
+      setDefaults((current) => ({
+        flashcardGenerationProfileId: current.flashcardGenerationProfileId === selectedProfile.id ? null : current.flashcardGenerationProfileId,
+        tutorProfileId: current.tutorProfileId === selectedProfile.id ? null : current.tutorProfileId,
+        embeddingsProfileId: current.embeddingsProfileId === selectedProfile.id ? null : current.embeddingsProfileId,
+      }));
       showToast("success", "AI provider profile deleted.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -454,19 +445,40 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     }
   }
 
-  async function setFlashcardDefault(profileId: string | null): Promise<void> {
-    if (mutating) return;
+  async function writeTaskDefault(input: AiTaskDefaultInput): Promise<void> {
+    if (taskWriting.current || mutating) return;
+    taskWriting.current = true;
+    taskWrite.current = input;
     setMutating(true);
     setErrorMessage(null);
     try {
-      const saved = await setFlashcardGenerationProfile(profileId);
+      const saved = await setAiTaskDefault(input);
       setDefaults(saved);
-      showToast("success", "Flashcard-generation profile updated.");
+      taskWrite.current = null;
+      setPendingTaskDefault(null);
+      showToast("success", "Default AI model assignment saved.");
     } catch (error: unknown) {
+      // Retain the exact receipt identity. Reconciliation must not create a
+      // second operation or overwrite a concurrently changed task assignment.
+      setPendingTaskDefault(input);
       setErrorMessage(getErrorMessage(error));
     } finally {
+      taskWriting.current = false;
       setMutating(false);
     }
+  }
+
+  async function setTaskDefault(taskKind: AiTaskKind, profileId: string | null): Promise<void> {
+    if (taskWrite.current || taskWriting.current || mutating) return;
+    await writeTaskDefault({ taskKind, profileId, operationId: createOperationId() });
+  }
+
+  async function retryTaskDefault(): Promise<void> {
+    if (taskWrite.current) await writeTaskDefault(taskWrite.current);
+  }
+
+  async function setFlashcardDefault(profileId: string | null): Promise<void> {
+    await setTaskDefault("flashcard_generation", profileId);
   }
 
   function discardDraft(): void {
@@ -510,6 +522,9 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     refreshModels,
     testProfile,
     setFlashcardDefault,
+    setTaskDefault,
+    pendingTaskDefault,
+    retryTaskDefault,
     discardDraft,
     reload,
   };

@@ -5,6 +5,7 @@ import { getSemanticSourceCitation, studyScopeKey, type SourceCitation, type Stu
 import { Dialog } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
+import { MaterialPreparation } from "./MaterialPreparation";
 import { useTutor } from "./TutorContext";
 import styles from "./TutorWorkspace.module.css";
 
@@ -16,8 +17,9 @@ export function TutorWorkspace() {
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [sourceBusy, setSourceBusy] = useState(false);
   const hintOnly = tutor.target?.mode === "hint";
-  const locked = tutor.busy || tutor.loading || tutor.pending !== null;
+  const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   const profiles = tutor.profiles.filter((profile) => profile.enabled && profile.configurationStatus === "ready");
+  const defaultProfile = profiles.find((profile) => profile.id === tutor.defaultTutorProfileId);
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
   const scopes = [
     { scope: { kind: "general", id: null } as StudyScope, title: "General discussion" },
@@ -80,7 +82,7 @@ export function TutorWorkspace() {
           <label className={styles.field} htmlFor={`${id}-model`}>Tutor model
             <select id={`${id}-model`} value={tutor.profileId ?? ""} disabled={locked}
               onChange={(event) => tutor.setProfileId(event.target.value || null)}>
-              <option value="">Configured Tutor default</option>
+              <option value="">{defaultProfile ? `Tutor default — ${defaultProfile.displayName}` : "Configured Tutor default"}</option>
               {tutor.profileId && !profiles.some((profile) => profile.id === tutor.profileId) ? <option value={tutor.profileId}>Selected profile unavailable</option> : null}
               {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName} — {profile.modelId}</option>)}
             </select>
@@ -89,6 +91,9 @@ export function TutorWorkspace() {
         <p className={styles.muted}>Choose and test provider profiles in Settings → AI/LLM. General discussion uses the model without searching the library.</p>
       </details>
       {tutor.target ? <p className={styles.muted}>Current context: {tutor.target.title}</p> : null}
+      {tutor.scope.kind !== "general" && !hintOnly ? (
+        <MaterialPreparation controller={tutor.preparation} disabled={tutor.busy || tutor.loading || tutor.pending !== null} />
+      ) : null}
       {!profiles.length && !tutor.loading ? <p className={styles.notice}>Configure an AI provider in Settings → AI/LLM to send messages. Saved conversations remain readable without AI access.</p> : null}
       <div className={styles.transcript} role="log" aria-label="Saved conversation" aria-relevant="additions">
         {!turns.length ? <div className={styles.empty}><h3>{hintOnly ? "Work toward the answer" : "Ask about what you are studying"}</h3><p>Ask for an explanation, compare ideas, or request one quiz question. Responses are saved locally and may contain mistakes.</p></div> : null}

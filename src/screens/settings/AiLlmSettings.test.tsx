@@ -10,6 +10,8 @@ import type {
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { AiLlmSettings } from "./AiLlmSettings";
 
+vi.mock("./EmbeddingProfileSettings", () => ({ EmbeddingProfileSettings: () => null }));
+
 const profileId = "a".repeat(32);
 
 function openRouterCatalog(): AiProviderCatalogEntry[] {
@@ -126,6 +128,9 @@ function controller(): AiProfilesController {
     refreshModels: vi.fn().mockResolvedValue(undefined),
     testProfile: vi.fn().mockResolvedValue(undefined),
     setFlashcardDefault: vi.fn().mockResolvedValue(undefined),
+    setTaskDefault: vi.fn().mockResolvedValue(undefined),
+    pendingTaskDefault: null,
+    retryTaskDefault: vi.fn().mockResolvedValue(undefined),
     discardDraft: vi.fn(),
     reload: vi.fn().mockResolvedValue(undefined),
   };

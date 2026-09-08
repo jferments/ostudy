@@ -10,6 +10,7 @@ import type {
   AiProbePhase,
   AiReasoningEffort,
 } from "../../ipc/aiProfiles";
+import { EmbeddingProfileSettings } from "./EmbeddingProfileSettings";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import aiStyles from "./AiLlmSettings.module.css";
 import layoutStyles from "./AiModelsLayout.module.css";
@@ -130,6 +131,7 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
 
       <main className={layoutStyles.detail}>
         {controller.draft ? (
+          <>
           <ProfileSetup
             controller={controller}
             availableProviders={availableProviders.map((provider) => ({
@@ -139,6 +141,8 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             onProviderChange={controller.beginCreate}
             onDelete={() => void deleteProfile()}
           />
+          <EmbeddingProfileSettings controller={controller} />
+          </>
         ) : (
           <section className={styles.emptyDetail}>
             <h2>Add an AI model</h2>
@@ -344,6 +348,9 @@ function ProfileSetup({
                       ? "No models reported"
                       : "Select a model"}
               </option>
+              {draft.modelId && !controller.models.some((model) => model.id === draft.modelId) ? (
+                <option value={draft.modelId}>{draft.modelId} — saved or embedding model</option>
+              ) : null}
               {controller.models.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.displayName || model.id}

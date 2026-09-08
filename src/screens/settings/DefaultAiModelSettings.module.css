@@ -63,3 +63,6 @@
     border-radius: 12px;
   }
 }
+.field + .field {
+  margin-block-start: var(--ostudy-space-3);
+}
