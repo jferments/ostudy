@@ -23,6 +23,20 @@ pub struct AssetDto {
     pub created_at: i64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ManagedAssetKind {
+    Image,
+    Audio,
+    Video,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DetectedManagedAsset {
+    pub kind: ManagedAssetKind,
+    pub mime_type: &'static str,
+    pub extension: &'static str,
+}
+
 #[tauri::command]
 pub fn import_image(
     database: State<'_, Database>,
@@ -125,7 +139,7 @@ pub(crate) fn ensure_assets_exist(
     if found != unique.len() {
         return Err(CommandError::new(
             "asset_not_found",
-            "One of the images used by this content is no longer available.",
+            "One of the managed assets used by this content is no longer available.",
         ));
     }
     Ok(())
@@ -140,8 +154,8 @@ pub(crate) fn validate_original_filename(value: &str) -> Result<String, CommandE
             .any(|character| character.is_control() || matches!(character, '/' | '\\' | '\0'))
     {
         return Err(CommandError::new(
-            "invalid_image_name",
-            "The selected image has an invalid filename.",
+            "invalid_asset_name",
+            "The selected asset has an invalid filename.",
         ));
     }
     Ok(trimmed.to_string())
@@ -150,42 +164,134 @@ pub(crate) fn validate_original_filename(value: &str) -> Result<String, CommandE
 pub(crate) fn detect_image_bytes(
     bytes: &[u8],
 ) -> Result<(&'static str, &'static str), CommandError> {
-    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
-        return Ok(("image/png", "png"));
+    let detected = detect_image(bytes).ok_or_else(|| {
+        CommandError::new("unsupported_image", "Use a supported image file.")
+    })?;
+    Ok((detected.mime_type, detected.extension))
+}
+
+pub(crate) fn detect_managed_asset_bytes(
+    bytes: &[u8],
+    original_filename: &str,
+) -> Result<DetectedManagedAsset, CommandError> {
+    if let Some(image) = detect_image(bytes) {
+        return Ok(image);
     }
-    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        return Ok(("image/jpeg", "jpg"));
+    if bytes.starts_with(b"ID3") || looks_like_mpeg_audio_frame(bytes) {
+        return Ok(media(ManagedAssetKind::Audio, "audio/mpeg", "mp3"));
     }
-    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        return Ok(("image/gif", "gif"));
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WAVE" {
+        return Ok(media(ManagedAssetKind::Audio, "audio/wav", "wav"));
     }
-    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
-        return Ok(("image/webp", "webp"));
+    if bytes.starts_with(b"fLaC") {
+        return Ok(media(ManagedAssetKind::Audio, "audio/flac", "flac"));
     }
-    if bytes.starts_with(b"BM") {
-        return Ok(("image/bmp", "bmp"));
+    if bytes.starts_with(b"OggS") {
+        let probe = &bytes[..bytes.len().min(256)];
+        if find_bytes(probe, b"OpusHead").is_some() || find_bytes(probe, b"vorbis").is_some() {
+            return Ok(media(ManagedAssetKind::Audio, "audio/ogg", "ogg"));
+        }
+        return Err(CommandError::new(
+            "unsupported_media",
+            "This Ogg codec is not in oStudy's safe cross-platform media subset.",
+        ));
     }
-    if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
-        return Ok(("image/tiff", "tif"));
+    if looks_like_adts_aac(bytes) {
+        return Ok(media(ManagedAssetKind::Audio, "audio/aac", "aac"));
     }
-    if bytes.len() >= 44 && bytes.starts_with(&[1, 0, 0, 0]) && &bytes[40..44] == b" EMF" {
-        return Ok(("image/emf", "emf"));
+    if looks_like_iso_bmff(bytes) {
+        let extension = filename_extension(original_filename);
+        if matches!(extension.as_deref(), Some("m4a" | "m4b" | "m4p")) {
+            return Ok(media(ManagedAssetKind::Audio, "audio/mp4", "m4a"));
+        }
+        return Ok(media(ManagedAssetKind::Video, "video/mp4", "mp4"));
     }
-    if bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a])
+    if bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]) {
+        let extension = filename_extension(original_filename);
+        if extension.as_deref() == Some("weba") {
+            return Ok(media(ManagedAssetKind::Audio, "audio/webm", "weba"));
+        }
+        return Ok(media(ManagedAssetKind::Video, "video/webm", "webm"));
+    }
+    Err(CommandError::new(
+        "unsupported_media",
+        "Use a supported image, audio, or video file.",
+    ))
+}
+
+fn media(
+    kind: ManagedAssetKind,
+    mime_type: &'static str,
+    extension: &'static str,
+) -> DetectedManagedAsset {
+    DetectedManagedAsset {
+        kind,
+        mime_type,
+        extension,
+    }
+}
+
+fn detect_image(bytes: &[u8]) -> Option<DetectedManagedAsset> {
+    let result = if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        ("image/png", "png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        ("image/jpeg", "jpg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        ("image/gif", "gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        ("image/webp", "webp")
+    } else if bytes.starts_with(b"BM") {
+        ("image/bmp", "bmp")
+    } else if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
+        ("image/tiff", "tif")
+    } else if bytes.len() >= 44 && bytes.starts_with(&[1, 0, 0, 0]) && &bytes[40..44] == b" EMF" {
+        ("image/emf", "emf")
+    } else if bytes.starts_with(&[0xd7, 0xcd, 0xc6, 0x9a])
         || (bytes.len() >= 6
             && matches!(&bytes[..2], [1, 0] | [2, 0])
             && bytes[2..4] == [9, 0]
             && bytes[4..6] == [0, 3])
     {
-        return Ok(("image/wmf", "wmf"));
+        ("image/wmf", "wmf")
+    } else if looks_like_svg(bytes) {
+        ("image/svg+xml", "svg")
+    } else {
+        return None;
+    };
+    Some(media(ManagedAssetKind::Image, result.0, result.1))
+}
+
+fn looks_like_mpeg_audio_frame(bytes: &[u8]) -> bool {
+    bytes.len() >= 4
+        && bytes[0] == 0xff
+        && bytes[1] & 0xe0 == 0xe0
+        && bytes[1] & 0x18 != 0x08
+        && bytes[1] & 0x06 != 0
+        && bytes[2] & 0xf0 != 0xf0
+}
+
+fn looks_like_adts_aac(bytes: &[u8]) -> bool {
+    bytes.len() >= 7 && bytes[0] == 0xff && bytes[1] & 0xf6 == 0xf0
+}
+
+fn looks_like_iso_bmff(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[4..8] == b"ftyp"
+}
+
+fn filename_extension(value: &str) -> Option<String> {
+    std::path::Path::new(value)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
     }
-    if looks_like_svg(bytes) {
-        return Ok(("image/svg+xml", "svg"));
-    }
-    Err(CommandError::new(
-        "unsupported_image",
-        "Use a supported image file.",
-    ))
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn looks_like_svg(bytes: &[u8]) -> bool {
@@ -239,6 +345,43 @@ mod tests {
             ("image/wmf", "wmf")
         );
         assert!(detect_image_bytes(b"not an image").is_err());
+    }
+
+    #[test]
+    fn recognizes_bounded_audio_and_video_signatures() {
+        assert_eq!(
+            detect_managed_asset_bytes(b"ID3\x04\0\0fixture", "voice.bin")
+                .expect("MP3 should be recognized")
+                .kind,
+            ManagedAssetKind::Audio
+        );
+        assert_eq!(
+            detect_managed_asset_bytes(b"RIFF\x10\0\0\0WAVEfmt ", "voice.wav")
+                .expect("WAV should be recognized")
+                .mime_type,
+            "audio/wav"
+        );
+        assert_eq!(
+            detect_managed_asset_bytes(b"OggSfixtureOpusHead", "voice.ogg")
+                .expect("Opus should be recognized")
+                .mime_type,
+            "audio/ogg"
+        );
+        let mp4 = b"\0\0\0\x18ftypisomfixture";
+        assert_eq!(
+            detect_managed_asset_bytes(mp4, "clip.mp4")
+                .expect("MP4 should be recognized")
+                .kind,
+            ManagedAssetKind::Video
+        );
+        assert_eq!(
+            detect_managed_asset_bytes(mp4, "pronunciation.m4a")
+                .expect("M4A should be recognized")
+                .kind,
+            ManagedAssetKind::Audio
+        );
+        assert!(detect_managed_asset_bytes(b"OggSunsupported", "mystery.ogg").is_err());
+        assert!(detect_managed_asset_bytes(b"not media", "video.mp4").is_err());
     }
 
     #[test]
