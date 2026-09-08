@@ -7,6 +7,7 @@ use crate::{
         providers,
     },
     error::CommandError,
+    task_cancellation::CancellationSignal,
 };
 
 use super::super::AiRuntimeState;
@@ -18,7 +19,7 @@ use super::{
 
 /// Provider-neutral structured task request after a domain module has selected
 /// and bounded its canonical source material.
-pub(super) struct JsonTaskRequest<'a> {
+pub(crate) struct JsonTaskRequest<'a> {
     pub system_prompt: &'a str,
     pub user_text: &'a str,
     pub schema: &'a Value,
@@ -30,6 +31,24 @@ pub(super) async fn request_json(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     request: JsonTaskRequest<'_>,
+) -> Result<Value, CommandError> {
+    request_json_inner(runtime, task, request, None).await
+}
+
+pub(crate) async fn request_json_cancellable(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    request: JsonTaskRequest<'_>,
+    cancellation: &CancellationSignal,
+) -> Result<Value, CommandError> {
+    request_json_inner(runtime, task, request, Some(cancellation)).await
+}
+
+async fn request_json_inner(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    request: JsonTaskRequest<'_>,
+    cancellation: Option<&CancellationSignal>,
 ) -> Result<Value, CommandError> {
     let profile = task.profile();
     let credential =
@@ -61,29 +80,57 @@ pub(super) async fn request_json(
         ensure_request_size(compatibility)?;
     }
 
-    let first = runtime
-        .gateway
-        .post_document_json(
-            prepared.url.clone(),
-            bearer,
-            &prepared.body,
-            profile.request_timeout_ms,
-            MAX_COMPLETION_BYTES,
-        )
-        .await;
+    let first = if let Some(cancellation) = cancellation {
+        runtime
+            .gateway
+            .post_task_json(
+                prepared.url.clone(),
+                bearer,
+                &prepared.body,
+                profile.request_timeout_ms,
+                MAX_COMPLETION_BYTES,
+                cancellation,
+            )
+            .await
+    } else {
+        runtime
+            .gateway
+            .post_document_json(
+                prepared.url.clone(),
+                bearer,
+                &prepared.body,
+                profile.request_timeout_ms,
+                MAX_COMPLETION_BYTES,
+            )
+            .await
+    };
     let response = match first {
         Err(first_error) if first_error.safe.code == "ai_http_bad_request" => {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
-                runtime
-                    .gateway
-                    .post_document_json(
-                        prepared.url.clone(),
-                        bearer,
-                        compatibility,
-                        profile.request_timeout_ms,
-                        MAX_COMPLETION_BYTES,
-                    )
-                    .await
+                if let Some(cancellation) = cancellation {
+                    runtime
+                        .gateway
+                        .post_task_json(
+                            prepared.url.clone(),
+                            bearer,
+                            compatibility,
+                            profile.request_timeout_ms,
+                            MAX_COMPLETION_BYTES,
+                            cancellation,
+                        )
+                        .await
+                } else {
+                    runtime
+                        .gateway
+                        .post_document_json(
+                            prepared.url.clone(),
+                            bearer,
+                            compatibility,
+                            profile.request_timeout_ms,
+                            MAX_COMPLETION_BYTES,
+                        )
+                        .await
+                }
             } else {
                 Err(first_error)
             }
@@ -210,7 +257,7 @@ fn ensure_document_response_not_blocked(response: &Value) -> Result<(), CommandE
     if finish_reason == Some("content_filter") || refusal.is_some() {
         return Err(CommandError::new(
             "ai_content_policy_rejected",
-            "The AI provider stopped this document request because of its content policy.",
+            "The AI provider stopped this learning request because of its content policy.",
         ));
     }
     Ok(())

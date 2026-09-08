@@ -34,7 +34,7 @@ pub(crate) struct CancellationSignal {
 }
 
 impl CancellationSignal {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             canceled: Arc::new(AtomicBool::new(false)),
             notify: Arc::new(Notify::new()),

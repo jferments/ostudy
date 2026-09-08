@@ -30,6 +30,29 @@ use usage::usage_delta;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 
 impl AiGateway {
+    /// Interactive tasks supply their own cancellation lifetime rather than
+    /// impersonating a document job. The same SSE framing, inactivity limits,
+    /// response bounds and redaction remain authoritative for both task types.
+    pub(crate) async fn post_task_json(
+        &self,
+        url: Url,
+        bearer: Option<&str>,
+        body: &Value,
+        inactivity_timeout_ms: i64,
+        maximum_content_bytes: usize,
+        cancellation: &CancellationSignal,
+    ) -> Result<Value, AiGatewayError> {
+        self.post_sse_chat_json(
+            url,
+            bearer,
+            body,
+            inactivity_timeout_ms,
+            maximum_content_bytes,
+            cancellation,
+        )
+        .await
+    }
+
     pub(crate) async fn post_document_json(
         &self,
         url: Url,
@@ -271,7 +294,7 @@ impl AiGateway {
         crate::logging::debug_target(
             "ai.gateway.streaming",
             "provider_stream_completed",
-            "A document-provider stream completed without logging source, model output, or reasoning content.",
+            "A provider stream completed without logging source, model output, or reasoning content.",
             json!({
                 "endpointHost": endpoint_host.as_deref(),
                 "generationId": stream.generation_id.as_deref(),

@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use crate::{error::CommandError, util::unix_time_millis};
 
 use super::{
-    super::catalog::AiTaskKind,
+    super::catalog::{AiTaskKind, ProviderKind},
     contracts::{AiTaskDefaultsDto, ProfileRequestSnapshot, SetAiTaskDefaultInput},
     repository::{load_profile, operation_replay, record_operation},
 };
@@ -11,33 +11,41 @@ use super::{
 pub(super) fn load_task_defaults(
     connection: &mut Connection,
 ) -> Result<AiTaskDefaultsDto, CommandError> {
-    let row: Option<Option<String>> = connection
-        .query_row(
-            "SELECT profile_id FROM ai_task_defaults WHERE task_kind = ?1",
-            [AiTaskKind::FlashcardGeneration.as_str()],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
     Ok(AiTaskDefaultsDto {
-        flashcard_generation_profile_id: row.flatten(),
+        flashcard_generation_profile_id: task_profile_id(connection, AiTaskKind::FlashcardGeneration)?,
+        tutor_profile_id: task_profile_id(connection, AiTaskKind::Tutor)?,
+        embeddings_profile_id: task_profile_id(connection, AiTaskKind::Embeddings)?,
     })
 }
 
-pub(crate) fn is_device_transfer_table(table: &str) -> bool {
-    table == "ai_task_defaults"
+fn task_profile_id(
+    connection: &Connection,
+    task: AiTaskKind,
+) -> Result<Option<String>, CommandError> {
+    connection
+        .query_row(
+            "SELECT profile_id FROM ai_task_defaults WHERE task_kind = ?1",
+            [task.as_str()],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .map(Option::flatten)
+        .map_err(CommandError::database)
 }
 
-/// Task defaults are provider configuration, not transient device state. Keep
-/// them only when the sender explicitly selected API provider settings.
+pub(crate) fn is_device_transfer_table(table: &str) -> bool {
+    matches!(table, "ai_task_defaults" | "ai_embedding_options")
+}
+
+/// Provider defaults and embedding options transfer only with explicit API
+/// configuration consent. Vector caches are never provider configuration.
 pub(crate) fn sanitize_for_device_transfer(
     connection: &Connection,
     include_defaults: bool,
 ) -> Result<(), CommandError> {
     if !include_defaults {
-        connection
-            .execute("DELETE FROM ai_task_defaults", [])
-            .map_err(CommandError::database)?;
+        connection.execute("DELETE FROM ai_task_defaults", []).map_err(CommandError::database)?;
+        connection.execute("DELETE FROM ai_embedding_options", []).map_err(CommandError::database)?;
     }
     Ok(())
 }
@@ -54,6 +62,20 @@ pub(super) fn set_task_default(
     )?
     .is_some()
     {
+        let saved_task: Option<String> = connection
+            .query_row(
+                "SELECT task_kind FROM ai_profile_operations WHERE operation_id = ?1",
+                [&input.operation_id],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        // Pre-tutor operations could only select flashcard generation.
+        if saved_task.as_deref().unwrap_or("flashcard_generation") != input.task_kind.as_str() {
+            return Err(CommandError::new(
+                "ai_operation_invalid",
+                "This operation identity was already used for a different AI task.",
+            ));
+        }
         return Ok(());
     }
 
@@ -63,6 +85,14 @@ pub(super) fn set_task_default(
             return Err(CommandError::new(
                 "ai_provider_not_implemented",
                 "That provider cannot be assigned until its adapter is implemented.",
+            ));
+        }
+        if input.task_kind == AiTaskKind::Embeddings
+            && !matches!(profile.provider_kind, ProviderKind::Openrouter | ProviderKind::LlamaCpp)
+        {
+            return Err(CommandError::new(
+                "ai_embeddings_unsupported",
+                "Choose an OpenRouter or external llama.cpp embedding-model profile. A chat profile does not automatically support embeddings.",
             ));
         }
     }
@@ -88,6 +118,12 @@ pub(super) fn set_task_default(
         input.profile_id.as_deref(),
         now,
     )?;
+    transaction
+        .execute(
+            "UPDATE ai_profile_operations SET task_kind = ?1 WHERE operation_id = ?2",
+            params![input.task_kind.as_str(), input.operation_id],
+        )
+        .map_err(CommandError::database)?;
     transaction.commit().map_err(CommandError::database)
 }
 
@@ -110,18 +146,21 @@ pub(super) fn clear_profile_defaults(
 pub(crate) fn load_default_profile_request(
     connection: &mut Connection,
 ) -> Result<ProfileRequestSnapshot, CommandError> {
-    let profile_id: Option<Option<String>> = connection
-        .query_row(
-            "SELECT profile_id FROM ai_task_defaults WHERE task_kind = ?1",
-            [AiTaskKind::FlashcardGeneration.as_str()],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(CommandError::database)?;
-    let profile_id = profile_id.flatten().ok_or_else(|| {
+    load_task_profile_request(connection, AiTaskKind::FlashcardGeneration)
+}
+
+pub(crate) fn load_task_profile_request(
+    connection: &mut Connection,
+    task: AiTaskKind,
+) -> Result<ProfileRequestSnapshot, CommandError> {
+    let profile_id = task_profile_id(connection, task)?.ok_or_else(|| {
         CommandError::new(
             "ai_task_profile_required",
-            "Choose a default Flashcard generation profile in Settings → AI/LLM before analyzing a document.",
+            match task {
+                AiTaskKind::FlashcardGeneration => "Choose a default Flashcard generation profile in Settings → AI/LLM before analyzing a document.",
+                AiTaskKind::Tutor => "Choose a default Tutor model in Settings → AI/LLM before starting a conversation.",
+                AiTaskKind::Embeddings => "Choose and test an Embeddings model in Settings → AI/LLM before semantic preparation.",
+            },
         )
     })?;
     let profile = load_profile(connection, &profile_id)?;

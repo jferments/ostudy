@@ -9,6 +9,7 @@ mod catalog;
 pub(crate) mod concurrency;
 pub(crate) mod document_intelligence;
 pub(crate) mod document_provider;
+pub(crate) mod embeddings;
 mod endpoint_policy;
 mod gateway;
 pub(crate) mod probes;

@@ -130,12 +130,16 @@ impl AuthMode {
 #[serde(rename_all = "snake_case")]
 pub enum AiTaskKind {
     FlashcardGeneration,
+    Tutor,
+    Embeddings,
 }
 
 impl AiTaskKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::FlashcardGeneration => "flashcard_generation",
+            Self::Tutor => "tutor",
+            Self::Embeddings => "embeddings",
         }
     }
 }

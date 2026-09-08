@@ -1,16 +1,22 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_provider::DocumentProviderCapabilities, database::Database, error::CommandError,
+    ai::document_provider::{load_document_provider_capabilities, DocumentProviderCapabilities},
+    database::Database,
+    error::CommandError,
 };
 
 use super::super::{
-    catalog::ProviderKind,
+    catalog::{AiTaskKind, ProviderKind},
     endpoint_policy::{validate_endpoint, NetworkScope},
     probes::load_document_probe_evidence,
-    profiles::{load_default_profile_request, ProfileSnapshot},
+    profiles::{
+        load_default_profile_request, load_profile_request, load_task_profile_request,
+        ProfileRequestSnapshot, ProfileSnapshot,
+    },
     secrets::CredentialStorage,
 };
 
@@ -63,9 +69,41 @@ impl DocumentTaskContext {
         );
     }
 
-    pub(super) fn completion_token_ceiling(&self, visible_tokens: usize) -> usize {
+    pub(crate) fn completion_token_ceiling(&self, visible_tokens: usize) -> usize {
         self.capabilities
             .completion_token_ceiling(&self.reasoning_effort, visible_tokens)
+    }
+
+    pub(crate) fn context_window_tokens(&self) -> Option<usize> {
+        self.capabilities.context_window_tokens
+    }
+
+    pub(crate) fn contract_identity(&self) -> Result<String, CommandError> {
+        let contract = serde_json::to_string(&(
+            &self.provider_kind,
+            &self.profile.base_url,
+            &self.model_id,
+            &self.reasoning_effort,
+            self.capabilities.planning_fingerprint(),
+        ))
+        .map_err(CommandError::serialization)?;
+        Ok(format!("{:x}", Sha256::digest(contract.as_bytes())))
+    }
+
+    pub(crate) fn ensure_current(&self, database: &Database) -> Result<(), CommandError> {
+        let current = load_profile_request(database, &self.profile_id)?;
+        if current.profile.revision != self.profile_revision
+            || current.profile.credential_epoch != self.credential_epoch
+            || current.profile.model_id != self.model_id
+            || current.profile.base_url != self.profile.base_url
+            || current.credential_storage != self.credential_storage
+        {
+            return Err(CommandError::new(
+                "ai_profile_changed",
+                "The selected AI profile changed during this task. Review the provider and retry.",
+            ));
+        }
+        current.profile.validate_for_provider_request()
     }
 
     pub(crate) fn usage_summary(&self) -> (Option<i64>, bool) {
@@ -103,7 +141,32 @@ impl DocumentTaskContext {
 pub(crate) fn load_document_task_context(
     database: &Database,
 ) -> Result<DocumentTaskContext, CommandError> {
-    let request = load_default_profile_request(database)?;
+    context_from_request(database, load_default_profile_request(database)?, false)
+}
+
+pub(crate) fn load_tutor_task_context(
+    database: &Database,
+) -> Result<DocumentTaskContext, CommandError> {
+    let mut task = context_from_request(
+        database,
+        load_task_profile_request(database, AiTaskKind::Tutor)?,
+        true,
+    )?;
+    let capabilities = load_document_provider_capabilities(
+        database,
+        &task.profile_id,
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    task.apply_provider_capabilities(&capabilities);
+    Ok(task)
+}
+
+fn context_from_request(
+    database: &Database,
+    request: ProfileRequestSnapshot,
+    tutor: bool,
+) -> Result<DocumentTaskContext, CommandError> {
     let profile = request.profile;
     profile.validate_for_provider_request()?;
     let endpoint = validate_endpoint(
@@ -112,11 +175,10 @@ pub(crate) fn load_document_task_context(
         profile.allow_insecure_http,
     )?;
     let evidence = load_document_probe_evidence(database, &profile)?;
-
     if profile.provider_kind == ProviderKind::Openrouter && !evidence.probe_matches {
         return Err(CommandError::new(
             "ai_document_model_not_verified",
-            "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative document structured-output contract.",
+            "Test this OpenRouter profile again before using learning tools. The selected model must pass ostudy's representative structured-output contract.",
         ));
     }
     if evidence.probe_matches && !evidence.document_generation_schema_supported {
@@ -125,8 +187,7 @@ pub(crate) fn load_document_task_context(
             "The selected AI model did not pass ostudy's representative document structured-output contract. Test the profile again or choose another model.",
         ));
     }
-
-    let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
+    let include_page_images = (tutor || profile.provider_kind == ProviderKind::LlamaCpp)
         && evidence.probe_matches
         && evidence.image_input_supported;
     let requested_reasoning_effort = profile.reasoning_effort.clone();
@@ -134,7 +195,6 @@ pub(crate) fn load_document_task_context(
         profile.provider_kind.as_str(),
         &profile.model_id,
     );
-
     Ok(DocumentTaskContext {
         profile_id: profile.id.clone(),
         provider_kind: profile.provider_kind.as_str().to_string(),

@@ -81,9 +81,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "a1dfeff574e2d6da17420e0544d0b363de3e232a7793d393024bb4a3432a1019",
         sql: include_str!("../migrations/0009_anki_apkg_staging.sql"),
     },
+    Migration {
+        version: 10,
+        name: "semantic_tutor",
+        checksum: "ce095a9c1f3fb8e8255f6e91e9fb91f6e55fb5157b8569574a4d9e9686e2d6e3",
+        sql: include_str!("../migrations/0010_semantic_tutor.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 9;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 10;
 
 pub struct Database {
     connection: Mutex<Connection>,

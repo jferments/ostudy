@@ -139,6 +139,8 @@ pub struct AiProviderProfileDetailDto {
 #[serde(rename_all = "camelCase")]
 pub struct AiTaskDefaultsDto {
     pub flashcard_generation_profile_id: Option<String>,
+    pub tutor_profile_id: Option<String>,
+    pub embeddings_profile_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

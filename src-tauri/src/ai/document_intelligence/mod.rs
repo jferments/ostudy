@@ -31,7 +31,9 @@ pub(crate) use artifact_metadata::{
     ARTIFACT_METADATA_GENERATOR_VERSION, ARTIFACT_METADATA_PROMPT_VERSION,
     ARTIFACT_METADATA_SCHEMA_VERSION, ARTIFACT_TITLE_MAX_CHARS,
 };
-pub(crate) use context::{load_document_task_context, DocumentTaskContext};
+pub(crate) use context::{
+    load_document_task_context, load_tutor_task_context, DocumentTaskContext,
+};
 pub(crate) use contracts::{DocumentOutline, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use flashcards::{
@@ -40,6 +42,7 @@ pub(crate) use flashcards::{
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 pub(crate) use study_guide::generate_study_guide_topic_section;
+pub(crate) use transport::{request_json_cancellable, JsonTaskRequest};
 
 const VISUAL_ONLY_MARKER: &str = "has no extractable structured text";
 
