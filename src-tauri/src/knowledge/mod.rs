@@ -13,10 +13,12 @@ mod images;
 mod index;
 pub(crate) mod preparation;
 mod preparation_store;
+pub(crate) mod relationships;
 pub(crate) mod repository;
 pub(crate) mod retrieval;
 pub(crate) mod runtime;
 
+pub(crate) use images::load_images;
 pub(crate) use runtime::has_active_tasks;
 
 pub(crate) fn reconcile_startup(

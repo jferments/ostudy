@@ -63,6 +63,7 @@ mod external_file_commands;
 mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
+mod knowledge;
 mod library_backup;
 mod library_backup_commands;
 mod logging;
@@ -86,6 +87,7 @@ mod studyability;
 mod studydeck;
 mod system_resources;
 mod task_cancellation;
+mod tutor;
 mod ui_checkpoint;
 mod util;
 mod workload;
@@ -141,7 +143,9 @@ pub fn run() {
             let lifecycle = platform_runtime.lifecycle();
             let requested = lifecycle.transition(platform::LifecyclePhase::TerminationRequested);
             let _ = window.emit("ostudy-lifecycle", requested);
-            if window.label() != "main" || !task_cancellation::has_active_document_tasks() {
+            if window.label() != "main"
+                || (!task_cancellation::has_active_document_tasks() && !knowledge::has_active_tasks())
+            {
                 let terminating = lifecycle.transition(platform::LifecyclePhase::Terminating);
                 let _ = window.emit("ostudy-lifecycle", terminating);
                 return;
@@ -157,9 +161,9 @@ pub fn run() {
             window
                 .dialog()
                 .message(
-                    "There is a current document processing job underway. If you close ostudy now, the running request will be interrupted and any progress that has not been committed will be lost. Are you sure you want to proceed?",
+                    "A document, semantic preparation, or tutor request is still running. Closing ostudy will interrupt the request. Previously saved material and conversation messages will remain available. Close anyway?",
                 )
-                .title("Document processing is still running")
+                .title("Study processing is still running")
                 .kind(MessageDialogKind::Warning)
                 .buttons(MessageDialogButtons::OkCancelCustom(
                     "Close ostudy".to_string(),
@@ -261,9 +265,27 @@ pub fn run() {
             ai::profiles::commands::clear_ai_provider_credential,
             ai::profiles::commands::get_ai_task_defaults,
             ai::profiles::commands::set_ai_task_default,
+            ai::profiles::embedding_options::get_embedding_options,
+            ai::profiles::embedding_options::save_embedding_options,
+            ai::embeddings::list_embedding_models,
+            ai::embeddings::test_embedding_profile,
             ai::probes::commands::list_ai_provider_models,
             ai::probes::commands::test_ai_provider_profile,
             ai::probes::commands::get_ai_provider_probe_result,
+            knowledge::commands::list_semantic_scope_choices,
+            knowledge::commands::preview_semantic_preparation,
+            knowledge::commands::prepare_semantic_material,
+            knowledge::commands::get_semantic_preparation,
+            knowledge::commands::get_learning_task_progress,
+            knowledge::commands::cancel_learning_task,
+            knowledge::commands::search_semantic_material,
+            knowledge::commands::get_semantic_source_citation,
+            knowledge::commands::clear_semantic_index,
+            tutor::commands::list_tutor_conversations,
+            tutor::commands::create_tutor_conversation,
+            tutor::commands::get_tutor_conversation,
+            tutor::commands::delete_tutor_conversation,
+            tutor::commands::send_tutor_turn,
             documents::commands::list_documents,
             document_import::import_document,
             document_operations::run_document_flashcard_generation,

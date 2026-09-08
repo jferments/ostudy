@@ -86,6 +86,10 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|error| io::Error::other(error.message))?;
     document_operations::reconcile_deleted_document_trash(&paths)
         .map_err(|error| io::Error::other(error.message))?;
+    crate::knowledge::reconcile_startup(&database)
+        .map_err(|error| io::Error::other(error.message))?;
+    crate::tutor::reconcile_startup(&database)
+        .map_err(|error| io::Error::other(error.message))?;
     if let Some(restore) = pending_restore {
         restore.commit();
     }

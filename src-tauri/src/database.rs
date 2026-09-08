@@ -84,7 +84,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 10,
         name: "semantic_tutor",
-        checksum: "ce095a9c1f3fb8e8255f6e91e9fb91f6e55fb5157b8569574a4d9e9686e2d6e3",
+        checksum: "9d91e43de57c9917444fff479c79a6040d9ee80b1a8a48c8687ea538861b7377",
         sql: include_str!("../migrations/0010_semantic_tutor.sql"),
     },
 ];

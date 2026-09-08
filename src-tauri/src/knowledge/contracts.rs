@@ -174,12 +174,12 @@ impl SourceRecord {
             return Err(invalid("A semantic source must contain text or image evidence."));
         }
         let association_matches = match self.kind {
-            SourceKind::Document => self.document_id.as_deref() == Some(&self.owner_id),
-            SourceKind::Card => self.card_id.as_deref() == Some(&self.owner_id)
+            SourceKind::Document => self.document_id.as_deref() == Some(self.owner_id.as_str()),
+            SourceKind::Card => self.card_id.as_deref() == Some(self.owner_id.as_str())
                 && self.note_id.is_some(),
-            SourceKind::Guide => self.guide_id.as_deref() == Some(&self.owner_id)
+            SourceKind::Guide => self.guide_id.as_deref() == Some(self.owner_id.as_str())
                 && self.document_id.is_some(),
-            SourceKind::Conversation => self.conversation_id.as_deref() == Some(&self.owner_id)
+            SourceKind::Conversation => self.conversation_id.as_deref() == Some(self.owner_id.as_str())
                 && self.turn_id.is_some(),
         };
         if !association_matches {
@@ -234,8 +234,8 @@ impl KnowledgeUnitInput {
         if source.kind == SourceKind::Conversation {
             return Err(invalid("Conversation messages cannot become authoritative knowledge units."));
         }
-        // An exact excerpt proves location, not factual correctness or full
-        // entailment. Image-grounded units deliberately have no invented quote.
+        // An exact excerpt proves location, not correctness or entailment.
+        // Image-grounded units deliberately have no invented quotation.
         if self.supporting_excerpt.trim().is_empty() {
             if source.images.is_empty() {
                 return Err(invalid("Text-derived knowledge must include a supporting source excerpt."));
@@ -257,8 +257,8 @@ pub(crate) struct KnowledgeUnit {
     pub content: KnowledgeUnitInput,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceCitation {
     pub id: String,
     pub kind: SourceKind,
