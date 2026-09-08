@@ -1,6 +1,10 @@
 name: Validate generated Rust candidates
 
 on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - .github/workflows/maintain-generated-candidates.yml
   workflow_dispatch:
     inputs:
       export_auxiliary_bundle:
@@ -35,7 +39,7 @@ jobs:
       # Any external edits must still be reviewed and published by the source
       # writer; this artifact is not qualification of those later edits.
       - name: Package read-only auxiliary inspection bundle
-        if: inputs.export_auxiliary_bundle
+        if: github.event_name == 'push' || inputs.export_auxiliary_bundle
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -58,7 +62,7 @@ jobs:
           git diff --exit-code
 
       - name: Upload read-only auxiliary inspection bundle
-        if: inputs.export_auxiliary_bundle
+        if: github.event_name == 'push' || inputs.export_auxiliary_bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-auxiliary-${{ github.sha }}
