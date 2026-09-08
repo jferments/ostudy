@@ -2,6 +2,12 @@ name: Validate generated Rust candidates
 
 on:
   workflow_dispatch:
+    inputs:
+      export_auxiliary_bundle:
+        description: Export the exact published source and pinned formatter for external inspection
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -23,6 +29,42 @@ jobs:
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Packaging copies only already-published source and the installed pinned
+      # formatter. It neither formats source nor creates a replacement tree.
+      # Any external edits must still be reviewed and published by the source
+      # writer; this artifact is not qualification of those later edits.
+      - name: Package read-only auxiliary inspection bundle
+        if: inputs.export_auxiliary_bundle
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bundle="$RUNNER_TEMP/ostudy-auxiliary"
+          mkdir -p "$bundle/formatter/bin" "$bundle/formatter/lib"
+          git archive --format=tar HEAD > "$bundle/published-source.tar"
+          formatter="$(rustup which rustfmt)"
+          sysroot="$(rustc --print sysroot)"
+          cp "$formatter" "$bundle/formatter/bin/rustfmt"
+          find "$sysroot/lib" -maxdepth 1 -type f -name '*.so*' -exec cp -- {} "$bundle/formatter/lib/" \;
+          {
+            printf 'sourceSha=%s\n' "$GITHUB_SHA"
+            rustfmt --version
+            rustc --version
+            uname -m
+            sha256sum "$bundle/published-source.tar" "$bundle/formatter/bin/rustfmt"
+          } > "$bundle/manifest.txt"
+          tar -C "$bundle" -czf "$RUNNER_TEMP/ostudy-auxiliary.tar.gz" .
+          git diff --check
+          git diff --exit-code
+
+      - name: Upload read-only auxiliary inspection bundle
+        if: inputs.export_auxiliary_bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ostudy-auxiliary-${{ github.sha }}
+          path: ${{ runner.temp }}/ostudy-auxiliary.tar.gz
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Validate canonical Rust sources without rewriting them
         run: |
