@@ -121,9 +121,7 @@ impl<'a> XmlParser<'a> {
 
     fn element(&mut self, depth: usize) -> Result<XmlNode, String> {
         if depth > MAX_XML_DEPTH || self.nodes >= MAX_XML_NODES {
-            return Err(
-                "MathML is nested too deeply or contains too many elements.".into(),
-            );
+            return Err("MathML is nested too deeply or contains too many elements.".into());
         }
         self.nodes += 1;
         if !self.rest().starts_with('<') || self.rest().starts_with("</") {
@@ -258,9 +256,8 @@ fn find_tex_annotation(node: &XmlNode) -> Option<&str> {
 
 fn render_node(node: &XmlNode) -> Result<String, String> {
     let name = local_name(&node.name);
-    let children = || -> Result<Vec<String>, String> {
-        node.children.iter().map(render_node).collect()
-    };
+    let children =
+        || -> Result<Vec<String>, String> { node.children.iter().map(render_node).collect() };
     match name {
         "math" | "mrow" | "mstyle" | "mpadded" | "semantics" => Ok(children()?.join("")),
         "annotation" | "annotation-xml" | "mphantom" => Ok(String::new()),
@@ -506,24 +503,22 @@ fn decode_entities(input: &str) -> Result<String, String> {
             .filter(|index| *index <= 32)
             .ok_or("Malformed MathML entity.")?;
         let name = &entity[..end];
-        let character = if let Some(hex) = name
-            .strip_prefix("#x")
-            .or_else(|| name.strip_prefix("#X"))
-        {
-            u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
-        } else if let Some(decimal) = name.strip_prefix('#') {
-            decimal.parse::<u32>().ok().and_then(char::from_u32)
-        } else {
-            match name {
-                "amp" => Some('&'),
-                "lt" => Some('<'),
-                "gt" => Some('>'),
-                "quot" => Some('"'),
-                "apos" => Some('\''),
-                "nbsp" => Some(' '),
-                _ => None,
-            }
-        };
+        let character =
+            if let Some(hex) = name.strip_prefix("#x").or_else(|| name.strip_prefix("#X")) {
+                u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+            } else if let Some(decimal) = name.strip_prefix('#') {
+                decimal.parse::<u32>().ok().and_then(char::from_u32)
+            } else {
+                match name {
+                    "amp" => Some('&'),
+                    "lt" => Some('<'),
+                    "gt" => Some('>'),
+                    "quot" => Some('"'),
+                    "apos" => Some('\''),
+                    "nbsp" => Some(' '),
+                    _ => None,
+                }
+            };
         let character = character.ok_or("Unsupported MathML entity.")?;
         if character.is_control() && !matches!(character, '\n' | '\t') {
             return Err("MathML contains an invalid control character.".into());

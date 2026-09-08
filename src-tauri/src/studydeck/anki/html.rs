@@ -116,7 +116,7 @@ pub(super) fn document(
                         };
                         if container.kind != kind {
                             return Err(
-                                "Nested or mismatched media elements are unsupported.".into(),
+                                "Nested or mismatched media elements are unsupported.".into()
                             );
                         }
                         if !container.resolved {
@@ -194,7 +194,7 @@ pub(super) fn document(
                         let mut node = asset(source)?;
                         if node.get("type").and_then(Value::as_str) != Some("image") {
                             return Err(
-                                "An <img> reference does not point to a supported image.".into(),
+                                "An <img> reference does not point to a supported image.".into()
                             );
                         }
                         if let Some(alt) = attributes.get("alt") {
@@ -729,20 +729,16 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(
-            result.value["content"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|node| node["type"] == "blockMath")
-        );
-        assert!(
-            result.value["content"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|node| node["type"] == "audio")
-        );
+        assert!(result.value["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["type"] == "blockMath"));
+        assert!(result.value["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|node| node["type"] == "audio"));
         crate::cards::validate_document(&result.value).unwrap();
     }
 
@@ -761,8 +757,7 @@ mod tests {
         .unwrap();
         assert!(result.script_omitted);
         assert_eq!(
-            result
-                .value["content"]
+            result.value["content"]
                 .as_array()
                 .unwrap()
                 .iter()
