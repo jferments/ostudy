@@ -392,7 +392,8 @@ fn convert_card<'a>(
     let answer = template::render(&template.afmt, &fields, card.ordinal, true, front_side)?;
     let front = html::document(&question.html, &mut |name| archive.image(name))?;
     let back = html::document(&answer.html, &mut |name| archive.image(name))?;
-    let style_normalized = !model.css.trim().is_empty() || front.style_omitted || back.style_omitted;
+    let style_normalized =
+        !model.css.trim().is_empty() || front.style_omitted || back.style_omitted;
     let typed_answer = question.used_type_filter || answer.used_type_filter;
     let mut warnings = front.warnings;
     warnings.extend(back.warnings);

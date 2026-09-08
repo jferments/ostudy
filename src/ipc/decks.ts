@@ -71,10 +71,11 @@ export interface AnkiImportReport {
   importedCardCount: number;
   skippedCardCount: number;
   simplifiedCardCount: number;
-  nativeStyleCardCount: number;
-  typedAnswerCardCount: number;
-  nativeClozeCardCount: number;
-  clozeFallbackCardCount: number;
+  /** Additive converter detail fields remain optional for old persisted receipts/test fixtures. */
+  nativeStyleCardCount?: number;
+  typedAnswerCardCount?: number;
+  nativeClozeCardCount?: number;
+  clozeFallbackCardCount?: number;
   issues: { sourceCardId: string; message: string }[];
   omittedIssueCount: number;
 }

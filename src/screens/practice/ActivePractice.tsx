@@ -36,6 +36,7 @@ interface ActivePracticeProps {
   isEnding: boolean;
   isManaging: boolean;
   flipAnimationEnabled?: boolean;
+  displayQuestionOnAnswer?: boolean;
   errorMessage: string | null;
   onReveal: () => void;
   onScore: (score: ConfidenceScore) => void;
@@ -57,6 +58,7 @@ export function ActivePractice({
   isEnding,
   isManaging,
   flipAnimationEnabled,
+  displayQuestionOnAnswer = false,
   errorMessage,
   onReveal,
   onScore,
@@ -80,6 +82,10 @@ export function ActivePractice({
   const currentPosition =
     cardCount > 0 ? Math.min(Math.max(1, position + 1), cardCount) : 0;
   const stackLayers = remainingCount > 3 ? 2 : remainingCount > 1 ? 1 : 0;
+  const normalizedQuestion = current.presentation.frontText.trim();
+  const backAlreadyIncludesQuestion =
+    normalizedQuestion.length > 0 && current.presentation.backText.includes(normalizedQuestion);
+  const combineQuestionAndAnswer = displayQuestionOnAnswer && !backAlreadyIncludesQuestion;
 
   useEffect(() => {
     setShowingAnswer(revealed);
@@ -127,6 +133,27 @@ export function ActivePractice({
     setShowingAnswer((currentSide) => !currentSide);
   }
 
+  const questionContent = (
+    <>
+      <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Question</span>
+      <RichTextView
+        document={current.presentation.frontDoc}
+        assets={current.presentation.assets}
+        onLinkError={onLinkError}
+      />
+    </>
+  );
+  const answerContent = (
+    <>
+      <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Answer</span>
+      <RichTextView
+        document={current.presentation.backDoc}
+        assets={current.presentation.assets}
+        onLinkError={onLinkError}
+      />
+    </>
+  );
+
   const cardSurface = animateFlip ? (
     <section
       className={ownedClassNames(
@@ -163,14 +190,7 @@ export function ActivePractice({
           )}
           aria-hidden={showingAnswer}
         >
-          <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>
-            Question
-          </span>
-          <RichTextView
-            document={current.presentation.frontDoc}
-            assets={current.presentation.assets}
-            onLinkError={onLinkError}
-          />
+          {questionContent}
           {!showingAnswer ? (
             <small className={ownedClassNames(ownedStyleMaps, "practice-flip-hint")}>
               Click the card to flip it
@@ -184,14 +204,13 @@ export function ActivePractice({
           )}
           aria-hidden={!showingAnswer}
         >
-          <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>
-            Answer
-          </span>
-          <RichTextView
-            document={current.presentation.backDoc}
-            assets={current.presentation.assets}
-            onLinkError={onLinkError}
-          />
+          {combineQuestionAndAnswer ? (
+            <>
+              {questionContent}
+              <div className={ownedClassNames(ownedStyleMaps, "practice-answer-divider")} />
+            </>
+          ) : null}
+          {answerContent}
         </div>
       </div>
     </section>
@@ -202,21 +221,13 @@ export function ActivePractice({
         `${styles.cardSurface} practice-card-surface`,
       )}
     >
-      <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Question</span>
-      <RichTextView
-        document={current.presentation.frontDoc}
-        assets={current.presentation.assets}
-        onLinkError={onLinkError}
-      />
+      {!revealed || combineQuestionAndAnswer ? questionContent : null}
       {revealed ? (
         <>
-          <div className={ownedClassNames(ownedStyleMaps, "practice-answer-divider")} />
-          <span className={ownedClassNames(ownedStyleMaps, "practice-side-label")}>Answer</span>
-          <RichTextView
-            document={current.presentation.backDoc}
-            assets={current.presentation.assets}
-            onLinkError={onLinkError}
-          />
+          {combineQuestionAndAnswer ? (
+            <div className={ownedClassNames(ownedStyleMaps, "practice-answer-divider")} />
+          ) : null}
+          {answerContent}
         </>
       ) : null}
     </section>

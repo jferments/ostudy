@@ -178,11 +178,13 @@ function ankiCompatibilitySummary(report: AnkiImportReport): string {
   if (report.simplifiedCardCount > 0) {
     details.push(`${report.simplifiedCardCount} cards required content simplification`);
   }
-  if (report.typedAnswerCardCount > 0) {
-    details.push(`${report.typedAnswerCardCount} typed-answer cards converted to ordinary reveal`);
+  const typedAnswerCardCount = report.typedAnswerCardCount ?? 0;
+  const nativeClozeCardCount = report.nativeClozeCardCount ?? 0;
+  if (typedAnswerCardCount > 0) {
+    details.push(`${typedAnswerCardCount} typed-answer cards converted to ordinary reveal`);
   }
-  if (report.nativeClozeCardCount > 0) {
-    details.push(`${report.nativeClozeCardCount} cloze cards converted to native Fill in the blank`);
+  if (nativeClozeCardCount > 0) {
+    details.push(`${nativeClozeCardCount} cloze cards converted to native Fill in the blank`);
   }
   return ` ${details.join("; ")}.`;
 }

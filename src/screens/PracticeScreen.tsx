@@ -46,7 +46,6 @@ import { PerformanceProfiler } from "../testing/PerformanceProfiler";
 
 const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
 
-
 interface PracticeScreenProps {
   decks: DeckSummary[];
   settings: AppSettings;
@@ -544,7 +543,18 @@ export function PracticeScreen({
       const loadedCount = await loadNextWindow();
       if (loadedCount <= sessionWindowStart + nextPosition) return;
     }
-    setPosition(nextPosition);
+    // Selected sessions can contain tens of thousands of cards. Keep only the
+    // current/next backend windows in React instead of accumulating every rich
+    // card visited for the lifetime of the session. Custom sessions retain the
+    // loaded card list because completion analytics derives their deck scope
+    // from that explicit request.
+    if (session.mode !== "custom" && nextPosition >= PRACTICE_WINDOW_SIZE) {
+      setSessionCards((cards) => cards.slice(nextPosition));
+      setSessionWindowStart((start) => start + nextPosition);
+      setPosition(0);
+    } else {
+      setPosition(nextPosition);
+    }
     setRevealed(false);
     setPreviewSet(null);
   }
@@ -622,31 +632,36 @@ export function PracticeScreen({
     return (
       <PerformanceProfiler id="active-practice">
         <ActivePractice
-        session={session}
-        current={current}
-        position={sessionWindowStart + position}
-        revealed={revealed}
-        ratedCount={ratedCount}
-        previewSet={previewSet}
-        isRevealing={isRevealing}
-        isRating={isRating}
-        isEnding={isEnding}
-        isManaging={isManaging || isLoadingWindow || isLoadingEditor}
-        flipAnimationEnabled={settings.animationsEnabled && !settings.reduceMotion}
-        errorMessage={errorMessage}
-        onReveal={() => void revealAnswer()}
-        onScore={(score) => void submitScore(score)}
-        onEdit={() => void editCurrentCard()}
-        onScheduleAction={(action, intent) => void manageCurrent(action, intent)}
-        onEnd={() => void endSession()}
-        onLinkError={setErrorMessage}
+          session={session}
+          current={current}
+          position={sessionWindowStart + position}
+          revealed={revealed}
+          ratedCount={ratedCount}
+          previewSet={previewSet}
+          isRevealing={isRevealing}
+          isRating={isRating}
+          isEnding={isEnding}
+          isManaging={isManaging || isLoadingWindow || isLoadingEditor}
+          flipAnimationEnabled={settings.animationsEnabled && !settings.reduceMotion}
+          displayQuestionOnAnswer={settings.displayQuestionOnAnswer ?? false}
+          errorMessage={errorMessage}
+          onReveal={() => void revealAnswer()}
+          onScore={(score) => void submitScore(score)}
+          onEdit={() => void editCurrentCard()}
+          onScheduleAction={(action, intent) => void manageCurrent(action, intent)}
+          onEnd={() => void endSession()}
+          onLinkError={setErrorMessage}
         />
       </PerformanceProfiler>
     );
   }
 
   if (isStarting && !session) {
-    return <LoadingState label={recovery?.kind === "restore" ? "Restoring practice…" : "Starting practice…"} />;
+    return (
+      <LoadingState
+        label={recovery?.kind === "restore" ? "Restoring practice…" : "Starting practice…"}
+      />
+    );
   }
 
   return (

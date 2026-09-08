@@ -19,8 +19,6 @@ use crate::{
     studyability,
 };
 
-const MAX_PLANNED_CARDS: i64 = 10_000;
-
 #[derive(Clone, Copy, Debug)]
 pub struct StudyScope<'a> {
     pub deck_ids: &'a [String],
@@ -31,6 +29,9 @@ pub struct StudyScope<'a> {
 pub struct PlannedCard {
     pub deck_id: String,
     pub card_id: String,
+    pub due_at: i64,
+    pub state: i64,
+    pub needs_more_practice: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -171,13 +172,17 @@ pub fn planned_extra_cards_for_scope(
     time: &StudyTimeContext,
     selection_seed: &str,
 ) -> Result<Vec<PlannedCard>, CommandError> {
+    // Extra practice means the selected studyable scope, not an arbitrary
+    // 10,000-card prefix. The durable practice layer below pages rich content
+    // and snapshots in bounded batches, so large scopes do not require a giant
+    // in-memory card payload.
     load_ranked_cards(
         connection,
         scope,
         time,
         None,
         false,
-        MAX_PLANNED_CARDS,
+        i64::MAX,
         selection_seed,
     )
 }
@@ -187,6 +192,8 @@ struct RankedCandidate {
     deck_id: String,
     card_id: String,
     due_local_date: String,
+    due_at: i64,
+    state: i64,
     needs_more_practice: bool,
     is_new: bool,
     shuffle_key: u64,
@@ -215,13 +222,15 @@ fn load_ranked_cards(
         Some(false) => conditions.push("s.state <> 0".to_string()),
         None => {}
     }
-    let candidate_limit_index = push_value(&mut values, MAX_PLANNED_CARDS);
+    let candidate_limit_index = push_value(&mut values, limit);
     let sql = format!(
         "WITH {signals}
          SELECT
              c.deck_id,
              c.id AS card_id,
              date(s.due_at / 1000, 'unixepoch', 'localtime') AS due_local_date,
+             s.due_at,
+             s.state,
              {signal_value} AS needs_more_practice,
              CASE WHEN s.state = 0 THEN 1 ELSE 0 END AS is_new
          FROM cards c
@@ -248,8 +257,10 @@ fn load_ranked_cards(
                 deck_id: row.get(0)?,
                 card_id: row.get(1)?,
                 due_local_date: row.get(2)?,
-                needs_more_practice: row.get::<_, i64>(3)? != 0,
-                is_new: row.get::<_, i64>(4)? != 0,
+                due_at: row.get(3)?,
+                state: row.get(4)?,
+                needs_more_practice: row.get::<_, i64>(5)? != 0,
+                is_new: row.get::<_, i64>(6)? != 0,
                 shuffle_key: 0,
                 deck_rank: 0,
             })
@@ -307,6 +318,9 @@ fn rank_candidates(
         .map(|card| PlannedCard {
             deck_id: card.deck_id,
             card_id: card.card_id,
+            due_at: card.due_at,
+            state: card.state,
+            needs_more_practice: card.needs_more_practice,
         })
         .collect()
 }
@@ -365,6 +379,8 @@ mod tests {
             deck_id: "deck".to_string(),
             card_id: id.to_string(),
             due_local_date: date.to_string(),
+            due_at: 0,
+            state: i64::from(!is_new),
             needs_more_practice: weak,
             is_new,
             shuffle_key: 0,
@@ -398,5 +414,21 @@ mod tests {
             2,
         );
         assert_eq!(priority[0].card_id, "older-normal");
+    }
+
+    #[test]
+    fn extra_ranking_does_not_truncate_large_scopes_at_ten_thousand_cards() {
+        let candidates = (0..10_050)
+            .map(|index| {
+                ranked_candidate(
+                    &format!("card-{index:05}"),
+                    "2026-08-11",
+                    index % 7 == 0,
+                    false,
+                )
+            })
+            .collect::<Vec<_>>();
+        let selected = rank_candidates(candidates, "large-extra-session", i64::MAX);
+        assert_eq!(selected.len(), 10_050);
     }
 }

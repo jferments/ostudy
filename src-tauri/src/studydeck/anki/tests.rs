@@ -154,10 +154,18 @@ fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations()
         .filter(|note| note.note_type == "cloze")
         .collect::<Vec<_>>();
     assert_eq!(cloze.len(), 2);
-    assert!(cloze.iter().any(|note| note.cloze_source == "{{c1::first}} then second"));
-    assert!(cloze.iter().any(|note| note.cloze_source == "first then {{c1::second}}"));
-    assert!(cloze.iter().any(|note| note.front_text == "[…] then second"));
-    assert!(cloze.iter().all(|note| note.back_text.contains("Complete statement:")));
+    assert!(cloze
+        .iter()
+        .any(|note| note.cloze_source == "{{c1::first}} then second"));
+    assert!(cloze
+        .iter()
+        .any(|note| note.cloze_source == "first then {{c1::second}}"));
+    assert!(cloze
+        .iter()
+        .any(|note| note.front_text == "[…] then second"));
+    assert!(cloze
+        .iter()
+        .all(|note| note.back_text.contains("Complete statement:")));
 
     assert!(package
         .tags
@@ -168,7 +176,10 @@ fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations()
         .issues
         .iter()
         .any(|issue| issue.source_card_id == "105" && issue.message.contains("JavaScript")));
-    assert!(!report.issues.iter().any(|issue| issue.message.contains("CSS")));
+    assert!(!report
+        .issues
+        .iter()
+        .any(|issue| issue.message.contains("CSS")));
     assert!(!fs::read_dir(&fixture.root).unwrap().any(|entry| entry
         .unwrap()
         .file_name()

@@ -149,6 +149,30 @@ describe("ActivePractice", () => {
     expect(props.onReveal).not.toHaveBeenCalled();
   });
 
+  it("shows only the answer after a Basic-style reveal by default", () => {
+    renderActive({
+      flipAnimationEnabled: false,
+      revealed: true,
+      previewSet: previews,
+      displayQuestionOnAnswer: false,
+    });
+
+    expect(screen.queryByText("Question")).toBeNull();
+    expect(screen.getByText("Answer")).toBeTruthy();
+  });
+
+  it("can keep the question visible beside the answer after reveal", () => {
+    renderActive({
+      flipAnimationEnabled: false,
+      revealed: true,
+      previewSet: previews,
+      displayQuestionOnAnswer: true,
+    });
+
+    expect(screen.getByText("Question")).toBeTruthy();
+    expect(screen.getByText("Answer")).toBeTruthy();
+  });
+
   it("shows concise ratings and submits 0-3 keyboard scores after reveal", () => {
     const { props } = renderActive({ revealed: true, previewSet: previews });
 

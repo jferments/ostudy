@@ -47,6 +47,7 @@ pub struct AppSettingsDto {
     pub tutorials_enabled: bool,
     pub confirm_deletions: bool,
     pub practice_shuffle: bool,
+    pub display_question_on_answer: bool,
     pub desired_retention: f64,
     pub daily_new_limit: i64,
     pub daily_review_limit: i64,
@@ -123,6 +124,7 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
         tutorials_enabled: get_setting(connection, "tutorialsEnabled", false)?,
         confirm_deletions: get_setting(connection, "confirmDeletions", true)?,
         practice_shuffle: get_setting(connection, "practiceShuffle", true)?,
+        display_question_on_answer: get_setting(connection, "displayQuestionOnAnswer", false)?,
         desired_retention: get_setting(connection, "desiredRetention", 0.90_f64)?,
         daily_new_limit: get_setting(connection, "dailyNewLimit", 20_i64)?,
         daily_review_limit: get_setting(connection, "dailyReviewLimit", 200_i64)?,
@@ -232,6 +234,10 @@ fn save_settings_in_connection(
         (
             "practiceShuffle",
             serde_json::to_string(&settings.practice_shuffle),
+        ),
+        (
+            "displayQuestionOnAnswer",
+            serde_json::to_string(&settings.display_question_on_answer),
         ),
         (
             "desiredRetention",
@@ -367,9 +373,11 @@ mod tests {
         assert_eq!(settings.daily_new_limit, 20);
         assert_eq!(settings.daily_review_limit, 200);
         assert!(!settings.tutorials_enabled);
+        assert!(!settings.display_question_on_answer);
         settings.daily_new_limit = 12;
         settings.daily_review_limit = 80;
         settings.tutorials_enabled = true;
+        settings.display_question_on_answer = true;
         database
             .with_connection(|connection| save_settings_in_connection(connection, &settings))
             .expect("settings should save");
@@ -379,6 +387,7 @@ mod tests {
         assert_eq!(loaded.daily_new_limit, 12);
         assert_eq!(loaded.daily_review_limit, 80);
         assert!(loaded.tutorials_enabled);
+        assert!(loaded.display_question_on_answer);
     }
 
     #[test]

@@ -461,7 +461,10 @@ mod tests {
         )
         .unwrap();
         assert!(styled.style_omitted);
-        assert!(!styled.warnings.iter().any(|warning| warning.contains("CSS")));
+        assert!(!styled
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("CSS")));
         let answer = document("<hr id=answer>Answer", &mut |_| unreachable!()).unwrap();
         assert_eq!(answer.value["content"].len(), 1);
         assert_eq!(answer.value["content"][0]["type"], "paragraph");
@@ -482,10 +485,14 @@ mod tests {
     #[test]
     fn resolves_images_as_block_nodes_without_copying_attributes() {
         let id = "0123456789abcdef0123456789abcdef";
-        let result = document("Before<img src='a&amp;b.png' width='999999'>After", &mut |name| {
-            assert_eq!(name, "a&b.png");
-            Ok(json!({"type": "image", "attrs": {"assetId": id, "src": format!("study-asset://{id}")}}))
-        }).unwrap();
+        let result = document(
+            "Before<img src='a&amp;b.png' width='999999'>After",
+            &mut |name| {
+                assert_eq!(name, "a&b.png");
+                Ok(json!({"type": "image", "attrs": {"assetId": id, "src": format!("study-asset://{id}")}}))
+            },
+        )
+        .unwrap();
         assert_eq!(result.value["content"][1]["type"], "image");
         assert!(result.value["content"][1]["attrs"].get("width").is_none());
         crate::cards::validate_document(&result.value).unwrap();

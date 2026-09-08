@@ -16,6 +16,7 @@ mod extended_tests {
             tutorials_enabled: true,
             confirm_deletions: true,
             practice_shuffle: true,
+            display_question_on_answer: false,
             desired_retention: 0.90,
             daily_new_limit: 20,
             daily_review_limit: 200,
@@ -38,6 +39,7 @@ mod extended_tests {
             tutorials_enabled: false,
             confirm_deletions: false,
             practice_shuffle: false,
+            display_question_on_answer: true,
             desired_retention: 0.96,
             daily_new_limit: 12,
             daily_review_limit: 80,
@@ -62,6 +64,10 @@ mod extended_tests {
         assert_eq!(loaded.tutorials_enabled, expected.tutorials_enabled);
         assert_eq!(loaded.confirm_deletions, expected.confirm_deletions);
         assert_eq!(loaded.practice_shuffle, expected.practice_shuffle);
+        assert_eq!(
+            loaded.display_question_on_answer,
+            expected.display_question_on_answer
+        );
         assert_eq!(loaded.desired_retention, expected.desired_retention);
         assert_eq!(loaded.daily_new_limit, expected.daily_new_limit);
         assert_eq!(loaded.daily_review_limit, expected.daily_review_limit);
@@ -101,7 +107,10 @@ mod extended_tests {
 
         let mut value = settings();
         value.daily_review_limit = MAX_DAILY_LIMIT + 1;
-        assert_eq!(validate_settings(&value).unwrap_err().code, "invalid_daily_limit");
+        assert_eq!(
+            validate_settings(&value).unwrap_err().code,
+            "invalid_daily_limit"
+        );
 
         let mut value = settings();
         value.desired_retention = 0.79;
@@ -126,6 +135,7 @@ mod extended_tests {
             "tutorialsEnabled": true,
             "confirmDeletions": true,
             "practiceShuffle": true,
+            "displayQuestionOnAnswer": false,
             "desiredRetention": 0.9,
             "dailyNewLimit": 20,
             "dailyReviewLimit": 200
