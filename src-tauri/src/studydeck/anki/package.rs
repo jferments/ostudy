@@ -23,8 +23,7 @@ const MAX_ARCHIVE_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 768 * 1024 * 1024;
 const MAX_COLLECTION_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_MEDIA_MAP_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
-const MAX_MEDIA_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_SINGLE_MEDIA_BYTES: usize = 25 * 1024 * 1024;
 const MAX_ASSET_BYTES: usize = 512 * 1024 * 1024;
 const MAX_ENTRIES: usize = 100_004;
 
@@ -191,18 +190,17 @@ impl Archive {
         let id = source_id("asset", &entry);
         if !self.assets.contains_key(&id) {
             let bytes = self
-                .read_entry(&entry, MAX_MEDIA_BYTES)
-                .map_err(|_| "An Anki media file is corrupt or exceeds its 128 MiB size limit.")?;
+                .read_entry(&entry, MAX_SINGLE_MEDIA_BYTES as u64)
+                .map_err(|_| "An Anki media file is corrupt or exceeds its 25 MiB size limit.")?;
             if bytes.len() > MAX_ASSET_BYTES.saturating_sub(self.asset_bytes) {
-                return Err("Imported Anki media exceed the 512 MiB in-memory conversion limit.".into());
+                return Err(
+                    "Imported Anki media exceed the 512 MiB in-memory conversion limit.".into(),
+                );
             }
             let detected = detect_managed_asset_bytes(&bytes, &filename).map_err(|_| {
                 "An Anki media file uses an unsupported image, audio, video, or container format."
                     .to_string()
             })?;
-            if detected.kind == ManagedAssetKind::Image && bytes.len() > MAX_IMAGE_BYTES {
-                return Err("An imported image exceeds the 25 MiB image limit.".into());
-            }
             self.asset_bytes += bytes.len();
             self.assets.insert(
                 id.clone(),

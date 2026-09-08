@@ -166,10 +166,8 @@ fn stage_package_assets(
     let now = unix_time_millis()?;
     let mut mapping = HashMap::new();
     for asset in assets {
-        let detected = crate::assets::detect_managed_asset_bytes(
-            &asset.data,
-            &asset.original_filename,
-        )?;
+        let detected =
+            crate::assets::detect_managed_asset_bytes(&asset.data, &asset.original_filename)?;
         if detected.mime_type != asset.mime_type {
             return Err(CommandError::invalid_package(
                 "An imported managed asset has an invalid file type.",
@@ -182,11 +180,8 @@ fn stage_package_assets(
             let relative_path = AppPaths::image_relative_path(&new_id, detected.extension);
             let final_path = paths.resolve_relative(&relative_path);
             if !final_path.exists() {
-                let staged_relative = AppPaths::staged_asset_relative_path(
-                    draft_id,
-                    &new_id,
-                    detected.extension,
-                );
+                let staged_relative =
+                    AppPaths::staged_asset_relative_path(draft_id, &new_id, detected.extension);
                 let staged_path = paths.resolve_relative(&staged_relative);
                 let _ = fs::remove_file(&staged_path);
                 write_new_file(&staged_path, &asset.data)?;
@@ -544,11 +539,12 @@ fn cleanup_operation_drafts(
                  WHERE purpose = 'import' AND owner_id = ?1 AND committed_at IS NULL",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([operation_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     for draft_id in draft_ids {
         cleanup_draft(connection, paths, &draft_id)?;
@@ -568,7 +564,7 @@ fn cleanup_draft(
                  FROM assets WHERE draft_id = ?1",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([draft_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -578,7 +574,8 @@ fn cleanup_draft(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)

@@ -69,13 +69,7 @@ pub(super) fn document(
                 if unknown_entity {
                     warnings.insert("Some HTML entities were retained literally.".into());
                 }
-                append_text_math_and_sound(
-                    &text,
-                    &marks,
-                    &mut blocks,
-                    &mut inline,
-                    asset,
-                )?;
+                append_text_math_and_sound(&text, &marks, &mut blocks, &mut inline, asset)?;
             }
             Token::ScriptOmitted => {
                 script_omitted = true;
@@ -121,7 +115,9 @@ pub(super) fn document(
                             return Err("A media element has an unmatched closing tag.".into());
                         };
                         if container.kind != kind {
-                            return Err("Nested or mismatched media elements are unsupported.".into());
+                            return Err(
+                                "Nested or mismatched media elements are unsupported.".into(),
+                            );
                         }
                         if !container.resolved {
                             return Err(container.last_error.unwrap_or_else(|| {
@@ -162,20 +158,12 @@ pub(super) fn document(
                         let source = attributes
                             .get("src")
                             .ok_or("A media source has no src attribute.")?;
-                        try_media_source(
-                            source,
-                            container,
-                            &mut blocks,
-                            &mut inline,
-                            asset,
-                        );
+                        try_media_source(source, container, &mut blocks, &mut inline, asset);
                     }
                     continue;
                 }
 
                 if media.is_some() {
-                    // Fallback text/track markup inside a resolved native media element
-                    // is presentation-only. Active attributes were already stripped.
                     if name == "track" || name == "span" || name == "div" || name == "p" {
                         continue;
                     }
@@ -205,11 +193,12 @@ pub(super) fn document(
                         let source = attributes.get("src").ok_or("An image has no source.")?;
                         let mut node = asset(source)?;
                         if node.get("type").and_then(Value::as_str) != Some("image") {
-                            return Err("An <img> reference does not point to a supported image.".into());
+                            return Err(
+                                "An <img> reference does not point to a supported image.".into(),
+                            );
                         }
                         if let Some(alt) = attributes.get("alt") {
-                            node["attrs"]["alt"] =
-                                Value::String(alt.chars().take(500).collect());
+                            node["attrs"]["alt"] = Value::String(alt.chars().take(500).collect());
                         }
                         blocks.push(node);
                     }
@@ -740,16 +729,20 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(result.value["content"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|node| node["type"] == "blockMath"));
-        assert!(result.value["content"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|node| node["type"] == "audio"));
+        assert!(
+            result.value["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|node| node["type"] == "blockMath")
+        );
+        assert!(
+            result.value["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|node| node["type"] == "audio")
+        );
         crate::cards::validate_document(&result.value).unwrap();
     }
 

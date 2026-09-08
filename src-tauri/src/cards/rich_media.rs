@@ -77,7 +77,10 @@ fn collect_assets(value: &Value, ids: &mut BTreeSet<String>) -> Result<(), Comma
             }
         }
         Value::Object(object) => {
-            let node_type = object.get("type").and_then(Value::as_str).unwrap_or_default();
+            let node_type = object
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if matches!(node_type, "image" | "audio" | "video") {
                 let id = object
                     .get("attrs")
@@ -100,7 +103,10 @@ fn collect_assets(value: &Value, ids: &mut BTreeSet<String>) -> Result<(), Comma
 fn validation_shadow(document: &Value) -> Result<Value, CommandError> {
     let mut root = document.clone();
     let object = root.as_object_mut().ok_or_else(|| {
-        CommandError::new("invalid_card_document", "The card editor content is invalid.")
+        CommandError::new(
+            "invalid_card_document",
+            "The card editor content is invalid.",
+        )
     })?;
     if object.get("type").and_then(Value::as_str) != Some("doc") {
         return Err(CommandError::new(
@@ -185,7 +191,11 @@ fn transform_children(value: &mut Value, parent: ParentKind) -> Result<(), Comma
                 ));
             }
             let title = validate_media_node(object, node_type.as_str())?;
-            let label = if node_type == "audio" { "Audio" } else { "Video" };
+            let label = if node_type == "audio" {
+                "Audio"
+            } else {
+                "Video"
+            };
             let text = title
                 .filter(|value| !value.trim().is_empty())
                 .map(|value| format!("[{label}: {value}]"))
@@ -259,8 +269,7 @@ fn validate_media_node<'a>(
     let title = match attrs.get("title") {
         None | Some(Value::Null) => None,
         Some(Value::String(value)) => {
-            if value.chars().count() > MAX_MEDIA_TITLE_CHARS
-                || value.chars().any(char::is_control)
+            if value.chars().count() > MAX_MEDIA_TITLE_CHARS || value.chars().any(char::is_control)
             {
                 return Err(CommandError::new(
                     "invalid_media_reference",

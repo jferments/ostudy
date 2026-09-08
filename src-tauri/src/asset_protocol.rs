@@ -159,12 +159,7 @@ fn full_response(path: &Path, mime_type: &str, size: u64) -> Response<Vec<u8>> {
         .body()
 }
 
-fn ranged_response(
-    path: &Path,
-    mime_type: &str,
-    size: u64,
-    range: ByteRange,
-) -> Response<Vec<u8>> {
+fn ranged_response(path: &Path, mime_type: &str, size: u64, range: ByteRange) -> Response<Vec<u8>> {
     let length = range.end.saturating_sub(range.start).saturating_add(1);
     let Ok(length_usize) = usize::try_from(length) else {
         return range_not_satisfiable(size);

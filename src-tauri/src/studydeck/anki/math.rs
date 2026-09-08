@@ -121,7 +121,9 @@ impl<'a> XmlParser<'a> {
 
     fn element(&mut self, depth: usize) -> Result<XmlNode, String> {
         if depth > MAX_XML_DEPTH || self.nodes >= MAX_XML_NODES {
-            return Err("MathML is nested too deeply or contains too many elements.".into());
+            return Err(
+                "MathML is nested too deeply or contains too many elements.".into(),
+            );
         }
         self.nodes += 1;
         if !self.rest().starts_with('<') || self.rest().starts_with("</") {
@@ -131,7 +133,9 @@ impl<'a> XmlParser<'a> {
             || self.rest().starts_with("<!")
             || self.rest().starts_with("<?")
         {
-            return Err("MathML declarations, comments, and external markup are unsupported.".into());
+            return Err(
+                "MathML declarations, comments, and external markup are unsupported.".into(),
+            );
         }
         let end = find_tag_end(self.rest())?;
         let raw = self.rest()[1..end].trim();
@@ -325,7 +329,10 @@ fn render_node(node: &XmlNode) -> Result<String, String> {
                 .iter()
                 .map(render_matrix_row)
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(format!("\\begin{{matrix}}{}\\end{{matrix}}", rows.join("\\\\")))
+            Ok(format!(
+                "\\begin{{matrix}}{}\\end{{matrix}}",
+                rows.join("\\\\")
+            ))
         }
         "mtr" | "mlabeledtr" => render_matrix_row(node),
         "mtd" => Ok(children()?.join("")),
@@ -377,7 +384,10 @@ fn render_identifier(text: &str) -> Result<String, String> {
         }
         return Ok(text.to_string());
     }
-    if text.chars().all(|character| character.is_ascii_alphanumeric()) {
+    if text
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric())
+    {
         return Ok(format!("\\mathrm{{{text}}}"));
     }
     Ok(format!("\\mathrm{{{}}}", escape_text(text)))
@@ -496,7 +506,10 @@ fn decode_entities(input: &str) -> Result<String, String> {
             .filter(|index| *index <= 32)
             .ok_or("Malformed MathML entity.")?;
         let name = &entity[..end];
-        let character = if let Some(hex) = name.strip_prefix("#x").or_else(|| name.strip_prefix("#X")) {
+        let character = if let Some(hex) = name
+            .strip_prefix("#x")
+            .or_else(|| name.strip_prefix("#X"))
+        {
             u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
         } else if let Some(decimal) = name.strip_prefix('#') {
             decimal.parse::<u32>().ok().and_then(char::from_u32)

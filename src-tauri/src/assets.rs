@@ -164,9 +164,8 @@ pub(crate) fn validate_original_filename(value: &str) -> Result<String, CommandE
 pub(crate) fn detect_image_bytes(
     bytes: &[u8],
 ) -> Result<(&'static str, &'static str), CommandError> {
-    let detected = detect_image(bytes).ok_or_else(|| {
-        CommandError::new("unsupported_image", "Use a supported image file.")
-    })?;
+    let detected = detect_image(bytes)
+        .ok_or_else(|| CommandError::new("unsupported_image", "Use a supported image file."))?;
     Ok((detected.mime_type, detected.extension))
 }
 
