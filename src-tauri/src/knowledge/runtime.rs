@@ -12,6 +12,22 @@ use crate::{error::CommandError, task_cancellation::CancellationSignal};
 
 static TASKS: LazyLock<TaskRegistry> = LazyLock::new(TaskRegistry::default);
 const MAX_INTERACTIVE_TASKS: usize = 3;
+const MAINTENANCE_KEY: &str = "library-maintenance";
+
+/// Reserve the same admission registry used by tutor/preparation tasks. Unlike
+/// checking has_active_tasks(), admission and exclusion are atomic under its
+/// mutex. Held only for synchronous local maintenance, never across provider IO.
+pub(crate) struct MaintenanceGuard {
+    _task: TaskGuard,
+}
+
+impl MaintenanceGuard {
+    pub(crate) fn begin() -> Result<Self, CommandError> {
+        Ok(Self {
+            _task: TaskGuard::begin(MAINTENANCE_KEY, MAINTENANCE_KEY, false)?,
+        })
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +102,14 @@ impl TaskRegistry {
         preparation: bool,
     ) -> Result<CancellationSignal, CommandError> {
         let mut tasks = self.active.lock().map_err(|_| unavailable())?;
+        if (key == MAINTENANCE_KEY && !tasks.is_empty())
+            || tasks.values().any(|task| task.key == MAINTENANCE_KEY)
+        {
+            return Err(CommandError::new(
+                "learning_maintenance_busy",
+                "Finish or cancel active tutor/preparation work before library maintenance; finish maintenance before starting another learning request.",
+            ));
+        }
         if tasks.contains_key(operation_id) || tasks.values().any(|task| task.key == key) {
             return Err(CommandError::new(
                 "learning_task_running",
@@ -166,6 +190,21 @@ fn unavailable() -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maintenance_excludes_learning_tasks_in_both_directions() {
+        let registry = TaskRegistry::default();
+        registry.begin("a", "conversation:a", false).unwrap();
+        assert!(registry
+            .begin(MAINTENANCE_KEY, MAINTENANCE_KEY, false)
+            .is_err());
+        registry.active.lock().unwrap().clear();
+        registry
+            .begin(MAINTENANCE_KEY, MAINTENANCE_KEY, false)
+            .unwrap();
+        assert!(registry.begin("a", "conversation:a", false).is_err());
+        assert!(registry.begin("b", "prepare:b", true).is_err());
+    }
 
     #[test]
     fn admission_separates_conversations_and_bounds_preparation() {

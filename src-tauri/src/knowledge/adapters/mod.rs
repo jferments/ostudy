@@ -45,6 +45,7 @@ pub(crate) fn enumerate_sources(
                     "SELECT t.conversation_id, t.id FROM tutor_turns t
                      JOIN tutor_conversations c ON c.id = t.conversation_id
                      WHERE c.scope_json = ?1 AND t.state = 'complete' AND t.evidence_current = 1
+                       AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence
                      ORDER BY c.id, t.sequence LIMIT 100001",
                 )
                 .map_err(CommandError::database)?;
@@ -62,7 +63,9 @@ pub(crate) fn enumerate_sources(
             seeds.extend(conversations);
         }
         if seeds.len() > MAX_PREPARATION_SOURCES {
-            return Err(invalid("This selection is too large. Prepare a smaller deck or document scope."));
+            return Err(invalid(
+                "This selection is too large. Prepare a smaller deck or document scope.",
+            ));
         }
         Ok(seeds)
     })
@@ -80,7 +83,9 @@ pub(crate) fn materialize_sources(
     seeds: &[SourceSeed],
 ) -> Result<Vec<SourceRecord>, CommandError> {
     if seeds.len() > 32 {
-        return Err(invalid("The semantic source publication batch is too large."));
+        return Err(invalid(
+            "The semantic source publication batch is too large.",
+        ));
     }
     database.with_connection(|connection| {
         let transaction = connection
@@ -99,7 +104,10 @@ pub(crate) fn materialize_sources(
                 seed.kind,
                 &seed.owner_id,
                 &seed.parent_key,
-                &sources.iter().map(|source| source.id.clone()).collect::<Vec<_>>(),
+                &sources
+                    .iter()
+                    .map(|source| source.id.clone())
+                    .collect::<Vec<_>>(),
             )?;
             published.extend(sources);
         }
@@ -128,7 +136,8 @@ fn read_conversation(
         .query_row(
             "SELECT c.title, t.user_text, t.assistant_text, t.updated_at
              FROM tutor_turns t JOIN tutor_conversations c ON c.id = t.conversation_id
-             WHERE t.id = ?1 AND c.id = ?2 AND t.state = 'complete' AND t.evidence_current = 1",
+             WHERE t.id = ?1 AND c.id = ?2 AND t.state = 'complete' AND t.evidence_current = 1
+               AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence",
             rusqlite::params![seed.parent_key, seed.owner_id],
             |row| {
                 Ok((
@@ -146,10 +155,14 @@ fn read_conversation(
     };
     let mut result = Vec::new();
     for (role, text) in [("User message", user), ("Tutor message", assistant)] {
-        for (index, part) in split_text(&text, MAX_SOURCE_CHARS - 100).into_iter().enumerate() {
+        for (index, part) in split_text(&text, MAX_SOURCE_CHARS - 100)
+            .into_iter()
+            .enumerate()
+        {
             let mut source = blank_record(seed, &title, &revision.to_string());
             source.segment_key = format!("{}:{role}:{index}", seed.parent_key);
-            source.text = format!("{role} (historical conversation, not a verified source):\n{part}");
+            source.text =
+                format!("{role} (historical conversation, not a verified source):\n{part}");
             source.origin = ContentOrigin::Conversation;
             source.conversation_id = Some(seed.owner_id.clone());
             source.turn_id = Some(seed.parent_key.clone());

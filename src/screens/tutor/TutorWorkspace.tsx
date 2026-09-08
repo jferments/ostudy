@@ -7,6 +7,7 @@ import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { MaterialPreparation } from "./MaterialPreparation";
 import { useTutor } from "./TutorContext";
+import { TutorMemoryControls } from "./TutorMemoryControls";
 import styles from "./TutorWorkspace.module.css";
 
 export function TutorWorkspace() {
@@ -16,8 +17,9 @@ export function TutorWorkspace() {
   const [source, setSource] = useState<SourceCitation | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [sourceBusy, setSourceBusy] = useState(false);
+  const [memoryBusy, setMemoryBusy] = useState(false);
   const hintOnly = tutor.target?.mode === "hint";
-  const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
+  const locked = memoryBusy || tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   const profiles = tutor.profiles.filter((profile) => profile.enabled && profile.configurationStatus === "ready");
   const defaultProfile = profiles.find((profile) => profile.id === tutor.defaultTutorProfileId);
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
@@ -90,9 +92,14 @@ export function TutorWorkspace() {
         </div>
         <p className={styles.muted}>Choose and test provider profiles in Settings → AI/LLM. General discussion uses the model without searching the library.</p>
       </details>
+      {tutor.detail && !hintOnly ? (
+        <TutorMemoryControls key={tutor.detail.conversation.id} conversationId={tutor.detail.conversation.id}
+          revision={tutor.detail.conversation.revision} retrievalAvailable={tutor.detail.conversation.scope.kind !== "general"} disabled={tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked}
+          onBusyChange={setMemoryBusy} onChanged={tutor.refresh} />
+      ) : null}
       {tutor.target ? <p className={styles.muted}>Current context: {tutor.target.title}</p> : null}
       {tutor.scope.kind !== "general" && !hintOnly ? (
-        <MaterialPreparation controller={tutor.preparation} disabled={tutor.busy || tutor.loading || tutor.pending !== null} />
+        <MaterialPreparation controller={tutor.preparation} disabled={memoryBusy || tutor.busy || tutor.loading || tutor.pending !== null} />
       ) : null}
       {!profiles.length && !tutor.loading ? <p className={styles.notice}>Configure an AI provider in Settings → AI/LLM to send messages. Saved conversations remain readable without AI access.</p> : null}
       <div className={styles.transcript} role="log" aria-label="Saved conversation" aria-relevant="additions">

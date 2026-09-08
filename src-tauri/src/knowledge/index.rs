@@ -141,7 +141,11 @@ impl VectorIndex {
             .map_err(cache_error)
     }
 
-    pub(crate) fn write(&mut self, space: &str, entries: &[IndexWrite]) -> Result<(), CommandError> {
+    pub(crate) fn write(
+        &mut self,
+        space: &str,
+        entries: &[IndexWrite],
+    ) -> Result<(), CommandError> {
         if !is_hash(space) || entries.len() > 64 {
             return Err(invalid("The embedding space or cache batch is invalid."));
         }
@@ -182,8 +186,8 @@ impl VectorIndex {
                 |row| row.get(0),
             )
             .map_err(cache_error)?;
-        let addition = i64::try_from(entries.len().saturating_mul(dimensions * 4 + 512))
-            .unwrap_or(i64::MAX);
+        let addition =
+            i64::try_from(entries.len().saturating_mul(dimensions * 4 + 512)).unwrap_or(i64::MAX);
         if bytes.saturating_add(addition) > MAX_CACHE_BYTES {
             return Err(CommandError::new(
                 "semantic_cache_full",
@@ -221,7 +225,9 @@ impl VectorIndex {
     ) -> Result<Vec<VectorHit>, CommandError> {
         super::runtime::check_canceled(cancellation)?;
         if eligible.len() > MAX_QUERY_ENTRIES || !(1..=64).contains(&limit) {
-            return Err(invalid("The semantic retrieval scope or result limit is too large."));
+            return Err(invalid(
+                "The semantic retrieval scope or result limit is too large.",
+            ));
         }
         let Some(dimensions) = self.dimensions(space)? else {
             return Ok(Vec::new());
@@ -280,10 +286,40 @@ impl VectorIndex {
         Ok(nearest.into_sorted_vec())
     }
 
-    pub(crate) fn clear(&mut self) -> Result<(), CommandError> {
-        self.connection
-            .execute_batch("DELETE FROM embedding_entries; DELETE FROM embedding_spaces; VACUUM;")
-            .map_err(cache_error)
+    /// Drain durable invalidation IDs in bounded batches. The library lock
+    /// prevents a new source mutation between cache removal and acknowledgement.
+    /// A crash after cache removal simply replays an idempotent deletion.
+    pub(crate) fn evict_invalidated(
+        &mut self,
+        database: &crate::database::Database,
+    ) -> Result<(), CommandError> {
+        loop {
+            let count = database.with_connection(|library| {
+                let ids = {
+                    let mut statement = library.prepare(
+                        "SELECT source_id FROM knowledge_cache_evictions ORDER BY source_id LIMIT 256"
+                    ).map_err(CommandError::database)?;
+                    let rows = statement.query_map([], |row| row.get::<_, String>(0))
+                        .map_err(CommandError::database)?
+                        .collect::<Result<Vec<_>, _>>().map_err(CommandError::database)?;
+                    rows
+                };
+                if ids.is_empty() { return Ok(0); }
+                let json = serde_json::to_string(&ids).map_err(CommandError::serialization)?;
+                self.connection.execute(
+                    "DELETE FROM embedding_entries WHERE source_id IN (SELECT value FROM json_each(?1))",
+                    [&json],
+                ).map_err(cache_error)?;
+                library.execute(
+                    "DELETE FROM knowledge_cache_evictions WHERE source_id IN (SELECT value FROM json_each(?1))",
+                    [&json],
+                ).map_err(CommandError::database)?;
+                Ok(ids.len())
+            })?;
+            if count < 256 {
+                return Ok(());
+            }
+        }
     }
 }
 
@@ -301,7 +337,10 @@ pub(crate) fn validate_vector(vector: &[f32], dimensions: usize) -> Result<(), C
 }
 
 fn vector_bytes(vector: &[f32]) -> Vec<u8> {
-    vector.iter().flat_map(|value| value.to_le_bytes()).collect()
+    vector
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
 }
 
 fn cosine_distance(query: &[f32], bytes: &[u8]) -> Result<f64, CommandError> {
@@ -345,6 +384,37 @@ mod tests {
     }
 
     #[test]
+    fn durable_eviction_removes_all_model_spaces_and_is_replay_safe() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let mut index = VectorIndex::initialize(Connection::open_in_memory().unwrap()).unwrap();
+        let space = super::super::contracts::hash("space");
+        let entry = key("source:deleted", "old");
+        index
+            .write(
+                &space,
+                &[IndexWrite {
+                    key: entry.clone(),
+                    vector: vec![1.0, 0.0],
+                }],
+            )
+            .unwrap();
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO knowledge_cache_evictions (source_id) VALUES (?1)",
+                        [&entry.source_id],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+        index.evict_invalidated(&database).unwrap();
+        assert!(!index.contains(&space, &entry).unwrap());
+        index.evict_invalidated(&database).unwrap();
+    }
+
+    #[test]
     fn vectors_reject_invalid_components_and_dimensions() {
         assert!(validate_vector(&[1.0, f32::NAN], 2).is_err());
         assert!(validate_vector(&[0.0, 0.0], 2).is_err());
@@ -363,22 +433,39 @@ mod tests {
             .write(
                 &space,
                 &[
-                    IndexWrite { key: first.clone(), vector: vec![1.0, 0.0] },
-                    IndexWrite { key: second.clone(), vector: vec![0.9, 0.1] },
+                    IndexWrite {
+                        key: first.clone(),
+                        vector: vec![1.0, 0.0],
+                    },
+                    IndexWrite {
+                        key: second.clone(),
+                        vector: vec![0.9, 0.1],
+                    },
                 ],
             )
             .unwrap();
         let cancellation = CancellationSignal::new();
         let hits = index
-            .search(&space, &[1.0, 0.0], &[key("source:first", "new"), second.clone()], 8, &cancellation)
+            .search(
+                &space,
+                &[1.0, 0.0],
+                &[key("source:first", "new"), second.clone()],
+                8,
+                &cancellation,
+            )
             .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].key.id, second.id);
         assert!(hits[0].distance < 0.1);
         let different_space = super::super::contracts::hash("different-model");
-        assert!(index.search(&different_space, &[1.0, 0.0], &[first], 8, &cancellation).unwrap().is_empty());
+        assert!(index
+            .search(&different_space, &[1.0, 0.0], &[first], 8, &cancellation)
+            .unwrap()
+            .is_empty());
         cancellation.cancel();
-        assert!(index.search(&space, &[1.0, 0.0], &[], 8, &cancellation).is_err());
+        assert!(index
+            .search(&space, &[1.0, 0.0], &[], 8, &cancellation)
+            .is_err());
     }
 
     #[test]
@@ -386,14 +473,47 @@ mod tests {
         let mut index = VectorIndex::initialize(Connection::open_in_memory().unwrap()).unwrap();
         let space = super::super::contracts::hash("ordered");
         let entries = [
-            IndexWrite { key: key("b", "v1"), vector: vec![1.0, 0.0] },
-            IndexWrite { key: key("a", "v1"), vector: vec![1.0, 0.0] },
-            IndexWrite { key: key("c", "v1"), vector: vec![0.0, 1.0] },
+            IndexWrite {
+                key: key("b", "v1"),
+                vector: vec![1.0, 0.0],
+            },
+            IndexWrite {
+                key: key("a", "v1"),
+                vector: vec![1.0, 0.0],
+            },
+            IndexWrite {
+                key: key("c", "v1"),
+                vector: vec![0.0, 1.0],
+            },
         ];
         index.write(&space, &entries).unwrap();
-        let eligible = entries.iter().map(|entry| entry.key.clone()).collect::<Vec<_>>();
-        let hits = index.search(&space, &[1.0, 0.0], &eligible, 2, &CancellationSignal::new()).unwrap();
-        assert_eq!(hits.iter().map(|hit| hit.key.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
-        assert!(index.write(&space, &[IndexWrite { key: key("d", "v1"), vector: vec![1.0] }]).is_err());
+        let eligible = entries
+            .iter()
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
+        let hits = index
+            .search(
+                &space,
+                &[1.0, 0.0],
+                &eligible,
+                2,
+                &CancellationSignal::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            hits.iter()
+                .map(|hit| hit.key.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert!(index
+            .write(
+                &space,
+                &[IndexWrite {
+                    key: key("d", "v1"),
+                    vector: vec![1.0]
+                }]
+            )
+            .is_err());
     }
 }

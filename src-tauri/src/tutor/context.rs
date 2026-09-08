@@ -8,7 +8,10 @@ use rusqlite::params;
 use serde_json::{json, Value};
 
 use crate::{
-    ai::{document_intelligence::{DocumentTaskContext, SourcePageImage}, AiRuntimeState},
+    ai::{
+        document_intelligence::{DocumentTaskContext, SourcePageImage},
+        AiRuntimeState,
+    },
     database::Database,
     error::CommandError,
     knowledge::{
@@ -56,26 +59,42 @@ pub(crate) async fn build(
     }
     if let Some(quiz) = quiz {
         let evidence = database.with_connection(|connection| {
-            quiz.source_ids.iter().map(|id| {
-                repository::load_source(connection, id)?.ok_or_else(repository::stale_source)
-            }).collect::<Result<Vec<_>, _>>()
+            quiz.source_ids
+                .iter()
+                .map(|id| {
+                    repository::load_source(connection, id)?.ok_or_else(repository::stale_source)
+                })
+                .collect::<Result<Vec<_>, _>>()
         })?;
         sources.extend(evidence);
     } else if scope.kind != ScopeKind::General {
         let query = if input.mode == TutorMode::Hint {
             focus.question.clone().unwrap_or_default()
         } else {
-            format!("{}\n{}", input.text, focus.question.as_deref().unwrap_or_else(|| {
-                sources.first().map_or("", |source| source.title.as_str())
-            }))
+            format!(
+                "{}\n{}",
+                input.text,
+                focus.question.as_deref().unwrap_or_else(|| {
+                    sources.first().map_or("", |source| source.title.as_str())
+                })
+            )
         };
         let query = if query.trim().is_empty() {
-            "Important definitions, relationships, comparisons and processes in this study material".to_string()
+            "Important definitions, relationships, comparisons and processes in this study material"
+                .to_string()
         } else {
             query.chars().take(8_000).collect()
         };
-        match retrieval::retrieve(database, paths, runtime, scope,
-            input.include_conversations && input.mode != TutorMode::Hint, &query, cancellation).await
+        match retrieval::retrieve(
+            database,
+            paths,
+            runtime,
+            scope,
+            input.include_conversations && input.mode != TutorMode::Hint,
+            &query,
+            cancellation,
+        )
+        .await
         {
             Ok(result) => {
                 if result.hits.is_empty() && sources.is_empty() {
@@ -84,8 +103,12 @@ pub(crate) async fn build(
                 }
                 sources.extend(result.hits.into_iter().take(8).map(|hit| hit.source));
             }
-            Err(error) if !sources.is_empty() && matches!(error.code.as_str(),
-                "semantic_preparation_required" | "ai_task_profile_required") =>
+            Err(error)
+                if !sources.is_empty()
+                    && matches!(
+                        error.code.as_str(),
+                        "semantic_preparation_required" | "ai_task_profile_required"
+                    ) =>
             {
                 notice = "Using the current card or guide and exact linked evidence only. Prepare the selection to enable broader semantic retrieval.".to_string();
             }
@@ -103,10 +126,16 @@ pub(crate) async fn build(
     sources = filter_scope(database, scope, sources)?;
     sources.truncate(12);
     if scope.kind != ScopeKind::General && sources.is_empty() {
-        return Err(invalid("No current evidence remains in this material selection."));
+        return Err(invalid(
+            "No current evidence remains in this material selection.",
+        ));
     }
     let images = if task.include_page_images {
-        match focus.sources.first().filter(|source| !source.images.is_empty()) {
+        match focus
+            .sources
+            .first()
+            .filter(|source| !source.images.is_empty())
+        {
             Some(source) => crate::knowledge::load_images(database, paths, source)?,
             None => Vec::new(),
         }
@@ -118,7 +147,9 @@ pub(crate) async fn build(
     };
     let completion_tokens = task.completion_token_ceiling(3_000);
     let context_window = task.context_window_tokens().unwrap_or(16_384);
-    let reserve = completion_tokens.saturating_add(5_000).saturating_add(images.len() * 4_096);
+    let reserve = completion_tokens
+        .saturating_add(5_000)
+        .saturating_add(images.len() * 4_096);
     let input_budget = context_window.saturating_sub(reserve).min(32_000);
     if input_budget < 1_000 {
         return Err(CommandError::new("tutor_context_budget",
@@ -131,7 +162,10 @@ pub(crate) async fn build(
         }
         Ok(result)
     })?;
-    let mut inherited_turns = sources.iter().filter_map(|source| source.turn_id.clone()).collect::<Vec<_>>();
+    let mut inherited_turns = sources
+        .iter()
+        .filter_map(|source| source.turn_id.clone())
+        .collect::<Vec<_>>();
     if let Some(id) = &input.question_id {
         inherited_turns.push(id.clone());
     }
@@ -172,7 +206,16 @@ pub(crate) async fn build(
                 "The current question and required evidence exceed this model's context budget. Select a smaller section or shorten the message."));
         }
     };
-    Ok(StudyContext { sources, units, history, inherited_turns, request_text, notice, images, completion_tokens })
+    Ok(StudyContext {
+        sources,
+        units,
+        history,
+        inherited_turns,
+        request_text,
+        notice,
+        images,
+        completion_tokens,
+    })
 }
 
 fn filter_scope(
@@ -188,7 +231,8 @@ fn filter_scope(
                 SourceKind::Document | SourceKind::Guide => source.document_id.as_ref().is_some_and(|id| documents.contains(id)),
                 SourceKind::Conversation => connection.query_row(
                     "SELECT EXISTS(SELECT 1 FROM tutor_conversations c JOIN tutor_turns t ON t.conversation_id = c.id
-                     WHERE t.id = ?1 AND t.evidence_current = 1 AND c.scope_json = ?2)",
+                     WHERE t.id = ?1 AND t.evidence_current = 1 AND c.scope_json = ?2
+                       AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence)",
                     params![source.turn_id, serde_json::to_string(scope).map_err(CommandError::serialization)?],
                     |row| row.get(0),
                 ).map_err(CommandError::database)?,

@@ -9,8 +9,8 @@ fn fixture() -> Database {
     let database = Database::open_in_memory().unwrap();
     database.with_connection(|connection| {
         connection.execute(
-            "INSERT INTO tutor_conversations (id,operation_id,title,scope_json,summary_text,created_at,updated_at)
-             VALUES (?1,?1,'Private chat','{\"kind\":\"general\",\"id\":null}',?2,1,1)",
+            "INSERT INTO tutor_conversations (id,operation_id,title,scope_json,summary_text,retrieval_enabled,created_at,updated_at)
+             VALUES (?1,?1,'Private chat','{\"kind\":\"general\",\"id\":null}',?2,1,1,1)",
             params!["a".repeat(32),PRIVATE_TEXT],
         ).map_err(CommandError::database)?;
         connection.execute(

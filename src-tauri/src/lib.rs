@@ -286,6 +286,8 @@ pub fn run() {
             tutor::commands::get_tutor_conversation,
             tutor::commands::delete_tutor_conversation,
             tutor::commands::send_tutor_turn,
+            tutor::commands::get_tutor_memory,
+            tutor::commands::change_tutor_memory,
             documents::commands::list_documents,
             document_import::import_document,
             document_operations::run_document_flashcard_generation,

@@ -188,6 +188,7 @@ pub fn prepare_library_backup(
     paths: State<'_, AppPaths>,
     input: PrepareLibraryBackupInput,
 ) -> Result<PreparedLibraryBackupDto, CommandError> {
+    let _learning_guard = crate::knowledge::runtime::MaintenanceGuard::begin()?;
     crate::util::validate_entity_id(&input.operation_id, "library backup operation")?;
     if let Some((prepared_export, summary)) = database.with_connection(|connection| {
         crate::external_files::load_prepared_export_summary::<LibraryBackupSummaryDto>(
@@ -248,6 +249,7 @@ pub fn prepare_library_restore(
     paths: State<'_, AppPaths>,
     input: PrepareLibraryRestoreInput,
 ) -> Result<LibraryRestoreResultDto, CommandError> {
+    let _learning_guard = crate::knowledge::runtime::MaintenanceGuard::begin()?;
     crate::util::validate_entity_id(&input.staged_file_id, "staged library backup")?;
     if let Some(result) = database.with_connection(|connection| {
         crate::external_files::consumed_import_result::<LibraryRestoreResultDto>(
@@ -310,6 +312,26 @@ pub(crate) fn apply_pending_restore(
     extract_backup_package(&pending, &staged_database, &staged_assets)
         .map_err(|error| error.message)?;
 
+    // Vector indexes are deliberately excluded from full backups. A restored
+    // preparation receipt must not claim that its device-local index is ready.
+    {
+        let restored = Connection::open(&staged_database)
+            .map_err(|error| format!("Could not reconcile restored learning state: {error}"))?;
+        restored.execute_batch(
+            "UPDATE knowledge_preparations SET state = 'interrupted',
+                 safe_error_code = 'semantic_index_not_restored',
+                 safe_error_message = 'The library was restored without its device-local vector cache. Prepare the selected material to rebuild it.'
+             WHERE state IN ('complete', 'running');"
+        ).map_err(|error| format!("Could not reconcile restored learning state: {error}"))?;
+    }
+    for suffix in ["", "-wal", "-shm"] {
+        remove_file_if_exists(
+            &paths
+                .app_data_dir()
+                .join(format!("cache/semantic-v1.sqlite3{suffix}")),
+        )
+        .map_err(|error| format!("Could not discard the pre-restore semantic cache: {error}"))?;
+    }
     let database_path = paths.database_path().to_path_buf();
     let assets_path = paths.app_data_dir().join("assets");
     let documents_path = paths.app_data_dir().join("documents");
@@ -949,8 +971,9 @@ fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandErro
             "The backup's SQLite library is damaged.",
         ));
     }
+    crate::database::validate_backup_lineage(connection)?;
     let version = snapshot_schema_version(connection)?;
-    if version != LATEST_SCHEMA_VERSION {
+    if version != LATEST_SCHEMA_VERSION && version != 10 {
         return Err(CommandError::new(
             "unsupported_backup_schema",
             format!("This backup uses unsupported database schema {version}."),
@@ -1261,3 +1284,7 @@ mod tests {
             .expect("generic source-asset row should be admitted");
     }
 }
+
+#[cfg(test)]
+#[path = "library_backup/tutor_backup_tests.rs"]
+mod tutor_backup_tests;

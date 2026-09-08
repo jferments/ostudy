@@ -8,7 +8,10 @@ use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
 
 use crate::{
-    ai::{embeddings::{self, Purpose}, AiRuntimeState},
+    ai::{
+        embeddings::{self, Purpose},
+        AiRuntimeState,
+    },
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -17,7 +20,9 @@ use crate::{
 
 use super::{
     adapters::scope_documents,
-    contracts::{bounded, invalid, KnowledgeUnit, ScopeKind, SourceCitation, SourceRecord, StudyScope},
+    contracts::{
+        bounded, invalid, KnowledgeUnit, ScopeKind, SourceCitation, SourceRecord, StudyScope,
+    },
     index::IndexKey,
     preparation::open_index,
     repository,
@@ -59,7 +64,7 @@ pub(crate) async fn retrieve(
     bounded(query, 8_000, "semantic search query", false)?;
     check_canceled(cancellation)?;
     let context = embeddings::load_default_embedding_context(database)?;
-    let mut index = open_index(paths)?;
+    let mut index = open_index(database, paths)?;
     if index.dimensions(&context.space_id)?.is_none() {
         return Err(CommandError::new(
             "semantic_preparation_required",
@@ -79,12 +84,20 @@ pub(crate) async fn retrieve(
     let eligible_count = eligible.len();
     let space = context.space_id.clone();
     let signal = cancellation.clone();
-    let query_vector = vectors.into_iter().next().ok_or_else(|| invalid("No query embedding was returned."))?;
+    let query_vector = vectors
+        .into_iter()
+        .next()
+        .ok_or_else(|| invalid("No query embedding was returned."))?;
     let hits = tauri::async_runtime::spawn_blocking(move || {
         index.search(&space, &query_vector, &eligible, 48, &signal)
     })
     .await
-    .map_err(|_| CommandError::new("semantic_search_interrupted", "Semantic retrieval was interrupted."))??;
+    .map_err(|_| {
+        CommandError::new(
+            "semantic_search_interrupted",
+            "Semantic retrieval was interrupted.",
+        )
+    })??;
     check_canceled(cancellation)?;
     embeddings::ensure_context_current(database, &context)?;
     let hits = database.with_connection(|connection| {
@@ -98,12 +111,19 @@ pub(crate) async fn retrieve(
                 continue;
             };
             let current = if let Some(unit_id) = hit.key.id.strip_prefix("unit:") {
-                connection.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM knowledge_units
+                connection
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM knowledge_units
                      WHERE id = ?1 AND source_id = ?2 AND source_hash = ?3 AND content_hash = ?4)",
-                    params![unit_id, source.id, source.content_hash, hit.key.content_hash],
-                    |row| row.get::<_, bool>(0),
-                ).map_err(CommandError::database)?
+                        params![
+                            unit_id,
+                            source.id,
+                            source.content_hash,
+                            hit.key.content_hash
+                        ],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .map_err(CommandError::database)?
             } else {
                 source.content_hash == hit.key.content_hash
             };
@@ -116,11 +136,19 @@ pub(crate) async fn retrieve(
             units.dedup_by(|left, right| left.id == right.id);
             units.truncate(32);
             seen.insert(source.id.clone());
-            result.push(RetrievedSource { source, units, distance: hit.distance });
+            result.push(RetrievedSource {
+                source,
+                units,
+                distance: hit.distance,
+            });
         }
         Ok(result)
     })?;
-    Ok(RetrievalResult { hits, eligible_entries: eligible_count, space_id: context.space_id })
+    Ok(RetrievalResult {
+        hits,
+        eligible_entries: eligible_count,
+        space_id: context.space_id,
+    })
 }
 
 pub(crate) fn eligible_entries(
@@ -158,7 +186,8 @@ pub(crate) fn eligible_entries(
                      OR (?4 = 1 AND s.kind = 'conversation' AND EXISTS(
                          SELECT 1 FROM tutor_turns t JOIN tutor_conversations tc ON tc.id = t.conversation_id
                          WHERE t.id = s.turn_id AND t.state = 'complete' AND t.evidence_current = 1
-                           AND tc.scope_json = ?5))
+                           AND tc.scope_json = ?5 AND tc.retrieval_enabled = 1
+                           AND t.sequence > tc.memory_start_sequence))
                  )
              )
              SELECT 'source:' || s.id, s.id, s.content_hash FROM allowed_sources s

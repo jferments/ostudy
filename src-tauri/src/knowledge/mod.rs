@@ -39,7 +39,11 @@ pub(crate) fn sanitize_for_device_transfer(
             "DELETE FROM knowledge_artifact_links;
          DELETE FROM knowledge_units;
          DELETE FROM knowledge_sources;
-         DELETE FROM knowledge_preparations;",
+         DELETE FROM knowledge_preparations;
+         DELETE FROM knowledge_cache_evictions;",
         )
         .map_err(crate::error::CommandError::database)
 }
+
+#[cfg(test)]
+mod lifecycle_tests;

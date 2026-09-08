@@ -6,13 +6,17 @@ use tauri::State;
 use crate::{ai::AiRuntimeState, database::Database, error::CommandError, paths::AppPaths};
 
 use super::{
-    contracts::{ConversationDetail, ConversationPageInput, ConversationSummary, CreateConversationInput,
-        DeleteConversationInput, TutorTurn, TutorTurnInput},
-    conversations, service,
+    contracts::{
+        ConversationDetail, ConversationPageInput, ConversationSummary, CreateConversationInput,
+        DeleteConversationInput, TutorTurn, TutorTurnInput,
+    },
+    conversations, memory, service,
 };
 
 #[tauri::command]
-pub fn list_tutor_conversations(database: State<'_, Database>) -> Result<Vec<ConversationSummary>, CommandError> {
+pub fn list_tutor_conversations(
+    database: State<'_, Database>,
+) -> Result<Vec<ConversationSummary>, CommandError> {
     conversations::list(database.inner())
 }
 
@@ -37,6 +41,7 @@ pub fn delete_tutor_conversation(
     database: State<'_, Database>,
     input: DeleteConversationInput,
 ) -> Result<(), CommandError> {
+    let _maintenance = crate::knowledge::runtime::MaintenanceGuard::begin()?;
     conversations::delete(database.inner(), input)
 }
 
@@ -48,4 +53,21 @@ pub async fn send_tutor_turn(
     input: TutorTurnInput,
 ) -> Result<TutorTurn, CommandError> {
     service::send(database.inner(), paths.inner(), runtime.inner(), input).await
+}
+
+#[tauri::command]
+pub fn get_tutor_memory(
+    database: State<'_, Database>,
+    conversation_id: String,
+) -> Result<memory::TutorMemory, CommandError> {
+    memory::get(database.inner(), &conversation_id)
+}
+
+#[tauri::command]
+pub fn change_tutor_memory(
+    database: State<'_, Database>,
+    input: memory::ChangeTutorMemoryInput,
+) -> Result<memory::TutorMemory, CommandError> {
+    let _maintenance = crate::knowledge::runtime::MaintenanceGuard::begin()?;
+    memory::change(database.inner(), input)
 }

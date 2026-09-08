@@ -7,6 +7,7 @@ mod contracts;
 mod conversations;
 mod focus;
 mod history;
+mod memory;
 mod output;
 mod service;
 mod turns;
@@ -27,7 +28,8 @@ pub(crate) fn sanitize_for_device_transfer(
 ) -> Result<(), crate::error::CommandError> {
     connection
         .execute_batch(
-            "DELETE FROM tutor_turn_sources;
+            "DELETE FROM tutor_memory_operations;
+         DELETE FROM tutor_turn_sources;
          DELETE FROM knowledge_sources WHERE kind = 'conversation';
          DELETE FROM tutor_turns;
          DELETE FROM tutor_conversations;",

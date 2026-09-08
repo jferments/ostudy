@@ -8,7 +8,10 @@ use crate::{
     ai::document_intelligence::DocumentTaskContext,
     database::Database,
     error::CommandError,
-    knowledge::{contracts::{hash, invalid, SourceCitation}, repository},
+    knowledge::{
+        contracts::{hash, invalid, SourceCitation},
+        repository,
+    },
     util::{generate_id, unix_time_millis},
 };
 
@@ -33,16 +36,27 @@ struct StoredAssessment {
     feedback: Option<QuizFeedback>,
 }
 
-pub(crate) fn replay(database: &Database, input: &TutorTurnInput) -> Result<Option<TutorTurn>, CommandError> {
+pub(crate) fn replay(
+    database: &Database,
+    input: &TutorTurnInput,
+) -> Result<Option<TutorTurn>, CommandError> {
     let request_hash = request_hash(input)?;
     database.with_connection(|connection| {
-        let saved: Option<(String, String)> = connection.query_row(
-            "SELECT id, request_hash FROM tutor_turns WHERE operation_id = ?1",
-            [&input.operation_id], |row| Ok((row.get(0)?, row.get(1)?)),
-        ).optional().map_err(CommandError::database)?;
+        let saved: Option<(String, String)> = connection
+            .query_row(
+                "SELECT id, request_hash FROM tutor_turns WHERE operation_id = ?1",
+                [&input.operation_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
         match saved {
-            Some((id, saved_hash)) if saved_hash == request_hash => load_public(connection, &id).map(Some),
-            Some(_) => Err(invalid("This tutor operation was already used for a different message.")),
+            Some((id, saved_hash)) if saved_hash == request_hash => {
+                load_public(connection, &id).map(Some)
+            }
+            Some(_) => Err(invalid(
+                "This tutor operation was already used for a different message.",
+            )),
             None => Ok(None),
         }
     })
@@ -107,13 +121,21 @@ pub(crate) fn complete(
     context: &StudyContext,
     total_tokens: Option<i64>,
 ) -> Result<TutorTurn, CommandError> {
-    let citations = context.sources.iter().filter(|source| answer.source_ids.contains(&source.id))
-        .map(SourceCitation::from).collect::<Vec<_>>();
+    let citations = context
+        .sources
+        .iter()
+        .filter(|source| answer.source_ids.contains(&source.id))
+        .map(SourceCitation::from)
+        .collect::<Vec<_>>();
     let citation_json = serde_json::to_string(&citations).map_err(CommandError::serialization)?;
     let assessment_json = serde_json::to_string(&StoredAssessment {
-        quiz: answer.quiz.clone(), feedback: answer.feedback.clone(),
-    }).map_err(CommandError::serialization)?;
-    let text = if context.notice.is_empty() { answer.text.clone() } else {
+        quiz: answer.quiz.clone(),
+        feedback: answer.feedback.clone(),
+    })
+    .map_err(CommandError::serialization)?;
+    let text = if context.notice.is_empty() {
+        answer.text.clone()
+    } else {
         format!("Context note: {}\n\n{}", context.notice, answer.text)
     };
     crate::knowledge::contracts::bounded(&text, 24_000, "published tutor message", false)?;
@@ -165,7 +187,11 @@ pub(crate) fn fail(
     error: &CommandError,
     total_tokens: Option<i64>,
 ) -> Result<TutorTurn, CommandError> {
-    let state = if error.code == "ai_request_canceled" { "canceled" } else { "failed" };
+    let state = if error.code == "ai_request_canceled" {
+        "canceled"
+    } else {
+        "failed"
+    };
     database.with_connection(|connection| {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
@@ -190,37 +216,73 @@ pub(crate) fn fail(
 }
 
 pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn, CommandError> {
-    let row = connection.query_row(
-        "SELECT id, operation_id, sequence, mode, user_text, assistant_text, state,
+    let row = connection
+        .query_row(
+            "SELECT id, operation_id, sequence, mode, user_text, assistant_text, state,
                 citations_json, evidence_current, quiz_json, provider_kind, model_id,
                 safe_error_code, safe_error_message, total_tokens, created_at, conversation_id
          FROM tutor_turns WHERE id = ?1",
-        [id], |row| Ok((
-            row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?,
-            row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, String>(5)?,
-            row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, bool>(8)?,
-            row.get::<_, Option<String>>(9)?, row.get::<_, String>(10)?, row.get::<_, String>(11)?,
-            row.get::<_, String>(12)?, row.get::<_, String>(13)?, row.get::<_, Option<i64>>(14)?,
-            row.get::<_, i64>(15)?, row.get::<_, String>(16)?,
-        )),
-    ).optional().map_err(CommandError::database)?
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, bool>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, String>(12)?,
+                    row.get::<_, String>(13)?,
+                    row.get::<_, Option<i64>>(14)?,
+                    row.get::<_, i64>(15)?,
+                    row.get::<_, String>(16)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(CommandError::database)?
         .ok_or_else(|| invalid("This tutor message is no longer available."))?;
     let mode = match row.3.as_str() {
-        "explain" => TutorMode::Explain, "hint" => TutorMode::Hint,
-        "quiz" => TutorMode::Quiz, "answer" => TutorMode::Answer,
+        "explain" => TutorMode::Explain,
+        "hint" => TutorMode::Hint,
+        "quiz" => TutorMode::Quiz,
+        "answer" => TutorMode::Answer,
         _ => return Err(invalid("The stored tutor mode is invalid.")),
     };
-    let assessment = row.9.map(|text| serde_json::from_str::<StoredAssessment>(&text))
-        .transpose().map_err(CommandError::serialization)?.unwrap_or_default();
-    let pending_question = assessment.quiz.is_some() && row.6 == "complete" && row.8
+    let assessment = row
+        .9
+        .map(|text| serde_json::from_str::<StoredAssessment>(&text))
+        .transpose()
+        .map_err(CommandError::serialization)?
+        .unwrap_or_default();
+    let pending_question = assessment.quiz.is_some()
+        && row.6 == "complete"
+        && row.8
         && question_is_pending(connection, &row.16, &row.0)?;
     Ok(TutorTurn {
-        id: row.0, operation_id: row.1, sequence: row.2, mode, user_text: row.4,
-        assistant_text: row.5, state: row.6,
+        id: row.0,
+        operation_id: row.1,
+        sequence: row.2,
+        mode,
+        user_text: row.4,
+        assistant_text: row.5,
+        state: row.6,
         citations: serde_json::from_str(&row.7).map_err(CommandError::serialization)?,
-        evidence_current: row.8, pending_question, feedback: assessment.feedback,
-        provider: row.10, model: row.11, error_code: row.12, error_message: row.13,
-        total_tokens: row.14, created_at: row.15,
+        evidence_current: row.8,
+        pending_question,
+        feedback: assessment.feedback,
+        provider: row.10,
+        model: row.11,
+        error_code: row.12,
+        error_message: row.13,
+        total_tokens: row.14,
+        created_at: row.15,
     })
 }
 
@@ -232,23 +294,36 @@ pub(crate) fn load_question(
     if !question_is_pending(connection, conversation_id, question_id)? {
         return Err(invalid("This quiz question was answered, superseded, or its source changed. Ask for a new question."));
     }
-    let json: Option<String> = connection.query_row(
-        "SELECT quiz_json FROM tutor_turns WHERE id = ?1 AND conversation_id = ?2
+    let json: Option<String> = connection
+        .query_row(
+            "SELECT quiz_json FROM tutor_turns WHERE id = ?1 AND conversation_id = ?2
          AND state = 'complete' AND evidence_current = 1 AND mode = 'quiz'",
-        params![question_id, conversation_id], |row| row.get(0),
-    ).optional().map_err(CommandError::database)?.flatten();
+            params![question_id, conversation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .flatten();
     let assessment: StoredAssessment = serde_json::from_str(
         &json.ok_or_else(|| invalid("The selected quiz question is unavailable."))?,
-    ).map_err(CommandError::serialization)?;
-    let quiz = assessment.quiz.ok_or_else(|| invalid("The selected message is not a quiz question."))?;
+    )
+    .map_err(CommandError::serialization)?;
+    let quiz = assessment
+        .quiz
+        .ok_or_else(|| invalid("The selected message is not a quiz question."))?;
     quiz.validate()?;
     Ok(quiz)
 }
 
-fn question_is_pending(connection: &Connection, conversation_id: &str, question_id: &str) -> Result<bool, CommandError> {
+fn question_is_pending(
+    connection: &Connection,
+    conversation_id: &str,
+    question_id: &str,
+) -> Result<bool, CommandError> {
     connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM tutor_turns q
          WHERE q.id = ?1 AND q.conversation_id = ?2 AND q.mode = 'quiz'
+           AND q.sequence > (SELECT memory_start_sequence FROM tutor_conversations WHERE id = ?2)
            AND q.state = 'complete' AND q.evidence_current = 1
            AND NOT EXISTS(SELECT 1 FROM tutor_turns a WHERE a.answered_question_id = q.id AND a.state IN ('running', 'complete'))
            AND NOT EXISTS(SELECT 1 FROM tutor_turns n WHERE n.conversation_id = q.conversation_id
@@ -258,7 +333,9 @@ fn question_is_pending(connection: &Connection, conversation_id: &str, question_
 }
 
 fn request_hash(input: &TutorTurnInput) -> Result<String, CommandError> {
-    Ok(hash(&serde_json::to_string(input).map_err(CommandError::serialization)?))
+    Ok(hash(
+        &serde_json::to_string(input).map_err(CommandError::serialization)?,
+    ))
 }
 
 pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError> {
