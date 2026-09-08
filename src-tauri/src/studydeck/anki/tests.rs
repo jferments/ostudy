@@ -4,7 +4,7 @@ use std::{fs, io::Write, path::PathBuf};
 
 use base64::Engine;
 use rusqlite::{params, Connection};
-use serde_json::json;
+use serde_json::{json, Value};
 use zip::{write::SimpleFileOptions, ZipWriter};
 
 use super::*;
@@ -22,6 +22,14 @@ impl Drop for Fixture {
 }
 
 fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
+    fixture_with_rich_media(extra, media, false)
+}
+
+fn fixture_with_rich_media(
+    extra: &[(&str, &[u8])],
+    media: &str,
+    include_rich_media: bool,
+) -> Fixture {
     let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!(
         "ostudy-anki-test-{}-{sequence}",
@@ -82,6 +90,26 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
             )
             .unwrap();
     }
+    if include_rich_media {
+        for (id, fields) in [
+            (
+                16,
+                r"\(x^2 + y^2 = z^2\)\u{1f}<math><mfrac><mi>a</mi><mi>b</mi></mfrac></math>\u{1f}",
+            ),
+            (17, "[sound:voice.mp3]\u{1f}Audio pronunciation\u{1f}"),
+            (
+                18,
+                "<video src='clip.mp4'></video>\u{1f}Video example\u{1f}",
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO notes VALUES (?1, 1, ?2, ' science rich-media ')",
+                    params![id, fields],
+                )
+                .unwrap();
+        }
+    }
     for (id, note, ordinal) in [
         (100, 10, 0),
         (101, 10, 1),
@@ -98,6 +126,16 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
                 params![id, note, ordinal],
             )
             .unwrap();
+    }
+    if include_rich_media {
+        for (id, note) in [(108, 16), (109, 17), (110, 18)] {
+            connection
+                .execute(
+                    "INSERT INTO cards VALUES (?1, ?2, 1, 0, 0)",
+                    params![id, note],
+                )
+                .unwrap();
+        }
     }
     drop(connection);
     let path = root.join("examples.apkg");
@@ -118,6 +156,44 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
     }
     zip.finish().unwrap();
     Fixture { root, path }
+}
+
+fn contains_node(value: &Value, node_type: &str) -> bool {
+    match value {
+        Value::Array(values) => values.iter().any(|nested| contains_node(nested, node_type)),
+        Value::Object(object) => {
+            object.get("type").and_then(Value::as_str) == Some(node_type)
+                || object
+                    .values()
+                    .any(|nested| contains_node(nested, node_type))
+        }
+        _ => false,
+    }
+}
+
+fn contains_math_latex(value: &Value, expected: &str) -> bool {
+    match value {
+        Value::Array(values) => values
+            .iter()
+            .any(|nested| contains_math_latex(nested, expected)),
+        Value::Object(object) => {
+            let is_math = matches!(
+                object.get("type").and_then(Value::as_str),
+                Some("inlineMath" | "blockMath")
+            );
+            let matches_latex = object
+                .get("attrs")
+                .and_then(Value::as_object)
+                .and_then(|attrs| attrs.get("latex"))
+                .and_then(Value::as_str)
+                == Some(expected);
+            (is_math && matches_latex)
+                || object
+                    .values()
+                    .any(|nested| contains_math_latex(nested, expected))
+        }
+        _ => false,
+    }
 }
 
 #[test]
@@ -199,6 +275,52 @@ fn converts_existing_basic_reverse_native_cloze_typed_and_static_script_presenta
         .file_name()
         .to_string_lossy()
         .contains(".anki-")));
+}
+
+#[test]
+fn converts_packaged_audio_video_and_math_to_native_nodes() {
+    let mp3 = b"ID3\x04\0\0fixture-audio";
+    let mp4 = b"\0\0\0\x18ftypisomfixture-video";
+    let fixture = fixture_with_rich_media(
+        &[("1", mp3.as_slice()), ("2", mp4.as_slice())],
+        r#"{"0":"pixel.png","1":"voice.mp3","2":"clip.mp4"}"#,
+        true,
+    );
+    let (package, report) = read_package(&fixture.path, "examples.apkg").unwrap();
+    assert_eq!(report.source_card_count, 11);
+    assert_eq!(report.imported_card_count, 10);
+    assert_eq!(report.skipped_card_count, 1);
+    assert_eq!(package.notes.len(), 10);
+    assert_eq!(package.cards.len(), 10);
+    assert_eq!(package.assets.len(), 3);
+    assert!(package
+        .assets
+        .iter()
+        .any(|asset| asset.mime_type == "audio/mpeg"));
+    assert!(package
+        .assets
+        .iter()
+        .any(|asset| asset.mime_type == "video/mp4"));
+    assert!(package
+        .notes
+        .iter()
+        .any(|note| contains_node(&note.front_doc, "audio")));
+    assert!(package
+        .notes
+        .iter()
+        .any(|note| contains_node(&note.front_doc, "video")));
+    assert!(package
+        .notes
+        .iter()
+        .any(|note| contains_math_latex(&note.front_doc, "x^2 + y^2 = z^2")));
+    assert!(package
+        .notes
+        .iter()
+        .any(|note| contains_math_latex(&note.back_doc, r"\frac{a}{b}")));
+    for asset in &package.assets {
+        assert!(package.note_assets.iter().any(|(_, linked, _)| linked == &asset.source_id));
+    }
+    read::validate_package_data(&package, true).unwrap();
 }
 
 #[test]
