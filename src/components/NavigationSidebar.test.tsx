@@ -60,6 +60,7 @@ describe("NavigationSidebar", () => {
       "Flashcards",
       "Study Guides",
       "Documents",
+      "Tutor",
       "Analytics",
       "Settings",
     ]);
@@ -79,6 +80,7 @@ describe("NavigationSidebar", () => {
       "Flashcards",
       "Study Guides",
       "Documents",
+      "Tutor",
       "Analytics",
       "Settings",
     ]);
@@ -93,6 +95,7 @@ describe("NavigationSidebar", () => {
       "Flashcards",
       "Study Guides",
       "Documents",
+      "Tutor",
       "Analytics",
       "Settings",
     ]) {
@@ -103,12 +106,13 @@ describe("NavigationSidebar", () => {
       "decks",
       "study-guides",
       "documents",
+      "tutor",
       "analytics",
       "settings",
     ]);
   });
 
-  it("renders the four requested destinations directly in compact bottom navigation", () => {
+  it("renders the five requested destinations directly in compact bottom navigation", () => {
     const onNavigate = renderNavigation(390);
 
     expect(document.documentElement.dataset.layoutMode).toBe("compact");
@@ -117,6 +121,7 @@ describe("NavigationSidebar", () => {
       "Flashcards",
       "Study Guides",
       "Documents",
+      "Tutor",
       "Analytics",
     ]);
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();

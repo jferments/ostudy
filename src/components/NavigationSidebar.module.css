@@ -111,7 +111,7 @@
     inset-inline: 0;
     inset-block-end: 0;
     display: none;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     border-top: 1px solid var(--ostudy-color-border-subtle);
     padding: 5px max(8px, var(--safe-right)) max(5px, var(--safe-bottom))
       max(8px, var(--safe-left));

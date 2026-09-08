@@ -1,0 +1,25 @@
+@layer components {
+  .screen { min-width: 0; padding: var(--ostudy-space-5); }
+  .workspace { display: flex; min-width: 0; flex-direction: column; gap: var(--ostudy-space-3); }
+  .toolbar, .sources { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: var(--ostudy-space-2); }
+  .field { display: flex; min-width: min(12rem, 100%); flex: 1 1 12rem; flex-direction: column; gap: var(--ostudy-space-2); font-weight: 650; }
+  .field select, .composer textarea {
+    box-sizing: border-box; width: 100%; min-width: 0; min-height: var(--ostudy-size-touch-target);
+    border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small);
+    padding: var(--ostudy-space-3); background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-primary); font: inherit;
+  }
+  .muted { color: var(--ostudy-color-text-muted); font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; }
+  .notice, .options { border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding: var(--ostudy-space-3); background: var(--ostudy-color-surface-soft); line-height: 1.5; }
+  .options summary { min-height: var(--ostudy-size-touch-target); align-content: center; cursor: pointer; font-weight: 650; }
+  .transcript { display: flex; min-width: 0; min-height: 12rem; max-height: 55vh; flex-direction: column; gap: var(--ostudy-space-4); overflow: auto; overscroll-behavior: contain; padding-block: var(--ostudy-space-2); }
+  .empty { padding: var(--ostudy-space-5); text-align: center; color: var(--ostudy-color-text-muted); }
+  .turn { display: grid; gap: var(--ostudy-space-3); min-width: 0; }
+  .userMessage, .assistantMessage { min-width: 0; border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-medium); padding: var(--ostudy-space-4); background: var(--ostudy-color-surface-raised); }
+  .userMessage { margin-inline-start: min(8%, 3rem); background: var(--ostudy-color-surface-selected); }
+  .message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; user-select: text; }
+  .sources button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+  .composer { display: grid; gap: var(--ostudy-space-2); min-width: 0; padding-block-start: var(--ostudy-space-3); border-block-start: 1px solid var(--ostudy-color-border-subtle); }
+  .composer textarea { min-height: 7rem; resize: vertical; }
+  :global(:root[data-layout-mode="compact"]) .screen { padding: var(--ostudy-space-3); }
+  :global(:root[data-layout-mode="compact"]) .transcript { max-height: 45vh; }
+}

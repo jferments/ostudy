@@ -103,6 +103,8 @@ export type AiProfileWriteInput = Omit<AiProfileDraft, "reasoningEffort"> & {
 
 export interface AiTaskDefaults {
   flashcardGenerationProfileId: string | null;
+  tutorProfileId?: string | null;
+  embeddingsProfileId?: string | null;
 }
 
 export interface AiProviderModelReasoning {
