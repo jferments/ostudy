@@ -6,6 +6,7 @@
 //! are a replaceable index over those records, never their identity or truth.
 
 pub(crate) mod adapters;
+pub(crate) mod authoring;
 pub(crate) mod commands;
 pub(crate) mod contracts;
 pub(crate) mod extraction;

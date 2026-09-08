@@ -14,7 +14,8 @@ ostudy's document system has four distinct responsibilities: retain and normaliz
 | `pdf_document_ingestion/` | PDF pipeline, bounded rendering/OCR preparation, progress and recovery |
 | `xberg_document_adapter/` | Isolated non-PDF backend invocation and immediate conversion to application-owned structures |
 | `document_canonical*`, `document_store`, `document_semantics` | Canonical units/blocks/chunks/assets and their coherent persisted projections |
-| `document_learning*`, `document_topic_links`, `document_card_topics` | Shared learning plan/topics and stable links to generated material |
+| `document_learning*`, `document_topic_links`, `document_card_topics` | Shared topic structure, source-window provenance, and transactional card links |
+| `knowledge/authoring`, `knowledge/extraction`, `knowledge/repository` | Shared source-grounded knowledge units, generation catalogs, and exact artifact-to-unit support |
 | `ai/document_intelligence/` | Provider-neutral bounded task requests and domain interpretation |
 | `document_generation`, `document_initial_generation`, `document_more`, `document_checkpoints` | Task execution, reuse, validation, and ordinary flashcard publication |
 | `document_study_guide*` | Generated revisions, learner overlays, library queries, lifecycle, and local PDF export |
@@ -76,6 +77,18 @@ A bounded outline pass extracts source-grounded section fragments and coverage e
 The learning plan gives stable topic identities used by both flashcards and guides. Card provenance is a stored relationship to those topics/citations, not a mutable tag label or a later fuzzy match. Existing manually authored cards are not retroactively assigned to a source by guessing from their wording.
 
 Source/canonical/backend/prompt/schema identity controls checkpoint reuse. Compatible unchanged understanding can support more cards or another guide without repeating extraction/rendering/OCR. New backend or prompt semantics can require rebuilding derivatives; presence alone is not validity.
+
+## Knowledge-first card and guide authoring
+
+Both initial/additional flashcard generation and study-guide generation prepare shared knowledge units before writing artifacts. Preparation uses the selected document-generation profile and canonical chunk adapters; it does not require an embedding profile or call AI during ordinary card saves. Compatible extracted units are reused across overlapping windows and across guides/cards. Embeddings remain a separate retrieval index over this material, not the definition of a knowledge unit.
+
+The generation catalog contains unit IDs, statements, qualifications, and exact supporting source excerpts. Original document evidence and visual inputs remain available to the authoring task. Card output selects one primary target, or two for a necessary comparison; guide output selects the units its section actually explains. Native validation rejects unknown, duplicated, or excessive IDs and supplies all provenance hashes itself. This establishes traceability, not proof that a model explanation is correct.
+
+Cards carry an internal support envelope through generation checkpoints and selection-only curation. That envelope is removed before the strict public card importer runs. The import's existing transaction attaches unit links to the actual created notes/presentations after duplicate filtering; forward/reverse presentations retain separate scheduling identities. A stale source/unit aborts the entire import rather than leaving cards without trustworthy support.
+
+Guide checkpoints retain content, selected support, and the complete catalog fingerprint. Old content-only checkpoints and changed source/unit revisions are not reused. Guide publication inserts source/unit links in the same transaction as the new revision; a failure also rolls back superseding the previous guide. Reader content and learner overlays keep their existing format. Carried user edits are not labeled as model-verified source claims.
+
+Text-only extraction cannot claim image-only support merely because an image ID was present. An empty supporting excerpt is accepted only when actual image bytes were attached. Changed extraction contracts invalidate derived checkpoints, not authored notes, schedules, or review history.
 
 ## Bounded generation and provider validation
 

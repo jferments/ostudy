@@ -206,6 +206,7 @@ async fn generate_document_study_guide_impl(
 
     execute_study_guide_generation(StudyGuideGenerationExecution {
         database: database.inner(),
+        paths: paths.inner(),
         runtime: runtime.inner(),
         task: &task,
         document_id: &input.document_id,

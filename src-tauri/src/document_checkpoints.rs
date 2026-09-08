@@ -23,7 +23,7 @@ use crate::{
 };
 
 const OUTLINE_CHECKPOINT_CONTRACT: &str = "document-outline-v4-canonical-source";
-const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v4-modular-source";
+const GENERATION_CHECKPOINT_CONTRACT: &str = "document-generation-v5-knowledge-source";
 const MAX_CHECKPOINT_CARDS: usize = 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -151,10 +151,11 @@ pub(crate) fn generation_contract_key(
         }
     };
     Some(hash_text(&format!(
-        "{GENERATION_CHECKPOINT_CONTRACT}|{}|{}|flashcard_schema={FLASHCARD_SCHEMA_VERSION}|flashcard_prompt={FLASHCARD_PROMPT_VERSION}|max_cards={maximum_cards}|outline={}",
+        "{GENERATION_CHECKPOINT_CONTRACT}|{}|{}|flashcard_schema={FLASHCARD_SCHEMA_VERSION}|flashcard_prompt={FLASHCARD_PROMPT_VERSION}|max_cards={maximum_cards}|outline={}|knowledge={}",
         identity.material(),
         plan.planning_fingerprint(),
         hash_text(&outline_json),
+        crate::knowledge::contracts::EXTRACTION_PROMPT_VERSION,
     )))
 }
 

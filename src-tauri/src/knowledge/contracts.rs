@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
 
 pub(crate) const CONTENT_SCHEMA_VERSION: i64 = 1;
-pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 1;
+pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 2;
 pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
 pub(crate) const MAX_UNITS_PER_SOURCE: usize = 16;
@@ -95,8 +95,13 @@ pub enum ContentOrigin {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EvidenceImage {
-    CardAsset { id: String },
-    DocumentAsset { document_id: String, asset_id: String },
+    CardAsset {
+        id: String,
+    },
+    DocumentAsset {
+        document_id: String,
+        asset_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -168,27 +173,41 @@ impl SourceRecord {
         bounded(&self.segment_key, 160, "source segment", false)?;
         bounded(&self.owner_revision, 160, "source revision", false)?;
         if !is_hash(&self.content_hash) || self.images.len() > 6 {
-            return Err(invalid("The semantic source fingerprint or image count is invalid."));
+            return Err(invalid(
+                "The semantic source fingerprint or image count is invalid.",
+            ));
         }
         if self.text.trim().is_empty() && self.images.is_empty() {
-            return Err(invalid("A semantic source must contain text or image evidence."));
+            return Err(invalid(
+                "A semantic source must contain text or image evidence.",
+            ));
         }
         let association_matches = match self.kind {
             SourceKind::Document => self.document_id.as_deref() == Some(self.owner_id.as_str()),
-            SourceKind::Card => self.card_id.as_deref() == Some(self.owner_id.as_str())
-                && self.note_id.is_some(),
-            SourceKind::Guide => self.guide_id.as_deref() == Some(self.owner_id.as_str())
-                && self.document_id.is_some(),
-            SourceKind::Conversation => self.conversation_id.as_deref() == Some(self.owner_id.as_str())
-                && self.turn_id.is_some(),
+            SourceKind::Card => {
+                self.card_id.as_deref() == Some(self.owner_id.as_str()) && self.note_id.is_some()
+            }
+            SourceKind::Guide => {
+                self.guide_id.as_deref() == Some(self.owner_id.as_str())
+                    && self.document_id.is_some()
+            }
+            SourceKind::Conversation => {
+                self.conversation_id.as_deref() == Some(self.owner_id.as_str())
+                    && self.turn_id.is_some()
+            }
         };
         if !association_matches {
-            return Err(invalid("The semantic source does not match its owning material."));
+            return Err(invalid(
+                "The semantic source does not match its owning material.",
+            ));
         }
         for image in &self.images {
             match image {
                 EvidenceImage::CardAsset { id } => validate_entity_id(id, "image")?,
-                EvidenceImage::DocumentAsset { document_id, asset_id } => {
+                EvidenceImage::DocumentAsset {
+                    document_id,
+                    asset_id,
+                } => {
                     validate_entity_id(document_id, "image document")?;
                     bounded(asset_id, 160, "source image ID", false)?;
                 }
@@ -222,9 +241,19 @@ pub(crate) struct KnowledgeUnitInput {
 impl KnowledgeUnitInput {
     pub(crate) fn validate(&self, source: &SourceRecord) -> Result<(), CommandError> {
         bounded(&self.title, 200, "knowledge title", false)?;
-        bounded(&self.statement, MAX_UNIT_STATEMENT_CHARS, "knowledge statement", false)?;
+        bounded(
+            &self.statement,
+            MAX_UNIT_STATEMENT_CHARS,
+            "knowledge statement",
+            false,
+        )?;
         bounded(&self.topic, 500, "knowledge topic", true)?;
-        bounded(&self.supporting_excerpt, MAX_SOURCE_CHARS, "supporting excerpt", true)?;
+        bounded(
+            &self.supporting_excerpt,
+            MAX_SOURCE_CHARS,
+            "supporting excerpt",
+            true,
+        )?;
         if self.qualifications.len() > 8 {
             return Err(invalid("A knowledge unit has too many qualifications."));
         }
@@ -232,16 +261,22 @@ impl KnowledgeUnitInput {
             bounded(qualification, 1_000, "knowledge qualification", false)?;
         }
         if source.kind == SourceKind::Conversation {
-            return Err(invalid("Conversation messages cannot become authoritative knowledge units."));
+            return Err(invalid(
+                "Conversation messages cannot become authoritative knowledge units.",
+            ));
         }
         // An exact excerpt proves location, not correctness or entailment.
         // Image-grounded units deliberately have no invented quotation.
         if self.supporting_excerpt.trim().is_empty() {
             if source.images.is_empty() {
-                return Err(invalid("Text-derived knowledge must include a supporting source excerpt."));
+                return Err(invalid(
+                    "Text-derived knowledge must include a supporting source excerpt.",
+                ));
             }
         } else if !source.text.contains(&self.supporting_excerpt) {
-            return Err(invalid("The knowledge excerpt does not occur in its source."));
+            return Err(invalid(
+                "The knowledge excerpt does not occur in its source.",
+            ));
         }
         Ok(())
     }
@@ -307,7 +342,9 @@ pub(crate) fn bounded(
     allow_empty: bool,
 ) -> Result<(), CommandError> {
     if (!allow_empty && value.trim().is_empty()) || value.chars().count() > maximum {
-        return Err(invalid(format!("The {label} is empty or exceeds its supported size.")));
+        return Err(invalid(format!(
+            "The {label} is empty or exceeds its supported size."
+        )));
     }
     Ok(())
 }
@@ -322,9 +359,24 @@ mod tests {
 
     #[test]
     fn scopes_reject_missing_or_extraneous_identity() {
-        assert!(StudyScope { kind: ScopeKind::Deck, id: None }.validate().is_err());
-        assert!(StudyScope { kind: ScopeKind::Library, id: Some("a".repeat(32)) }.validate().is_err());
-        assert!(StudyScope { kind: ScopeKind::General, id: None }.validate().is_ok());
+        assert!(StudyScope {
+            kind: ScopeKind::Deck,
+            id: None
+        }
+        .validate()
+        .is_err());
+        assert!(StudyScope {
+            kind: ScopeKind::Library,
+            id: Some("a".repeat(32))
+        }
+        .validate()
+        .is_err());
+        assert!(StudyScope {
+            kind: ScopeKind::General,
+            id: None
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]

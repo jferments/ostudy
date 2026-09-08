@@ -639,6 +639,7 @@ mod tests {
         let payload = build_append_payload(
             "Physiology",
             &[SourceGroundedGeneratedCard {
+                knowledge_support: Vec::new(),
                 card: serde_json::json!({
                     "type": "basic",
                     "front": "Q",

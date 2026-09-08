@@ -549,6 +549,7 @@ mod tests {
             rendered_source_unit_count: 1,
         };
         let cards = vec![crate::document_card_topics::SourceGroundedGeneratedCard {
+            knowledge_support: Vec::new(),
             card: serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]}),
             source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
         }];

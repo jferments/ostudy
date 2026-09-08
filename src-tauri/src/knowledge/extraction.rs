@@ -2,7 +2,7 @@
 //! Short text sources are batched; a heading or card is not automatically a
 //! separate provider request. Images retain their exact source identity.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -61,14 +61,21 @@ pub(crate) async fn ensure_units_batch(
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError> {
     check_canceled(cancellation)?;
     if sources.is_empty() || sources.len() > EXTRACTION_BATCH_SOURCES {
-        return Err(invalid("The knowledge extraction batch has an invalid source count."));
+        return Err(invalid(
+            "The knowledge extraction batch has an invalid source count.",
+        ));
     }
     if sources.len() > 1
         && (sources.iter().any(|source| !source.images.is_empty())
-            || sources.iter().map(|source| source.text.chars().count()).sum::<usize>()
+            || sources
+                .iter()
+                .map(|source| source.text.chars().count())
+                .sum::<usize>()
                 > EXTRACTION_BATCH_CHARS)
     {
-        return Err(invalid("The knowledge extraction batch exceeds its text or image budget."));
+        return Err(invalid(
+            "The knowledge extraction batch exceeds its text or image budget.",
+        ));
     }
     let contract = extraction_contract(task)?;
     let mut result = HashMap::new();
@@ -133,7 +140,7 @@ pub(crate) async fn ensure_units_batch(
         cancellation,
     )
     .await?;
-    let mut extracted = match decode_batch(first, &missing) {
+    let mut extracted = match decode_batch(first, &missing, !images.is_empty()) {
         Ok(units) => units,
         Err(_) => {
             check_canceled(cancellation)?;
@@ -154,7 +161,7 @@ pub(crate) async fn ensure_units_batch(
                 cancellation,
             )
             .await?;
-            decode_batch(response, &missing)?
+            decode_batch(response, &missing, !images.is_empty())?
         }
     };
     task.ensure_current(database)?;
@@ -172,6 +179,7 @@ pub(crate) async fn ensure_units_batch(
 fn decode_batch(
     value: Value,
     sources: &[&SourceRecord],
+    images_attached: bool,
 ) -> Result<HashMap<String, Vec<KnowledgeUnitInput>>, CommandError> {
     let response: ExtractedBatch = serde_json::from_value(value)
         .map_err(|_| invalid("The model returned an invalid knowledge-unit structure."))?;
@@ -180,15 +188,25 @@ fn decode_batch(
     }
     let mut result = HashMap::new();
     for extracted in response.sources {
-        let source = sources.iter().find(|source| source.id == extracted.source_id)
+        let source = sources
+            .iter()
+            .find(|source| source.id == extracted.source_id)
             .ok_or_else(|| invalid("The extraction invented a source ID."))?;
         if extracted.units.len() > MAX_UNITS_PER_SOURCE {
-            return Err(invalid("The model returned too many units for one source segment."));
+            return Err(invalid(
+                "The model returned too many units for one source segment.",
+            ));
         }
         for unit in &extracted.units {
             unit.validate(source)?;
+            if unit.supporting_excerpt.trim().is_empty() && !images_attached {
+                return Err(invalid("An image reference is not visible image evidence. Text-only extraction requires an exact source excerpt."));
+            }
         }
-        if result.insert(extracted.source_id, extracted.units).is_some() {
+        if result
+            .insert(extracted.source_id, extracted.units)
+            .is_some()
+        {
             return Err(invalid("The extraction repeated a source ID."));
         }
     }
@@ -289,8 +307,18 @@ mod tests {
     #[test]
     fn expected_source_ids_are_unique_and_complete() {
         let ids = ["a".repeat(32), "b".repeat(32)];
-        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len());
-        assert!(decode_batch(json!({"sources": []}), &[]).unwrap().is_empty());
-        assert!(decode_batch(json!({"sources": [{"sourceId": "a", "units": []}]}), &[]).is_err());
+        assert_eq!(
+            ids.iter().collect::<std::collections::HashSet<_>>().len(),
+            ids.len()
+        );
+        assert!(decode_batch(json!({"sources": []}), &[], false)
+            .unwrap()
+            .is_empty());
+        assert!(decode_batch(
+            json!({"sources": [{"sourceId": "a", "units": []}]}),
+            &[],
+            false
+        )
+        .is_err());
     }
 }

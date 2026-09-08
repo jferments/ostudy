@@ -21,7 +21,9 @@ mod study_guide_artifact_backup_tests {
         },
         document_topic_links::link_generated_note_to_learning_plan,
         error::CommandError,
-        library_backup::{apply_pending_restore, copy_and_sync, export_backup, pending_restore_path},
+        library_backup::{
+            apply_pending_restore, copy_and_sync, export_backup, pending_restore_path,
+        },
         paths::AppPaths,
         util::{generate_id, unix_time_millis},
     };
@@ -73,8 +75,12 @@ mod study_guide_artifact_backup_tests {
         fs::create_dir_all(source_path.parent().expect("source parent")).expect("source parent");
         fs::write(&source_path, source_bytes()).expect("managed CSV source");
         let source_hash = format!("{:x}", Sha256::digest(source_bytes()));
-        let locator = SourceLocator::new(SourceUnitKind::Section, vec![1], Some("Preload".to_string()))
-            .expect("source locator");
+        let locator = SourceLocator::new(
+            SourceUnitKind::Section,
+            vec![1],
+            Some("Preload".to_string()),
+        )
+        .expect("source locator");
         let locator_json = serde_json::to_string(&locator).expect("locator json");
 
         let note_id = source
@@ -236,6 +242,7 @@ mod study_guide_artifact_backup_tests {
                 key_concepts: plan.key_concepts.clone(),
             },
             vec![StudyGuideSectionDraft {
+                knowledge_support: Vec::new(),
                 topic_id: topic_id.clone(),
                 content: guide_content(),
             }],

@@ -312,6 +312,7 @@ pub fn writes_stage_0_ui_performance_pending_restore() {
             key_concepts: plan.key_concepts.clone(),
         },
         vec![StudyGuideSectionDraft {
+            knowledge_support: Vec::new(),
             topic_id: plan.topics[0].id.clone(),
             content: StudyGuideSectionContent {
                 overview: "Pulmonary blood flow supports gas exchange.".to_string(),

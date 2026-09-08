@@ -17,6 +17,7 @@ use crate::{
     document_semantics::SemanticWindow,
     document_store,
     error::CommandError,
+    knowledge::authoring::{self, KnowledgeCatalog},
     paths::AppPaths,
     task_cancellation::{
         record_current_provider_retry, set_current_task_phase, set_current_task_phase_range,
@@ -50,6 +51,7 @@ struct WindowGenerationRequest<'a> {
     images: &'a [document_intelligence::SourcePageImage],
     maximum_cards: usize,
     diagnostic_prefix: &'a str,
+    knowledge: &'a KnowledgeCatalog,
 }
 
 /// Execute independent generation windows with bounded provider concurrency.
@@ -87,11 +89,52 @@ pub(crate) async fn execute_generation_windows(
         }),
     );
 
+    let indices = input
+        .windows
+        .iter()
+        .flat_map(|window| window.first_chunk_index..=window.last_chunk_index)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if input.windows.is_empty() {
+        return Ok(Vec::new());
+    }
+    authoring::prepare_document(
+        input.database,
+        input.paths,
+        input.runtime,
+        input.task,
+        input.document_id,
+        &indices,
+    )
+    .await?;
+    let catalogs = input
+        .windows
+        .iter()
+        .map(|window| {
+            authoring::catalog_for_chunks(
+                input.database,
+                input.document_id,
+                &(window.first_chunk_index..=window.last_chunk_index).collect::<Vec<_>>(),
+                input.task,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let mut by_window = vec![None; input.windows.len()];
     let mut missing = Vec::new();
     let mut completed = 0_usize;
     for (position, window) in input.windows.iter().enumerate() {
-        if let Some(cards) = cached.get_mut(position).and_then(Option::take) {
+        if let Some(cards) = cached
+            .get_mut(position)
+            .and_then(Option::take)
+            .filter(|cards| {
+                (!cards.is_empty() || catalogs[position].units.is_empty())
+                    && cards.iter().all(|card| {
+                        authoring::card_support(card)
+                            .is_ok_and(|support| catalogs[position].validates(&support, 2))
+                    })
+            })
+        {
             crate::logging::info(
                 "document_generation_window_reused",
                 format!(
@@ -172,10 +215,10 @@ pub(crate) async fn execute_generation_windows(
         let i2 = images.get(2).map(Vec::as_slice).unwrap_or(empty);
         let i3 = images.get(3).map(Vec::as_slice).unwrap_or(empty);
         let (r0, r1, r2, r3) = tokio::join!(
-            generation_slot(&input, p0, i0),
-            generation_slot(&input, p1, i1),
-            generation_slot(&input, p2, i2),
-            generation_slot(&input, p3, i3),
+            generation_slot(&input, &catalogs, p0, i0),
+            generation_slot(&input, &catalogs, p1, i1),
+            generation_slot(&input, &catalogs, p2, i2),
+            generation_slot(&input, &catalogs, p3, i3),
         );
 
         let mut first_error = None;
@@ -246,6 +289,7 @@ pub(crate) async fn execute_generation_windows(
 
 async fn generation_slot(
     input: &GenerationExecution<'_>,
+    catalogs: &[KnowledgeCatalog],
     position: Option<usize>,
     images: &[document_intelligence::SourcePageImage],
 ) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
@@ -276,6 +320,7 @@ async fn generation_slot(
         images,
         maximum_cards: input.plan.max_cards_per_window,
         diagnostic_prefix: input.diagnostic_prefix,
+        knowledge: &catalogs[position],
     })
     .await;
 
@@ -339,6 +384,7 @@ async fn generate_window_with_recovery(
         input.outline,
         input.window,
         input.images,
+        input.knowledge,
         document_intelligence::FlashcardGenerationLimits {
             maximum_cards: first_budget,
             completion_token_floor: 0,
@@ -372,6 +418,7 @@ async fn generate_window_with_recovery(
                 input.outline,
                 input.window,
                 input.images,
+                input.knowledge,
                 document_intelligence::FlashcardGenerationLimits {
                     maximum_cards: reduced_budget,
                     completion_token_floor,

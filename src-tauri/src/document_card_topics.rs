@@ -3,7 +3,8 @@
 //! Document card curation is selection-only. This module reattaches each returned
 //! validated card to the canonical source-window locator that authored it, then
 //! commits stable topic links after card import. Provider output never supplies a
-//! topic ID and learner-editable tags are not used as provenance.
+//! topic ID or provenance hashes. Validated knowledge targets survive curation,
+//! are stripped from the public import payload, and are committed with each note.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -12,15 +13,24 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     authoring::card_types_and_templates::generated_import::GeneratedImportCommitContext,
-    database::Database, document_domain::SourceLocator, document_learning::DocumentLearningPlan,
-    document_semantics::SemanticWindow, document_topic_links::link_generated_note_to_learning_plan,
+    database::Database,
+    document_domain::SourceLocator,
+    document_learning::DocumentLearningPlan,
+    document_semantics::SemanticWindow,
+    document_topic_links::link_generated_note_to_learning_plan,
     error::CommandError,
+    knowledge::{
+        adapters::SourceSeed,
+        authoring::{self, UnitSupport},
+        contracts::SourceKind,
+    },
 };
 
 #[derive(Clone, Debug)]
 pub(crate) struct SourceGroundedGeneratedCard {
     pub card: Value,
     pub source_locator: SourceLocator,
+    pub knowledge_support: Vec<UnitSupport>,
 }
 
 /// Attach flat, deterministic generation output to the source-window card counts
@@ -88,12 +98,13 @@ pub(crate) fn attach_generated_card_source_windows(
             ));
         }
         let locator = window.source_locator();
-        grounded.extend(cards[cursor..end].iter().cloned().map(|card| {
-            SourceGroundedGeneratedCard {
-                card,
+        for card in &cards[cursor..end] {
+            grounded.push(SourceGroundedGeneratedCard {
+                knowledge_support: authoring::card_support(card)?,
+                card: authoring::without_card_support(card.clone()),
                 source_locator: locator.clone(),
-            }
-        }));
+            });
+        }
         cursor = end;
     }
     if cursor != cards.len() {
@@ -114,7 +125,10 @@ pub(crate) fn retain_curated_card_provenance(
     let mut by_identity = HashMap::<String, VecDeque<SourceGroundedGeneratedCard>>::new();
     for candidate in candidates {
         by_identity
-            .entry(card_identity(&candidate.card)?)
+            .entry(card_identity(
+                &candidate.card,
+                &candidate.knowledge_support,
+            )?)
             .or_default()
             .push_back(candidate);
     }
@@ -122,7 +136,9 @@ pub(crate) fn retain_curated_card_provenance(
     curated_cards
         .into_iter()
         .map(|card| {
-            let identity = card_identity(&card)?;
+            let support = card.get(authoring::CARD_SUPPORT_KEY).map(|_| authoring::card_support(&card)).transpose()?.unwrap_or_default();
+            let card = authoring::without_card_support(card);
+            let identity = card_identity(&card, &support)?;
             let mut candidate = by_identity
                 .get_mut(&identity)
                 .and_then(VecDeque::pop_front)
@@ -174,12 +190,35 @@ pub(crate) fn link_imported_notes_to_topics(
             &card.source_locator,
             imported_at,
         )?;
+        authoring::validate_current_support(connection, document_id, &card.knowledge_support)?;
+        let mut statement = connection
+            .prepare("SELECT id FROM cards WHERE note_id = ?1 AND deleted_at IS NULL ORDER BY id")
+            .map_err(CommandError::database)?;
+        let card_ids = statement
+            .query_map([&created.note_id], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        for card_id in card_ids {
+            authoring::publish_artifact_links(
+                connection,
+                document_id,
+                &SourceSeed {
+                    kind: SourceKind::Card,
+                    owner_id: card_id,
+                    parent_key: "presentation".to_string(),
+                },
+                &card.knowledge_support,
+                "assesses",
+                imported_at,
+            )?;
+        }
     }
     Ok(())
 }
 
-fn card_identity(card: &Value) -> Result<String, CommandError> {
-    let serialized = serde_json::to_vec(card).map_err(CommandError::serialization)?;
+fn card_identity(card: &Value, support: &[UnitSupport]) -> Result<String, CommandError> {
+    let serialized = serde_json::to_vec(&(card, support)).map_err(CommandError::serialization)?;
     Ok(format!("{:x}", Sha256::digest(serialized)))
 }
 
@@ -198,10 +237,12 @@ mod tests {
         let candidates = vec![
             SourceGroundedGeneratedCard {
                 card: card.clone(),
+                knowledge_support: Vec::new(),
                 source_locator: locator(1),
             },
             SourceGroundedGeneratedCard {
                 card: card.clone(),
+                knowledge_support: Vec::new(),
                 source_locator: locator(2),
             },
         ];
@@ -214,6 +255,7 @@ mod tests {
     fn curation_cannot_introduce_new_card_content() {
         let candidate = SourceGroundedGeneratedCard {
             card: serde_json::json!({"type": "basic", "front": "Q", "back": "A"}),
+            knowledge_support: Vec::new(),
             source_locator: locator(1),
         };
         let error = retain_curated_card_provenance(
@@ -222,5 +264,31 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.code, "document_card_curation_changed_content");
+    }
+    #[test]
+    fn curation_of_identical_text_keeps_the_selected_knowledge_provenance() {
+        let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let first_support = catalog.select(&["a".repeat(32)], 2).unwrap();
+        let mut second_support = first_support.clone();
+        second_support[0].source_hash = "d".repeat(64);
+        let card = serde_json::json!({"type":"basic","front":"Q","back":"A"});
+        let candidates = vec![
+            SourceGroundedGeneratedCard {
+                card: card.clone(),
+                source_locator: locator(1),
+                knowledge_support: first_support,
+            },
+            SourceGroundedGeneratedCard {
+                card: card.clone(),
+                source_locator: locator(2),
+                knowledge_support: second_support.clone(),
+            },
+        ];
+        let mut selected = card;
+        selected[authoring::CARD_SUPPORT_KEY] = serde_json::to_value(&second_support).unwrap();
+        let result = retain_curated_card_provenance(candidates, vec![selected]).unwrap();
+        assert_eq!(result[0].source_locator.first(), 2);
+        assert_eq!(result[0].knowledge_support, second_support);
+        assert!(result[0].card.get(authoring::CARD_SUPPORT_KEY).is_none());
     }
 }

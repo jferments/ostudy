@@ -22,15 +22,17 @@ use crate::{
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
         publish_document_study_guide, validate_study_guide_section_content, DocumentStudyGuide,
-        StudyGuideOverview, StudyGuideSectionContent, StudyGuideSectionDraft,
+        GroundedStudyGuideSection, StudyGuideOverview, StudyGuideSectionDraft,
         STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
+    knowledge::authoring::{self, KnowledgeCatalog},
+    paths::AppPaths,
     util::unix_time_millis,
 };
 
 const CLOUD_GUIDE_PARALLELISM: usize = 4;
-const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v1-topic-source";
+const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v2-knowledge-source";
 
 #[derive(Clone, Debug)]
 pub(crate) struct StudyGuideTopicEvidence {
@@ -41,6 +43,7 @@ pub(crate) struct StudyGuideTopicEvidence {
 
 pub(crate) struct StudyGuideGenerationExecution<'a> {
     pub database: &'a Database,
+    pub paths: &'a AppPaths,
     pub runtime: &'a AiRuntimeState,
     pub task: &'a DocumentTaskContext,
     pub document_id: &'a str,
@@ -54,15 +57,6 @@ pub(crate) async fn execute_study_guide_generation(
     execution: StudyGuideGenerationExecution<'_>,
 ) -> Result<DocumentStudyGuide, CommandError> {
     validate_execution(&execution)?;
-    let contract_key = study_guide_contract_key(execution.task, execution.plan);
-    let mut resolved = load_checkpoints(
-        execution.database,
-        execution.document_id,
-        &contract_key,
-        execution.plan,
-    );
-    let cached = resolved.iter().filter(|section| section.is_some()).count();
-
     transition_document_artifact_job(
         execution.database,
         execution.job_id,
@@ -70,6 +64,81 @@ pub(crate) async fn execute_study_guide_generation(
         DocumentArtifactJobState::Preparing,
         0,
     )?;
+    let knowledge = async {
+        let indices = execution
+            .plan
+            .topics
+            .iter()
+            .flat_map(|topic| topic.evidence_chunk_indices.iter())
+            .map(|index| {
+                i64::try_from(*index).map_err(|_| {
+                    CommandError::new("invalid_semantic_content", "Invalid source chunk index.")
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        authoring::prepare_document(
+            execution.database,
+            execution.paths,
+            execution.runtime,
+            execution.task,
+            execution.document_id,
+            &indices,
+        )
+        .await?;
+        execution
+            .plan
+            .topics
+            .iter()
+            .map(|topic| {
+                let indices = topic
+                    .evidence_chunk_indices
+                    .iter()
+                    .map(|index| *index as i64)
+                    .collect::<Vec<_>>();
+                authoring::catalog_for_chunks(
+                    execution.database,
+                    execution.document_id,
+                    &indices,
+                    execution.task,
+                )
+            })
+            .collect::<Result<Vec<_>, CommandError>>()
+    }
+    .await;
+    let catalogs = match knowledge {
+        Ok(catalogs) => catalogs,
+        Err(error) => {
+            if error.code == "ai_request_canceled" {
+                let _ = transition_document_artifact_job(
+                    execution.database,
+                    execution.job_id,
+                    DocumentArtifactJobState::Preparing,
+                    DocumentArtifactJobState::Canceled,
+                    0,
+                );
+            } else {
+                let (usage, complete) = execution.task.usage_summary();
+                let _ = fail_document_artifact_job(
+                    execution.database,
+                    execution.job_id,
+                    &error,
+                    usage,
+                    complete,
+                );
+            }
+            return Err(error);
+        }
+    };
+    let contract_key = study_guide_contract_key(execution.task, execution.plan);
+    let mut resolved = load_checkpoints(
+        execution.database,
+        execution.document_id,
+        &contract_key,
+        execution.plan,
+        &catalogs,
+    );
+    let cached = resolved.iter().filter(|section| section.is_some()).count();
     transition_document_artifact_job(
         execution.database,
         execution.job_id,
@@ -107,6 +176,7 @@ pub(crate) async fn execute_study_guide_generation(
 
     let generation = generate_missing_topics(
         &execution,
+        &catalogs,
         &contract_key,
         &mut resolved,
         &missing,
@@ -154,7 +224,8 @@ pub(crate) async fn execute_study_guide_generation(
             })?;
             Ok(StudyGuideSectionDraft {
                 topic_id: topic.id.clone(),
-                content,
+                content: content.content,
+                knowledge_support: content.knowledge_support,
             })
         })
         .collect::<Result<Vec<_>, CommandError>>()?;
@@ -222,8 +293,9 @@ pub(crate) async fn execute_study_guide_generation(
 
 async fn generate_missing_topics(
     execution: &StudyGuideGenerationExecution<'_>,
+    catalogs: &[KnowledgeCatalog],
     contract_key: &str,
-    resolved: &mut [Option<StudyGuideSectionContent>],
+    resolved: &mut [Option<GroundedStudyGuideSection>],
     missing: &[usize],
     parallelism: usize,
     cached: usize,
@@ -238,10 +310,10 @@ async fn generate_missing_topics(
         let i2 = batch.get(2).copied();
         let i3 = batch.get(3).copied();
         let (r0, r1, r2, r3) = tokio::join!(
-            generate_slot(execution, i0),
-            generate_slot(execution, i1),
-            generate_slot(execution, i2),
-            generate_slot(execution, i3),
+            generate_slot(execution, catalogs, i0),
+            generate_slot(execution, catalogs, i1),
+            generate_slot(execution, catalogs, i2),
+            generate_slot(execution, catalogs, i3),
         );
 
         let mut results = [r0, r1, r2, r3].into_iter().flatten().collect::<Vec<_>>();
@@ -273,8 +345,9 @@ async fn generate_missing_topics(
 
 async fn generate_slot(
     execution: &StudyGuideGenerationExecution<'_>,
+    catalogs: &[KnowledgeCatalog],
     index: Option<usize>,
-) -> Option<(usize, Result<StudyGuideSectionContent, CommandError>)> {
+) -> Option<(usize, Result<GroundedStudyGuideSection, CommandError>)> {
     let index = index?;
     let topic = &execution.plan.topics[index];
     let evidence = &execution.evidence[index];
@@ -286,6 +359,7 @@ async fn generate_slot(
         topic,
         &evidence.source_text,
         &evidence.images,
+        &catalogs[index],
     )
     .await
     .map_err(|error| {
@@ -331,12 +405,13 @@ fn validate_execution(execution: &StudyGuideGenerationExecution<'_>) -> Result<(
 
 fn study_guide_contract_key(task: &DocumentTaskContext, plan: &DocumentLearningPlan) -> String {
     hash_text(&format!(
-        "{STUDY_GUIDE_CHECKPOINT_CONTRACT}|plan={}|provider={}|profile={}|model={}|reasoning={}|schema={STUDY_GUIDE_SCHEMA_VERSION}|prompt={STUDY_GUIDE_PROMPT_VERSION}|assembly={STUDY_GUIDE_ASSEMBLY_VERSION}",
+        "{STUDY_GUIDE_CHECKPOINT_CONTRACT}|plan={}|provider={}|profile={}|model={}|reasoning={}|schema={STUDY_GUIDE_SCHEMA_VERSION}|prompt={STUDY_GUIDE_PROMPT_VERSION}|assembly={STUDY_GUIDE_ASSEMBLY_VERSION}|knowledge={}",
         plan.plan_fingerprint,
         task.provider_kind,
         task.profile_id,
         task.model_id,
         task.reasoning_effort,
+        crate::knowledge::contracts::EXTRACTION_PROMPT_VERSION,
     ))
 }
 
@@ -345,7 +420,8 @@ fn load_checkpoints(
     document_id: &str,
     contract_key: &str,
     plan: &DocumentLearningPlan,
-) -> Vec<Option<StudyGuideSectionContent>> {
+    catalogs: &[KnowledgeCatalog],
+) -> Vec<Option<GroundedStudyGuideSection>> {
     let result = database.with_connection(|connection| {
         let mut resolved = vec![None; plan.topics.len()];
         let indices = plan
@@ -380,13 +456,18 @@ fn load_checkpoints(
             if evidence_hash != topic.evidence_hash || hash_text(&json) != content_hash {
                 continue;
             }
-            let Ok(section) = serde_json::from_str::<StudyGuideSectionContent>(&json) else {
+            let Ok(section) = serde_json::from_str::<GroundedStudyGuideSection>(&json) else {
                 continue;
             };
-            let Ok(section) = validate_study_guide_section_content(section) else {
+            if !catalogs[*index].validates(&section.knowledge_support, 64)
+                || catalogs[*index].fingerprint()? != section.catalog_fingerprint
+            {
+                continue;
+            }
+            let Ok(content) = validate_study_guide_section_content(section.content) else {
                 continue;
             };
-            resolved[*index] = Some(section);
+            resolved[*index] = Some(GroundedStudyGuideSection { content, ..section });
         }
         Ok(resolved)
     });
@@ -412,7 +493,7 @@ fn persist_checkpoint_best_effort(
     document_id: &str,
     contract_key: &str,
     topic: &LearningTopic,
-    section: &StudyGuideSectionContent,
+    section: &GroundedStudyGuideSection,
 ) {
     let Ok(section_json) = serde_json::to_string(section) else {
         return;
@@ -534,6 +615,22 @@ mod tests {
 
     #[test]
     fn checkpoint_contract_name_is_versioned() {
-        assert!(STUDY_GUIDE_CHECKPOINT_CONTRACT.contains("v1"));
+        assert!(STUDY_GUIDE_CHECKPOINT_CONTRACT.contains("v2"));
+    }
+    #[test]
+    fn content_only_checkpoints_are_not_knowledge_first_checkpoints() {
+        assert!(serde_json::from_value::<GroundedStudyGuideSection>(serde_json::json!({
+            "overview":"Legacy", "keyPoints":["Old"], "explanations":[], "importantTerms":[],
+            "processSteps":[], "comparisons":[], "commonMisconceptions":[], "visualExplanations":[]
+        })).is_err());
+        let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let support = catalog.select(&["a".repeat(32)], 64).unwrap();
+        let mut altered = catalog.clone();
+        altered.units[0].source_hash = "d".repeat(64);
+        assert!(!altered.validates(&support, 64));
+        assert_ne!(
+            catalog.fingerprint().unwrap(),
+            altered.fingerprint().unwrap()
+        );
     }
 }
