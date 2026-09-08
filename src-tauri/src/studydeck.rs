@@ -31,7 +31,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
-    assets::{detect_image_bytes, validate_original_filename},
+    assets::validate_original_filename,
     cards::{collect_asset_ids, validate_content},
     database::Database,
     decks::{get_deck_from_connection, validate_description, validate_name, DeckSummaryDto},
