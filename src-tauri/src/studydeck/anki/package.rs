@@ -14,10 +14,7 @@ use zip::ZipArchive;
 
 use super::super::PackageAsset;
 use super::{failure, source_id};
-use crate::{
-    assets::{detect_managed_asset_bytes, ManagedAssetKind},
-    error::CommandError,
-};
+use crate::{assets::detect_managed_asset_bytes, error::CommandError};
 
 const MAX_ARCHIVE_BYTES: u64 = 640 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 768 * 1024 * 1024;
