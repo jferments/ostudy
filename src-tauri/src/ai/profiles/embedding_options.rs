@@ -3,7 +3,6 @@
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use tauri::State;
 
 use crate::{
     database::Database,
@@ -38,7 +37,10 @@ impl EmbeddingInputPolicy {
             "symmetric" => Ok(Self::Symmetric),
             "qwen_retrieval" => Ok(Self::QwenRetrieval),
             "search_types" => Ok(Self::SearchTypes),
-            _ => Err(CommandError::new("invalid_embedding_options", "The saved embedding input policy is invalid.")),
+            _ => Err(CommandError::new(
+                "invalid_embedding_options",
+                "The saved embedding input policy is invalid.",
+            )),
         }
     }
 }
@@ -61,22 +63,15 @@ pub struct SaveEmbeddingOptionsInput {
     pub input_policy: EmbeddingInputPolicy,
 }
 
-#[tauri::command]
-pub fn get_embedding_options(
-    database: State<'_, Database>,
-    profile_id: String,
-) -> Result<EmbeddingOptions, CommandError> {
-    load_embedding_options(database.inner(), &profile_id)
-}
-
-#[tauri::command]
-pub fn save_embedding_options(
-    database: State<'_, Database>,
+pub(crate) fn save_embedding_options(
+    database: &Database,
     input: SaveEmbeddingOptionsInput,
 ) -> Result<EmbeddingOptions, CommandError> {
     validate_entity_id(&input.profile_id, "embedding profile")?;
     if input.expected_revision < 0
-        || input.dimensions.is_some_and(|value| !(32..=4096).contains(&value))
+        || input
+            .dimensions
+            .is_some_and(|value| !(32..=4096).contains(&value))
     {
         return Err(CommandError::new(
             "invalid_embedding_options",
@@ -158,7 +153,7 @@ pub(super) fn load_in_connection(
         }),
         None => Ok(EmbeddingOptions {
             profile_id: profile_id.to_string(),
-            dimensions: Some(768),
+            dimensions: None,
             input_policy: EmbeddingInputPolicy::Automatic,
             revision: 0,
         }),

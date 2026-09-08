@@ -98,3 +98,19 @@ pub fn set_ai_task_default(
 ) -> Result<AiTaskDefaultsDto, CommandError> {
     service::set_task_default(database.inner(), runtime.inner(), input)
 }
+
+#[tauri::command]
+pub fn get_embedding_options(
+    database: State<'_, Database>,
+    profile_id: String,
+) -> Result<super::embedding_options::EmbeddingOptions, CommandError> {
+    super::embedding_options::load_embedding_options(database.inner(), &profile_id)
+}
+
+#[tauri::command]
+pub fn save_embedding_options(
+    database: State<'_, Database>,
+    input: super::embedding_options::SaveEmbeddingOptionsInput,
+) -> Result<super::embedding_options::EmbeddingOptions, CommandError> {
+    super::embedding_options::save_embedding_options(database.inner(), input)
+}
