@@ -58,10 +58,7 @@ pub(super) fn render(
 /// shape that maps cleanly to oStudy's native Fill in the blank note. More
 /// complex Anki cloze templates retain their fully rendered content as Basic
 /// cards instead of losing extra answer fields or media.
-pub(super) fn simple_cloze_field(
-    question_template: &str,
-    answer_template: &str,
-) -> Option<String> {
+pub(super) fn simple_cloze_field(question_template: &str, answer_template: &str) -> Option<String> {
     let question = exact_filtered_field(question_template, "cloze")?;
     let answer = exact_filtered_field(answer_template, "cloze")?;
     (question == answer).then_some(question)
@@ -80,10 +77,7 @@ fn exact_filtered_field(source: &str, filter: &str) -> Option<String> {
 /// an independent oStudy schedule. Other Anki cloze groups are revealed text.
 /// Hints are intentionally presentation metadata and are not folded into the
 /// answer text.
-pub(super) fn native_cloze(
-    source_html: &str,
-    target: u32,
-) -> Result<Option<NativeCloze>, String> {
+pub(super) fn native_cloze(source_html: &str, target: u32) -> Result<Option<NativeCloze>, String> {
     let lowered = source_html.to_ascii_lowercase();
     if lowered.contains("<img") || lowered.contains("[sound:") {
         return Ok(None);
@@ -293,9 +287,7 @@ fn evaluate(
                                 value.clear();
                             }
                         }
-                        _ => {
-                            return Err(format!("Unsupported Anki filter: {}.", label(filter)))
-                        }
+                        _ => return Err(format!("Unsupported Anki filter: {}.", label(filter))),
                     }
                 }
                 append(&mut result.html, &value)?;
@@ -434,9 +426,7 @@ mod tests {
             simple_cloze_field(" {{cloze:Text}} ", "{{cloze:Text}}"),
             Some("Text".to_string())
         );
-        assert!(
-            simple_cloze_field("{{cloze:Text}}", "{{cloze:Text}}<br>{{Extra}}").is_none()
-        );
+        assert!(simple_cloze_field("{{cloze:Text}}", "{{cloze:Text}}<br>{{Extra}}").is_none());
         let native = native_cloze(
             "{{c1::first::hint}} then {{c2::second}} then {{c1::third}}",
             1,

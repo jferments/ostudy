@@ -483,12 +483,8 @@ fn create_practice_session(
     }
 
     // Build the entire fallible first response window before durable success.
-    let first_window = first_window_from_prepared(
-        &transaction,
-        paths,
-        &first_prepared,
-        planned.len(),
-    )?;
+    let first_window =
+        first_window_from_prepared(&transaction, paths, &first_prepared, planned.len())?;
     transaction.commit().map_err(CommandError::database)?;
 
     Ok(PracticeSessionDto {
