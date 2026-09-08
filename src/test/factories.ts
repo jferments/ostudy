@@ -57,6 +57,7 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
     reduceMotion: false,
     confirmDeletions: true,
     practiceShuffle: true,
+    displayQuestionOnAnswer: false,
     desiredRetention: 0.9,
     dailyNewLimit: 20,
     dailyReviewLimit: 200,
