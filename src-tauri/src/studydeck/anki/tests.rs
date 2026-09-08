@@ -46,11 +46,13 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
             ]},
         "2": {"name": "Cloze", "type": 1, "flds": [{"name": "Text", "ord": 0}],
             "tmpls": [{"name": "Cloze", "ord": 0, "qfmt": "{{cloze:Text}}", "afmt": "{{cloze:Text}}"}]},
-        "3": {"name": "Scripted", "type": 0, "flds": [{"name": "Front", "ord": 0}],
+        "3": {"name": "Scripted with static fallback", "type": 0, "flds": [{"name": "Front", "ord": 0}],
             "tmpls": [{"name": "Card", "ord": 0, "qfmt": "<script>unsafe()</script>{{Front}}", "afmt": "Answer"}]},
         "4": {"name": "Type in the answer", "type": 0,
             "flds": [{"name": "Front", "ord": 0}, {"name": "Back", "ord": 1}],
-            "tmpls": [{"name": "Card", "ord": 0, "qfmt": "{{Front}} {{type:Back}}", "afmt": "{{FrontSide}}<hr id=answer>{{type:Back}}"}]}
+            "tmpls": [{"name": "Card", "ord": 0, "qfmt": "{{Front}} {{type:Back}}", "afmt": "{{FrontSide}}<hr id=answer>{{type:Back}}"}]},
+        "5": {"name": "Script generated only", "type": 0, "flds": [{"name": "Front", "ord": 0}],
+            "tmpls": [{"name": "Card", "ord": 0, "qfmt": "<script>document.write('Question')</script>", "afmt": "Answer"}]}
     });
     connection
         .execute(
@@ -69,8 +71,9 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
             "Image example<img src='pixel.png'>\u{1f}A pixel\u{1f}",
         ),
         (12, 2, "{{c1::first::position}} then {{c2::second}}"),
-        (13, 3, "Unsupported script card"),
+        (13, 3, "Static script card"),
         (14, 4, "What is 2 + 2?\u{1f}4"),
+        (15, 5, "Ignored because script generates the question"),
     ] {
         connection
             .execute(
@@ -87,6 +90,7 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
         (104, 12, 1),
         (105, 13, 0),
         (106, 14, 0),
+        (107, 15, 0),
     ] {
         connection
             .execute(
@@ -117,19 +121,20 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
 }
 
 #[test]
-fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations() {
+fn converts_existing_basic_reverse_native_cloze_typed_and_static_script_presentations() {
     let fixture = fixture(&[], r#"{"0":"pixel.png"}"#);
     let (package, report) = read_package(&fixture.path, "examples.apkg").unwrap();
-    assert_eq!(report.source_card_count, 7);
-    assert_eq!(report.imported_card_count, 6);
+    assert_eq!(report.source_card_count, 8);
+    assert_eq!(report.imported_card_count, 7);
     assert_eq!(report.skipped_card_count, 1);
-    assert_eq!(report.simplified_card_count, 0);
+    assert_eq!(report.simplified_card_count, 1);
     assert_eq!(report.native_style_card_count, 3);
     assert_eq!(report.typed_answer_card_count, 1);
     assert_eq!(report.native_cloze_card_count, 2);
     assert_eq!(report.cloze_fallback_card_count, 0);
-    assert_eq!(package.notes.len(), 6);
-    assert_eq!(package.cards.len(), 6);
+    assert_eq!(report.javascript_salvaged_card_count, 1);
+    assert_eq!(package.notes.len(), 7);
+    assert_eq!(package.cards.len(), 7);
     assert_eq!(package.assets.len(), 1);
 
     // Standard Anki Basic backs commonly contain FrontSide. The stored oStudy
@@ -147,6 +152,10 @@ fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations()
         .notes
         .iter()
         .any(|note| note.front_text.trim() == "What is 2 + 2?" && note.back_text == "4"));
+    assert!(package
+        .notes
+        .iter()
+        .any(|note| note.front_text == "Static script card" && note.back_text == "Answer"));
 
     let cloze = package
         .notes
@@ -172,10 +181,15 @@ fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations()
         .iter()
         .any(|tag| tag.name == "Anki deck::Examples::Science"));
     assert!(package.notes.iter().all(|note| !note.reverse_enabled));
-    assert!(report
+    assert!(report.issues.iter().any(|issue| {
+        issue.source_card_id == "107"
+            && issue.message.contains("JavaScript")
+            && issue.message.contains("static")
+    }));
+    assert!(!report
         .issues
         .iter()
-        .any(|issue| issue.source_card_id == "105" && issue.message.contains("JavaScript")));
+        .any(|issue| issue.source_card_id == "105"));
     assert!(!report
         .issues
         .iter()
@@ -188,10 +202,35 @@ fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations()
 }
 
 #[test]
+fn progress_reports_card_totals_successes_failures_and_phases() {
+    let fixture = fixture(&[], r#"{"0":"pixel.png"}"#);
+    let mut updates = Vec::new();
+    let (_, report) = read_package_with_progress(&fixture.path, "examples.apkg", &mut |progress| {
+        updates.push(progress)
+    })
+    .unwrap();
+    assert_eq!(report.imported_card_count, 7);
+    assert_eq!(updates.first().unwrap().phase, ProgressPhase::ReadingPackage);
+    assert!(updates.iter().any(|update| {
+        update.phase == ProgressPhase::ConvertingCards
+            && update.processed == Some(0)
+            && update.total == Some(8)
+    }));
+    assert!(updates.iter().any(|update| {
+        update.phase == ProgressPhase::ConvertingCards
+            && update.processed == Some(8)
+            && update.succeeded == 7
+            && update.failed == 1
+    }));
+    assert_eq!(updates.last().unwrap().phase, ProgressPhase::ImportingMedia);
+    assert_eq!(updates.last().unwrap().total, Some(8));
+}
+
+#[test]
 fn missing_images_skip_affected_cards_without_external_fetches_or_placeholder_answers() {
     let fixture = fixture(&[], "{}");
     let (package, report) = read_package(&fixture.path, "examples.apkg").unwrap();
-    assert_eq!(report.imported_card_count, 5);
+    assert_eq!(report.imported_card_count, 6);
     assert_eq!(report.skipped_card_count, 2);
     assert!(package.assets.is_empty());
     assert!(report
@@ -266,7 +305,7 @@ fn imported_content_uses_transactional_replay_and_fresh_native_schedules() {
         })
         .unwrap();
     assert_eq!(first.deck.id, replay.deck.id);
-    assert_eq!(first.card_count, 6);
+    assert_eq!(first.card_count, 7);
     database
         .with_connection(|connection| {
             let counts: (i64, i64, i64, i64) = connection
@@ -277,7 +316,7 @@ fn imported_content_uses_transactional_replay_and_fresh_native_schedules() {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(counts, (1, 6, 0, 0));
+            assert_eq!(counts, (1, 7, 0, 0));
             Ok(())
         })
         .unwrap();

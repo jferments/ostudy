@@ -14,6 +14,7 @@ const MAX_TOKENS: usize = 20_000;
 #[derive(Debug)]
 enum Token {
     Text(String),
+    ScriptOmitted,
     Tag {
         name: String,
         attributes: BTreeMap<String, String>,
@@ -25,6 +26,7 @@ pub(super) struct Document {
     pub value: Value,
     pub warnings: BTreeSet<String>,
     pub style_omitted: bool,
+    pub script_omitted: bool,
 }
 
 pub(super) fn document(
@@ -40,6 +42,7 @@ pub(super) fn document(
     let mut warnings = BTreeSet::new();
     let mut ignoring_style = false;
     let mut style_omitted = false;
+    let mut script_omitted = false;
     for token in tokenize(html)? {
         match token {
             Token::Text(text) => {
@@ -70,9 +73,12 @@ pub(super) fn document(
                     inline.push(node);
                 }
             }
+            Token::ScriptOmitted => {
+                script_omitted = true;
+            }
             Token::Tag {
                 name,
-                attributes,
+                mut attributes,
                 closing,
             } => {
                 if name == "style" {
@@ -82,6 +88,10 @@ pub(super) fn document(
                 }
                 if ignoring_style {
                     continue;
+                }
+                if attributes.keys().any(|key| key.starts_with("on")) {
+                    attributes.retain(|key, _| !key.starts_with("on"));
+                    script_omitted = true;
                 }
                 reject_active(&name, &attributes)?;
                 if attributes.contains_key("style") || attributes.contains_key("class") {
@@ -164,7 +174,23 @@ pub(super) fn document(
         value: json!({"type": "doc", "content": blocks}),
         warnings,
         style_omitted,
+        script_omitted,
     })
+}
+
+pub(super) fn has_study_content(value: &Value) -> bool {
+    match value {
+        Value::Array(values) => values.iter().any(has_study_content),
+        Value::Object(object) => match object.get("type").and_then(Value::as_str) {
+            Some("text") => object
+                .get("text")
+                .and_then(Value::as_str)
+                .is_some_and(|text| !text.trim().is_empty()),
+            Some("image") => true,
+            _ => object.get("content").is_some_and(has_study_content),
+        },
+        _ => false,
+    }
 }
 
 fn flush(blocks: &mut Vec<Value>, inline: &mut Vec<Value>) {
@@ -205,8 +231,7 @@ fn reject_active(name: &str, attributes: &BTreeMap<String, String>) -> Result<()
             | "button"
             | "template"
             | "noscript"
-    ) || attributes.keys().any(|key| key.starts_with("on"))
-    {
+    ) {
         return Err(
             "Active, interactive, or unsupported media content cannot be converted safely.".into(),
         );
@@ -299,12 +324,13 @@ fn tokenize(html: &str) -> Result<Vec<Token>, String> {
             }
         }
         let end = end.ok_or("Unclosed HTML tag.")?;
-        let raw = remaining[1..end].trim();
-        if raw.starts_with('!') || raw.starts_with('?') {
+        let raw_tag = remaining[1..end].trim();
+        if raw_tag.starts_with('!') || raw_tag.starts_with('?') {
             return Err("HTML declarations and processing instructions are unsupported.".into());
         }
-        let closing = raw.starts_with('/');
-        let raw = raw.trim_start_matches('/').trim_end_matches('/').trim();
+        let closing = raw_tag.starts_with('/');
+        let self_closing = raw_tag.ends_with('/');
+        let raw = raw_tag.trim_start_matches('/').trim_end_matches('/').trim();
         let name_end = raw.find(char::is_whitespace).unwrap_or(raw.len());
         let name = raw[..name_end].to_ascii_lowercase();
         if name.is_empty()
@@ -316,7 +342,23 @@ fn tokenize(html: &str) -> Result<Vec<Token>, String> {
         }
         let attributes = attributes(&raw[name_end..])?;
         if name == "script" {
-            return Err("JavaScript-dependent cards are not imported.".into());
+            if closing || self_closing {
+                result.push(Token::ScriptOmitted);
+                position += end + 1;
+                continue;
+            }
+            let after_open = &remaining[end + 1..];
+            let lowered = after_open.to_ascii_lowercase();
+            let close_start = lowered
+                .find("</script")
+                .ok_or("Unclosed HTML script element.")?;
+            let close_tail = &after_open[close_start..];
+            let close_end = close_tail
+                .find('>')
+                .ok_or("Unclosed HTML script element.")?;
+            result.push(Token::ScriptOmitted);
+            position += end + 1 + close_start + close_end + 1;
+            continue;
         }
         result.push(Token::Tag {
             name,
@@ -471,12 +513,31 @@ mod tests {
     }
 
     #[test]
-    fn never_passes_active_or_hidden_content_to_the_renderer() {
+    fn strips_javascript_without_executing_it_and_marks_static_salvage() {
+        let result = document(
+            "<script>if (1 < 2) { document.body.innerHTML = 'wrong'; }</script><div onclick='unsafe()'>Question</div>",
+            &mut |_| unreachable!(),
+        )
+        .unwrap();
+        assert!(result.script_omitted);
+        assert!(has_study_content(&result.value));
+        assert_eq!(result.value["content"][0]["content"][0]["text"], "Question");
+
+        let generated_only = document(
+            "<script>document.write('Question')</script>",
+            &mut |_| unreachable!(),
+        )
+        .unwrap();
+        assert!(generated_only.script_omitted);
+        assert!(!has_study_content(&generated_only.value));
+    }
+
+    #[test]
+    fn never_passes_still_active_or_hidden_content_to_the_renderer() {
         for html in [
-            "<ScRiPt>alert(1)</ScRiPt>",
-            "<img src='x' onerror='x'>",
             "<span hidden>answer</span>",
             "<iframe src='https://example.com'></iframe>",
+            "<button>interactive</button>",
         ] {
             assert!(document(html, &mut |_| unreachable!()).is_err(), "{html}");
         }

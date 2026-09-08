@@ -76,6 +76,7 @@ export interface AnkiImportReport {
   typedAnswerCardCount?: number;
   nativeClozeCardCount?: number;
   clozeFallbackCardCount?: number;
+  javascriptSalvagedCardCount?: number;
   issues: { sourceCardId: string; message: string }[];
   omittedIssueCount: number;
 }

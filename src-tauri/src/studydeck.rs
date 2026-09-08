@@ -28,7 +28,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     assets::{detect_image_bytes, validate_original_filename},
@@ -50,6 +50,7 @@ const MAX_PACKAGE_CARDS: usize = 200_000;
 const MAX_PACKAGE_TAGS: usize = 100_000;
 const MAX_TAGS_PER_NOTE: usize = 32;
 const MAX_CLOZE_SOURCE_CHARS: usize = 200_000;
+const OPERATION_PROGRESS_EVENT: &str = "ostudy-operation-progress";
 
 const PACKAGE_SCHEMA: &str = r#"
 PRAGMA foreign_keys = ON;
@@ -132,6 +133,43 @@ pub struct PrepareDeckExportInput {
 pub struct ImportDeckInput {
     pub operation_id: String,
     pub staged_file_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OperationProgressDto {
+    schema_version: u8,
+    operation_id: String,
+    operation_kind: String,
+    phase: String,
+    processed: Option<usize>,
+    total: Option<usize>,
+    succeeded: usize,
+    failed: usize,
+}
+
+fn emit_operation_progress(
+    app: &AppHandle,
+    operation_id: &str,
+    phase: &str,
+    processed: Option<usize>,
+    total: Option<usize>,
+    succeeded: usize,
+    failed: usize,
+) {
+    let _ = app.emit(
+        OPERATION_PROGRESS_EVENT,
+        OperationProgressDto {
+            schema_version: 1,
+            operation_id: operation_id.to_string(),
+            operation_kind: "anki_import".to_string(),
+            phase: phase.to_string(),
+            processed,
+            total,
+            succeeded,
+            failed,
+        },
+    );
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -242,18 +280,17 @@ pub async fn import_deck(
 ) -> Result<ImportedDeckDto, CommandError> {
     // Decompression, template conversion, and native asset writes must not run
     // on the UI thread. The worker still uses the single managed database.
-    tauri::async_runtime::spawn_blocking(move || {
-        import_deck_blocking(app.state::<Database>(), app.state::<AppPaths>(), input)
-    })
-    .await
-    .map_err(|error| CommandError::new("deck_import_worker_failed", error.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || import_deck_blocking(&app, input))
+        .await
+        .map_err(|error| CommandError::new("deck_import_worker_failed", error.to_string()))?
 }
 
 fn import_deck_blocking(
-    database: State<'_, Database>,
-    paths: State<'_, AppPaths>,
+    app: &AppHandle,
     input: ImportDeckInput,
 ) -> Result<ImportedDeckDto, CommandError> {
+    let database = app.state::<Database>();
+    let paths = app.state::<AppPaths>();
     validate_entity_id(&input.operation_id, "deck import operation")?;
     validate_entity_id(&input.staged_file_id, "staged deck")?;
     if let Some(result) = database.with_connection(|connection| {
@@ -282,11 +319,38 @@ fn import_deck_blocking(
         .extension()
         .is_some_and(|extension| extension == "apkg");
     let (package, anki_report) = if is_anki {
-        let (package, report) = anki::read_package(&staged.path, &staged.display_name)?;
+        let progress_operation_id = input.operation_id.clone();
+        let mut publish_progress = |progress: anki::Progress| {
+            emit_operation_progress(
+                app,
+                &progress_operation_id,
+                progress.phase.as_str(),
+                progress.processed,
+                progress.total,
+                progress.succeeded,
+                progress.failed,
+            );
+        };
+        let (package, report) = anki::read_package_with_progress(
+            &staged.path,
+            &staged.display_name,
+            &mut publish_progress,
+        )?;
         (package, Some(report))
     } else {
         (read::read_package(&staged.path)?, None)
     };
+    if let Some(report) = anki_report.as_ref() {
+        emit_operation_progress(
+            app,
+            &input.operation_id,
+            "saving_deck",
+            Some(report.source_card_count),
+            Some(report.source_card_count),
+            report.imported_card_count,
+            report.skipped_card_count,
+        );
+    }
     // An Anki transfer is keyed to its staged identity even if a transport or
     // receipt-storage failure causes the frontend to allocate a new attempt ID.
     let operation_id = if is_anki {

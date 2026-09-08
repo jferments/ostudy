@@ -2,6 +2,10 @@ import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common"
 import type { AnkiImportReport, DeckSummary } from "../ipc/decks";
 import type { PublishReceipt, ShareLaunch, StagedExternalFile } from "../ipc/externalFiles";
 import {
+  listenToOperationProgress,
+  type OperationProgress,
+} from "../ipc/operationProgress";
+import {
   publishExport,
   selectExternalImport,
   shareExport,
@@ -42,6 +46,10 @@ export interface DeckTransferDependencies {
     "prepareExport" | "importStudydeck" | "importGenerated" | "invalidate"
   >;
   createOperationId(): string;
+  listenProgress?(
+    operationId: string,
+    listener: (progress: OperationProgress) => void,
+  ): Promise<() => void>;
 }
 
 const defaultDependencies: DeckTransferDependencies = {
@@ -50,6 +58,7 @@ const defaultDependencies: DeckTransferDependencies = {
   share: shareExport,
   createDecksController: () => new DecksController(),
   createOperationId,
+  listenProgress: listenToOperationProgress,
 };
 
 /**
@@ -67,7 +76,9 @@ export class DeckTransferController {
     this.#decks = dependencies.createDecksController();
   }
 
-  async importFromFile(): Promise<DeckImportOutcome | null> {
+  async importFromFile(
+    onProgress?: (progress: OperationProgress) => void,
+  ): Promise<DeckImportOutcome | null> {
     const selected = await this.#dependencies.selectImport();
     if (!selected) return null;
 
@@ -80,6 +91,18 @@ export class DeckTransferController {
               operationId: this.#dependencies.createOperationId(),
             };
       this.#pendingStudydeckImport = pending;
+      let unlisten: (() => void) | null = null;
+      if (selected.detectedKind === "anki_apkg" && onProgress) {
+        try {
+          unlisten = await (this.#dependencies.listenProgress ?? listenToOperationProgress)(
+            pending.operationId,
+            onProgress,
+          );
+        } catch {
+          // Progress is advisory UI state. A listener transport problem must not
+          // turn a valid, retry-safe import into a failed data operation.
+        }
+      }
       try {
         const result = await this.#decks.importStudydeck(selected.id, pending.operationId);
         this.#pendingStudydeckImport = null;
@@ -98,6 +121,8 @@ export class DeckTransferController {
       } catch (error: unknown) {
         if (getErrorCode(error) !== null) this.#pendingStudydeckImport = null;
         throw error;
+      } finally {
+        unlisten?.();
       }
     }
 
@@ -180,11 +205,15 @@ function ankiCompatibilitySummary(report: AnkiImportReport): string {
   }
   const typedAnswerCardCount = report.typedAnswerCardCount ?? 0;
   const nativeClozeCardCount = report.nativeClozeCardCount ?? 0;
+  const javascriptSalvagedCardCount = report.javascriptSalvagedCardCount ?? 0;
   if (typedAnswerCardCount > 0) {
     details.push(`${typedAnswerCardCount} typed-answer cards converted to ordinary reveal`);
   }
   if (nativeClozeCardCount > 0) {
     details.push(`${nativeClozeCardCount} cloze cards converted to native Fill in the blank`);
+  }
+  if (javascriptSalvagedCardCount > 0) {
+    details.push(`${javascriptSalvagedCardCount} JavaScript cards recovered as static content`);
   }
   return ` ${details.join("; ")}.`;
 }

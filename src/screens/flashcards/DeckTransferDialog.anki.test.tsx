@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { OperationProgress } from "../../ipc/operationProgress";
 import { DeckTransferDialog } from "./DeckTransferDialog";
 
 const mocks = vi.hoisted(() => ({ importFromFile: vi.fn(), invalidate: vi.fn() }));
@@ -28,11 +29,11 @@ vi.mock("../../ui/primitives/InlineNotice", () => ({
 }));
 
 const outcome = {
-  deckId: "a".repeat(32), committedDeck: null, message: "Imported Examples with 5 cards.",
+  deckId: "a".repeat(32), committedDeck: null, message: "Imported Examples with 7 cards.",
   ankiReport: {
-    sourceCardCount: 6, importedCardCount: 5, skippedCardCount: 1,
-    simplifiedCardCount: 3, omittedIssueCount: 2,
-    issues: [{ sourceCardId: "105", message: "Skipped: <script>not executable</script>" }],
+    sourceCardCount: 8, importedCardCount: 7, skippedCardCount: 1,
+    simplifiedCardCount: 2, javascriptSalvagedCardCount: 1, omittedIssueCount: 2,
+    issues: [{ sourceCardId: "107", message: "Skipped: <script>could not be reduced</script>" }],
   },
 };
 
@@ -50,16 +51,49 @@ beforeEach(() => {
 });
 
 describe("Anki import completion", () => {
+  it("shows card-level progress while a long Anki import is running", async () => {
+    let resolveImport!: (value: typeof outcome) => void;
+    mocks.importFromFile.mockImplementationOnce(
+      (onProgress?: (progress: OperationProgress) => void) => {
+        onProgress?.({
+          schemaVersion: 1,
+          operationId: "d".repeat(32),
+          operationKind: "anki_import",
+          phase: "converting_cards",
+          processed: 250,
+          total: 1000,
+          succeeded: 245,
+          failed: 5,
+        });
+        return new Promise<typeof outcome>((resolve) => {
+          resolveImport = resolve;
+        });
+      },
+    );
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    const progress = await screen.findByRole("progressbar", { name: "Anki import progress" });
+    expect(progress.getAttribute("aria-valuenow")).toBe("250");
+    expect(progress.getAttribute("aria-valuemax")).toBe("1000");
+    expect(screen.getByText("250 / 1000")).not.toBeNull();
+    expect(screen.getByText("245 imported · 5 skipped")).not.toBeNull();
+    resolveImport(outcome);
+    expect(await screen.findByRole("dialog", { name: "Anki import complete" })).not.toBeNull();
+  });
+
   it("keeps the post-commit report visible until the user opens the imported deck", async () => {
     const { close, open } = mount();
     fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
     expect(await screen.findByRole("dialog", { name: "Anki import complete" })).not.toBeNull();
-    expect(screen.getByLabelText("Anki import report").textContent).toContain("5 of 6 Anki cards imported");
+    expect(screen.getByLabelText("Anki import report").textContent).toContain("7 of 8 Anki cards imported");
+    expect(screen.getByLabelText("Anki import report").textContent).toContain(
+      "complete static question/answer content was retained",
+    );
     expect(screen.queryByRole("button", { name: /Choose file/ })).toBeNull();
     expect(close).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText("Compatibility details (1)"));
-    expect(screen.getByText(/not executable/).textContent).toContain("<script>not executable</script>");
+    expect(screen.getByText(/could not be reduced/).textContent).toContain("<script>could not be reduced</script>");
     expect(document.querySelector("script")).toBeNull();
     expect(screen.getByText(/2 additional details omitted/)).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Open imported deck" }));

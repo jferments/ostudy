@@ -11,6 +11,7 @@ export function AnkiImportReportView({ report, message }: AnkiImportReportViewPr
   const typedAnswerCardCount = report.typedAnswerCardCount ?? 0;
   const nativeClozeCardCount = report.nativeClozeCardCount ?? 0;
   const clozeFallbackCardCount = report.clozeFallbackCardCount ?? 0;
+  const javascriptSalvagedCardCount = report.javascriptSalvagedCardCount ?? 0;
 
   return (
     <section className={styles.report} aria-label="Anki import report">
@@ -24,6 +25,13 @@ export function AnkiImportReportView({ report, message }: AnkiImportReportViewPr
         <p>
           {nativeStyleCardCount} imported cards use oStudy&apos;s native appearance instead of
           Anki CSS. This is an appearance conversion, not a skipped-card error.
+        </p>
+      ) : null}
+      {javascriptSalvagedCardCount > 0 ? (
+        <p>
+          {javascriptSalvagedCardCount} cards contained JavaScript or inline script handlers.
+          oStudy did not execute that code; complete static question/answer content was retained
+          after removing it.
         </p>
       ) : null}
       {typedAnswerCardCount > 0 ? (

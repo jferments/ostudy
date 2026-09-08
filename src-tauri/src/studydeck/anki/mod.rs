@@ -28,6 +28,7 @@ use crate::{cards::validate_content, error::CommandError, util::unix_time_millis
 
 const MAX_ISSUES: usize = 100;
 const MAX_OUTPUT_BYTES: usize = 128 * 1024 * 1024;
+const PROGRESS_INTERVAL_CARDS: usize = 100;
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -48,6 +49,7 @@ pub struct ImportReport {
     pub typed_answer_card_count: usize,
     pub native_cloze_card_count: usize,
     pub cloze_fallback_card_count: usize,
+    pub javascript_salvaged_card_count: usize,
     pub issues: Vec<ImportIssue>,
     pub omitted_issue_count: usize,
 }
@@ -70,10 +72,51 @@ impl ImportReport {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ProgressPhase {
+    ReadingPackage,
+    ConvertingCards,
+    ImportingMedia,
+}
+
+impl ProgressPhase {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadingPackage => "reading_package",
+            Self::ConvertingCards => "converting_cards",
+            Self::ImportingMedia => "importing_media",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct Progress {
+    pub(super) phase: ProgressPhase,
+    pub(super) processed: Option<usize>,
+    pub(super) total: Option<usize>,
+    pub(super) succeeded: usize,
+    pub(super) failed: usize,
+}
+
 pub(super) fn read_package(
     path: &Path,
     display_name: &str,
 ) -> Result<(PackageData, ImportReport), CommandError> {
+    read_package_with_progress(path, display_name, &mut |_| {})
+}
+
+pub(super) fn read_package_with_progress(
+    path: &Path,
+    display_name: &str,
+    progress: &mut dyn FnMut(Progress),
+) -> Result<(PackageData, ImportReport), CommandError> {
+    progress(Progress {
+        phase: ProgressPhase::ReadingPackage,
+        processed: None,
+        total: None,
+        succeeded: 0,
+        failed: 0,
+    });
     let mut archive = package::Archive::open(path)?;
     let bytes = archive.collection()?;
     // Create our own sibling filename in managed transfer storage. A donor ZIP
@@ -103,8 +146,23 @@ pub(super) fn read_package(
     drop(file);
     drop(bytes);
     let collection = collection::read(&guard.path)?;
-    let result = convert(collection, &mut archive, display_name)?;
+    let total = collection.cards.len();
+    progress(Progress {
+        phase: ProgressPhase::ConvertingCards,
+        processed: Some(0),
+        total: Some(total),
+        succeeded: 0,
+        failed: 0,
+    });
+    let result = convert(collection, &mut archive, display_name, progress)?;
     let (mut package, report, used_assets) = result;
+    progress(Progress {
+        phase: ProgressPhase::ImportingMedia,
+        processed: Some(report.source_card_count),
+        total: Some(report.source_card_count),
+        succeeded: report.imported_card_count,
+        failed: report.skipped_card_count,
+    });
     package.assets = archive.take_assets(&used_assets);
     read::validate_package_data(&package, true)?;
     Ok((package, report))
@@ -114,6 +172,7 @@ fn convert(
     collection: collection::Collection,
     archive: &mut package::Archive,
     display_name: &str,
+    progress: &mut dyn FnMut(Progress),
 ) -> Result<(PackageData, ImportReport, BTreeSet<String>), CommandError> {
     let now = unix_time_millis()?;
     let title = display_name
@@ -142,19 +201,21 @@ fn convert(
         assets: Vec::new(),
         note_assets: Vec::new(),
     };
+    let total = collection.cards.len();
     let mut report = ImportReport {
-        source_card_count: collection.cards.len(),
+        source_card_count: total,
         ..ImportReport::default()
     };
     let mut tags = BTreeMap::<String, PackageTag>::new();
     let mut used_assets = BTreeSet::new();
     let mut output_bytes = 0_usize;
-    for card in &collection.cards {
+    for (index, card) in collection.cards.iter().enumerate() {
         let converted = match convert_card(&collection, card, archive) {
             Ok(converted) => converted,
             Err(message) => {
                 report.skipped_card_count += 1;
                 report.issue(card.id, format!("Skipped: {message}"));
+                publish_conversion_progress(progress, index + 1, total, &report);
                 continue;
             }
         };
@@ -266,13 +327,17 @@ fn convert(
         if converted.cloze_fallback {
             report.cloze_fallback_card_count += 1;
         }
-        if !warnings.is_empty() {
+        if converted.javascript_salvaged {
+            report.javascript_salvaged_card_count += 1;
+        }
+        if converted.javascript_salvaged || !warnings.is_empty() {
             report.simplified_card_count += 1;
             for warning in warnings {
                 report.issue(card.id, warning);
             }
         }
         report.imported_card_count += 1;
+        publish_conversion_progress(progress, index + 1, total, &report);
     }
     if package.cards.is_empty() {
         let reasons = report
@@ -288,6 +353,23 @@ fn convert(
     }
     package.tags = tags.into_values().collect();
     Ok((package, report, used_assets))
+}
+
+fn publish_conversion_progress(
+    progress: &mut dyn FnMut(Progress),
+    processed: usize,
+    total: usize,
+    report: &ImportReport,
+) {
+    if processed == total || processed % PROGRESS_INTERVAL_CARDS == 0 {
+        progress(Progress {
+            phase: ProgressPhase::ConvertingCards,
+            processed: Some(processed),
+            total: Some(total),
+            succeeded: report.imported_card_count,
+            failed: report.skipped_card_count,
+        });
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -319,6 +401,7 @@ struct ConvertedCard<'a> {
     typed_answer: bool,
     native_cloze: bool,
     cloze_fallback: bool,
+    javascript_salvaged: bool,
 }
 
 fn convert_card<'a>(
@@ -394,6 +477,15 @@ fn convert_card<'a>(
     let back = html::document(&answer.html, &mut |name| archive.image(name))?;
     let style_normalized =
         !model.css.trim().is_empty() || front.style_omitted || back.style_omitted;
+    let javascript_salvaged = front.script_omitted || back.script_omitted;
+    if javascript_salvaged
+        && (!html::has_study_content(&front.value) || !html::has_study_content(&back.value))
+    {
+        return Err(
+            "Card contains JavaScript that could not be safely reduced to complete static question/answer content."
+                .into(),
+        );
+    }
     let typed_answer = question.used_type_filter || answer.used_type_filter;
     let mut warnings = front.warnings;
     warnings.extend(back.warnings);
@@ -431,6 +523,7 @@ fn convert_card<'a>(
                         typed_answer,
                         native_cloze: true,
                         cloze_fallback: false,
+                        javascript_salvaged,
                     });
                 }
             }
@@ -448,6 +541,7 @@ fn convert_card<'a>(
             typed_answer,
             native_cloze: false,
             cloze_fallback: true,
+            javascript_salvaged,
         });
     }
 
@@ -464,6 +558,7 @@ fn convert_card<'a>(
         typed_answer,
         native_cloze: false,
         cloze_fallback: false,
+        javascript_salvaged,
     })
 }
 

@@ -36,6 +36,31 @@
     color: var(--ostudy-color-text-accent);
   }
 
+  .progressPanel {
+    display: grid;
+    gap: var(--ostudy-space-3);
+    border: 1px solid var(--ostudy-color-border-subtle);
+    border-radius: var(--ostudy-radius-medium);
+    padding: var(--ostudy-space-4);
+    background: var(--ostudy-color-surface-soft);
+  }
+
+  .progressHeader {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--ostudy-space-3);
+  }
+
+  .progressHeader > span,
+  .progressCounts {
+    color: var(--ostudy-color-text-secondary);
+  }
+
+  .progressCounts {
+    margin: 0;
+  }
+
   .deckList {
     display: grid;
     max-height: min(42vh, 360px);
@@ -81,6 +106,12 @@
   @media (max-width: 760px) {
     .callout {
       align-items: flex-start;
+    }
+
+    .progressHeader {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: var(--ostudy-space-1);
     }
 
     .actions > button {
