@@ -24,6 +24,7 @@ enum Token {
 pub(super) struct Document {
     pub value: Value,
     pub warnings: BTreeSet<String>,
+    pub style_omitted: bool,
 }
 
 pub(super) fn document(
@@ -38,6 +39,7 @@ pub(super) fn document(
     let mut marks: Vec<(String, &'static str)> = Vec::new();
     let mut warnings = BTreeSet::new();
     let mut ignoring_style = false;
+    let mut style_omitted = false;
     for token in tokenize(html)? {
         match token {
             Token::Text(text) => {
@@ -75,7 +77,7 @@ pub(super) fn document(
             } => {
                 if name == "style" {
                     ignoring_style = !closing;
-                    warnings.insert("CSS styling was omitted; native formatting is used.".into());
+                    style_omitted = true;
                     continue;
                 }
                 if ignoring_style {
@@ -83,7 +85,7 @@ pub(super) fn document(
                 }
                 reject_active(&name, &attributes)?;
                 if attributes.contains_key("style") || attributes.contains_key("class") {
-                    warnings.insert("CSS styling was omitted; native formatting is used.".into());
+                    style_omitted = true;
                 }
                 if let Some(mark) = mark_type(&name) {
                     if closing {
@@ -110,8 +112,19 @@ pub(super) fn document(
                     }
                     "br" if !closing => inline.push(json!({"type": "hardBreak"})),
                     "hr" if !closing => {
-                        flush(&mut blocks, &mut inline);
-                        blocks.push(json!({"type": "horizontalRule"}));
+                        // Standard Anki Basic backs use {{FrontSide}} followed by
+                        // <hr id=answer>. When the importer deliberately omits
+                        // FrontSide so oStudy owns question/back presentation,
+                        // suppress that now-orphaned leading separator too.
+                        let leading_answer_separator = blocks.is_empty()
+                            && inline.is_empty()
+                            && attributes
+                                .get("id")
+                                .is_some_and(|value| value.eq_ignore_ascii_case("answer"));
+                        if !leading_answer_separator {
+                            flush(&mut blocks, &mut inline);
+                            blocks.push(json!({"type": "horizontalRule"}));
+                        }
                     }
                     "p" | "div" | "section" | "article" | "blockquote" | "pre" | "h1" | "h2"
                     | "h3" | "h4" | "h5" | "h6" | "li" | "tr" => {
@@ -150,6 +163,7 @@ pub(super) fn document(
     Ok(Document {
         value: json!({"type": "doc", "content": blocks}),
         warnings,
+        style_omitted,
     })
 }
 
@@ -437,6 +451,20 @@ mod tests {
             plain_text("<div>A&nbsp;&lt; B</div>").unwrap().trim(),
             "A < B"
         );
+    }
+
+    #[test]
+    fn stylesheet_omission_is_aggregatable_and_answer_separator_can_be_suppressed() {
+        let styled = document(
+            "<style>.card{color:red}</style><div class='card'>Answer</div>",
+            &mut |_| unreachable!(),
+        )
+        .unwrap();
+        assert!(styled.style_omitted);
+        assert!(!styled.warnings.iter().any(|warning| warning.contains("CSS")));
+        let answer = document("<hr id=answer>Answer", &mut |_| unreachable!()).unwrap();
+        assert_eq!(answer.value["content"].len(), 1);
+        assert_eq!(answer.value["content"][0]["type"], "paragraph");
     }
 
     #[test]

@@ -17,6 +17,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use super::{
@@ -37,12 +38,16 @@ pub struct ImportIssue {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct ImportReport {
     pub source_card_count: usize,
     pub imported_card_count: usize,
     pub skipped_card_count: usize,
     pub simplified_card_count: usize,
+    pub native_style_card_count: usize,
+    pub typed_answer_card_count: usize,
+    pub native_cloze_card_count: usize,
+    pub cloze_fallback_card_count: usize,
     pub issues: Vec<ImportIssue>,
     pub omitted_issue_count: usize,
 }
@@ -121,11 +126,21 @@ fn convert(
     let deck_id = source_id("deck", &title);
     let mut package = PackageData {
         version: CURRENT_PACKAGE_VERSION,
-        deck: PackageDeck { source_id: deck_id.clone(), name: title,
-            description: "Imported from Anki. Cards are independent editable Basic notes with fresh schedules. Original deck paths are retained as tags; Anki review history and styling are not imported.".to_string(),
-            sort_order: 0, created_at: now, updated_at: now, revision: 1 },
-        notes: Vec::new(), cards: Vec::new(), tags: Vec::new(), note_tags: Vec::new(),
-        assets: Vec::new(), note_assets: Vec::new(),
+        deck: PackageDeck {
+            source_id: deck_id.clone(),
+            name: title,
+            description: "Imported from Anki. Compatible cards become independent editable oStudy Basic or Fill in the blank notes with fresh schedules. Original deck paths are retained as tags; Anki review history and exact styling are not imported.".to_string(),
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+            revision: 1,
+        },
+        notes: Vec::new(),
+        cards: Vec::new(),
+        tags: Vec::new(),
+        note_tags: Vec::new(),
+        assets: Vec::new(),
+        note_assets: Vec::new(),
     };
     let mut report = ImportReport {
         source_card_count: collection.cards.len(),
@@ -135,8 +150,7 @@ fn convert(
     let mut used_assets = BTreeSet::new();
     let mut output_bytes = 0_usize;
     for card in &collection.cards {
-        let converted = convert_card(&collection, card, archive);
-        let (front, back, validated, mut warnings, source_tags, source_deck) = match converted {
+        let converted = match convert_card(&collection, card, archive) {
             Ok(converted) => converted,
             Err(message) => {
                 report.skipped_card_count += 1;
@@ -145,17 +159,18 @@ fn convert(
             }
         };
         output_bytes = output_bytes
-            .saturating_add(validated.front_doc_json.len())
-            .saturating_add(validated.back_doc_json.len());
+            .saturating_add(converted.validated.front_doc_json.len())
+            .saturating_add(converted.validated.back_doc_json.len());
         if output_bytes > MAX_OUTPUT_BYTES {
             return Err(failure(
                 "Converted Anki content exceeds the 128 MiB output limit.",
             ));
         }
         let note_id = source_id("note", &card.id.to_string());
+        let mut warnings = converted.warnings;
         let mut note_tag_ids = BTreeSet::new();
-        let all_tags =
-            std::iter::once(format!("Anki deck::{source_deck}")).chain(source_tags.iter().cloned());
+        let all_tags = std::iter::once(format!("Anki deck::{}", converted.source_deck))
+            .chain(converted.source_tags.iter().cloned());
         for source_name in all_tags {
             let normalized = normalize_tag_name(&source_name);
             if normalized.is_empty() {
@@ -199,8 +214,8 @@ fn convert(
             package.note_tags.push((note_id.clone(), tag_id));
         }
         for (side, assets) in [
-            ("front", &validated.front_asset_ids),
-            ("back", &validated.back_asset_ids),
+            ("front", &converted.validated.front_asset_ids),
+            ("back", &converted.validated.back_asset_ids),
         ] {
             for asset in assets {
                 used_assets.insert(asset.clone());
@@ -209,20 +224,23 @@ fn convert(
                     .push((note_id.clone(), asset.clone(), side.to_string()));
             }
         }
-        let duplicate_hash = duplicate_fingerprint(&validated.front_text, &validated.back_text);
+        let duplicate_hash = duplicate_fingerprint(
+            &converted.validated.front_text,
+            &converted.validated.back_text,
+        );
         package.notes.push(PackageNote {
             source_id: note_id.clone(),
             source_deck_id: deck_id.clone(),
-            note_type: "basic".into(),
+            note_type: converted.note_type.into(),
             content_format: "tiptap-json".into(),
             content_schema_version: 1,
-            front_doc: front,
-            back_doc: back,
-            front_text: validated.front_text,
-            back_text: validated.back_text,
+            front_doc: converted.front,
+            back_doc: converted.back,
+            front_text: converted.validated.front_text,
+            back_text: converted.validated.back_text,
             duplicate_hash,
             reverse_enabled: false,
-            cloze_source: String::new(),
+            cloze_source: converted.cloze_source,
             cloze_mode: "one_at_a_time".into(),
             created_at: now,
             updated_at: now,
@@ -236,6 +254,18 @@ fn convert(
             created_at: now,
             updated_at: now,
         });
+        if converted.style_normalized {
+            report.native_style_card_count += 1;
+        }
+        if converted.typed_answer {
+            report.typed_answer_card_count += 1;
+        }
+        if converted.native_cloze {
+            report.native_cloze_card_count += 1;
+        }
+        if converted.cloze_fallback {
+            report.cloze_fallback_card_count += 1;
+        }
         if !warnings.is_empty() {
             report.simplified_card_count += 1;
             for warning in warnings {
@@ -260,14 +290,36 @@ fn convert(
     Ok((package, report, used_assets))
 }
 
-type ConvertedCard<'a> = (
-    serde_json::Value,
-    serde_json::Value,
-    crate::cards::ValidatedContent,
-    BTreeSet<String>,
-    &'a [String],
-    &'a str,
-);
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourcePresentationKind {
+    Basic,
+    Cloze,
+}
+
+impl SourcePresentationKind {
+    fn from_model_kind(kind: i64) -> Result<Self, String> {
+        match kind {
+            0 => Ok(Self::Basic),
+            1 => Ok(Self::Cloze),
+            _ => Err("Unsupported Anki note type.".into()),
+        }
+    }
+}
+
+struct ConvertedCard<'a> {
+    front: serde_json::Value,
+    back: serde_json::Value,
+    validated: crate::cards::ValidatedContent,
+    warnings: BTreeSet<String>,
+    source_tags: &'a [String],
+    source_deck: &'a str,
+    note_type: &'static str,
+    cloze_source: String,
+    style_normalized: bool,
+    typed_answer: bool,
+    native_cloze: bool,
+    cloze_fallback: bool,
+}
 
 fn convert_card<'a>(
     collection: &'a collection::Collection,
@@ -286,10 +338,11 @@ fn convert_card<'a>(
         .decks
         .get(&card.deck_id)
         .ok_or("Card refers to a missing deck.")?;
-    if !matches!(model.kind, 0 | 1) || note.fields.len() != model.flds.len() {
-        return Err("Unsupported note type or mismatched field count.".into());
+    let source_kind = SourcePresentationKind::from_model_kind(model.kind)?;
+    if note.fields.len() != model.flds.len() {
+        return Err("Mismatched Anki field count.".into());
     }
-    let template_index = if model.kind == 1 {
+    let template_index = if source_kind == SourcePresentationKind::Cloze {
         0
     } else {
         card.ordinal as usize
@@ -323,32 +376,108 @@ fn convert_card<'a>(
             .or_insert_with(|| template::escape(&value));
     }
     let question = template::render(&template.qfmt, &fields, card.ordinal, false, "")?;
-    if model.kind == 1 && !question.matched_cloze {
+    if source_kind == SourcePresentationKind::Cloze && !question.matched_cloze {
         return Err("Cloze card has no matching deletion on its question side.".into());
     }
-    let answer = template::render(&template.afmt, &fields, card.ordinal, true, &question.html)?;
+    // A normal oStudy Basic note owns question/answer presentation. Suppress
+    // Anki's common {{FrontSide}} duplication on the stored answer; the practice
+    // setting decides whether the question is shown again after reveal. Complex
+    // cloze fallbacks keep FrontSide because their context is part of the source
+    // presentation and may not fit the native cloze representation.
+    let front_side = if source_kind == SourcePresentationKind::Basic {
+        ""
+    } else {
+        question.html.as_str()
+    };
+    let answer = template::render(&template.afmt, &fields, card.ordinal, true, front_side)?;
     let front = html::document(&question.html, &mut |name| archive.image(name))?;
     let back = html::document(&answer.html, &mut |name| archive.image(name))?;
-    let validated = validate_content(
+    let style_normalized = !model.css.trim().is_empty() || front.style_omitted || back.style_omitted;
+    let typed_answer = question.used_type_filter || answer.used_type_filter;
+    let mut warnings = front.warnings;
+    warnings.extend(back.warnings);
+    let fallback_validated = validate_content(
         front.value.clone(),
         back.value.clone(),
         String::new(),
         String::new(),
     )
     .map_err(|error| error.message)?;
-    let mut warnings = front.warnings;
-    warnings.extend(back.warnings);
-    if !model.css.trim().is_empty() {
-        warnings.insert("Anki stylesheet omitted; cards use ostudy's native appearance.".into());
+
+    if source_kind == SourcePresentationKind::Cloze {
+        if let Some(field_name) = template::simple_cloze_field(&template.qfmt, &template.afmt) {
+            if let Some(field) = fields.get(&field_name) {
+                if let Some(native) = template::native_cloze(field, card.ordinal + 1)? {
+                    let native_front = plain_text_document(&native.question);
+                    let native_back = plain_text_document(&native.answer);
+                    let validated = validate_content(
+                        native_front.clone(),
+                        native_back.clone(),
+                        String::new(),
+                        String::new(),
+                    )
+                    .map_err(|error| error.message)?;
+                    return Ok(ConvertedCard {
+                        front: native_front,
+                        back: native_back,
+                        validated,
+                        warnings,
+                        source_tags: &note.tags,
+                        source_deck: &deck.name,
+                        note_type: "cloze",
+                        cloze_source: native.source,
+                        style_normalized,
+                        typed_answer,
+                        native_cloze: true,
+                        cloze_fallback: false,
+                    });
+                }
+            }
+        }
+        return Ok(ConvertedCard {
+            front: front.value,
+            back: back.value,
+            validated: fallback_validated,
+            warnings,
+            source_tags: &note.tags,
+            source_deck: &deck.name,
+            note_type: "basic",
+            cloze_source: String::new(),
+            style_normalized,
+            typed_answer,
+            native_cloze: false,
+            cloze_fallback: true,
+        });
     }
-    Ok((
-        front.value,
-        back.value,
-        validated,
+
+    Ok(ConvertedCard {
+        front: front.value,
+        back: back.value,
+        validated: fallback_validated,
         warnings,
-        &note.tags,
-        &deck.name,
-    ))
+        source_tags: &note.tags,
+        source_deck: &deck.name,
+        note_type: "basic",
+        cloze_source: String::new(),
+        style_normalized,
+        typed_answer,
+        native_cloze: false,
+        cloze_fallback: false,
+    })
+}
+
+fn plain_text_document(text: &str) -> serde_json::Value {
+    let content = text
+        .split('\n')
+        .map(|line| {
+            if line.is_empty() {
+                json!({"type": "paragraph", "content": []})
+            } else {
+                json!({"type": "paragraph", "content": [{"type": "text", "text": line}]})
+            }
+        })
+        .collect::<Vec<_>>();
+    json!({"type": "doc", "content": content})
 }
 
 fn failure(message: impl Into<String>) -> CommandError {

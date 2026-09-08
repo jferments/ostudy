@@ -47,7 +47,10 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
         "2": {"name": "Cloze", "type": 1, "flds": [{"name": "Text", "ord": 0}],
             "tmpls": [{"name": "Cloze", "ord": 0, "qfmt": "{{cloze:Text}}", "afmt": "{{cloze:Text}}"}]},
         "3": {"name": "Scripted", "type": 0, "flds": [{"name": "Front", "ord": 0}],
-            "tmpls": [{"name": "Card", "ord": 0, "qfmt": "<script>unsafe()</script>{{Front}}", "afmt": "Answer"}]}
+            "tmpls": [{"name": "Card", "ord": 0, "qfmt": "<script>unsafe()</script>{{Front}}", "afmt": "Answer"}]},
+        "4": {"name": "Type in the answer", "type": 0,
+            "flds": [{"name": "Front", "ord": 0}, {"name": "Back", "ord": 1}],
+            "tmpls": [{"name": "Card", "ord": 0, "qfmt": "{{Front}} {{type:Back}}", "afmt": "{{FrontSide}}<hr id=answer>{{type:Back}}"}]}
     });
     connection
         .execute(
@@ -67,6 +70,7 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
         ),
         (12, 2, "{{c1::first::position}} then {{c2::second}}"),
         (13, 3, "Unsupported script card"),
+        (14, 4, "What is 2 + 2?\u{1f}4"),
     ] {
         connection
             .execute(
@@ -82,6 +86,7 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
         (103, 12, 0),
         (104, 12, 1),
         (105, 13, 0),
+        (106, 14, 0),
     ] {
         connection
             .execute(
@@ -112,15 +117,28 @@ fn fixture(extra: &[(&str, &[u8])], media: &str) -> Fixture {
 }
 
 #[test]
-fn converts_only_existing_basic_reverse_optional_and_cloze_presentations() {
+fn converts_existing_basic_reverse_native_cloze_and_typed_answer_presentations() {
     let fixture = fixture(&[], r#"{"0":"pixel.png"}"#);
     let (package, report) = read_package(&fixture.path, "examples.apkg").unwrap();
-    assert_eq!(report.source_card_count, 6);
-    assert_eq!(report.imported_card_count, 5);
+    assert_eq!(report.source_card_count, 7);
+    assert_eq!(report.imported_card_count, 6);
     assert_eq!(report.skipped_card_count, 1);
-    assert_eq!(package.notes.len(), 5);
-    assert_eq!(package.cards.len(), 5);
+    assert_eq!(report.simplified_card_count, 0);
+    assert_eq!(report.native_style_card_count, 3);
+    assert_eq!(report.typed_answer_card_count, 1);
+    assert_eq!(report.native_cloze_card_count, 2);
+    assert_eq!(report.cloze_fallback_card_count, 0);
+    assert_eq!(package.notes.len(), 6);
+    assert_eq!(package.cards.len(), 6);
     assert_eq!(package.assets.len(), 1);
+
+    // Standard Anki Basic backs commonly contain FrontSide. The stored oStudy
+    // answer must remain answer-only; question repetition is a presentation
+    // preference, not imported answer content.
+    assert!(package
+        .notes
+        .iter()
+        .any(|note| note.front_text == "Symbol for sodium?" && note.back_text == "Na"));
     assert!(package
         .notes
         .iter()
@@ -128,23 +146,29 @@ fn converts_only_existing_basic_reverse_optional_and_cloze_presentations() {
     assert!(package
         .notes
         .iter()
-        .any(|note| note.front_text == "[position] then second"));
-    assert!(package
+        .any(|note| note.front_text.trim() == "What is 2 + 2?" && note.back_text == "4"));
+
+    let cloze = package
         .notes
         .iter()
-        .any(|note| note.front_text == "first then [...]"));
+        .filter(|note| note.note_type == "cloze")
+        .collect::<Vec<_>>();
+    assert_eq!(cloze.len(), 2);
+    assert!(cloze.iter().any(|note| note.cloze_source == "{{c1::first}} then second"));
+    assert!(cloze.iter().any(|note| note.cloze_source == "first then {{c1::second}}"));
+    assert!(cloze.iter().any(|note| note.front_text == "[…] then second"));
+    assert!(cloze.iter().all(|note| note.back_text.contains("Complete statement:")));
+
     assert!(package
         .tags
         .iter()
         .any(|tag| tag.name == "Anki deck::Examples::Science"));
-    assert!(package
-        .notes
-        .iter()
-        .all(|note| note.note_type == "basic" && !note.reverse_enabled));
+    assert!(package.notes.iter().all(|note| !note.reverse_enabled));
     assert!(report
         .issues
         .iter()
         .any(|issue| issue.source_card_id == "105" && issue.message.contains("JavaScript")));
+    assert!(!report.issues.iter().any(|issue| issue.message.contains("CSS")));
     assert!(!fs::read_dir(&fixture.root).unwrap().any(|entry| entry
         .unwrap()
         .file_name()
@@ -156,7 +180,7 @@ fn converts_only_existing_basic_reverse_optional_and_cloze_presentations() {
 fn missing_images_skip_affected_cards_without_external_fetches_or_placeholder_answers() {
     let fixture = fixture(&[], "{}");
     let (package, report) = read_package(&fixture.path, "examples.apkg").unwrap();
-    assert_eq!(report.imported_card_count, 4);
+    assert_eq!(report.imported_card_count, 5);
     assert_eq!(report.skipped_card_count, 2);
     assert!(package.assets.is_empty());
     assert!(report
@@ -231,7 +255,7 @@ fn imported_content_uses_transactional_replay_and_fresh_native_schedules() {
         })
         .unwrap();
     assert_eq!(first.deck.id, replay.deck.id);
-    assert_eq!(first.card_count, 5);
+    assert_eq!(first.card_count, 6);
     database
         .with_connection(|connection| {
             let counts: (i64, i64, i64, i64) = connection
@@ -242,7 +266,7 @@ fn imported_content_uses_transactional_replay_and_fresh_native_schedules() {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(counts, (1, 5, 0, 0));
+            assert_eq!(counts, (1, 6, 0, 0));
             Ok(())
         })
         .unwrap();

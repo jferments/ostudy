@@ -5,8 +5,8 @@ import type { StagedExternalFile } from "../ipc/externalFiles";
 import { DeckTransferController, type DeckTransferDependencies } from "./deckTransferController";
 
 const deck: DeckSummary = {
-  id: "a".repeat(32), name: "Examples", description: "", sourceNoteCount: 5,
-  generatedCardCount: 5, studyableDueCount: 5, archivedAt: null,
+  id: "a".repeat(32), name: "Examples", description: "", sourceNoteCount: 6,
+  generatedCardCount: 6, studyableDueCount: 6, archivedAt: null,
   createdAt: 1, updatedAt: 1, revision: 1,
 };
 const selected: StagedExternalFile = {
@@ -15,8 +15,9 @@ const selected: StagedExternalFile = {
   byteSize: 2048, sha256: "c".repeat(64), expiresAt: 100,
 };
 const report: AnkiImportReport = {
-  sourceCardCount: 6, importedCardCount: 5, skippedCardCount: 1,
-  simplifiedCardCount: 3, omittedIssueCount: 0,
+  sourceCardCount: 7, importedCardCount: 6, skippedCardCount: 1,
+  simplifiedCardCount: 0, nativeStyleCardCount: 3, typedAnswerCardCount: 1,
+  nativeClozeCardCount: 2, clozeFallbackCardCount: 0, omittedIssueCount: 0,
   issues: [{ sourceCardId: "105", message: "Skipped: JavaScript-dependent card." }],
 };
 
@@ -36,19 +37,21 @@ function harness() {
 describe("Anki deck transfer", () => {
   it("routes the opaque APKG selection through native import and preserves the report", async () => {
     const { native, controller } = harness();
-    native.importStudydeck.mockResolvedValue({ deck, cardCount: 5, assetCount: 1, ankiReport: report });
+    native.importStudydeck.mockResolvedValue({ deck, cardCount: 6, assetCount: 1, ankiReport: report });
     const outcome = await controller.importFromFile();
     expect(native.importStudydeck).toHaveBeenCalledWith(selected.id, "d".repeat(32));
     expect(native.importGenerated).not.toHaveBeenCalled();
     expect(outcome?.ankiReport).toEqual(report);
     expect(outcome?.committedDeck).toEqual(deck);
     expect(outcome?.message).toContain("1 Anki cards skipped");
+    expect(outcome?.message).toContain("typed-answer cards converted");
+    expect(outcome?.message).toContain("cloze cards converted to native Fill in the blank");
   });
 
   it("retains attempt identity after an ambiguous transport failure", async () => {
     const { native, dependencies, controller } = harness();
     native.importStudydeck.mockRejectedValueOnce(new Error("connection lost"))
-      .mockResolvedValueOnce({ deck, cardCount: 5, assetCount: 1, ankiReport: report });
+      .mockResolvedValueOnce({ deck, cardCount: 6, assetCount: 1, ankiReport: report });
     await expect(controller.importFromFile()).rejects.toThrow("connection lost");
     await controller.importFromFile();
     expect(native.importStudydeck).toHaveBeenNthCalledWith(2, selected.id, "d".repeat(32));
@@ -58,7 +61,7 @@ describe("Anki deck transfer", () => {
   it("returns committed success when receipt reconciliation reports a warning", async () => {
     const { native, controller } = harness();
     native.importStudydeck.mockResolvedValue({
-      deck, cardCount: 5, assetCount: 1, ankiReport: report,
+      deck, cardCount: 6, assetCount: 1, ankiReport: report,
       postCommitWarning: "The deck was imported, but its transfer receipt could not be saved.",
     });
     const outcome = await controller.importFromFile();

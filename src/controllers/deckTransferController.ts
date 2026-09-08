@@ -84,7 +84,7 @@ export class DeckTransferController {
         const result = await this.#decks.importStudydeck(selected.id, pending.operationId);
         this.#pendingStudydeckImport = null;
         const compatibility = result.ankiReport
-          ? ` ${result.ankiReport.skippedCardCount} Anki cards skipped; ${result.ankiReport.simplifiedCardCount} imported cards have simplified formatting.`
+          ? ankiCompatibilitySummary(result.ankiReport)
           : "";
         const warning = result.postCommitWarning ? ` ${result.postCommitWarning}` : "";
         return {
@@ -171,4 +171,18 @@ export class DeckTransferController {
   invalidate(): void {
     this.#decks.invalidate();
   }
+}
+
+function ankiCompatibilitySummary(report: AnkiImportReport): string {
+  const details = [`${report.skippedCardCount} Anki cards skipped`];
+  if (report.simplifiedCardCount > 0) {
+    details.push(`${report.simplifiedCardCount} cards required content simplification`);
+  }
+  if (report.typedAnswerCardCount > 0) {
+    details.push(`${report.typedAnswerCardCount} typed-answer cards converted to ordinary reveal`);
+  }
+  if (report.nativeClozeCardCount > 0) {
+    details.push(`${report.nativeClozeCardCount} cloze cards converted to native Fill in the blank`);
+  }
+  return ` ${details.join("; ")}.`;
 }
