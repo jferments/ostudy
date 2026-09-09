@@ -54,9 +54,19 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     conversation_id = conversation["id"]
     refresh = webdriver.find_element(session_id, "xpath", "//main//header//button[normalize-space(.)='Refresh']", deadline)
     webdriver.click(session_id, refresh)
-    option = webdriver.find_element(session_id, "css selector", f"main select option[value='{conversation_id}']", deadline)
-    # Native select activation triggers React's ordinary onChange handler.
-    webdriver.click(session_id, option)
+    webdriver.find_element(session_id, "css selector", f"main select option[value='{conversation_id}']", deadline)
+    # OPTION elements are not independently hit-testable in native WebKit.
+    # Drive the visible SELECT through its ordinary change event instead of
+    # teaching the smoke harness to click an implementation-invisible child.
+    selected = ui.execute(session_id, f"""
+        const select = document.querySelector("main select[id$='-conversation']");
+        if (!select) return false;
+        select.value = {json.dumps(conversation_id)};
+        select.dispatchEvent(new Event('change', {{ bubbles: true }}));
+        return select.value === {json.dumps(conversation_id)};
+    """)
+    if selected is not True:
+        raise AssertionError("The saved Tutor conversation could not be selected")
     summary = webdriver.find_element(session_id, "xpath", "//main//summary[normalize-space(.)='Conversation memory']", deadline)
     webdriver.click(session_id, summary)
     checkbox = webdriver.wait_for_enabled_element(
