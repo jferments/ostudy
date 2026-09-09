@@ -1,6 +1,6 @@
 //! Hosted embedding tasks. The application stores/searches returned vectors;
-//! it never loads an embedding model. Profiles and secrets retain their existing
-//! native owners, and provider wire details stay in `providers::embeddings`.
+//! it never loads an embedding model. Provider connections own credentials while
+//! task assignments choose one model on that connection.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -15,7 +15,7 @@ use super::{
     catalog::AiTaskKind,
     profiles::{
         embedding_options::{load_embedding_options, EmbeddingOptions},
-        load_profile_request, load_task_profile_request, ProfileRequestSnapshot,
+        load_profile_request, load_task_profile_request, validate_model_id, ProfileRequestSnapshot,
     },
     providers::embeddings::{
         decode_embedding_models, decode_embeddings, embedding_models_url,
@@ -37,8 +37,9 @@ pub(crate) struct EmbeddingContext {
 impl EmbeddingContext {
     pub(crate) fn consent_identity(&self) -> String {
         format!(
-            "{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}",
             self.request.profile.id,
+            self.request.profile.model_id,
             self.request.profile.revision,
             self.request.profile.credential_epoch,
             self.options.revision,
@@ -51,12 +52,15 @@ impl EmbeddingContext {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EmbeddingProfileInput {
     pub profile_id: String,
+    #[serde(default)]
+    pub model_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddingTestResult {
     pub profile_id: String,
+    pub model_id: String,
     pub profile_revision: i64,
     pub options_revision: i64,
     pub dimensions: usize,
@@ -76,7 +80,11 @@ fn context_for_request(
     request: ProfileRequestSnapshot,
 ) -> Result<EmbeddingContext, CommandError> {
     request.profile.validate_for_provider_request()?;
-    let options = load_embedding_options(database, &request.profile.id)?;
+    let options = load_embedding_options(
+        database,
+        &request.profile.id,
+        &request.profile.model_id,
+    )?;
     let profile = &request.profile;
     let space_contract = serde_json::to_string(&(
         EMBEDDING_TRANSPORT_VERSION,
@@ -101,20 +109,23 @@ pub(crate) fn ensure_context_current(
     context: &EmbeddingContext,
 ) -> Result<(), CommandError> {
     let current = load_profile_request(database, &context.request.profile.id)?;
-    let options = load_embedding_options(database, &context.request.profile.id)?;
+    let options = load_embedding_options(
+        database,
+        &context.request.profile.id,
+        &context.request.profile.model_id,
+    )?;
     if current.profile.revision != context.request.profile.revision
         || current.profile.credential_epoch != context.request.profile.credential_epoch
-        || current.profile.model_id != context.request.profile.model_id
         || current.profile.base_url != context.request.profile.base_url
         || current.credential_storage != context.request.credential_storage
         || options != context.options
     {
         return Err(CommandError::new(
             "embedding_profile_changed",
-            "The embedding profile changed during this request. Review the selected provider and prepare again.",
+            "The embedding provider or model options changed during this request. Review the selection and prepare again.",
         ));
     }
-    current.profile.validate_for_provider_request()
+    context.request.profile.validate_for_provider_request()
 }
 
 pub(crate) async fn embed(
@@ -159,14 +170,13 @@ pub async fn list_embedding_models(
     runtime: State<'_, AiRuntimeState>,
     input: EmbeddingProfileInput,
 ) -> Result<Vec<EmbeddingModelChoice>, CommandError> {
-    validate_entity_id(&input.profile_id, "embedding profile")?;
+    validate_entity_id(&input.profile_id, "embedding provider")?;
     let request = load_profile_request(database.inner(), &input.profile_id)?;
     let profile = &request.profile;
     let url = embedding_models_url(profile)?;
-    let credential =
-        runtime
-            .secrets
-            .resolve(&profile.id, profile.auth_mode, request.credential_storage)?;
+    let credential = runtime
+        .secrets
+        .resolve(&profile.id, profile.auth_mode, request.credential_storage)?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())
@@ -187,7 +197,7 @@ pub async fn list_embedding_models(
     {
         return Err(CommandError::new(
             "embedding_profile_changed",
-            "The provider profile changed while its embedding models were loading.",
+            "The provider connection changed while its embedding models were loading.",
         ));
     }
     decode_embedding_models(&response)
@@ -199,14 +209,19 @@ pub async fn test_embedding_profile(
     runtime: State<'_, AiRuntimeState>,
     input: EmbeddingProfileInput,
 ) -> Result<EmbeddingTestResult, CommandError> {
-    validate_entity_id(&input.profile_id, "embedding profile")?;
-    let context = context_for_request(
-        database.inner(),
-        load_profile_request(database.inner(), &input.profile_id)?,
-    )?;
+    validate_entity_id(&input.profile_id, "embedding provider")?;
+    let model_id = validate_model_id(input.model_id.as_deref().unwrap_or_default())?;
+    if model_id.is_empty() {
+        return Err(CommandError::new(
+            "invalid_embedding_options",
+            "Choose an embedding model before testing it.",
+        ));
+    }
+    let mut request = load_profile_request(database.inner(), &input.profile_id)?;
+    request.profile.model_id.clone_from(&model_id);
+    request.profile.reasoning_effort = "none".to_string();
+    let context = context_for_request(database.inner(), request)?;
     let cancellation = CancellationSignal::new();
-    // Fixed non-personal fixtures test both sides of the retrieval contract.
-    // A successful vector shape is not a claim of measured retrieval quality.
     let documents = embed(
         database.inner(),
         runtime.inner(),
@@ -237,6 +252,7 @@ pub async fn test_embedding_profile(
     }
     Ok(EmbeddingTestResult {
         profile_id: context.request.profile.id,
+        model_id,
         profile_revision: context.request.profile.revision,
         options_revision: context.options.revision,
         dimensions,

@@ -4,36 +4,19 @@ import { createOperationId } from "./common";
 import type { EditorDraftCommitRef } from "./drafts";
 
 export type AiProviderKind =
-  | "llama_cpp"
-  | "deepseek"
-  | "openrouter"
-  | "ollama"
-  | "openai"
-  | "gemini"
-  | "claude";
+  | "llama_cpp" | "deepseek" | "openrouter" | "ollama" | "openai" | "gemini" | "claude";
 export type AiAuthMode = "none" | "bearer";
 export type AiNetworkScope = "local" | "lan" | "cloud";
 export type AiCredentialPersistence = "secure" | "session";
 export type AiCredentialStatus =
-  | "not_required"
-  | "missing"
-  | "saved_securely"
-  | "session_only"
-  | "secure_store_unavailable";
+  | "not_required" | "missing" | "saved_securely" | "session_only" | "secure_store_unavailable";
 export type AiProfileConfigurationStatus = "ready" | "incomplete" | "disabled" | "planned";
 export type AiProbeOverallStatus = "verified" | "partial" | "failed";
 export type AiProbePhaseStatus = "passed" | "failed" | "skipped";
 export type AiCapabilityStatus = "supported" | "unsupported" | "unknown";
 export type AiCapabilitySource = "declared" | "probed";
 export type AiReasoningEffort =
-  | "automatic"
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
+  | "automatic" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AiProviderCatalogEntry {
   providerKind: AiProviderKind;
@@ -61,8 +44,9 @@ export interface AiProviderProfileSummary {
   displayName: string;
   providerKind: AiProviderKind;
   providerLabel: string;
+  /** Legacy compatibility only; task defaults own active model selection. */
   modelId: string;
-  /** Current native responses always include this; optionality preserves old test/import fixtures. */
+  /** Legacy compatibility only; task defaults own active reasoning selection. */
   reasoningEffort?: AiReasoningEffort;
   enabled: boolean;
   networkScope: AiNetworkScope;
@@ -103,8 +87,14 @@ export type AiProfileWriteInput = Omit<AiProfileDraft, "reasoningEffort"> & {
 
 export interface AiTaskDefaults {
   flashcardGenerationProfileId: string | null;
+  flashcardGenerationModelId?: string | null;
+  flashcardGenerationReasoningEffort?: AiReasoningEffort | null;
   tutorProfileId?: string | null;
+  tutorModelId?: string | null;
+  tutorReasoningEffort?: AiReasoningEffort | null;
   embeddingsProfileId?: string | null;
+  embeddingsModelId?: string | null;
+  embeddingsReasoningEffort?: AiReasoningEffort | null;
 }
 
 export interface AiProviderModelReasoning {
@@ -177,11 +167,9 @@ export interface DeleteAiProviderProfileResult {
 export async function getAiProviderCatalog(): Promise<AiProviderCatalogEntry[]> {
   return invoke<AiProviderCatalogEntry[]>("get_ai_provider_catalog");
 }
-
 export async function listAiProviderProfiles(): Promise<AiProviderProfileSummary[]> {
   return invoke<AiProviderProfileSummary[]>("list_ai_provider_profiles");
 }
-
 export async function getAiProviderProfile(profileId: string): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("get_ai_provider_profile", { profileId });
 }
@@ -191,7 +179,7 @@ export async function createAiProviderProfile(
   operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("create_ai_provider_profile", {
-    input: { ...input, reasoningEffort: input.reasoningEffort ?? "low", operationId },
+    input: { ...input, reasoningEffort: input.reasoningEffort ?? "automatic", operationId },
   });
 }
 
@@ -203,13 +191,11 @@ export async function updateAiProviderProfile(
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("update_ai_provider_profile", {
     input: {
-      operationId,
-      profileId,
-      revision,
+      operationId, profileId, revision,
       displayName: input.displayName,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
-      reasoningEffort: input.reasoningEffort ?? "low",
+      reasoningEffort: input.reasoningEffort ?? "automatic",
       authMode: input.authMode,
       enabled: input.enabled,
       allowInsecureHttp: input.allowInsecureHttp,
@@ -221,9 +207,7 @@ export async function updateAiProviderProfile(
 }
 
 export async function deleteAiProviderProfile(
-  profileId: string,
-  revision: number,
-  operationId = createOperationId(),
+  profileId: string, revision: number, operationId = createOperationId(),
 ): Promise<DeleteAiProviderProfileResult> {
   return invoke<DeleteAiProviderProfileResult>("delete_ai_provider_profile", {
     input: { profileId, revision, operationId },
@@ -231,11 +215,8 @@ export async function deleteAiProviderProfile(
 }
 
 export async function setAiProviderCredential(
-  profileId: string,
-  revision: number,
-  credential: string,
-  persistence: AiCredentialPersistence,
-  operationId = createOperationId(),
+  profileId: string, revision: number, credential: string,
+  persistence: AiCredentialPersistence, operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("set_ai_provider_credential", {
     input: { profileId, revision, credential, persistence, operationId },
@@ -243,9 +224,7 @@ export async function setAiProviderCredential(
 }
 
 export async function clearAiProviderCredential(
-  profileId: string,
-  revision: number,
-  operationId = createOperationId(),
+  profileId: string, revision: number, operationId = createOperationId(),
 ): Promise<AiProviderProfileDetail> {
   return invoke<AiProviderProfileDetail>("clear_ai_provider_credential", {
     input: { profileId, revision, operationId },
@@ -258,10 +237,12 @@ export async function getAiTaskDefaults(): Promise<AiTaskDefaults> {
 
 export async function setFlashcardGenerationProfile(
   profileId: string | null,
+  modelId: string | null = null,
+  reasoningEffort: AiReasoningEffort | null = null,
   operationId = createOperationId(),
 ): Promise<AiTaskDefaults> {
   return invoke<AiTaskDefaults>("set_ai_task_default", {
-    input: { taskKind: "flashcard_generation", profileId, operationId },
+    input: { taskKind: "flashcard_generation", profileId, modelId, reasoningEffort, operationId },
   });
 }
 
@@ -270,16 +251,23 @@ export async function listAiProviderModels(
   revision: number,
 ): Promise<AiProviderModels> {
   return invoke<AiProviderModels>("list_ai_provider_models", {
-    input: { profileId, revision },
+    input: { profileId, revision, modelId: null, reasoningEffort: null },
   });
 }
 
 export async function testAiProviderProfile(
   profileId: string,
   revision: number,
+  modelId?: string,
+  reasoningEffort?: AiReasoningEffort,
 ): Promise<AiProviderProbeResult> {
   return invoke<AiProviderProbeResult>("test_ai_provider_profile", {
-    input: { profileId, revision },
+    input: {
+      profileId,
+      revision,
+      modelId: modelId ?? null,
+      reasoningEffort: reasoningEffort ?? null,
+    },
   });
 }
 

@@ -22,13 +22,24 @@ import {
   type AiProviderProbeResult,
   type AiProviderProfileDetail,
   type AiProviderProfileSummary,
+  type AiReasoningEffort,
   type AiTaskDefaults,
 } from "../ipc/aiProfiles";
 import { createOperationId, getErrorMessage } from "../ipc/common";
 import { setAiTaskDefault, type AiTaskDefaultInput, type AiTaskKind } from "../ipc/aiTaskDefaults";
 import { useRequestLane } from "./requestLane";
 
-const EMPTY_DEFAULTS: AiTaskDefaults = { flashcardGenerationProfileId: null };
+const EMPTY_DEFAULTS: AiTaskDefaults = {
+  flashcardGenerationProfileId: null,
+  flashcardGenerationModelId: null,
+  flashcardGenerationReasoningEffort: null,
+  tutorProfileId: null,
+  tutorModelId: null,
+  tutorReasoningEffort: null,
+  embeddingsProfileId: null,
+  embeddingsModelId: null,
+  embeddingsReasoningEffort: null,
+};
 
 export interface AiProfilesController {
   catalog: AiProviderCatalogEntry[];
@@ -60,8 +71,17 @@ export interface AiProfilesController {
   clearCredential: () => Promise<void>;
   refreshModels: () => Promise<void>;
   testProfile: () => Promise<void>;
-  setFlashcardDefault: (profileId: string | null) => Promise<void>;
-  setTaskDefault: (task: AiTaskKind, profileId: string | null) => Promise<void>;
+  setFlashcardDefault: (
+    profileId: string | null,
+    modelId?: string | null,
+    reasoningEffort?: AiReasoningEffort | null,
+  ) => Promise<void>;
+  setTaskDefault: (
+    task: AiTaskKind,
+    profileId: string | null,
+    modelId?: string | null,
+    reasoningEffort?: AiReasoningEffort | null,
+  ) => Promise<void>;
   pendingTaskDefault: AiTaskDefaultInput | null;
   retryTaskDefault: () => Promise<void>;
   discardDraft: () => void;
@@ -115,18 +135,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
         if (!modelLane.isCurrent(token)) return;
         setModels(result.models);
         setModelsLoaded(true);
-
-        // A chat catalog need not contain embedding models. Discovery is a
-        // read, not permission to clear or replace an existing model selection.
-        if (!profile.modelId && result.models.length === 1) {
-          const model = result.models[0];
-          if (model) {
-            setDraft((current) => current && !current.modelId ? {
-              ...current, modelId: model.id,
-              reasoningEffort: compatibleReasoningEffort(current.reasoningEffort, model),
-            } : current);
-            if (announceChanges) showToast("info", "The provider reports one available model. ostudy selected it.");
-          }
+        if (announceChanges) {
+          showToast("success", `Loaded ${result.models.length} model${result.models.length === 1 ? "" : "s"}.`);
         }
       } catch (error: unknown) {
         if (modelLane.isCurrent(token)) {
@@ -192,9 +202,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
         );
         setModels([]);
         setModelsLoaded(false);
-        if (canDiscoverModels(profile)) {
-          void discoverModelsForProfile(profile, false);
-        }
+        if (canDiscoverModels(profile)) void discoverModelsForProfile(profile, false);
       })
       .catch((error: unknown) => {
         if (detailLane.isCurrent(token)) setErrorMessage(getErrorMessage(error));
@@ -218,11 +226,11 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setSelectedProfileId(`new:${providerKind}`);
     setSelectedProfile(null);
     setDraft({
-      displayName: provider.displayName,
+      displayName: nextProviderName(provider.displayName, profiles),
       providerKind,
       baseUrl: provider.defaultBaseUrl,
       modelId: "",
-      reasoningEffort: "low",
+      reasoningEffort: "automatic",
       authMode: provider.authenticationRequired ? "bearer" : "none",
       enabled: true,
       allowInsecureHttp: false,
@@ -243,15 +251,10 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
 
   async function connectSetup(): Promise<void> {
     if (!draft || mutating) return;
-    if (
-      draft.authMode !== "none" &&
-      credentialDraft === "" &&
-      !profileHasCredential(selectedProfile)
-    ) {
+    if (draft.authMode !== "none" && credentialDraft === "" && !profileHasCredential(selectedProfile)) {
       setErrorMessage("Enter the API key before connecting to this provider.");
       return;
     }
-
     setMutating(true);
     setErrorMessage(null);
     let committedProfile: AiProviderProfileDetail | null = selectedProfile;
@@ -259,26 +262,17 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     try {
       const wasExisting = selectedProfile !== null;
       let saved: AiProviderProfileDetail;
-      if (!selectedProfile) {
-        saved = await createAiProviderProfile(draft);
-      } else if (profileDraftDirty) {
-        saved = await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft);
-      } else {
-        saved = selectedProfile;
-      }
+      if (!selectedProfile) saved = await createAiProviderProfile(draft);
+      else if (profileDraftDirty) saved = await updateAiProviderProfile(selectedProfile.id, selectedProfile.revision, draft);
+      else saved = selectedProfile;
       committedProfile = saved;
-
       if (saved.authMode !== "none" && credentialDraft !== "") {
         saved = await setAiProviderCredential(
-          saved.id,
-          saved.revision,
-          credentialDraft,
-          credentialPersistence,
+          saved.id, saved.revision, credentialDraft, credentialPersistence,
         );
         committedProfile = saved;
         credentialCommitted = true;
       }
-
       setSelectedProfile(saved);
       setSelectedProfileId(saved.id);
       setDraft(draftFromProfile(saved));
@@ -320,10 +314,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setModels([]);
       setModelsLoaded(false);
       await loadProfiles();
-      showToast("success", wasExisting ? "AI provider profile saved." : "AI provider profile created.");
-      if (canDiscoverModels(saved)) {
-        await discoverModelsForProfile(saved, !wasExisting);
-      }
+      showToast("success", wasExisting ? "AI provider saved." : "AI provider created.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -337,7 +328,8 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setErrorMessage(null);
     try {
       await deleteAiProviderProfile(selectedProfile.id, selectedProfile.revision);
-      const remaining = await loadProfiles();
+      const [remaining, savedDefaults] = await Promise.all([loadProfiles(), getAiTaskDefaults()]);
+      setDefaults(savedDefaults);
       setSelectedProfileId(remaining[0]?.id ?? null);
       setSelectedProfile(null);
       setDraft(null);
@@ -345,12 +337,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setModels([]);
       setModelsLoaded(false);
       setProbeResult(null);
-      setDefaults((current) => ({
-        flashcardGenerationProfileId: current.flashcardGenerationProfileId === selectedProfile.id ? null : current.flashcardGenerationProfileId,
-        tutorProfileId: current.tutorProfileId === selectedProfile.id ? null : current.tutorProfileId,
-        embeddingsProfileId: current.embeddingsProfileId === selectedProfile.id ? null : current.embeddingsProfileId,
-      }));
-      showToast("success", "AI provider profile deleted.");
+      showToast("success", "AI provider deleted.");
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -364,10 +351,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     setErrorMessage(null);
     try {
       const saved = await setAiProviderCredential(
-        selectedProfile.id,
-        selectedProfile.revision,
-        credentialDraft,
-        credentialPersistence,
+        selectedProfile.id, selectedProfile.revision, credentialDraft, credentialPersistence,
       );
       setSelectedProfile(saved);
       setDraft(draftFromProfile(saved));
@@ -382,7 +366,7 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
           ? "AI credential saved securely."
           : "AI credential is available for this session.",
       );
-      await discoverModelsForProfile(saved, true);
+      await discoverModelsForProfile(saved, false);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -412,31 +396,29 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
   }
 
   async function refreshModels(): Promise<void> {
-    if (
-      !selectedProfile ||
-      dirty ||
-      refreshingModels ||
-      !canDiscoverModels(selectedProfile)
-    ) {
-      return;
-    }
+    if (!selectedProfile || dirty || refreshingModels || !canDiscoverModels(selectedProfile)) return;
     await discoverModelsForProfile(selectedProfile, true);
   }
 
   async function testProfile(): Promise<void> {
-    if (!selectedProfile || dirty || testing) return;
+    if (!selectedProfile || dirty || testing || !selectedProfile.modelId) return;
     setTesting(true);
     setErrorMessage(null);
     try {
-      const result = await testAiProviderProfile(selectedProfile.id, selectedProfile.revision);
+      const result = await testAiProviderProfile(
+        selectedProfile.id,
+        selectedProfile.revision,
+        selectedProfile.modelId,
+        selectedProfile.reasoningEffort ?? "automatic",
+      );
       setProbeResult(result);
       showToast(
         result.overallStatus === "failed" ? "error" : "success",
         result.overallStatus === "verified"
-          ? "AI provider profile verified."
+          ? "AI model verified."
           : result.overallStatus === "partial"
-            ? "AI provider responded with partial capability support."
-            : "AI provider verification failed.",
+            ? "AI model responded with partial capability support."
+            : "AI model verification failed.",
       );
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -458,8 +440,6 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
       setPendingTaskDefault(null);
       showToast("success", "Default AI model assignment saved.");
     } catch (error: unknown) {
-      // Retain the exact receipt identity. Reconciliation must not create a
-      // second operation or overwrite a concurrently changed task assignment.
       setPendingTaskDefault(input);
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -468,65 +448,53 @@ export function useAiProfilesController(showToast: ShowToast): AiProfilesControl
     }
   }
 
-  async function setTaskDefault(taskKind: AiTaskKind, profileId: string | null): Promise<void> {
+  async function setTaskDefault(
+    taskKind: AiTaskKind,
+    profileId: string | null,
+    modelId: string | null = null,
+    reasoningEffort: AiReasoningEffort | null = null,
+  ): Promise<void> {
     if (taskWrite.current || taskWriting.current || mutating) return;
-    await writeTaskDefault({ taskKind, profileId, operationId: createOperationId() });
+    await writeTaskDefault({
+      taskKind,
+      profileId,
+      modelId: profileId ? modelId : null,
+      reasoningEffort: profileId
+        ? taskKind === "embeddings" ? "none" : reasoningEffort ?? "automatic"
+        : null,
+      operationId: createOperationId(),
+    });
   }
 
   async function retryTaskDefault(): Promise<void> {
     if (taskWrite.current) await writeTaskDefault(taskWrite.current);
   }
 
-  async function setFlashcardDefault(profileId: string | null): Promise<void> {
-    await setTaskDefault("flashcard_generation", profileId);
+  async function setFlashcardDefault(
+    profileId: string | null,
+    modelId: string | null = null,
+    reasoningEffort: AiReasoningEffort | null = null,
+  ): Promise<void> {
+    await setTaskDefault("flashcard_generation", profileId, modelId, reasoningEffort);
   }
 
   function discardDraft(): void {
     setCredentialDraft("");
-    if (selectedProfile) {
-      setDraft(draftFromProfile(selectedProfile));
-    } else {
+    if (selectedProfile) setDraft(draftFromProfile(selectedProfile));
+    else {
       setDraft(null);
       setSelectedProfileId(profiles[0]?.id ?? null);
     }
   }
 
   return {
-    catalog,
-    profiles,
-    defaults,
-    selectedProfile,
-    selectedProfileId,
-    draft,
-    credentialDraft,
-    credentialPersistence,
-    models,
-    modelsLoaded,
-    probeResult,
-    dirty,
-    loading,
-    mutating,
-    refreshingModels,
-    testing,
-    errorMessage,
-    selectProfile,
-    beginCreate,
-    updateDraft,
-    setCredentialDraft,
-    setCredentialPersistence,
-    connectSetup,
-    saveProfile,
-    deleteProfile,
-    saveCredential,
-    clearCredential,
-    refreshModels,
-    testProfile,
-    setFlashcardDefault,
-    setTaskDefault,
-    pendingTaskDefault,
-    retryTaskDefault,
-    discardDraft,
-    reload,
+    catalog, profiles, defaults, selectedProfile, selectedProfileId, draft,
+    credentialDraft, credentialPersistence, models, modelsLoaded, probeResult,
+    dirty, loading, mutating, refreshingModels, testing, errorMessage,
+    selectProfile, beginCreate, updateDraft, setCredentialDraft, setCredentialPersistence,
+    connectSetup, saveProfile, deleteProfile, saveCredential, clearCredential, refreshModels,
+    testProfile, setFlashcardDefault, setTaskDefault, pendingTaskDefault, retryTaskDefault,
+    discardDraft, reload,
   };
 }
 
@@ -537,10 +505,7 @@ function canDiscoverModels(profile: AiProviderProfileDetail): boolean {
 
 function profileHasCredential(profile: AiProviderProfileDetail | null): boolean {
   if (!profile) return false;
-  return (
-    profile.credentialStatus.status === "saved_securely" ||
-    profile.credentialStatus.status === "session_only"
-  );
+  return profile.credentialStatus.status === "saved_securely" || profile.credentialStatus.status === "session_only";
 }
 
 function hasProfileDraftChanges(
@@ -559,7 +524,7 @@ function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
     providerKind: profile.providerKind,
     baseUrl: profile.baseUrl,
     modelId: profile.modelId,
-    reasoningEffort: profile.reasoningEffort ?? "low",
+    reasoningEffort: profile.reasoningEffort ?? "automatic",
     authMode: profile.authMode,
     enabled: profile.enabled,
     allowInsecureHttp: profile.allowInsecureHttp,
@@ -568,16 +533,15 @@ function draftFromProfile(profile: AiProviderProfileDetail): AiProfileDraft {
   };
 }
 
-function compatibleReasoningEffort(
-  current: AiProfileDraft["reasoningEffort"],
-  model: AiProviderModel | null,
-): NonNullable<AiProfileDraft["reasoningEffort"]> {
-  const normalized = current ?? "low";
-  if (normalized === "automatic") return normalized;
-  const reasoning = model?.reasoning;
-  if (!reasoning) return normalized;
-  if (reasoning.mandatory && normalized === "none") return "automatic";
-  const supported = reasoning.supportedEfforts;
-  if (supported && !supported.includes(normalized)) return "automatic";
-  return normalized;
+export function nextProviderName(
+  baseName: string,
+  profiles: Pick<AiProviderProfileSummary, "displayName">[],
+): string {
+  const used = new Set(profiles.map((profile) => profile.displayName.trim().toLocaleLowerCase()));
+  if (!used.has(baseName.trim().toLocaleLowerCase())) return baseName;
+  for (let suffix = 2; suffix < 10_000; suffix += 1) {
+    const candidate = `${baseName} ${suffix}`;
+    if (!used.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+  return `${baseName} ${Date.now()}`;
 }

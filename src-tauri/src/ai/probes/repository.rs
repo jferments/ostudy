@@ -14,9 +14,6 @@ use super::{
     },
 };
 
-/// Probe results and capability observations describe one device's verification
-/// history. They are neither provider configuration nor learner data and must
-/// never hitchhike in a device-transfer snapshot.
 pub(crate) fn sanitize_for_device_transfer(
     connection: &rusqlite::Connection,
 ) -> Result<(), CommandError> {
@@ -28,13 +25,14 @@ pub(crate) fn sanitize_for_device_transfer(
         .map_err(CommandError::database)
 }
 
-pub(super) fn persist_selected_model_declarations(
+/// Cache provider-declared model metadata per model. Model discovery is a read
+/// and never changes the provider connection or task assignments.
+pub(super) fn persist_model_declarations(
     database: &Database,
     profile: &ProfileSnapshot,
     models: &[ProviderModel],
     checked_at: i64,
 ) -> Result<(), CommandError> {
-    let selected = models.iter().find(|model| model.id == profile.model_id);
     database.with_connection(|connection| {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -42,31 +40,40 @@ pub(super) fn persist_selected_model_declarations(
         transaction
             .execute(
                 "DELETE FROM ai_provider_capabilities
-                 WHERE profile_id = ?1 AND capability_key IN ('context_window_tokens', 'reasoning_control')",
+                 WHERE profile_id = ?1 AND source_kind = 'declared'
+                   AND capability_key IN ('context_window_tokens', 'reasoning_control')",
                 [profile.id.as_str()],
             )
             .map_err(CommandError::database)?;
-        if let Some(context) = selected.and_then(|model| model.context_window_tokens) {
-            transaction
-                .execute(
-                    "INSERT INTO ai_provider_capabilities (
-                         profile_id, capability_key, status, source_kind, value_json, checked_at
-                     ) VALUES (?1, 'context_window_tokens', 'supported', 'declared', ?2, ?3)",
-                    params![profile.id, context.to_string(), checked_at],
-                )
-                .map_err(CommandError::database)?;
-        }
-        if let Some(reasoning) = selected.and_then(|model| model.reasoning.as_ref()) {
-            let value =
-                serde_json::to_string(&Some(reasoning)).map_err(CommandError::serialization)?;
-            transaction
-                .execute(
-                    "INSERT INTO ai_provider_capabilities (
-                         profile_id, capability_key, status, source_kind, value_json, checked_at
-                     ) VALUES (?1, 'reasoning_control', 'supported', 'declared', ?2, ?3)",
-                    params![profile.id, value, checked_at],
-                )
-                .map_err(CommandError::database)?;
+        for model in models {
+            if let Some(context) = model.context_window_tokens {
+                transaction
+                    .execute(
+                        "INSERT INTO ai_provider_capabilities (
+                             profile_id, model_id, capability_key, status, source_kind, value_json, checked_at
+                         ) VALUES (?1, ?2, 'context_window_tokens', 'supported', 'declared', ?3, ?4)
+                         ON CONFLICT(profile_id, model_id, capability_key) DO UPDATE SET
+                             status = excluded.status, source_kind = excluded.source_kind,
+                             value_json = excluded.value_json, checked_at = excluded.checked_at",
+                        params![profile.id, model.id, context.to_string(), checked_at],
+                    )
+                    .map_err(CommandError::database)?;
+            }
+            if let Some(reasoning) = model.reasoning.as_ref() {
+                let value = serde_json::to_string(&Some(reasoning))
+                    .map_err(CommandError::serialization)?;
+                transaction
+                    .execute(
+                        "INSERT INTO ai_provider_capabilities (
+                             profile_id, model_id, capability_key, status, source_kind, value_json, checked_at
+                         ) VALUES (?1, ?2, 'reasoning_control', 'supported', 'declared', ?3, ?4)
+                         ON CONFLICT(profile_id, model_id, capability_key) DO UPDATE SET
+                             status = excluded.status, source_kind = excluded.source_kind,
+                             value_json = excluded.value_json, checked_at = excluded.checked_at",
+                        params![profile.id, model.id, value, checked_at],
+                    )
+                    .map_err(CommandError::database)?;
+            }
         }
         transaction.commit().map_err(CommandError::database)
     })
@@ -95,7 +102,9 @@ pub(super) fn finish_and_persist(
         stale: false,
     };
     let persisted = database.with_connection(|connection| {
-        let current = load_profile_snapshot(connection, &profile.id)?;
+        let mut current = load_profile_snapshot(connection, &profile.id)?;
+        current.model_id.clone_from(&result.tested_model_id);
+        current.reasoning_effort.clone_from(&profile.reasoning_effort);
         if !snapshot_matches_result(&current, &result) {
             return Ok(false);
         }
@@ -107,6 +116,8 @@ pub(super) fn finish_and_persist(
     Ok(result)
 }
 
+/// Legacy profile-detail UI asks for one probe result. Return the most recent
+/// model probe for that connection; task execution uses model-specific lookups.
 pub(super) fn load_probe_result(
     database: &Database,
     profile_id: &str,
@@ -114,7 +125,8 @@ pub(super) fn load_probe_result(
     database.with_connection(|connection| {
         let serialized: Option<String> = connection
             .query_row(
-                "SELECT result_json FROM ai_provider_probe_results WHERE profile_id = ?1",
+                "SELECT result_json FROM ai_provider_probe_results
+                 WHERE profile_id = ?1 ORDER BY tested_at DESC, tested_model_id LIMIT 1",
                 [profile_id],
                 |row| row.get(0),
             )
@@ -125,7 +137,8 @@ pub(super) fn load_probe_result(
         };
         let mut result: AiProviderProbeResultDto =
             serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
-        let current = load_profile_snapshot(connection, profile_id)?;
+        let mut current = load_profile_snapshot(connection, profile_id)?;
+        current.model_id.clone_from(&result.tested_model_id);
         result.stale = !snapshot_matches_result(&current, &result);
         result.persisted = true;
         Ok(Some(result))
@@ -135,9 +148,11 @@ pub(super) fn load_probe_result(
 pub(crate) fn load_capability_records(
     database: &Database,
     profile_id: &str,
+    model_id: &str,
 ) -> Result<Vec<PersistedCapability>, CommandError> {
     database.with_connection(|connection| {
-        let profile = load_profile_snapshot(connection, profile_id)?;
+        let mut profile = load_profile_snapshot(connection, profile_id)?;
+        profile.model_id = model_id.to_string();
         if !probe_matches_current(connection, &profile)? {
             return Ok(Vec::new());
         }
@@ -145,28 +160,27 @@ pub(crate) fn load_capability_records(
             .prepare(
                 "SELECT capability_key, status, value_json
                  FROM ai_provider_capabilities
-                 WHERE profile_id = ?1
+                 WHERE profile_id = ?1 AND model_id = ?2
                  ORDER BY capability_key",
             )
             .map_err(CommandError::database)?;
-        let rows = statement
-            .query_map([profile_id], |row| {
+        let records = statement
+            .query_map(params![profile_id, model_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                 ))
             })
-            .map_err(CommandError::database)?;
-        let records = rows
+            .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)?;
         records
             .into_iter()
             .map(|(key, status, value_json)| {
                 let status = CapabilityStatus::from_db(&status)?;
-                let value: Value =
-                    serde_json::from_str(&value_json).map_err(CommandError::serialization)?;
+                let value: Value = serde_json::from_str(&value_json)
+                    .map_err(CommandError::serialization)?;
                 Ok(PersistedCapability {
                     key,
                     status,
@@ -186,8 +200,8 @@ pub(crate) fn load_document_probe_evidence(
         let image_status: Option<String> = connection
             .query_row(
                 "SELECT status FROM ai_provider_capabilities
-                 WHERE profile_id = ?1 AND capability_key = 'image_input'",
-                [profile.id.as_str()],
+                 WHERE profile_id = ?1 AND model_id = ?2 AND capability_key = 'image_input'",
+                params![profile.id, profile.model_id],
                 |row| row.get(0),
             )
             .optional()
@@ -195,8 +209,9 @@ pub(crate) fn load_document_probe_evidence(
         let document_schema_status: Option<String> = connection
             .query_row(
                 "SELECT status FROM ai_provider_capabilities
-                 WHERE profile_id = ?1 AND capability_key = 'document_generation_schema'",
-                [profile.id.as_str()],
+                 WHERE profile_id = ?1 AND model_id = ?2
+                   AND capability_key = 'document_generation_schema'",
+                params![profile.id, profile.model_id],
                 |row| row.get(0),
             )
             .optional()
@@ -218,19 +233,16 @@ fn probe_matches_current(
         .query_row(
             "SELECT EXISTS(
                  SELECT 1 FROM ai_provider_probe_results
-                 WHERE profile_id = ?1
-                   AND profile_revision = ?2
-                   AND credential_epoch = ?3
-                   AND tested_model_id = ?4
-                   AND adapter_revision = ?5
-                   AND result_schema_version = ?6
+                 WHERE profile_id = ?1 AND tested_model_id = ?2
+                   AND profile_revision = ?3 AND credential_epoch = ?4
+                   AND adapter_revision = ?5 AND result_schema_version = ?6
                    AND overall_status IN ('verified', 'partial')
              )",
             params![
                 profile.id,
+                profile.model_id,
                 profile.revision,
                 profile.credential_epoch,
-                profile.model_id,
                 ADAPTER_REVISION,
                 RESULT_SCHEMA_VERSION,
             ],
@@ -269,13 +281,11 @@ fn persist_result(
         .execute(
             "INSERT INTO ai_provider_probe_results (
                  profile_id, profile_revision, credential_epoch, tested_model_id,
-                 adapter_revision, result_schema_version, overall_status,
-                 result_json, tested_at
+                 adapter_revision, result_schema_version, overall_status, result_json, tested_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(profile_id) DO UPDATE SET
+             ON CONFLICT(profile_id, tested_model_id) DO UPDATE SET
                  profile_revision = excluded.profile_revision,
                  credential_epoch = excluded.credential_epoch,
-                 tested_model_id = excluded.tested_model_id,
                  adapter_revision = excluded.adapter_revision,
                  result_schema_version = excluded.result_schema_version,
                  overall_status = excluded.overall_status,
@@ -296,21 +306,22 @@ fn persist_result(
         .map_err(CommandError::database)?;
     transaction
         .execute(
-            "DELETE FROM ai_provider_capabilities WHERE profile_id = ?1",
-            [result.profile_id.as_str()],
+            "DELETE FROM ai_provider_capabilities WHERE profile_id = ?1 AND model_id = ?2",
+            params![result.profile_id, result.tested_model_id],
         )
         .map_err(CommandError::database)?;
     for capability in &result.capabilities {
-        let value_json =
-            serde_json::to_string(&capability.value).map_err(CommandError::serialization)?;
+        let value_json = serde_json::to_string(&capability.value)
+            .map_err(CommandError::serialization)?;
         transaction
             .execute(
                 "INSERT INTO ai_provider_capabilities (
-                     profile_id, capability_key, status, source_kind,
+                     profile_id, model_id, capability_key, status, source_kind,
                      value_json, checked_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     result.profile_id,
+                    result.tested_model_id,
                     capability.key,
                     capability.status.as_str(),
                     capability.source.as_str(),

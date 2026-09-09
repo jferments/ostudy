@@ -103,8 +103,9 @@ pub fn set_ai_task_default(
 pub fn get_embedding_options(
     database: State<'_, Database>,
     profile_id: String,
+    model_id: String,
 ) -> Result<super::embedding_options::EmbeddingOptions, CommandError> {
-    super::embedding_options::load_embedding_options(database.inner(), &profile_id)
+    super::embedding_options::load_embedding_options(database.inner(), &profile_id, &model_id)
 }
 
 #[tauri::command]

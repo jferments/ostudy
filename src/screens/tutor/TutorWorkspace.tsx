@@ -32,12 +32,6 @@ export function TutorWorkspace() {
     tutor.loading ||
     tutor.pending !== null ||
     tutor.preparation.locked;
-  const profiles = tutor.profiles.filter(
-    (profile) => profile.enabled && profile.configurationStatus === "ready",
-  );
-  const defaultProfile = profiles.find(
-    (profile) => profile.id === tutor.defaultTutorProfileId,
-  );
   const question = [...(tutor.detail?.turns ?? [])]
     .reverse()
     .find((turn) => turn.pendingQuestion);
@@ -159,7 +153,7 @@ export function TutorWorkspace() {
       )}
 
       <details className={styles.options}>
-        <summary>Material and model</summary>
+        <summary>Material</summary>
         <div className={styles.toolbar}>
           {!hintOnly ? (
             <label className={styles.field} htmlFor={`${id}-scope`}>
@@ -192,34 +186,6 @@ export function TutorWorkspace() {
               </select>
             </label>
           ) : null}
-          <label className={styles.field} htmlFor={`${id}-model`}>
-            Tutor model
-            <select
-              id={`${id}-model`}
-              value={tutor.profileId ?? ""}
-              disabled={locked}
-              onChange={(event) =>
-                tutor.setProfileId(event.target.value || null)
-              }
-            >
-              <option value="">
-                {defaultProfile
-                  ? `Tutor default — ${defaultProfile.displayName}`
-                  : "Configured Tutor default"}
-              </option>
-              {tutor.profileId &&
-              !profiles.some((profile) => profile.id === tutor.profileId) ? (
-                <option value={tutor.profileId}>
-                  Selected profile unavailable
-                </option>
-              ) : null}
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.displayName} — {profile.modelId}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
         {!hintOnly && tutor.scope.kind !== "general" ? (
           <>
@@ -245,10 +211,6 @@ export function TutorWorkspace() {
             </p>
           </>
         ) : null}
-        <p className={styles.muted}>
-          Choose and test provider profiles in Settings → AI/LLM. General
-          discussion uses the model without searching the library.
-        </p>
       </details>
 
       {tutor.detail && !hintOnly ? (
@@ -281,10 +243,10 @@ export function TutorWorkspace() {
           }
         />
       ) : null}
-      {!profiles.length && !tutor.loading ? (
+      {!tutor.profiles.length && !tutor.loading ? (
         <p className={styles.notice}>
-          Configure an AI provider in Settings → AI/LLM to send messages. Saved
-          conversations remain readable without AI access.
+          Configure an AI provider and Tutor model in Settings → AI/LLM to send
+          messages. Saved conversations remain readable without AI access.
         </p>
       ) : null}
 

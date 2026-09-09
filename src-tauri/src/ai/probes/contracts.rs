@@ -5,7 +5,7 @@ use crate::error::CommandError;
 
 use super::super::{catalog::ProviderKind, gateway::SafeAiError, providers::ProviderModel};
 
-pub(super) const ADAPTER_REVISION: i64 = 7;
+pub(super) const ADAPTER_REVISION: i64 = 8;
 pub(super) const RESULT_SCHEMA_VERSION: i64 = 1;
 pub(super) const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 
@@ -14,6 +14,10 @@ pub(super) const MAX_PERSISTED_RESULT_BYTES: usize = 32 * 1024;
 pub struct AiProfileReferenceInput {
     pub profile_id: String,
     pub revision: i64,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

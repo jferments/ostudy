@@ -1,16 +1,7 @@
 import { useState, type ReactNode } from "react";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
-import type {
-  AiCapability,
-  AiProviderKind,
-  AiProviderModel,
-  AiProviderProfileDetail,
-  AiProviderProbeResult,
-  AiProbePhase,
-  AiReasoningEffort,
-} from "../../ipc/aiProfiles";
-import { EmbeddingProfileSettings } from "./EmbeddingProfileSettings";
+import type { AiProviderKind } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import aiStyles from "./AiLlmSettings.module.css";
 import layoutStyles from "./AiModelsLayout.module.css";
@@ -18,15 +9,6 @@ import styles from "./Settings.module.css";
 import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 
 const ownedStyleMaps = sharedClassMaps;
-const FALLBACK_REASONING_EFFORTS: Exclude<AiReasoningEffort, "automatic">[] = [
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
@@ -56,8 +38,8 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
     const accepted = await confirm({
       title: `Delete ${profile.displayName}?`,
       description:
-        "The AI profile and its saved credential will be removed. Study content is unchanged.",
-      confirmLabel: "Delete profile",
+        "The provider connection and its saved credential will be removed. Study content is unchanged.",
+      confirmLabel: "Delete provider",
       destructive: true,
     });
     if (accepted) await controller.deleteProfile();
@@ -78,11 +60,11 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
 
       {defaultBlock}
 
-      <section className={layoutStyles.modelListSection} aria-label="AI models">
+      <section className={layoutStyles.modelListSection} aria-label="AI providers">
         <div className={styles.sectionHeading}>
           <div>
-            <h2>AI models</h2>
-            <p>Choose a saved model, or add another local server or API connection.</p>
+            <h2>AI providers</h2>
+            <p>Manage API keys and local or remote provider connections.</p>
           </div>
           <button
             type="button"
@@ -95,13 +77,13 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
               if (preferred) void beginCreate(preferred.providerKind);
             }}
           >
-            Add model
+            Add provider
           </button>
         </div>
 
         {controller.loading ? (
           <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>
-            Loading AI models…
+            Loading AI providers…
           </div>
         ) : null}
 
@@ -116,22 +98,19 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             >
               <strong>{profile.displayName}</strong>
               <small>{profile.providerLabel}</small>
-              <small>{profile.modelId || "Model not selected"}</small>
-              <small>Reasoning: {reasoningLabel(profile.reasoningEffort ?? "low")}</small>
               <span className={layoutStyles.statusText} data-status={profile.configurationStatus}>
                 {configurationLabel(profile.configurationStatus)}
               </span>
             </button>
           ))}
           {!controller.loading && controller.profiles.length === 0 ? (
-            <p className={styles.emptyCopy}>No AI models configured.</p>
+            <p className={styles.emptyCopy}>No AI providers configured.</p>
           ) : null}
         </div>
       </section>
 
       <main className={layoutStyles.detail}>
         {controller.draft ? (
-          <>
           <ProfileSetup
             controller={controller}
             availableProviders={availableProviders.map((provider) => ({
@@ -141,11 +120,9 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             onProviderChange={controller.beginCreate}
             onDelete={() => void deleteProfile()}
           />
-          <EmbeddingProfileSettings controller={controller} />
-          </>
         ) : (
           <section className={styles.emptyDetail}>
-            <h2>Add an AI model</h2>
+            <h2>Add an AI provider</h2>
             <p>Choose a provider to configure a local server or API connection.</p>
           </section>
         )}
@@ -171,13 +148,6 @@ function ProfileSetup({
 
   const profile = controller.selectedProfile;
   const provider = controller.catalog.find((entry) => entry.providerKind === draft.providerKind);
-  const selectedModel =
-    controller.models.find((candidate) => candidate.id === draft.modelId) ?? null;
-  const supportedReasoningOptions = reasoningEffortsForModel(selectedModel);
-  const reasoningValid = supportedReasoningOptions.includes(draft.reasoningEffort);
-  const reasoningOptions = reasoningValid
-    ? supportedReasoningOptions
-    : [...supportedReasoningOptions, draft.reasoningEffort];
   const isLlama = draft.providerKind === "llama_cpp";
   const requiresCredential = draft.authMode !== "none";
   const hasCredential = profileHasCredential(profile);
@@ -191,30 +161,21 @@ function ProfileSetup({
   const metadataDirty =
     profile !== null &&
     (draft.displayName !== profile.displayName ||
-      draft.requestTimeoutMs !== profile.requestTimeoutMs);
-  const modelDirty =
-    profile !== null &&
-    (draft.modelId !== profile.modelId ||
-      draft.reasoningEffort !== (profile.reasoningEffort ?? "low"));
-  const modelSaved = profile !== null && draft.modelId !== "" && !modelDirty;
+      draft.requestTimeoutMs !== profile.requestTimeoutMs ||
+      draft.enabled !== profile.enabled);
   const canConnect =
     !controller.mutating &&
     draft.baseUrl.trim() !== "" &&
     (!requiresCredential || hasCredential || controller.credentialDraft.trim() !== "");
-  const canSaveProfile =
-    profile !== null &&
-    !connectionDirty &&
-    !controller.mutating &&
-    reasoningValid &&
-    (metadataDirty || modelDirty);
+  const canSaveProfile = profile !== null && !connectionDirty && !controller.mutating && metadataDirty;
 
   return (
     <>
       <section className={styles.settingsCard} aria-busy={controller.mutating}>
         <div className={styles.sectionHeading}>
           <div>
-            <h2>{profile ? `Configure ${profile.displayName}` : "Add AI model"}</h2>
-            <p>Choose the service, connect it, then select the model you want ostudy to use.</p>
+            <h2>{profile ? `Configure ${profile.displayName}` : "Add AI provider"}</h2>
+            <p>Configure the provider connection and credential used by one or more AI models.</p>
           </div>
         </div>
 
@@ -288,7 +249,7 @@ function ProfileSetup({
               ? "Connecting…"
               : controller.modelsLoaded && !connectionDirty
                 ? "Connected"
-                : "Connect and load models"}
+                : "Connect"}
           </button>
           {profile && !connectionDirty ? (
             <button
@@ -297,123 +258,20 @@ function ProfileSetup({
               disabled={controller.refreshingModels || controller.dirty}
               onClick={() => void controller.refreshModels()}
             >
-              {controller.refreshingModels ? "Refreshing…" : "Refresh models"}
+              {controller.refreshingModels ? "Refreshing…" : "Refresh model catalog"}
+            </button>
+          ) : null}
+          {canSaveProfile ? (
+            <button
+              type="button"
+              className={ownedClassNames(ownedStyleMaps, "primary-button")}
+              disabled={controller.mutating}
+              onClick={() => void controller.saveProfile()}
+            >
+              Save provider
             </button>
           ) : null}
         </div>
-      </section>
-
-      <section className={styles.settingsCard}>
-        <div className={styles.sectionHeading}>
-          <div>
-            <h2>Model and reasoning</h2>
-            <p>
-              The reasoning preference belongs to this profile, so switching models cannot
-              silently change another model's behavior.
-            </p>
-          </div>
-        </div>
-
-        <div className={styles.formGrid}>
-          <label className={styles.stackedField}>
-            <span>Model</span>
-            <select
-              aria-label="Model"
-              value={draft.modelId}
-              disabled={
-                controller.refreshingModels ||
-                connectionDirty ||
-                !controller.modelsLoaded ||
-                controller.models.length === 0
-              }
-              onChange={(event) => {
-                const modelId = event.currentTarget.value;
-                const model =
-                  controller.models.find((candidate) => candidate.id === modelId) ?? null;
-                controller.updateDraft({
-                  modelId,
-                  reasoningEffort: compatibleReasoningEffort(
-                    draft.reasoningEffort,
-                    model,
-                  ),
-                });
-              }}
-            >
-              <option value="">
-                {controller.refreshingModels
-                  ? "Loading models…"
-                  : !profile || connectionDirty
-                    ? "Connect first"
-                    : controller.models.length === 0
-                      ? "No models reported"
-                      : "Select a model"}
-              </option>
-              {draft.modelId && !controller.models.some((model) => model.id === draft.modelId) ? (
-                <option value={draft.modelId}>{draft.modelId} — saved or embedding model</option>
-              ) : null}
-              {controller.models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.displayName || model.id}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.stackedField}>
-            <span>Reasoning effort</span>
-            <select
-              aria-label="Reasoning effort"
-              value={draft.reasoningEffort}
-              disabled={connectionDirty || draft.modelId === ""}
-              onChange={(event) =>
-                controller.updateDraft({
-                  reasoningEffort: event.currentTarget.value as AiReasoningEffort,
-                })
-              }
-            >
-              {reasoningOptions.map((effort) => (
-                <option key={effort} value={effort}>
-                  {reasoningOptionLabel(effort, selectedModel)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <p className={styles.note}>{reasoningExplanation(selectedModel)}</p>
-        {!reasoningValid ? (
-          <p className={styles.cloudNotice}>
-            The provider no longer advertises the saved effort for this model. Choose Automatic
-            or another advertised effort before saving.
-          </p>
-        ) : null}
-
-        <div className={styles.actionRow}>
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "primary-button")}
-            disabled={!canSaveProfile}
-            onClick={() => void controller.saveProfile()}
-          >
-            {controller.mutating ? "Saving…" : "Save profile"}
-          </button>
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-            disabled={
-              controller.testing ||
-              controller.mutating ||
-              profile === null ||
-              !modelSaved ||
-              controller.dirty
-            }
-            onClick={() => void controller.testProfile()}
-          >
-            {controller.testing ? "Testing…" : "Test connection"}
-          </button>
-        </div>
-
-        {controller.probeResult ? <ProbeSummary result={controller.probeResult} /> : null}
       </section>
 
       <details className={aiStyles.advancedSettings}>
@@ -443,15 +301,22 @@ function ProfileSetup({
             </select>
           </label>
 
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(event) => controller.updateDraft({ enabled: event.currentTarget.checked })}
+            />
+            <span>Enable this provider</span>
+          </label>
+
           {isLlama ? (
             <label className={styles.stackedField}>
               <span>Server authentication</span>
               <select
                 value={draft.authMode}
                 onChange={(event) =>
-                  controller.updateDraft({
-                    authMode: event.currentTarget.value as "none" | "bearer",
-                  })
+                  controller.updateDraft({ authMode: event.currentTarget.value as "none" | "bearer" })
                 }
               >
                 <option value="none">None</option>
@@ -467,70 +332,49 @@ function ProfileSetup({
                 <label>
                   <input
                     type="radio"
-                    name="credential-persistence"
+                    name="credential-storage"
                     value="secure"
                     checked={controller.credentialPersistence === "secure"}
                     onChange={() => controller.setCredentialPersistence("secure")}
                   />
-                  Save securely on this device
+                  Save securely
                 </label>
               ) : null}
               <label>
                 <input
                   type="radio"
-                  name="credential-persistence"
+                  name="credential-storage"
                   value="session"
                   checked={controller.credentialPersistence === "session"}
                   onChange={() => controller.setCredentialPersistence("session")}
                 />
-                Keep only for this app session
+                This session only
               </label>
             </fieldset>
           ) : null}
 
-          {isLlama && draft.baseUrl.startsWith("http://") && !isLoopbackUrl(draft.baseUrl) ? (
-            <label className={styles.switchRow}>
-              <span>
-                <strong>Allow unencrypted LAN connection</strong>
-                <small>Required only for an HTTP server elsewhere on your private network.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={draft.allowInsecureHttp}
-                onChange={(event) =>
-                  controller.updateDraft({ allowInsecureHttp: event.currentTarget.checked })
-                }
-              />
-            </label>
-          ) : null}
-
           {draft.providerKind === "openrouter" ? (
-            <label className={styles.switchRow}>
-              <span>
-                <strong>Require zero data retention</strong>
-                <small>Restrict this profile to endpoints that declare zero data retention.</small>
-              </span>
+            <label className={styles.checkboxField}>
               <input
                 type="checkbox"
                 checked={draft.requireZeroDataRetention ?? false}
                 onChange={(event) =>
-                  controller.updateDraft({
-                    requireZeroDataRetention: event.currentTarget.checked,
-                  })
+                  controller.updateDraft({ requireZeroDataRetention: event.currentTarget.checked })
                 }
               />
+              <span>Require OpenRouter zero-data-retention routing</span>
             </label>
           ) : null}
 
           <div className={styles.actionRow}>
-            {profile && hasCredential ? (
+            {profile && requiresCredential && hasCredential ? (
               <button
                 type="button"
                 className={ownedClassNames(ownedStyleMaps, "secondary-button")}
                 disabled={controller.mutating}
                 onClick={() => void controller.clearCredential()}
               >
-                Remove saved API key
+                Remove API key
               </button>
             ) : null}
             {profile ? (
@@ -540,7 +384,7 @@ function ProfileSetup({
                 disabled={controller.mutating}
                 onClick={onDelete}
               >
-                Delete profile
+                Delete provider
               </button>
             ) : null}
           </div>
@@ -550,63 +394,14 @@ function ProfileSetup({
   );
 }
 
-function ProbeSummary({ result }: { result: AiProviderProbeResult }) {
-  return (
-    <div className={aiStyles.probeSummary} data-status={result.overallStatus}>
-      <strong>{probeStatusLabel(result.overallStatus)}</strong>
-      <span>{result.testedModelId || "Configured model"}</span>
-      <details className={styles.probeDiagnostics}>
-        <summary>Technical details</summary>
-        <div className={styles.phaseList}>
-          {result.phases.map((phase) => (
-            <ProbePhase key={phase.phase} phase={phase} />
-          ))}
-        </div>
-        {result.capabilities.length > 0 ? (
-          <div className={styles.capabilityGrid}>
-            {result.capabilities.map((capability) => (
-              <Capability key={capability.key} capability={capability} />
-            ))}
-          </div>
-        ) : null}
-      </details>
-    </div>
-  );
-}
-
-function ProbePhase({ phase }: { phase: AiProbePhase }) {
-  return (
-    <article data-status={phase.status}>
-      <span aria-hidden="true">
-        {phase.status === "passed" ? "✓" : phase.status === "failed" ? "!" : "–"}
-      </span>
-      <div>
-        <strong>{phase.label}</strong>
-        <p>{phase.message}</p>
-      </div>
-      <small>{phase.latencyMs === null ? "" : `${phase.latencyMs} ms`}</small>
-    </article>
-  );
-}
-
-function Capability({ capability }: { capability: AiCapability }) {
-  return (
-    <span className={styles.capabilityBadge} data-status={capability.status}>
-      {capabilityLabel(capability.key)}
-      <small>{capability.status}</small>
-    </span>
-  );
-}
-
 async function confirmDiscardIfNeeded(
   controller: AiProfilesController,
   confirm: ReturnType<typeof useConfirm>,
 ): Promise<boolean> {
   if (!controller.dirty) return true;
   const accepted = await confirm({
-    title: "Discard AI setup changes?",
-    description:
-      "Unsaved connection, API key entry, model, reasoning, or advanced settings will be lost.",
+    title: "Discard unsaved provider changes?",
+    description: "The unsaved provider settings and API-key entry will be discarded.",
     confirmLabel: "Discard changes",
     destructive: true,
   });
@@ -614,131 +409,29 @@ async function confirmDiscardIfNeeded(
   return accepted;
 }
 
-function profileHasCredential(profile: AiProviderProfileDetail | null): boolean {
-  return (
-    profile?.credentialStatus.status === "saved_securely" ||
-    profile?.credentialStatus.status === "session_only"
+function profileHasCredential(profile: AiProfilesController["selectedProfile"]): boolean {
+  return Boolean(
+    profile &&
+      (profile.credentialStatus.status === "saved_securely" ||
+        profile.credentialStatus.status === "session_only"),
   );
 }
 
-function reasoningEffortsForModel(model: AiProviderModel | null): AiReasoningEffort[] {
-  const advertised = model?.reasoning?.supportedEfforts ?? FALLBACK_REASONING_EFFORTS;
-  const efforts = advertised.filter(
-    (effort) => !(model?.reasoning?.mandatory && effort === "none"),
-  );
-  return [...new Set<AiReasoningEffort>(["automatic", ...efforts])];
-}
-
-function compatibleReasoningEffort(
-  current: AiReasoningEffort,
-  model: AiProviderModel | null,
-): AiReasoningEffort {
-  if (current === "automatic") return current;
-  const reasoning = model?.reasoning;
-  if (!reasoning) return current;
-  if (reasoning.mandatory && current === "none") return "automatic";
-  if (reasoning.supportedEfforts && !reasoning.supportedEfforts.includes(current)) {
-    return "automatic";
-  }
-  return current;
-}
-
-function reasoningOptionLabel(
-  effort: AiReasoningEffort,
-  model: AiProviderModel | null,
-): string {
-  if (effort === "automatic") {
-    const providerDefault = model?.reasoning?.defaultEffort;
-    return providerDefault
-      ? `Automatic — provider default ${reasoningLabel(providerDefault)}`
-      : "Automatic";
-  }
-  return reasoningLabel(effort);
-}
-
-function reasoningExplanation(model: AiProviderModel | null): string {
-  const reasoning = model?.reasoning;
-  if (!reasoning) {
-    return "Automatic uses provider-managed behavior. Profiles retain their own preference even when another model becomes the default.";
-  }
-  if (reasoning.mandatory) {
-    return "Reasoning is mandatory for this model. ostudy will resolve Automatic or a stale unsupported value to the lowest advertised valid effort.";
-  }
-  return "Automatic follows this model's provider default. Explicit efforts are limited to values advertised by the current model catalog.";
-}
-
-function reasoningLabel(value: string): string {
-  switch (value) {
-    case "automatic":
-      return "Automatic";
-    case "none":
-      return "None";
-    case "minimal":
-      return "Minimal";
-    case "low":
-      return "Low";
-    case "medium":
-      return "Medium";
-    case "high":
-      return "High";
-    case "xhigh":
-      return "Extra high";
-    case "max":
-      return "Maximum";
-    default:
-      return value;
-  }
-}
-
-function configurationLabel(status: string): string {
-  if (status === "ready") return "Ready";
-  if (status === "disabled") return "Unavailable";
-  if (status === "planned") return "Planned";
-  return "Setup incomplete";
-}
-
-function probeStatusLabel(status: AiProviderProbeResult["overallStatus"]): string {
-  if (status === "verified") return "Connection verified";
-  if (status === "partial") return "Connection works with limitations";
-  return "Connection test failed";
-}
-
-function capabilityLabel(key: string): string {
-  return key
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function isLoopbackUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "[::1]" ||
-      url.hostname === "::1"
-    );
-  } catch {
-    return false;
+function configurationLabel(status: AiProfilesController["profiles"][number]["configurationStatus"]): string {
+  switch (status) {
+    case "ready": return "Ready";
+    case "incomplete": return "Needs API key";
+    case "disabled": return "Disabled";
+    case "planned": return "Planned";
   }
 }
 
 function CredentialEye({ crossed }: { crossed: boolean }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      {crossed ? (
-        <>
-          <path d="M3 3l18 18" />
-          <path d="M10.6 10.6a2 2 0 002.8 2.8" />
-          <path d="M9.9 4.3A10.7 10.7 0 0112 4c5 0 8.7 4.1 9.7 5.4a1 1 0 010 1.2 17.8 17.8 0 01-3.1 3.3" />
-          <path d="M6.2 6.2A18.4 18.4 0 002.3 9.4a1 1 0 000 1.2C3.3 11.9 7 16 12 16c1 0 2-.2 2.9-.5" />
-        </>
-      ) : (
-        <>
-          <path d="M2.3 9.4C3.3 8.1 7 4 12 4s8.7 4.1 9.7 5.4a1 1 0 010 1.2C20.7 11.9 17 16 12 16s-8.7-4.1-9.7-5.4a1 1 0 010-1.2z" />
-          <circle cx="12" cy="10" r="2.5" />
-        </>
-      )}
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.4 12s3.5-6 9.6-6 9.6 6 9.6 6-3.5 6-9.6 6-9.6-6-9.6-6Z" />
+      <circle cx="12" cy="12" r="2.8" />
+      {crossed ? <path d="M4 4 20 20" /> : null}
     </svg>
   );
 }

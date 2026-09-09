@@ -12,57 +12,104 @@
   font-size: 1.05rem;
 }
 
-.field {
-  display: grid;
-  gap: 7px;
-  color: var(--ostudy-color-text-muted);
-  font-size: 0.88rem;
-  font-weight: 720;
+.assignment {
+  padding-block: 12px;
+  border-top: 1px solid var(--ostudy-color-border-subtle);
 }
 
-.field select {
+.assignment:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.assignmentTitle {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ostudy-color-text-primary);
+  font-size: 0.9rem;
+}
+
+.assignmentGrid,
+.embeddingGrid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.5fr) minmax(130px, 0.7fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.embeddingGrid {
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.2fr) auto;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  color: var(--ostudy-color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.field select,
+.field input {
   width: 100%;
   min-width: 0;
 }
 
-.reasoningField {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--ostudy-color-border-subtle);
+.testCell {
+  display: flex;
+  align-items: end;
+  min-height: 42px;
 }
 
-.note,
-.capabilityNote,
-.timeoutNote {
-  margin: 12px 0 0;
+.embeddingOptions {
+  margin-top: 10px;
+}
+
+.embeddingOptions > summary {
+  cursor: pointer;
   color: var(--ostudy-color-text-muted);
   font-size: 0.82rem;
-  line-height: 1.45;
+  font-weight: 700;
 }
 
-.capabilityNote {
-  padding: 9px 10px;
-  border: 1px solid var(--ostudy-color-border-subtle);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--ostudy-color-surface-base) 82%, var(--ostudy-color-canvas));
+.embeddingGrid {
+  margin-top: 10px;
 }
 
-.timeoutNote {
-  border-top: 1px solid var(--ostudy-color-border-subtle);
-  padding-top: 10px;
+.inlineStatus,
+.success,
+.error {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
-@media (max-width: 980px) and (min-width: 761px) {
-  .shell {
-    grid-template-columns: 220px minmax(0, 1fr);
+.success {
+  color: var(--ostudy-color-text-muted);
+}
+
+.error {
+  color: var(--ostudy-color-danger-text, var(--ostudy-color-text-primary));
+}
+
+@media (max-width: 900px) {
+  .assignmentGrid,
+  .embeddingGrid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 560px) {
   .card {
     border-radius: 12px;
   }
-}
-.field + .field {
-  margin-block-start: var(--ostudy-space-3);
+
+  .assignmentGrid,
+  .embeddingGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .testCell {
+    min-height: 0;
+  }
 }

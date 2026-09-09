@@ -16,6 +16,8 @@ pub struct CreateAiProviderProfileInput {
     pub display_name: String,
     pub provider_kind: ProviderKind,
     pub base_url: String,
+    /// Legacy compatibility only. New task/model assignments own model choice.
+    #[serde(default)]
     pub model_id: String,
     pub auth_mode: AuthMode,
     pub enabled: bool,
@@ -23,6 +25,7 @@ pub struct CreateAiProviderProfileInput {
     #[serde(default)]
     pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
+    /// Legacy compatibility only. New task/model assignments own reasoning.
     #[serde(default = "default_reasoning_effort")]
     pub reasoning_effort: String,
     #[serde(default)]
@@ -37,6 +40,8 @@ pub struct UpdateAiProviderProfileInput {
     pub revision: i64,
     pub display_name: String,
     pub base_url: String,
+    /// Legacy compatibility only. New task/model assignments own model choice.
+    #[serde(default)]
     pub model_id: String,
     pub auth_mode: AuthMode,
     pub enabled: bool,
@@ -44,6 +49,7 @@ pub struct UpdateAiProviderProfileInput {
     #[serde(default)]
     pub require_zero_data_retention: bool,
     pub request_timeout_ms: i64,
+    /// Legacy compatibility only. New task/model assignments own reasoning.
     #[serde(default = "default_reasoning_effort")]
     pub reasoning_effort: String,
     #[serde(default)]
@@ -82,6 +88,18 @@ pub struct SetAiTaskDefaultInput {
     pub operation_id: String,
     pub task_kind: AiTaskKind,
     pub profile_id: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTaskModelAssignmentDto {
+    pub profile_id: String,
+    pub model_id: String,
+    pub reasoning_effort: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -100,7 +118,9 @@ pub struct AiProviderProfileSummaryDto {
     pub display_name: String,
     pub provider_kind: ProviderKind,
     pub provider_label: String,
+    /// Legacy last-selected model. Task defaults are authoritative.
     pub model_id: String,
+    /// Legacy last-selected reasoning. Task defaults are authoritative.
     pub reasoning_effort: String,
     pub enabled: bool,
     pub network_scope: NetworkScope,
@@ -119,7 +139,9 @@ pub struct AiProviderProfileDetailDto {
     pub provider_label: String,
     pub base_url: String,
     pub base_url_editable: bool,
+    /// Legacy last-selected model. Task defaults are authoritative.
     pub model_id: String,
+    /// Legacy last-selected reasoning. Task defaults are authoritative.
     pub reasoning_effort: String,
     pub auth_mode: AuthMode,
     pub enabled: bool,
@@ -139,8 +161,14 @@ pub struct AiProviderProfileDetailDto {
 #[serde(rename_all = "camelCase")]
 pub struct AiTaskDefaultsDto {
     pub flashcard_generation_profile_id: Option<String>,
+    pub flashcard_generation_model_id: Option<String>,
+    pub flashcard_generation_reasoning_effort: Option<String>,
     pub tutor_profile_id: Option<String>,
+    pub tutor_model_id: Option<String>,
+    pub tutor_reasoning_effort: Option<String>,
     pub embeddings_profile_id: Option<String>,
+    pub embeddings_model_id: Option<String>,
+    pub embeddings_reasoning_effort: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -183,7 +211,7 @@ impl ProfileSnapshot {
         if self.model_id.trim().is_empty() {
             return Err(CommandError::new(
                 "ai_profile_incomplete",
-                "Select or enter a model before testing this AI provider profile.",
+                "Select a model for this AI task before using it.",
             ));
         }
         super::super::reasoning::validate_reasoning_effort(&self.reasoning_effort)?;
@@ -216,22 +244,28 @@ pub(super) struct StoredProfile {
     pub updated_at: i64,
 }
 
+impl StoredProfile {
+    pub(crate) fn request_snapshot(&self, model_id: &str, reasoning_effort: &str) -> ProfileSnapshot {
+        ProfileSnapshot {
+            id: self.id.clone(),
+            provider_kind: self.provider_kind,
+            base_url: self.base_url.clone(),
+            model_id: model_id.to_string(),
+            reasoning_effort: reasoning_effort.to_string(),
+            auth_mode: self.auth_mode,
+            enabled: self.enabled,
+            allow_insecure_http: self.allow_insecure_http,
+            require_zero_data_retention: self.require_zero_data_retention,
+            request_timeout_ms: self.request_timeout_ms,
+            credential_epoch: self.credential_epoch,
+            revision: self.revision,
+        }
+    }
+}
+
 impl From<&StoredProfile> for ProfileSnapshot {
     fn from(profile: &StoredProfile) -> Self {
-        Self {
-            id: profile.id.clone(),
-            provider_kind: profile.provider_kind,
-            base_url: profile.base_url.clone(),
-            model_id: profile.model_id.clone(),
-            reasoning_effort: profile.reasoning_effort.clone(),
-            auth_mode: profile.auth_mode,
-            enabled: profile.enabled,
-            allow_insecure_http: profile.allow_insecure_http,
-            require_zero_data_retention: profile.require_zero_data_retention,
-            request_timeout_ms: profile.request_timeout_ms,
-            credential_epoch: profile.credential_epoch,
-            revision: profile.revision,
-        }
+        profile.request_snapshot(&profile.model_id, &profile.reasoning_effort)
     }
 }
 

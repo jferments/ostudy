@@ -181,7 +181,7 @@ pub(crate) fn load_document_provider_capabilities(
     model_id: &str,
 ) -> Result<DocumentProviderCapabilities, CommandError> {
     let mut result = DocumentProviderCapabilities::conservative(provider_kind, model_id);
-    for capability in load_capability_records(database, profile_id)? {
+    for capability in load_capability_records(database, profile_id, model_id)? {
         match capability.key.as_str() {
             "context_window_tokens" if capability.status == CapabilityStatus::Supported => {
                 result.context_window_tokens =
@@ -265,14 +265,8 @@ mod tests {
         };
         assert_eq!(capabilities.resolve_reasoning_effort("low"), "none");
         assert_eq!(capabilities.resolve_reasoning_effort("high"), "high");
-        assert_eq!(
-            capabilities.completion_token_ceiling("none", 10_000),
-            10_000
-        );
-        assert_eq!(
-            capabilities.completion_token_ceiling("high", 10_000),
-            50_000
-        );
+        assert_eq!(capabilities.completion_token_ceiling("none", 10_000), 10_000);
+        assert_eq!(capabilities.completion_token_ceiling("high", 10_000), 50_000);
     }
 
     #[test]

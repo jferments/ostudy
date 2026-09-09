@@ -75,15 +75,16 @@ fn configuration_status(
         ProfileConfigurationStatus::Planned
     } else if !profile.enabled {
         ProfileConfigurationStatus::Disabled
-    } else if profile.model_id.trim().is_empty()
-        || (profile.auth_mode.requires_credential()
-            && !matches!(
-                credential_status,
-                CredentialStatus::SavedSecurely | CredentialStatus::SessionOnly
-            ))
+    } else if profile.auth_mode.requires_credential()
+        && !matches!(
+            credential_status,
+            CredentialStatus::SavedSecurely | CredentialStatus::SessionOnly
+        )
     {
         ProfileConfigurationStatus::Incomplete
     } else {
+        // Provider profiles are connection/credential owners. A model is chosen
+        // independently for generation, Tutor, or embeddings.
         ProfileConfigurationStatus::Ready
     }
 }
