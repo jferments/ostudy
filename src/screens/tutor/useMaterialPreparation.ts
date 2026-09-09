@@ -38,7 +38,7 @@ export function useMaterialPreparation(scope: StudyScope) {
       if (!statusLane.isCurrent(token)) return;
       setStatus(value);
       setError(null);
-      if (value?.operationId === receipt.current?.operationId && value?.state !== "running") {
+      if (value && receipt.current && value.operationId === receipt.current.operationId && value.state !== "running") {
         receipt.current = null;
         setPending(null);
       }
@@ -71,7 +71,7 @@ export function useMaterialPreparation(scope: StudyScope) {
         ]);
         if (disposed) return;
         setProgress(activity);
-        if (value?.operationId === activeOperation) {
+        if (value && value.operationId === activeOperation) {
           setStatus(value);
           if (value.state !== "running") {
             if (receipt.current?.operationId === activeOperation) {

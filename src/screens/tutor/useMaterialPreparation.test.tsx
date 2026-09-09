@@ -64,6 +64,21 @@ describe("explicit semantic preparation", () => {
     expect(result.current.pending).toBeNull();
   });
 
+  it("keeps an ambiguous receipt when a status read returns no record", async () => {
+    vi.mocked(prepareSemanticMaterial).mockRejectedValueOnce(new Error("Disconnected"));
+    const { result } = renderHook(() => useMaterialPreparation(scope));
+    await act(async () => { await result.current.review(); });
+    await act(async () => { await result.current.confirm(); });
+    const original = vi.mocked(prepareSemanticMaterial).mock.calls[0][0];
+    await act(async () => { await result.current.reload(); });
+    expect(result.current.status).toBeNull();
+    expect(result.current.pending).toEqual(original);
+    expect(result.current.locked).toBe(true);
+    await act(async () => { await result.current.confirm(); });
+    expect(vi.mocked(prepareSemanticMaterial).mock.calls[1][0]).toEqual(original);
+    expect(result.current.pending).toBeNull();
+  });
+
   it("requires new consent when material or providers changed", async () => {
     vi.mocked(prepareSemanticMaterial).mockRejectedValueOnce({ code: "semantic_preparation_changed", message: "Review again" });
     const { result } = renderHook(() => useMaterialPreparation(scope));
