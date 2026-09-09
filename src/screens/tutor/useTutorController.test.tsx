@@ -2,13 +2,15 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAiTaskDefaults, listAiProviderProfiles } from "../../ipc/aiProfiles";
-import { listSemanticScopeChoices } from "../../ipc/knowledge";
+import { getSemanticPreparation, listSemanticScopeChoices, prepareSemanticMaterial, previewSemanticPreparation } from "../../ipc/knowledge";
 import { createTutorConversation, getTutorConversation, listTutorConversations, sendTutorTurn,
   type ConversationDetail, type ConversationSummary, type TutorTurn } from "../../ipc/tutor";
 import { useTutorController } from "./useTutorController";
 
 vi.mock("../../ipc/aiProfiles", () => ({ getAiTaskDefaults: vi.fn(), listAiProviderProfiles: vi.fn() }));
-vi.mock("../../ipc/knowledge", () => ({ cancelLearningTask: vi.fn(), listSemanticScopeChoices: vi.fn() }));
+vi.mock("../../ipc/knowledge", () => ({ cancelLearningTask: vi.fn(), listSemanticScopeChoices: vi.fn(),
+  getSemanticPreparation: vi.fn(), prepareSemanticMaterial: vi.fn(), previewSemanticPreparation: vi.fn(),
+}));
 vi.mock("../../ipc/tutor", () => ({ createTutorConversation: vi.fn(), deleteTutorConversation: vi.fn(),
   getTutorConversation: vi.fn(), listTutorConversations: vi.fn(), sendTutorTurn: vi.fn() }));
 
@@ -27,6 +29,7 @@ beforeEach(() => {
   vi.mocked(getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null, tutorProfileId: null, embeddingsProfileId: null });
   vi.mocked(listAiProviderProfiles).mockResolvedValue([]);
   vi.mocked(listSemanticScopeChoices).mockResolvedValue([]);
+  vi.mocked(getSemanticPreparation).mockResolvedValue(null);
   vi.mocked(listTutorConversations).mockResolvedValue([]);
   vi.mocked(createTutorConversation).mockResolvedValue(conversation);
   vi.mocked(getTutorConversation).mockResolvedValue(detail);
@@ -98,5 +101,71 @@ describe("Tutor controller", () => {
     expect(result.current.target?.mode).toBe("hint");
     expect(result.current.panelOpen).toBe(true);
     expect(sendTutorTurn).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("explicit conversation retrieval", () => {
+  const deckScope = { kind: "deck" as const, id: "d".repeat(32) };
+
+  it("defaults to exclusion and enables both preparation and retrieval only on request", async () => {
+    vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: deckScope });
+    vi.mocked(getTutorConversation).mockResolvedValue({ ...detail, conversation: { ...detail.conversation, scope: deckScope } });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.newConversation(deckScope); });
+    expect(result.current.includeConversations).toBe(false);
+    expect(result.current.preparation.selection.includeConversations).toBe(false);
+    await act(async () => { result.current.setIncludeConversations(true); });
+    expect(result.current.includeConversations).toBe(true);
+    expect(result.current.preparation.selection).toEqual({ scope: deckScope, includeConversations: true });
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+    expect(previewSemanticPreparation).not.toHaveBeenCalled();
+    expect(sendTutorTurn).not.toHaveBeenCalled();
+    await act(async () => { await result.current.send("explain", "What did we discuss about triangles?"); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({ includeConversations: true }));
+  });
+
+  it("resets opt-in when switching conversations or material scope", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.newConversation(deckScope); });
+    await act(async () => { result.current.setIncludeConversations(true); });
+    await act(async () => { result.current.newConversation({ kind: "document", id: "e".repeat(32) }); });
+    expect(result.current.includeConversations).toBe(false);
+    await act(async () => { result.current.setIncludeConversations(true); });
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    expect(result.current.includeConversations).toBe(false);
+    await act(async () => { result.current.setIncludeConversations(true); });
+    expect(result.current.includeConversations).toBe(false); // General discussion cannot search the library.
+  });
+
+  it("cannot enable conversation retrieval in a hidden-answer context", async () => {
+    vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: deckScope });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.newConversation(deckScope); });
+    await act(async () => { result.current.setIncludeConversations(true); });
+    await act(async () => {
+      result.current.openContext({ scope: deckScope, title: "Current card", mode: "hint",
+        focus: { kind: "card", sessionId: "e".repeat(32), cardId: "f".repeat(32), noteRevision: 1 } });
+    });
+    await act(async () => { result.current.setIncludeConversations(true); });
+    expect(result.current.includeConversations).toBe(false);
+    expect(result.current.preparation.selection.includeConversations).toBe(false);
+    await act(async () => { await result.current.send("hint", "A small hint"); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({ mode: "hint", includeConversations: false }));
+  });
+
+  it("does not change consent or request identity while an ambiguous turn needs reconciliation", async () => {
+    vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: deckScope });
+    vi.mocked(sendTutorTurn).mockRejectedValueOnce(new Error("Disconnected"));
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.newConversation(deckScope); });
+    await act(async () => { result.current.setIncludeConversations(true); });
+    await act(async () => { await result.current.send("explain", "Explain the previous discussion"); });
+    const original = vi.mocked(sendTutorTurn).mock.calls[0][0];
+    await act(async () => { result.current.setIncludeConversations(false); });
+    expect(result.current.includeConversations).toBe(true);
+    expect(result.current.pending).toEqual(original);
+    await act(async () => { await result.current.retryPending(); });
+    expect(vi.mocked(sendTutorTurn).mock.calls[1][0]).toEqual(original);
   });
 });

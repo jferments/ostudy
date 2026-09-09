@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 
+import { useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
 import { getSemanticSourceCitation, studyScopeKey, type SourceCitation, type StudyScope } from "../../ipc/knowledge";
 import { Dialog } from "../../ui/overlays/Dialog";
@@ -17,6 +18,7 @@ export function TutorWorkspace() {
   const [source, setSource] = useState<SourceCitation | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [sourceBusy, setSourceBusy] = useState(false);
+  const sourceLane = useRequestLane();
   const [memoryBusy, setMemoryBusy] = useState(false);
   const hintOnly = tutor.target?.mode === "hint";
   const locked = memoryBusy || tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
@@ -30,15 +32,26 @@ export function TutorWorkspace() {
   const scopeKey = studyScopeKey(tutor.scope);
   const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
 
-  useEffect(() => { setSource(null); setSourceError(null); }, [tutor.detail?.conversation.id, hintOnly]);
+  useEffect(() => {
+    sourceLane.invalidate();
+    setSource(null);
+    setSourceError(null);
+    setSourceBusy(false);
+  }, [sourceLane, tutor.detail?.conversation.id, hintOnly]);
 
   async function showSource(citation: SourceCitation): Promise<void> {
     if (hintOnly) return;
+    const token = sourceLane.begin();
     setSourceBusy(true);
     setSourceError(null);
-    try { setSource(await getSemanticSourceCitation({ sourceId: citation.id, contentHash: citation.contentHash })); }
-    catch (failure: unknown) { setSourceError(getErrorMessage(failure)); }
-    finally { setSourceBusy(false); }
+    try {
+      const value = await getSemanticSourceCitation({ sourceId: citation.id, contentHash: citation.contentHash });
+      if (sourceLane.isCurrent(token)) setSource(value);
+    } catch (failure: unknown) {
+      if (sourceLane.isCurrent(token)) setSourceError(getErrorMessage(failure));
+    } finally {
+      if (sourceLane.isCurrent(token)) setSourceBusy(false);
+    }
   }
 
   async function remove(): Promise<void> {
@@ -90,6 +103,20 @@ export function TutorWorkspace() {
             </select>
           </label>
         </div>
+        {!hintOnly && tutor.scope.kind !== "general" ? (
+          <>
+            <label className={styles.checkbox}>
+              <input type="checkbox" checked={tutor.includeConversations} disabled={locked}
+                aria-describedby={`${id}-conversation-retrieval-help`}
+                onChange={(event) => tutor.setIncludeConversations(event.target.checked)} />
+              Search permitted conversations in this material selection
+            </label>
+            <p id={`${id}-conversation-retrieval-help`} className={styles.muted}>
+              Only conversations enabled in Conversation memory are eligible. Review and prepare them
+              below before retrieval. Changing this option alone sends nothing and does not change permissions.
+            </p>
+          </>
+        ) : null}
         <p className={styles.muted}>Choose and test provider profiles in Settings → AI/LLM. General discussion uses the model without searching the library.</p>
       </details>
       {tutor.detail && !hintOnly ? (

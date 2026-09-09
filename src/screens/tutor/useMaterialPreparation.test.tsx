@@ -113,3 +113,45 @@ describe("explicit semantic preparation", () => {
     expect(prepareSemanticMaterial).not.toHaveBeenCalled();
   });
 });
+
+
+describe("conversation preparation consent", () => {
+  it("uses the explicit conversation selection in the preview and confirmed operation", async () => {
+    const withConversations = { ...preview, selection: { scope, includeConversations: true }, consentKey: "e".repeat(64) };
+    vi.mocked(previewSemanticPreparation).mockResolvedValue(withConversations);
+    const { result } = renderHook(() => useMaterialPreparation(scope, true));
+    await act(async () => { await result.current.review(); });
+    expect(previewSemanticPreparation).toHaveBeenCalledWith(withConversations.selection);
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+    await act(async () => { await result.current.confirm(); });
+    expect(prepareSemanticMaterial).toHaveBeenCalledWith(expect.objectContaining({
+      selection: withConversations.selection, consentKey: withConversations.consentKey,
+    }));
+  });
+
+  it("invalidates consent when the conversation-inclusion option changes", async () => {
+    const { result, rerender } = renderHook(({ include }) => useMaterialPreparation(scope, include), {
+      initialProps: { include: false },
+    });
+    await act(async () => { await result.current.review(); });
+    expect(result.current.preview).toEqual(preview);
+    rerender({ include: true });
+    await act(async () => { await result.current.confirm(); });
+    expect(result.current.preview).toBeNull();
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+  });
+
+  it("ignores a late preview from the old conversation selection", async () => {
+    let finish!: (value: PreparationPreview) => void;
+    vi.mocked(previewSemanticPreparation).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const { result, rerender } = renderHook(({ include }) => useMaterialPreparation(scope, include), {
+      initialProps: { include: false },
+    });
+    let reviewing!: Promise<void>;
+    act(() => { reviewing = result.current.review(); });
+    rerender({ include: true });
+    await act(async () => { finish(preview); await reviewing; });
+    expect(result.current.preview).toBeNull();
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+  });
+});

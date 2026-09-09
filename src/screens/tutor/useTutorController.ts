@@ -21,6 +21,7 @@ export function useTutorController() {
   const current = useRef<ConversationDetail | null>(null);
   const [scope, setScope] = useState<StudyScope>(GENERAL);
   const [target, setTarget] = useState<TutorTarget | null>(null);
+  const [includeConversations, setConversationRetrieval] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export function useTutorController() {
   const bootstrapLane = useRequestLane();
   const detailLane = useRequestLane();
   const historyLane = useRequestLane();
-  const preparation = useMaterialPreparation(scope);
+  const preparation = useMaterialPreparation(scope, includeConversations && target?.mode !== "hint");
 
   useEffect(() => {
     alive.current = true;
@@ -114,6 +115,7 @@ export function useTutorController() {
       if (!detailLane.isCurrent(token)) return;
       setDetail(value);
       setScope(value.conversation.scope);
+      setConversationRetrieval(false);
       setTarget(null);
       setDraft("");
       setError(null);
@@ -132,6 +134,7 @@ export function useTutorController() {
     setLoading(false);
     setDetail(null);
     setScope(next);
+    setConversationRetrieval(false);
     setTarget(null);
     setDraft("");
     setError(null);
@@ -145,6 +148,13 @@ export function useTutorController() {
     setTarget(next);
     if (next.mode === "hint") setDraft("Give me a hint without revealing the answer.");
     void initialize();
+  }
+
+  function setIncludeConversations(enabled: boolean): void {
+    if (loading || !canSwitch()) return;
+    // This opts into retrieval for the current interaction only. It neither
+    // grants a conversation sharing permission nor starts a provider request.
+    setConversationRetrieval(enabled && scope.kind !== "general" && target?.mode !== "hint");
   }
 
   async function perform(request: TutorTurnInput): Promise<void> {
@@ -203,7 +213,8 @@ export function useTutorController() {
       request = {
         operationId: createOperationId(), conversationId: value.conversation.id,
         expectedRevision: value.conversation.revision, mode, text,
-        focus: target?.focus ?? null, profileId, includeConversations: false,
+        focus: target?.focus ?? null, profileId,
+        includeConversations: includeConversations && scope.kind !== "general" && mode !== "hint" && target?.mode !== "hint",
         questionId: question?.id ?? null,
       };
       await perform(request);
@@ -272,7 +283,8 @@ export function useTutorController() {
 
   return {
     conversations, profiles, choices, detail, scope, target, panelOpen, draft, profileId, defaultTutorProfileId,
-    loading, busy, error, pending, needsRefresh, preparation, initialize, refresh, selectConversation,
+    loading, busy, error, pending, needsRefresh, preparation, includeConversations, setIncludeConversations,
+    initialize, refresh, selectConversation,
     newConversation, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
     send, retryPending, cancel, loadEarlier, removeConversation,
   };

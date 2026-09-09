@@ -8,6 +8,7 @@
     border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small);
     padding: var(--ostudy-space-3); background: var(--ostudy-color-surface-raised); color: var(--ostudy-color-text-primary); font: inherit;
   }
+  .checkbox { display: flex; align-items: center; gap: var(--ostudy-space-2); min-height: var(--ostudy-size-touch-target); }
   .muted { color: var(--ostudy-color-text-muted); font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; }
   .notice, .options { border: 1px solid var(--ostudy-color-border-subtle); border-radius: var(--ostudy-radius-small); padding: var(--ostudy-space-3); background: var(--ostudy-color-surface-soft); line-height: 1.5; }
   .options summary { min-height: var(--ostudy-size-touch-target); align-content: center; cursor: pointer; font-weight: 650; }

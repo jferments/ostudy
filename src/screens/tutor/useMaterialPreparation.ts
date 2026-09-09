@@ -11,8 +11,10 @@ import {
 type PreparationInput = Parameters<typeof prepareSemanticMaterial>[0];
 
 /** Mounted with the Tutor owner: closing a panel does not lose the job/receipt. */
-export function useMaterialPreparation(scope: StudyScope) {
-  const selection = useMemo(() => ({ scope, includeConversations: false }), [scope]);
+export function useMaterialPreparation(scope: StudyScope, includeConversations = false) {
+  const selection = useMemo(() => ({
+    scope, includeConversations: includeConversations && scope.kind !== "general",
+  }), [scope, includeConversations]);
   const [preview, setPreview] = useState<PreparationPreview | null>(null);
   const [status, setStatus] = useState<PreparationStatus | null>(null);
   const [progress, setProgress] = useState<LearningTaskProgress | null>(null);

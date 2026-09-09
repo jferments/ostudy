@@ -23,6 +23,9 @@ export function MaterialPreparation({ controller, disabled }: {
       {preview ? <section className={styles.notice} aria-label="Preparation consent">
         <p>{preview.sourceCount.toLocaleString()} source segments, {preview.sourceCharacters.toLocaleString()}
           {" "}text characters, and {preview.imageCount.toLocaleString()} image references selected.</p>
+        <p>{preview.selection.includeConversations
+          ? "Permitted conversations in this material selection are included; forgotten or revoked messages remain excluded."
+          : "Conversation messages are excluded from this preparation."}</p>
         <p>Interpretation: <strong>{preview.extractionProvider} / {preview.extractionModel}</strong>.<br />
           Embeddings: <strong>{preview.embeddingProvider} / {preview.embeddingModel}</strong>
           {preview.embeddingDimensions ? ` (${preview.embeddingDimensions} dimensions)` : " (provider-default dimensions)"}.</p>
