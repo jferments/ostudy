@@ -88,8 +88,7 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|error| io::Error::other(error.message))?;
     crate::knowledge::reconcile_startup(&database)
         .map_err(|error| io::Error::other(error.message))?;
-    crate::tutor::reconcile_startup(&database)
-        .map_err(|error| io::Error::other(error.message))?;
+    crate::tutor::reconcile_startup(&database).map_err(|error| io::Error::other(error.message))?;
     if let Some(restore) = pending_restore {
         restore.commit();
     }
@@ -237,7 +236,7 @@ fn present_startup_failure(app: &mut tauri::App, error: &str) {
         StartupFailureKind::Internal => logging::error_target(
             "app.startup",
             presentation.event,
-            "ostudy could not complete native startup.",
+            "ostudy could not finish native startup.",
             serde_json::json!({ "reasonCode": presentation.reason_code }),
         ),
     }

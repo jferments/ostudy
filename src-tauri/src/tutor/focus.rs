@@ -39,7 +39,11 @@ impl FocusedContent {
     pub(crate) fn description(&self) -> FocusDescription<'_> {
         FocusDescription {
             question: &self.question,
-            answer: if self.hidden { None } else { self.private_answer.as_deref() },
+            answer: if self.hidden {
+                None
+            } else {
+                self.private_answer.as_deref()
+            },
             answer_hidden: self.hidden,
             hint_level: self.hint_level,
         }
@@ -58,7 +62,11 @@ pub(crate) fn resolve(
     };
     focus.validate()?;
     match focus {
-        TutorFocus::Card { session_id, card_id, note_revision } => {
+        TutorFocus::Card {
+            session_id,
+            card_id,
+            note_revision,
+        } => {
             let (question, answer, hidden, hint_level) = database.with_connection(|connection| {
                 let deck_id: String = connection
                     .query_row(
@@ -127,41 +135,76 @@ pub(crate) fn resolve(
                     .map_err(CommandError::database)?;
                 Ok((Some(snapshot.0), Some(snapshot.1), snapshot.2, (prior as usize + 1).min(3)))
             })?;
-            let sources = materialize_source(database, &SourceSeed {
-                kind: SourceKind::Card,
-                owner_id: card_id.clone(),
-                parent_key: "presentation".to_string(),
-            })?;
-            let identity = hash(&serde_json::to_string(&(focus, &question, &answer, hidden))
-                .map_err(CommandError::serialization)?);
-            Ok(FocusedContent { sources, question, private_answer: answer, hidden, identity, hint_level })
+            let sources = materialize_source(
+                database,
+                &SourceSeed {
+                    kind: SourceKind::Card,
+                    owner_id: card_id.clone(),
+                    parent_key: "presentation".to_string(),
+                },
+            )?;
+            let identity = hash(
+                &serde_json::to_string(&(focus, &question, &answer, hidden))
+                    .map_err(CommandError::serialization)?,
+            );
+            Ok(FocusedContent {
+                sources,
+                question,
+                private_answer: answer,
+                hidden,
+                identity,
+                hint_level,
+            })
         }
-        TutorFocus::Guide { document_id, guide_id, topic_id, content_hash } => {
+        TutorFocus::Guide {
+            document_id,
+            guide_id,
+            topic_id,
+            content_hash,
+        } => {
             database.with_connection(|connection| {
                 if !scope_documents(connection, scope)?.contains(document_id) {
-                    return Err(invalid("This guide does not belong to the conversation's material selection."));
+                    return Err(invalid(
+                        "This guide does not belong to the conversation's material selection.",
+                    ));
                 }
-                let current: bool = connection.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM document_study_guides g
+                let current: bool = connection
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM document_study_guides g
                      WHERE g.id = ?1 AND g.document_id = ?2 AND g.state = 'active'
                        AND (?3 IS NULL OR EXISTS(SELECT 1 FROM document_study_guide_sections s
                            WHERE s.guide_id = g.id AND s.topic_id = ?3 AND s.content_hash = ?4)))",
-                    params![guide_id, document_id, topic_id, content_hash], |row| row.get(0),
-                ).map_err(CommandError::database)?;
+                        params![guide_id, document_id, topic_id, content_hash],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
                 if !current {
                     return Err(changed());
                 }
                 Ok(())
             })?;
-            let sources = materialize_source(database, &SourceSeed {
-                kind: SourceKind::Guide,
-                owner_id: guide_id.clone(),
-                parent_key: topic_id.clone().unwrap_or_else(|| "overview".to_string()),
-            })?;
-            let identity = hash(&serde_json::to_string(&sources.iter()
-                .map(|source| (&source.id, &source.content_hash)).collect::<Vec<_>>())
-                .map_err(CommandError::serialization)?);
-            Ok(FocusedContent { sources, identity, ..FocusedContent::default() })
+            let sources = materialize_source(
+                database,
+                &SourceSeed {
+                    kind: SourceKind::Guide,
+                    owner_id: guide_id.clone(),
+                    parent_key: topic_id.clone().unwrap_or_else(|| "overview".to_string()),
+                },
+            )?;
+            let identity = hash(
+                &serde_json::to_string(
+                    &sources
+                        .iter()
+                        .map(|source| (&source.id, &source.content_hash))
+                        .collect::<Vec<_>>(),
+                )
+                .map_err(CommandError::serialization)?,
+            );
+            Ok(FocusedContent {
+                sources,
+                identity,
+                ..FocusedContent::default()
+            })
         }
     }
 }

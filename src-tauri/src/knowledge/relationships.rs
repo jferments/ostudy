@@ -83,11 +83,19 @@ pub(crate) fn expand(
         }
         Ok(result)
     })?;
-    let mut seen = selected.iter().map(|source| source.id.clone()).collect::<HashSet<_>>();
+    let mut seen = selected
+        .iter()
+        .map(|source| source.id.clone())
+        .collect::<HashSet<_>>();
     let mut seed_keys = HashSet::new();
     let mut result = Vec::new();
     for seed in seeds {
-        if !seed_keys.insert(format!("{}:{}:{}", seed.kind.as_str(), seed.owner_id, seed.parent_key)) {
+        if !seed_keys.insert(format!(
+            "{}:{}:{}",
+            seed.kind.as_str(),
+            seed.owner_id,
+            seed.parent_key
+        )) {
             continue;
         }
         for source in materialize_source(database, &seed)? {

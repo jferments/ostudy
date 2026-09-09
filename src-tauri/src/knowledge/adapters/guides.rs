@@ -88,15 +88,18 @@ pub(super) fn read(
         )
         .map_err(CommandError::database)?;
     let overlays = statement
-        .query_map(params![row.document_id, topic_id, seed.owner_id, row.content_hash], |row| {
-            Ok(OverlayRow {
-                id: row.get(0)?,
-                kind: row.get(1)?,
-                text: row.get(2)?,
-                rich_doc: row.get(3)?,
-                revision: row.get(4)?,
-            })
-        })
+        .query_map(
+            params![row.document_id, topic_id, seed.owner_id, row.content_hash],
+            |row| {
+                Ok(OverlayRow {
+                    id: row.get(0)?,
+                    kind: row.get(1)?,
+                    text: row.get(2)?,
+                    rich_doc: row.get(3)?,
+                    revision: row.get(4)?,
+                })
+            },
+        )
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
@@ -124,7 +127,10 @@ pub(super) fn read(
         .map(|overlay| format!("{}:{}", overlay.id, overlay.revision))
         .collect::<Vec<_>>()
         .join("|");
-    let revision = hash(&format!("{}|{}|{overlay_revisions}", row.revision, row.content_hash));
+    let revision = hash(&format!(
+        "{}|{}|{overlay_revisions}",
+        row.revision, row.content_hash
+    ));
     let mut source = blank_record(seed, &title, &revision);
     source.text = text;
     source.document_id = Some(row.document_id.clone());
@@ -137,15 +143,19 @@ pub(super) fn read(
     if !modified {
         source.locator = row
             .locator
-            .map(|value| serde_json::from_str::<SourceLocator>(&value).map_err(CommandError::serialization))
+            .map(|value| {
+                serde_json::from_str::<SourceLocator>(&value).map_err(CommandError::serialization)
+            })
             .transpose()?;
     }
     let mut result = segment_record(source);
     // Notes are separate semantic records so an annotation cannot masquerade
     // as a statement from the immutable generated guide or original textbook.
     for overlay in overlays {
-        if !matches!(overlay.kind.as_str(), "guide_note" | "topic_note" | "highlight")
-            || overlay.text.trim().is_empty()
+        if !matches!(
+            overlay.kind.as_str(),
+            "guide_note" | "topic_note" | "highlight"
+        ) || overlay.text.trim().is_empty()
         {
             continue;
         }
@@ -155,7 +165,8 @@ pub(super) fn read(
         annotation.document_id = Some(row.document_id.clone());
         annotation.guide_id = Some(seed.owner_id.clone());
         annotation.origin = ContentOrigin::UserAuthored;
-        let rich_doc = serde_json::from_str(&overlay.rich_doc).map_err(CommandError::serialization)?;
+        let rich_doc =
+            serde_json::from_str(&overlay.rich_doc).map_err(CommandError::serialization)?;
         annotation.images = crate::cards::collect_asset_ids(&rich_doc)?
             .into_iter()
             .map(|id| EvidenceImage::CardAsset { id })

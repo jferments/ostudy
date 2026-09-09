@@ -7,9 +7,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::{
-    database::Database,
-    error::CommandError,
-    task_cancellation::CancellationSignal,
+    database::Database, error::CommandError, task_cancellation::CancellationSignal,
     util::validate_entity_id,
 };
 
@@ -165,16 +163,22 @@ pub async fn list_embedding_models(
     let request = load_profile_request(database.inner(), &input.profile_id)?;
     let profile = &request.profile;
     let url = embedding_models_url(profile)?;
-    let credential = runtime
-        .secrets
-        .resolve(&profile.id, profile.auth_mode, request.credential_storage)?;
+    let credential =
+        runtime
+            .secrets
+            .resolve(&profile.id, profile.auth_mode, request.credential_storage)?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())
         .transpose()?;
     let response = runtime
         .gateway
-        .get_json(url, bearer, profile.request_timeout_ms, MAX_EMBEDDING_RESPONSE_BYTES)
+        .get_json(
+            url,
+            bearer,
+            profile.request_timeout_ms,
+            MAX_EMBEDDING_RESPONSE_BYTES,
+        )
         .await
         .map_err(|failure| CommandError::new(failure.safe.code, failure.safe.message))?;
     let current = load_profile_request(database.inner(), &input.profile_id)?;
@@ -208,7 +212,10 @@ pub async fn test_embedding_profile(
         runtime.inner(),
         &context,
         EmbeddingPurpose::Document,
-        &["A triangle has three sides.".to_string(), "Water freezes at its freezing point.".to_string()],
+        &[
+            "A triangle has three sides.".to_string(),
+            "Water freezes at its freezing point.".to_string(),
+        ],
         &cancellation,
     )
     .await?;

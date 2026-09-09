@@ -6,10 +6,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
-    ai::AiRuntimeState,
-    database::Database,
-    error::CommandError,
-    paths::AppPaths,
+    ai::AiRuntimeState, database::Database, error::CommandError, paths::AppPaths,
     util::validate_entity_id,
 };
 
@@ -53,10 +50,12 @@ pub async fn preview_semantic_preparation(
         preparation::preview(app.state::<Database>().inner(), input)
     })
     .await
-    .map_err(|_| CommandError::new(
-        "semantic_preview_interrupted",
-        "The material preview was interrupted before any provider request was made.",
-    ))?
+    .map_err(|_| {
+        CommandError::new(
+            "semantic_preview_interrupted",
+            "The material preview was interrupted before any provider request was made.",
+        )
+    })?
 }
 
 #[tauri::command]
@@ -115,7 +114,12 @@ pub async fn search_semantic_material(
     )
     .await?;
     Ok(RetrievalPreview {
-        sources: result.hits.iter().take(12).map(|hit| SourceCitation::from(&hit.source)).collect(),
+        sources: result
+            .hits
+            .iter()
+            .take(12)
+            .map(|hit| SourceCitation::from(&hit.source))
+            .collect(),
         eligible_entries: result.eligible_entries,
         embedding_space: result.space_id,
     })

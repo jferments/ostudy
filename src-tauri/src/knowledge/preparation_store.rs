@@ -87,10 +87,7 @@ fn load(
     })
 }
 
-pub(crate) fn begin(
-    database: &Database,
-    input: PreparationStart<'_>,
-) -> Result<(), CommandError> {
+pub(crate) fn begin(database: &Database, input: PreparationStart<'_>) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
     let scope = serde_json::to_string(input.scope).map_err(CommandError::serialization)?;
     database.with_connection(|connection| {
@@ -147,7 +144,9 @@ pub(crate) fn checkpoint(
             )
             .map_err(CommandError::database)?;
         if changed != 1 {
-            return Err(invalid("Semantic preparation no longer matches this operation."));
+            return Err(invalid(
+                "Semantic preparation no longer matches this operation.",
+            ));
         }
         Ok(())
     })

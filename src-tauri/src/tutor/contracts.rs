@@ -33,7 +33,12 @@ impl TutorMode {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase", deny_unknown_fields)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum TutorFocus {
     Card {
         session_id: Option<String>,
@@ -51,7 +56,11 @@ pub enum TutorFocus {
 impl TutorFocus {
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
         match self {
-            Self::Card { session_id, card_id, note_revision } => {
+            Self::Card {
+                session_id,
+                card_id,
+                note_revision,
+            } => {
                 if let Some(id) = session_id {
                     validate_entity_id(id, "practice session")?;
                 }
@@ -60,16 +69,28 @@ impl TutorFocus {
                     return Err(invalid("The focused card revision is invalid."));
                 }
             }
-            Self::Guide { document_id, guide_id, topic_id, content_hash } => {
+            Self::Guide {
+                document_id,
+                guide_id,
+                topic_id,
+                content_hash,
+            } => {
                 validate_entity_id(document_id, "guide document")?;
                 validate_entity_id(guide_id, "study guide")?;
                 if let Some(id) = topic_id {
                     validate_entity_id(id, "guide topic")?;
-                    if !content_hash.as_deref().is_some_and(crate::knowledge::contracts::is_hash) {
-                        return Err(invalid("The focused guide section fingerprint is required."));
+                    if !content_hash
+                        .as_deref()
+                        .is_some_and(crate::knowledge::contracts::is_hash)
+                    {
+                        return Err(invalid(
+                            "The focused guide section fingerprint is required.",
+                        ));
                     }
                 } else if content_hash.is_some() {
-                    return Err(invalid("An overview focus must not include a section fingerprint."));
+                    return Err(invalid(
+                        "An overview focus must not include a section fingerprint.",
+                    ));
                 }
             }
         }
@@ -115,7 +136,12 @@ impl TutorTurnInput {
         if self.expected_revision < 1 {
             return Err(invalid("The conversation revision is invalid."));
         }
-        bounded(&self.text, 8_000, "tutor message", self.mode == TutorMode::Quiz)?;
+        bounded(
+            &self.text,
+            8_000,
+            "tutor message",
+            self.mode == TutorMode::Quiz,
+        )?;
         if let Some(id) = &self.profile_id {
             validate_entity_id(id, "tutor profile")?;
         }
@@ -124,14 +150,24 @@ impl TutorTurnInput {
         }
         match (&self.question_id, self.mode) {
             (Some(id), TutorMode::Answer) => validate_entity_id(id, "quiz question")?,
-            (None, TutorMode::Answer) => return Err(invalid("Select the quiz question being answered.")),
+            (None, TutorMode::Answer) => {
+                return Err(invalid("Select the quiz question being answered."))
+            }
             (Some(_), _) => return Err(invalid("Only a quiz answer may reference a question.")),
             (None, _) => {}
         }
         if self.mode == TutorMode::Hint
-            && !matches!(self.focus, Some(TutorFocus::Card { session_id: Some(_), .. }))
+            && !matches!(
+                self.focus,
+                Some(TutorFocus::Card {
+                    session_id: Some(_),
+                    ..
+                })
+            )
         {
-            return Err(invalid("Flashcard hints require the current practice card."));
+            return Err(invalid(
+                "Flashcard hints require the current practice card.",
+            ));
         }
         Ok(())
     }
@@ -153,10 +189,14 @@ impl PrivateQuiz {
         bounded(&self.question, 3_000, "quiz question", false)?;
         bounded(&self.expected_answer, 4_000, "expected quiz answer", false)?;
         bounded(&self.explanation, 4_000, "quiz explanation", false)?;
-        if self.criteria.is_empty() || self.criteria.len() > 8
-            || self.source_ids.len() > 12 || self.knowledge_unit_ids.len() > 12
+        if self.criteria.is_empty()
+            || self.criteria.len() > 8
+            || self.source_ids.len() > 12
+            || self.knowledge_unit_ids.len() > 12
         {
-            return Err(invalid("The quiz criteria or supporting-reference count is invalid."));
+            return Err(invalid(
+                "The quiz criteria or supporting-reference count is invalid.",
+            ));
         }
         for criterion in &self.criteria {
             bounded(criterion, 1_000, "quiz criterion", false)?;
@@ -258,7 +298,10 @@ mod tests {
     fn conversations_do_not_require_a_learning_profile() {
         let input = CreateConversationInput {
             operation_id: "a".repeat(32),
-            scope: StudyScope { kind: ScopeKind::General, id: None },
+            scope: StudyScope {
+                kind: ScopeKind::General,
+                id: None,
+            },
             title: "Explain this concept".to_string(),
         };
         assert!(input.validate().is_ok());
@@ -267,9 +310,15 @@ mod tests {
     #[test]
     fn hints_cannot_be_requested_without_a_native_practice_snapshot() {
         let input = TutorTurnInput {
-            operation_id: "a".repeat(32), conversation_id: "b".repeat(32),
-            expected_revision: 1, mode: TutorMode::Hint, text: "A hint".to_string(),
-            focus: None, profile_id: None, include_conversations: false, question_id: None,
+            operation_id: "a".repeat(32),
+            conversation_id: "b".repeat(32),
+            expected_revision: 1,
+            mode: TutorMode::Hint,
+            text: "A hint".to_string(),
+            focus: None,
+            profile_id: None,
+            include_conversations: false,
+            question_id: None,
         };
         assert!(input.validate().is_err());
         let serialized = serde_json::to_value(input).unwrap();

@@ -22,7 +22,10 @@ pub(crate) fn scope_documents(
             None,
         ),
         ScopeKind::Deck => {
-            let id = scope.id.as_deref().ok_or_else(|| invalid("Select a deck."))?;
+            let id = scope
+                .id
+                .as_deref()
+                .ok_or_else(|| invalid("Select a deck."))?;
             require_deck(connection, id)?;
             query_ids(
                 connection,
@@ -34,7 +37,10 @@ pub(crate) fn scope_documents(
             )
         }
         ScopeKind::Document | ScopeKind::Guide => {
-            let id = scope.id.as_deref().ok_or_else(|| invalid("Select a document."))?;
+            let id = scope
+                .id
+                .as_deref()
+                .ok_or_else(|| invalid("Select a document."))?;
             let exists = connection
                 .query_row("SELECT 1 FROM documents WHERE id = ?1", [id], |_| Ok(()))
                 .optional()

@@ -12,7 +12,10 @@ pub(super) fn load_task_defaults(
     connection: &mut Connection,
 ) -> Result<AiTaskDefaultsDto, CommandError> {
     Ok(AiTaskDefaultsDto {
-        flashcard_generation_profile_id: task_profile_id(connection, AiTaskKind::FlashcardGeneration)?,
+        flashcard_generation_profile_id: task_profile_id(
+            connection,
+            AiTaskKind::FlashcardGeneration,
+        )?,
         tutor_profile_id: task_profile_id(connection, AiTaskKind::Tutor)?,
         embeddings_profile_id: task_profile_id(connection, AiTaskKind::Embeddings)?,
     })
@@ -44,8 +47,12 @@ pub(crate) fn sanitize_for_device_transfer(
     include_defaults: bool,
 ) -> Result<(), CommandError> {
     if !include_defaults {
-        connection.execute("DELETE FROM ai_task_defaults", []).map_err(CommandError::database)?;
-        connection.execute("DELETE FROM ai_embedding_options", []).map_err(CommandError::database)?;
+        connection
+            .execute("DELETE FROM ai_task_defaults", [])
+            .map_err(CommandError::database)?;
+        connection
+            .execute("DELETE FROM ai_embedding_options", [])
+            .map_err(CommandError::database)?;
     }
     Ok(())
 }
@@ -88,7 +95,10 @@ pub(super) fn set_task_default(
             ));
         }
         if input.task_kind == AiTaskKind::Embeddings
-            && !matches!(profile.provider_kind, ProviderKind::Openrouter | ProviderKind::LlamaCpp)
+            && !matches!(
+                profile.provider_kind,
+                ProviderKind::Openrouter | ProviderKind::LlamaCpp
+            )
         {
             return Err(CommandError::new(
                 "ai_embeddings_unsupported",

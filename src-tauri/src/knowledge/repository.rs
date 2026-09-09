@@ -162,7 +162,9 @@ pub(crate) fn publish_units(
     inputs: Vec<KnowledgeUnitInput>,
 ) -> Result<Vec<KnowledgeUnit>, CommandError> {
     if !is_hash(contract) || inputs.len() > MAX_UNITS_PER_SOURCE {
-        return Err(invalid("The knowledge extraction contract or unit count is invalid."));
+        return Err(invalid(
+            "The knowledge extraction contract or unit count is invalid.",
+        ));
     }
     let mut units = Vec::with_capacity(inputs.len());
     let mut seen = HashSet::new();
@@ -240,7 +242,9 @@ pub(crate) fn link_artifact_units(
         || unit_ids.len() > 64
         || !source_is_current(connection, artifact)?
     {
-        return Err(invalid("The semantic artifact association is invalid or stale."));
+        return Err(invalid(
+            "The semantic artifact association is invalid or stale.",
+        ));
     }
     for id in unit_ids {
         let changed = connection
@@ -276,7 +280,9 @@ pub(crate) fn linked_units(
         )
         .map_err(CommandError::database)?;
     let rows = statement
-        .query_map(params![artifact.id, artifact.content_hash], |row| row.get::<_, String>(0))
+        .query_map(params![artifact.id, artifact.content_hash], |row| {
+            row.get::<_, String>(0)
+        })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;

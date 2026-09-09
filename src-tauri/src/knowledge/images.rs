@@ -11,9 +11,7 @@ use rusqlite::{params, OptionalExtension};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_intelligence::SourcePageImage,
-    database::Database,
-    error::CommandError,
+    ai::document_intelligence::SourcePageImage, database::Database, error::CommandError,
     paths::AppPaths,
 };
 
@@ -86,14 +84,25 @@ pub(crate) fn load_images(
             || usize::try_from(record.size).unwrap_or(usize::MAX) > MAX_IMAGE_BYTES
             || !record.media_type.starts_with("image/")
         {
-            return Err(invalid("An evidence image is unsupported or exceeds the 8 MiB image limit."));
+            return Err(invalid(
+                "An evidence image is unsupported or exceeds the 8 MiB image limit.",
+            ));
         }
         let relative = Path::new(&record.path);
-        if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
+        if relative
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+        {
             return Err(invalid("An evidence image has an invalid managed path."));
         }
-        let root = paths.app_data_dir().canonicalize().map_err(CommandError::io)?;
-        let resolved = paths.resolve_relative(&record.path).canonicalize().map_err(CommandError::io)?;
+        let root = paths
+            .app_data_dir()
+            .canonicalize()
+            .map_err(CommandError::io)?;
+        let resolved = paths
+            .resolve_relative(&record.path)
+            .canonicalize()
+            .map_err(CommandError::io)?;
         if !resolved.starts_with(&root) {
             return Err(invalid("An evidence image is outside the managed library."));
         }
@@ -103,19 +112,27 @@ pub(crate) fn load_images(
             .read_to_end(&mut bytes)
             .map_err(CommandError::io)?;
         if bytes.len() > MAX_IMAGE_BYTES || i64::try_from(bytes.len()).ok() != Some(record.size) {
-            return Err(invalid("An evidence image changed or exceeded its size limit."));
+            return Err(invalid(
+                "An evidence image changed or exceeded its size limit.",
+            ));
         }
         if let Some(expected) = record.sha256 {
             if format!("{:x}", Sha256::digest(&bytes)) != expected {
-                return Err(invalid("An evidence image failed its source-integrity check."));
+                return Err(invalid(
+                    "An evidence image failed its source-integrity check.",
+                ));
             }
         }
         if !supported_image_bytes(&bytes) {
-            return Err(invalid("This evidence image is not a supported PNG, JPEG, GIF, or WebP file."));
+            return Err(invalid(
+                "This evidence image is not a supported PNG, JPEG, GIF, or WebP file.",
+            ));
         }
         total_bytes = total_bytes.saturating_add(bytes.len());
         if total_bytes > MAX_TOTAL_IMAGE_BYTES {
-            return Err(invalid("The selected image evidence exceeds the 24 MiB request limit."));
+            return Err(invalid(
+                "The selected image evidence exceeds the 24 MiB request limit.",
+            ));
         }
         images.push(SourcePageImage {
             page_number: record.source_unit,
@@ -140,7 +157,9 @@ mod tests {
     #[test]
     fn image_evidence_is_content_checked_not_filename_checked() {
         assert!(supported_image_bytes(b"GIF89aexample"));
-        assert!(!supported_image_bytes(b"<svg><script>not evidence</script></svg>"));
+        assert!(!supported_image_bytes(
+            b"<svg><script>not evidence</script></svg>"
+        ));
         assert!(!supported_image_bytes(b"named-image.png"));
     }
 }

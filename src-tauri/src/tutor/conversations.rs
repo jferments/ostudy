@@ -35,7 +35,9 @@ pub(crate) fn create(
         if let Some(id) = existing {
             let saved = load_summary(&transaction, &id)?;
             if saved.scope != input.scope || saved.title != input.title.trim() {
-                return Err(invalid("This conversation operation was already used for different input."));
+                return Err(invalid(
+                    "This conversation operation was already used for different input.",
+                ));
             }
             return Ok(saved);
         }
@@ -94,7 +96,11 @@ pub(crate) fn get(
             .map_err(CommandError::database)?;
         let mut ids = statement
             .query_map(
-                params![input.conversation_id, input.before_sequence, MAX_HISTORY_TURNS + 1],
+                params![
+                    input.conversation_id,
+                    input.before_sequence,
+                    MAX_HISTORY_TURNS + 1
+                ],
                 |row| row.get::<_, String>(0),
             )
             .map_err(CommandError::database)?
@@ -107,7 +113,11 @@ pub(crate) fn get(
             .iter()
             .map(|id| super::turns::load_public(connection, id))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(ConversationDetail { conversation, turns, has_earlier_turns })
+        Ok(ConversationDetail {
+            conversation,
+            turns,
+            has_earlier_turns,
+        })
     })
 }
 
@@ -165,14 +175,26 @@ pub(crate) fn load_summary(
         )
         .optional()
         .map_err(CommandError::database)?
-        .ok_or_else(|| CommandError::new("tutor_conversation_missing", "This conversation is no longer in the library."))?;
+        .ok_or_else(|| {
+            CommandError::new(
+                "tutor_conversation_missing",
+                "This conversation is no longer in the library.",
+            )
+        })?;
     decode_summary(row)
 }
 
 type RawSummary = (String, String, String, i64, i64, i64);
 
 fn raw_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawSummary> {
-    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+    Ok((
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        row.get(3)?,
+        row.get(4)?,
+        row.get(5)?,
+    ))
 }
 
 fn decode_summary(row: RawSummary) -> Result<ConversationSummary, CommandError> {

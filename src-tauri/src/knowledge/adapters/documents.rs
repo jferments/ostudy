@@ -48,9 +48,8 @@ pub(super) fn read(
     source.text = text;
     source.origin = ContentOrigin::SourceDocument;
     source.document_id = Some(seed.owner_id.clone());
-    source.locator = Some(
-        serde_json::from_str::<SourceLocator>(&locator).map_err(CommandError::serialization)?,
-    );
+    source.locator =
+        Some(serde_json::from_str::<SourceLocator>(&locator).map_err(CommandError::serialization)?);
     let mut asset_ids: Vec<String> =
         serde_json::from_str(&assets).map_err(CommandError::serialization)?;
     asset_ids.sort();
