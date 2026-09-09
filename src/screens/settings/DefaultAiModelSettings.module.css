@@ -89,7 +89,7 @@
 }
 
 .error {
-  color: var(--ostudy-color-danger-text, var(--ostudy-color-text-primary));
+  color: var(--ostudy-color-text-primary);
 }
 
 @media (max-width: 900px) {
