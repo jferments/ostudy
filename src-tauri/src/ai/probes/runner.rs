@@ -339,7 +339,8 @@ pub(super) async fn test_profile(
 
     let document_started = Instant::now();
     let (document_schema_outcome, document_schema_supported) =
-        match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer).await {
+        match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer).await
+        {
             Ok(outcome) => {
                 let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
                 phases.push(passed_phase(
