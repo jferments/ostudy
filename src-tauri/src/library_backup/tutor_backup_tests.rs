@@ -43,3 +43,98 @@ fn full_backup_preserves_conversations_and_memory_policy_but_discards_old_vector
     drop(source);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn schema_10_and_11_backups_remain_admissible_after_later_migrations() {
+    use sha2::{Digest, Sha256};
+
+    // Build actual historical schemas, not a current database with a falsified
+    // version number. Backup admission must not mutate them while validating.
+    let migrations = [
+        (
+            "public_baseline",
+            include_str!("../../migrations/0001_public_baseline.sql"),
+        ),
+        (
+            "canonical_documents",
+            include_str!("../../migrations/0002_canonical_documents.sql"),
+        ),
+        (
+            "anydoc_document_adapters",
+            include_str!("../../migrations/0003_anydoc_document_adapters.sql"),
+        ),
+        (
+            "study_guides_and_learning_topics",
+            include_str!("../../migrations/0004_study_guides_and_learning_topics.sql"),
+        ),
+        (
+            "study_guide_pdf_exports",
+            include_str!("../../migrations/0005_study_guide_pdf_exports.sql"),
+        ),
+        (
+            "document_citations",
+            include_str!("../../migrations/0006_document_citations.sql"),
+        ),
+        (
+            "document_artifact_metadata",
+            include_str!("../../migrations/0007_document_artifact_metadata.sql"),
+        ),
+        (
+            "ai_profile_reasoning",
+            include_str!("../../migrations/0008_ai_profile_reasoning.sql"),
+        ),
+        (
+            "anki_apkg_staging",
+            include_str!("../../migrations/0009_anki_apkg_staging.sql"),
+        ),
+        (
+            "semantic_tutor",
+            include_str!("../../migrations/0010_semantic_tutor.sql"),
+        ),
+        (
+            "semantic_lifecycle",
+            include_str!("../../migrations/0011_semantic_lifecycle.sql"),
+        ),
+    ];
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .unwrap();
+    for (index, (name, sql)) in migrations.iter().enumerate() {
+        connection.execute_batch(sql).unwrap();
+        let version = index as i64 + 1;
+        connection.execute(
+            "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?1, ?2, ?3, 1)",
+            params![version, name, format!("{:x}", Sha256::digest(sql.as_bytes()))],
+        ).unwrap();
+        connection
+            .pragma_update(None, "user_version", version)
+            .unwrap();
+        if version == 10 {
+            connection.execute(
+                "INSERT INTO tutor_conversations (id,operation_id,title,scope_json,created_at,updated_at)
+                 VALUES (?1,?1,'Historical chat','{\"kind\":\"general\",\"id\":null}',1,1)",
+                ["b".repeat(32)],
+            ).unwrap();
+        }
+        if version >= 10 {
+            let changes = connection.total_changes();
+            validate_snapshot_database(&connection).unwrap();
+            assert_eq!(connection.total_changes(), changes);
+            assert_eq!(snapshot_schema_version(&connection).unwrap(), version);
+            let title: String = connection
+                .query_row("SELECT title FROM tutor_conversations", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(title, "Historical chat");
+        }
+    }
+    connection
+        .execute(
+            "UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 11",
+            [],
+        )
+        .unwrap();
+    assert!(validate_snapshot_database(&connection).is_err());
+}
