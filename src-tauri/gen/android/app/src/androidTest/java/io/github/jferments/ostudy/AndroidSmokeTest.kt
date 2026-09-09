@@ -103,7 +103,7 @@ class AndroidSmokeTest {
             )
             assertEquals("Decks|Search/Filter", snapshot.getString("tabs"))
             assertEquals(
-                "Flashcards|Study Guides|Documents|Analytics",
+                "Flashcards|Study Guides|Documents|Tutor|Analytics",
                 snapshot.getString("navigation")
             )
             assertTrue(snapshot.getBoolean("settingsGear"))
@@ -169,6 +169,41 @@ class AndroidSmokeTest {
                 expression = {
                     "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
                         "Array.from(document.querySelectorAll('main button[role=\"tab\"][aria-selected=\"true\"]')).some(button => button.textContent?.includes('Decks'))"
+                }
+            )
+        }
+    }
+
+    @Test
+    fun c_tutorOfflineAndAndroidBackReturnToFlashcards() {
+        withApplication { webView ->
+            waitForBridge(webView)
+            evaluateSync(
+                webView,
+                "document.querySelector('[data-testid=\"nav-tutor\"]')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Tutor' && " +
+                        "Boolean(document.querySelector('main [data-testid=\"tutor-screen\"] textarea')) && " +
+                        "!document.querySelector('main [role=\"alert\"]')"
+                }
+            )
+            val conversations = evaluatePromise(
+                webView,
+                "window.__TAURI_INTERNALS__.invoke('list_tutor_conversations').then(items => ({count: items.length}))"
+            )
+            assertEquals(0, conversations.getInt("count"))
+            waitForAndroidBackReady(webView)
+            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = {
+                    "document.querySelector('main h1')?.textContent?.trim() === 'Flashcards' && " +
+                        "document.querySelector('[data-testid=\"nav-decks\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
         }
@@ -632,7 +667,7 @@ class AndroidSmokeTest {
     }
 
     private fun evaluatePromise(webView: WebView, expression: String): JSONObject {
-        val key = "__ostudySmoke${UUID.randomUUID().toString().replace("-", "")}"
+        val key = "__ostudySmoke" + UUID.randomUUID().toString().replace("-", "")
         evaluateSync(
             webView,
             """

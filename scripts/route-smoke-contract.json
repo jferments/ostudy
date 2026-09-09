@@ -28,6 +28,10 @@
       "role": "primary-destination"
     },
     {
+      "id": "tutor",
+      "role": "primary-destination"
+    },
+    {
       "id": "cards",
       "role": "compatibility-alias",
       "target": "decks/search"
@@ -56,6 +60,7 @@
     "decks",
     "study-guides",
     "documents",
+    "tutor",
     "analytics",
     "settings"
   ],
@@ -84,7 +89,7 @@
             "path": "tests/webdriver/card_listing_followup_smoke.py",
             "entrypoint": "tests/webdriver/card_listing_followup_smoke.py",
             "entryFragments": [
-              "EXPECTED_NAVIGATION = [\"Flashcards\", \"Study Guides\", \"Documents\", \"Analytics\", \"Settings\"]",
+              "EXPECTED_NAVIGATION = [\"Flashcards\", \"Study Guides\", \"Documents\", \"Tutor\", \"Analytics\", \"Settings\"]",
               "assert_medium_navigation(session_id, deadline)"
             ],
             "assertionFragments": [
@@ -106,7 +111,7 @@
             "assertionFragments": [
               "No decks have been created yet.",
               "Import deck from file",
-              "Flashcards|Study Guides|Documents|Analytics"
+              "Flashcards|Study Guides|Documents|Tutor|Analytics"
             ]
           }
         ]
@@ -180,6 +185,57 @@
       }
     },
     {
+      "section": "tutor",
+      "label": "Tutor",
+      "smoke": {
+        "coverage": "route-entry",
+        "evidence": [
+          {
+            "runner": "native-webdriver",
+            "path": "tests/webdriver/tutor_smoke.py",
+            "entrypoint": "tests/webdriver/card_listing_followup_smoke.py",
+            "executionChain": [
+              {
+                "from": "tests/webdriver/card_listing_followup_smoke.py",
+                "to": "tests/webdriver/tutor_smoke.py",
+                "fragments": [
+                  "import tutor_smoke",
+                  "tutor_smoke.verify_tutor_and_contextual_return(session_id, deck_name)"
+                ]
+              }
+            ],
+            "entryFragments": [
+              "button[data-testid='nav-tutor']",
+              "def verify_tutor_and_contextual_return"
+            ],
+            "assertionFragments": [
+              "Tutor without a provider",
+              "Confirmed conversation deletion did not persist",
+              "Hint sheet changed practice",
+              "Hidden-answer panel exposed inappropriate controls"
+            ]
+          },
+          {
+            "runner": "android-emulator",
+            "path": "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidSmokeTest.kt",
+            "instrumentationCase": {
+              "class": "AndroidSmokeTest",
+              "method": "c_tutorOfflineAndAndroidBackReturnToFlashcards"
+            },
+            "entryFragments": [
+              "fun c_tutorOfflineAndAndroidBackReturnToFlashcards()",
+              "nav-tutor"
+            ],
+            "assertionFragments": [
+              "=== 'Tutor'",
+              "list_tutor_conversations",
+              "=== 'Flashcards'"
+            ]
+          }
+        ]
+      }
+    },
+    {
       "section": "analytics",
       "label": "Analytics",
       "smoke": {
@@ -229,6 +285,7 @@
       "decks",
       "study-guides",
       "documents",
+      "tutor",
       "analytics"
     ],
     "more": [],

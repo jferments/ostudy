@@ -771,7 +771,7 @@ def verify_compact_navigation(session_id: str, deadline: float) -> None:
     assert_brand_and_fresh_font_defaults(session_id, "compact layout")
     assert_navigation_labels(
         session_id,
-        ["Flashcards", "Study Guides", "Documents", "Analytics"],
+        ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics"],
         "compact",
     )
     open_study_guides_and_return(
@@ -864,7 +864,7 @@ def verify_wide_navigation(session_id: str, deadline: float) -> None:
     assert_brand_and_fresh_font_defaults(session_id, "wide layout")
     assert_navigation_labels(
         session_id,
-        ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"],
+        ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"],
         "wide",
     )
     open_study_guides_and_return(
@@ -944,7 +944,7 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
     assert_brand_and_fresh_font_defaults(session_id, "medium layout")
     assert_navigation_labels(
         session_id,
-        ["Flashcards", "Study Guides", "Documents", "Analytics", "Settings"],
+        ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"],
         "medium",
     )
     open_study_guides_and_return(

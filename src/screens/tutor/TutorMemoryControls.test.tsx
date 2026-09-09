@@ -32,7 +32,7 @@ describe("conversation memory controls", () => {
     await screen.findByText("An earlier topic");
     expect(get).toHaveBeenCalledWith(memory.conversationId);
     expect(change).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Allow this conversation in semantic retrieval")).not.toBeChecked();
+    expect((screen.getByLabelText("Allow this conversation in semantic retrieval") as HTMLInputElement).checked).toBe(false);
   });
 
   it("keeps the exact operation for an ambiguous retry", async () => {
@@ -58,6 +58,6 @@ describe("conversation memory controls", () => {
     await screen.findByText(/Memory settings were saved/);
     expect(change).toHaveBeenCalledTimes(1);
     expect(change.mock.calls[0][0].action).toBe("forget_earlier");
-    expect(screen.queryByRole("button", { name: "Check memory change result" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check memory change result" })).toBeNull();
   });
 });
