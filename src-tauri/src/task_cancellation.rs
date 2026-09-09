@@ -224,17 +224,35 @@ tokio::task_local! {
     static CURRENT_DOCUMENT_TASK: ActiveDocumentTask;
 }
 
+/// A registered document is retired on success, failure, early foreground-service
+/// rejection, or future cancellation. Progress state must not remain stuck in
+/// the process registry until an application restart.
+struct DocumentRegistration<'a> {
+    registry: &'a ActiveDocumentTasks,
+    document_id: &'a str,
+    signal: CancellationSignal,
+}
+
+impl Drop for DocumentRegistration<'_> {
+    fn drop(&mut self) {
+        self.signal.cancel();
+        self.registry.finish(self.document_id);
+    }
+}
+
 pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
 where
     F: Future<Output = Result<T, CommandError>>,
 {
+    let _activity = crate::task_activity::ActivityGuard::begin()?;
     let task = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
-    let result = {
-        let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
-        CURRENT_DOCUMENT_TASK.scope(task, future).await
+    let _registration = DocumentRegistration {
+        registry: &ACTIVE_DOCUMENT_TASKS,
+        document_id,
+        signal: task.signal.clone(),
     };
-    ACTIVE_DOCUMENT_TASKS.finish(document_id);
-    result
+    let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
+    CURRENT_DOCUMENT_TASK.scope(task, future).await
 }
 
 pub(crate) fn current_signal() -> Option<CancellationSignal> {
@@ -556,5 +574,23 @@ mod tests {
         assert_eq!(progress.reasoning_tokens, 80);
         assert_eq!(progress.cached_prompt_tokens, 600);
         ACTIVE_DOCUMENT_TASKS.finish(document_id);
+    }
+    #[test]
+    fn registration_is_released_after_an_early_error_or_abandoned_future() {
+        let registry = ActiveDocumentTasks::default();
+        let signal;
+        {
+            let task = registry.begin("interrupted-document").unwrap();
+            signal = task.signal.clone();
+            let _registration = DocumentRegistration {
+                registry: &registry,
+                document_id: "interrupted-document",
+                signal: task.signal,
+            };
+            assert!(registry.has_any());
+        }
+        assert!(!registry.has_any());
+        assert!(signal.is_canceled());
+        assert!(registry.begin("interrupted-document").is_ok());
     }
 }

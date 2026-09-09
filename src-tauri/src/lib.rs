@@ -86,6 +86,7 @@ mod study_calendar;
 mod studyability;
 mod studydeck;
 mod system_resources;
+mod task_activity;
 mod task_cancellation;
 mod tutor;
 mod ui_checkpoint;
@@ -144,7 +145,9 @@ pub fn run() {
             let requested = lifecycle.transition(platform::LifecyclePhase::TerminationRequested);
             let _ = window.emit("ostudy-lifecycle", requested);
             if window.label() != "main"
-                || (!task_cancellation::has_active_document_tasks() && !knowledge::has_active_tasks())
+                || (!task_cancellation::has_active_document_tasks()
+                    && !knowledge::has_active_tasks()
+                    && !task_activity::maintenance_active())
             {
                 let terminating = lifecycle.transition(platform::LifecyclePhase::Terminating);
                 let _ = window.emit("ostudy-lifecycle", terminating);
@@ -161,7 +164,7 @@ pub fn run() {
             window
                 .dialog()
                 .message(
-                    "A document, semantic preparation, or tutor request is still running. Closing ostudy will interrupt the request. Previously saved material and conversation messages will remain available. Close anyway?",
+                    "A document, semantic preparation, tutor request, or library maintenance operation is still running. Closing ostudy will interrupt the request. Previously saved material and conversation messages will remain available. Close anyway?",
                 )
                 .title("Study processing is still running")
                 .kind(MessageDialogKind::Warning)
