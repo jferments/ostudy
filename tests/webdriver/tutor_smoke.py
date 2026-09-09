@@ -141,7 +141,12 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
         raise AssertionError("Inspecting memory unexpectedly created a provider-backed turn")
     delete = webdriver.wait_for_enabled_element(session_id, "xpath", "//main//button[normalize-space(.)='Delete']", deadline)
     webdriver.click(session_id, delete)
-    confirmation = webdriver.wait_for_enabled_element(session_id, "xpath", "//*[@role='dialog']//button[normalize-space(.)='Delete conversation']", deadline)
+    confirmation = webdriver.wait_for_enabled_element(
+        session_id,
+        "xpath",
+        "//*[@role='alertdialog']//button[normalize-space(.)='Delete conversation']",
+        deadline,
+    )
     webdriver.click(session_id, confirmation)
     ui.wait_for_overlay_inactive(session_id, deadline, "Tutor deletion confirmation")
     if any(item["id"] == conversation_id for item in native(session_id, "list_tutor_conversations")):
