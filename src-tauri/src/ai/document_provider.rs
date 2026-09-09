@@ -310,10 +310,7 @@ mod tests {
 
     #[test]
     fn context_capability_parser_rejects_nonpositive_values() {
-        assert_eq!(
-            parse_positive_usize(&serde_json::json!(8192)),
-            Some(8192)
-        );
+        assert_eq!(parse_positive_usize(&serde_json::json!(8192)), Some(8192));
         assert_eq!(parse_positive_usize(&serde_json::json!(0)), None);
         assert_eq!(parse_positive_usize(&serde_json::Value::Null), None);
     }

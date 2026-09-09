@@ -258,7 +258,8 @@ pub(super) async fn test_profile(
     }
 
     let text_start = Instant::now();
-    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer).await
+    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer)
+        .await
     {
         Ok(outcome) => {
             let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
@@ -337,37 +338,32 @@ pub(super) async fn test_profile(
     };
 
     let document_started = Instant::now();
-    let (document_schema_outcome, document_schema_supported) = match providers::run_document_schema_probe(
-        &runtime.gateway,
-        &request_profile,
-        bearer,
-    )
-    .await
-    {
-        Ok(outcome) => {
-            let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
-            phases.push(passed_phase(
-                "document_generation_schema",
-                "Document generation schema",
-                &format!(
-                    "The selected model satisfied ostudy's representative document-generation contract through its configured provider dialect (finish: {finish})."
-                ),
-                Some(elapsed_ms(document_started)),
-            ));
-            (Some(outcome), Some(true))
-        }
-        Err(error_value) => {
-            optional_failure = true;
-            phases.push(failed_phase(
-                "document_generation_schema",
-                "Document generation schema",
-                "The selected model did not satisfy ostudy's representative document-generation contract through the same structured-output path used by real document work.",
-                Some(elapsed_ms(document_started)),
-                error_value.safe,
-            ));
-            (None, Some(false))
-        }
-    };
+    let (document_schema_outcome, document_schema_supported) =
+        match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer).await {
+            Ok(outcome) => {
+                let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
+                phases.push(passed_phase(
+                    "document_generation_schema",
+                    "Document generation schema",
+                    &format!(
+                        "The selected model satisfied ostudy's representative document-generation contract through its configured provider dialect (finish: {finish})."
+                    ),
+                    Some(elapsed_ms(document_started)),
+                ));
+                (Some(outcome), Some(true))
+            }
+            Err(error_value) => {
+                optional_failure = true;
+                phases.push(failed_phase(
+                    "document_generation_schema",
+                    "Document generation schema",
+                    "The selected model did not satisfy ostudy's representative document-generation contract through the same structured-output path used by real document work.",
+                    Some(elapsed_ms(document_started)),
+                    error_value.safe,
+                ));
+                (None, Some(false))
+            }
+        };
 
     let usage_reported = text_outcome.prompt_tokens.is_some()
         || text_outcome.completion_tokens.is_some()

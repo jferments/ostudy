@@ -123,7 +123,10 @@ fn one_provider_connection_can_back_three_independent_task_models() {
     .unwrap();
 
     assert_eq!(defaults.tutor_profile_id, Some(profile.id.clone()));
-    assert_eq!(defaults.tutor_model_id.as_deref(), Some("anthropic/claude-sonnet"));
+    assert_eq!(
+        defaults.tutor_model_id.as_deref(),
+        Some("anthropic/claude-sonnet")
+    );
     assert_eq!(defaults.embeddings_profile_id, Some(profile.id.clone()));
     assert_eq!(
         defaults.embeddings_model_id.as_deref(),
