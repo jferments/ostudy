@@ -93,9 +93,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "dea76f0b89417bea0dc9d34d4f4780a9edea3690c5b4146b391db83ba408bf73",
         sql: include_str!("../migrations/0011_semantic_lifecycle.sql"),
     },
+    Migration {
+        version: 12,
+        name: "semantic_eviction_queue",
+        checksum: "b3e26dbd5a7e2e617bc24ae15377dacf046950432256083ba76be8598a52e8fb",
+        sql: include_str!("../migrations/0012_semantic_eviction_queue.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 11;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 12;
 
 pub struct Database {
     connection: Mutex<Connection>,
