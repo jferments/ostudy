@@ -11,9 +11,19 @@ import { TutorWorkspace } from "./TutorWorkspace";
 import { useTutorController, type TutorController } from "./useTutorController";
 
 vi.mock("../../ipc/aiProfiles", () => ({ getAiTaskDefaults: vi.fn(), listAiProviderProfiles: vi.fn() }));
-vi.mock("../../ipc/knowledge", () => ({ cancelLearningTask: vi.fn(), listSemanticScopeChoices: vi.fn(),
-  getSemanticPreparation: vi.fn(), getSemanticSourceCitation: vi.fn(), prepareSemanticMaterial: vi.fn(),
-  previewSemanticPreparation: vi.fn(), getLearningTaskProgress: vi.fn() }));
+vi.mock("../../ipc/knowledge", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../ipc/knowledge")>();
+  return {
+    ...actual,
+    cancelLearningTask: vi.fn(),
+    listSemanticScopeChoices: vi.fn(),
+    getSemanticPreparation: vi.fn(),
+    getSemanticSourceCitation: vi.fn(),
+    prepareSemanticMaterial: vi.fn(),
+    previewSemanticPreparation: vi.fn(),
+    getLearningTaskProgress: vi.fn(),
+  };
+});
 vi.mock("../../ipc/tutor", () => ({ createTutorConversation: vi.fn(), deleteTutorConversation: vi.fn(),
   getTutorConversation: vi.fn(), listTutorConversations: vi.fn(), sendTutorTurn: vi.fn() }));
 vi.mock("../../ui/overlays/overlayContext", () => ({ useConfirm: () => async () => true }));
