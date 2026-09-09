@@ -383,8 +383,10 @@ async fn generate_window_with_recovery(
         input.document_title,
         input.outline,
         input.window,
-        input.images,
-        input.knowledge,
+        document_intelligence::AuthoringEvidence {
+            images: input.images,
+            knowledge: input.knowledge,
+        },
         document_intelligence::FlashcardGenerationLimits {
             maximum_cards: first_budget,
             completion_token_floor: 0,
@@ -417,8 +419,10 @@ async fn generate_window_with_recovery(
                 input.document_title,
                 input.outline,
                 input.window,
-                input.images,
-                input.knowledge,
+                document_intelligence::AuthoringEvidence {
+                    images: input.images,
+                    knowledge: input.knowledge,
+                },
                 document_intelligence::FlashcardGenerationLimits {
                     maximum_cards: reduced_budget,
                     completion_token_floor,

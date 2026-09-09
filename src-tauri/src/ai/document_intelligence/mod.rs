@@ -19,6 +19,7 @@ mod artifact_metadata;
 mod context;
 mod contracts;
 mod curation;
+mod evidence;
 mod flashcards;
 mod outline;
 mod schemas;
@@ -36,6 +37,7 @@ pub(crate) use context::{
 };
 pub(crate) use contracts::{DocumentOutline, SourcePageImage};
 pub(crate) use curation::curate_document_cards;
+pub(crate) use evidence::AuthoringEvidence;
 pub(crate) use flashcards::{
     flashcard_completion_token_ceiling, generate_window_flashcards, FlashcardGenerationLimits,
     FLASHCARD_PROMPT_VERSION, FLASHCARD_SCHEMA_VERSION,

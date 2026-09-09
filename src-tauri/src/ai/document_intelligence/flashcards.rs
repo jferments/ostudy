@@ -11,7 +11,8 @@ use crate::{
 use super::super::AiRuntimeState;
 use super::{
     context::DocumentTaskContext,
-    contracts::{parse_flashcards, DocumentOutline, SourcePageImage, MAX_WINDOW_CARDS},
+    contracts::{parse_flashcards, DocumentOutline, MAX_WINDOW_CARDS},
+    evidence::AuthoringEvidence,
     outline::outline_context_for_window,
     schemas::flashcard_schema,
     support::{bounded_diagnostic, collapse_contract_error, retryable_contract_error},
@@ -32,10 +33,10 @@ pub(crate) async fn generate_window_flashcards(
     document_title: &str,
     outline: &DocumentOutline,
     window: &SemanticWindow,
-    images: &[SourcePageImage],
-    knowledge: &KnowledgeCatalog,
+    evidence: AuthoringEvidence<'_>,
     limits: FlashcardGenerationLimits,
 ) -> Result<Vec<Value>, CommandError> {
+    let AuthoringEvidence { knowledge, .. } = evidence;
     if knowledge.units.is_empty() {
         return Ok(Vec::new());
     }
@@ -57,8 +58,7 @@ pub(crate) async fn generate_window_flashcards(
         task,
         &system,
         &user,
-        images,
-        knowledge,
+        evidence,
         maximum_cards,
         limits.completion_token_floor,
     )
@@ -77,11 +77,11 @@ async fn request_flashcards_with_retry(
     task: &DocumentTaskContext,
     system: &str,
     user: &str,
-    images: &[SourcePageImage],
-    knowledge: &KnowledgeCatalog,
+    evidence: AuthoringEvidence<'_>,
     maximum_cards: usize,
     completion_token_floor: usize,
 ) -> Result<Vec<Value>, CommandError> {
+    let AuthoringEvidence { images, knowledge } = evidence;
     let mut schema = flashcard_schema(maximum_cards);
     let card_schema = schema["properties"]["cards"]["items"].take();
     schema["properties"]["cards"]["items"] = json!({

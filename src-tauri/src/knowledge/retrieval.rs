@@ -20,9 +20,7 @@ use crate::{
 
 use super::{
     adapters::scope_documents,
-    contracts::{
-        bounded, invalid, KnowledgeUnit, ScopeKind, SourceCitation, SourceRecord, StudyScope,
-    },
+    contracts::{bounded, invalid, ScopeKind, SourceCitation, SourceRecord, StudyScope},
     index::IndexKey,
     preparation::open_index,
     repository,
@@ -33,8 +31,6 @@ const MAX_ELIGIBLE_ENTRIES: usize = 250_000;
 
 pub(crate) struct RetrievedSource {
     pub source: SourceRecord,
-    pub units: Vec<KnowledgeUnit>,
-    pub distance: f64,
 }
 
 pub(crate) struct RetrievalResult {
@@ -130,17 +126,8 @@ pub(crate) async fn retrieve(
             if !current {
                 continue;
             }
-            let mut units = repository::load_units(connection, &source.id)?;
-            units.extend(repository::linked_units(connection, &source)?);
-            units.sort_by(|left, right| left.id.cmp(&right.id));
-            units.dedup_by(|left, right| left.id == right.id);
-            units.truncate(32);
             seen.insert(source.id.clone());
-            result.push(RetrievedSource {
-                source,
-                units,
-                distance: hit.distance,
-            });
+            result.push(RetrievedSource { source });
         }
         Ok(result)
     })?;

@@ -16,6 +16,7 @@ use super::super::AiRuntimeState;
 use super::{
     context::DocumentTaskContext,
     contracts::SourcePageImage,
+    evidence::AuthoringEvidence,
     support::{
         bounded_diagnostic, collapse_contract_error, output_error, retryable_contract_error,
     },
@@ -60,9 +61,9 @@ pub(crate) async fn generate_study_guide_topic_section(
     plan: &DocumentLearningPlan,
     topic: &LearningTopic,
     source_text: &str,
-    images: &[SourcePageImage],
-    knowledge: &KnowledgeCatalog,
+    evidence: AuthoringEvidence<'_>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
+    let AuthoringEvidence { images, knowledge } = evidence;
     if source_text.trim().is_empty() && images.is_empty() {
         return Err(CommandError::new(
             "study_guide_topic_has_no_evidence",

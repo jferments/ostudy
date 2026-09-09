@@ -93,11 +93,13 @@ pub(crate) async fn send(
             paths,
             runtime,
             &task,
-            &conversation.scope,
-            &input,
-            &focused,
-            quiz.as_ref(),
-            remembered,
+            context::StudyContextInput {
+                scope: &conversation.scope,
+                input: &input,
+                focus: &focused,
+                quiz: quiz.as_ref(),
+                history: remembered,
+            },
             &guard.signal,
         )
         .await?;

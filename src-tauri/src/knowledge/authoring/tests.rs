@@ -33,7 +33,7 @@ pub(crate) fn catalog_fixture() -> KnowledgeCatalog {
     }
 }
 
-fn fixture() -> (
+pub(crate) fn fixture() -> (
     Database,
     SourceRecord,
     KnowledgeCatalog,

@@ -12,7 +12,7 @@ pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
 pub(crate) const MAX_UNITS_PER_SOURCE: usize = 16;
 pub(crate) const MAX_PREPARATION_SOURCES: usize = 100_000;
-pub(crate) const MAX_CONTEXT_CHARS: usize = 32_000;
+pub(crate) const MAX_CONTEXT_BYTES: usize = 32_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -44,13 +44,6 @@ impl StudyScope {
             _ => Err(invalid("This study scope must not contain an entity ID.")),
         }
     }
-
-    pub(crate) fn key(&self) -> Result<String, CommandError> {
-        self.validate()?;
-        serde_json::to_string(self)
-            .map(|value| hash(&value))
-            .map_err(CommandError::serialization)
-    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -69,16 +62,6 @@ impl SourceKind {
             Self::Card => "card",
             Self::Guide => "guide",
             Self::Conversation => "conversation",
-        }
-    }
-
-    pub(crate) fn from_db(value: &str) -> Result<Self, CommandError> {
-        match value {
-            "document" => Ok(Self::Document),
-            "card" => Ok(Self::Card),
-            "guide" => Ok(Self::Guide),
-            "conversation" => Ok(Self::Conversation),
-            _ => Err(invalid("The saved semantic source kind is invalid.")),
         }
     }
 }

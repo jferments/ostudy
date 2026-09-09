@@ -125,3 +125,34 @@ fn delete_and_undo_keep_card_identity_without_reviving_semantic_interpretations(
         })
         .unwrap();
 }
+
+#[test]
+fn a_same_content_republication_does_not_accept_an_old_owner_revision() {
+    let database = fixture();
+    let earlier = materialize_source(&database, &seed()).unwrap().remove(0);
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "UPDATE notes SET revision = revision + 1 WHERE id = ?1",
+                    ["b".repeat(32)],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
+    let current = materialize_source(&database, &seed()).unwrap().remove(0);
+    assert_eq!(earlier.id, current.id);
+    assert_eq!(earlier.content_hash, current.content_hash);
+    assert_ne!(earlier.owner_revision, current.owner_revision);
+    database
+        .with_connection(|connection| {
+            assert!(!repository::source_is_current(connection, &earlier)?);
+            assert!(repository::source_is_current(connection, &current)?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        repository::publish_units(&database, &earlier, &hash("obsolete request"), vec![]).is_err()
+    );
+}

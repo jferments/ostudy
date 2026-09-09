@@ -91,24 +91,6 @@ pub(crate) fn expand(
         .collect::<HashSet<_>>();
     let mut seed_keys = HashSet::new();
     let mut result = Vec::new();
-    for seed in seeds {
-        if !seed_keys.insert(format!(
-            "{}:{}:{}",
-            seed.kind.as_str(),
-            seed.owner_id,
-            seed.parent_key
-        )) {
-            continue;
-        }
-        for source in materialize_source(database, &seed)? {
-            if seen.insert(source.id.clone()) {
-                result.push(source);
-            }
-            if result.len() >= 12 {
-                return Ok(result);
-            }
-        }
-    }
     // Explicit knowledge links survive generator rewording and can point to
     // evidence that a broad topic association alone would not select.
     database.with_connection(|connection| {
@@ -128,12 +110,69 @@ pub(crate) fn expand(
                 }
             }
         }
-        Ok(result)
-    })
+        Ok(())
+    })?;
+    for seed in seeds {
+        if result.len() >= 12 {
+            return Ok(result);
+        }
+        if !seed_keys.insert(format!(
+            "{}:{}:{}",
+            seed.kind.as_str(),
+            seed.owner_id,
+            seed.parent_key
+        )) {
+            continue;
+        }
+        for source in materialize_source(database, &seed)? {
+            if seen.insert(source.id.clone()) {
+                result.push(source);
+            }
+            if result.len() >= 12 {
+                return Ok(result);
+            }
+        }
+    }
+    Ok(result)
 }
 
 type TopicRow = (String, String, Option<String>, Option<String>);
 
 fn read_topic(row: &rusqlite::Row<'_>) -> rusqlite::Result<TopicRow> {
     Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_knowledge_links_resolve_original_evidence_without_a_topic_match() {
+        let (database, original, catalog, _) = super::super::authoring::tests::fixture();
+        let mut reference = original.clone();
+        reference.segment_key = "1:0:0".to_string();
+        reference.text = "Related material written in different words.".to_string();
+        reference.refresh_identity().unwrap();
+        database
+            .with_connection(|connection| {
+                repository::publish_source(connection, &reference, "1", 2)?;
+                repository::link_artifact_units(
+                    connection,
+                    &reference,
+                    &[catalog.units[0].id.clone()],
+                    "mentions",
+                    2,
+                )
+            })
+            .unwrap();
+        let expanded = expand(&database, &[reference]).unwrap();
+        assert_eq!(expanded.first().unwrap().id, original.id);
+        database
+            .with_connection(|connection| {
+                let units = repository::load_units(connection, &expanded[0].id)?;
+                assert_eq!(units[0].id, catalog.units[0].id);
+                Ok(())
+            })
+            .unwrap();
+    }
 }

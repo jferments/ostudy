@@ -10,7 +10,8 @@ use sha2::{Digest, Sha256};
 use crate::{
     ai::{
         document_intelligence::{
-            generate_study_guide_topic_section, DocumentTaskContext, SourcePageImage,
+            generate_study_guide_topic_section, AuthoringEvidence, DocumentTaskContext,
+            SourcePageImage,
         },
         AiRuntimeState,
     },
@@ -358,8 +359,10 @@ async fn generate_slot(
         execution.plan,
         topic,
         &evidence.source_text,
-        &evidence.images,
-        &catalogs[index],
+        AuthoringEvidence {
+            images: &evidence.images,
+            knowledge: &catalogs[index],
+        },
     )
     .await
     .map_err(|error| {

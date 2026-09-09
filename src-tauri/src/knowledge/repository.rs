@@ -108,8 +108,8 @@ pub(crate) fn source_is_current(
     connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM knowledge_sources
-             WHERE id = ?1 AND active = 1 AND content_hash = ?2)",
-            params![source.id, source.content_hash],
+             WHERE id = ?1 AND active = 1 AND content_hash = ?2 AND owner_revision = ?3)",
+            params![source.id, source.content_hash, source.owner_revision],
             |row| row.get::<_, bool>(0),
         )
         .map_err(CommandError::database)

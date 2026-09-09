@@ -16,7 +16,10 @@ use crate::{
     error::CommandError,
     knowledge::{
         adapters::scope_documents,
-        contracts::{invalid, KnowledgeUnit, ScopeKind, SourceKind, SourceRecord, StudyScope},
+        contracts::{
+            invalid, KnowledgeUnit, ScopeKind, SourceKind, SourceRecord, StudyScope,
+            MAX_CONTEXT_BYTES,
+        },
         relationships, repository, retrieval,
     },
     paths::AppPaths,
@@ -40,18 +43,29 @@ pub(crate) struct StudyContext {
     pub completion_tokens: usize,
 }
 
+pub(crate) struct StudyContextInput<'a> {
+    pub scope: &'a StudyScope,
+    pub input: &'a TutorTurnInput,
+    pub focus: &'a FocusedContent,
+    pub quiz: Option<&'a PrivateQuiz>,
+    pub history: HistorySnapshot,
+}
+
 pub(crate) async fn build(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
-    scope: &StudyScope,
-    input: &TutorTurnInput,
-    focus: &FocusedContent,
-    quiz: Option<&PrivateQuiz>,
-    mut history: HistorySnapshot,
+    request: StudyContextInput<'_>,
     cancellation: &CancellationSignal,
 ) -> Result<StudyContext, CommandError> {
+    let StudyContextInput {
+        scope,
+        input,
+        focus,
+        quiz,
+        mut history,
+    } = request;
     let mut sources = focus.sources.iter().take(4).cloned().collect::<Vec<_>>();
     let mut notice = String::new();
     if focus.sources.len() > 4 {
@@ -150,7 +164,9 @@ pub(crate) async fn build(
     let reserve = completion_tokens
         .saturating_add(5_000)
         .saturating_add(images.len() * 4_096);
-    let input_budget = context_window.saturating_sub(reserve).min(32_000);
+    let input_budget = context_window
+        .saturating_sub(reserve)
+        .min(MAX_CONTEXT_BYTES);
     if input_budget < 1_000 {
         return Err(CommandError::new("tutor_context_budget",
             "The selected model has insufficient verified context for this request and reasoning setting. Test its profile or choose a lower reasoning effort."));
