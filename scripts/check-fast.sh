@@ -95,6 +95,16 @@ cargo test \
   --lib \
   document_
 
+step "Tutor, shared knowledge, and privacy contracts"
+for test_filter in tutor:: knowledge:: device_sync::privacy_tests library_backup::tutor_backup_tests; do
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    "$test_filter"
+done
+
 step "Stage 10 rich-content and document-lifecycle regressions"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \

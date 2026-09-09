@@ -20,6 +20,28 @@ A human's local checkout and the commands supplied for local testing are not an 
 
 Stay on the same branch/PR for ordinary repairs. Never develop directly on `main`, force-push, rewrite shared history, or merge without the human's explicit instruction.
 
+## Keep feature continuations productive
+
+Finish one end-to-end acceptance increment at a time: inspect the verified head,
+implement its native and UI boundaries, add focused regression coverage, publish,
+and verify the new remote head. Keep the next increment explicit. Do not accumulate
+a second unpublished implementation while reporting the branch as complete.
+
+Preserve a discovered local candidate before editing it, but do not make recovery
+of a merely claimed historical candidate a permanent prerequisite. After one
+bounded recovery pass, use the actual remote tree and reimplement any still-missing
+behavior. Record what was recovered rather than inventing missing workspace state.
+
+Discover each needed GitHub action once, then call it. Distinguish written,
+published, compiled, tested, and manually accepted work in every status report.
+A failing unrelated gate does not prohibit coherent feature publication, but must
+be repaired before qualification is claimed. Repair ordinary code/test failures
+at their owning boundary rather than expanding infrastructure or weakening tests.
+
+CI failure archives may carry an immutable `git archive` plus commit/tree hashes.
+Those are read-only copies of published source, useful for auxiliary inspection;
+they are not source writers, edited candidates, or proof of test success.
+
 ## Expected-parent Git-data publication
 
 Use this sequence for every task-branch commit, including documentation commits:
