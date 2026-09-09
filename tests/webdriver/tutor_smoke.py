@@ -37,6 +37,48 @@ def click_css(session_id: str, selector: str, deadline: float) -> None:
     ))
 
 
+def wait_for_selected_conversation(
+    session_id: str,
+    conversation_id: str,
+    deadline: float,
+) -> None:
+    """Wait for React/native conversation selection, not a transient DOM value.
+
+    The Tutor select is controlled. Dispatching ``change`` starts an async native
+    read and React may immediately restore the previous controlled value until
+    that read resolves. The durable postcondition is the selected id plus the
+    conversation-only controls becoming available.
+    """
+    last: Any = None
+    while time.monotonic() < deadline:
+        last = ui.execute(session_id, f"""
+            const select = document.querySelector("main select[id$='-conversation']");
+            const memory = [...document.querySelectorAll('main summary')]
+              .some(item => item.textContent.trim() === 'Conversation memory');
+            const canDelete = [...document.querySelectorAll('main button')]
+              .some(item => item.textContent.trim() === 'Delete' && !item.disabled);
+            return {{
+              value: select instanceof HTMLSelectElement ? select.value : null,
+              disabled: select instanceof HTMLSelectElement ? select.disabled : null,
+              memory,
+              canDelete,
+            }};
+        """)
+        if (
+            isinstance(last, dict)
+            and last.get("value") == conversation_id
+            and last.get("disabled") is False
+            and last.get("memory") is True
+            and last.get("canDelete") is True
+        ):
+            return
+        time.sleep(0.1)
+    raise AssertionError(
+        "The saved Tutor conversation did not become current after its change event: "
+        f"{last!r}"
+    )
+
+
 def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     deadline = webdriver.deadline_after(60)
     click_css(session_id, "button[data-testid='nav-tutor']", deadline)
@@ -63,16 +105,18 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     )
     webdriver.find_element(session_id, "css selector", f"main select option[value='{conversation_id}']", deadline)
     # OPTION elements are not independently hit-testable in native WebKit.
-    # Drive the now-enabled visible SELECT through its ordinary change event.
-    selected = ui.execute(session_id, f"""
+    # Drive the enabled visible SELECT through its ordinary change event. Since
+    # it is React-controlled, selection completion is verified separately below.
+    dispatched = ui.execute(session_id, f"""
         const select = document.querySelector("main select[id$='-conversation']");
         if (!(select instanceof HTMLSelectElement) || select.disabled) return false;
         select.value = {json.dumps(conversation_id)};
         select.dispatchEvent(new Event('change', {{ bubbles: true }}));
-        return select.value === {json.dumps(conversation_id)};
+        return true;
     """)
-    if selected is not True:
-        raise AssertionError("The saved Tutor conversation could not be selected")
+    if dispatched is not True:
+        raise AssertionError("The saved Tutor conversation change event could not be dispatched")
+    wait_for_selected_conversation(session_id, conversation_id, deadline)
     summary = webdriver.find_element(session_id, "xpath", "//main//summary[normalize-space(.)='Conversation memory']", deadline)
     webdriver.click(session_id, summary)
     checkbox = webdriver.wait_for_enabled_element(
