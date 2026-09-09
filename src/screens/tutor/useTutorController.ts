@@ -21,7 +21,7 @@ export function useTutorController() {
   const current = useRef<ConversationDetail | null>(null);
   const [scope, setScope] = useState<StudyScope>(GENERAL);
   const [target, setTarget] = useState<TutorTarget | null>(null);
-  const [includeConversations, setConversationRetrieval] = useState(false);
+  const [includeConversations, setConversationInclusion] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -115,7 +115,7 @@ export function useTutorController() {
       if (!detailLane.isCurrent(token)) return;
       setDetail(value);
       setScope(value.conversation.scope);
-      setConversationRetrieval(false);
+      setConversationInclusion(false);
       setTarget(null);
       setDraft("");
       setError(null);
@@ -134,7 +134,7 @@ export function useTutorController() {
     setLoading(false);
     setDetail(null);
     setScope(next);
-    setConversationRetrieval(false);
+    setConversationInclusion(false);
     setTarget(null);
     setDraft("");
     setError(null);
@@ -154,7 +154,7 @@ export function useTutorController() {
     if (loading || !canSwitch()) return;
     // This opts into retrieval for the current interaction only. It neither
     // grants a conversation sharing permission nor starts a provider request.
-    setConversationRetrieval(enabled && scope.kind !== "general" && target?.mode !== "hint");
+    setConversationInclusion(enabled && scope.kind !== "general" && target?.mode !== "hint");
   }
 
   async function perform(request: TutorTurnInput): Promise<void> {
