@@ -80,11 +80,7 @@ fn context_for_request(
     request: ProfileRequestSnapshot,
 ) -> Result<EmbeddingContext, CommandError> {
     request.profile.validate_for_provider_request()?;
-    let options = load_embedding_options(
-        database,
-        &request.profile.id,
-        &request.profile.model_id,
-    )?;
+    let options = load_embedding_options(database, &request.profile.id, &request.profile.model_id)?;
     let profile = &request.profile;
     let space_contract = serde_json::to_string(&(
         EMBEDDING_TRANSPORT_VERSION,
@@ -174,9 +170,10 @@ pub async fn list_embedding_models(
     let request = load_profile_request(database.inner(), &input.profile_id)?;
     let profile = &request.profile;
     let url = embedding_models_url(profile)?;
-    let credential = runtime
-        .secrets
-        .resolve(&profile.id, profile.auth_mode, request.credential_storage)?;
+    let credential =
+        runtime
+            .secrets
+            .resolve(&profile.id, profile.auth_mode, request.credential_storage)?;
     let bearer = credential
         .as_ref()
         .map(|secret| secret.as_utf8())

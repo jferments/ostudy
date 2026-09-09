@@ -10,11 +10,7 @@ use crate::{
     util::{unix_time_millis, validate_entity_id},
 };
 
-use super::{
-    super::catalog::ProviderKind,
-    policy::validate_model_id,
-    repository::load_profile,
-};
+use super::{super::catalog::ProviderKind, policy::validate_model_id, repository::load_profile};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

@@ -28,13 +28,17 @@ pub(super) fn load_task_defaults(
     Ok(AiTaskDefaultsDto {
         flashcard_generation_profile_id: flashcards.as_ref().map(|value| value.profile_id.clone()),
         flashcard_generation_model_id: flashcards.as_ref().map(|value| value.model_id.clone()),
-        flashcard_generation_reasoning_effort: flashcards.as_ref().map(|value| value.reasoning_effort.clone()),
+        flashcard_generation_reasoning_effort: flashcards
+            .as_ref()
+            .map(|value| value.reasoning_effort.clone()),
         tutor_profile_id: tutor.as_ref().map(|value| value.profile_id.clone()),
         tutor_model_id: tutor.as_ref().map(|value| value.model_id.clone()),
         tutor_reasoning_effort: tutor.as_ref().map(|value| value.reasoning_effort.clone()),
         embeddings_profile_id: embeddings.as_ref().map(|value| value.profile_id.clone()),
         embeddings_model_id: embeddings.as_ref().map(|value| value.model_id.clone()),
-        embeddings_reasoning_effort: embeddings.as_ref().map(|value| value.reasoning_effort.clone()),
+        embeddings_reasoning_effort: embeddings
+            .as_ref()
+            .map(|value| value.reasoning_effort.clone()),
     })
 }
 
@@ -102,7 +106,9 @@ pub(super) fn set_task_default(
             )
             .map_err(CommandError::database)?;
         let expected_model = normalized.as_ref().map(|value| value.model_id.as_str());
-        let expected_reasoning = normalized.as_ref().map(|value| value.reasoning_effort.as_str());
+        let expected_reasoning = normalized
+            .as_ref()
+            .map(|value| value.reasoning_effort.as_str());
         if saved.0.as_deref().unwrap_or("flashcard_generation") != input.task_kind.as_str()
             || saved.1.as_deref() != expected_model
             || saved.2.as_deref() != expected_reasoning
@@ -167,7 +173,9 @@ pub(super) fn set_task_default(
             params![
                 input.task_kind.as_str(),
                 normalized.as_ref().map(|value| value.model_id.as_str()),
-                normalized.as_ref().map(|value| value.reasoning_effort.as_str()),
+                normalized
+                    .as_ref()
+                    .map(|value| value.reasoning_effort.as_str()),
                 input.operation_id,
             ],
         )
@@ -180,7 +188,11 @@ fn normalize_input(
     input: &SetAiTaskDefaultInput,
 ) -> Result<Option<TaskAssignment>, CommandError> {
     let Some(profile_id) = input.profile_id.as_deref() else {
-        if input.model_id.as_deref().is_some_and(|value| !value.trim().is_empty()) {
+        if input
+            .model_id
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
             return Err(CommandError::new(
                 "invalid_ai_task_default",
                 "Clear the model when clearing an AI provider assignment.",
@@ -211,7 +223,10 @@ fn normalize_input(
     }))
 }
 
-fn validate_profile_for_task(profile: &StoredProfile, task: AiTaskKind) -> Result<(), CommandError> {
+fn validate_profile_for_task(
+    profile: &StoredProfile,
+    task: AiTaskKind,
+) -> Result<(), CommandError> {
     if !profile.provider_kind.implemented() {
         return Err(CommandError::new(
             "ai_provider_not_implemented",
@@ -219,7 +234,10 @@ fn validate_profile_for_task(profile: &StoredProfile, task: AiTaskKind) -> Resul
         ));
     }
     if task == AiTaskKind::Embeddings
-        && !matches!(profile.provider_kind, ProviderKind::Openrouter | ProviderKind::LlamaCpp)
+        && !matches!(
+            profile.provider_kind,
+            ProviderKind::Openrouter | ProviderKind::LlamaCpp
+        )
     {
         return Err(CommandError::new(
             "ai_embeddings_unsupported",

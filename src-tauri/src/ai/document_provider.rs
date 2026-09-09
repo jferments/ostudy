@@ -265,8 +265,14 @@ mod tests {
         };
         assert_eq!(capabilities.resolve_reasoning_effort("low"), "none");
         assert_eq!(capabilities.resolve_reasoning_effort("high"), "high");
-        assert_eq!(capabilities.completion_token_ceiling("none", 10_000), 10_000);
-        assert_eq!(capabilities.completion_token_ceiling("high", 10_000), 50_000);
+        assert_eq!(
+            capabilities.completion_token_ceiling("none", 10_000),
+            10_000
+        );
+        assert_eq!(
+            capabilities.completion_token_ceiling("high", 10_000),
+            50_000
+        );
     }
 
     #[test]
@@ -304,7 +310,10 @@ mod tests {
 
     #[test]
     fn context_capability_parser_rejects_nonpositive_values() {
-        assert_eq!(parse_positive_usize(&serde_json::json!(8192)), Some(8192));
+        assert_eq!(
+            parse_positive_usize(&serde_json::json!(8192)),
+            Some(8192)
+        );
         assert_eq!(parse_positive_usize(&serde_json::json!(0)), None);
         assert_eq!(parse_positive_usize(&serde_json::Value::Null), None);
     }

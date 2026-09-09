@@ -245,7 +245,11 @@ pub(super) struct StoredProfile {
 }
 
 impl StoredProfile {
-    pub(crate) fn request_snapshot(&self, model_id: &str, reasoning_effort: &str) -> ProfileSnapshot {
+    pub(crate) fn request_snapshot(
+        &self,
+        model_id: &str,
+        reasoning_effort: &str,
+    ) -> ProfileSnapshot {
         ProfileSnapshot {
             id: self.id.clone(),
             provider_kind: self.provider_kind,

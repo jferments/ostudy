@@ -104,7 +104,9 @@ pub(super) fn finish_and_persist(
     let persisted = database.with_connection(|connection| {
         let mut current = load_profile_snapshot(connection, &profile.id)?;
         current.model_id.clone_from(&result.tested_model_id);
-        current.reasoning_effort.clone_from(&profile.reasoning_effort);
+        current
+            .reasoning_effort
+            .clone_from(&profile.reasoning_effort);
         if !snapshot_matches_result(&current, &result) {
             return Ok(false);
         }
@@ -179,8 +181,8 @@ pub(crate) fn load_capability_records(
             .into_iter()
             .map(|(key, status, value_json)| {
                 let status = CapabilityStatus::from_db(&status)?;
-                let value: Value = serde_json::from_str(&value_json)
-                    .map_err(CommandError::serialization)?;
+                let value: Value =
+                    serde_json::from_str(&value_json).map_err(CommandError::serialization)?;
                 Ok(PersistedCapability {
                     key,
                     status,
@@ -311,8 +313,8 @@ fn persist_result(
         )
         .map_err(CommandError::database)?;
     for capability in &result.capabilities {
-        let value_json = serde_json::to_string(&capability.value)
-            .map_err(CommandError::serialization)?;
+        let value_json =
+            serde_json::to_string(&capability.value).map_err(CommandError::serialization)?;
         transaction
             .execute(
                 "INSERT INTO ai_provider_capabilities (

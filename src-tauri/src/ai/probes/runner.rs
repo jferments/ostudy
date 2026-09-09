@@ -53,7 +53,10 @@ pub(super) async fn list_models(
     }
 
     let credential = resolve_credential(runtime, &request)?;
-    let bearer = credential.as_ref().map(|value| value.as_utf8()).transpose()?;
+    let bearer = credential
+        .as_ref()
+        .map(|value| value.as_utf8())
+        .transpose()?;
     let models = providers::list_models(&runtime.gateway, profile, bearer)
         .await
         .map_err(gateway_to_command)?;
@@ -105,7 +108,10 @@ pub(super) async fn test_profile(
         },
         None,
     ));
-    let bearer = credential.as_ref().map(|value| value.as_utf8()).transpose()?;
+    let bearer = credential
+        .as_ref()
+        .map(|value| value.as_utf8())
+        .transpose()?;
 
     let mut optional_failure = false;
     let mut request_profile = profile.clone();
@@ -252,7 +258,8 @@ pub(super) async fn test_profile(
     }
 
     let text_start = Instant::now();
-    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer).await {
+    let text_outcome = match providers::run_text_probe(&runtime.gateway, &request_profile, bearer).await
+    {
         Ok(outcome) => {
             let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
             phases.push(passed_phase(
@@ -330,32 +337,37 @@ pub(super) async fn test_profile(
     };
 
     let document_started = Instant::now();
-    let (document_schema_outcome, document_schema_supported) =
-        match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer).await {
-            Ok(outcome) => {
-                let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
-                phases.push(passed_phase(
-                    "document_generation_schema",
-                    "Document generation schema",
-                    &format!(
-                        "The selected model satisfied ostudy's representative document-generation contract through its configured provider dialect (finish: {finish})."
-                    ),
-                    Some(elapsed_ms(document_started)),
-                ));
-                (Some(outcome), Some(true))
-            }
-            Err(error_value) => {
-                optional_failure = true;
-                phases.push(failed_phase(
-                    "document_generation_schema",
-                    "Document generation schema",
-                    "The selected model did not satisfy ostudy's representative document-generation contract through the same structured-output path used by real document work.",
-                    Some(elapsed_ms(document_started)),
-                    error_value.safe,
-                ));
-                (None, Some(false))
-            }
-        };
+    let (document_schema_outcome, document_schema_supported) = match providers::run_document_schema_probe(
+        &runtime.gateway,
+        &request_profile,
+        bearer,
+    )
+    .await
+    {
+        Ok(outcome) => {
+            let finish = outcome.finish_reason.as_deref().unwrap_or("unreported");
+            phases.push(passed_phase(
+                "document_generation_schema",
+                "Document generation schema",
+                &format!(
+                    "The selected model satisfied ostudy's representative document-generation contract through its configured provider dialect (finish: {finish})."
+                ),
+                Some(elapsed_ms(document_started)),
+            ));
+            (Some(outcome), Some(true))
+        }
+        Err(error_value) => {
+            optional_failure = true;
+            phases.push(failed_phase(
+                "document_generation_schema",
+                "Document generation schema",
+                "The selected model did not satisfy ostudy's representative document-generation contract through the same structured-output path used by real document work.",
+                Some(elapsed_ms(document_started)),
+                error_value.safe,
+            ));
+            (None, Some(false))
+        }
+    };
 
     let usage_reported = text_outcome.prompt_tokens.is_some()
         || text_outcome.completion_tokens.is_some()
@@ -422,7 +434,10 @@ fn validate_profile_reference(input: &AiProfileReferenceInput) -> Result<(), Com
     }
     if let Some(model_id) = input.model_id.as_deref() {
         if super::super::profiles::policy::validate_model_id(model_id)?.is_empty() {
-            return Err(CommandError::new("invalid_ai_model_id", "Choose a model to test."));
+            return Err(CommandError::new(
+                "invalid_ai_model_id",
+                "Choose a model to test.",
+            ));
         }
         super::super::reasoning::validate_reasoning_effort(
             input.reasoning_effort.as_deref().unwrap_or("automatic"),
