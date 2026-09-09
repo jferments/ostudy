@@ -183,7 +183,7 @@ pub(crate) fn verify_and_inherit(
     ids.sort();
     ids.dedup();
     let ids_json = serde_json::to_string(&ids).map_err(CommandError::serialization)?;
-    let current: usize = connection
+    let current: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM tutor_turns WHERE id IN (SELECT value FROM json_each(?1))
          AND state = 'complete' AND evidence_current = 1",
@@ -191,7 +191,7 @@ pub(crate) fn verify_and_inherit(
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
-    if current != ids.len() {
+    if current != ids.len() as i64 {
         return Err(crate::knowledge::repository::stale_source());
     }
     // Copy root dependencies rather than building an arbitrarily deep chain of

@@ -74,8 +74,8 @@ fn load(
                         consent_key: row.get(2)?,
                         embedding_space: row.get(3)?,
                         state: row.get(4)?,
-                        total_sources: row.get(5)?,
-                        completed_sources: row.get(6)?,
+                        total_sources: row.get::<_, u32>(5)? as usize,
+                        completed_sources: row.get::<_, u32>(6)? as usize,
                         error_code: row.get(7)?,
                         error_message: row.get(8)?,
                         updated_at: row.get(9)?,
@@ -89,6 +89,8 @@ fn load(
 
 pub(crate) fn begin(database: &Database, input: PreparationStart<'_>) -> Result<(), CommandError> {
     let now = unix_time_millis()?;
+    let total_sources = i64::try_from(input.total_sources)
+        .map_err(|_| invalid("The preparation source count exceeds SQLite's integer range."))?;
     let scope = serde_json::to_string(input.scope).map_err(CommandError::serialization)?;
     database.with_connection(|connection| {
         let transaction = connection
@@ -121,7 +123,7 @@ pub(crate) fn begin(database: &Database, input: PreparationStart<'_>) -> Result<
                     input.consent_key,
                     input.embedding_space,
                     input.extraction_contract,
-                    input.total_sources,
+                    total_sources,
                     now,
                 ],
             )
@@ -135,6 +137,8 @@ pub(crate) fn checkpoint(
     operation_id: &str,
     completed: usize,
 ) -> Result<(), CommandError> {
+    let completed = i64::try_from(completed)
+        .map_err(|_| invalid("The completed source count exceeds SQLite's integer range."))?;
     database.with_connection(|connection| {
         let changed = connection
             .execute(

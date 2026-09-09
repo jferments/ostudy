@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use rusqlite::params;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::{
     ai::{

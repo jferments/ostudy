@@ -35,9 +35,10 @@ pub(crate) fn expand(
                          LEFT JOIN document_study_guides g ON g.document_id = nt.document_id AND g.state = 'active'
                          WHERE nt.note_id = ?1 ORDER BY nt.relationship_kind, nt.topic_id LIMIT 3",
                     ).map_err(CommandError::database)?;
-                    statement.query_map([&source.note_id], read_topic)
+                    let topics = statement.query_map([&source.note_id], read_topic)
                         .map_err(CommandError::database)?.collect::<Result<Vec<_>, _>>()
-                        .map_err(CommandError::database)?
+                        .map_err(CommandError::database)?;
+                    topics
                 }
                 SourceKind::Guide | SourceKind::Document => {
                     let mut statement = connection.prepare(
@@ -50,9 +51,10 @@ pub(crate) fn expand(
                                                           WHERE CAST(value AS TEXT) = ?3)))
                          ORDER BY p.sort_index LIMIT 3",
                     ).map_err(CommandError::database)?;
-                    statement.query_map(params![source.document_id, source.kind.as_str(), parent], read_topic)
+                    let topics = statement.query_map(params![source.document_id, source.kind.as_str(), parent], read_topic)
                         .map_err(CommandError::database)?.collect::<Result<Vec<_>, _>>()
-                        .map_err(CommandError::database)?
+                        .map_err(CommandError::database)?;
+                    topics
                 }
                 SourceKind::Conversation => Vec::new(),
             };

@@ -99,7 +99,7 @@ pub(crate) fn get(
                 params![
                     input.conversation_id,
                     input.before_sequence,
-                    MAX_HISTORY_TURNS + 1
+                    (MAX_HISTORY_TURNS + 1) as i64
                 ],
                 |row| row.get::<_, String>(0),
             )

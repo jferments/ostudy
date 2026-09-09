@@ -135,7 +135,7 @@ impl VectorIndex {
             .query_row(
                 "SELECT dimensions FROM embedding_spaces WHERE id = ?1",
                 [space],
-                |row| row.get::<_, usize>(0),
+                |row| row.get::<_, u32>(0).map(|value| value as usize),
             )
             .optional()
             .map_err(cache_error)
@@ -165,7 +165,7 @@ impl VectorIndex {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(cache_error)?;
-        let stored: Option<usize> = transaction
+        let stored: Option<u32> = transaction
             .query_row(
                 "SELECT dimensions FROM embedding_spaces WHERE id = ?1",
                 [space],
@@ -173,7 +173,7 @@ impl VectorIndex {
             )
             .optional()
             .map_err(cache_error)?;
-        if stored.is_some_and(|stored| stored != dimensions) {
+        if stored.is_some_and(|stored| stored as usize != dimensions) {
             return Err(invalid(
                 "The embedding provider changed dimensions within an existing space.",
             ));
@@ -197,7 +197,7 @@ impl VectorIndex {
         transaction
             .execute(
                 "INSERT OR IGNORE INTO embedding_spaces (id, dimensions) VALUES (?1, ?2)",
-                params![space, dimensions],
+                params![space, dimensions as i64],
             )
             .map_err(cache_error)?;
         for entry in entries {

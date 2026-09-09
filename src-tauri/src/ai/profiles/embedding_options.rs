@@ -101,14 +101,16 @@ pub(crate) fn save_embedding_options(
                 "Embedding options changed. Reload them before saving another configuration.",
             ));
         }
-        let revision = current.revision + 1;
+        let revision = current.revision.checked_add(1).ok_or_else(|| {
+            CommandError::new("invalid_embedding_options", "The embedding options revision is exhausted.")
+        })?;
         transaction
             .execute(
                 "INSERT INTO ai_embedding_options (profile_id, dimensions, input_policy, revision, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(profile_id) DO UPDATE SET dimensions = excluded.dimensions,
                      input_policy = excluded.input_policy, revision = excluded.revision, updated_at = excluded.updated_at",
-                params![input.profile_id, input.dimensions, input.input_policy.as_str(), revision, unix_time_millis()?],
+                params![input.profile_id, input.dimensions.map(|value| value as i64), input.input_policy.as_str(), revision, unix_time_millis()?],
             )
             .map_err(CommandError::database)?;
         transaction.commit().map_err(CommandError::database)?;
@@ -140,7 +142,7 @@ pub(super) fn load_in_connection(
         .query_row(
             "SELECT dimensions, input_policy, revision FROM ai_embedding_options WHERE profile_id = ?1",
             [profile_id],
-            |row| Ok((row.get::<_, Option<usize>>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?)),
+            |row| Ok((row.get::<_, Option<u32>>(0)?.map(|value| value as usize), row.get::<_, String>(1)?, row.get::<_, i64>(2)?)),
         )
         .optional()
         .map_err(CommandError::database)?;
