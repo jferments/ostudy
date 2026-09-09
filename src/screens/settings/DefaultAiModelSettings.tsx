@@ -32,17 +32,6 @@ interface ModelChoice {
   reasoning?: AiProviderModel["reasoning"];
 }
 
-const FALLBACK_REASONING: AiReasoningEffort[] = [
-  "automatic",
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
-
 export function DefaultAiModelSettings({ controller }: { controller: AiProfilesController }) {
   return (
     <section className={styles.card} aria-labelledby="default-ai-model-title">

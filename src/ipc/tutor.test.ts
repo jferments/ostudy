@@ -93,13 +93,22 @@ describe("tutor IPC", () => {
 
   it("keeps embedding options and fixed provider probes behind native commands", async () => {
     const id = "a".repeat(32);
-    await getEmbeddingOptions(id);
-    await saveEmbeddingOptions({ profileId: id, expectedRevision: 0, dimensions: null, inputPolicy: "automatic" });
+    const modelId = "qwen/qwen3-embedding-0.6b";
+    await getEmbeddingOptions(id, modelId);
+    await saveEmbeddingOptions({
+      profileId: id,
+      modelId,
+      expectedRevision: 0,
+      dimensions: null,
+      inputPolicy: "automatic",
+    });
     await listEmbeddingModels(id);
-    await testEmbeddingProfile(id);
+    await testEmbeddingProfile(id, modelId);
     expect(invokeMock.mock.calls.map((call) => call[0])).toEqual([
       "get_embedding_options", "save_embedding_options", "list_embedding_models", "test_embedding_profile",
     ]);
-    expect(invokeMock).toHaveBeenLastCalledWith("test_embedding_profile", { input: { profileId: id } });
+    expect(invokeMock).toHaveBeenLastCalledWith("test_embedding_profile", {
+      input: { profileId: id, modelId },
+    });
   });
 });
