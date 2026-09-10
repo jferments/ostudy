@@ -76,9 +76,9 @@ pub(crate) async fn retry_pdf_flashcard_generation(
 
 fn failure_stage(error: &CommandError) -> &'static str {
     match error.code.as_str() {
-        "invalid_semantic_content" | "semantic_images_require_vision" | "semantic_source_changed" => {
-            "knowledge_extraction"
-        }
+        "invalid_semantic_content"
+        | "semantic_images_require_vision"
+        | "semantic_source_changed" => "knowledge_extraction",
         code if code.starts_with("document_outline_") => "outline",
         code if code.starts_with("document_processing_")
             || code.starts_with("document_extraction_")

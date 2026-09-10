@@ -334,7 +334,9 @@ fn decode_batch(
                                 None,
                             ),
                         );
-                        return Err(invalid("The knowledge excerpt does not occur in its source."));
+                        return Err(invalid(
+                            "The knowledge excerpt does not occur in its source.",
+                        ));
                     }
                     ExcerptAnchorStatus::Exact => {}
                 }
