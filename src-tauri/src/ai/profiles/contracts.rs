@@ -94,14 +94,6 @@ pub struct SetAiTaskDefaultInput {
     pub reasoning_effort: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AiTaskModelAssignmentDto {
-    pub profile_id: String,
-    pub model_id: String,
-    pub reasoning_effort: String,
-}
-
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileConfigurationStatus {
