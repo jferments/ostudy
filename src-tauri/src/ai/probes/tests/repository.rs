@@ -180,9 +180,11 @@ fn document_capabilities_ignore_stale_adapter_evidence() {
             Ok(())
         })
         .expect("probe row should become stale");
-    assert!(repository::load_capability_records(&database, &profile.id, &profile.model_id)
-        .expect("stale capabilities should be hidden")
-        .is_empty());
+    assert!(
+        repository::load_capability_records(&database, &profile.id, &profile.model_id)
+            .expect("stale capabilities should be hidden")
+            .is_empty()
+    );
 }
 
 #[test]
