@@ -240,7 +240,9 @@ describe("SettingsScreen AI provider/model behavior", () => {
       fireEvent.change(modelSelect, { target: { value: model } });
     }
 
-    const embeddingProvider = screen.getByRole("combobox", { name: "Semantic embeddings provider" });
+    const embeddingProvider = screen.getByRole("combobox", {
+      name: "Semantic embeddings provider",
+    });
     fireEvent.change(embeddingProvider, { target: { value: profileId } });
     const embeddingModel = screen.getByRole("combobox", { name: "Semantic embeddings model" });
     await waitFor(() => expect((embeddingModel as HTMLSelectElement).disabled).toBe(false));
@@ -280,7 +282,9 @@ describe("SettingsScreen AI provider/model behavior", () => {
     await openAiTab();
     fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
     fireEvent.click(screen.getByText("Advanced settings"));
-    expect(screen.getByRole("textbox", { name: "Profile name" })).toHaveValue("OpenRouter 3");
+    expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe(
+      "OpenRouter 3",
+    );
   });
 
   it("keeps model and reasoning controls out of the provider connection editor", async () => {

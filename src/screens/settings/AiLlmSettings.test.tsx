@@ -124,7 +124,7 @@ describe("AiLlmSettings", () => {
     expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
     expect(screen.queryByRole("option", { name: "Chat model" })).toBeNull();
-    expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
+    expect((screen.getByLabelText("API key") as HTMLInputElement).type).toBe("password");
   });
 
   it("keeps connection policy and credentials provider-scoped", () => {
@@ -132,11 +132,19 @@ describe("AiLlmSettings", () => {
     renderSettings(value);
     fireEvent.click(screen.getByText("Advanced settings"));
 
-    expect(screen.getByRole("textbox", { name: "Profile name" })).toHaveValue("OpenRouter");
-    expect(screen.getByRole("checkbox", { name: "Enable this provider" })).toBeChecked();
+    expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe(
+      "OpenRouter",
+    );
     expect(
-      screen.getByRole("checkbox", { name: "Require OpenRouter zero-data-retention routing" }),
-    ).not.toBeChecked();
+      (screen.getByRole("checkbox", { name: "Enable this provider" }) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "Require OpenRouter zero-data-retention routing",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
     expect(screen.getByRole("button", { name: "Refresh model catalog" })).toBeTruthy();
 
     fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
@@ -167,12 +175,11 @@ describe("AiLlmSettings", () => {
     fireEvent.click(screen.getByText("Advanced settings"));
     const advanced = screen.getByText("Advanced settings").closest("details") as HTMLElement;
 
-    expect(
-      within(advanced).getByRole("checkbox", { name: "Allow unencrypted LAN connection" }),
-    ).toBeTruthy();
-    fireEvent.click(
-      within(advanced).getByRole("checkbox", { name: "Allow unencrypted LAN connection" }),
-    );
+    const optIn = within(advanced).getByRole("checkbox", {
+      name: "Allow unencrypted LAN connection",
+    });
+    expect(optIn).toBeTruthy();
+    fireEvent.click(optIn);
     expect(value.updateDraft).toHaveBeenCalledWith({ allowInsecureHttp: true });
   });
 });
