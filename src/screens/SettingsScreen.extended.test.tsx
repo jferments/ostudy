@@ -212,9 +212,10 @@ describe("SettingsScreen AI provider/model behavior", () => {
     renderSettings();
     await openAiTab();
     fireEvent.click(await readyAddProviderButton());
-    expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe(
-      "openrouter",
-    );
+    const provider = (await screen.findByRole("combobox", {
+      name: "Provider",
+    })) as HTMLSelectElement;
+    expect(provider.value).toBe("openrouter");
     const apiKey = await screen.findByLabelText("API key");
     fireEvent.change(apiKey, { target: { value: "sentinel-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
