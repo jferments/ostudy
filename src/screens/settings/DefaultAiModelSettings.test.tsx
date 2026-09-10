@@ -1,8 +1,29 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
+import { listAiProviderModels, testAiProviderProfile } from "../../ipc/aiProfiles";
+import {
+  getEmbeddingOptions,
+  listEmbeddingModels,
+  testEmbeddingProfile,
+} from "../../ipc/embeddings";
 import { DefaultAiModelSettings } from "./DefaultAiModelSettings";
+
+vi.mock("../../ipc/aiProfiles", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../ipc/aiProfiles")>();
+  return {
+    ...actual,
+    listAiProviderModels: vi.fn(),
+    testAiProviderProfile: vi.fn(),
+  };
+});
+vi.mock("../../ipc/embeddings", () => ({
+  getEmbeddingOptions: vi.fn(),
+  listEmbeddingModels: vi.fn(),
+  saveEmbeddingOptions: vi.fn(),
+  testEmbeddingProfile: vi.fn(),
+}));
 
 const profileId = "a".repeat(32);
 
@@ -12,25 +33,35 @@ function controller(): AiProfilesController {
     profiles: [
       {
         id: profileId,
-        displayName: "Local nursing model",
-        providerKind: "llama_cpp",
-        providerLabel: "llama.cpp / Unsloth GGUF",
-        modelId: "Qwen-medical",
-        reasoningEffort: "high",
+        displayName: "OpenRouter",
+        providerKind: "openrouter",
+        providerLabel: "OpenRouter",
+        modelId: "",
+        reasoningEffort: "automatic",
         enabled: true,
-        networkScope: "local",
+        networkScope: "cloud",
         credentialStatus: {
-          status: "not_required",
-          authenticationRequired: false,
+          status: "saved_securely",
+          authenticationRequired: true,
           securePersistenceAvailable: true,
           sessionOnlyAvailable: true,
         },
         configurationStatus: "ready",
-        revision: 1,
+        revision: 2,
         updatedAt: 1,
       },
     ],
-    defaults: { flashcardGenerationProfileId: profileId },
+    defaults: {
+      flashcardGenerationProfileId: profileId,
+      flashcardGenerationModelId: "deepseek/deepseek-v4-flash",
+      flashcardGenerationReasoningEffort: "high",
+      tutorProfileId: profileId,
+      tutorModelId: "anthropic/claude-sonnet",
+      tutorReasoningEffort: "medium",
+      embeddingsProfileId: profileId,
+      embeddingsModelId: "qwen/qwen3-embedding",
+      embeddingsReasoningEffort: "none",
+    },
     selectedProfile: null,
     selectedProfileId: null,
     draft: null,
@@ -66,38 +97,114 @@ function controller(): AiProfilesController {
   };
 }
 
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(listAiProviderModels).mockResolvedValue({
+    profileId,
+    profileRevision: 2,
+    providerKind: "openrouter",
+    models: [
+      { id: "deepseek/deepseek-v4-flash", displayName: "DeepSeek V4 Flash", ownedBy: "deepseek" },
+      { id: "anthropic/claude-sonnet", displayName: "Claude Sonnet", ownedBy: "anthropic" },
+    ],
+    retrievedAt: 1,
+  });
+  vi.mocked(listEmbeddingModels).mockResolvedValue([
+    { id: "qwen/qwen3-embedding", name: "Qwen3 Embedding" },
+  ]);
+  vi.mocked(getEmbeddingOptions).mockResolvedValue({
+    profileId,
+    modelId: "qwen/qwen3-embedding",
+    dimensions: null,
+    inputPolicy: "automatic",
+    revision: 1,
+    updatedAt: 1,
+  });
+  vi.mocked(testAiProviderProfile).mockResolvedValue({
+    profileId,
+    profileRevision: 2,
+    credentialEpoch: 1,
+    testedModelId: "anthropic/claude-sonnet",
+    adapterRevision: 1,
+    resultSchemaVersion: 1,
+    overallStatus: "verified",
+    phases: [],
+    capabilities: [],
+    testedAt: 1,
+    persisted: true,
+    stale: false,
+  });
+  vi.mocked(testEmbeddingProfile).mockResolvedValue({
+    profileId,
+    profileRevision: 2,
+    optionsRevision: 1,
+    dimensions: 768,
+    spaceId: "b".repeat(64),
+    queryAndDocumentTested: true,
+  });
+});
+
 describe("DefaultAiModelSettings", () => {
-  it("uses the requested Default AI model wording and shows the model identity", () => {
+  it("uses one provider connection with independent task model assignments", async () => {
     render(<DefaultAiModelSettings controller={controller()} />);
 
-    expect(screen.getByRole("heading", { name: "Default AI model" })).toBeTruthy();
-    expect(
-      screen.getAllByRole("option", { name: "Local nursing model — Qwen-medical" }),
-    ).toHaveLength(3);
-    expect(screen.getByText(/profile's request timeout/u)).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: "Document reasoning effort" })).toBeNull();
-    expect(screen.getByText(/Each profile stores its own reasoning preference/u)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Default AI models" })).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("combobox", {
+          name: "Flashcard and study-guide generation model",
+        }) as HTMLSelectElement).value,
+      ).toBe("deepseek/deepseek-v4-flash");
+      expect(
+        (screen.getByRole("combobox", { name: "Interactive tutor model" }) as HTMLSelectElement)
+          .value,
+      ).toBe("anthropic/claude-sonnet");
+      expect(
+        (screen.getByRole("combobox", { name: "Semantic embeddings model" }) as HTMLSelectElement)
+          .value,
+      ).toBe("qwen/qwen3-embedding");
+    });
+    for (const label of [
+      "Flashcard and study-guide generation provider",
+      "Interactive tutor provider",
+      "Semantic embeddings provider",
+    ]) {
+      expect((screen.getByRole("combobox", { name: label }) as HTMLSelectElement).value).toBe(
+        profileId,
+      );
+    }
   });
 
-  it("updates the generation default without copying profile settings", () => {
+  it("writes provider, model, and reasoning as one task assignment", async () => {
     const value = controller();
     render(<DefaultAiModelSettings controller={value} />);
+    const model = await screen.findByRole("combobox", { name: "Interactive tutor model" });
+    await waitFor(() => expect((model as HTMLSelectElement).disabled).toBe(false));
 
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Flashcard and study-guide generation" }),
-      { target: { value: "" } },
+    fireEvent.change(model, { target: { value: "deepseek/deepseek-v4-flash" } });
+    await waitFor(() => {
+      expect(value.setTaskDefault).toHaveBeenCalledWith(
+        "tutor",
+        profileId,
+        "deepseek/deepseek-v4-flash",
+        "medium",
+      );
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Interactive tutor reasoning" }), {
+      target: { value: "high" },
+    });
+    expect(value.setTaskDefault).toHaveBeenLastCalledWith(
+      "tutor",
+      profileId,
+      "deepseek/deepseek-v4-flash",
+      "high",
     );
-    expect(value.setFlashcardDefault).toHaveBeenCalledWith(null);
-    expect(screen.getByText(/does not copy settings between models/u)).toBeTruthy();
-  });
-  it("selects tutor and embedding defaults without replacing generation", () => {
-    const value = controller();
-    render(<DefaultAiModelSettings controller={value} />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Interactive tutor" }), { target: { value: profileId } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Semantic embeddings" }), { target: { value: profileId } });
-    expect(value.setTaskDefault).toHaveBeenNthCalledWith(1, "tutor", profileId);
-    expect(value.setTaskDefault).toHaveBeenNthCalledWith(2, "embeddings", profileId);
-    expect(value.setFlashcardDefault).not.toHaveBeenCalled();
   });
 
+  it("contains no obsolete provider/profile implementation guidance", () => {
+    render(<DefaultAiModelSettings controller={controller()} />);
+    expect(screen.queryByText(/Each profile stores its own reasoning preference/u)).toBeNull();
+    expect(screen.queryByText(/Use a separate embedding-model profile/u)).toBeNull();
+    expect(screen.queryByText(/request timeout limits initial response/u)).toBeNull();
+  });
 });

@@ -25,19 +25,12 @@ vi.mock("../controllers/useDurableDraft", () => ({
     restart: vi.fn().mockResolvedValue(undefined),
   }),
 }));
-
-vi.mock("../platform/files", () => ({
-  selectExternalImport: vi.fn(),
-  publishExport: vi.fn(),
-}));
+vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn(), publishExport: vi.fn() }));
 vi.mock("../ipc/backup", () => ({
   prepareLibraryBackup: vi.fn(),
   prepareLibraryRestore: vi.fn(),
 }));
-vi.mock("../ipc/settings", () => ({
-  getAppInfo: vi.fn(),
-  saveSettings: vi.fn(),
-}));
+vi.mock("../ipc/settings", () => ({ getAppInfo: vi.fn(), saveSettings: vi.fn() }));
 vi.mock("../ipc/aiProfiles", () => ({
   getAiProviderCatalog: vi.fn(),
   listAiProviderProfiles: vi.fn(),
@@ -141,7 +134,7 @@ describe("SettingsScreen", () => {
       dataDirectory: "/tmp/ostudy/data",
       databasePath: "/tmp/ostudy/data/library.sqlite3",
       imageDirectory: "/tmp/ostudy/data/assets/images",
-      databaseSchemaVersion: 16,
+      databaseSchemaVersion: 13,
     });
     vi.mocked(settingsIpc.saveSettings).mockImplementation(async (input) => input);
     vi.mocked(backupIpc.prepareLibraryBackup).mockResolvedValue({
@@ -227,19 +220,16 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("button", { name: "View storage details" })).toBeNull();
   });
 
-  it("previews and saves appearance preferences without touching AI profile state", async () => {
+  it("previews and saves appearance preferences without touching AI provider state", async () => {
     const { onPreviewSettings, onSavedSettings, onDirtyChange, showToast } = renderSettings();
     fireEvent.click(screen.getByRole("radio", { name: /Light/u }));
-
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "light" }));
       expect(onDirtyChange).toHaveBeenLastCalledWith(true);
     });
     fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
     await waitFor(() => {
-      expect(settingsIpc.saveSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ theme: "light" }),
-      );
+      expect(settingsIpc.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
       expect(onSavedSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "light" }));
       expect(showToast).toHaveBeenCalledWith("success", "Settings saved.");
     });
@@ -248,7 +238,6 @@ describe("SettingsScreen", () => {
   it("restores Plex typography while leaving non-appearance settings unchanged", async () => {
     const { onPreviewSettings } = renderSettings();
     fireEvent.click(screen.getByRole("button", { name: "Restore appearance defaults" }));
-
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith({
         ...settings,
@@ -272,7 +261,6 @@ describe("SettingsScreen", () => {
     const schedulingPanel = screen.getByRole("tabpanel", { name: "Review/Scheduling" });
     const restoreDefaults = screen.getByRole("button", { name: "Restore scheduling defaults" });
     expect(schedulingPanel.contains(restoreDefaults)).toBe(true);
-
     fireEvent.change(screen.getByRole("spinbutton", { name: "New cards per day" }), {
       target: { value: "12" },
     });
@@ -284,7 +272,6 @@ describe("SettingsScreen", () => {
         expect.objectContaining({ dailyNewLimit: 12, dailyReviewLimit: 80 }),
       );
     });
-
     fireEvent.click(restoreDefaults);
     await waitFor(() => {
       expect(onPreviewSettings).toHaveBeenLastCalledWith(
@@ -295,28 +282,29 @@ describe("SettingsScreen", () => {
     expect(screen.getByText(/shuffling, are chosen on the Practice screen/u)).toBeTruthy();
   });
 
-  it("uses one Add model action and selects the provider inside the simple setup form", async () => {
+  it("separates provider connections from the three default model assignments", async () => {
     renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
-    expect(await screen.findByRole("heading", { name: "AI models" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add model" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Add llama\.cpp/u })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Add DeepSeek/u })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Planned providers" })).toBeNull();
-    expect(screen.queryByRole("option", { name: /planned/u })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Default task profile" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Default AI models" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "AI providers" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add provider" })).toBeTruthy();
     expect(
-      screen.getAllByRole("combobox", { name: "Flashcard and study-guide generation" }),
-    ).toHaveLength(1);
+      screen.getByRole("combobox", { name: "Flashcard and study-guide generation provider" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Flashcard and study-guide generation model" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Interactive tutor provider" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Semantic embeddings provider" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
     const provider = await screen.findByRole("combobox", { name: "Provider" });
     expect((provider as HTMLSelectElement).value).toBe("llama_cpp");
     fireEvent.change(provider, { target: { value: "deepseek" } });
     await waitFor(() => expect((provider as HTMLSelectElement).value).toBe("deepseek"));
     expect(await screen.findByLabelText("API key")).toBeTruthy();
-    expect(screen.queryByText("Bearer token")).toBeNull();
-    expect(screen.queryByText("Enable profile")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
   });
 
   it("backs up provider metadata while explicitly excluding credentials", async () => {
@@ -324,7 +312,6 @@ describe("SettingsScreen", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Backup/Sync" }));
     await screen.findByRole("button", { name: "View storage details" });
     fireEvent.click(screen.getByRole("button", { name: "Back up library" }));
-
     await waitFor(() => {
       expect(backupIpc.prepareLibraryBackup).toHaveBeenCalled();
       expect(platformFiles.publishExport).toHaveBeenCalledWith("2".repeat(32));

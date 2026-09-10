@@ -1,38 +1,14 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
-import type {
-  AiProviderCatalogEntry,
-  AiProviderModel,
-  AiProviderProfileDetail,
-} from "../../ipc/aiProfiles";
+import type { AiProviderProfileDetail } from "../../ipc/aiProfiles";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { AiLlmSettings } from "./AiLlmSettings";
 
-vi.mock("./EmbeddingProfileSettings", () => ({ EmbeddingProfileSettings: () => null }));
-
 const profileId = "a".repeat(32);
 
-function openRouterCatalog(): AiProviderCatalogEntry[] {
-  return [
-    {
-      providerKind: "openrouter",
-      displayName: "OpenRouter",
-      description: "Use OpenRouter's account-visible model catalog.",
-      implementationStatus: "available",
-      defaultBaseUrl: "https://openrouter.ai/api/v1/",
-      baseUrlEditable: false,
-      authenticationRequired: true,
-      modelIdRequired: true,
-      modelDiscoverySupported: true,
-      chatTemplatePolicy: "provider_managed",
-      defaultTimeoutMs: 60_000,
-    },
-  ];
-}
-
-function profile(): AiProviderProfileDetail {
+function profile(overrides: Partial<AiProviderProfileDetail> = {}): AiProviderProfileDetail {
   return {
     id: profileId,
     displayName: "OpenRouter",
@@ -40,8 +16,8 @@ function profile(): AiProviderProfileDetail {
     providerLabel: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1/",
     baseUrlEditable: false,
-    modelId: "provider/model-000",
-    reasoningEffort: "low",
+    modelId: "",
+    reasoningEffort: "automatic",
     authMode: "bearer",
     enabled: true,
     allowInsecureHttp: false,
@@ -59,35 +35,27 @@ function profile(): AiProviderProfileDetail {
     revision: 3,
     createdAt: 1,
     updatedAt: 2,
+    ...overrides,
   };
 }
 
-function controller(): AiProfilesController {
-  const selected = profile();
-  const models: AiProviderModel[] = Array.from({ length: 411 }, (_, index) => ({
-    id: `provider/model-${String(index).padStart(3, "0")}`,
-    displayName: `Provider Model ${String(index).padStart(3, "0")}`,
-    ownedBy: "provider",
-    reasoning:
-      index === 0
-        ? {
-            supportedEfforts: ["low", "medium", "high"],
-            defaultEffort: "medium",
-            defaultEnabled: true,
-            supportsMaxTokens: true,
-            mandatory: false,
-          }
-        : null,
-  }));
-  models.push({
-    id: "zeta/final-model",
-    displayName: "Zeta Final Model",
-    ownedBy: "zeta",
-    reasoning: null,
-  });
-
+function controller(selected = profile()): AiProfilesController {
   return {
-    catalog: openRouterCatalog(),
+    catalog: [
+      {
+        providerKind: selected.providerKind,
+        displayName: selected.providerLabel,
+        description: "Provider fixture",
+        implementationStatus: "available",
+        defaultBaseUrl: selected.baseUrl,
+        baseUrlEditable: selected.baseUrlEditable,
+        authenticationRequired: selected.credentialStatus.authenticationRequired,
+        modelIdRequired: true,
+        modelDiscoverySupported: true,
+        chatTemplatePolicy: "provider_managed",
+        defaultTimeoutMs: 60_000,
+      },
+    ],
     profiles: [{ ...selected }],
     defaults: { flashcardGenerationProfileId: null },
     selectedProfile: selected,
@@ -96,8 +64,8 @@ function controller(): AiProfilesController {
       displayName: selected.displayName,
       providerKind: selected.providerKind,
       baseUrl: selected.baseUrl,
-      modelId: selected.modelId,
-      reasoningEffort: selected.reasoningEffort ?? "low",
+      modelId: "",
+      reasoningEffort: "automatic",
       authMode: selected.authMode,
       enabled: selected.enabled,
       allowInsecureHttp: selected.allowInsecureHttp,
@@ -106,7 +74,10 @@ function controller(): AiProfilesController {
     },
     credentialDraft: "",
     credentialPersistence: "secure",
-    models,
+    models: [
+      { id: "one/chat", displayName: "Chat model", ownedBy: "one" },
+      { id: "two/embed", displayName: "Embedding model", ownedBy: "two" },
+    ],
     modelsLoaded: true,
     probeResult: null,
     dirty: false,
@@ -136,34 +107,72 @@ function controller(): AiProfilesController {
   };
 }
 
-describe("AiLlmSettings", () => {
-  it("renders every model returned by a large provider catalog", () => {
-    render(
-      <OverlayProvider>
-        <AiLlmSettings controller={controller()} />
-      </OverlayProvider>,
-    );
+function renderSettings(value: AiProfilesController) {
+  render(
+    <OverlayProvider>
+      <AiLlmSettings controller={value} />
+    </OverlayProvider>,
+  );
+}
 
-    expect(screen.getByRole("option", { name: "Zeta Final Model" })).toBeTruthy();
-    const modelSelect = screen.getByRole("combobox", { name: "Model" });
-    expect(modelSelect.querySelectorAll("option")).toHaveLength(413);
+describe("AiLlmSettings", () => {
+  it("treats this panel as provider/API-key connection management, not model assignment", () => {
+    renderSettings(controller());
+
+    expect(screen.getByRole("heading", { name: "AI providers" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add provider" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Chat model" })).toBeNull();
+    expect(screen.getByLabelText("API key")).toHaveAttribute("type", "password");
   });
 
-  it("keeps reasoning in the selected model profile and limits explicit efforts to catalog metadata", () => {
+  it("keeps connection policy and credentials provider-scoped", () => {
     const value = controller();
-    render(
-      <OverlayProvider>
-        <AiLlmSettings controller={value} />
-      </OverlayProvider>,
+    renderSettings(value);
+    fireEvent.click(screen.getByText("Advanced settings"));
+
+    expect(screen.getByRole("textbox", { name: "Profile name" })).toHaveValue("OpenRouter");
+    expect(screen.getByRole("checkbox", { name: "Enable this provider" })).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Require OpenRouter zero-data-retention routing" }),
+    ).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Refresh model catalog" })).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
+      target: { value: "OpenRouter 2" },
+    });
+    expect(value.updateDraft).toHaveBeenCalledWith({ displayName: "OpenRouter 2" });
+  });
+
+  it("shows the explicit LAN HTTP opt-in only for remote llama.cpp HTTP endpoints", () => {
+    const selected = profile({
+      displayName: "LAN llama.cpp",
+      providerKind: "llama_cpp",
+      providerLabel: "llama.cpp / Unsloth GGUF",
+      baseUrl: "http://192.168.1.50:8080/",
+      baseUrlEditable: true,
+      authMode: "none",
+      networkScope: "lan",
+      credentialStatus: {
+        status: "not_required",
+        authenticationRequired: false,
+        securePersistenceAvailable: true,
+        sessionOnlyAvailable: true,
+      },
+    });
+    const value = controller(selected);
+    value.catalog[0].chatTemplatePolicy = "server_model";
+    renderSettings(value);
+    fireEvent.click(screen.getByText("Advanced settings"));
+    const advanced = screen.getByText("Advanced settings").closest("details") as HTMLElement;
+
+    expect(
+      within(advanced).getByRole("checkbox", { name: "Allow unencrypted LAN connection" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(advanced).getByRole("checkbox", { name: "Allow unencrypted LAN connection" }),
     );
-
-    const reasoning = screen.getByRole("combobox", { name: "Reasoning effort" });
-    expect(reasoning.querySelectorAll("option")).toHaveLength(4);
-    expect(screen.getByRole("option", { name: "Automatic — provider default Medium" })).toBeTruthy();
-    expect(screen.queryByRole("option", { name: "Maximum" })).toBeNull();
-
-    fireEvent.change(reasoning, { target: { value: "high" } });
-    expect(value.updateDraft).toHaveBeenCalledWith({ reasoningEffort: "high" });
-    expect(screen.getByText(/belongs to this profile/u)).toBeTruthy();
+    expect(value.updateDraft).toHaveBeenCalledWith({ allowInsecureHttp: true });
   });
 });

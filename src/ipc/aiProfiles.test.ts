@@ -18,10 +18,10 @@ vi.mock("./common", async (importOriginal) => {
 
 const profileId = "a".repeat(32);
 const draft = {
-  displayName: "Local model",
+  displayName: "Local provider",
   providerKind: "llama_cpp" as const,
   baseUrl: "http://127.0.0.1:8080/",
-  modelId: "model",
+  modelId: "",
   authMode: "none" as const,
   enabled: true,
   allowInsecureHttp: false,
@@ -35,18 +35,18 @@ describe("AI provider IPC", () => {
     vi.mocked(invoke).mockResolvedValue({});
   });
 
-  it("creates profiles through a strict operation-identified native mutation", async () => {
+  it("creates provider connections independently of task model selection", async () => {
     await createAiProviderProfile(draft);
     expect(invoke).toHaveBeenCalledWith("create_ai_provider_profile", {
       input: {
         ...draft,
-        reasoningEffort: "low",
+        reasoningEffort: "automatic",
         operationId: "f".repeat(32),
       },
     });
   });
 
-  it("omits immutable provider kind and absent editor drafts from update mutations", async () => {
+  it("updates provider connection policy without requiring a model assignment", async () => {
     await updateAiProviderProfile(profileId, 7, draft);
     expect(invoke).toHaveBeenCalledWith("update_ai_provider_profile", {
       input: {
@@ -55,8 +55,8 @@ describe("AI provider IPC", () => {
         revision: 7,
         displayName: draft.displayName,
         baseUrl: draft.baseUrl,
-        modelId: draft.modelId,
-        reasoningEffort: "low",
+        modelId: "",
+        reasoningEffort: "automatic",
         authMode: draft.authMode,
         enabled: draft.enabled,
         allowInsecureHttp: draft.allowInsecureHttp,
@@ -91,15 +91,20 @@ describe("AI provider IPC", () => {
     });
   });
 
-  it("exposes narrow model-discovery and profile-test commands instead of generic prompts", async () => {
+  it("keeps discovery connection-scoped and testing explicitly model-scoped", async () => {
     await listAiProviderModels(profileId, 2);
     expect(invoke).toHaveBeenCalledWith("list_ai_provider_models", {
-      input: { profileId, revision: 2 },
+      input: { profileId, revision: 2, modelId: null, reasoningEffort: null },
     });
     vi.mocked(invoke).mockClear();
-    await testAiProviderProfile(profileId, 2);
+    await testAiProviderProfile(profileId, 2, "openai/gpt-example", "high");
     expect(invoke).toHaveBeenCalledWith("test_ai_provider_profile", {
-      input: { profileId, revision: 2 },
+      input: {
+        profileId,
+        revision: 2,
+        modelId: "openai/gpt-example",
+        reasoningEffort: "high",
+      },
     });
   });
 });

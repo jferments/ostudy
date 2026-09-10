@@ -3,10 +3,10 @@ import { useState, type ReactNode } from "react";
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type { AiProviderKind } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 import aiStyles from "./AiLlmSettings.module.css";
 import layoutStyles from "./AiModelsLayout.module.css";
 import styles from "./Settings.module.css";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
 
 const ownedStyleMaps = sharedClassMaps;
 
@@ -325,6 +325,19 @@ function ProfileSetup({
             </label>
           ) : null}
 
+          {isLlama && requiresInsecureLanOptIn(draft.baseUrl) ? (
+            <label className={styles.checkboxField}>
+              <input
+                type="checkbox"
+                checked={draft.allowInsecureHttp}
+                onChange={(event) =>
+                  controller.updateDraft({ allowInsecureHttp: event.currentTarget.checked })
+                }
+              />
+              <span>Allow unencrypted LAN connection</span>
+            </label>
+          ) : null}
+
           {requiresCredential ? (
             <fieldset className={styles.persistenceOptions}>
               <legend>API key storage</legend>
@@ -417,12 +430,29 @@ function profileHasCredential(profile: AiProfilesController["selectedProfile"]):
   );
 }
 
-function configurationLabel(status: AiProfilesController["profiles"][number]["configurationStatus"]): string {
+function requiresInsecureLanOptIn(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:") return false;
+    const host = url.hostname.toLowerCase();
+    return !["localhost", "127.0.0.1", "::1", "[::1]"].includes(host);
+  } catch {
+    return false;
+  }
+}
+
+function configurationLabel(
+  status: AiProfilesController["profiles"][number]["configurationStatus"],
+): string {
   switch (status) {
-    case "ready": return "Ready";
-    case "incomplete": return "Needs API key";
-    case "disabled": return "Disabled";
-    case "planned": return "Planned";
+    case "ready":
+      return "Ready";
+    case "incomplete":
+      return "Needs API key";
+    case "disabled":
+      return "Disabled";
+    case "planned":
+      return "Planned";
   }
 }
 
