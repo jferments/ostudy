@@ -175,7 +175,9 @@ describe("useAiProfilesController", () => {
       result.current.beginCreate("openrouter");
       result.current.setCredentialDraft("secret-key");
     });
-    await act(async () => { await result.current.connectSetup(); });
+    await act(async () => {
+      await result.current.connectSetup();
+    });
 
     expect(aiIpc.createAiProviderProfile).toHaveBeenCalledWith(
       expect.objectContaining({ providerKind: "openrouter", modelId: "", authMode: "bearer" }),
@@ -214,17 +216,22 @@ describe("useAiProfilesController", () => {
       .mockRejectedValueOnce(new Error("Secure credential storage unavailable."))
       .mockResolvedValueOnce(connected);
 
-    const { result } = renderHook(() => useAiProfilesController(vi.fn()));
+    const showToast = vi.fn();
+    const { result } = renderHook(() => useAiProfilesController(showToast));
     await waitFor(() => expect(result.current.catalog.length).toBe(1));
     act(() => {
       result.current.beginCreate("openrouter");
       result.current.setCredentialDraft("secret-key");
     });
-    await act(async () => { await result.current.connectSetup(); });
+    await act(async () => {
+      await result.current.connectSetup();
+    });
     await waitFor(() => expect(result.current.selectedProfile?.revision).toBe(1));
 
     act(() => result.current.setCredentialDraft("secret-key"));
-    await act(async () => { await result.current.connectSetup(); });
+    await act(async () => {
+      await result.current.connectSetup();
+    });
 
     expect(aiIpc.createAiProviderProfile).toHaveBeenCalledTimes(1);
     expect(aiIpc.setAiProviderCredential).toHaveBeenLastCalledWith(
@@ -240,7 +247,8 @@ describe("useAiProfilesController", () => {
     const first = openRouterProfile();
     const second = openRouterProfile({ id: secondProfileId, displayName: "OpenRouter 2" });
     vi.mocked(aiIpc.listAiProviderProfiles).mockResolvedValue([summary(first), summary(second)]);
-    const { result } = renderHook(() => useAiProfilesController(vi.fn()));
+    const showToast = vi.fn();
+    const { result } = renderHook(() => useAiProfilesController(showToast));
     await waitFor(() => expect(result.current.profiles).toHaveLength(2));
 
     act(() => result.current.beginCreate("openrouter"));
@@ -248,13 +256,29 @@ describe("useAiProfilesController", () => {
   });
 
   it("assigns different models from one provider connection without copying or replacing credentials", async () => {
-    const { result } = renderHook(() => useAiProfilesController(vi.fn()));
+    const showToast = vi.fn();
+    const { result } = renderHook(() => useAiProfilesController(showToast));
     await waitFor(() => expect(result.current.profiles).toHaveLength(1));
 
     await act(async () => {
-      await result.current.setTaskDefault("flashcard_generation", profileId, "openai/gpt-example", "high");
-      await result.current.setTaskDefault("tutor", profileId, "anthropic/claude-example", "medium");
-      await result.current.setTaskDefault("embeddings", profileId, "qwen/qwen3-embedding", "none");
+      await result.current.setTaskDefault(
+        "flashcard_generation",
+        profileId,
+        "openai/gpt-example",
+        "high",
+      );
+      await result.current.setTaskDefault(
+        "tutor",
+        profileId,
+        "anthropic/claude-example",
+        "medium",
+      );
+      await result.current.setTaskDefault(
+        "embeddings",
+        profileId,
+        "qwen/qwen3-embedding",
+        "none",
+      );
     });
 
     expect(taskIpc.setAiTaskDefault).toHaveBeenCalledTimes(3);
