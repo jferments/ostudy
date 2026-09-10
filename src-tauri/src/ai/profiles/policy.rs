@@ -169,7 +169,7 @@ pub(super) fn normalize_name(value: &str) -> String {
     value.to_lowercase()
 }
 
-pub(super) fn validate_model_id(value: &str) -> Result<String, CommandError> {
+pub(crate) fn validate_model_id(value: &str) -> Result<String, CommandError> {
     let trimmed = value.trim().to_string();
     if trimmed.chars().count() > MAX_MODEL_ID_CHARS || trimmed.chars().any(char::is_control) {
         return Err(CommandError::new(
