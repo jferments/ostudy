@@ -104,8 +104,9 @@ fn result_and_capabilities_are_replaced_atomically() {
         .expect("result should exist");
     assert_eq!(loaded.overall_status, ProbeOverallStatus::Partial);
     assert_eq!(loaded.tested_at, 20);
-    let capabilities = repository::load_capability_records(&database, &profile.id)
-        .expect("capabilities should load");
+    let capabilities =
+        repository::load_capability_records(&database, &profile.id, &profile.model_id)
+            .expect("capabilities should load");
     assert_eq!(capabilities.len(), 1);
     assert_eq!(capabilities[0].key, "image_input");
     assert_eq!(capabilities[0].status, CapabilityStatus::Supported);
@@ -163,7 +164,7 @@ fn document_capabilities_ignore_stale_adapter_evidence() {
     )
     .expect("probe should persist");
     assert_eq!(
-        repository::load_capability_records(&database, &profile.id)
+        repository::load_capability_records(&database, &profile.id, &profile.model_id)
             .expect("current capabilities should load")
             .len(),
         1
@@ -179,7 +180,7 @@ fn document_capabilities_ignore_stale_adapter_evidence() {
             Ok(())
         })
         .expect("probe row should become stale");
-    assert!(repository::load_capability_records(&database, &profile.id)
+    assert!(repository::load_capability_records(&database, &profile.id, &profile.model_id)
         .expect("stale capabilities should be hidden")
         .is_empty());
 }
