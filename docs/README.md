@@ -55,6 +55,8 @@ Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](ag
 
 [Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) records concrete findings, removals, intentional compatibility, and remaining engineering observations.
 
+The planned presentation-layer migration is documented by the [Phase 0 UI overhaul affected-surface inventory](development/ui-overhaul-phase-0-inventory.md), the [shadcn/ui + Tailwind UI overhaul roadmap](development/ui-overhaul-roadmap.md), and [ADR 0051](decisions/0051-shadcn-tailwind-presentation-architecture.md). These are planning/decision records; the current UI architecture remains `architecture/ui.md` until implementation phases change the running application.
+
 Focused development references include [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), and the [portability inventory](development/platform-portability-inventory.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
 
 ## CI infrastructure and performance
