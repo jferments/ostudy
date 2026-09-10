@@ -23,6 +23,7 @@ use super::{
         hash, invalid, KnowledgeUnit, KnowledgeUnitInput, SourceKind, SourceRecord,
         EXTRACTION_PROMPT_VERSION, MAX_UNITS_PER_SOURCE,
     },
+    excerpt_anchor::{reanchor_excerpt, ExcerptAnchorStatus},
     images::load_images,
     repository,
     runtime::check_canceled,
@@ -121,13 +122,21 @@ pub(crate) async fn ensure_units_batch(
             }
         }
     }
+
+    crate::logging::debug_target(
+        "ai.knowledge.extraction",
+        "knowledge_extraction_batch_started",
+        "Started a bounded semantic extraction batch without logging source or model content.",
+        extraction_batch_fields(task, &missing, "initial"),
+    );
+
     let schema = extraction_schema(missing.len());
     let system = extraction_prompt();
     let user = format!(
         "Interpret each supplied study source independently. Return every supplied sourceId exactly once, even when its units array is empty. Origin distinguishes documents, generated material and authored assertions; it does not guarantee truth. A quotation must come from that same source, not another item in the batch. Preserve conditions and distinct learnable relationships. Do not write flashcards yet. Only attached image bytes are visible; image IDs alone are not visual evidence.\n<study-sources>\n{}\n</study-sources>",
         serde_json::to_string(&missing).map_err(CommandError::serialization)?,
     );
-    let first = request_json_cancellable(
+    let first = match request_json_cancellable(
         runtime,
         task,
         JsonTaskRequest {
@@ -139,16 +148,35 @@ pub(crate) async fn ensure_units_batch(
         },
         cancellation,
     )
-    .await?;
-    let mut extracted = match decode_batch(first, &missing, !images.is_empty()) {
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            log_extraction_failure(task, &missing, "initial", &error);
+            return Err(error);
+        }
+    };
+
+    let mut extracted = match decode_batch(first, &missing, !images.is_empty(), "initial") {
         Ok(units) => units,
-        Err(_) => {
+        Err(first_error) => {
+            crate::logging::warn_target(
+                "ai.knowledge.extraction",
+                "knowledge_extraction_repair_started",
+                "Native semantic validation rejected the first provider result; one bounded repair attempt will run.",
+                json!({
+                    "provider": task.provider_kind.as_str(),
+                    "model": task.model_id.as_str(),
+                    "sourceCount": missing.len(),
+                    "code": first_error.code.as_str(),
+                }),
+            );
             check_canceled(cancellation)?;
             task.ensure_current(database)?;
             let repaired = format!(
                 "{user}\nThe prior result failed native validation. Use the exact schema and supplied source IDs. Each supportingExcerpt must be copied exactly from its own source text. Do not invent quotations, omit required fields or exceed the unit count."
             );
-            let response = request_json_cancellable(
+            let response = match request_json_cancellable(
                 runtime,
                 task,
                 JsonTaskRequest {
@@ -160,10 +188,36 @@ pub(crate) async fn ensure_units_batch(
                 },
                 cancellation,
             )
-            .await?;
-            decode_batch(response, &missing, !images.is_empty())?
+            .await
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    log_extraction_failure(task, &missing, "repair", &error);
+                    return Err(error);
+                }
+            };
+            match decode_batch(response, &missing, !images.is_empty(), "repair") {
+                Ok(units) => units,
+                Err(error) => {
+                    log_extraction_failure(task, &missing, "repair", &error);
+                    return Err(error);
+                }
+            }
         }
     };
+
+    let extracted_unit_count = extracted.values().map(Vec::len).sum::<usize>();
+    crate::logging::debug_target(
+        "ai.knowledge.extraction",
+        "knowledge_extraction_batch_validated",
+        "Validated a bounded semantic extraction batch without logging source or model content.",
+        json!({
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "sourceCount": missing.len(),
+            "unitCount": extracted_unit_count,
+        }),
+    );
     task.ensure_current(database)?;
     check_canceled(cancellation)?;
     for source in missing {
@@ -176,10 +230,50 @@ pub(crate) async fn ensure_units_batch(
     Ok(result)
 }
 
+fn extraction_batch_fields(
+    task: &DocumentTaskContext,
+    sources: &[&SourceRecord],
+    attempt: &str,
+) -> Value {
+    json!({
+        "provider": task.provider_kind.as_str(),
+        "model": task.model_id.as_str(),
+        "attempt": attempt,
+        "sourceCount": sources.len(),
+        "sourceChars": sources.iter().map(|source| source.text.chars().count()).sum::<usize>(),
+        "sourceIds": sources.iter().map(|source| source.id.as_str()).collect::<Vec<_>>(),
+        "sourceLocators": sources.iter().map(|source| source.locator.as_ref().map(|locator| locator.stable_identity())).collect::<Vec<_>>(),
+        "imageCount": sources.iter().map(|source| source.images.len()).sum::<usize>(),
+    })
+}
+
+fn log_extraction_failure(
+    task: &DocumentTaskContext,
+    sources: &[&SourceRecord],
+    attempt: &str,
+    error: &CommandError,
+) {
+    crate::logging::error_target(
+        "ai.knowledge.extraction",
+        "knowledge_extraction_failed",
+        "A bounded semantic extraction batch exhausted its safe validation path.",
+        json!({
+            "provider": task.provider_kind.as_str(),
+            "model": task.model_id.as_str(),
+            "attempt": attempt,
+            "sourceCount": sources.len(),
+            "sourceIds": sources.iter().map(|source| source.id.as_str()).collect::<Vec<_>>(),
+            "code": error.code.as_str(),
+            "detail": error.message.as_str(),
+        }),
+    );
+}
+
 fn decode_batch(
     value: Value,
     sources: &[&SourceRecord],
     images_attached: bool,
+    attempt: &str,
 ) -> Result<HashMap<String, Vec<KnowledgeUnitInput>>, CommandError> {
     let response: ExtractedBatch = serde_json::from_value(value)
         .map_err(|_| invalid("The model returned an invalid knowledge-unit structure."))?;
@@ -187,7 +281,7 @@ fn decode_batch(
         return Err(invalid("The extraction omitted or added a source."));
     }
     let mut result = HashMap::new();
-    for extracted in response.sources {
+    for mut extracted in response.sources {
         let source = sources
             .iter()
             .find(|source| source.id == extracted.source_id)
@@ -197,8 +291,71 @@ fn decode_batch(
                 "The model returned too many units for one source segment.",
             ));
         }
-        for unit in &extracted.units {
-            unit.validate(source)?;
+        for (unit_index, unit) in extracted.units.iter_mut().enumerate() {
+            if !unit.supporting_excerpt.trim().is_empty()
+                && !source.text.contains(&unit.supporting_excerpt)
+            {
+                let anchor = reanchor_excerpt(&source.text, &unit.supporting_excerpt);
+                match anchor.status {
+                    ExcerptAnchorStatus::Reanchored => {
+                        let anchored = anchor
+                            .anchored_excerpt
+                            .expect("a reanchored excerpt must contain the original source slice");
+                        crate::logging::debug_target(
+                            "ai.knowledge.extraction",
+                            "knowledge_excerpt_reanchored",
+                            "Re-anchored one provider excerpt to a unique literal source span after conservative PDF-safe normalization.",
+                            excerpt_diagnostic_fields(
+                                source,
+                                attempt,
+                                unit_index,
+                                unit.supporting_excerpt.chars().count(),
+                                anchor.status.as_str(),
+                                anchor.normalized_excerpt_chars,
+                                anchor.normalized_match_count,
+                                Some(anchored.chars().count()),
+                            ),
+                        );
+                        unit.supporting_excerpt = anchored;
+                    }
+                    ExcerptAnchorStatus::Missing | ExcerptAnchorStatus::Ambiguous => {
+                        crate::logging::warn_target(
+                            "ai.knowledge.extraction",
+                            "knowledge_excerpt_validation_failed",
+                            "A provider excerpt could not be mapped uniquely to literal source evidence.",
+                            excerpt_diagnostic_fields(
+                                source,
+                                attempt,
+                                unit_index,
+                                unit.supporting_excerpt.chars().count(),
+                                anchor.status.as_str(),
+                                anchor.normalized_excerpt_chars,
+                                anchor.normalized_match_count,
+                                None,
+                            ),
+                        );
+                        return Err(invalid("The knowledge excerpt does not occur in its source."));
+                    }
+                    ExcerptAnchorStatus::Exact => {}
+                }
+            }
+            if let Err(error) = unit.validate(source) {
+                crate::logging::warn_target(
+                    "ai.knowledge.extraction",
+                    "knowledge_unit_validation_failed",
+                    "A provider knowledge unit failed native validation without logging its content.",
+                    json!({
+                        "attempt": attempt,
+                        "sourceId": source.id.as_str(),
+                        "segmentKey": source.segment_key.as_str(),
+                        "unitIndex": unit_index,
+                        "code": error.code.as_str(),
+                        "detail": error.message.as_str(),
+                        "excerptChars": unit.supporting_excerpt.chars().count(),
+                    }),
+                );
+                return Err(error);
+            }
             if unit.supporting_excerpt.trim().is_empty() && !images_attached {
                 return Err(invalid("An image reference is not visible image evidence. Text-only extraction requires an exact source excerpt."));
             }
@@ -211,6 +368,35 @@ fn decode_batch(
         }
     }
     Ok(result)
+}
+
+fn excerpt_diagnostic_fields(
+    source: &SourceRecord,
+    attempt: &str,
+    unit_index: usize,
+    excerpt_chars: usize,
+    anchor_status: &str,
+    normalized_excerpt_chars: usize,
+    normalized_match_count: usize,
+    anchored_chars: Option<usize>,
+) -> Value {
+    let locator = source.locator.as_ref();
+    json!({
+        "attempt": attempt,
+        "sourceId": source.id.as_str(),
+        "segmentKey": source.segment_key.as_str(),
+        "sourceKind": source.kind.as_str(),
+        "sourceChars": source.text.chars().count(),
+        "unitIndex": unit_index,
+        "excerptChars": excerpt_chars,
+        "anchorStatus": anchor_status,
+        "normalizedExcerptChars": normalized_excerpt_chars,
+        "normalizedMatchCount": normalized_match_count,
+        "anchoredChars": anchored_chars,
+        "sourceUnitKind": locator.map(|value| value.unit_kind.as_str()),
+        "sourceUnitStart": locator.map(|value| value.first()),
+        "sourceUnitEnd": locator.map(|value| value.last()),
+    })
 }
 
 pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usize>> {
@@ -311,13 +497,14 @@ mod tests {
             ids.iter().collect::<std::collections::HashSet<_>>().len(),
             ids.len()
         );
-        assert!(decode_batch(json!({"sources": []}), &[], false)
+        assert!(decode_batch(json!({"sources": []}), &[], false, "test")
             .unwrap()
             .is_empty());
         assert!(decode_batch(
             json!({"sources": [{"sourceId": "a", "units": []}]}),
             &[],
-            false
+            false,
+            "test",
         )
         .is_err());
     }

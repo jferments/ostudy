@@ -8,6 +8,7 @@ import {
   type AiProviderProbeResult,
   type AiReasoningEffort,
 } from "../../ipc/aiProfiles";
+import { getErrorMessage } from "../../ipc/common";
 import type { AiTaskKind } from "../../ipc/aiTaskDefaults";
 import {
   getEmbeddingOptions,
@@ -17,9 +18,14 @@ import {
   type EmbeddingInputPolicy,
   type EmbeddingOptions,
 } from "../../ipc/embeddings";
-import { getErrorMessage } from "../../ipc/common";
 import { Button } from "../../ui/primitives/Button";
 import styles from "./DefaultAiModelSettings.module.css";
+import {
+  compatibleReasoning,
+  reasoningChoices,
+  reasoningLabel,
+  reasoningValidationMessage,
+} from "./reasoningOptions";
 
 interface Assignment {
   profileId: string | null;
@@ -152,13 +158,31 @@ function TaskModelRow({
 
   const selectedProfile = eligibleProfiles.find((profile) => profile.id === profileId) ?? null;
   const selectedModel = models.find((model) => model.id === modelId) ?? null;
-  const reasoningOptions = reasoningChoices(selectedModel?.reasoning ?? null, reasoning);
+  const reasoningOptions = reasoningChoices(selectedModel?.reasoning ?? null);
+  const reasoningValidationError =
+    task === "embeddings" || !selectedModel
+      ? null
+      : reasoningValidationMessage(
+          reasoning,
+          selectedModel.reasoning ?? null,
+          selectedModel.label,
+        );
   const locked = controller.mutating || Boolean(controller.pendingTaskDefault);
 
   async function assign(nextModel = modelId, nextReasoning = reasoning): Promise<void> {
     if (!profileId || !nextModel) return;
+    const nextSelectedModel = models.find((model) => model.id === nextModel) ?? null;
+    const nextReasoningError =
+      task === "embeddings" || !nextSelectedModel
+        ? null
+        : reasoningValidationMessage(
+            nextReasoning,
+            nextSelectedModel.reasoning ?? null,
+            nextSelectedModel.label,
+          );
     setStatus(null);
-    setError(null);
+    setError(nextReasoningError);
+    if (nextReasoningError) return;
     await controller.setTaskDefault(
       task,
       profileId,
@@ -168,7 +192,7 @@ function TaskModelRow({
   }
 
   async function testModel(): Promise<void> {
-    if (!selectedProfile || !modelId || testing) return;
+    if (!selectedProfile || !modelId || testing || reasoningValidationError) return;
     setTesting(true);
     setStatus(null);
     setError(null);
@@ -291,6 +315,11 @@ function TaskModelRow({
                 void assign(modelId, next);
               }}
             >
+              {reasoningValidationError ? (
+                <option value={reasoning} disabled>
+                  {reasoningLabel(reasoning)} — unsupported saved selection
+                </option>
+              ) : null}
               {reasoningOptions.map((effort) => (
                 <option key={effort} value={effort}>
                   {reasoningLabel(effort)}
@@ -304,7 +333,7 @@ function TaskModelRow({
           <Button
             size="small"
             variant="secondary"
-            disabled={!modelId || testing || locked}
+            disabled={!modelId || testing || locked || Boolean(reasoningValidationError)}
             onClick={() => {
               void testModel();
             }}
@@ -316,6 +345,11 @@ function TaskModelRow({
 
       {task === "embeddings" && profileId && modelId ? (
         <EmbeddingModelOptions profileId={profileId} modelId={modelId} disabled={locked || testing} />
+      ) : null}
+      {reasoningValidationError ? (
+        <p className={styles.error} role="alert">
+          {reasoningValidationError}
+        </p>
       ) : null}
       {status ? (
         <p className={styles.success} role="status">
@@ -499,40 +533,4 @@ function assignmentFor(controller: AiProfilesController, task: AiTaskKind): Assi
         reasoningEffort: "none",
       };
   }
-}
-
-function reasoningChoices(
-  metadata: AiProviderModel["reasoning"] | null,
-  current: AiReasoningEffort,
-): AiReasoningEffort[] {
-  const supported = metadata?.supportedEfforts;
-  const choices: AiReasoningEffort[] = ["automatic"];
-  if (!metadata?.mandatory) choices.push("none");
-  if (supported) choices.push(...supported);
-  else choices.push("minimal", "low", "medium", "high", "xhigh", "max");
-  if (!choices.includes(current)) choices.push(current);
-  return [...new Set(choices)];
-}
-
-function compatibleReasoning(
-  current: AiReasoningEffort,
-  metadata: AiProviderModel["reasoning"] | null,
-): AiReasoningEffort {
-  if (current === "automatic") return current;
-  if (metadata?.mandatory && current === "none") return "automatic";
-  if (
-    metadata?.supportedEfforts &&
-    !metadata.supportedEfforts.includes(current as Exclude<AiReasoningEffort, "automatic">)
-  ) {
-    return "automatic";
-  }
-  return current;
-}
-
-function reasoningLabel(value: AiReasoningEffort): string {
-  if (value === "automatic") return "Automatic";
-  if (value === "none") return "Off";
-  return value === "xhigh"
-    ? "Extra high"
-    : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
 }

@@ -9,6 +9,7 @@ pub(crate) mod adapters;
 pub(crate) mod authoring;
 pub(crate) mod commands;
 pub(crate) mod contracts;
+mod excerpt_anchor;
 pub(crate) mod extraction;
 mod images;
 mod index;
