@@ -201,6 +201,92 @@ describe("DefaultAiModelSettings", () => {
     );
   });
 
+  it("renders a returned failed probe as an actionable error with phase detail", async () => {
+    vi.mocked(testAiProviderProfile).mockResolvedValue({
+      profileId,
+      profileRevision: 2,
+      credentialEpoch: 1,
+      testedModelId: "deepseek/deepseek-v4-flash",
+      adapterRevision: 9,
+      resultSchemaVersion: 1,
+      overallStatus: "failed",
+      phases: [
+        {
+          phase: "text_completion",
+          label: "Text completion",
+          status: "failed",
+          message: "The selected model did not complete the minimal text probe.",
+          latencyMs: 10,
+          error: {
+            code: "ai_text_probe_invalid",
+            message: "The model responded, but it did not follow the minimal text probe.",
+            retryable: false,
+            retryAfterSeconds: null,
+          },
+        },
+      ],
+      capabilities: [],
+      testedAt: 2,
+      persisted: true,
+      stale: false,
+    });
+
+    render(<DefaultAiModelSettings controller={controller()} />);
+    const testButton = screen.getAllByRole("button", { name: "Test model" })[0];
+    fireEvent.click(testButton);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Model verification failed.");
+    expect(alert.textContent).toContain("Text completion");
+    expect(alert.textContent).toContain("did not follow the minimal text probe");
+  });
+
+  it("reports a failed document schema contract on the generation model row", async () => {
+    vi.mocked(testAiProviderProfile).mockResolvedValue({
+      profileId,
+      profileRevision: 2,
+      credentialEpoch: 1,
+      testedModelId: "deepseek/deepseek-v4-flash",
+      adapterRevision: 9,
+      resultSchemaVersion: 1,
+      overallStatus: "partial",
+      phases: [
+        {
+          phase: "document_generation_schema",
+          label: "Document generation schema",
+          status: "failed",
+          message: "The representative document-generation contract did not validate.",
+          latencyMs: 10,
+          error: {
+            code: "ai_document_schema_probe_invalid",
+            message: "The provider returned document content that did not satisfy the schema.",
+            retryable: false,
+            retryAfterSeconds: null,
+          },
+        },
+      ],
+      capabilities: [
+        {
+          key: "document_generation_schema",
+          status: "unsupported",
+          source: "probed",
+          value: null,
+        },
+      ],
+      testedAt: 2,
+      persisted: true,
+      stale: false,
+    });
+
+    render(<DefaultAiModelSettings controller={controller()} />);
+    const testButton = screen.getAllByRole("button", { name: "Test model" })[0];
+    fireEvent.click(testButton);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("document-generation structured-output contract");
+    expect(alert.textContent).toContain("Document generation schema");
+  });
+
   it("contains no obsolete provider/profile implementation guidance", () => {
     render(<DefaultAiModelSettings controller={controller()} />);
     expect(screen.queryByText(/Each profile stores its own reasoning preference/u)).toBeNull();

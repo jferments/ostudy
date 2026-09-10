@@ -133,7 +133,7 @@ pub(crate) async fn run_document_schema_probe(
         ).to_string()),
         &schema,
         768,
-        "none",
+        &profile.reasoning_effort,
     )?;
     let response = send_prepared_probe(gateway, profile, bearer, &prepared).await?;
     let decoded = decode_document_output(&prepared, &response).map_err(|failure| {

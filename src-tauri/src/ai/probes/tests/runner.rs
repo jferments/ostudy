@@ -1,9 +1,9 @@
 use super::super::super::{
     catalog::{AuthMode, ProviderKind},
     profiles::ProfileSnapshot,
-    providers::ProviderModel,
+    providers::{ProviderModel, ProviderModelReasoning},
 };
-use super::super::runner::classify_model_match_for_test;
+use super::super::runner::{classify_model_match_for_test, probe_reasoning_effort_for_test};
 
 fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
     ProfileSnapshot {
@@ -30,6 +30,16 @@ fn profile(provider_kind: ProviderKind, model_id: &str) -> ProfileSnapshot {
         request_timeout_ms: 60_000,
         credential_epoch: 2,
         revision: 3,
+    }
+}
+
+fn model(id: &str, reasoning: Option<ProviderModelReasoning>) -> ProviderModel {
+    ProviderModel {
+        id: id.to_string(),
+        display_name: id.to_string(),
+        owned_by: None,
+        context_window_tokens: None,
+        reasoning,
     }
 }
 
@@ -73,4 +83,49 @@ fn exact_model_match_remains_exact() {
         reasoning: None,
     }];
     assert_eq!(classify_model_match_for_test(&profile, &models), "exact");
+}
+
+#[test]
+fn openrouter_probe_disables_optional_reasoning_but_not_mandatory_reasoning() {
+    let optional = profile(ProviderKind::Openrouter, "deepseek/deepseek-v4-flash");
+    let optional_models = vec![model(
+        "deepseek/deepseek-v4-flash",
+        Some(ProviderModelReasoning {
+            supported_efforts: Some(vec!["low".to_string(), "high".to_string()]),
+            default_effort: Some("high".to_string()),
+            default_enabled: Some(true),
+            supports_max_tokens: true,
+            mandatory: false,
+        }),
+    )];
+    assert_eq!(
+        probe_reasoning_effort_for_test(&optional, Some(&optional_models)),
+        "none"
+    );
+
+    let mandatory = profile(ProviderKind::Openrouter, "reasoning/mandatory");
+    let mandatory_models = vec![model(
+        "reasoning/mandatory",
+        Some(ProviderModelReasoning {
+            supported_efforts: Some(vec!["low".to_string(), "high".to_string()]),
+            default_effort: Some("low".to_string()),
+            default_enabled: Some(true),
+            supports_max_tokens: true,
+            mandatory: true,
+        }),
+    )];
+    assert_eq!(
+        probe_reasoning_effort_for_test(&mandatory, Some(&mandatory_models)),
+        "low"
+    );
+}
+
+#[test]
+fn openrouter_probe_omits_reasoning_when_catalog_has_no_reasoning_contract() {
+    let profile = profile(ProviderKind::Openrouter, "openai/example");
+    let models = vec![model("openai/example", None)];
+    assert_eq!(
+        probe_reasoning_effort_for_test(&profile, Some(&models)),
+        "automatic"
+    );
 }

@@ -5,6 +5,7 @@ import {
   listAiProviderModels,
   testAiProviderProfile,
   type AiProviderModel,
+  type AiProviderProbeResult,
   type AiReasoningEffort,
 } from "../../ipc/aiProfiles";
 import type { AiTaskKind } from "../../ipc/aiTaskDefaults";
@@ -60,7 +61,9 @@ export function DefaultAiModelSettings({ controller }: { controller: AiProfilesC
           <Button
             size="small"
             disabled={controller.mutating}
-            onClick={() => { void controller.retryTaskDefault(); }}
+            onClick={() => {
+              void controller.retryTaskDefault();
+            }}
           >
             Retry or check assignment
           </Button>
@@ -82,9 +85,12 @@ function TaskModelRow({
   assignment: Assignment;
 }) {
   const eligibleProfiles = useMemo(
-    () => controller.profiles.filter((profile) =>
-      profile.configurationStatus !== "planned"
-      && (task !== "embeddings" || ["llama_cpp", "openrouter"].includes(profile.providerKind))),
+    () =>
+      controller.profiles.filter(
+        (profile) =>
+          profile.configurationStatus !== "planned" &&
+          (task !== "embeddings" || ["llama_cpp", "openrouter"].includes(profile.providerKind)),
+      ),
     [controller.profiles, task],
   );
   const [profileId, setProfileId] = useState(assignment.profileId ?? "");
@@ -107,27 +113,41 @@ function TaskModelRow({
     setModels([]);
     setStatus(null);
     setError(null);
-    if (!profileId) return () => { canceled = true; };
+    if (!profileId)
+      return () => {
+        canceled = true;
+      };
     const profile = eligibleProfiles.find((candidate) => candidate.id === profileId);
-    if (!profile || profile.configurationStatus !== "ready") return () => { canceled = true; };
+    if (!profile || profile.configurationStatus !== "ready")
+      return () => {
+        canceled = true;
+      };
     setLoadingModels(true);
-    const load = task === "embeddings"
-      ? listEmbeddingModels(profile.id).then((items) =>
-          items.map((item) => ({ id: item.id, label: item.name || item.id })))
-      : listAiProviderModels(profile.id, profile.revision).then((result) =>
-          result.models.map((item) => ({
-            id: item.id,
-            label: item.displayName || item.id,
-            reasoning: item.reasoning,
-          })));
-    void load.then((items) => {
-      if (!canceled) setModels(items);
-    }).catch((failure: unknown) => {
-      if (!canceled) setError(getErrorMessage(failure));
-    }).finally(() => {
-      if (!canceled) setLoadingModels(false);
-    });
-    return () => { canceled = true; };
+    const load =
+      task === "embeddings"
+        ? listEmbeddingModels(profile.id).then((items) =>
+            items.map((item) => ({ id: item.id, label: item.name || item.id })),
+          )
+        : listAiProviderModels(profile.id, profile.revision).then((result) =>
+            result.models.map((item) => ({
+              id: item.id,
+              label: item.displayName || item.id,
+              reasoning: item.reasoning,
+            })),
+          );
+    void load
+      .then((items) => {
+        if (!canceled) setModels(items);
+      })
+      .catch((failure: unknown) => {
+        if (!canceled) setError(getErrorMessage(failure));
+      })
+      .finally(() => {
+        if (!canceled) setLoadingModels(false);
+      });
+    return () => {
+      canceled = true;
+    };
   }, [eligibleProfiles, profileId, task]);
 
   const selectedProfile = eligibleProfiles.find((profile) => profile.id === profileId) ?? null;
@@ -163,13 +183,22 @@ function TaskModelRow({
           modelId,
           reasoning,
         );
-        setStatus(
-          result.overallStatus === "verified"
-            ? "Model verified."
-            : result.overallStatus === "partial"
-              ? "Model verified with partial capability support."
-              : "Model verification failed.",
-        );
+        const probeError = modelProbeError(result, task);
+        if (probeError) {
+          setError(probeError);
+        } else if (task === "flashcard_generation") {
+          setStatus(
+            result.overallStatus === "partial"
+              ? "Model verified for document learning tools with partial optional capability support."
+              : "Model verified for document learning tools.",
+          );
+        } else {
+          setStatus(
+            result.overallStatus === "partial"
+              ? "Model verified with partial optional capability support."
+              : "Model verified.",
+          );
+        }
       }
     } catch (failure: unknown) {
       setError(getErrorMessage(failure));
@@ -211,13 +240,19 @@ function TaskModelRow({
           <select
             aria-label={`${label} model`}
             value={modelId}
-            disabled={locked || !profileId || loadingModels || selectedProfile?.configurationStatus !== "ready"}
+            disabled={
+              locked ||
+              !profileId ||
+              loadingModels ||
+              selectedProfile?.configurationStatus !== "ready"
+            }
             onChange={(event) => {
               const nextModel = event.currentTarget.value;
               const model = models.find((candidate) => candidate.id === nextModel) ?? null;
-              const nextReasoning = task === "embeddings"
-                ? "none"
-                : compatibleReasoning(reasoning, model?.reasoning ?? null);
+              const nextReasoning =
+                task === "embeddings"
+                  ? "none"
+                  : compatibleReasoning(reasoning, model?.reasoning ?? null);
               setModelId(nextModel);
               setReasoning(nextReasoning);
               if (nextModel) void assign(nextModel, nextReasoning);
@@ -236,7 +271,9 @@ function TaskModelRow({
               <option value={modelId}>{modelId} — saved selection</option>
             ) : null}
             {models.map((model) => (
-              <option key={model.id} value={model.id}>{model.label}</option>
+              <option key={model.id} value={model.id}>
+                {model.label}
+              </option>
             ))}
           </select>
         </label>
@@ -255,7 +292,9 @@ function TaskModelRow({
               }}
             >
               {reasoningOptions.map((effort) => (
-                <option key={effort} value={effort}>{reasoningLabel(effort)}</option>
+                <option key={effort} value={effort}>
+                  {reasoningLabel(effort)}
+                </option>
               ))}
             </select>
           </label>
@@ -266,7 +305,9 @@ function TaskModelRow({
             size="small"
             variant="secondary"
             disabled={!modelId || testing || locked}
-            onClick={() => { void testModel(); }}
+            onClick={() => {
+              void testModel();
+            }}
           >
             {testing ? "Testing…" : "Test model"}
           </Button>
@@ -276,10 +317,54 @@ function TaskModelRow({
       {task === "embeddings" && profileId && modelId ? (
         <EmbeddingModelOptions profileId={profileId} modelId={modelId} disabled={locked || testing} />
       ) : null}
-      {status ? <p className={styles.success} role="status">{status}</p> : null}
-      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {status ? (
+        <p className={styles.success} role="status">
+          {status}
+        </p>
+      ) : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
+}
+
+function modelProbeError(result: AiProviderProbeResult, task: AiTaskKind): string | null {
+  if (!result.persisted || result.stale) {
+    return "Model verification completed, but the result is not current for this provider connection. Test the model again before using it.";
+  }
+  if (result.overallStatus === "failed") {
+    return probeFailureMessage(result, "Model verification failed.");
+  }
+  if (task === "flashcard_generation") {
+    const schemaCapability = result.capabilities.find(
+      (capability) => capability.key === "document_generation_schema",
+    );
+    if (schemaCapability?.status !== "supported") {
+      return probeFailureMessage(
+        result,
+        "The model connected, but it did not pass ostudy's document-generation structured-output contract.",
+        "document_generation_schema",
+      );
+    }
+  }
+  return null;
+}
+
+function probeFailureMessage(
+  result: AiProviderProbeResult,
+  fallback: string,
+  preferredPhase?: string,
+): string {
+  const phase =
+    (preferredPhase
+      ? result.phases.find((candidate) => candidate.phase === preferredPhase && candidate.status === "failed")
+      : null) ?? result.phases.find((candidate) => candidate.status === "failed");
+  if (!phase) return fallback;
+  const detail = phase.error?.message || phase.message;
+  return detail ? `${fallback} ${phase.label}: ${detail}` : fallback;
 }
 
 function EmbeddingModelOptions({
@@ -311,14 +396,17 @@ function EmbeddingModelOptions({
       .catch((failure: unknown) => {
         if (!canceled) setError(getErrorMessage(failure));
       });
-    return () => { canceled = true; };
+    return () => {
+      canceled = true;
+    };
   }, [modelId, profileId]);
 
   const parsedDimensions = dimensions.trim() === "" ? null : Number(dimensions);
-  const validDimensions = parsedDimensions === null
-    || (Number.isInteger(parsedDimensions) && parsedDimensions >= 32 && parsedDimensions <= 4096);
-  const dirty = Boolean(saved)
-    && (saved?.dimensions !== parsedDimensions || saved?.inputPolicy !== policy);
+  const validDimensions =
+    parsedDimensions === null ||
+    (Number.isInteger(parsedDimensions) && parsedDimensions >= 32 && parsedDimensions <= 4096);
+  const dirty =
+    Boolean(saved) && (saved?.dimensions !== parsedDimensions || saved?.inputPolicy !== policy);
 
   async function save(): Promise<void> {
     if (!saved || !validDimensions || busy) return;
@@ -372,14 +460,20 @@ function EmbeddingModelOptions({
             size="small"
             variant="secondary"
             disabled={disabled || busy || !dirty || !validDimensions}
-            onClick={() => { void save(); }}
+            onClick={() => {
+              void save();
+            }}
           >
             {busy ? "Saving…" : "Save options"}
           </Button>
         </div>
       </div>
       {!validDimensions ? <p className={styles.error}>Use 32–4096 dimensions or leave blank.</p> : null}
-      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
     </details>
   );
 }
@@ -426,7 +520,10 @@ function compatibleReasoning(
 ): AiReasoningEffort {
   if (current === "automatic") return current;
   if (metadata?.mandatory && current === "none") return "automatic";
-  if (metadata?.supportedEfforts && !metadata.supportedEfforts.includes(current as Exclude<AiReasoningEffort, "automatic">)) {
+  if (
+    metadata?.supportedEfforts &&
+    !metadata.supportedEfforts.includes(current as Exclude<AiReasoningEffort, "automatic">)
+  ) {
     return "automatic";
   }
   return current;
@@ -435,5 +532,7 @@ function compatibleReasoning(
 function reasoningLabel(value: AiReasoningEffort): string {
   if (value === "automatic") return "Automatic";
   if (value === "none") return "Off";
-  return value === "xhigh" ? "Extra high" : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
+  return value === "xhigh"
+    ? "Extra high"
+    : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
 }
