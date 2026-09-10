@@ -118,7 +118,6 @@ beforeEach(() => {
     dimensions: null,
     inputPolicy: "automatic",
     revision: 1,
-    updatedAt: 1,
   });
   vi.mocked(testAiProviderProfile).mockResolvedValue({
     profileId,
@@ -136,6 +135,7 @@ beforeEach(() => {
   });
   vi.mocked(testEmbeddingProfile).mockResolvedValue({
     profileId,
+    modelId: "qwen/qwen3-embedding",
     profileRevision: 2,
     optionsRevision: 1,
     dimensions: 768,

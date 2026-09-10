@@ -178,7 +178,6 @@ beforeEach(() => {
     dimensions: null,
     inputPolicy: "automatic",
     revision: 1,
-    updatedAt: 1,
   });
   vi.mocked(taskIpc.setAiTaskDefault).mockResolvedValue(emptyDefaults);
 });
