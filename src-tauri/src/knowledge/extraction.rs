@@ -23,7 +23,7 @@ use super::{
         hash, invalid, KnowledgeUnit, KnowledgeUnitInput, SourceKind, SourceRecord,
         EXTRACTION_PROMPT_VERSION, MAX_UNITS_PER_SOURCE,
     },
-    excerpt_anchor::{reanchor_excerpt, ExcerptAnchorStatus},
+    excerpt_anchor::{reanchor_excerpt, ExcerptAnchorResult, ExcerptAnchorStatus},
     images::load_images,
     repository,
     runtime::check_canceled,
@@ -298,9 +298,10 @@ fn decode_batch(
                 let anchor = reanchor_excerpt(&source.text, &unit.supporting_excerpt);
                 match anchor.status {
                     ExcerptAnchorStatus::Reanchored => {
-                        let anchored = anchor
+                        let anchored_chars = anchor
                             .anchored_excerpt
-                            .expect("a reanchored excerpt must contain the original source slice");
+                            .as_ref()
+                            .map(|excerpt| excerpt.chars().count());
                         crate::logging::debug_target(
                             "ai.knowledge.extraction",
                             "knowledge_excerpt_reanchored",
@@ -310,13 +311,13 @@ fn decode_batch(
                                 attempt,
                                 unit_index,
                                 unit.supporting_excerpt.chars().count(),
-                                anchor.status.as_str(),
-                                anchor.normalized_excerpt_chars,
-                                anchor.normalized_match_count,
-                                Some(anchored.chars().count()),
+                                &anchor,
+                                anchored_chars,
                             ),
                         );
-                        unit.supporting_excerpt = anchored;
+                        unit.supporting_excerpt = anchor
+                            .anchored_excerpt
+                            .expect("a reanchored excerpt must contain the original source slice");
                     }
                     ExcerptAnchorStatus::Missing | ExcerptAnchorStatus::Ambiguous => {
                         crate::logging::warn_target(
@@ -328,9 +329,7 @@ fn decode_batch(
                                 attempt,
                                 unit_index,
                                 unit.supporting_excerpt.chars().count(),
-                                anchor.status.as_str(),
-                                anchor.normalized_excerpt_chars,
-                                anchor.normalized_match_count,
+                                &anchor,
                                 None,
                             ),
                         );
@@ -377,9 +376,7 @@ fn excerpt_diagnostic_fields(
     attempt: &str,
     unit_index: usize,
     excerpt_chars: usize,
-    anchor_status: &str,
-    normalized_excerpt_chars: usize,
-    normalized_match_count: usize,
+    anchor: &ExcerptAnchorResult,
     anchored_chars: Option<usize>,
 ) -> Value {
     let locator = source.locator.as_ref();
@@ -391,9 +388,9 @@ fn excerpt_diagnostic_fields(
         "sourceChars": source.text.chars().count(),
         "unitIndex": unit_index,
         "excerptChars": excerpt_chars,
-        "anchorStatus": anchor_status,
-        "normalizedExcerptChars": normalized_excerpt_chars,
-        "normalizedMatchCount": normalized_match_count,
+        "anchorStatus": anchor.status.as_str(),
+        "normalizedExcerptChars": anchor.normalized_excerpt_chars,
+        "normalizedMatchCount": anchor.normalized_match_count,
         "anchoredChars": anchored_chars,
         "sourceUnitKind": locator.map(|value| value.unit_kind.as_str()),
         "sourceUnitStart": locator.map(|value| value.first()),
