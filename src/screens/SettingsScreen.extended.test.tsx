@@ -145,6 +145,12 @@ async function openAiTab(): Promise<void> {
   fireEvent.click(screen.getByRole("tab", { name: "AI/LLM" }));
 }
 
+async function readyAddProviderButton(): Promise<HTMLButtonElement> {
+  const button = (await screen.findByRole("button", { name: "Add provider" })) as HTMLButtonElement;
+  await waitFor(() => expect(button.disabled).toBe(false));
+  return button;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(settingsIpc.getAppInfo).mockResolvedValue({
@@ -205,7 +211,7 @@ describe("SettingsScreen AI provider/model behavior", () => {
 
     renderSettings();
     await openAiTab();
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    fireEvent.click(await readyAddProviderButton());
     expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe(
       "openrouter",
     );
@@ -279,8 +285,8 @@ describe("SettingsScreen AI provider/model behavior", () => {
 
     renderSettings();
     await openAiTab();
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
-    fireEvent.click(screen.getByText("Advanced settings"));
+    fireEvent.click(await readyAddProviderButton());
+    fireEvent.click(await screen.findByText("Advanced settings"));
     expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe(
       "OpenRouter 3",
     );
@@ -293,7 +299,7 @@ describe("SettingsScreen AI provider/model behavior", () => {
 
     renderSettings();
     await openAiTab();
-    await screen.findByDisplayValue("OpenRouter");
+    await screen.findByRole("button", { name: "Refresh model catalog" });
     expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Reasoning effort" })).toBeNull();
     expect(screen.getByRole("button", { name: "Refresh model catalog" })).toBeTruthy();
