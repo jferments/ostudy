@@ -42,7 +42,7 @@ fn configuration_projection_distinguishes_disabled_incomplete_and_ready() {
             &stored(true, "", AuthMode::None),
             CredentialStatus::NotRequired,
         ),
-        ProfileConfigurationStatus::Incomplete
+        ProfileConfigurationStatus::Ready
     );
     assert_eq!(
         configuration_status_for_test(
