@@ -109,6 +109,12 @@ fn one_provider_connection_can_back_three_independent_task_models() {
         },
     )
     .unwrap();
+    assert_eq!(defaults.tutor_profile_id, Some(profile.id.clone()));
+    assert_eq!(
+        defaults.tutor_model_id.as_deref(),
+        Some("anthropic/claude-sonnet")
+    );
+
     let defaults = service::set_task_default(
         &database,
         &runtime,
