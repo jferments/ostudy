@@ -153,6 +153,7 @@ fn revision_at(c: &Connection, sources: &[SourceRecord]) -> Result<String, Comma
     Ok(format!("{:x}", digest.finalize()))
 }
 
+#[cfg(test)]
 pub(crate) fn load(
     database: &Database,
     sources: &[SourceRecord],
