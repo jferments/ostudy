@@ -33,7 +33,7 @@ use crate::{
 };
 
 const CLOUD_GUIDE_PARALLELISM: usize = 4;
-const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v2-knowledge-source";
+const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v3-explicit-output-contract";
 
 #[derive(Clone, Debug)]
 pub(crate) struct StudyGuideTopicEvidence {
@@ -318,10 +318,8 @@ async fn generate_missing_topics(
             generate_slot(execution, catalogs, i3),
         );
 
-        let mut results = [r0, r1, r2, r3].into_iter().flatten().collect::<Vec<_>>();
-        results.sort_by_key(|(index, _)| *index);
-        for (index, result) in results {
-            let section = result?;
+        let results = [r0, r1, r2, r3].into_iter().flatten().collect::<Vec<_>>();
+        retain_successful_topics(results, |index, section| {
             let topic = &execution.plan.topics[index];
             persist_checkpoint_best_effort(
                 execution.database,
@@ -338,11 +336,27 @@ async fn generate_missing_topics(
                 DocumentArtifactJobState::Generating,
                 DocumentArtifactJobState::Generating,
                 completed,
-            )?;
-        }
+            )
+        })?;
         cursor = end;
     }
     Ok(())
+}
+
+/// Every completed provider request is accounted for before propagating failure.
+/// A low-index failure must not discard paid, valid higher-index siblings.
+fn retain_successful_topics<T>(
+    mut results: Vec<(usize, Result<T, CommandError>)>,
+    mut save: impl FnMut(usize, T) -> Result<(), CommandError>,
+) -> Result<(), CommandError> {
+    results.sort_by_key(|(index, _)| *index);
+    let mut first_failure = None;
+    for (index, result) in results {
+        if let Err(error) = result.and_then(|section| save(index, section)) {
+            first_failure.get_or_insert(error);
+        }
+    }
+    first_failure.map_or(Ok(()), Err)
 }
 
 async fn generate_slot(
@@ -353,7 +367,9 @@ async fn generate_slot(
     let index = index?;
     let topic = &execution.plan.topics[index];
     let evidence = &execution.evidence[index];
-    let result = generate_study_guide_topic_section(
+    let result = async {
+        execution.task.ensure_current(execution.database)?;
+        let section = generate_study_guide_topic_section(
         execution.runtime,
         execution.task,
         execution.document_title,
@@ -364,9 +380,18 @@ async fn generate_slot(
             images: &evidence.images,
             knowledge: &catalogs[index],
         },
-    )
-    .await
-    .map_err(|error| {
+    ).await?;
+        execution.task.ensure_current(execution.database)?;
+        Ok(section)
+    }.await.map_err(|error: CommandError| {
+        crate::logging::error_target(
+            "ai.document.study_guide", "study_guide_topic_failed",
+            "A guide topic failed; safe structural details are available without document or model content.",
+            serde_json::json!({"document":execution.document_id,"topicIndex":index,
+                "unitStart":topic.source_locator.first(),"unitEnd":topic.source_locator.last(),
+                "provider":execution.task.provider_kind,"model":execution.task.model_id,
+                "code":error.code,"detail":error.message}),
+        );
         CommandError::new(
             error.code,
             format!(
@@ -619,7 +644,10 @@ mod tests {
 
     #[test]
     fn checkpoint_contract_name_is_versioned() {
-        assert!(STUDY_GUIDE_CHECKPOINT_CONTRACT.contains("v2"));
+        assert_eq!(
+            STUDY_GUIDE_CHECKPOINT_CONTRACT,
+            "document-study-guide-v3-explicit-output-contract"
+        );
     }
     #[test]
     fn content_only_checkpoints_are_not_knowledge_first_checkpoints() {
@@ -636,5 +664,40 @@ mod tests {
             catalog.fingerprint().unwrap(),
             altered.fingerprint().unwrap()
         );
+    }
+    #[test]
+    fn failed_topic_does_not_discard_successful_parallel_siblings() {
+        let mut saved = Vec::new();
+        let failure = retain_successful_topics(
+            vec![
+                (2, Ok("later")),
+                (0, Err(CommandError::new("bad_section", "invalid"))),
+                (1, Ok("middle")),
+            ],
+            |index, content| {
+                saved.push((index, content));
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(failure.code, "bad_section");
+        assert_eq!(saved, vec![(1, "middle"), (2, "later")]);
+    }
+    #[test]
+    fn checkpoint_projection_error_does_not_skip_remaining_successes() {
+        let mut visited = Vec::new();
+        let result = retain_successful_topics(
+            vec![(0, Ok("first")), (1, Ok("second"))],
+            |index, content| {
+                visited.push(content);
+                if index == 0 {
+                    Err(CommandError::new("projection_failed", "failed"))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result.unwrap_err().code, "projection_failed");
+        assert_eq!(visited, vec!["first", "second"]);
     }
 }

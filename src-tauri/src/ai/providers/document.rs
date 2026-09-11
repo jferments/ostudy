@@ -22,6 +22,7 @@ pub(crate) struct PreparedDocumentRequest {
     pub body: Value,
     pub compatibility_body: Option<Value>,
     decoder: DocumentOutputDecoder,
+    schema: Value,
 }
 
 #[derive(Debug)]
@@ -40,6 +41,7 @@ pub(crate) fn prepare_document_request(
     reasoning_effort: &str,
 ) -> Result<PreparedDocumentRequest, AiGatewayError> {
     let dialect = ProviderDialect::for_kind(profile.provider_kind)?;
+    let system_prompt = crate::ai::structured_output::system_with_schema(system_prompt, schema);
     let messages = json!([
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_content}
@@ -54,6 +56,7 @@ pub(crate) fn prepare_document_request(
                 body,
                 compatibility_body: Some(compatibility_body),
                 decoder: DocumentOutputDecoder::ContentJson,
+                schema: schema.clone(),
             })
         }
         ProviderDialect::Deepseek => {
@@ -65,6 +68,7 @@ pub(crate) fn prepare_document_request(
                 body,
                 compatibility_body: None,
                 decoder: DocumentOutputDecoder::StrictTool(deepseek::DOCUMENT_TOOL_NAME),
+                schema: schema.clone(),
             })
         }
         ProviderDialect::Openrouter => {
@@ -85,6 +89,7 @@ pub(crate) fn prepare_document_request(
                 body,
                 compatibility_body: None,
                 decoder: DocumentOutputDecoder::ContentJson,
+                schema: schema.clone(),
             })
         }
     }
@@ -107,9 +112,13 @@ pub(crate) fn decode_document_output(
             })?
         }
     };
-    serde_json::from_str(serialized).map_err(|_| ProviderOutputError {
+    let value = serde_json::from_str(serialized).map_err(|_| ProviderOutputError {
         message: "The AI provider returned structured document content that was not valid JSON.",
-    })
+    })?;
+    // A shape mismatch is diagnostic here, not a whole-batch veto. Domain
+    // decoders admit independent units and preserve partial-coverage semantics.
+    crate::ai::structured_output::log_shape(&value, &request.schema, "document_response");
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -180,7 +189,9 @@ mod tests {
         for request in [&llama, &deepseek, &openrouter] {
             assert_eq!(
                 request.body.pointer("/messages/0/content"),
-                Some(&json!("system"))
+                Some(&json!(crate::ai::structured_output::system_with_schema(
+                    "system", &schema
+                )))
             );
             assert_eq!(
                 request.body.pointer("/messages/1/content"),

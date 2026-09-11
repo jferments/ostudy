@@ -7,7 +7,7 @@ use super::super::{
     },
     evidence::{EvidenceCatalog, Grounding, Importance, EVIDENCE_VERSION},
 };
-use crate::error::CommandError;
+use crate::{ai::structured_output, error::CommandError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -73,19 +73,6 @@ struct Proposal {
     topic: String,
     importance: Importance,
     evidence_ids: Vec<String>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct WindowResponse {
-    units: Vec<Value>,
-    no_learning_source_ids: Vec<Value>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RepairResponse {
-    repairs: Vec<Value>,
-    additional_units: Vec<Value>,
-    no_learning_source_ids: Vec<Value>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -195,9 +182,7 @@ fn append_unit(
         }
     }
 }
-fn add_dispositions(report: &mut AnalysisReport, ids: Vec<Value>, sources: &[SourceRecord]) {
-    // Malformed/unknown dispositions do not certify any supplied source. Keep
-    // the source uncovered while admitting valid independent units/dispositions.
+fn add_dispositions(report: &mut AnalysisReport, ids: &[Value], sources: &[SourceRecord]) {
     for value in ids {
         if let Some(id) = value.as_str() {
             if sources.iter().any(|s| s.id == id)
@@ -208,22 +193,45 @@ fn add_dispositions(report: &mut AnalysisReport, ids: Vec<Value>, sources: &[Sou
         }
     }
 }
+
+/// Decode only the explicitly named collection. Ignoring unusable ancillary
+/// dispositions never certifies a source: refresh_coverage keeps it uncovered.
+/// Unlike native IPC/storage DTOs, a provider envelope is not an authority boundary.
+fn ancillary<'a>(value: &'a Value, key: &str) -> &'a [Value] {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+}
+
 pub(crate) fn initial(
     value: Value,
     catalog: &EvidenceCatalog,
     sources: &[SourceRecord],
 ) -> Result<AnalysisReport, CommandError> {
-    let response: WindowResponse = serde_json::from_value(value)
-        .map_err(|_| invalid("The semantic window response has an invalid envelope."))?;
-    if response.units.len() > MAX_WINDOW_UNITS
-        || response.no_learning_source_ids.len() > MAX_WINDOW_UNITS
-    {
+    let schema = super::schema::initial(catalog, sources);
+    structured_output::log_shape(&value, &schema, "knowledge_initial");
+    // Only one documented lossless alternate envelope is supported: a bare
+    // proposal array. No arbitrary data/results wrapper or invented field names.
+    let units = value
+        .get("units")
+        .and_then(Value::as_array)
+        .or_else(|| value.as_array())
+        .ok_or_else(|| {
+            invalid(format!(
+                "The semantic response must contain a units array. {}",
+                structured_output::shape_detail(&value, &schema)
+            ))
+        })?;
+    let dispositions = ancillary(&value, "noLearningSourceIds");
+    if units.len() > MAX_WINDOW_UNITS || dispositions.len() > MAX_WINDOW_UNITS {
         return Err(invalid("The semantic window exceeded its proposal limit."));
     }
     let mut report = AnalysisReport::default();
-    add_dispositions(&mut report, response.no_learning_source_ids, sources);
-    for (slot, value) in response.units.into_iter().enumerate() {
-        append_unit(&mut report, value, slot, catalog, sources);
+    add_dispositions(&mut report, dispositions, sources);
+    for (slot, proposal) in units.iter().enumerate() {
+        append_unit(&mut report, proposal.clone(), slot, catalog, sources);
     }
     report.refresh_coverage(sources);
     Ok(report)
@@ -234,11 +242,20 @@ pub(crate) fn repair(
     catalog: &EvidenceCatalog,
     sources: &[SourceRecord],
 ) -> Result<AnalysisReport, CommandError> {
-    let response: RepairResponse = serde_json::from_value(value)
-        .map_err(|_| invalid("The targeted repair returned an invalid envelope."))?;
-    if response.repairs.len() > MAX_WINDOW_UNITS
-        || response.additional_units.len() > MAX_WINDOW_UNITS
-        || response.no_learning_source_ids.len() > MAX_WINDOW_UNITS
+    let schema = super::schema::repair(catalog, sources, report);
+    structured_output::log_shape(&value, &schema, "knowledge_repair");
+    if !value.is_object() {
+        return Err(invalid(format!(
+            "The targeted repair must be a JSON object. {}",
+            structured_output::shape_detail(&value, &schema)
+        )));
+    }
+    let repairs = ancillary(&value, "repairs");
+    let additional_units = ancillary(&value, "additionalUnits");
+    let dispositions = ancillary(&value, "noLearningSourceIds");
+    if repairs.len() > MAX_WINDOW_UNITS
+        || additional_units.len() > MAX_WINDOW_UNITS
+        || dispositions.len() > MAX_WINDOW_UNITS
     {
         return Err(invalid("The targeted repair exceeded its bounds."));
     }
@@ -247,10 +264,8 @@ pub(crate) fn repair(
         .iter()
         .map(|item| (item.slot, item))
         .collect::<HashMap<_, _>>();
-    // Count even malformed entries with a valid slot. Conflicting duplicates
-    // cannot choose which version wins by order, but do not poison other slots.
     let mut counts = HashMap::new();
-    for raw in &response.repairs {
+    for raw in repairs {
         if let Some(slot) = raw
             .get("slot")
             .and_then(Value::as_u64)
@@ -260,8 +275,8 @@ pub(crate) fn repair(
         }
     }
     let mut result = report.clone();
-    for raw in response.repairs {
-        let Ok(item) = serde_json::from_value::<Repair>(raw) else {
+    for raw in repairs {
+        let Ok(item) = Repair::deserialize(raw) else {
             continue;
         };
         if !pending.contains_key(&item.slot)
@@ -282,7 +297,7 @@ pub(crate) fn repair(
         .max()
         .unwrap_or(report.accepted.len())
         .saturating_add(1);
-    for value in response.additional_units {
+    for value in additional_units {
         if report.missing_sources.is_empty()
             || result.accepted.len() + result.rejected.len() >= MAX_WINDOW_UNITS
         {
@@ -296,13 +311,11 @@ pub(crate) fn repair(
             })
         });
         if addresses_missing {
-            append_unit(&mut result, value, next_slot, catalog, sources);
+            append_unit(&mut result, value.clone(), next_slot, catalog, sources);
             next_slot = next_slot.saturating_add(1);
         }
     }
-    // Additional dispositions may address uncovered sources, but never resolve
-    // a rejected proposal merely by declaring its source non-learning.
-    add_dispositions(&mut result, response.no_learning_source_ids, sources);
+    add_dispositions(&mut result, dispositions, sources);
     result.refresh_coverage(sources);
     Ok(result)
 }
@@ -311,7 +324,6 @@ pub(crate) fn report_diagnostic(report: &AnalysisReport) -> Value {
         "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":r.code,
         "draftFingerprint":hash(&r.proposal.to_string())})).collect::<Vec<_>>()})
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +455,65 @@ mod tests {
             report.accepted[0].content.supporting_excerpt,
             sources[0].text
         );
-        // Source text is unchanged; the stored interpretation is not certified.
+    }
+    #[test]
+    fn envelope_variants_preserve_valid_units_and_leave_uncovered_sources_pending() {
+        let (_, first, _, _) = fixture();
+        let mut second = first.clone();
+        second.segment_key = "1:0:0".into();
+        second.refresh_identity().unwrap();
+        let sources = [first, second];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        for value in [
+            json!({"units":[unit(json!(["E0"]))]}),
+            json!({"units":[unit(json!(["E0"]))],"noLearningSourceIds":null}),
+            json!({"units":[unit(json!(["E0"]))],"noLearningSourceIds":"not a disposition","commentary":"unused"}),
+            json!([unit(json!(["E0"]))]),
+        ] {
+            let report = initial(value, &catalog, &sources).unwrap();
+            assert_eq!(report.accepted.len(), 1);
+            assert_eq!(report.missing_sources, vec![sources[1].id.clone()]);
+            assert!(!report.is_complete());
+        }
+    }
+    #[test]
+    fn ambiguous_wrappers_and_missing_primary_arrays_are_not_guessed() {
+        let (_, source, _, _) = fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        for value in [
+            json!({"data":{"units":[]}}),
+            json!({"units":null}),
+            json!({"units":"PRIVATE TEXT"}),
+            json!({}),
+        ] {
+            let error = initial(value, &catalog, &sources).unwrap_err();
+            assert!(error.message.contains("units"));
+            assert!(!error.message.contains("PRIVATE TEXT"));
+        }
+    }
+    #[test]
+    fn malformed_ancillary_repair_collection_does_not_throw_away_valid_corrections() {
+        let (_, source, _, _) = fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let report = initial(json!({"units":[unit(json!(["E404"]))]}), &catalog, &sources).unwrap();
+        let repaired = repair(
+            &report,
+            json!({"repairs":[{"slot":0,"unit":unit(json!(["E0"]))}],"additionalUnits":null}),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert!(repaired.is_complete());
+        assert_eq!(repaired.accepted.len(), 1);
+        let unchanged = repair(
+            &report,
+            json!({"repairs":"bad","additionalUnits":null}),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert!(!unchanged.is_complete());
     }
 }
