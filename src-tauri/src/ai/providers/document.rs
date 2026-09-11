@@ -1,4 +1,3 @@
-#[path = "document_json.rs"]
 mod json_output;
 
 use serde_json::{json, Value};
