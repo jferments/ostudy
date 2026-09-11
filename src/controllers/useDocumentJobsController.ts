@@ -112,7 +112,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       );
       const result = await importPdfAndGenerateFlashcards(selected.id);
       await reconcileSaved();
-      showGenerationSuccess(result.document, result.createdCardCount, showToast);
+      showGenerationSuccess(result.createdCardCount, showToast);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -128,7 +128,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     try {
       const result = await retryPdfFlashcardGeneration(document.id);
       await reconcileSaved();
-      showGenerationSuccess(result.document, result.createdCardCount, showToast);
+      showGenerationSuccess(result.createdCardCount, showToast);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -291,25 +291,6 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument };
 }
 
-function showGenerationSuccess(
-  document: DocumentSummary,
-  createdCardCount: number,
-  showToast: ShowToast,
-): void {
-  const cards = `Created ${createdCardCount} flashcard${createdCardCount === 1 ? "" : "s"} in a new deck.`;
-  if ((document.analysisPendingItems ?? 0) > 0) {
-    showToast("info", `${cards} Analysis is partial: ${document.analysisPendingItems} items remain unresolved. Valid knowledge was retained; completion does not imply full source coverage.`);
-    return;
-  }
-  if (document.sourceFormat === "pdf" && document.extractionMode === "ocr_fallback"
-      && document.ocrPageCount > 0 && document.ocrCompletedPageCount === document.ocrPageCount
-      && document.ocrMeanConfidence !== null) {
-    showToast(
-      "success",
-      `${cards} OCR fallback recovered ${document.ocrPageCount} page${document.ocrPageCount === 1 ? "" : "s"}; review cards against the source because OCR can be less accurate.`,
-    );
-    return;
-  }
-  showToast("success", cards);
+function showGenerationSuccess(createdCardCount: number, showToast: ShowToast): void {
+  showToast("success", `Created ${createdCardCount} flashcard${createdCardCount === 1 ? "" : "s"} in a new deck.`);
 }
-

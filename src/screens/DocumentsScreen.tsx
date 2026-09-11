@@ -114,8 +114,9 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                 label: guideGenerating ? (cancelingGuide ? "Stopping study guide…" : "Generating study guide…") : "Generate study guide",
                 description: guideGenerating ? "Stop study guide generation. Saved topics remain available." : undefined,
                 icon: guideGenerating ? "stop" : undefined,
+                destructive: guideGenerating,
                 placement: "always-visible",
-                variant: "primary",
+                variant: guideGenerating ? "secondary" : "primary",
                 onSelect: () => void (guideGenerating ? stopStudyGuide(document) : generateStudyGuide(document)),
                 disabled: guideGenerating ? cancelingGuide : busy || isUploading,
               });
@@ -211,13 +212,6 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                   {document.lifecycleState === "processing" ? (
                     <GenerationProgressPanel document={document} progress={live} now={clockNow} />
                   ) : null}
-                  {(document.analysisPendingItems ?? 0) > 0 ? (
-                    <p role="status" className={styles.deckNote}>
-                      Analysis is partial: {document.analysisPendingItems} knowledge proposals or
-                      source dispositions remain unresolved. Valid material was retained.
-                      Retry document generation to repair remaining items. Tutor uses saved knowledge without re-extraction.
-                    </p>
-                  ) : null}
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
@@ -243,4 +237,3 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     </section>
   );
 }
-
