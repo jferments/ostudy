@@ -337,6 +337,7 @@ async fn generate_missing_topics(
                 DocumentArtifactJobState::Generating,
                 completed,
             )
+            .map(|_| ())
         })?;
         cursor = end;
     }
