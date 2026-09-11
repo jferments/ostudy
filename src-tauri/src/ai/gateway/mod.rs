@@ -20,4 +20,7 @@ pub(crate) use errors::error;
 pub(crate) use streaming::usage::safe_usage_envelope as normalized_usage;
 
 #[cfg(test)]
+pub(crate) use streaming::sse::SseChatAccumulator;
+
+#[cfg(test)]
 mod tests;

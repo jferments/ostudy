@@ -1,5 +1,6 @@
 //! Per-proposal admission and bounded repair. Invalid candidates remain explicit
 //! local drafts, never evidence. A malformed sibling cannot erase valid repairs.
+mod envelope;
 use super::super::{
     contracts::{
         hash, invalid, KnowledgeKind, KnowledgeUnitInput, SourceKind, SourceRecord,
@@ -239,6 +240,7 @@ pub(crate) fn initial(
     catalog: &EvidenceCatalog,
     sources: &[SourceRecord],
 ) -> Result<AnalysisReport, CommandError> {
+    let value = envelope::initial(value, MAX_WINDOW_UNITS)?;
     let schema = super::schema::initial(catalog, sources);
     structured_output::log_shape(&value, &schema, "knowledge_initial");
     // Only one documented lossless alternate envelope is supported: a bare
@@ -271,6 +273,7 @@ pub(crate) fn repair(
     catalog: &EvidenceCatalog,
     sources: &[SourceRecord],
 ) -> Result<AnalysisReport, CommandError> {
+    let value = envelope::repair(value, MAX_WINDOW_UNITS)?;
     let schema = super::schema::repair(catalog, sources, report);
     structured_output::log_shape(&value, &schema, "knowledge_repair");
     if !value.is_object() {

@@ -8,7 +8,9 @@ const MAX_JSON_BYTES: usize = 2 * 1024 * 1024;
 
 pub(super) fn parse(raw: &str) -> Result<Value, ProviderOutputError> {
     if raw.len() > MAX_JSON_BYTES {
-        return Err(failure("The structured response exceeded its JSON size limit."));
+        return Err(failure(
+            "The structured response exceeded its JSON size limit.",
+        ));
     }
     let normalized = unwrap_fence(raw);
     let (mut value, repaired) = match serde_json::from_str::<Value>(normalized) {
@@ -115,6 +117,13 @@ fn repair_syntax(text: &str) -> Option<String> {
             ',' if !in_string => {
                 let next = chars.clone().find(|c| !c.is_ascii_whitespace());
                 if matches!(next, Some('}' | ']')) {
+                    // A trailing comma follows a real value. Removing the
+                    // comma from [,], {"key":,}, or [1,,] would invent absence
+                    // of a missing value, rather than normalize formatting.
+                    let previous = result.chars().rev().find(|c| !c.is_ascii_whitespace());
+                    if previous.is_none_or(|c| matches!(c, '[' | '{' | ':' | ',')) {
+                        return None;
+                    }
                     changed = true;
                 } else {
                     result.push(',');
@@ -167,6 +176,9 @@ mod tests {
             r#"{"a":"first "second" third"}"#,
             "Here is your JSON: {\"a\":1}",
             "{}{}",
+            "[,]",
+            r#"{"key":,}"#,
+            "[1,,]",
             "```json\n{}",
         ] {
             let error = parse(raw).unwrap_err();

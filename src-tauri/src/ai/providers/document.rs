@@ -103,9 +103,10 @@ pub(crate) fn decode_document_output(
 ) -> Result<Value, ProviderOutputError> {
     let value = match request.decoder {
         DocumentOutputDecoder::ContentJson => {
-            let content = openai_compatible::completion_content(response).ok_or(ProviderOutputError {
-                message: "The AI provider returned no structured document content.",
-            })?;
+            let content =
+                openai_compatible::completion_content(response).ok_or(ProviderOutputError {
+                    message: "The AI provider returned no structured document content.",
+                })?;
             json_output::parse(content)?
         }
         DocumentOutputDecoder::StrictTool(name) => {
@@ -126,12 +127,11 @@ pub(crate) fn decode_document_output(
                         message: "The AI provider returned an unexpected structured-output tool.",
                     });
                 }
-                let arguments = function
-                    .get("arguments")
-                    .and_then(Value::as_str)
-                    .ok_or(ProviderOutputError {
+                let arguments = function.get("arguments").and_then(Value::as_str).ok_or(
+                    ProviderOutputError {
                         message: "The structured tool result did not contain JSON arguments.",
-                    })?;
+                    },
+                )?;
                 values.push(json_output::parse(arguments)?);
             }
             if values.len() == 1 {

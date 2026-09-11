@@ -75,3 +75,5 @@ fn all_provider_dialects_deliver_the_semantic_contract_and_preserve_native_evide
         );
     }
 }
+
+mod streaming;
