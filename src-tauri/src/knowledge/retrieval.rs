@@ -181,6 +181,10 @@ pub(crate) fn eligible_entries(
              UNION ALL
              SELECT 'unit:' || u.id, u.source_id, u.content_hash FROM knowledge_units u
              JOIN allowed_sources s ON s.id = u.source_id AND s.content_hash = u.source_hash
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM knowledge_unit_evidence e
+                 LEFT JOIN allowed_sources dependency ON dependency.id = e.source_id AND dependency.content_hash = e.source_hash
+                 WHERE e.unit_id = u.id AND dependency.id IS NULL)
              LIMIT 250001",
         ).map_err(CommandError::database)?;
         let entries = statement.query_map(

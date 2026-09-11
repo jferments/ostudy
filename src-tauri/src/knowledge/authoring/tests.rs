@@ -16,6 +16,7 @@ use crate::{
 
 pub(crate) fn catalog_fixture() -> KnowledgeCatalog {
     KnowledgeCatalog {
+        document_core_units: Default::default(),
         units: vec![KnowledgeUnit {
             id: "a".repeat(32),
             source_id: "b".repeat(32),
@@ -28,6 +29,7 @@ pub(crate) fn catalog_fixture() -> KnowledgeCatalog {
                 qualifications: vec![],
                 topic: "Geometry".to_string(),
                 supporting_excerpt: "A triangle has three sides.".to_string(),
+                grounding: None,
             },
         }],
     }
@@ -54,6 +56,7 @@ pub(crate) fn fixture() -> (
     }).unwrap();
     let locator = SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap();
     let mut source = SourceRecord {
+        identity_version: 1,
         id: String::new(),
         kind: SourceKind::Document,
         owner_id: document_id.clone(),
@@ -106,7 +109,15 @@ pub(crate) fn fixture() -> (
         }],
     )
     .unwrap();
-    (database, source, KnowledgeCatalog { units }, plan)
+    (
+        database,
+        source,
+        KnowledgeCatalog {
+            units,
+            document_core_units: Default::default(),
+        },
+        plan,
+    )
 }
 
 fn guide_content() -> StudyGuideSectionContent {

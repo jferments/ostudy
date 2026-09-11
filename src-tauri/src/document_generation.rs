@@ -99,14 +99,15 @@ pub(crate) async fn execute_generation_windows(
     if input.windows.is_empty() {
         return Ok(Vec::new());
     }
-    authoring::prepare_document(
-        input.database,
-        input.paths,
-        input.runtime,
-        input.task,
-        input.document_id,
-        &indices,
-    )
+    authoring::prepare_document(authoring::DocumentPreparation {
+        database: input.database,
+        paths: input.paths,
+        runtime: input.runtime,
+        task: input.task,
+        document_id: input.document_id,
+        chunk_indices: &indices,
+        retry_partial: false,
+    })
     .await?;
     let catalogs = input
         .windows

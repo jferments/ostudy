@@ -78,14 +78,15 @@ pub(crate) async fn execute_study_guide_generation(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        authoring::prepare_document(
-            execution.database,
-            execution.paths,
-            execution.runtime,
-            execution.task,
-            execution.document_id,
-            &indices,
-        )
+        authoring::prepare_document(authoring::DocumentPreparation {
+            database: execution.database,
+            paths: execution.paths,
+            runtime: execution.runtime,
+            task: execution.task,
+            document_id: execution.document_id,
+            chunk_indices: &indices,
+            retry_partial: false,
+        })
         .await?;
         execution
             .plan

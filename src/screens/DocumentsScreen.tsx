@@ -510,6 +510,13 @@ export function DocumentsScreen({
                   {document.lifecycleState === "processing" ? (
                     <GenerationProgressPanel document={document} progress={live} now={clockNow} />
                   ) : null}
+                  {(document.analysisPendingItems ?? 0) > 0 ? (
+                    <p role="status" className={styles.deckNote}>
+                      Analysis is partial: {document.analysisPendingItems} knowledge proposals or
+                      source dispositions remain unresolved. Valid material was retained. Use
+                      Retry generation, Generate more cards, or prepare in Tutor to retry pending analysis.
+                    </p>
+                  ) : null}
                   {document.safeErrorMessage ? (
                     <p className={styles.documentError}>{document.safeErrorMessage}</p>
                   ) : null}
@@ -683,6 +690,20 @@ function generationStage(
       detail: "Recovering text from pages whose native PDF text layer was unreliable.",
     };
   }
+  if (progress?.phase === "understanding material") {
+    return {
+      title: "Understanding material",
+      detail: `${progress.completedWindows} / ${progress.totalWindows} source chunks prepared${
+        progress.currentPageStart === null ? "" : ` · ${sourceUnitPluralLabel(document.sourceUnitKind)} ${progress.currentPageStart}–${progress.currentPageEnd ?? progress.currentPageStart}`
+      }. Validated knowledge is saved incrementally.`,
+    };
+  }
+  if (progress?.phase === "organizing knowledge") {
+    return {
+      title: "Organizing shared knowledge",
+      detail: "Building the learning outline from saved interpretations, not rereading the raw document.",
+    };
+  }
   if (
     document.outlineWindowCount > 0 &&
     document.outlineCompletedWindowCount < document.outlineWindowCount
@@ -794,6 +815,11 @@ function generationPercent(
   ) {
     return Math.round((document.renderedPageCount / document.sourceUnitCount) * 20);
   }
+  if (progress?.phase === "understanding material" || progress?.phase === "organizing knowledge") {
+    // The old outline-window counts are not semantic-analysis progress. Avoid
+    // inventing a whole-job percentage while the actual chunk count is shown.
+    return null;
+  }
   const totalWindows = document.outlineWindowCount + document.generationWindowCount;
   if (totalWindows > 0) {
     const completed = document.outlineCompletedWindowCount + document.generationCompletedWindowCount;
@@ -819,6 +845,10 @@ function showGenerationSuccess(
   showToast: ShowToast,
 ): void {
   const cards = `Created ${createdCardCount} flashcard${createdCardCount === 1 ? "" : "s"} in a new deck.`;
+  if ((document.analysisPendingItems ?? 0) > 0) {
+    showToast("info", `${cards} Analysis is partial: ${document.analysisPendingItems} items remain unresolved. Valid knowledge was retained; completion does not imply full source coverage.`);
+    return;
+  }
   if (hasCompletedOcrRecovery(document)) {
     showToast(
       "success",

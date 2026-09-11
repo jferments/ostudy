@@ -1,56 +1,44 @@
-//! Reusable document-outline construction independent of any final learning artifact.
-//!
-//! Flashcards and study guides consume the same validated outline. This service
-//! owns current-plan checkpoint validation, missing-fragment generation, final
-//! persistence, and outline progress projection without starting card authoring.
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use rusqlite::{params, TransactionBehavior};
-
+//! Shared semantic analysis precedes every document learning artifact. The
+//! outline is a derived view of that saved knowledge, not a second raw-text pass.
 use crate::{
-    ai::document_intelligence::{
-        self, DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION,
+    ai::{
+        document_intelligence::{
+            self, DocumentOutline, DocumentTaskContext, OUTLINE_PROMPT_VERSION,
+            OUTLINE_SCHEMA_VERSION,
+        },
+        AiRuntimeState,
     },
-    ai::AiRuntimeState,
     database::Database,
-    document_checkpoints::{self, CheckpointIdentity},
     document_domain::DocumentSourceDescriptor,
     document_scale::DocumentScalePlan,
     document_semantics::{
         build_partitioned_semantic_windows, validate_semantic_windows, SemanticChunk,
     },
     error::CommandError,
+    knowledge::{authoring, document_view},
+    paths::AppPaths,
     util::unix_time_millis,
 };
-
+use rusqlite::{params, TransactionBehavior};
 #[path = "document_outline_service/artifact_metadata.rs"]
 mod artifact_metadata;
 
 pub(crate) struct EnsureDocumentOutlineInput<'a> {
     pub database: &'a Database,
+    pub paths: &'a AppPaths,
     pub runtime: &'a AiRuntimeState,
     pub task: &'a DocumentTaskContext,
     pub document_id: &'a str,
-    pub document_title: &'a str,
     pub extraction_backend: &'a str,
     pub source: &'a DocumentSourceDescriptor,
     pub chunks: &'a [SemanticChunk],
     pub plan: DocumentScalePlan,
-    pub provider_capability_fingerprint: &'a str,
 }
 
 pub(crate) async fn ensure_document_outline(
     input: EnsureDocumentOutlineInput<'_>,
 ) -> Result<DocumentOutline, CommandError> {
     input.source.validate()?;
-    if input.chunks.is_empty() {
-        return Err(CommandError::new(
-            "document_has_no_semantic_content",
-            "The document did not contain canonical semantic content that ostudy could outline.",
-        ));
-    }
-
     let windows = build_partitioned_semantic_windows(
         input.chunks,
         input.plan,
@@ -59,129 +47,90 @@ pub(crate) async fn ensure_document_outline(
         input.plan.outline_window_overlap_tokens,
     );
     validate_semantic_windows(&windows, input.source)?;
-    if windows.is_empty() {
-        return Err(CommandError::new(
-            "document_has_no_semantic_content",
-            "The document did not produce bounded semantic windows for outlining.",
-        ));
-    }
-
-    let identity = CheckpointIdentity::from_task(
-        input.task,
-        input.extraction_backend,
-        input.provider_capability_fingerprint,
-    );
-    let contract = document_checkpoints::outline_contract_key(&identity, input.plan);
-    let cached_fragments = document_checkpoints::load_outline_fragments_best_effort(
-        input.database,
-        input.document_id,
-        &contract,
-        &windows,
-    );
-    let cached_count = cached_fragments
-        .iter()
-        .filter(|fragment| fragment.is_some())
-        .count();
-
-    if cached_count == windows.len() {
-        if let Some(outline) = document_checkpoints::load_final_outline_best_effort(
-            input.database,
-            input.document_id,
-            &identity,
-        ) {
-            artifact_metadata::ensure_document_artifact_metadata(
-                input.database,
-                input.document_id,
-                &outline,
-                None,
-            )?;
-            update_outline_projection(
-                input.database,
-                input.document_id,
-                "ready",
-                windows.len(),
-                windows.len(),
-            )?;
-            return Ok(outline);
-        }
-    }
-
     update_outline_projection(
         input.database,
         input.document_id,
         "building",
         windows.len(),
-        cached_count,
+        0,
     )?;
-    let generated_count = AtomicUsize::new(0);
-    let generated = document_intelligence::build_document_outline(
-        input.runtime,
-        input.task,
-        input.document_title,
-        i64::try_from(input.source.unit_count).unwrap_or(i64::MAX),
-        &windows,
-        &cached_fragments,
-        |window, fragment| {
-            document_checkpoints::persist_outline_fragment_best_effort(
-                input.database,
-                input.document_id,
-                &contract,
-                window,
-                fragment,
-            );
-            let generated_count = generated_count
-                .fetch_add(1, Ordering::Relaxed)
-                .saturating_add(1);
-            update_outline_projection(
-                input.database,
-                input.document_id,
-                "building",
-                windows.len(),
-                cached_count.saturating_add(generated_count),
-            )
-        },
-    )
+    let generated = async {
+        let indices = input
+            .chunks
+            .iter()
+            .map(|chunk| chunk.chunk_index)
+            .collect::<Vec<_>>();
+        authoring::prepare_document(authoring::DocumentPreparation {
+            database: input.database,
+            paths: input.paths,
+            runtime: input.runtime,
+            task: input.task,
+            document_id: input.document_id,
+            chunk_indices: &indices,
+            retry_partial: true,
+        })
+        .await?;
+        let catalogs = windows
+            .iter()
+            .map(|window| {
+                authoring::catalog_for_chunks(
+                    input.database,
+                    input.document_id,
+                    &(window.first_chunk_index..=window.last_chunk_index).collect::<Vec<_>>(),
+                    input.task,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let outline = document_view::ensure(document_view::ViewInput {
+            database: input.database,
+            runtime: input.runtime,
+            task: input.task,
+            document_id: input.document_id,
+            windows: &windows,
+            catalogs: &catalogs,
+        })
+        .await?;
+        input.task.ensure_current(input.database)?;
+        // Metadata is a small optional derivative of the same view, never a
+        // request over the original document. Native fallback preserves edits.
+        let metadata = match document_intelligence::generate_document_artifact_metadata(
+            input.runtime,
+            input.task,
+            &outline,
+        )
+        .await
+        {
+            Ok(value) => Some(value),
+            Err(error) if error.code == "ai_request_canceled" => return Err(error),
+            Err(error) => {
+                crate::logging::warn_target(
+                    "ai.document.artifact_metadata",
+                    "document_artifact_metadata_native_fallback",
+                    "Using native metadata from the shared learning view.",
+                    serde_json::json!({"code":error.code}),
+                );
+                None
+            }
+        };
+        input.task.ensure_current(input.database)?;
+        persist_final_outline(
+            input.database,
+            input.document_id,
+            input.task,
+            input.extraction_backend,
+            &outline,
+        )?;
+        artifact_metadata::ensure_document_artifact_metadata(
+            input.database,
+            input.document_id,
+            &outline,
+            metadata.as_ref(),
+        )?;
+        Ok(outline)
+    }
     .await;
-
     match generated {
         Ok(outline) => {
-            let provider_metadata =
-                match document_intelligence::generate_document_artifact_metadata(
-                    input.runtime,
-                    input.task,
-                    &outline,
-                )
-                .await
-                {
-                    Ok(metadata) => Some(metadata),
-                    Err(error) if error.code == "ai_request_canceled" => return Err(error),
-                    Err(error) => {
-                        crate::logging::warn_target(
-                            "ai.document.artifact_metadata",
-                            "document_artifact_metadata_native_fallback",
-                            "Provider artifact metadata was unavailable or invalid; ostudy used the deterministic validated-outline fallback.",
-                            serde_json::json!({
-                                "provider": input.task.provider_kind.as_str(),
-                                "model": input.task.model_id.as_str(),
-                                "code": error.code.as_str(),
-                            }),
-                        );
-                        None
-                    }
-                };
-            persist_final_outline(
-                input.database,
-                input.document_id,
-                input.task,
-                input.extraction_backend,
-                &outline,
-            )?;
-            artifact_metadata::ensure_document_artifact_metadata(
-                input.database,
-                input.document_id,
-                &outline,
-                provider_metadata.as_ref(),
-            )?;
             update_outline_projection(
                 input.database,
                 input.document_id,
@@ -197,7 +146,7 @@ pub(crate) async fn ensure_document_outline(
                 input.document_id,
                 "failed",
                 windows.len(),
-                cached_count.saturating_add(generated_count.load(Ordering::Relaxed)),
+                0,
             );
             Err(error)
         }

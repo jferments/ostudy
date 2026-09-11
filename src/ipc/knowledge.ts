@@ -48,7 +48,7 @@ export interface PreparationStatus {
   operationId: string;
   consentKey: string;
   embeddingSpace: string;
-  state: "running" | "complete" | "failed" | "interrupted" | "canceled";
+  state: "running" | "complete" | "partial" | "failed" | "interrupted" | "canceled";
   totalSources: number;
   completedSources: number;
   errorCode: string;

@@ -15,6 +15,8 @@ export function MaterialPreparation({ controller, disabled }: {
       {status ? <p role="status">Last preparation: {status.state}. {status.completedSources.toLocaleString()}
         {" / "}{status.totalSources.toLocaleString()} source segments.
         {status.state === "complete" ? " Edited or newly added material may need preparation again." : ""}</p> : null}
+      {status?.state === "partial" ? <p role="status">Usable material is available, but analysis is incomplete.
+        Review preparation again to retry unresolved items without regenerating completed windows.</p> : null}
       {status?.errorMessage ? <p role="alert">{status.errorMessage}</p> : null}
       {progress ? <div role="status">{progress.phase}: {progress.completed} / {progress.total}
         {progress.total > 0 ? <progress aria-label="Semantic preparation progress" max={progress.total} value={progress.completed} /> : null}

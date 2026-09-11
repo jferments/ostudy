@@ -105,9 +105,15 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "3c34380a8312f07646f245351e5edcfd41f80e397442c826a275e70e78d059f1",
         sql: include_str!("../migrations/0013_provider_multi_model.sql"),
     },
+    Migration {
+        version: 14,
+        name: "native_knowledge_evidence",
+        checksum: "0207be07db12537a618c2b2a97652a623c5461c553533e7f3ca173788e3dff95",
+        sql: include_str!("../migrations/0014_native_knowledge_evidence.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 13;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
 
 pub struct Database {
     connection: Mutex<Connection>,

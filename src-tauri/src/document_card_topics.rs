@@ -99,10 +99,14 @@ pub(crate) fn attach_generated_card_source_windows(
         }
         let locator = window.source_locator();
         for card in &cards[cursor..end] {
+            let support = authoring::card_support(card)?;
+            let source_locator = database.with_connection(|connection| {
+                authoring::support_locator(connection, &support, &locator)
+            })?;
             grounded.push(SourceGroundedGeneratedCard {
-                knowledge_support: authoring::card_support(card)?,
+                knowledge_support: support,
                 card: authoring::without_card_support(card.clone()),
-                source_locator: locator.clone(),
+                source_locator,
             });
         }
         cursor = end;

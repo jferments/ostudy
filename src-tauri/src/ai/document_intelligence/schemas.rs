@@ -1,60 +1,8 @@
-use serde_json::{json, Value};
-
 use super::contracts::{
-    MAX_CARD_TEXT_CHARS, MAX_CLOZE_BLANKS, MAX_CLOZE_BLANK_CHARS, MAX_FRAGMENT_CONCEPTS,
-    MAX_FRAGMENT_OBJECTIVES, MAX_FRAGMENT_SECTIONS, MAX_FRAGMENT_SECTION_CONCEPTS,
-    MAX_FRAGMENT_SECTION_OBJECTIVES, MAX_TAGS_PER_CARD, MAX_TAG_CHARS, MAX_WINDOW_CARDS,
+    MAX_CARD_TEXT_CHARS, MAX_CLOZE_BLANKS, MAX_CLOZE_BLANK_CHARS, MAX_TAGS_PER_CARD, MAX_TAG_CHARS,
+    MAX_WINDOW_CARDS,
 };
-
-pub(super) fn outline_fragment_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["summary", "learningObjectives", "keyConcepts", "sections"],
-        "properties": {
-            "summary": string_schema(1_800),
-            "learningObjectives": string_array_schema(MAX_FRAGMENT_OBJECTIVES, 500),
-            "keyConcepts": string_array_schema(MAX_FRAGMENT_CONCEPTS, 240),
-            "sections": {
-                "type": "array",
-                "maxItems": MAX_FRAGMENT_SECTIONS,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": [
-                        "title",
-                        "pageStart",
-                        "pageEnd",
-                        "summary",
-                        "learningObjectives",
-                        "keyConcepts"
-                    ],
-                    "properties": {
-                        "title": string_schema(240),
-                        "pageStart": { "type": "integer", "minimum": 1 },
-                        "pageEnd": { "type": "integer", "minimum": 1 },
-                        "summary": string_schema(900),
-                        "learningObjectives": string_array_schema(MAX_FRAGMENT_SECTION_OBJECTIVES, 420),
-                        "keyConcepts": string_array_schema(MAX_FRAGMENT_SECTION_CONCEPTS, 220)
-                    }
-                }
-            }
-        }
-    })
-}
-
-pub(super) fn global_outline_schema() -> Value {
-    json!({
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["summary", "learningObjectives", "keyConcepts"],
-        "properties": {
-            "summary": string_schema(8_000),
-            "learningObjectives": string_array_schema(16, 1_200),
-            "keyConcepts": string_array_schema(24, 700)
-        }
-    })
-}
+use serde_json::{json, Value};
 
 pub(super) fn flashcard_schema(maximum_cards: usize) -> Value {
     let maximum_cards = maximum_cards.clamp(1, MAX_WINDOW_CARDS);
@@ -209,29 +157,10 @@ mod tests {
     #[test]
     fn schemas_cover_all_generation_forms() {
         let flashcards = serde_json::to_string(&flashcard_schema(8)).unwrap();
-        let outline = serde_json::to_string(&outline_fragment_schema()).unwrap();
         assert!(flashcards.contains("multiple_choice"));
         assert!(flashcards.contains("critical_thinking"));
         assert!(flashcards.contains("cloze"));
         assert!(!flashcards.contains("reverseEnabled"));
-        assert!(outline.contains("learningObjectives"));
-    }
-
-    #[test]
-    fn outline_fragment_schema_is_deliberately_small() {
-        let schema = outline_fragment_schema();
-        assert_eq!(
-            schema
-                .pointer("/properties/sections/maxItems")
-                .and_then(Value::as_u64),
-            Some(4)
-        );
-        assert_eq!(
-            schema
-                .pointer("/properties/summary/maxLength")
-                .and_then(Value::as_u64),
-            Some(1_800)
-        );
     }
 
     #[test]

@@ -174,6 +174,7 @@ fn read_conversation(
 
 pub(crate) fn blank_record(seed: &SourceSeed, title: &str, revision: &str) -> SourceRecord {
     SourceRecord {
+        identity_version: 1,
         id: String::new(),
         kind: seed.kind,
         owner_id: seed.owner_id.clone(),

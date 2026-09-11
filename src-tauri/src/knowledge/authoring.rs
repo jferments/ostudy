@@ -20,12 +20,12 @@ use crate::{
 use super::{
     adapters::{materialize_sources, read_seed, SourceSeed},
     contracts::{hash, ContentOrigin, KnowledgeUnit, SourceKind},
-    extraction::{batch_ranges, ensure_units_batch, extraction_contract},
+    extraction::{batch_ranges, ensure_units_batch, extraction_contract, retry_units_batch},
     repository,
     runtime::check_canceled,
 };
 
-pub(crate) const AUTHORING_VERSION: i64 = 1;
+pub(crate) const AUTHORING_VERSION: i64 = 2;
 pub(crate) const CARD_SUPPORT_KEY: &str = "_ostudyKnowledge";
 const MAX_AUTHORING_SOURCES: usize = 100_000;
 
@@ -54,25 +54,47 @@ impl UnitSupport {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct KnowledgeCatalog {
     pub units: Vec<KnowledgeUnit>,
+    pub document_core_units: BTreeSet<String>,
 }
 
 impl KnowledgeCatalog {
     pub(crate) fn prompt(&self) -> Result<String, CommandError> {
-        // The exact supporting excerpts are original evidence, not a second
-        // model's summary. Full canonical passages remain in the library.
-        let units = self.units.iter().map(|unit| json!({
-            "id": unit.id, "title": unit.content.title, "kind": unit.content.kind,
-            "statement": unit.content.statement, "qualifications": unit.content.qualifications,
-            "topic": unit.content.topic, "sourceId": unit.source_id,
-            "supportingExcerpt": unit.content.supporting_excerpt,
-        })).collect::<Vec<_>>();
-        serde_json::to_string(&units).map_err(CommandError::serialization)
+        let mut evidence = BTreeMap::new();
+        let units = self.units.iter().map(|unit| {
+            let evidence_ids = if let Some(grounding) = &unit.content.grounding {
+                for reference in &grounding.evidence {
+                    evidence.insert(reference.id.clone(), json!({
+                        "id":reference.id,"sourceId":reference.source_id,"origin":reference.origin,
+                        "locator":reference.locator,"text":reference.excerpt,
+                        "selector":reference.selector,
+                    }));
+                }
+                grounding.evidence.iter().map(|reference| reference.id.clone()).collect::<Vec<_>>()
+            } else {
+                let id = format!("legacy:{}", unit.id);
+                evidence.insert(id.clone(), json!({"id":id,"sourceId":unit.source_id,
+                    "origin":unit.origin,"text":unit.content.supporting_excerpt,
+                    "legacy":true}));
+                vec![id]
+            };
+            json!({
+                "id":unit.id,"title":unit.content.title,"kind":unit.content.kind,
+                "statement":unit.content.statement,"qualifications":unit.content.qualifications,
+                "topic":unit.content.topic,"origin":unit.origin,"evidenceIds":evidence_ids,
+                "importance":unit.content.grounding.as_ref().map(|grounding| grounding.importance),
+                "documentCore":self.document_core_units.contains(&unit.id),
+            })
+        }).collect::<Vec<_>>();
+        serde_json::to_string(&json!({"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
+            "trust":"Knowledge statements and priorities are model interpretations. Evidence is literal source material. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."}))
+            .map_err(CommandError::serialization)
     }
 
     pub(crate) fn fingerprint(&self) -> Result<String, CommandError> {
         Ok(hash(&format!(
             "authoring-v{AUTHORING_VERSION}|{}",
-            serde_json::to_string(&self.units).map_err(CommandError::serialization)?
+            serde_json::to_string(&(&self.units, &self.document_core_units))
+                .map_err(CommandError::serialization)?
         )))
     }
 
@@ -106,18 +128,28 @@ impl KnowledgeCatalog {
     }
 }
 
-/// Prepare the explicitly selected document chunks before either generator
-/// writes material. No embedding profile is required to author cards or guides.
-/// Serial extraction avoids competing interpretations of overlapping windows;
-/// generated artifacts may still be authored concurrently afterward.
-pub(crate) async fn prepare_document(
-    database: &Database,
-    paths: &AppPaths,
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    document_id: &str,
-    chunk_indices: &[i64],
-) -> Result<(), CommandError> {
+/// Bounded SQLite hydration is not a semantic boundary. The last unfinished
+/// batch is carried into the next hydration group, preserving cross-page context.
+pub(crate) struct DocumentPreparation<'a> {
+    pub database: &'a Database,
+    pub paths: &'a AppPaths,
+    pub runtime: &'a AiRuntimeState,
+    pub task: &'a DocumentTaskContext,
+    pub document_id: &'a str,
+    pub chunk_indices: &'a [i64],
+    pub retry_partial: bool,
+}
+
+pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(), CommandError> {
+    let DocumentPreparation {
+        database,
+        paths,
+        runtime,
+        task,
+        document_id,
+        chunk_indices,
+        retry_partial,
+    } = input;
     validate_entity_id(document_id, "knowledge document")?;
     let cancellation = current_signal().unwrap_or_else(CancellationSignal::new);
     let indices = chunk_indices.iter().copied().collect::<BTreeSet<_>>();
@@ -137,12 +169,11 @@ pub(crate) async fn prepare_document(
             parent_key: index.to_string(),
         })
         .collect::<Vec<_>>();
+    let mut pending = Vec::new();
     let mut completed = 0;
-    for batch in seeds.chunks(32) {
+    for (batch_index, batch) in seeds.chunks(32).enumerate() {
         check_canceled(&cancellation)?;
         let sources = materialize_sources(database, batch)?;
-        // A deleted source must not turn into an apparently successful empty
-        // extraction and then leave old generated artifacts reusable.
         for seed in batch {
             if !sources.iter().any(|source| {
                 source
@@ -152,27 +183,39 @@ pub(crate) async fn prepare_document(
                 return Err(repository::stale_source());
             }
         }
-        for range in batch_ranges(&sources) {
-            ensure_units_batch(
-                database,
-                paths,
-                runtime,
-                task,
-                &sources[range],
-                &cancellation,
-            )
-            .await?;
+        pending.extend(sources);
+        let ranges = batch_ranges(&pending);
+        let last_batch = (batch_index + 1) * 32 >= seeds.len();
+        let process_count = if last_batch {
+            ranges.len()
+        } else {
+            ranges.len().saturating_sub(1)
+        };
+        let mut consumed = 0;
+        for range in ranges.into_iter().take(process_count) {
+            let group = &pending[range.clone()];
+            set_current_task_phase(
+                "understanding material",
+                None,
+                completed,
+                seeds.len(),
+                group
+                    .first()
+                    .and_then(|source| source.locator.as_ref().map(|locator| locator.first())),
+                group
+                    .last()
+                    .and_then(|source| source.locator.as_ref().map(|locator| locator.last())),
+                None,
+            );
+            if retry_partial {
+                retry_units_batch(database, paths, runtime, task, group, &cancellation).await?;
+            } else {
+                ensure_units_batch(database, paths, runtime, task, group, &cancellation).await?;
+            }
+            consumed = range.end;
         }
+        pending.drain(..consumed);
         completed += batch.len();
-        set_current_task_phase(
-            "understanding material",
-            None,
-            completed,
-            seeds.len(),
-            None,
-            None,
-            None,
-        );
     }
     check_canceled(&cancellation)?;
     task.ensure_current(database)
@@ -213,10 +256,79 @@ pub(crate) fn catalog_for_chunks(
                 units.insert(unit.id.clone(), unit);
             }
         }
+        let document_core_units =
+            super::document_view::core_ids(connection, document_id, &contract)?;
         Ok(KnowledgeCatalog {
             units: units.into_values().collect(),
+            document_core_units,
         })
     })
+}
+
+/// Legacy artifact locators are projections of the actual selected evidence,
+/// not the transport window that happened to contain a knowledge target.
+pub(crate) fn support_locator(
+    connection: &Connection,
+    support: &[UnitSupport],
+    fallback: &crate::document_domain::SourceLocator,
+) -> Result<crate::document_domain::SourceLocator, CommandError> {
+    let mut numbers = BTreeSet::new();
+    let mut assets = BTreeSet::new();
+    let mut time: Option<crate::document_domain::TimeRangeMs> = None;
+    for item in support {
+        let serialized: String = connection
+            .query_row(
+                "SELECT record_json FROM knowledge_units WHERE id = ?1",
+                [&item.unit_id],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        let unit: KnowledgeUnit =
+            serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
+        if UnitSupport::from_unit(&unit)? != *item {
+            return Err(repository::stale_source());
+        }
+        repository::validate_grounding(connection, &unit.content)?;
+        let locators = if let Some(grounding) = &unit.content.grounding {
+            grounding
+                .evidence
+                .iter()
+                .filter_map(|reference| reference.locator.clone())
+                .collect::<Vec<_>>()
+        } else {
+            repository::load_source(connection, &unit.source_id)?
+                .and_then(|source| source.locator)
+                .into_iter()
+                .collect()
+        };
+        for locator in locators {
+            if locator.unit_kind != fallback.unit_kind {
+                return Err(invalid(
+                    "Knowledge evidence uses incompatible source locator kinds.",
+                ));
+            }
+            numbers.extend(locator.unit_numbers);
+            assets.extend(locator.asset_ids);
+            if let Some(range) = locator.time_range_ms {
+                time = Some(
+                    time.map_or(range, |old| crate::document_domain::TimeRangeMs {
+                        start: old.start.min(range.start),
+                        end: old.end.max(range.end),
+                    }),
+                );
+            }
+        }
+    }
+    if numbers.is_empty() {
+        return Ok(fallback.clone());
+    }
+    crate::document_domain::SourceLocator::with_evidence(
+        fallback.unit_kind,
+        numbers.into_iter().collect(),
+        None,
+        assets.into_iter().collect(),
+        time,
+    )
 }
 
 pub(crate) fn card_support(card: &Value) -> Result<Vec<UnitSupport>, CommandError> {
@@ -261,6 +373,16 @@ pub(crate) fn validate_current_support(
         if !current {
             return Err(repository::stale_source());
         }
+        let serialized: String = connection
+            .query_row(
+                "SELECT record_json FROM knowledge_units WHERE id = ?1",
+                [&item.unit_id],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        let unit: KnowledgeUnit =
+            serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
+        repository::validate_grounding(connection, &unit.content)?;
     }
     Ok(())
 }

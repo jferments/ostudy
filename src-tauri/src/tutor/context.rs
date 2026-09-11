@@ -176,8 +176,29 @@ pub(crate) async fn build(
         for source in &sources {
             result.extend(repository::load_units(connection, &source.id)?);
         }
+        let mut seen_units = HashSet::new();
+        result.retain(|unit| {
+            seen_units.insert(unit.id.clone())
+                && unit
+                    .content
+                    .grounding
+                    .as_ref()
+                    .is_none_or(|grounding| grounding.is_visible_in(&sources))
+        });
         Ok(result)
     })?;
+    let pending_sources = sources
+        .iter()
+        .map(|source| source.id.clone())
+        .collect::<Vec<_>>();
+    let unresolved =
+        crate::knowledge::analysis_store::pending_for_sources(database, &pending_sources)?;
+    let partial_notice = if unresolved > 0 {
+        format!("Selected material has {unresolved} unresolved knowledge proposals or source dispositions. Valid source material remains available; this is not complete analysis.")
+    } else {
+        String::new()
+    };
+    notice = format!("{notice} {partial_notice}").trim().to_string();
     let mut inherited_turns = sources
         .iter()
         .filter_map(|source| source.turn_id.clone())
@@ -204,12 +225,19 @@ pub(crate) async fn build(
         if serialized.len() <= input_budget {
             break serialized;
         }
-        notice = "This response uses a bounded context selection. Older conversation or lower-ranked material was omitted from this request; the saved library and transcript are unchanged.".to_string();
+        notice = format!("This response uses a bounded context selection. Older conversation or lower-ranked material was omitted from this request; the saved library and transcript are unchanged. {partial_notice}").trim().to_string();
         if history.turns.len() > 2 {
             history.turns.remove(0);
         } else if sources.len() > 1 && quiz.is_none() {
             if let Some(source) = sources.pop() {
-                units.retain(|unit| unit.source_id != source.id);
+                units.retain(|unit| {
+                    unit.source_id != source.id
+                        && unit
+                            .content
+                            .grounding
+                            .as_ref()
+                            .is_none_or(|grounding| grounding.is_visible_in(&sources))
+                });
             }
         } else if !units.is_empty() {
             units.pop();

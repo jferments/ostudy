@@ -45,6 +45,7 @@ pub(super) fn read(
         .filter(|value| !value.trim().is_empty())
         .map_or_else(|| title.clone(), |heading| format!("{title} — {heading}"));
     let mut source = blank_record(seed, &title, &revision);
+    source.identity_version = 2;
     source.text = text;
     source.origin = ContentOrigin::SourceDocument;
     source.document_id = Some(seed.owner_id.clone());

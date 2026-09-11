@@ -26,7 +26,7 @@ use super::{
         hash, invalid, is_hash, KnowledgeUnit, SourceKind, SourceRecord, StudyScope,
         MAX_PREPARATION_SOURCES,
     },
-    extraction::{batch_ranges, ensure_units_batch, extraction_contract},
+    extraction::{batch_ranges, extraction_contract, retry_units_batch},
     index::{IndexKey, IndexWrite, VectorIndex},
     preparation_store::{self, PreparationStart, PreparationStatus},
     repository,
@@ -242,7 +242,8 @@ async fn run_preparation(
 ) -> Result<(), CommandError> {
     let mut index = open_index(database, paths)?;
     let mut completed = 0;
-    for references in manifest.sources.chunks(12) {
+    let mut source_buffer = Vec::new();
+    for (reference_batch, references) in manifest.sources.chunks(12).enumerate() {
         guard.check()?;
         let sources = database.with_connection(|connection| {
             references
@@ -255,10 +256,20 @@ async fn run_preparation(
                 })
                 .collect::<Result<Vec<_>, CommandError>>()
         })?;
-        for range in batch_ranges(&sources) {
-            let batch = &sources[range];
+        source_buffer.extend(sources);
+        let ranges = batch_ranges(&source_buffer);
+        let final_batch = (reference_batch + 1) * 12 >= manifest.sources.len();
+        let process_count = if final_batch {
+            ranges.len()
+        } else {
+            ranges.len().saturating_sub(1)
+        };
+        let mut consumed = 0;
+        for range in ranges.into_iter().take(process_count) {
+            consumed = range.end;
+            let batch = &source_buffer[range];
             guard.progress("understanding material", completed, manifest.sources.len());
-            let units = ensure_units_batch(
+            let units = retry_units_batch(
                 database,
                 paths,
                 runtime,
@@ -329,6 +340,7 @@ async fn run_preparation(
             guard.progress("prepared material", completed, manifest.sources.len());
             tokio::task::yield_now().await;
         }
+        source_buffer.drain(..consumed);
     }
     guard.check()?;
     manifest.task.ensure_current(database)?;
@@ -344,15 +356,33 @@ async fn run_preparation(
             }
         }
         Ok(())
-    })
+    })?;
+    let source_ids = manifest
+        .sources
+        .iter()
+        .map(|source| source.id.clone())
+        .collect::<Vec<_>>();
+    let pending = super::analysis_store::pending_for_sources(database, &source_ids)?;
+    if pending > 0 {
+        return Err(CommandError::new("semantic_analysis_partial", format!(
+            "Usable source material and accepted knowledge were saved and indexed. {pending} proposals or source dispositions remain unresolved. Preparation is partial, not complete coverage. Retry preparation to repair only the remaining items."
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn source_entry(source: &SourceRecord) -> (IndexKey, String) {
     let text = if source.text.trim().is_empty() {
-        format!(
-            "{}\nImage evidence; associated knowledge units contain its interpretation.",
-            source.title
-        )
+        if source.identity_version >= 2 {
+            "Image evidence; associated knowledge units contain its interpretation.".to_string()
+        } else {
+            format!(
+                "{}\nImage evidence; associated knowledge units contain its interpretation.",
+                source.title
+            )
+        }
+    } else if source.identity_version >= 2 {
+        source.text.clone()
     } else {
         format!("{}\n{}", source.title, source.text)
     };

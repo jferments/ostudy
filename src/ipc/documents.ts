@@ -59,6 +59,8 @@ export interface DocumentSummary {
   generatedNoteCount: number;
   generatedCardCount: number;
   generatedDeckId: string | null;
+  /** Unresolved analysis proposals; usable generated cards may still exist. */
+  analysisPendingItems?: number;
   safeErrorCode: string;
   safeErrorMessage: string;
   createdAt: number;
