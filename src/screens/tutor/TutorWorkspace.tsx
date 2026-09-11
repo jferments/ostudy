@@ -110,7 +110,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
             {turn.feedback ? <details><summary>Quiz feedback</summary>{turn.feedback.criteriaFeedback.map((text, index) => <p key={index}>{text}</p>)}</details> : null}
             {!hintOnly && turn.mode !== "quiz" ? <div className={styles.sources}>{turn.citations.map((citation, index) => <Button key={citation.id} size="small" variant="text"
               disabled={sourceBusy || !turn.evidenceCurrent} onClick={() => { void showSource(citation); }}>Source {index + 1}: {citation.title}</Button>)}</div> : null}
-            {["failed", "canceled", "interrupted"].includes(turn.state) ? <Button size="small" disabled={locked || tutor.needsRefresh}
+            {turn.id === tutor.detail?.turns.at(-1)?.id && (turn.mode !== "hint" || hintOnly) && ["failed", "canceled", "interrupted"].includes(turn.state) ? <Button size="small" disabled={locked || tutor.needsRefresh}
               onClick={() => { void tutor.retryTurn(turn); }}>Try again</Button> : null}
           </section>
         </article>)}

@@ -169,3 +169,63 @@ describe("explicit conversation retrieval", () => {
     expect(vi.mocked(sendTutorTurn).mock.calls[1][0]).toEqual(original);
   });
 });
+
+
+describe("safe retry and source selection", () => {
+  it("keeps a confirmed failed message and retries it with a new operation against the current revision", async () => {
+    const failed: TutorTurn = { ...turn, state: "failed", assistantText: "", errorCode: "ai_provider_unavailable", errorMessage: "Provider unavailable" };
+    vi.mocked(sendTutorTurn).mockResolvedValueOnce(failed);
+    vi.mocked(getTutorConversation).mockResolvedValueOnce({ ...detail, turns: [failed] });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.setDraft(failed.userText); });
+    await act(async () => { await result.current.send("explain"); });
+    expect(result.current.draft).toBe(failed.userText);
+    expect(result.current.pending).toBeNull();
+    const first = vi.mocked(sendTutorTurn).mock.calls[0][0];
+    await act(async () => { await result.current.retryTurn(failed); });
+    const next = vi.mocked(sendTutorTurn).mock.calls[1][0];
+    expect(next.operationId).not.toBe(first.operationId);
+    expect(next.expectedRevision).toBe(3);
+    expect(next.text).toBe(failed.userText);
+    expect(result.current.draft).toBe("");
+  });
+
+  it("never applies an earlier failed answer to a different pending quiz", async () => {
+    const failed: TutorTurn = { ...turn, mode: "answer", state: "failed" };
+    const newer: TutorTurn = { ...turn, id: "e".repeat(32), sequence: 2, mode: "quiz", pendingQuestion: true };
+    vi.mocked(getTutorConversation).mockResolvedValueOnce({ ...detail, turns: [failed, newer] });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    await act(async () => { await result.current.retryTurn(failed); });
+    expect(sendTutorTurn).not.toHaveBeenCalled();
+    expect(result.current.error).toContain("latest failed response");
+  });
+
+  it("requires a current Practice context before retrying a historical hint", async () => {
+    const failed: TutorTurn = { ...turn, mode: "hint", state: "interrupted" };
+    vi.mocked(getTutorConversation).mockResolvedValueOnce({ ...detail, turns: [failed] });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    await act(async () => { await result.current.retryTurn(failed); });
+    expect(sendTutorTurn).not.toHaveBeenCalled();
+    expect(result.current.error).toContain("Practice card");
+  });
+
+  it("preserves a draft when choosing sources and leaves the saved conversation unchanged", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+    await act(async () => { result.current.setDraft("Compare these sources"); });
+    const selected = { kind: "selection" as const, id: null, members: [
+      { kind: "deck" as const, id: "d".repeat(32) },
+      { kind: "document" as const, id: "e".repeat(32) },
+    ] };
+    await act(async () => { result.current.changeSources(selected); });
+    expect(result.current.detail).toBeNull();
+    expect(result.current.scope).toEqual(selected);
+    expect(result.current.draft).toBe("Compare these sources");
+    expect(conversation.scope).toEqual({ kind: "general", id: null });
+    expect(createTutorConversation).not.toHaveBeenCalled();
+    expect(sendTutorTurn).not.toHaveBeenCalled();
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+  });
+});

@@ -155,10 +155,19 @@ export function useTutorController() {
   }
 
   async function retryTurn(turn: TutorTurn): Promise<void> {
-    if (!["failed", "canceled", "interrupted"].includes(turn.state)) return;
-    // A confirmed terminal failure is a new intent. An ambiguous acknowledgement
-    // instead uses retryPending and its original identity, never this path.
-    await send(turn.mode, turn.userText);
+    const saved = current.current?.turns.at(-1);
+    if (!saved || saved.id !== turn.id || !["failed", "canceled", "interrupted"].includes(saved.state)) {
+      setError("Only the latest failed response can be retried. Send a new message for an earlier question.");
+      return;
+    }
+    if (saved.mode === "hint" && target?.mode !== "hint") {
+      setError("Reopen the current Practice card to request a hint.");
+      return;
+    }
+    // Confirmed terminal failure is a new intent; an ambiguous acknowledgement
+    // uses retryPending with the original identity. Older answers cannot silently
+    // become answers to a newer pending quiz.
+    await send(saved.mode, saved.userText);
   }
 
   function openContext(next: TutorTarget): void {
