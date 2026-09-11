@@ -156,61 +156,100 @@ pub(crate) fn eligible_entries(
     scope: &StudyScope,
     include_conversations: bool,
 ) -> Result<Vec<IndexKey>, CommandError> {
-    database.with_connection(|connection| {
-        let documents = scope_documents(connection, scope)?;
-        let documents_json = serde_json::to_string(&documents).map_err(CommandError::serialization)?;
-        let scope_json = serde_json::to_string(scope).map_err(CommandError::serialization)?;
-        let kind = match scope.kind {
-            ScopeKind::General => "general",
-            ScopeKind::Deck => "deck",
-            ScopeKind::Document => "document",
-            ScopeKind::Guide => "guide",
-            ScopeKind::Library => "library",
-        };
-        let mut statement = connection.prepare(
-            "WITH allowed_sources AS (
-                 SELECT s.id, s.content_hash FROM knowledge_sources s
-                 WHERE s.active = 1 AND (
-                     (s.kind = 'document' AND s.document_id IN (SELECT value FROM json_each(?1)))
-                     OR (s.kind = 'guide' AND s.document_id IN (SELECT value FROM json_each(?1))
-                         AND EXISTS(SELECT 1 FROM document_study_guides g WHERE g.id = s.guide_id AND g.state = 'active'))
-                     OR (s.kind = 'card' AND EXISTS(
-                         SELECT 1 FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = n.deck_id
-                         WHERE c.id = s.card_id AND c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL
-                           AND ((?2 = 'library' AND d.archived_at IS NULL)
-                             OR (?2 = 'deck' AND n.deck_id = ?3)
-                             OR (?2 IN ('document', 'guide') AND (
-                                 EXISTS(SELECT 1 FROM document_note_topics nt WHERE nt.note_id = n.id AND nt.document_id = ?3)
-                                 OR EXISTS(SELECT 1 FROM document_decks dd WHERE dd.deck_id = n.deck_id AND dd.document_id = ?3)))
-                           )))
-                     OR (?4 = 1 AND s.kind = 'conversation' AND EXISTS(
-                         SELECT 1 FROM tutor_turns t JOIN tutor_conversations tc ON tc.id = t.conversation_id
-                         WHERE t.id = s.turn_id AND t.state = 'complete' AND t.evidence_current = 1
-                           AND tc.scope_json = ?5 AND tc.retrieval_enabled = 1
-                           AND t.sequence > tc.memory_start_sequence))
-                 )
+    scope.validate()?;
+    if scope.kind == ScopeKind::General {
+        return Ok(Vec::new());
+    }
+    database
+        .with_connection(|connection| eligible_entries_in(connection, scope, include_conversations))
+}
+
+pub(crate) fn eligible_entries_in(
+    connection: &rusqlite::Connection,
+    scope: &StudyScope,
+    include_conversations: bool,
+) -> Result<Vec<IndexKey>, CommandError> {
+    scope.validate()?;
+    if scope.kind == ScopeKind::General {
+        return Ok(Vec::new());
+    }
+    let documents = scope_documents(connection, scope)?;
+    let members = scope.material_scopes();
+    let decks = members
+        .iter()
+        .filter(|s| s.kind == ScopeKind::Deck)
+        .filter_map(|s| s.id.as_ref())
+        .collect::<Vec<_>>();
+    let direct_documents = members
+        .iter()
+        .filter(|s| matches!(s.kind, ScopeKind::Document | ScopeKind::Guide))
+        .filter_map(|s| s.id.as_ref())
+        .collect::<Vec<_>>();
+    let documents_json = serde_json::to_string(&documents).map_err(CommandError::serialization)?;
+    let decks_json = serde_json::to_string(&decks).map_err(CommandError::serialization)?;
+    let direct_json =
+        serde_json::to_string(&direct_documents).map_err(CommandError::serialization)?;
+    let scope_json = serde_json::to_string(scope).map_err(CommandError::serialization)?;
+    let mut statement = connection.prepare(
+        "WITH allowed_sources AS (
+             SELECT s.id, s.content_hash, s.extraction_contract FROM knowledge_sources s
+             WHERE s.active = 1 AND (
+                 (s.kind = 'document' AND s.document_id IN (SELECT value FROM json_each(?1)))
+                 OR (s.kind = 'guide' AND s.document_id IN (SELECT value FROM json_each(?1))
+                     AND EXISTS(SELECT 1 FROM document_study_guides g WHERE g.id = s.guide_id AND g.state = 'active'))
+                 OR (s.kind = 'card' AND EXISTS(
+                     SELECT 1 FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = n.deck_id
+                     WHERE c.id = s.card_id AND c.deleted_at IS NULL AND n.deleted_at IS NULL AND d.deleted_at IS NULL
+                       AND ((?2 = 1 AND d.archived_at IS NULL)
+                         OR n.deck_id IN (SELECT value FROM json_each(?3))
+                         OR EXISTS(SELECT 1 FROM document_note_topics nt WHERE nt.note_id = n.id
+                             AND nt.document_id IN (SELECT value FROM json_each(?4)))
+                         OR EXISTS(SELECT 1 FROM document_decks dd WHERE dd.deck_id = n.deck_id
+                             AND dd.document_id IN (SELECT value FROM json_each(?4))))))
+                 OR (?5 = 1 AND s.kind = 'conversation' AND EXISTS(
+                     SELECT 1 FROM tutor_turns t JOIN tutor_conversations tc ON tc.id = t.conversation_id
+                     WHERE t.id = s.turn_id AND t.state = 'complete' AND t.evidence_current = 1
+                       AND tc.scope_json = ?6 AND tc.retrieval_enabled = 1 AND t.sequence > tc.memory_start_sequence))
              )
-             SELECT 'source:' || s.id, s.id, s.content_hash FROM allowed_sources s
-             UNION ALL
-             SELECT 'unit:' || u.id, u.source_id, u.content_hash FROM knowledge_units u
-             JOIN allowed_sources s ON s.id = u.source_id AND s.content_hash = u.source_hash
-             WHERE NOT EXISTS (
-                 SELECT 1 FROM knowledge_unit_evidence e
-                 LEFT JOIN allowed_sources dependency ON dependency.id = e.source_id AND dependency.content_hash = e.source_hash
-                 WHERE e.unit_id = u.id AND dependency.id IS NULL)
-             LIMIT 250001",
-        ).map_err(CommandError::database)?;
-        let entries = statement.query_map(
-            params![documents_json, kind, scope.id, include_conversations, scope_json],
-            |row| Ok(IndexKey { id: row.get(0)?, source_id: row.get(1)?, content_hash: row.get(2)? }),
-        ).map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        if entries.len() > MAX_ELIGIBLE_ENTRIES {
-            return Err(invalid("This semantic search scope is too large. Select a deck or document rather than the full library."));
-        }
-        Ok(entries)
-    })
+         )
+         SELECT 'source:' || s.id, s.id, s.content_hash FROM allowed_sources s
+         UNION ALL
+         SELECT 'unit:' || u.id, u.source_id, u.content_hash FROM knowledge_units u
+         JOIN allowed_sources s ON s.id = u.source_id AND s.content_hash = u.source_hash
+             AND s.extraction_contract = u.extraction_contract
+         WHERE NOT EXISTS (
+             SELECT 1 FROM knowledge_unit_evidence e
+             LEFT JOIN allowed_sources dependency ON dependency.id = e.source_id AND dependency.content_hash = e.source_hash
+             WHERE e.unit_id = u.id AND dependency.id IS NULL)
+         LIMIT 250001",
+    ).map_err(CommandError::database)?;
+    let entries = statement
+        .query_map(
+            params![
+                documents_json,
+                scope.kind == ScopeKind::Library,
+                decks_json,
+                direct_json,
+                include_conversations,
+                scope_json
+            ],
+            |row| {
+                Ok(IndexKey {
+                    id: row.get(0)?,
+                    source_id: row.get(1)?,
+                    content_hash: row.get(2)?,
+                })
+            },
+        )
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    if entries.len() > MAX_ELIGIBLE_ENTRIES {
+        return Err(invalid(
+            "This semantic search scope is too large. Select fewer sources.",
+        ));
+    }
+    Ok(entries)
 }
 
 pub(crate) fn resolve_citation(

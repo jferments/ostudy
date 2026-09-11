@@ -24,6 +24,7 @@ pub(crate) mod relationships;
 pub(crate) mod repository;
 pub(crate) mod retrieval;
 pub(crate) mod runtime;
+mod scope;
 pub(crate) mod snapshot;
 
 pub(crate) use images::load_images;
@@ -57,3 +58,6 @@ pub(crate) fn sanitize_for_device_transfer(
 
 #[cfg(test)]
 mod lifecycle_tests;
+
+#[cfg(test)]
+mod selection_tests;

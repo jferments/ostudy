@@ -4,7 +4,6 @@
 
 use std::collections::HashSet;
 
-use rusqlite::params;
 use serde_json::json;
 
 use crate::{
@@ -15,10 +14,8 @@ use crate::{
     database::Database,
     error::CommandError,
     knowledge::{
-        adapters::scope_documents,
         contracts::{
-            invalid, KnowledgeUnit, ScopeKind, SourceKind, SourceRecord, StudyScope,
-            MAX_CONTEXT_BYTES,
+            invalid, KnowledgeUnit, ScopeKind, SourceRecord, StudyScope, MAX_CONTEXT_BYTES,
         },
         relationships, repository, retrieval,
     },
@@ -137,7 +134,12 @@ pub(crate) async fn build(
     }
     let mut seen = HashSet::new();
     sources.retain(|source| seen.insert(source.id.clone()));
-    sources = filter_scope(database, scope, sources)?;
+    sources = filter_scope(
+        database,
+        scope,
+        sources,
+        input.include_conversations && input.mode != TutorMode::Hint,
+    )?;
     sources.truncate(12);
     if scope.kind != ScopeKind::General && sources.is_empty() {
         return Err(invalid(
@@ -266,40 +268,17 @@ fn filter_scope(
     database: &Database,
     scope: &StudyScope,
     sources: Vec<SourceRecord>,
+    include_conversations: bool,
 ) -> Result<Vec<SourceRecord>, CommandError> {
     database.with_connection(|connection| {
-        let documents = scope_documents(connection, scope)?.into_iter().collect::<HashSet<_>>();
+        let permitted = retrieval::eligible_entries_in(connection, scope, include_conversations)?
+            .into_iter()
+            .filter_map(|entry| entry.id.strip_prefix("source:").map(str::to_string))
+            .collect::<HashSet<_>>();
         let mut result = Vec::new();
         for source in sources {
-            let allowed = match source.kind {
-                SourceKind::Document | SourceKind::Guide => source.document_id.as_ref().is_some_and(|id| documents.contains(id)),
-                SourceKind::Conversation => connection.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM tutor_conversations c JOIN tutor_turns t ON t.conversation_id = c.id
-                     WHERE t.id = ?1 AND t.evidence_current = 1 AND c.scope_json = ?2
-                       AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence)",
-                    params![source.turn_id, serde_json::to_string(scope).map_err(CommandError::serialization)?],
-                    |row| row.get(0),
-                ).map_err(CommandError::database)?,
-                SourceKind::Card => match scope.kind {
-                    ScopeKind::General => false,
-                    ScopeKind::Library => connection.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM notes n JOIN decks d ON d.id = n.deck_id
-                         WHERE n.id = ?1 AND n.deleted_at IS NULL AND d.deleted_at IS NULL AND d.archived_at IS NULL)",
-                        [&source.note_id], |row| row.get(0),
-                    ).map_err(CommandError::database)?,
-                    ScopeKind::Deck => connection.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM notes WHERE id = ?1 AND deck_id = ?2 AND deleted_at IS NULL)",
-                        params![source.note_id, scope.id], |row| row.get(0),
-                    ).map_err(CommandError::database)?,
-                    ScopeKind::Document | ScopeKind::Guide => connection.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM document_note_topics WHERE note_id = ?1 AND document_id = ?2)
-                         OR EXISTS(SELECT 1 FROM notes n JOIN document_decks d ON d.deck_id = n.deck_id
-                                   WHERE n.id = ?1 AND d.document_id = ?2)",
-                        params![source.note_id, scope.id], |row| row.get(0),
-                    ).map_err(CommandError::database)?,
-                },
-            };
-            if allowed && repository::source_is_current(connection, &source)? {
+            if permitted.contains(&source.id) && repository::source_is_current(connection, &source)?
+            {
                 result.push(source);
             }
         }

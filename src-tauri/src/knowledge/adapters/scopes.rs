@@ -14,7 +14,18 @@ pub(crate) fn scope_documents(
     scope: &StudyScope,
 ) -> Result<Vec<String>, CommandError> {
     scope.validate()?;
+    if scope.kind == ScopeKind::Selection {
+        let mut ids = std::collections::BTreeSet::new();
+        for member in scope.material_scopes() {
+            ids.extend(scope_documents(connection, &member)?);
+            if ids.len() > 100_000 {
+                return Err(invalid("The selected material exceeds the source limit."));
+            }
+        }
+        return Ok(ids.into_iter().collect());
+    }
     match scope.kind {
+        ScopeKind::Selection => Err(invalid("Nested source selections are not supported.")),
         ScopeKind::General => Ok(Vec::new()),
         ScopeKind::Library => query_ids(
             connection,
@@ -70,9 +81,30 @@ pub(super) fn enumerate_material(
     connection: &Connection,
     scope: &StudyScope,
 ) -> Result<Vec<SourceSeed>, CommandError> {
+    scope.validate()?;
+    if scope.kind == ScopeKind::Selection {
+        let mut seeds = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for member in scope.material_scopes() {
+            for seed in enumerate_material(connection, &member)? {
+                if seen.insert((
+                    seed.kind.as_str(),
+                    seed.owner_id.clone(),
+                    seed.parent_key.clone(),
+                )) {
+                    seeds.push(seed);
+                }
+                if seeds.len() > 100_000 {
+                    return Err(invalid("The selected material exceeds the source limit."));
+                }
+            }
+        }
+        return Ok(seeds);
+    }
     let documents = scope_documents(connection, scope)?;
     let documents_json = serde_json::to_string(&documents).map_err(CommandError::serialization)?;
     let (card_sql, argument) = match scope.kind {
+        ScopeKind::Selection => return Err(invalid("Nested source selections are not supported.")),
         ScopeKind::General => return Ok(Vec::new()),
         ScopeKind::Library => (
             "SELECT c.id FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = n.deck_id
@@ -169,6 +201,7 @@ pub(crate) fn list_scope_choices(database: &Database) -> Result<Vec<ScopeChoice>
                 let kind: String = row.get(0)?;
                 Ok(ScopeChoice {
                     scope: StudyScope {
+            members: Vec::new(),
                         kind: match kind.as_str() {
                             "deck" => ScopeKind::Deck,
                             "document" => ScopeKind::Document,

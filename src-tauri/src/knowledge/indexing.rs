@@ -182,6 +182,7 @@ pub(crate) async fn document_best_effort(
     signal: &CancellationSignal,
 ) -> Result<(), CommandError> {
     let scope = StudyScope {
+        members: Vec::new(),
         kind: ScopeKind::Document,
         id: Some(document_id.to_string()),
     };

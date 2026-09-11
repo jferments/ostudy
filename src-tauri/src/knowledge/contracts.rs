@@ -15,37 +15,7 @@ pub(crate) const MAX_UNITS_PER_SOURCE: usize = 128;
 pub(crate) const MAX_PREPARATION_SOURCES: usize = 100_000;
 pub(crate) const MAX_CONTEXT_BYTES: usize = 32_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ScopeKind {
-    General,
-    Deck,
-    Document,
-    Guide,
-    Library,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StudyScope {
-    pub kind: ScopeKind,
-    pub id: Option<String>,
-}
-
-impl StudyScope {
-    pub(crate) fn validate(&self) -> Result<(), CommandError> {
-        match self.kind {
-            ScopeKind::General | ScopeKind::Library if self.id.is_none() => Ok(()),
-            ScopeKind::Deck | ScopeKind::Document | ScopeKind::Guide => {
-                let id = self.id.as_deref().ok_or_else(|| {
-                    invalid("Select the material to use for this study conversation.")
-                })?;
-                validate_entity_id(id, "study scope")
-            }
-            _ => Err(invalid("This study scope must not contain an entity ID.")),
-        }
-    }
-}
+pub use super::scope::{ScopeKind, StudyScope};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -384,18 +354,21 @@ mod tests {
     #[test]
     fn scopes_reject_missing_or_extraneous_identity() {
         assert!(StudyScope {
+            members: Vec::new(),
             kind: ScopeKind::Deck,
             id: None
         }
         .validate()
         .is_err());
         assert!(StudyScope {
+            members: Vec::new(),
             kind: ScopeKind::Library,
             id: Some("a".repeat(32))
         }
         .validate()
         .is_err());
         assert!(StudyScope {
+            members: Vec::new(),
             kind: ScopeKind::General,
             id: None
         }

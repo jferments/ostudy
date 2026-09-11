@@ -80,22 +80,20 @@ pub(crate) fn resolve(
                     .optional()
                     .map_err(CommandError::database)?
                     .ok_or_else(changed)?;
-                let allowed = match scope.kind {
-                    ScopeKind::General => false,
-                    ScopeKind::Library => true,
-                    ScopeKind::Deck => scope.id.as_deref() == Some(deck_id.as_str()),
-                    ScopeKind::Document | ScopeKind::Guide => connection
-                        .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM document_decks
-                             WHERE deck_id = ?1 AND document_id = ?2)
-                             OR EXISTS(SELECT 1 FROM document_note_topics nt
-                             JOIN cards c ON c.note_id = nt.note_id
-                             WHERE c.id = ?3 AND nt.document_id = ?2)",
-                            params![deck_id, scope.id, card_id],
-                            |row| row.get(0),
-                        )
-                        .map_err(CommandError::database)?,
-                };
+                let mut allowed = false;
+                for member in scope.material_scopes() {
+                    allowed |= match member.kind {
+                        ScopeKind::General | ScopeKind::Selection => false,
+                        ScopeKind::Library => true,
+                        ScopeKind::Deck => member.id.as_deref() == Some(deck_id.as_str()),
+                        ScopeKind::Document | ScopeKind::Guide => connection.query_row(
+                            "SELECT EXISTS(SELECT 1 FROM document_decks WHERE deck_id=?1 AND document_id=?2)
+                             OR EXISTS(SELECT 1 FROM document_note_topics nt JOIN cards c ON c.note_id=nt.note_id
+                                WHERE c.id=?3 AND nt.document_id=?2)",
+                            params![deck_id,member.id,card_id], |row|row.get::<_,bool>(0),
+                        ).map_err(CommandError::database)?,
+                    };
+                }
                 if !allowed {
                     return Err(invalid("This card does not belong to the conversation's material selection."));
                 }
