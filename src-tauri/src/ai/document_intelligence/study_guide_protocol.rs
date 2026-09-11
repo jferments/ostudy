@@ -21,9 +21,15 @@ pub(super) fn catalog_prompt(knowledge: &KnowledgeCatalog) -> Result<String, Com
     serde_json::to_string(&value).map_err(CommandError::serialization)
 }
 
-pub(super) fn schema(knowledge: &KnowledgeCatalog) -> Value {
+pub(super) fn schema(knowledge: &KnowledgeCatalog, images_attached: bool) -> Value {
+    let mut content = study_guide_section_schema();
+    if !images_attached {
+        content["properties"]["visualExplanations"]["maxItems"] = json!(0);
+        content["properties"]["visualExplanations"]["description"] =
+            json!("No images are attached. Always return [].");
+    }
     json!({"type":"object","additionalProperties":false,"required":["content","knowledgeUnitIds"],
-        "properties":{"content":study_guide_section_schema(),"knowledgeUnitIds":{
+        "properties":{"content":content,"knowledgeUnitIds":{
             "type":"array","minItems":1,"maxItems":knowledge.units.len().min(64),"uniqueItems":true,
             "items":{"type":"string","enum":(0..knowledge.units.len()).map(alias).collect::<Vec<_>>()}}}})
 }
@@ -125,7 +131,7 @@ mod tests {
         let value: Value = serde_json::from_str(&catalog_prompt(&knowledge).unwrap()).unwrap();
         assert_eq!(value["units"][0]["id"], "K0");
         assert_eq!(
-            schema(&knowledge)["properties"]["knowledgeUnitIds"]["items"]["enum"],
+            schema(&knowledge, false)["properties"]["knowledgeUnitIds"]["items"]["enum"],
             json!(["K0"])
         );
     }

@@ -85,7 +85,12 @@ pub(crate) async fn generate_study_guide_topic_section(
         topic.source_locator.first(),
         topic.source_locator.last(),
     );
-    let user = format!("{user}\n\nShared knowledge catalog (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nGenerate content from these knowledge units while checking their original evidence and preserving qualifications. Return content plus knowledgeUnitIds naming only the units actually explained. Do not select every unit by default. These IDs are internal metadata, not guide prose.", protocol::catalog_prompt(knowledge)?);
+    let visual_instruction = if images.is_empty() {
+        "No images are attached. visualExplanations MUST be []. Do not describe a diagram merely mentioned in text. Put text-supported mechanisms in explanations instead."
+    } else {
+        "Use visualExplanations only for the images actually attached to this request."
+    };
+    let user = format!("{user}\n{visual_instruction}\n\nShared knowledge catalog (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nGenerate content from these knowledge units while checking their original evidence and preserving qualifications. Return content plus knowledgeUnitIds naming only the units actually explained. Do not select every unit by default. These IDs are internal metadata, not guide prose.", protocol::catalog_prompt(knowledge)?);
     request_study_guide_section_with_retry(runtime, task, &system, &user, images, knowledge).await
 }
 
@@ -97,7 +102,7 @@ async fn request_study_guide_section_with_retry(
     images: &[SourcePageImage],
     knowledge: &KnowledgeCatalog,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    let schema = protocol::schema(knowledge);
+    let schema = protocol::schema(knowledge, !images.is_empty());
     let maximum_tokens = task.completion_token_ceiling(STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS);
     let raw = request_json(
         runtime,
@@ -165,20 +170,38 @@ fn parse_section_with_images(
     knowledge: &KnowledgeCatalog,
     images_attached: bool,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    let section = parse_grounded_section(value, knowledge)?;
-    if !images_attached && !section.content.visual_explanations.is_empty() {
-        return Err(output_error(
-            "visualExplanations requires attached images; use [] for this text-only request.",
-        ));
+    let mut value = value;
+    if !images_attached {
+        if let Some(content) = value.get_mut("content").and_then(Value::as_object_mut) {
+            let discarded = content.get("visualExplanations").is_some_and(|items| {
+                !items.is_null() && items.as_array().is_none_or(|items| !items.is_empty())
+            });
+            if discarded {
+                crate::logging::debug_target("ai.document.study_guide", "study_guide_unavailable_visuals_omitted",
+                    "Omitted an unsupported optional visual category; the remaining text and evidence still require validation.", json!({"imagesAttached":false}));
+            }
+            // Never publish invented visual claims. This optional category has
+            // no authority to invalidate independent supported text sections.
+            content.insert("visualExplanations".into(), json!([]));
+        }
     }
-    Ok(section)
+    parse_grounded_section_with_images(value, knowledge, images_attached)
 }
 
+#[cfg(test)]
 fn parse_grounded_section(
     value: Value,
     knowledge: &KnowledgeCatalog,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
-    let schema = protocol::schema(knowledge);
+    parse_grounded_section_with_images(value, knowledge, true)
+}
+
+fn parse_grounded_section_with_images(
+    value: Value,
+    knowledge: &KnowledgeCatalog,
+    images_attached: bool,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    let schema = protocol::schema(knowledge, images_attached);
     crate::ai::structured_output::log_shape(&value, &schema, "study_guide_envelope");
     let content = value
         .get("content")
@@ -683,7 +706,29 @@ mod tests {
         assert!(parse_section_with_images(response.clone(), &catalog, false).is_ok());
         response["content"]["visualExplanations"] =
             json!([{"title":"Diagram","explanation":"A displayed triangle."}]);
+        let text_only = parse_section_with_images(response.clone(), &catalog, false).unwrap();
+        assert!(text_only.content.visual_explanations.is_empty());
+        assert_eq!(text_only.content.overview, "A triangle has three sides.");
+        assert_eq!(
+            parse_section_with_images(response.clone(), &catalog, true)
+                .unwrap()
+                .content
+                .visual_explanations
+                .len(),
+            1
+        );
+        response["knowledgeUnitIds"] = json!(["K999"]);
         assert!(parse_section_with_images(response, &catalog, false).is_err());
+        assert_eq!(
+            protocol::schema(&catalog, false)["properties"]["content"]["properties"]
+                ["visualExplanations"]["maxItems"],
+            0
+        );
+        assert_eq!(
+            protocol::schema(&catalog, true)["properties"]["content"]["properties"]
+                ["visualExplanations"]["maxItems"],
+            MAX_VISUAL_EXPLANATIONS
+        );
         assert!(guide_retryable(&CommandError::new(
             "ai_document_output_truncated",
             "limit"
