@@ -1,3 +1,6 @@
+#[path = "document_json.rs"]
+mod json_output;
+
 use serde_json::{json, Value};
 use url::Url;
 
@@ -99,22 +102,55 @@ pub(crate) fn decode_document_output(
     request: &PreparedDocumentRequest,
     response: &Value,
 ) -> Result<Value, ProviderOutputError> {
-    let serialized = match request.decoder {
-        DocumentOutputDecoder::ContentJson => openai_compatible::completion_content(response)
-            .map(openai_compatible::normalize_json_content)
-            .ok_or(ProviderOutputError {
+    let value = match request.decoder {
+        DocumentOutputDecoder::ContentJson => {
+            let content = openai_compatible::completion_content(response).ok_or(ProviderOutputError {
                 message: "The AI provider returned no structured document content.",
-            })?,
+            })?;
+            json_output::parse(content)?
+        }
         DocumentOutputDecoder::StrictTool(name) => {
-            openai_compatible::strict_tool_arguments(response, name).ok_or(ProviderOutputError {
-                message:
-                    "The AI provider did not return the required schema-constrained tool result.",
-            })?
+            let calls = response
+                .pointer("/choices/0/message/tool_calls")
+                .and_then(Value::as_array)
+                .filter(|calls| !calls.is_empty() && calls.len() <= 128)
+                .ok_or(ProviderOutputError {
+                    message: "The AI provider did not return bounded structured tool results.",
+                })?;
+            let mut values = Vec::with_capacity(calls.len());
+            for call in calls {
+                let function = call.get("function").ok_or(ProviderOutputError {
+                    message: "The AI provider returned an invalid structured tool result.",
+                })?;
+                if function.get("name").and_then(Value::as_str) != Some(name) {
+                    return Err(ProviderOutputError {
+                        message: "The AI provider returned an unexpected structured-output tool.",
+                    });
+                }
+                let arguments = function
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .ok_or(ProviderOutputError {
+                        message: "The structured tool result did not contain JSON arguments.",
+                    })?;
+                values.push(json_output::parse(arguments)?);
+            }
+            if values.len() == 1 {
+                values.remove(0)
+            } else {
+                // Preserve independent invocations, never concatenate their JSON
+                // bytes or pick one silently. Only a domain with additive batch
+                // semantics may admit this collection; scalar tasks reject it.
+                crate::logging::debug_target(
+                    "ai.contract",
+                    "structured_tool_results_separated",
+                    "Preserved independent tool results for domain-level admission.",
+                    json!({"toolCalls":values.len()}),
+                );
+                Value::Array(values)
+            }
         }
     };
-    let value = serde_json::from_str(serialized).map_err(|_| ProviderOutputError {
-        message: "The AI provider returned structured document content that was not valid JSON.",
-    })?;
     // A shape mismatch is diagnostic here, not a whole-batch veto. Domain
     // decoders admit independent units and preserve partial-coverage semantics.
     crate::ai::structured_output::log_shape(&value, &request.schema, "document_response");
@@ -218,5 +254,52 @@ mod tests {
             openrouter.body.pointer("/provider/require_parameters"),
             Some(&json!(true))
         );
+    }
+}
+
+#[cfg(test)]
+mod decoding_regressions {
+    use super::*;
+
+    fn request(decoder: DocumentOutputDecoder) -> PreparedDocumentRequest {
+        PreparedDocumentRequest {
+            url: Url::parse("https://example.org/").unwrap(),
+            body: json!({}),
+            compatibility_body: None,
+            decoder,
+            schema: json!({"type":"object","properties":{"units":{"type":"array"}}}),
+        }
+    }
+
+    #[test]
+    fn tool_arguments_receive_the_same_bounded_json_normalization_as_content() {
+        let text = "```json\n{\"units\":[],}\n```";
+        let content = decode_document_output(
+            &request(DocumentOutputDecoder::ContentJson),
+            &json!({"choices":[{"message":{"content":text}}]}),
+        )
+        .unwrap();
+        let tool = decode_document_output(&request(DocumentOutputDecoder::StrictTool("submit")),
+            &json!({"choices":[{"message":{"tool_calls":[{"function":{"name":"submit","arguments":text}}]}}]})).unwrap();
+        assert_eq!(content, json!({"units":[]}));
+        assert_eq!(tool, content);
+    }
+
+    #[test]
+    fn independent_tool_results_stay_separate_instead_of_concatenating_or_selecting() {
+        let response = json!({"choices":[{"message":{"tool_calls":[
+            {"function":{"name":"submit","arguments":"{\"units\":[1]}"}},
+            {"function":{"name":"submit","arguments":"{\"units\":[2]}"}}
+        ]}}]});
+        let request = request(DocumentOutputDecoder::StrictTool("submit"));
+        let decoded = decode_document_output(&request, &response).unwrap();
+        assert_eq!(decoded, json!([{"units":[1]},{"units":[2]}]));
+        let mut malformed = response;
+        malformed["choices"][0]["message"]["tool_calls"][1]["function"]["arguments"] =
+            json!("{unfinished");
+        assert!(decode_document_output(&request, &malformed).is_err());
+        malformed["choices"][0]["message"]["tool_calls"][1]["function"]["name"] =
+            json!("unexpected");
+        assert!(decode_document_output(&request, &malformed).is_err());
     }
 }
