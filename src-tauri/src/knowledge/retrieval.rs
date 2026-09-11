@@ -21,7 +21,7 @@ use crate::{
 use super::{
     adapters::scope_documents,
     contracts::{bounded, invalid, ScopeKind, SourceCitation, SourceRecord, StudyScope},
-    index::IndexKey,
+    index::{IndexKey, VectorHit},
     preparation::open_index,
     repository,
     runtime::check_canceled,
@@ -110,45 +110,65 @@ pub(crate) async fn retrieve(
     check_canceled(cancellation)?;
     embeddings::ensure_context_current(database, &context)?;
     let hits = database.with_connection(|connection| {
-        let mut result = Vec::new();
-        let mut seen = HashSet::new();
-        for hit in hits {
-            if !hit.distance.is_finite() || seen.contains(&hit.key.source_id) {
-                continue;
-            }
-            let Some(source) = repository::load_source(connection, &hit.key.source_id)? else {
-                continue;
-            };
-            let current = if let Some(unit_id) = hit.key.id.strip_prefix("unit:") {
-                connection
-                    .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM knowledge_units
-                     WHERE id = ?1 AND source_id = ?2 AND source_hash = ?3 AND content_hash = ?4)",
-                        params![
-                            unit_id,
-                            source.id,
-                            source.content_hash,
-                            hit.key.content_hash
-                        ],
-                        |row| row.get::<_, bool>(0),
-                    )
-                    .map_err(CommandError::database)?
-            } else {
-                source.content_hash == hit.key.content_hash
-            };
-            if !current {
-                continue;
-            }
-            seen.insert(source.id.clone());
-            result.push(RetrievedSource { source });
-        }
-        Ok(result)
+        current_hits(connection, scope, include_conversations, hits)
     })?;
     Ok(RetrievalResult {
         hits,
         eligible_entries: eligible_count,
         space_id: context.space_id,
     })
+}
+
+/// Final authorization after ranking; an index result alone never grants access.
+pub(crate) fn current_hits(
+    connection: &rusqlite::Connection,
+    scope: &StudyScope,
+    include_conversations: bool,
+    hits: Vec<VectorHit>,
+) -> Result<Vec<RetrievedSource>, CommandError> {
+    // Permission can be revoked while vector ranking runs off-thread.
+    // Recheck the whole allowed key set, including multi-source dependencies,
+    // before exposing hits through either Tutor or the retrieval-preview IPC.
+    let allowed = eligible_entries_in(connection, scope, include_conversations)?
+        .into_iter()
+        .map(|key| (key.id, key.content_hash))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+    for hit in hits {
+        if !hit.distance.is_finite()
+            || seen.contains(&hit.key.source_id)
+            || allowed.get(&hit.key.id) != Some(&hit.key.content_hash)
+        {
+            continue;
+        }
+        let Some(source) = repository::load_source(connection, &hit.key.source_id)? else {
+            continue;
+        };
+        let current = if let Some(unit_id) = hit.key.id.strip_prefix("unit:") {
+            connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM knowledge_units
+                     WHERE id = ?1 AND source_id = ?2 AND source_hash = ?3 AND content_hash = ?4)",
+                    params![
+                        unit_id,
+                        source.id,
+                        source.content_hash,
+                        hit.key.content_hash
+                    ],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(CommandError::database)?
+        } else {
+            source.content_hash == hit.key.content_hash
+        };
+        if !current {
+            continue;
+        }
+        seen.insert(source.id.clone());
+        result.push(RetrievedSource { source });
+    }
+    Ok(result)
 }
 
 pub(crate) fn eligible_entries(

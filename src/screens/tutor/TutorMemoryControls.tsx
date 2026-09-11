@@ -100,7 +100,7 @@ export function TutorMemoryControls({ conversationId, revision, retrievalAvailab
           onChange={(event) => { void change(event.target.checked ? "allow_retrieval" : "deny_retrieval"); }} />
         Allow this conversation in semantic retrieval
       </label> : null}
-      <p className={styles.muted}>{retrievalAvailable ? "Retrieval is separate from automatic history and is limited to this material scope. Enabling it does not send data: explicitly prepare conversations before searching them. Disabling it removes existing retrieval projections." : "General chats use automatic history, not library retrieval. Use a material-scoped conversation to retrieve related chat messages semantically."}</p>
+      <p className={styles.muted}>{retrievalAvailable ? "Retrieval is separate from automatic history and is limited to this material scope. Enabling it alone sends nothing. Sending a message with conversation search enabled indexes eligible saved turns as needed. Disabling it removes existing retrieval projections." : "General chats use automatic history, not library retrieval. Use a material-scoped conversation to retrieve related chat messages semantically."}</p>
       <Button disabled={locked} onClick={() => { void forget(); }}>Forget earlier context</Button>
       {memory.startSequence > 0 ? <p className={styles.muted}>Turns through {memory.startSequence} are excluded from future memory.</p> : null}
       <details><summary>Stored conversation summary</summary>

@@ -13,8 +13,8 @@ fn other_document(database: &Database, original: &SourceRecord, digit: char) -> 
     let id = digit.to_string().repeat(32);
     database.with_connection(|c| {
         c.execute("INSERT INTO documents(id,title,original_filename,mime_type,byte_size,sha256,source_relative_path,lifecycle_state,created_at,updated_at)
-            VALUES(?1,'Other document','other.pdf','application/pdf',1,?2,'documents/other.pdf','ready',1,1)",
-            params![id, digit.to_string().repeat(64)]).map_err(CommandError::database)?;
+            VALUES(?1,'Other document','other.pdf','application/pdf',1,?2,?3,'ready',1,1)",
+            params![id, digit.to_string().repeat(64), format!("documents/{id}.pdf")]).map_err(CommandError::database)?;
         Ok(())
     }).unwrap();
     let mut source = original.clone();
@@ -76,6 +76,15 @@ fn union_uses_both_documents_excludes_others_and_requires_exact_conversation_per
     let keys = retrieval::eligible_entries(&database, &selected, true).unwrap();
     assert!(keys.iter().any(|entry| entry.source_id == inside_chat));
     assert!(!keys.iter().any(|entry| entry.source_id == other_chat));
+    let ranked = keys
+        .iter()
+        .filter(|entry| entry.source_id == inside_chat)
+        .map(|key| super::index::VectorHit {
+            key: key.clone(),
+            distance: 0.0,
+        })
+        .collect::<Vec<_>>();
+    assert!(!ranked.is_empty());
     database
         .with_connection(|c| {
             c.execute(
@@ -83,6 +92,12 @@ fn union_uses_both_documents_excludes_others_and_requires_exact_conversation_per
                 ["a".repeat(32)],
             )
             .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
+    database
+        .with_connection(|c| {
+            assert!(retrieval::current_hits(c, &selected, true, ranked)?.is_empty());
             Ok(())
         })
         .unwrap();
@@ -113,4 +128,42 @@ fn largest_selection_fits_existing_storage_and_legacy_scopes_remain_readable() {
     assert!(retrieval::eligible_entries(&database, &general, true)
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn selecting_a_deck_does_not_admit_other_decks_that_share_its_document() {
+    let (database, original, _, _) = super::authoring::tests::fixture();
+    let mut card_sources = Vec::new();
+    for (deck_digit, note_digit, card_digit) in [('6', '7', '8'), ('9', 'a', 'b')] {
+        let deck = deck_digit.to_string().repeat(32);
+        let note = note_digit.to_string().repeat(32);
+        let card = card_digit.to_string().repeat(32);
+        let doc = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Saved assertion"}]}]}).to_string();
+        database.with_connection(|c| {
+            c.execute("INSERT INTO decks(id,name,created_at,updated_at) VALUES(?1,?2,1,1)",params![deck,format!("Deck {deck_digit}")]).map_err(CommandError::database)?;
+            c.execute("INSERT INTO notes(id,deck_id,front_doc,back_doc,front_text,back_text,created_at,updated_at) VALUES(?1,?2,?3,?3,'Saved assertion','Saved assertion',1,1)",params![note,deck,doc]).map_err(CommandError::database)?;
+            c.execute("INSERT INTO cards(id,note_id,deck_id,created_at,updated_at) VALUES(?1,?2,?3,1,1)",params![card,note,deck]).map_err(CommandError::database)?;
+            c.execute("INSERT INTO document_decks(document_id,deck_id,job_id,created_at) VALUES(?1,?2,?3,1)",params![original.owner_id,deck,"3".repeat(32)]).map_err(CommandError::database)?;
+            Ok(())
+        }).unwrap();
+        card_sources.push(
+            adapters::materialize_source(
+                &database,
+                &adapters::SourceSeed {
+                    kind: SourceKind::Card,
+                    owner_id: card,
+                    parent_key: "presentation".into(),
+                },
+            )
+            .unwrap()[0]
+                .clone(),
+        );
+    }
+    let unrelated = other_document(&database, &original, 'c');
+    let selected = scope(json!([{"kind":"deck","id":"6".repeat(32)},
+        {"kind":"document","id":unrelated.owner_id}]));
+    let keys = retrieval::eligible_entries(&database, &selected, false).unwrap();
+    assert!(keys.iter().any(|key| key.source_id == original.id));
+    assert!(keys.iter().any(|key| key.source_id == card_sources[0].id));
+    assert!(!keys.iter().any(|key| key.source_id == card_sources[1].id));
 }
