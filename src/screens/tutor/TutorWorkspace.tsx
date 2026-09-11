@@ -10,6 +10,7 @@ import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { TutorChatSettings } from "./TutorChatSettings";
 import { useTutor } from "./TutorContext";
+import { TutorMarkdown } from "./TutorMarkdown";
 import { TutorSources } from "./TutorSources";
 import styles from "./TutorWorkspace.module.css";
 
@@ -103,11 +104,11 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           {turn.userText ? <section className={styles.userMessage} aria-label="Your message"><strong>You</strong><div className={styles.message}>{turn.userText}</div></section> : null}
           <section className={styles.assistantMessage} aria-label="Tutor response">
             <div className={styles.toolbar}><strong>Tutor</strong><span className={styles.muted}>{turn.model}</span></div>
-            {turn.assistantText && turn.assistantText !== turn.errorMessage ? <div className={styles.message}>{turn.assistantText}</div> : null}
+            {turn.assistantText && turn.assistantText !== turn.errorMessage ? turn.mode === "hint" ? <div className={styles.message}>{turn.assistantText}</div> : <TutorMarkdown text={turn.assistantText} /> : null}
             {turn.state === "running" ? <p role="status">Working on your response…</p> : null}
             {turn.errorMessage ? <p role="alert">{turn.errorMessage}</p> : null}
             {!turn.evidenceCurrent && turn.state === "complete" ? <p className={styles.notice}>The source has changed or been removed. This answer is historical, not current evidence.</p> : null}
-            {turn.feedback ? <details><summary>Quiz feedback</summary>{turn.feedback.criteriaFeedback.map((text, index) => <p key={index}>{text}</p>)}</details> : null}
+            {turn.feedback ? <details><summary>Quiz feedback</summary>{turn.feedback.criteriaFeedback.map((text, index) => <TutorMarkdown key={index} text={text} />)}</details> : null}
             {!hintOnly && turn.mode !== "quiz" ? <div className={styles.sources}>{turn.citations.map((citation, index) => <Button key={citation.id} size="small" variant="text"
               disabled={sourceBusy || !turn.evidenceCurrent} onClick={() => { void showSource(citation); }}>Source {index + 1}: {citation.title}</Button>)}</div> : null}
             {turn.id === tutor.detail?.turns.at(-1)?.id && (turn.mode !== "hint" || hintOnly) && ["failed", "canceled", "interrupted"].includes(turn.state) ? <Button size="small" disabled={locked || tutor.needsRefresh}
@@ -131,7 +132,6 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         <div className={styles.toolbar}>
           <Button type="submit" variant="primary" disabled={locked || tutor.needsRefresh || !tutor.draft.trim()}>{hintOnly ? "Request hint" : question ? "Submit answer" : "Send"}</Button>
           {tutor.busy || tutor.pending ? <Button variant="dangerSecondary" onClick={() => { void tutor.cancel(); }}><Icon name="stop" /> Stop response</Button> : null}
-          {!hintOnly ? <Button disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.send("quiz", tutor.draft.trim() || "Ask me one question about the selected material."); }}>Quiz me</Button> : null}
           {!hintOnly && question ? <Button disabled={locked || tutor.needsRefresh || !tutor.draft.trim()} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button> : null}
         </div>
         <p className={styles.disclosure}>Sending uses your selected AI and embedding services with relevant material. Charges may apply. AI can make mistakes.</p>
