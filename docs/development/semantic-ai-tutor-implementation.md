@@ -1,6 +1,6 @@
 # Semantic AI tutor implementation contract
 
-Status: implementation in progress on `agent/semantic-ai-tutor`. This document defines acceptance, not a claim that the application already implements every item. Base: `61f0b463f83e08d0485332c95c2bc562441303f3`.
+Status: maintained acceptance contract for `agent/semantic-ai-tutor`. The PR records qualification for the exact published head; this document is not test-run evidence. Base: `61f0b463f83e08d0485332c95c2bc562441303f3`.
 
 ## Product boundary
 
@@ -14,9 +14,9 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 
 | ID | Required behavior | Verification boundary |
 | --- | --- | --- |
-| AC-01 | One native semantic content contract represents source evidence, interpretable knowledge units, artifact links, revisions, origin, and support status. Existing content IDs and schedules survive. | Native validation, migration, provenance and revision fixtures. |
+| AC-01 | One native semantic content contract represents source evidence, interpretable knowledge units, artifact links, revisions, origin, and support status. Existing content IDs and schedules survive. | Native evidence/authority validation, migration, cross-source dependencies and whole-document revision fixtures. |
 | AC-02 | Documents, effective guide sections, generated cards, manual cards, and imported cards use the shared adapters. Saving cards never waits for AI; committed edits make old interpretations stale. | Manual/imported/generated fixtures, deletion and stale-result tests. |
-| AC-03 | Knowledge extraction precedes card/guide authoring and preserves source evidence, conditions and clear question targets; cards and guides retain unit links. | Structured-provider fixtures, atomicity/directionality and source-link tests. |
+| AC-03 | Native evidence IDs support multi-span knowledge extraction before outline/card/guide authoring. Valid siblings survive targeted repair; partial coverage remains explicit and resumable; cards and guides retain unit links. | Injected-provider orchestration, partial/repair/concurrency tests, atomic overview publication, directionality and source-link tests. |
 | AC-04 | Embeddings come from a selected provider profile, with model/dimension/task identity, bounded batches, validation and cancellation. No local embedding runtime. | Provider fixtures including malformed/nonfinite/wrong-sized vectors, unsupported profiles, errors and cancellation. |
 | AC-05 | Semantic retrieval uses SQLite vector storage plus exact artifact relationships, not keyword-only search. Scope, revisions, source deletion, index identity and incomplete preparation are explicit. | Retrieval fixtures covering paraphrases, type diversity, stale/deleted entries and incompatible model spaces. |
 | AC-06 | A shared StudyContext resolves current material, linked evidence, guide/card context and appropriate conversation history under a bounded request budget. The tutor cannot invent valid source IDs. | Context, scope, citation and token-budget tests. |
@@ -39,9 +39,9 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 ## Data and trust rules
 
 - Source records establish provenance, not guaranteed truth. Manual cards are user assertions unless linked to supporting evidence; similarity alone cannot supply a citation.
-- Generated knowledge units retain source locators and qualifications. They never replace original evidence. Repeated generated derivatives do not count as independent corroboration.
+- Generated knowledge units retain native evidence references, source locators and qualifications. The model chooses request-local IDs; Rust supplies exact UTF-8 spans, hashes and image selectors. Location validation does not establish factual entailment. They never replace original evidence. Repeated generated derivatives do not count as independent corroboration.
 - Interpretable unit identity is independent of embeddings. Changing tutor models does not rebuild vectors. Changing embedding spaces does not reparse documents or alter authored cards.
-- Indexing requires explicit selected scope/provider consent. Failure or partial preparation is visible. No whole-library transmission at startup or on an ordinary card save.
+- Indexing requires explicit selected scope/provider consent. Failure or partial preparation is visible. An empty output is not a complete disposition without explicit no-learning source IDs. Successful siblings are saved before repair; malformed or duplicate repair slots stay unresolved without destroying unrelated successes. Checkpoint reads are read-only and concurrent stale writes are rejected. No whole-library transmission at startup or on an ordinary card save.
 - Provider/source content is untrusted data, not executable instructions. The model cannot execute SQL, native commands, file paths or arbitrary tools.
 - Narrative conversation summaries are acceleration data with a message boundary, not a learner profile. Raw reasoning is not stored as memory or exposed in ordinary logs.
 - A card edit invalidates its interpretation; it does not rewrite its original document or every related guide/card. A source deletion invalidates dependent retrieval entries without erasing unrelated user content.
@@ -50,3 +50,15 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 ## Required manual acceptance
 
 Use a small non-sensitive document plus manual/imported cards. Verify source-grounded questions, a cross-reference between a guide and its cards, changed-card re-preparation, provider errors/quota exhaustion, no automatic review submission, mobile Back/keyboard behavior and preserved guide/card position. Live provider accounts, actual retention policy, physical Android lifecycle and visual hint quality are not established by deterministic provider fixtures.
+
+## Knowledge-representation regression acceptance
+
+The current [representation contract](../architecture/knowledge-representation.md) separates canonical evidence, fallible interpretations, artifact relationships and derived views. In addition to existing Tutor tests, native tests must exercise the real decoder and SQLite publication through an injected provider boundary, not mocks that bypass admission:
+
+- Two valid units plus one invented evidence ID: retain the valid units, repair only the rejected slot, and preserve explicit partial state when repair fails. Reopening a completed checkpoint must make no provider request or durable rewrite.
+- Cross-page support: retain both exact spans and project the combined locator. Editing either source invalidates the interpretation and its receipt. Scope filtering or context eviction cannot leave half of a multi-source claim visible.
+- Source changes during analysis or reduction: reject stale publication, including a source yielding zero units, added/deleted chunks, invalidated prepared projections, and concurrent reinterpretation. The final outline and generated metadata commit together.
+- Malformed/duplicate repair entries: independent valid corrections survive. Duplicate slots do not resolve by response order. Repeated retries stay within bounded proposal and storage limits.
+- Legacy records remain readable. New migration tables and partial drafts follow the existing backup, deletion, device-transfer privacy and vector-rebuild rules; no source reset or library deletion is a recovery step.
+
+A real-provider test should first use a small document spanning at least two pages, inspect citations and partial-state behavior, then retry the previously failing 138-page PDF. Use the diagnostics launcher described in the local-testing runbook. `knowledge_analysis_partial` indicates retained usable knowledge with unresolved work; it is not full coverage. `knowledge_extraction_batch_validated` certifies protocol validation, not truth or exhaustive concept extraction.

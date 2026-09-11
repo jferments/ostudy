@@ -63,7 +63,10 @@ pub(crate) async fn ensure_document_outline(
             database: input.database, paths: input.paths, runtime: input.runtime,
             task: input.task, document_id: input.document_id, chunk_indices: &indices, retry_partial: true,
         }).await?;
-        let snapshot = input.database.with_connection(|connection| DocumentSnapshot::capture(connection, input.document_id))?;
+        let extraction_contract = crate::knowledge::extraction::extraction_contract(input.task)?;
+        let snapshot = input.database.with_connection(|connection| DocumentSnapshot::prepared(
+            connection, input.document_id, input.source.unit_count, input.chunks, &extraction_contract,
+        ))?;
         let catalogs = windows.iter().map(|window| {
             authoring::catalog_for_chunks(input.database, input.document_id,
                 &(window.first_chunk_index..=window.last_chunk_index).collect::<Vec<_>>(), input.task)

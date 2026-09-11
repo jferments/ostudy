@@ -1,13 +1,5 @@
-//! Per-proposal admission and bounded repair. Rejected proposals are local draft
-//! data, never knowledge. Successful siblings are not regenerated during repair.
-
-use std::collections::{HashMap, HashSet};
-
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-
-use crate::error::CommandError;
-
+//! Per-proposal admission and bounded repair. Invalid candidates remain explicit
+//! local drafts, never evidence. A malformed sibling cannot erase valid repairs.
 use super::super::{
     contracts::{
         hash, invalid, KnowledgeKind, KnowledgeUnitInput, SourceKind, SourceRecord,
@@ -15,16 +7,18 @@ use super::super::{
     },
     evidence::{EvidenceCatalog, Grounding, Importance, EVIDENCE_VERSION},
 };
+use crate::error::CommandError;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 
 pub(crate) const MAX_WINDOW_UNITS: usize = 48;
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AcceptedUnit {
     pub source_id: String,
     pub content: KnowledgeUnitInput,
 }
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct RejectedUnit {
@@ -32,7 +26,6 @@ pub(crate) struct RejectedUnit {
     pub proposal: Value,
     pub code: String,
 }
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AnalysisReport {
@@ -41,44 +34,35 @@ pub(crate) struct AnalysisReport {
     pub(crate) no_learning: Vec<String>,
     pub(crate) missing_sources: Vec<String>,
 }
-
 impl AnalysisReport {
     pub(crate) fn rejected_count(&self) -> usize {
         self.rejected.len() + self.missing_sources.len()
     }
-
     pub(crate) fn is_complete(&self) -> bool {
         self.rejected.is_empty() && self.missing_sources.is_empty()
     }
-
     pub(crate) fn refresh_coverage(&mut self, sources: &[SourceRecord]) {
         let used = self
             .accepted
             .iter()
             .flat_map(|unit| {
-                unit.content.grounding.iter().flat_map(|grounding| {
-                    grounding
-                        .evidence
-                        .iter()
-                        .map(|evidence| evidence.source_id.as_str())
-                })
+                unit.content
+                    .grounding
+                    .iter()
+                    .flat_map(|g| g.evidence.iter().map(|e| e.source_id.as_str()))
             })
             .collect::<HashSet<_>>();
         self.no_learning.retain(|id| !used.contains(id.as_str()));
         self.missing_sources = sources
             .iter()
-            .filter(|source| {
-                !used.contains(source.id.as_str()) && !self.no_learning.contains(&source.id)
-            })
-            .map(|source| source.id.clone())
+            .filter(|s| !used.contains(s.id.as_str()) && !self.no_learning.contains(&s.id))
+            .map(|s| s.id.clone())
             .collect();
     }
-
     pub(crate) fn repair_prompt(&self) -> Value {
-        json!({"rejectedProposals": self.rejected, "sourcesWithoutDisposition": self.missing_sources})
+        json!({"rejectedProposals":self.rejected,"sourcesWithoutDisposition":self.missing_sources})
     }
 }
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Proposal {
@@ -90,27 +74,24 @@ struct Proposal {
     importance: Importance,
     evidence_ids: Vec<String>,
 }
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WindowResponse {
     units: Vec<Value>,
-    no_learning_source_ids: Vec<String>,
+    no_learning_source_ids: Vec<Value>,
 }
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RepairResponse {
-    repairs: Vec<Repair>,
+    repairs: Vec<Value>,
     additional_units: Vec<Value>,
-    no_learning_source_ids: Vec<String>,
+    no_learning_source_ids: Vec<Value>,
 }
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Repair {
     slot: usize,
-    unit: Option<Value>,
+    unit: Value,
 }
 
 fn admit(
@@ -129,15 +110,13 @@ fn admit(
         .source_id;
     let primary = sources
         .iter()
-        .find(|source| &source.id == primary_id)
+        .find(|s| &s.id == primary_id)
         .ok_or_else(|| invalid("unknown_source"))?;
     for reference in &evidence {
         let source = sources
             .iter()
-            .find(|source| source.id == reference.source_id)
+            .find(|s| s.id == reference.source_id)
             .ok_or_else(|| invalid("unknown_source"))?;
-        // Relationships may span document pages, but cannot launder an authored
-        // assertion through a document or another unrelated material owner.
         if source.origin != primary.origin
             || source.kind != primary.kind
             || (source.id != primary.id
@@ -149,8 +128,8 @@ fn admit(
     }
     let supporting_excerpt = evidence
         .iter()
-        .find(|item| item.source_id == primary.id && !item.excerpt.is_empty())
-        .map_or_else(String::new, |item| item.excerpt.clone());
+        .find(|e| e.source_id == primary.id && !e.excerpt.is_empty())
+        .map_or_else(String::new, |e| e.excerpt.clone());
     let content = KnowledgeUnitInput {
         title: proposal.title,
         kind: proposal.kind,
@@ -172,7 +151,6 @@ fn admit(
         content,
     })
 }
-
 fn append_unit(
     report: &mut AnalysisReport,
     value: Value,
@@ -185,14 +163,14 @@ fn append_unit(
         if report
             .accepted
             .iter()
-            .any(|other| serde_json::to_value(other).is_ok_and(|other| other == identity))
+            .any(|u| serde_json::to_value(u).is_ok_and(|other| other == identity))
         {
             return Ok(None);
         }
         let count = report
             .accepted
             .iter()
-            .filter(|other| other.source_id == unit.source_id)
+            .filter(|u| u.source_id == unit.source_id)
             .count();
         if count >= MAX_UNITS_PER_SOURCE || report.accepted.len() >= MAX_WINDOW_UNITS {
             Err(invalid("unit_capacity"))
@@ -204,11 +182,9 @@ fn append_unit(
         Ok(Some(unit)) => report.accepted.push(unit),
         Ok(None) => {}
         Err(error) => {
-            let proposal = if value.to_string().len() <= 12_000 {
+            let proposal = if value.to_string().len() <= 12000 {
                 value
             } else {
-                // Keep a rejection identity, not an unbounded provider payload.
-                // A repair can construct a replacement from the admitted evidence.
                 json!({"oversizedDraft":true,"fingerprint":hash(&value.to_string())})
             };
             report.rejected.push(RejectedUnit {
@@ -219,17 +195,19 @@ fn append_unit(
         }
     }
 }
-
-fn add_dispositions(report: &mut AnalysisReport, ids: Vec<String>, sources: &[SourceRecord]) {
-    // Unknown IDs are not evidence that any supplied source was analyzed. Leave
-    // those sources explicitly uncovered, without discarding valid siblings.
-    for id in ids.into_iter().take(sources.len()) {
-        if sources.iter().any(|source| source.id == id) && !report.no_learning.contains(&id) {
-            report.no_learning.push(id);
+fn add_dispositions(report: &mut AnalysisReport, ids: Vec<Value>, sources: &[SourceRecord]) {
+    // Malformed/unknown dispositions do not certify any supplied source. Keep
+    // the source uncovered while admitting valid independent units/dispositions.
+    for value in ids {
+        if let Some(id) = value.as_str() {
+            if sources.iter().any(|s| s.id == id)
+                && !report.no_learning.iter().any(|existing| existing == id)
+            {
+                report.no_learning.push(id.to_string());
+            }
         }
     }
 }
-
 pub(crate) fn initial(
     value: Value,
     catalog: &EvidenceCatalog,
@@ -237,7 +215,9 @@ pub(crate) fn initial(
 ) -> Result<AnalysisReport, CommandError> {
     let response: WindowResponse = serde_json::from_value(value)
         .map_err(|_| invalid("The semantic window response has an invalid envelope."))?;
-    if response.units.len() > MAX_WINDOW_UNITS {
+    if response.units.len() > MAX_WINDOW_UNITS
+        || response.no_learning_source_ids.len() > MAX_WINDOW_UNITS
+    {
         return Err(invalid("The semantic window exceeded its proposal limit."));
     }
     let mut report = AnalysisReport::default();
@@ -248,7 +228,6 @@ pub(crate) fn initial(
     report.refresh_coverage(sources);
     Ok(report)
 }
-
 pub(crate) fn repair(
     report: &AnalysisReport,
     value: Value,
@@ -257,8 +236,9 @@ pub(crate) fn repair(
 ) -> Result<AnalysisReport, CommandError> {
     let response: RepairResponse = serde_json::from_value(value)
         .map_err(|_| invalid("The targeted repair returned an invalid envelope."))?;
-    if response.repairs.len() > report.rejected.len()
+    if response.repairs.len() > MAX_WINDOW_UNITS
         || response.additional_units.len() > MAX_WINDOW_UNITS
+        || response.no_learning_source_ids.len() > MAX_WINDOW_UNITS
     {
         return Err(invalid("The targeted repair exceeded its bounds."));
     }
@@ -267,71 +247,78 @@ pub(crate) fn repair(
         .iter()
         .map(|item| (item.slot, item))
         .collect::<HashMap<_, _>>();
-    let mut seen = HashSet::new();
+    // Count even malformed entries with a valid slot. Conflicting duplicates
+    // cannot choose which version wins by order, but do not poison other slots.
+    let mut counts = HashMap::new();
+    for raw in &response.repairs {
+        if let Some(slot) = raw
+            .get("slot")
+            .and_then(Value::as_u64)
+            .and_then(|v| usize::try_from(v).ok())
+        {
+            *counts.entry(slot).or_insert(0usize) += 1;
+        }
+    }
     let mut result = report.clone();
-    for item in response.repairs {
-        let original = pending
-            .get(&item.slot)
-            .ok_or_else(|| invalid("The repair invented a proposal slot."))?;
-        if !seen.insert(item.slot) {
-            return Err(invalid("The repair repeated a proposal slot."));
+    for raw in response.repairs {
+        let Ok(item) = serde_json::from_value::<Repair>(raw) else {
+            continue;
+        };
+        if !pending.contains_key(&item.slot)
+            || counts.get(&item.slot) != Some(&1)
+            || item.unit.is_null()
+        {
+            continue;
         }
-        if let Some(value) = item.unit {
-            result.rejected.retain(|item| item.slot != original.slot);
-            append_unit(&mut result, value, original.slot, catalog, sources);
-        }
-        // Null means the model could not repair it. Keep the unresolved draft
-        // and partial coverage; never turn omission into a successful empty set.
+        result
+            .rejected
+            .retain(|original| original.slot != item.slot);
+        append_unit(&mut result, item.unit, item.slot, catalog, sources);
     }
-    if !response.additional_units.is_empty() && report.missing_sources.is_empty() {
-        return Err(invalid(
-            "A targeted repair cannot regenerate successful siblings.",
-        ));
-    }
-    let next_slot = report
+    let mut next_slot = report
         .rejected
         .iter()
         .map(|item| item.slot)
         .max()
         .unwrap_or(report.accepted.len())
         .saturating_add(1);
-    for (index, value) in response.additional_units.into_iter().enumerate() {
-        let selected_uncovered_source = admit(value.clone(), catalog, sources).is_ok_and(|unit| {
-            unit.content.grounding.is_some_and(|grounding| {
-                grounding
-                    .evidence
+    for value in response.additional_units {
+        if report.missing_sources.is_empty()
+            || result.accepted.len() + result.rejected.len() >= MAX_WINDOW_UNITS
+        {
+            continue;
+        }
+        let addresses_missing = admit(value.clone(), catalog, sources).is_ok_and(|unit| {
+            unit.content.grounding.is_some_and(|g| {
+                g.evidence
                     .iter()
-                    .any(|evidence| report.missing_sources.contains(&evidence.source_id))
+                    .any(|e| report.missing_sources.contains(&e.source_id))
             })
         });
-        if selected_uncovered_source {
-            append_unit(&mut result, value, next_slot + index, catalog, sources);
+        if addresses_missing {
+            append_unit(&mut result, value, next_slot, catalog, sources);
+            next_slot = next_slot.saturating_add(1);
         }
-        // A purported additional unit not addressing any uncovered source is
-        // ignored; the original uncovered source remains pending for retry.
     }
+    // Additional dispositions may address uncovered sources, but never resolve
+    // a rejected proposal merely by declaring its source non-learning.
     add_dispositions(&mut result, response.no_learning_source_ids, sources);
     result.refresh_coverage(sources);
     Ok(result)
 }
-
 pub(crate) fn report_diagnostic(report: &AnalysisReport) -> Value {
-    json!({"acceptedUnits":report.accepted.len(), "rejectedUnits": report.rejected.len(),
-        "uncoveredSources":report.missing_sources, "complete":report.is_complete(),
-        "rejections":report.rejected.iter().map(|item| json!({"slot":item.slot,"category":item.code,
-            "draftFingerprint":hash(&item.proposal.to_string())})).collect::<Vec<_>>()})
+    json!({"acceptedUnits":report.accepted.len(),"rejectedUnits":report.rejected.len(),"uncoveredSources":report.missing_sources,
+        "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":r.code,
+        "draftFingerprint":hash(&r.proposal.to_string())})).collect::<Vec<_>>()})
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::knowledge::authoring::tests::fixture;
-
     fn unit(ids: Value) -> Value {
-        json!({"title":"Sides","kind":"fact","statement":"A triangle has three sides.",
-            "qualifications":[],"topic":"Geometry","importance":"core","evidenceIds":ids})
+        json!({"title":"Sides","kind":"fact","statement":"A triangle has three sides.","qualifications":[],"topic":"Geometry","importance":"core","evidenceIds":ids})
     }
-
     #[test]
     fn bad_sibling_is_quarantined_and_repair_does_not_replace_good_sibling() {
         let (_, source, _, _) = fixture();
@@ -346,17 +333,16 @@ mod tests {
         assert_eq!(report.accepted.len(), 1);
         assert_eq!(report.rejected.len(), 1);
         let old = serde_json::to_value(&report.accepted[0]).unwrap();
-        let repaired = repair(&report,json!({"repairs":[{"slot":1,"unit":null}],"additionalUnits":[],"noLearningSourceIds":[]}),&catalog,&sources).unwrap();
+        let repaired=repair(&report,json!({"repairs":[{"slot":1,"unit":null}],"additionalUnits":[],"noLearningSourceIds":[]}),&catalog,&sources).unwrap();
         assert_eq!(serde_json::to_value(&repaired.accepted[0]).unwrap(), old);
         assert!(!repaired.is_complete());
     }
-
     #[test]
     fn cross_page_claim_keeps_two_separate_native_evidence_spans() {
         let (_, first, _, _) = fixture();
         let mut second = first.clone();
-        second.segment_key = "1:0:0".to_string();
-        second.text = "Its interior angles sum to 180 degrees.".to_string();
+        second.segment_key = "1:0:0".into();
+        second.text = "Its interior angles sum to 180 degrees.".into();
         second.refresh_identity().unwrap();
         let sources = [first, second];
         let catalog = EvidenceCatalog::build(&sources, false).unwrap();
@@ -367,46 +353,96 @@ mod tests {
         )
         .unwrap();
         assert!(report.is_complete());
-        let evidence = &report.accepted[0]
-            .content
-            .grounding
-            .as_ref()
-            .unwrap()
-            .evidence;
-        assert_eq!(evidence.len(), 2);
-        assert_ne!(evidence[0].source_id, evidence[1].source_id);
-        assert!(report.accepted[0]
-            .content
-            .grounding
-            .as_ref()
-            .unwrap()
-            .is_visible_in(&sources));
-        assert!(!report.accepted[0]
-            .content
-            .grounding
-            .as_ref()
-            .unwrap()
-            .is_visible_in(&sources[..1]));
+        let grounding = report.accepted[0].content.grounding.as_ref().unwrap();
+        assert_eq!(grounding.evidence.len(), 2);
+        assert_ne!(
+            grounding.evidence[0].source_id,
+            grounding.evidence[1].source_id
+        );
+        assert!(grounding.is_visible_in(&sources));
+        assert!(!grounding.is_visible_in(&sources[..1]));
     }
-
     #[test]
     fn empty_output_is_not_complete_without_explicit_non_learning_dispositions() {
         let (_, source, _, _) = fixture();
         let sources = [source];
         let catalog = EvidenceCatalog::build(&sources, false).unwrap();
-        let partial = initial(
+        assert!(!initial(
             json!({"units":[],"noLearningSourceIds":[]}),
             &catalog,
-            &sources,
+            &sources
         )
-        .unwrap();
-        assert!(!partial.is_complete());
-        let complete = initial(
+        .unwrap()
+        .is_complete());
+        assert!(initial(
             json!({"units":[],"noLearningSourceIds":[sources[0].id]}),
+            &catalog,
+            &sources
+        )
+        .unwrap()
+        .is_complete());
+    }
+    #[test]
+    fn malformed_and_duplicate_repair_slots_do_not_discard_independent_success() {
+        let (_, source, _, _) = fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let report=initial(json!({"units":[unit(json!(["E0"])),unit(json!(["E404"])),unit(json!(["E405"]))],"noLearningSourceIds":[]}),&catalog,&sources).unwrap();
+        let mut fixed = unit(json!(["E0"]));
+        fixed["title"] = json!("Another target");
+        for bad in [
+            json!({"slot":"invalid","unit":null}),
+            json!({"slot":2,"unexpected":true}),
+            json!({"slot":999,"unit":null}),
+        ] {
+            let repaired=repair(&report,json!({"repairs":[{"slot":1,"unit":fixed},bad],"additionalUnits":[],"noLearningSourceIds":[]}),&catalog,&sources).unwrap();
+            assert_eq!(repaired.accepted.len(), 2);
+            assert_eq!(repaired.rejected.len(), 1);
+            assert_eq!(repaired.rejected[0].slot, 2);
+        }
+        let repaired=repair(&report,json!({"repairs":[{"slot":1,"unit":null},{"slot":1,"unit":fixed},{"slot":2,"unit":fixed}],"additionalUnits":[],"noLearningSourceIds":[]}),&catalog,&sources).unwrap();
+        assert_eq!(repaired.accepted.len(), 2);
+        assert_eq!(repaired.rejected.len(), 1);
+        assert_eq!(repaired.rejected[0].slot, 1);
+    }
+    #[test]
+    fn malformed_disposition_does_not_poison_valid_unit_or_hide_an_uncovered_source() {
+        let (_, first, _, _) = fixture();
+        let mut second = first.clone();
+        second.segment_key = "1:0:0".into();
+        second.refresh_identity().unwrap();
+        let sources = [first, second];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let report = initial(
+            json!({"units":[unit(json!(["E0"]))],"noLearningSourceIds":[123,"invented"]}),
             &catalog,
             &sources,
         )
         .unwrap();
-        assert!(complete.is_complete());
+        assert_eq!(report.accepted.len(), 1);
+        assert_eq!(report.missing_sources, vec![sources[1].id.clone()]);
+    }
+    #[test]
+    fn valid_reference_is_not_a_claim_of_factual_entailment() {
+        let (_, source, _, _) = fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let mut proposal = unit(json!(["E0"]));
+        proposal["statement"] = json!("An unsupported interpretation.");
+        let report = initial(
+            json!({"units":[proposal],"noLearningSourceIds":[]}),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert_eq!(
+            report.accepted[0].content.statement,
+            "An unsupported interpretation."
+        );
+        assert_eq!(
+            report.accepted[0].content.supporting_excerpt,
+            sources[0].text
+        );
+        // Source text is unchanged; the stored interpretation is not certified.
     }
 }

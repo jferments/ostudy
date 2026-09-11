@@ -2,7 +2,7 @@
 
 ostudy's document system has four distinct responsibilities: retain and normalize a source; derive reusable learning structure; request bounded provider-assisted content; and validate/publish ordinary learning artifacts. The UI initiates tasks but does not own parser policy, provider transport, credentials, or the database graph.
 
-[The comprehensive architecture](overview.md) gives the system context. [Document AI routing](document-ai-routing.md) covers task contracts/concurrency. [AI infrastructure](ai-infrastructure.md) owns profiles, probes, and transport. [The user guide](../user-guide/documents-and-ai-generation.md) describes the visible workflow.
+[The comprehensive architecture](overview.md) gives the system context. [Knowledge representation](knowledge-representation.md) defines evidence, interpretations, coverage and revision safety. [Document AI routing](document-ai-routing.md) covers task contracts/concurrency. [AI infrastructure](ai-infrastructure.md) owns profiles, probes, and transport. [The user guide](../user-guide/documents-and-ai-generation.md) describes the visible workflow.
 
 ## Source and package ownership
 
@@ -72,7 +72,11 @@ Cancellation is cooperative across parsing, rendering, OCR, and provider work. A
 
 ## Reusable understanding and learning plans
 
-A bounded outline pass extracts source-grounded section fragments and coverage evidence. Rust assembles hierarchy deterministically: normalize ranges, order coverage, deduplicate useful concepts/objectives, reconcile overlaps, and preserve fallbacks when optional synthesis fails. A short top-level digest can request a whole-document summary without resending unbounded complete outlines.
+One bounded semantic analysis traverses the canonical source neighborhoods and publishes shared knowledge. Rust creates addressable exact text spans and attached-image references; the model selects their IDs instead of copying quotations. A unit may reference several spans or pages. Per-unit admission preserves successful siblings before a targeted repair; receipts distinguish complete source dispositions, partial analysis, and explicit no-learning decisions.
+
+The document outline is now a derived view of this knowledge, not a second raw-document outline traversal. Native grouping retains source ranges and whole topic labels. An optional balanced knowledge-only reduction supplies broader context and an advisory core-ID set; it must represent every nonempty input window or fall back locally. Neither local importance nor absence from the bounded core-ID set proves what is pedagogically essential.
+
+A whole-document snapshot binds canonical chunks, image revisions, all prepared source projections, unit revisions and analysis receipts, including sources yielding no units. The snapshot is checked before and after provider work, then inside the transaction publishing the outline and generated metadata. Source changes, deletions, additions and competing reinterpretations invalidate stale results. Display renames and progress updates do not change v2 document evidence identity.
 
 The learning plan gives stable topic identities used by both flashcards and guides. Card provenance is a stored relationship to those topics/citations, not a mutable tag label or a later fuzzy match. Existing manually authored cards are not retroactively assigned to a source by guessing from their wording.
 
@@ -82,13 +86,13 @@ Source/canonical/backend/prompt/schema identity controls checkpoint reuse. Compa
 
 Both initial/additional flashcard generation and study-guide generation prepare shared knowledge units before writing artifacts. Preparation uses the selected document-generation profile and canonical chunk adapters; it does not require an embedding profile or call AI during ordinary card saves. Compatible extracted units are reused across overlapping windows and across guides/cards. Embeddings remain a separate retrieval index over this material, not the definition of a knowledge unit.
 
-The generation catalog contains unit IDs, statements, qualifications, and exact supporting source excerpts. Original document evidence and visual inputs remain available to the authoring task. Card output selects one primary target, or two for a necessary comparison; guide output selects the units its section actually explains. Native validation rejects unknown, duplicated, or excessive IDs and supplies all provenance hashes itself. This establishes traceability, not proof that a model explanation is correct.
+The generation catalog contains unit IDs, statements, qualifications and native evidence references. Exact evidence is deduplicated within the catalog. Authoring receives the selected knowledge, its evidence, compact learning context and applicable visual inputs, not a duplicate of the full raw source window. Card output selects one primary target, or two for a necessary comparison; guide output selects the units its section actually explains. Native validation rejects unknown, duplicated, or excessive IDs and supplies all provenance hashes itself. This establishes traceability, not proof that a model explanation is correct.
 
 Cards carry an internal support envelope through generation checkpoints and selection-only curation. That envelope is removed before the strict public card importer runs. The import's existing transaction attaches unit links to the actual created notes/presentations after duplicate filtering; forward/reverse presentations retain separate scheduling identities. A stale source/unit aborts the entire import rather than leaving cards without trustworthy support.
 
 Guide checkpoints retain content, selected support, and the complete catalog fingerprint. Old content-only checkpoints and changed source/unit revisions are not reused. Guide publication inserts source/unit links in the same transaction as the new revision; a failure also rolls back superseding the previous guide. Reader content and learner overlays keep their existing format. Carried user edits are not labeled as model-verified source claims.
 
-Text-only extraction cannot claim image-only support merely because an image ID was present. An empty supporting excerpt is accepted only when actual image bytes were attached. Changed extraction contracts invalidate derived checkpoints, not authored notes, schedules, or review history.
+Text-only extraction cannot claim image-only support merely because an image ID was present. Only image references whose bytes were attached enter the model-selectable evidence catalog. The legacy primary `supportingExcerpt` remains a native-filled compatibility projection, not a provider output field. Changed extraction contracts invalidate derived checkpoints, not authored notes, schedules, or review history.
 
 ## Bounded generation and provider validation
 
@@ -106,7 +110,7 @@ There is no separate generated-card approval queue. User review remains importan
 
 Generate more uses retained source understanding and existing deck coverage. It should not reparse/rerender an unchanged compatible source simply to ask for additional candidates. Prompt/schema/assembly changes invalidate inappropriate checkpoints rather than silently mixing old and new semantics.
 
-Persisted checkpoints record bounded reusable work; they are not a second unversioned source of truth. Progress distinguishes observable phases and indeterminate work. Non-PDF extraction is indeterminate until actual source-unit totals exist. Usage observations distinguish provider-reported tokens from estimates/unknowns rather than presenting exact fabricated costs.
+Persisted checkpoints record bounded reusable work; they are not a second unversioned source of truth. Reuse reads saved units without rewriting them. Optimistic analysis revisions prevent a late provider response from overwriting newer work. Regrouping retires overlapping obsolete receipts and marks their other sources for reanalysis. An explicit retry repairs unresolved slots without regenerating successful siblings; duplicate or malformed repair slots cannot discard independent successful repairs. Progress distinguishes observable phases and indeterminate work. Non-PDF extraction is indeterminate until actual source-unit totals exist. Usage observations distinguish provider-reported tokens from estimates/unknowns rather than presenting exact fabricated costs. Planning includes semantic extraction, bounded repair allowance, global reduction and artifact authoring. Uncalibrated estimates are workload allowances, not billing predictions. Complete source disposition means the protocol resolved each source, not that every important idea was extracted.
 
 Routine logs contain safe counts, phase/timing/cancellation outcomes, backend/model identifiers, and redacted errors. Source text and generated content are intentionally stored in their domain graph; raw prompts/responses/stream buffers, authorization headers, credentials, and reasoning are excluded from routine diagnostics. Those are channel-specific privacy rules, not a blanket claim that learning text never enters SQLite.
 

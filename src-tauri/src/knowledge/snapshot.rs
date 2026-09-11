@@ -73,6 +73,65 @@ impl DocumentSnapshot {
         })
     }
 
+    /// Bind the requested canonical plan to the complete prepared projection.
+    /// Checking only currently active rows would silently skip a deleted chunk
+    /// or a source invalidated earlier in a long-running preparation.
+    pub(crate) fn prepared(
+        connection: &Connection,
+        document_id: &str,
+        source_unit_count: usize,
+        chunks: &[crate::document_semantics::SemanticChunk],
+        contract: &str,
+    ) -> Result<Self, CommandError> {
+        let counts: (i64, i64) = connection.query_row(
+            "SELECT source_unit_count, (SELECT COUNT(*) FROM document_semantic_chunk_sources WHERE document_id=?1)
+             FROM documents WHERE id=?1", [document_id], |row| Ok((row.get(0)?,row.get(1)?)),
+        ).map_err(CommandError::database)?;
+        if chunks.is_empty()
+            || usize::try_from(counts.0).ok() != Some(source_unit_count)
+            || usize::try_from(counts.1).ok() != Some(chunks.len())
+        {
+            return Err(repository::stale_source());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for chunk in chunks {
+            if !seen.insert(chunk.chunk_index) {
+                return Err(repository::stale_source());
+            }
+            let (text,locator):(String,String)=connection.query_row(
+                "SELECT full_text,source_locator_json FROM document_semantic_chunk_sources WHERE document_id=?1 AND chunk_index=?2",
+                rusqlite::params![document_id,chunk.chunk_index],|row|Ok((row.get(0)?,row.get(1)?)),
+            ).map_err(CommandError::database)?;
+            let locator: serde_json::Value =
+                serde_json::from_str(&locator).map_err(CommandError::serialization)?;
+            if text != chunk.full_text
+                || locator
+                    != serde_json::to_value(&chunk.source_locator)
+                        .map_err(CommandError::serialization)?
+            {
+                return Err(repository::stale_source());
+            }
+            let seed = super::adapters::SourceSeed {
+                kind: super::contracts::SourceKind::Document,
+                owner_id: document_id.to_string(),
+                parent_key: chunk.chunk_index.to_string(),
+            };
+            let expected = super::adapters::read_seed(connection, &seed)?;
+            if expected.is_empty() {
+                return Err(repository::stale_source());
+            }
+            for mut source in expected {
+                source.refresh_identity()?;
+                if !repository::source_is_current(connection, &source)?
+                    || !repository::extraction_is_current(connection, &source, contract)?
+                {
+                    return Err(repository::stale_source());
+                }
+            }
+        }
+        Self::capture(connection, document_id)
+    }
+
     pub(crate) fn identity(&self) -> &str {
         &self.fingerprint
     }
@@ -191,6 +250,70 @@ mod tests {
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(title, "Geometry");
+            Ok(())
+        })
+        .unwrap();
+    }
+    #[test]
+    fn canonical_plan_cannot_skip_unprepared_or_new_source_chunks() {
+        use crate::{
+            document_semantics::SemanticChunk,
+            knowledge::{adapters, contracts::SourceKind},
+        };
+        let (db, source, _, _) = fixture();
+        let contract = hash("prepared-plan");
+        let chunks = vec![SemanticChunk {
+            chunk_index: 0,
+            text: source.text.clone(),
+            full_text: source.text.clone(),
+            source_locator: source.locator.clone().unwrap(),
+            element_types: vec![],
+            heading_context: None,
+            token_estimate: 7,
+        }];
+        db.with_connection(|c| {
+            c.execute("UPDATE documents SET source_unit_count=1 WHERE id=?1",[&source.owner_id]).map_err(CommandError::database)?;
+            c.execute("INSERT INTO document_semantic_chunk_sources(document_id,chunk_index,text,full_text,source_locator_json,
+                visual_asset_ids_json,element_types_json,heading_context,token_estimate,is_oversized,content_sha256,canonical_schema_version,created_at,updated_at)
+                VALUES(?1,0,?2,?2,?3,'[]','[]',NULL,7,0,?4,1,1,1)",
+                rusqlite::params![source.owner_id,source.text,serde_json::to_string(&source.locator).unwrap(),hash(&source.text)]).map_err(CommandError::database)?;
+            assert!(DocumentSnapshot::prepared(c,&source.owner_id,1,&chunks,&contract).is_err());
+            Ok(())
+        }).unwrap();
+        let projected = adapters::materialize_source(
+            &db,
+            &adapters::SourceSeed {
+                kind: SourceKind::Document,
+                owner_id: source.owner_id.clone(),
+                parent_key: "0".into(),
+            },
+        )
+        .unwrap();
+        for item in &projected {
+            repository::publish_units(&db, item, &contract, vec![]).unwrap();
+        }
+        db.with_connection(|c| {
+            DocumentSnapshot::prepared(c, &source.owner_id, 1, &chunks, &contract)
+        })
+        .unwrap();
+        db.with_connection(|c| {
+            c.execute("INSERT INTO document_semantic_chunk_sources(document_id,chunk_index,text,full_text,source_locator_json,
+                visual_asset_ids_json,element_types_json,heading_context,token_estimate,is_oversized,content_sha256,canonical_schema_version,created_at,updated_at)
+                SELECT document_id,1,text,full_text,source_locator_json,visual_asset_ids_json,element_types_json,
+                    heading_context,token_estimate,is_oversized,content_sha256,canonical_schema_version,created_at,updated_at
+                FROM document_semantic_chunk_sources WHERE document_id=?1 AND chunk_index=0",
+                [&source.owner_id]).map_err(CommandError::database)?;
+            assert!(DocumentSnapshot::prepared(c, &source.owner_id, 1, &chunks, &contract).is_err());
+            c.execute("DELETE FROM document_semantic_chunk_sources WHERE document_id=?1 AND chunk_index=1",
+                [&source.owner_id]).map_err(CommandError::database)?;
+            c.execute(
+                "UPDATE knowledge_sources SET active=0 WHERE id=?1",
+                [&projected[0].id],
+            )
+            .map_err(CommandError::database)?;
+            assert!(
+                DocumentSnapshot::prepared(c, &source.owner_id, 1, &chunks, &contract).is_err()
+            );
             Ok(())
         })
         .unwrap();
