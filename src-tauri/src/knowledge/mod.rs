@@ -22,6 +22,7 @@ pub(crate) mod relationships;
 pub(crate) mod repository;
 pub(crate) mod retrieval;
 pub(crate) mod runtime;
+pub(crate) mod snapshot;
 
 pub(crate) use images::load_images;
 pub(crate) use runtime::has_active_tasks;
