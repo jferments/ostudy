@@ -80,11 +80,11 @@ A whole-document snapshot binds canonical chunks, image revisions, all prepared 
 
 The learning plan gives stable topic identities used by both flashcards and guides. Card provenance is a stored relationship to those topics/citations, not a mutable tag label or a later fuzzy match. Existing manually authored cards are not retroactively assigned to a source by guessing from their wording.
 
-Source/canonical/backend/prompt/schema identity controls checkpoint reuse. Compatible unchanged understanding can support more cards or another guide without repeating extraction/rendering/OCR. New backend or prompt semantics can require rebuilding derivatives; presence alone is not validity.
+Source/canonical evidence identity controls knowledge reuse; producer contracts remain recorded for provenance and repair. Compatible unchanged understanding supports cards, guides and Tutor even when the consuming model changes. Changing the embedding model rebuilds a derived index, not document interpretations. Incompatible evidence/backend/schema semantics can require rebuilding derivatives; presence alone is not validity.
 
 ## Knowledge-first card and guide authoring
 
-Both initial/additional flashcard generation and study-guide generation prepare shared knowledge units before writing artifacts. Preparation uses the selected document-generation profile and canonical chunk adapters; it does not require an embedding profile or call AI during ordinary card saves. Compatible extracted units are reused across overlapping windows and across guides/cards. Embeddings remain a separate retrieval index over this material, not the definition of a knowledge unit.
+Both initial/additional flashcard generation and study-guide generation prepare shared knowledge units before writing artifacts. New interpretation uses the selected document-generation profile and canonical chunk adapters, while current saved interpretations are model-independent reusable inputs. Independent cloud windows run with bounded concurrency; local inference remains serial. Ordinary card saves never call AI. After shared knowledge is published, indexing attempts only missing vectors using the configured embedding profile; an indexing failure cannot erase knowledge or require re-extraction. Compatible extracted units are reused across overlapping windows and across guides/cards. Embeddings remain a separate retrieval index over this material, not the definition of a knowledge unit.
 
 The generation catalog contains unit IDs, statements, qualifications and native evidence references. Exact evidence is deduplicated within the catalog. Authoring receives the selected knowledge, its evidence, compact learning context and applicable visual inputs, not a duplicate of the full raw source window. Card output selects one primary target, or two for a necessary comparison; guide output selects the units its section actually explains. Native validation rejects unknown, duplicated, or excessive IDs and supplies all provenance hashes itself. This establishes traceability, not proof that a model explanation is correct.
 
@@ -92,7 +92,7 @@ Cards carry an internal support envelope through generation checkpoints and sele
 
 Guide checkpoints retain content, selected support, and the complete catalog fingerprint. Old content-only checkpoints and changed source/unit revisions are not reused. Guide publication inserts source/unit links in the same transaction as the new revision; a failure also rolls back superseding the previous guide. Reader content and learner overlays keep their existing format. Carried user edits are not labeled as model-verified source claims.
 
-Text-only extraction cannot claim image-only support merely because an image ID was present. Only image references whose bytes were attached enter the model-selectable evidence catalog. The legacy primary `supportingExcerpt` remains a native-filled compatibility projection, not a provider output field. Changed extraction contracts invalidate derived checkpoints, not authored notes, schedules, or review history.
+Text-only extraction cannot claim image-only support merely because an image ID was present. Only image references whose bytes were attached enter the model-selectable evidence catalog. The legacy primary `supportingExcerpt` remains a native-filled compatibility projection, not a provider output field. The producing extraction contract is kept with its revision-bound receipt. Merely changing a consumer model does not invalidate that receipt, authored notes, schedules, or review history.
 
 ## Bounded generation and provider validation
 
@@ -116,7 +116,7 @@ Routine logs contain safe counts, phase/timing/cancellation outcomes, backend/mo
 
 ## Study guide revisions and learner ownership
 
-Guide generation consumes the shared plan/topic evidence. A complete validated generated revision is published atomically; failed/canceled regeneration leaves the old active guide readable. Guide notes attach to a source; topic notes attach to stable topics; section overrides attach to an exact generated base hash. Incompatible old overrides become preserved visible conflicts, not silent data loss.
+Guide generation consumes the shared plan/topic evidence. Documents task state is owned above navigation routes, so leaving the page does not cancel a guide. Refreshes retain failures, and the generating guide button becomes its stop control. A complete validated generated revision is published atomically; failed/canceled regeneration leaves the old active guide readable. Guide notes attach to a source; topic notes attach to stable topics; section overrides attach to an exact generated base hash. Incompatible old overrides become preserved visible conflicts, not silent data loss.
 
 The current inline reader has contextual generation/stop, note/override entry, linked-card practice, source opening, and PDF export. It is not the old modal or a second duplicated reader implementation. Current note entry is plain text backed by rich storage; reusable schema capabilities do not advertise a toolbar that is not exposed there.
 

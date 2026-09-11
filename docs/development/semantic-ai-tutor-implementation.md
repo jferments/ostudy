@@ -27,11 +27,20 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 | AC-11 | Backup/recovery, migrations, resource bounds and source deletion preserve authoritative data while vector indexes remain rebuildable. | Backup/restore and deletion/rebuild fixtures. |
 | AC-12 | Maintained user/architecture docs, focused/static/fast tests and required Linux/Android qualification reflect the exact published implementation. | GitHub Actions on the final frozen head; live-provider/device boundaries explicitly assigned to manual acceptance. |
 
+## Consumer integration acceptance
+
+| ID | Required behavior | Verification boundary |
+| --- | --- | --- |
+| AC-13 | Switching consumer models reuses saved interpretations; legacy capacity drafts recover locally; independent cloud windows overlap without changing evidence quality rules. | Producer/consumer receipt, capacity recovery and bounded-concurrency tests. |
+| AC-14 | Automatic indexing uses saved knowledge only, and scoped retrieval catches up missing vectors without interpreting the document again. | Read-only index revision tests and the absence of interpretation calls in the index path; live-provider latency remains manual. |
+| AC-15 | Documents jobs survive route navigation, retain failures and use one guide generation/stop control. | Application-lifetime controller navigation, failure/refresh, duplicate-intent and cancellation tests. |
+| AC-16 | Tutor is a chat/history workspace with a Sources checklist and contextual advanced controls. Multi-source choices are native authorization; legacy scopes, hint secrecy and retry identities remain valid. | React workspace/controller/IPC tests and native selected-union/exact-conversation-scope/revocation fixtures. |
+
 ## Ownership and implementation sequence
 
 1. Introduce source references, knowledge units and artifact associations over the current SQLite/card/document model. Preserve the canonical source and existing presentation semantics. Add migrations with registered checksums.
 2. Add hosted embedding transport/probes and local revision-keyed retrieval. Keep vectors derived and separate from authoritative library backup data. Query and content embeddings must share a compatible space.
-3. Move extraction and generator inputs onto the shared representation. Integrate manual/imported material by explicit preparation and revision-aware queued work, never by model calls during keystrokes or save transactions.
+3. Move extraction and generator inputs onto the shared representation. Index manual/imported material from saved text with revision-aware catch-up on use, never by interpretation calls during keystrokes, saves or chat preparation.
 4. Implement native conversation/context services and the shared Tutor workspace/panel. UI sends identifiers and revisions; native code resolves scope and owns provider calls and storage.
 5. Add explanation, guarded hints and conversational quizzes. Reuse the current overlay stack, request lanes and native authoring/secret boundaries. Keep native review submission untouched.
 6. Finish source/documentation review and targeted tests before terminal qualification. Freeze the candidate before full Linux/Android gates. Fix failed boundaries rather than repeatedly rerunning the matrix for unrelated changes.
@@ -40,8 +49,8 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 
 - Source records establish provenance, not guaranteed truth. Manual cards are user assertions unless linked to supporting evidence; similarity alone cannot supply a citation.
 - Generated knowledge units retain native evidence references, source locators and qualifications. The model chooses request-local IDs; Rust supplies exact UTF-8 spans, hashes and image selectors. Location validation does not establish factual entailment. They never replace original evidence. Repeated generated derivatives do not count as independent corroboration.
-- Interpretable unit identity is independent of embeddings. Changing tutor models does not rebuild vectors. Changing embedding spaces does not reparse documents or alter authored cards.
-- Indexing requires explicit selected scope/provider consent. Failure or partial preparation is visible. An empty output is not a complete disposition without explicit no-learning source IDs. Successful siblings are saved before repair; malformed or duplicate repair slots stay unresolved without destroying unrelated successes. Checkpoint reads are read-only and concurrent stale writes are rejected. No whole-library transmission at startup or on an ordinary card save.
+- Interpretable unit identity is independent of embeddings. Changing Tutor or guide models does not re-interpret the document or rebuild vectors. Changing embedding spaces indexes saved content without re-interpreting documents or altering authored cards.
+- Document processing and sending material-scoped chat authorize automatic index catch-up through the selected embedding provider. Navigation and merely selecting checkboxes do not transmit content. Advanced maintenance retains its explicit preview/confirmation flow. Indexing is separate from interpretation and never invokes it. Failure or partial source analysis remains visible. An empty output is not a complete disposition without explicit no-learning source IDs. Successful siblings are saved before repair; malformed or duplicate repair slots stay unresolved without destroying unrelated successes. Checkpoint reads are read-only and concurrent stale writes are rejected. No whole-library transmission at startup or on an ordinary card save.
 - Provider/source content is untrusted data, not executable instructions. The model cannot execute SQL, native commands, file paths or arbitrary tools.
 - Narrative conversation summaries are acceleration data with a message boundary, not a learner profile. Raw reasoning is not stored as memory or exposed in ordinary logs.
 - A card edit invalidates its interpretation; it does not rewrite its original document or every related guide/card. A source deletion invalidates dependent retrieval entries without erasing unrelated user content.
@@ -49,7 +58,7 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 
 ## Required manual acceptance
 
-Use a small non-sensitive document plus manual/imported cards. Verify source-grounded questions, a cross-reference between a guide and its cards, changed-card re-preparation, provider errors/quota exhaustion, no automatic review submission, mobile Back/keyboard behavior and preserved guide/card position. Live provider accounts, actual retention policy, physical Android lifecycle and visual hint quality are not established by deterministic provider fixtures.
+Use a small non-sensitive document plus manual/imported cards. Verify source-grounded questions, a cross-reference between a guide and its cards, changed-card index catch-up, provider errors/quota exhaustion, no automatic review submission, mobile Back/keyboard behavior and preserved guide/card position. Live provider accounts, actual retention policy, physical Android lifecycle and visual hint quality are not established by deterministic provider fixtures.
 
 ## Knowledge-representation regression acceptance
 
