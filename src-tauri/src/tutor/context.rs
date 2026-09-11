@@ -113,7 +113,7 @@ pub(crate) async fn build(
             Ok(result) => {
                 if result.hits.is_empty() && sources.is_empty() {
                     return Err(CommandError::new("semantic_preparation_required",
-                        "No current indexed evidence is available in this selection. Prepare the selected material and retry."));
+                        "No current evidence is available in this selection. Check the saved source material and embedding settings."));
                 }
                 sources.extend(result.hits.into_iter().take(8).map(|hit| hit.source));
             }
@@ -124,7 +124,7 @@ pub(crate) async fn build(
                         "semantic_preparation_required" | "ai_task_profile_required"
                     ) =>
             {
-                notice = "Using the current card or guide and exact linked evidence only. Prepare the selection to enable broader semantic retrieval.".to_string();
+                notice = "Using the current card or guide and exact linked evidence. Configure an embedding model in AI settings to search the broader material.".to_string();
             }
             Err(error) => return Err(error),
         }

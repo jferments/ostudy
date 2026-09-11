@@ -10,7 +10,8 @@ pub(crate) const CONTENT_SCHEMA_VERSION: i64 = 1;
 pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 3;
 pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
-pub(crate) const MAX_UNITS_PER_SOURCE: usize = 16;
+// A storage ceiling, not a pedagogical quota per PDF page.
+pub(crate) const MAX_UNITS_PER_SOURCE: usize = 128;
 pub(crate) const MAX_PREPARATION_SOURCES: usize = 100_000;
 pub(crate) const MAX_CONTEXT_BYTES: usize = 32_000;
 

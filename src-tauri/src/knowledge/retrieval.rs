@@ -59,12 +59,25 @@ pub(crate) async fn retrieve(
     scope.validate()?;
     bounded(query, 8_000, "semantic search query", false)?;
     check_canceled(cancellation)?;
+    super::indexing::ensure_scope(
+        database,
+        paths,
+        runtime,
+        super::indexing::IndexSelection {
+            scope,
+            include_conversations,
+            signal: cancellation,
+            expected_revision: None,
+            expected_embedding: None,
+        },
+    )
+    .await?;
     let context = embeddings::load_default_embedding_context(database)?;
     let mut index = open_index(database, paths)?;
     if index.dimensions(&context.space_id)?.is_none() {
         return Err(CommandError::new(
             "semantic_preparation_required",
-            "Prepare this material with the selected embedding model before using semantic retrieval.",
+            "No searchable text is available in this selection. Check the saved material and embedding model in AI settings.",
         ));
     }
     let vectors = embeddings::embed(

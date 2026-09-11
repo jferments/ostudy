@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
-pub(crate) const MAX_WINDOW_UNITS: usize = 48;
+pub(crate) const MAX_WINDOW_UNITS: usize = 128;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AcceptedUnit {
@@ -182,6 +182,35 @@ fn append_unit(
         }
     }
 }
+/// Older builds retained otherwise valid proposals after hitting a 16-unit
+/// per-source quota. Re-admit those drafts against the SAME ordered evidence
+/// catalog before making another paid request. Changed sources never reach here.
+pub(crate) fn recover_capacity(
+    report: &AnalysisReport,
+    catalog: &EvidenceCatalog,
+    sources: &[SourceRecord],
+) -> AnalysisReport {
+    let mut recovered = report.clone();
+    recovered
+        .rejected
+        .retain(|item| item.code != "unit_capacity");
+    for item in report
+        .rejected
+        .iter()
+        .filter(|item| item.code == "unit_capacity")
+    {
+        append_unit(
+            &mut recovered,
+            item.proposal.clone(),
+            item.slot,
+            catalog,
+            sources,
+        );
+    }
+    recovered.refresh_coverage(sources);
+    recovered
+}
+
 fn add_dispositions(report: &mut AnalysisReport, ids: &[Value], sources: &[SourceRecord]) {
     for value in ids {
         if let Some(id) = value.as_str() {
@@ -515,5 +544,49 @@ mod tests {
         )
         .unwrap();
         assert!(!unchanged.is_complete());
+    }
+}
+
+#[cfg(test)]
+mod capacity_regression_tests {
+    use super::*;
+    #[test]
+    fn dense_page_can_keep_more_than_sixteen_distinct_supported_units() {
+        let (_, source, _, _) = crate::knowledge::authoring::tests::fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let units = (0..40)
+            .map(|i| {
+                json!({"title":format!("Property {i}"),"kind":"fact",
+            "statement":format!("Property {i} of the supplied triangle."),
+            "qualifications":[],"topic":"Geometry","importance":"supporting","evidenceIds":["E0"]})
+            })
+            .collect::<Vec<_>>();
+        let report = initial(json!({"units":units}), &catalog, &sources).unwrap();
+        assert_eq!(report.accepted.len(), 40);
+        assert!(report.is_complete());
+    }
+    #[test]
+    fn saved_capacity_drafts_recover_locally_but_invalid_evidence_is_not_admitted() {
+        let (_, source, _, _) = crate::knowledge::authoring::tests::fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let draft = json!({"title":"Sides","kind":"fact","statement":"A triangle has three sides.",
+            "qualifications":[],"topic":"Geometry","importance":"core","evidenceIds":["E0"]});
+        let mut old = AnalysisReport::default();
+        old.rejected.push(RejectedUnit {
+            slot: 16,
+            proposal: draft.clone(),
+            code: "unit_capacity".into(),
+        });
+        old.refresh_coverage(&sources);
+        let recovered = recover_capacity(&old, &catalog, &sources);
+        assert_eq!(recovered.accepted.len(), 1);
+        assert!(recovered.is_complete());
+        old.rejected[0].proposal["evidenceIds"] = json!(["E999"]);
+        let invalid = recover_capacity(&old, &catalog, &sources);
+        assert!(invalid.accepted.is_empty());
+        assert_eq!(invalid.rejected[0].code, "invalid_evidence_selection");
+        assert!(!invalid.is_complete());
     }
 }

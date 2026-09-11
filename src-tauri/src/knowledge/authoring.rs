@@ -171,6 +171,15 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
         .collect::<Vec<_>>();
     let mut pending = Vec::new();
     let mut completed = 0;
+    let mut remaining = std::collections::HashMap::<String, usize>::new();
+    let parallelism =
+        crate::ai::concurrency::document_request_parallelism(&task.network_scope).clamp(1, 4);
+    crate::logging::debug_target(
+        "ai.knowledge.extraction",
+        "knowledge_extraction_execution_plan",
+        "Independent source windows share one bounded provider queue and durable knowledge store.",
+        json!({"document":document_id,"sourceChunks":seeds.len(),"parallelism":parallelism}),
+    );
     for (batch_index, batch) in seeds.chunks(32).enumerate() {
         check_canceled(&cancellation)?;
         let sources = materialize_sources(database, batch)?;
@@ -183,6 +192,15 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
                 return Err(repository::stale_source());
             }
         }
+        for source in &sources {
+            let parent = source
+                .segment_key
+                .split(':')
+                .next()
+                .unwrap_or(&source.segment_key)
+                .to_string();
+            *remaining.entry(parent).or_default() += 1;
+        }
         pending.extend(sources);
         let ranges = batch_ranges(&pending);
         let last_batch = (batch_index + 1) * 32 >= seeds.len();
@@ -192,30 +210,76 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
             ranges.len().saturating_sub(1)
         };
         let mut consumed = 0;
-        for range in ranges.into_iter().take(process_count) {
-            let group = &pending[range.clone()];
+        for wave in ranges[..process_count].chunks(parallelism) {
+            let groups = wave
+                .iter()
+                .map(|range| &pending[range.clone()])
+                .collect::<Vec<_>>();
             set_current_task_phase(
                 "understanding material",
                 None,
                 completed,
                 seeds.len(),
-                group
+                groups
                     .first()
-                    .and_then(|source| source.locator.as_ref().map(|locator| locator.first())),
-                group
+                    .and_then(|group| group.first())
+                    .and_then(|source| source.locator.as_ref().map(|l| l.first())),
+                groups
                     .last()
-                    .and_then(|source| source.locator.as_ref().map(|locator| locator.last())),
+                    .and_then(|group| group.last())
+                    .and_then(|source| source.locator.as_ref().map(|l| l.last())),
                 None,
             );
-            if retry_partial {
-                retry_units_batch(database, paths, runtime, task, group, &cancellation).await?;
-            } else {
-                ensure_units_batch(database, paths, runtime, task, group, &cancellation).await?;
+            let outcomes = super::parallel::four(groups.len(), |index| {
+                let cancellation = &cancellation;
+                let group = groups[index];
+                async move {
+                    if retry_partial {
+                        retry_units_batch(database, paths, runtime, task, group, cancellation).await
+                    } else {
+                        ensure_units_batch(database, paths, runtime, task, group, cancellation)
+                            .await
+                    }
+                }
+            })
+            .await;
+            let mut failure = None;
+            for (group, outcome) in groups.iter().zip(outcomes) {
+                match outcome {
+                    Ok(_) => {
+                        for source in *group {
+                            let parent = source
+                                .segment_key
+                                .split(':')
+                                .next()
+                                .unwrap_or(&source.segment_key);
+                            if let Some(left) = remaining.get_mut(parent) {
+                                *left = left.saturating_sub(1);
+                                if *left == 0 {
+                                    completed += 1;
+                                }
+                            }
+                        }
+                    }
+                    Err(error) if failure.is_none() => failure = Some(error),
+                    Err(_) => {}
+                }
             }
-            consumed = range.end;
+            set_current_task_phase(
+                "understanding material",
+                None,
+                completed,
+                seeds.len(),
+                None,
+                None,
+                None,
+            );
+            if let Some(error) = failure {
+                return Err(error);
+            }
+            consumed = wave.last().map_or(consumed, |range| range.end);
         }
         pending.drain(..consumed);
-        completed += batch.len();
     }
     check_canceled(&cancellation)?;
     task.ensure_current(database)
@@ -249,7 +313,7 @@ pub(crate) fn catalog_for_chunks(
         for id in ids {
             let source =
                 repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
-            if !repository::extraction_is_current(connection, &source, &contract)? {
+            if !repository::extraction_available(connection, &source)? {
                 return Err(repository::stale_source());
             }
             for unit in repository::load_units(connection, &id)? {

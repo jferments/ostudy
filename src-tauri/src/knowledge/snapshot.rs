@@ -81,7 +81,7 @@ impl DocumentSnapshot {
         document_id: &str,
         source_unit_count: usize,
         chunks: &[crate::document_semantics::SemanticChunk],
-        contract: &str,
+        _consumer_contract: &str,
     ) -> Result<Self, CommandError> {
         let counts: (i64, i64) = connection.query_row(
             "SELECT source_unit_count, (SELECT COUNT(*) FROM document_semantic_chunk_sources WHERE document_id=?1)
@@ -123,7 +123,7 @@ impl DocumentSnapshot {
             for mut source in expected {
                 source.refresh_identity()?;
                 if !repository::source_is_current(connection, &source)?
-                    || !repository::extraction_is_current(connection, &source, contract)?
+                    || !repository::extraction_available(connection, &source)?
                 {
                     return Err(repository::stale_source());
                 }

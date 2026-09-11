@@ -49,12 +49,16 @@ pub(crate) struct ViewInput<'a> {
 pub(crate) fn core_ids(
     connection: &Connection,
     document_id: &str,
-    contract: &str,
+    _consumer_contract: &str,
 ) -> Result<BTreeSet<String>, CommandError> {
-    let value: Option<String> = connection.query_row(
-        "SELECT core_unit_ids_json FROM knowledge_document_views WHERE document_id=?1 AND contract=?2",
-        params![document_id,contract], |r| r.get(0),
-    ).optional().map_err(CommandError::database)?;
+    let value: Option<String> = connection
+        .query_row(
+            "SELECT core_unit_ids_json FROM knowledge_document_views WHERE document_id=?1",
+            params![document_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
     value
         .map(|value| serde_json::from_str(&value).map_err(CommandError::serialization))
         .transpose()
@@ -82,8 +86,8 @@ pub(crate) async fn ensure(input: ViewInput<'_>) -> Result<DocumentOutline, Comm
         input.snapshot.ensure_current(connection)?;
         validate_catalogs(connection,input.catalogs)?;
         connection.query_row(
-            "SELECT outline_json FROM knowledge_document_views WHERE document_id=?1 AND contract=?2 AND analysis_hash=?3",
-            params![input.document_id,contract,analysis_hash], |r| r.get(0),
+            "SELECT outline_json FROM knowledge_document_views WHERE document_id=?1 AND analysis_hash=?2",
+            params![input.document_id,analysis_hash], |r| r.get(0),
         ).optional().map_err(CommandError::database)
     })?;
     if let Some(value) = cached {

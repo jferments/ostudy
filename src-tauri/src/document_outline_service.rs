@@ -119,6 +119,8 @@ pub(crate) async fn ensure_document_outline(
             ).map_err(CommandError::database)?;
             transaction.commit().map_err(CommandError::database)
         })?;
+        crate::knowledge::indexing::document_best_effort(input.database,input.paths,input.runtime,
+            input.document_id,&cancellation).await?;
         Ok(outline)
     }.await;
     if generated.is_err() {

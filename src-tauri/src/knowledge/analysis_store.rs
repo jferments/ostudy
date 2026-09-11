@@ -26,6 +26,31 @@ pub(crate) fn window_id(sources: &[SourceRecord], contract: &str) -> Result<Stri
         .to_string())
 }
 
+/// Reuse a producer receipt only if the complete ordered source window is
+/// current. Consumer model changes do not replace source interpretations.
+pub(crate) fn compatible_contract(
+    database: &Database,
+    sources: &[SourceRecord],
+) -> Result<Option<String>, CommandError> {
+    let Some(first) = sources.first() else {
+        return Ok(None);
+    };
+    database.with_connection(|connection| {
+        let contract: Option<String> = connection
+            .query_row(
+                "SELECT extraction_contract FROM knowledge_sources WHERE id=?1 AND active=1",
+                [&first.id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let Some(contract) = contract.filter(|value| is_hash(value)) else {
+            return Ok(None);
+        };
+        Ok(load_in(connection, sources, &contract)?.map(|_| contract))
+    })
+}
+
 pub(crate) struct Checkpoint<'a> {
     database: &'a Database,
     sources: &'a [SourceRecord],
@@ -457,5 +482,41 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod consumer_reuse_tests {
+    use super::*;
+    #[test]
+    fn new_consumer_model_reuses_original_receipt_but_edits_never_do() {
+        let (db, source, _, _) = crate::knowledge::authoring::tests::fixture();
+        let sources = [source.clone()];
+        let producer = hash("producer-flash");
+        let report = AnalysisReport {
+            no_learning: vec![source.id.clone()],
+            ..Default::default()
+        };
+        publish(&db, &sources, &producer, &report).unwrap();
+        assert_eq!(
+            compatible_contract(&db, &sources).unwrap(),
+            Some(producer.clone())
+        );
+        db.with_connection(|c| {
+            assert!(repository::extraction_available(c, &source)?);
+            assert!(!repository::extraction_is_current(
+                c,
+                &source,
+                &hash("consumer-pro")
+            )?);
+            Ok(())
+        })
+        .unwrap();
+        let mut changed = source;
+        changed.text.push_str(" edited");
+        changed.refresh_identity().unwrap();
+        db.with_connection(|c| repository::publish_source(c, &changed, "0", 3))
+            .unwrap();
+        assert_eq!(compatible_contract(&db, &[changed]).unwrap(), None);
     }
 }

@@ -139,6 +139,23 @@ pub(crate) fn load_units(
     decode_current_units(connection, rows)
 }
 
+/// Saved interpretation belongs to a source revision, not a consuming model.
+/// The producer's contract remains recorded for provenance and checkpoint repair.
+pub(crate) fn extraction_available(
+    connection: &Connection,
+    source: &SourceRecord,
+) -> Result<bool, CommandError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM knowledge_sources WHERE id=?1 AND active=1
+         AND content_hash=?2 AND owner_revision=?3 AND extracted_hash=?2
+         AND length(extraction_contract)=64)",
+            params![source.id, source.content_hash, source.owner_revision],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)
+}
+
 pub(crate) fn extraction_is_current(
     connection: &Connection,
     source: &SourceRecord,

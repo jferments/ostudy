@@ -208,16 +208,90 @@ fn parse_grounded_section(
 
 fn parse_study_guide_section(value: Value) -> Result<StudyGuideSectionContent, CommandError> {
     let value = protocol::normalize_content(value);
-    let section = serde_json::from_value(value.clone()).map_err(|_| {
-        output_error(format!(
-            "The guide content does not match its contract. {}",
-            crate::ai::structured_output::shape_detail(&value, &study_guide_section_schema())
-        ))
-    })?;
-    let section = validate_study_guide_section_content(section).map_err(|_| {
+    let section: StudyGuideSectionContent =
+        serde_json::from_value(value.clone()).map_err(|_| {
+            output_error(format!(
+                "The guide content does not match its contract. {}",
+                crate::ai::structured_output::shape_detail(&value, &study_guide_section_schema())
+            ))
+        })?;
+    // Validate BEFORE the shared authored-content normalizer can truncate an
+    // oversized field. Never cut a qualification to meet an editorial target.
+    validate_generated_safety(&section)?;
+    if let Err(error) = validate_generated_outline_style(section.clone()) {
+        crate::logging::debug_target(
+            "ai.document.study_guide",
+            "study_guide_style_advisory",
+            "Accepted intact supported content exceeding a soft outline-style target.",
+            json!({"characters":generated_section_char_count(&section),"code":error.code}),
+        );
+    }
+    validate_study_guide_section_content(section).map_err(|_| {
         output_error("The generated study-guide content failed native content validation.")
-    })?;
-    validate_generated_outline_style(section)
+    })
+}
+
+/// Separate hard resource bounds from concise-writing targets. These are below
+/// the storage normalizer's limits; no provider claim is truncated on admission.
+fn validate_generated_safety(section: &StudyGuideSectionContent) -> Result<(), CommandError> {
+    if section.overview.trim().is_empty() || section.key_points.is_empty() {
+        return Err(output_error(
+            "A guide requires an overview and supported key points.",
+        ));
+    }
+    if generated_section_char_count(section) > 24_000 {
+        return Err(output_error(
+            "The guide section exceeds its hard 24000-character limit.",
+        ));
+    }
+    require_char_limit("overview", &section.overview, 4_000)?;
+    for (field, values) in [
+        ("keyPoints", &section.key_points),
+        ("processSteps", &section.process_steps),
+        ("commonMisconceptions", &section.common_misconceptions),
+    ] {
+        require_list_limits(field, values, 32, 2_000)?;
+        if values.iter().any(|value| value.trim().is_empty()) {
+            return Err(output_error("A guide contains an empty item."));
+        }
+    }
+    require_count_limit("explanations", section.explanations.len(), 16)?;
+    for item in &section.explanations {
+        require_char_limit("explanations.heading", &item.heading, 500)?;
+        require_char_limit("explanations.body", &item.body, 4_000)?;
+        if item.heading.trim().is_empty() || item.body.trim().is_empty() {
+            return Err(output_error("A guide explanation is empty."));
+        }
+    }
+    require_count_limit("importantTerms", section.important_terms.len(), 32)?;
+    for item in &section.important_terms {
+        require_char_limit("importantTerms.term", &item.term, 500)?;
+        require_char_limit("importantTerms.explanation", &item.explanation, 2_000)?;
+        if item.term.trim().is_empty() || item.explanation.trim().is_empty() {
+            return Err(output_error("A guide term is empty."));
+        }
+    }
+    require_count_limit("comparisons", section.comparisons.len(), 16)?;
+    for item in &section.comparisons {
+        require_char_limit("comparisons.subjectA", &item.subject_a, 500)?;
+        require_char_limit("comparisons.subjectB", &item.subject_b, 500)?;
+        require_char_limit("comparisons.relationship", &item.relationship, 2_000)?;
+        if item.subject_a.trim().is_empty()
+            || item.subject_b.trim().is_empty()
+            || item.relationship.trim().is_empty()
+        {
+            return Err(output_error("A guide comparison is empty."));
+        }
+    }
+    require_count_limit("visualExplanations", section.visual_explanations.len(), 16)?;
+    for item in &section.visual_explanations {
+        require_char_limit("visualExplanations.title", &item.title, 500)?;
+        require_char_limit("visualExplanations.explanation", &item.explanation, 4_000)?;
+        if item.title.trim().is_empty() || item.explanation.trim().is_empty() {
+            return Err(output_error("A guide visual explanation is empty."));
+        }
+    }
+    Ok(())
 }
 
 fn validate_generated_outline_style(
@@ -571,8 +645,8 @@ mod tests {
     }
 
     #[test]
-    fn verbose_generated_prose_is_rejected_for_bounded_repair() {
-        let error = parse_study_guide_section(json!({
+    fn soft_style_target_does_not_reject_or_truncate_valid_content() {
+        let result = parse_study_guide_section(json!({
             "overview": "x".repeat(MAX_OVERVIEW_CHARS + 1),
             "keyPoints": ["A short point."],
             "explanations": [],
@@ -582,9 +656,8 @@ mod tests {
             "commonMisconceptions": [],
             "visualExplanations": []
         }))
-        .unwrap_err();
-        assert_eq!(error.code, "ai_document_output_invalid");
-        assert!(error.message.contains("too wordy"));
+        .unwrap();
+        assert_eq!(result.overview.chars().count(), MAX_OVERVIEW_CHARS + 1);
     }
     #[test]
     fn generated_guide_retains_exact_unit_selections_outside_reader_content() {

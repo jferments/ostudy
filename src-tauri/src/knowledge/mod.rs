@@ -15,6 +15,8 @@ pub(crate) mod evidence;
 pub(crate) mod extraction;
 mod images;
 mod index;
+pub(crate) mod indexing;
+mod parallel;
 pub(crate) mod planning;
 pub(crate) mod preparation;
 mod preparation_store;
