@@ -4,7 +4,7 @@ Status: maintained acceptance contract for `agent/semantic-ai-tutor`. The PR rec
 
 ## Product boundary
 
-The tutor explains selected study material, supplies graduated hints, and conducts user-requested conversational quizzes. Documents, guide sections, generated cards, manually authored cards, and imported notes feed one revision-aware semantic representation. Hosted embeddings and local vector retrieval ground answers in the selected material. The base model may supply clearly distinguished additional explanation.
+The tutor explains selected study material, supplies graduated hints, and conducts user-requested conversational quizzes. Documents, guide sections, generated cards, manually authored cards, and imported notes feed one revision-aware semantic representation. Hosted embeddings and local vector retrieval ground answers in the selected material. Sources are optional: the base model may answer or ask questions without material, and may supply clearly distinguished additional explanation when sources are selected. Explicit source-only requests must not be silently substituted with model knowledge.
 
 There is no Quiz me button: users request questions through normal chat. A separately graded practice-test feature is out of scope.
 
@@ -39,6 +39,8 @@ The independent Core/Full packaging and first-run provider-onboarding proposal i
 | AC-16 | Tutor is a chat/history workspace with a Sources checklist and contextual advanced controls. Multi-source choices are native authorization; legacy scopes, hint secrecy and retry identities remain valid. | React workspace/controller/IPC tests and native selected-union/exact-conversation-scope/revocation fixtures. |
 | AC-17 | Saved/new Tutor replies render safe Markdown; user-requested questions work through Send without a Quiz me shortcut. Structured single questions retain hidden answers and duplicate-safe request identity. | Real parser/React security and formatting fixtures, Tutor presentation tests, native conversational-question publication/replay tests. |
 | AC-18 | Card-count overshoot is resolved locally after validating all candidates. Unsupported optional visuals cannot destroy a text-only guide. Nonfatal diagnostics stay out of main UI; the guide stop icon is red and actual failures remain visible. | Card-selection and guide visual-omission fixtures; Documents presentation/controller tests for successful partial analysis, red cancellation control and persistent terminal errors. |
+| AC-19 | Ordinary Tutor questions work without sources or embeddings; optional lookup failures do not block general answers. Explicit source-only requests, citation validation, private answers, stale-source and cancellation boundaries remain intact. | Source-free context/admission/publication/replay/evaluation integration, empty-reference scope matrix, optional-retrieval and anti-fabrication tests. |
+| AC-20 | Tool streams preserve independent invocation identity and literal deltas. Bounded JSON normalization and additive knowledge-result admission preserve evidence and partial state, never guess incomplete content. | SSE fragmentation/interleaving/final-snapshot through provider decoder and SQLite regression, malformed/mixed envelope and syntax-limit fixtures. |
 
 ## Ownership and implementation sequence
 
@@ -78,3 +80,15 @@ A real-provider test should first use a small document spanning at least two pag
 
 
 For the final presentation acceptance, open an existing saved Tutor reply before making another provider call: bold headings, lists, tables and code should render without regenerating history. Ask for questions using Send and answer conversationally. Confirm there is no Quiz me control. Generate a guide, navigate elsewhere and return, then stop through the same generating button with its red stop-sign icon. Confirm ordinary success does not display partial-analysis/OCR warnings, while a terminal provider failure still explains why the job failed. Markdown fixtures must keep raw HTML inert, remote images unloaded and external links inactive until clicked.
+
+For optional-grounding and PowerPoint acceptance, first open a new chat with no
+Sources and ask for one question, then answer it. No search-index setup or source
+citation should be required. Test a selected-source chat and an explicit
+source-only question separately; supplementary model knowledge must not masquerade
+as a quotation from the material. Retry the retained PowerPoint guide after the
+updated build. A guide action can first prepare missing canonical knowledge; the
+reported JSON failure occurred there, not necessarily in the guide-section writer.
+Use the new parse-location and tool-call-count diagnostics to distinguish malformed
+provider syntax from request/schema or domain admission failures. The old log did
+not preserve raw response content, so it does not establish which exact payload
+variant occurred. Do not claim a live-provider reproduction from synthetic tests.

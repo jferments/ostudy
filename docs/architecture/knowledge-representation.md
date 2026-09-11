@@ -90,11 +90,49 @@ Rejected drafts are bounded private application data, not diagnostic output. Log
 
 `structured_output_shape_mismatch` records application-schema paths, expected/actual types, missing required fields and counts of unexpected fields. It never copies unknown provider field names, values or raw Serde error strings. Inspection has depth/work/result bounds. `knowledge_envelope_repair_started` and `study_guide_repair_started` identify the bounded repair; `study_guide_topic_failed` records the topic index and source range without the topic text. A shape warning may describe safely recovered ancillary output, so inspect the subsequent admission/completion event rather than assuming every warning is fatal.
 
+## Structured provider output
+
+The gateway assembles literal streaming deltas separately for each tool-call
+index. Complete-message snapshots must extend the corresponding accumulated
+content; they must not be appended as a second copy. It bounds invocation count,
+identities, argument bytes and total wire bytes. Tool arguments from different
+invocations are never concatenated into one JSON string, even when names match.
+The provider adapter validates the expected tool name and parses every result;
+multiple results stay a collection rather than silently selecting the first.
+Only knowledge analysis has additive collection semantics: its domain decoder
+joins explicitly named initial/repair arrays under the existing aggregate bounds
+before native evidence admission. Mixed envelope/proposal collections are rejected,
+and duplicate repair slots remain visible to conflict detection. Scalar Tutor,
+overview and guide replies are not combined into invented composite answers.
+
+Tool arguments and content JSON share bounded formatting normalization: a complete
+JSON fence/BOM, one JSON-encoded object layer, trailing commas after actual values,
+literal control characters inside strings, and invalid non-Unicode escapes.
+Normalization does not invent missing values, quotes, separators or closing
+brackets, repair damaged Unicode, complete truncated output or relax evidence
+validation. A malformed required result still receives the caller's bounded retry,
+not an unbounded recovery loop. `structured_json_parse_failed` records category,
+line, column, byte count and fingerprint without parser text or response values.
+`structured_json_normalized` and `structured_tool_results_separated` record safe
+recovery; `provider_stream_completed.toolCallCount` exposes invocation count.
+
 ## Budgets and verification
 
 Planning includes the semantic-analysis traversal, allowed repair work, optional global reduction and artifact generation. Source-token estimates, provider-reported usage and billing are distinct quantities. No performance or cost-reduction percentage is claimed without measurement on representative documents. Source, request, proposal, receipt and snapshot bounds prevent unbounded work, but a complete large document may still require many provider requests.
 
 Native regression tests cover exact Unicode/PDF spans, unknown and duplicate aliases, multi-page references, sibling survival, partial/null repair, malformed repair entries, source edits during provider work, empty-result invalidation, canonical-plan completeness, competing checkpoint writers and obsolete receipt retirement. Provider-lowering-to-decoder-to-SQLite fixtures cover the shared response contract for OpenRouter, DeepSeek and llama.cpp; guide tests cover optional categories, short aliases, context serialization, output truncation and preservation of successful parallel siblings. Existing Tutor, backup, privacy, migration and platform suites remain required. Deterministic fixtures do not prove live OpenRouter model quality, provider retention behavior or physical Android lifecycle behavior.
+
+Sources are optional for Tutor explanations and user-requested questions. General
+scope does not call embeddings. Empty reference arrays are valid in every scope;
+nonempty reference arrays must still resolve to supplied, current, permitted
+material. Missing/temporarily unavailable retrieval may fall back to model
+knowledge, never fabricated citations. Cancellation, stale evidence, revoked
+permissions and storage errors remain hard boundaries. Prompt instructions
+separate supplementary model knowledge from source claims and preserve explicit
+source-only requests. Structured questions are validated independently of their
+redundant public prose: native publication uses the validated question, keeping
+private expected answers out of that prose. A source-free saved question can be
+answered using its fixed rubric without inventing a provenance dependency.
 
 The main Tutor UI contains chat, conversation history and an optional Sources checklist. Ordinary Send supports explanations, user-requested questions and conversational feedback; there is no separate Quiz me button or practice-exam feature. When a reply supplies a structured single question, native code preserves the private pre-answer rubric, publishes the corresponding pending-question state, and retains the original request hash for duplicate-safe replay. Hint and fixed-answer evaluation invariants are unchanged.
 

@@ -5,8 +5,13 @@ use crate::{ai::AiRuntimeState, paths::AppPaths, task_cancellation::Cancellation
 #[tokio::test]
 async fn source_free_question_builds_publishes_and_evaluates_without_search_setup() {
     let f = fixture();
-    let directory = tempfile::tempdir().unwrap();
-    let paths = AppPaths::new(directory.path().join("library")).unwrap();
+    let id = f
+        .database
+        .with_connection(|connection| generate_id(connection))
+        .unwrap();
+    let directory =
+        std::env::temp_dir().join(format!("ostudy-source-free-{}-{id}", std::process::id()));
+    let paths = AppPaths::new(directory.join("library")).unwrap();
     let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
     assert!(crate::ai::embeddings::load_default_embedding_context(&f.database).is_err());
     let mut question_request = input(&f, TutorMode::Explain);
@@ -96,4 +101,5 @@ async fn source_free_question_builds_publishes_and_evaluates_without_search_setu
             .unwrap()
             .pending_question
     );
+    std::fs::remove_dir_all(directory).unwrap();
 }
