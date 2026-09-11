@@ -12,7 +12,7 @@ The original document is not uploaded to the model as an opaque file. ostudy sta
 
 ## Import and generate
 
-Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a stop icon; click that same button to request cancellation.
+Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a red stop-sign icon; click that same button to request cancellation.
 
 Open generated cards from Flashcards and generated guides from **Study Guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
 
@@ -62,9 +62,9 @@ Retry reuses valid source/outline/generation checkpoints only when their version
 
 Regenerate a guide from the relevant document action. The reader does not need a permanent regenerate button or internal revision badge. Compatible topic work can be reused; a complete new validated guide replaces the active generated revision atomically. Learner annotations follow the separate rules in [Study guides](study-guides.md).
 
-## Partial analysis
+## Analysis diagnostics
 
-An unresolved knowledge proposal is a model-proposed concept or relationship that was not admitted, or a source that still lacks a valid analysis disposition. It does not necessarily mean a false fact or an unprocessed page. Valid knowledge is saved and remains usable. Complete protocol coverage likewise does not guarantee every important concept was found.
+Debug logs can report unresolved knowledge proposals (model-proposed concepts or relationships that were not admitted) and source dispositions (supplied material that still lacks an accepted analysis outcome). It does not necessarily mean a false fact or an unprocessed page. Valid knowledge is saved and remains usable. Nonfatal analysis details are retained in diagnostics, not shown as ordinary error banners or warning text on successful generation. A true failure still explains why the requested operation could not finish. Complete protocol coverage likewise does not guarantee every important concept was found.
 
 Older builds limited a page to 16 primary knowledge units. Saved proposals rejected only for that quota are revalidated locally on document retry without asking the model to generate them again. Other invalid or unsupported proposals remain pending. Retry document generation to repair remaining analysis; Tutor uses the saved valid knowledge and does not start a separate understanding stage.
 

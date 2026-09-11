@@ -22,6 +22,14 @@ describe("Tutor Markdown", () => {
     expect(container.textContent).toContain("A & B");
   });
 
+  it("preserves literal character references in inline and fenced code", () => {
+    const { container } = render(<TutorMarkdown text={'`&amp; <tag>`\n\n```text\n&amp; <tag>\n```'} />);
+    const code = container.querySelectorAll("code");
+    expect(code).toHaveLength(2);
+    for (const item of code) expect(item.textContent).toBe("&amp; <tag>");
+    expect(container.querySelector("tag")).toBeNull();
+  });
+
   it("never creates active HTML, resource-fetching images or unsafe links", () => {
     const { container } = render(<TutorMarkdown text={'<script>alert(1)</script>\n\n<img src="https://example.org/tracker" onerror="alert(1)">\n\n![Diagram](https://example.org/image)\n\n[Bad](javascript:alert%281%29) [File](file:///etc/passwd) [Data](data:text/html,x) [Encoded](javascript&#58;alert%281%29)'} />);
     for (const selector of ["script", "img", "iframe", "object", "embed", "a"]) expect(container.querySelector(selector)).toBeNull();

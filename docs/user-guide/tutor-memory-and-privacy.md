@@ -1,14 +1,18 @@
 # Tutor memory and privacy
 
-Tutor is a content-focused chat and quiz tool. It does not maintain a curriculum, change FSRS schedules, or turn chat answers into card reviews. Saved conversations remain readable without a reachable model provider.
+Tutor is a content-focused chat tool. It does not maintain a curriculum, change FSRS schedules, or turn chat answers into card reviews. Saved conversations remain readable without a reachable model provider.
 
 ## Chat and sources
 
 Use Tutor's chat window and conversation list. **Sources** opens an optional checklist of documents, flashcard decks and study guides; choose up to 16. No selected material means a general conversation. Selecting sources sends nothing. Changing sources for an existing chat starts a new chat while the previous conversation keeps its original material selection.
 
+Ask for practice questions in your message and press **Send**; no separate quiz button is needed. You can request several questions, ask for one at a time, or discuss your answers. This is conversation, not a separate graded practice-test system, and it does not affect your card schedule.
+
+New replies and saved conversations render Markdown headings, emphasis, lists, tables and code. You do not need to regenerate old replies. Raw HTML is not executed, and linked images are not loaded automatically. Supported external links open only when clicked. Flashcard hints retain their plain-text, hidden-answer safeguards.
+
 Document knowledge is saved during processing and reused by all learning tools. It does not need a separate Tutor understanding stage. Sending a message searches this saved knowledge; missing search vectors are indexed automatically using the selected embedding model. Changing the Tutor model does not repeat interpretation, and changing embeddings only rebuilds the derived search index. Configure these providers under **Settings → AI/LLM**. Sending may transmit relevant saved material to those configured services and incur charges.
 
-A failed message remains available. **Try again** retries the latest confirmed failed response; **Check response** reconciles an uncertain acknowledgement without submitting a duplicate. Reopen Practice for a new hint rather than replaying an old card's hint from chat history. Advanced controls are under **Chat settings**, not in the main chat.
+Nonfatal processing details stay in diagnostics rather than interrupting chat. A failed message remains available. **Try again** retries the latest confirmed failed response; **Check response** reconciles an uncertain acknowledgement without submitting a duplicate. Reopen Practice for a new hint rather than replaying an old card's hint from chat history. Advanced controls are under **Chat settings**, not in the main chat.
 
 ## Conversation memory
 

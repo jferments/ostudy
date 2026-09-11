@@ -40,7 +40,7 @@ export function TutorMarkdown({ text }: { text: string }) {
       case "hr": return <hr />;
       case "blockquote": return <blockquote>{children(token.tokens)}</blockquote>;
       case "code": return <pre><code>{token.text}</code></pre>;
-      case "codespan": return <code>{decodeText(token.text)}</code>;
+      case "codespan": return <code>{token.text}</code>;
       case "html": return token.text;
       case "image": return <span>{decodeText(token.text || "Image")}</span>;
       case "checkbox": return <input type="checkbox" checked={token.checked} disabled aria-label="Checklist item" />;
