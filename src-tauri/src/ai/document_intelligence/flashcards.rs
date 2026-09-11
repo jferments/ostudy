@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -103,6 +105,7 @@ async fn request_flashcards_with_retry(
     match first {
         Ok(cards) => Ok(cards),
         Err(error) if retryable_contract_error(&error) => {
+            crate::task_cancellation::record_current_provider_retry();
             let detail = bounded_diagnostic(&error.message, 400);
             let repaired = format!(
                 "{user}\n\nA prior response failed local flashcard validation. Validation detail: {detail}. Generate a fresh response from the source and follow the JSON contract exactly. Every item must contain a supported card object and valid knowledgeUnitIds from the supplied catalog. The card object contains only that card type's fields. Do not discuss the failure. Return JSON only."
@@ -147,12 +150,14 @@ fn parse_knowledge_cards(
     let response: KnowledgeCards = serde_json::from_value(value).map_err(|_| {
         super::support::output_error("The model returned invalid knowledge-first cards.")
     })?;
-    if response.cards.len() > maximum {
+    // The requested count is an authoring target, not a reason to throw away
+    // usable paid output. Keep a separate bound against oversized responses.
+    if maximum == 0 || maximum > MAX_WINDOW_CARDS || response.cards.len() > 128 {
         return Err(super::support::output_error(
-            "The model exceeded the card budget.",
+            "The card response exceeded its hard safety limit.",
         ));
     }
-    response
+    let candidates: Vec<Value> = response
         .cards
         .into_iter()
         .map(|item| {
@@ -167,7 +172,64 @@ fn parse_knowledge_cards(
                 serde_json::to_value(support).map_err(CommandError::serialization)?;
             Ok(card)
         })
-        .collect()
+        .collect::<Result<_, CommandError>>()?;
+    Ok(apply_card_budget(candidates, maximum, knowledge))
+}
+
+/// Select whole validated cards locally. Never cut question/answer text or change
+/// its evidence to satisfy a model's inability to count. Prefer new targets,
+/// then document-core/local importance, with provider order as the stable tie.
+fn apply_card_budget(
+    mut cards: Vec<Value>,
+    maximum: usize,
+    knowledge: &KnowledgeCatalog,
+) -> Vec<Value> {
+    if cards.len() <= maximum {
+        return cards;
+    }
+    let returned = cards.len();
+    let mut chosen = Vec::with_capacity(maximum);
+    let mut covered = HashSet::new();
+    while chosen.len() < maximum && !cards.is_empty() {
+        let best = cards
+            .iter()
+            .enumerate()
+            .max_by_key(|(index, card)| {
+                let support = authoring::card_support(card).unwrap_or_default();
+                let new_targets = support.iter().any(|item| !covered.contains(&item.unit_id));
+                let importance = support
+                    .iter()
+                    .filter_map(|item| knowledge.units.iter().find(|u| u.id == item.unit_id))
+                    .map(|unit| {
+                        if knowledge.document_core_units.contains(&unit.id) {
+                            3
+                        } else {
+                            match unit.content.grounding.as_ref().map(|g| g.importance) {
+                                Some(crate::knowledge::evidence::Importance::Core) => 2,
+                                Some(crate::knowledge::evidence::Importance::Detail) => 0,
+                                _ => 1,
+                            }
+                        }
+                    })
+                    .max()
+                    .unwrap_or(0);
+                (new_targets, importance, std::cmp::Reverse(*index))
+            })
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        let card = cards.remove(best);
+        for support in authoring::card_support(&card).unwrap_or_default() {
+            covered.insert(support.unit_id);
+        }
+        chosen.push(card);
+    }
+    crate::logging::debug_target(
+        "ai.document.generation",
+        "document_card_budget_applied",
+        "Applied the requested card count locally after content and evidence validation.",
+        json!({"returnedCards":returned,"selectedCards":chosen.len(),"budget":maximum}),
+    );
+    chosen
 }
 
 fn flashcard_system_prompt() -> String {
@@ -222,5 +284,46 @@ mod tests {
         assert!(parse_knowledge_cards(json!({"cards":[]}), 2, &catalog)
             .unwrap()
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod budget_regressions {
+    use super::*;
+    #[test]
+    fn over_budget_output_is_validated_and_selected_without_changing_its_text() {
+        let mut catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let mut other = catalog.units[0].clone();
+        other.id = "b".repeat(32);
+        catalog.document_core_units.insert(other.id.clone());
+        catalog.units.push(other);
+        let card = |front: &str, id: &str| json!({"card":{"type":"basic","front":front,"back":"Three sides, in Euclidean geometry."},"knowledgeUnitIds":[id]});
+        let raw = json!({"cards":[card("First", &"a".repeat(32)),card("Core", &"b".repeat(32)),card("Repeat", &"a".repeat(32))]});
+        let cards = parse_knowledge_cards(raw, 2, &catalog).unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0]["front"], "Core");
+        assert_eq!(cards[1]["front"], "First");
+        assert_eq!(cards[0]["back"], "Three sides, in Euclidean geometry.");
+        assert_eq!(
+            authoring::card_support(&cards[0]).unwrap()[0].unit_id,
+            "b".repeat(32)
+        );
+    }
+    #[test]
+    fn overshoot_does_not_exempt_surplus_candidates_from_evidence_validation() {
+        let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let card = |id: String| json!({"card":{"type":"basic","front":"Sides?","back":"Three"},"knowledgeUnitIds":[id]});
+        assert!(parse_knowledge_cards(
+            json!({"cards":[card("a".repeat(32)),card("f".repeat(32))]}),
+            1,
+            &catalog
+        )
+        .is_err());
+        assert!(parse_knowledge_cards(
+            json!({"cards":vec![card("a".repeat(32));129]}),
+            16,
+            &catalog
+        )
+        .is_err());
     }
 }
