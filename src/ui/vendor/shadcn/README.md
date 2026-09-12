@@ -22,6 +22,8 @@ This directory is the only Base UI import owner. Features import oStudy facades,
 - Standard progress uses the upstream behavior; oStudy still supports specialized rich inline progress content. Unknown totals use indeterminate feedback rather than fabricated counts. Empty/Alert retain application wording, severity and recovery actions.
 - `cn` uses clsx/tailwind-merge with the configured prefix and semantic font sizes. Partial-border recipes explicitly clear other edges because Preflight is intentionally absent.
 
+The editor Toolbar uses the pinned Base UI 1.6.0 Toolbar composition with the owned shadcn Button. It delegates roving focus and disabled behavior upstream; native font/symbol/color pickers are outside command roving so their arrow-key editing is not intercepted. ColorField is a native authored-content picker behind the Input adapter; it is not a second application palette.
+
 ## Updating and qualification
 
 These are customized source copies, not an npm package that automatically updates the application's controls. Compare a pinned upstream revision, review behavior/dependencies, port relevant changes and record adaptations. Do not blindly run CLI overwrite against owned source.
@@ -30,4 +32,4 @@ These are customized source copies, not an npm package that automatically update
 
 Use behavior and CSS-compilation tests before wider native qualification. Utilities temporarily compile into the existing components layer so unmigrated feature overrides remain compatible. Move them to the final layer only after auditing the remaining consumers, not by forcing global important declarations.
 
-The generated CSS contract discovers shared UI and live Phase 4–8 sources, verifies every literal utility and all themes/capabilities. It is not a screenshot test or physical-device acceptance. Actual native focus/IME/Back, layout and human visual review remain separate requirements.
+The generated CSS contract discovers shared UI and live Phase 4–9 sources, verifies every literal utility and all themes/capabilities. It is not a screenshot test or physical-device acceptance. Actual native focus/IME/Back, layout and human visual review remain separate requirements.

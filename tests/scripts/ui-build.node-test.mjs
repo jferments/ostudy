@@ -7,10 +7,10 @@ import test from "node:test";
 
 const rootUrl = new URL("../../", import.meta.url);
 const root = fileURLToPath(rootUrl);
-// The live Phase 4–8 owners, not a hand-maintained subset of control examples.
-const directories = ["src/ui", "src/screens/settings", "src/screens/cards", "src/screens/flashcards"];
+// The live migrated owners through the card editor, not a hand-maintained subset of control examples.
+const directories = ["src/ui", "src/screens/settings", "src/screens/cards", "src/screens/flashcards", "src/screens/card-editor", "src/editor"];
 const entryFiles = [
-  "src/App.tsx", "src/components/MobileAppBar.tsx", "src/components/NavigationSidebar.tsx",
+  "src/screens/CardEditorScreenBase.tsx", "src/App.tsx", "src/components/MobileAppBar.tsx", "src/components/NavigationSidebar.tsx",
   "src/components/AppErrorBoundary.tsx", "src/components/TagInput.tsx", "src/components/Toast.tsx",
   "src/screens/SettingsScreen.tsx", "src/screens/TemplatesScreen.tsx", "src/screens/templates/TemplateLayoutEditor.tsx",
 ];

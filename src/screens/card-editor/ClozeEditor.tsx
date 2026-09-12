@@ -1,3 +1,9 @@
+import { Surface } from "../../ui/primitives/Surface";
+import { Badge } from "../../ui/primitives/Badge";
+import { RadioGroup } from "../../ui/primitives/FormControls";
+import { presentation } from "./presentation";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { Textarea } from "../../ui/primitives/FormControls";
 import { useMemo, useRef, useState } from "react";
 import { FieldError } from "../../ui/primitives/FormField";
 
@@ -12,11 +18,6 @@ import {
 } from "./cloze";
 import { Button } from "../../ui/primitives/Button";
 import { Panel } from "../../ui/primitives/Panel";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-import ownershipStyles from "../CardEditorScreen.module.css";
-
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
 
 interface ClozeEditorProps {
   source: string;
@@ -75,8 +76,8 @@ export function ClozeEditor({
   }
 
   return (
-    <section className={ownedClassNames(ownedStyleMaps, "cloze-editor")} aria-labelledby="cloze-editor-heading">
-      <div className={ownedClassNames(ownedStyleMaps, "section-heading compact-section-heading")}>
+    <Surface className={presentation["cloze-editor"]} aria-labelledby="cloze-editor-heading">
+      <div className={presentation["section-heading"]}>
         <div>
           <h2 id="cloze-editor-heading">Fill in the blank</h2>
           <p>
@@ -85,12 +86,12 @@ export function ClozeEditor({
             scheduled card.
           </p>
         </div>
-        <span className={ownedClassNames(ownedStyleMaps, "count-badge")}>{countLabel}</span>
+        <Badge tone="accent">{countLabel}</Badge>
       </div>
 
-      <label className={ownedClassNames(ownedStyleMaps, "cloze-source-field")}>
+      <label className={presentation["cloze-source-field"]}>
         <span>Complete statement</span>
-        <textarea
+        <Textarea
           ref={textareaRef}
           value={source}
           rows={9}
@@ -104,7 +105,7 @@ export function ClozeEditor({
         />
       </label>
 
-      <div className={ownedClassNames(ownedStyleMaps, "cloze-toolbar")}>
+      <div className={presentation["cloze-toolbar"]}>
         <Button
           type="button"
           variant="secondary"
@@ -127,47 +128,25 @@ export function ClozeEditor({
       </div>
       {selectionError ? <FieldError>{selectionError}</FieldError> : null}
 
-      <fieldset className={ownedClassNames(ownedStyleMaps, "cloze-mode-options")} disabled={disabled}>
-        <legend>Blank behavior</legend>
-        <label>
-          <input
-            type="radio"
-            name="cloze-mode"
-            checked={mode === "one_at_a_time"}
-            onChange={() => onModeChange("one_at_a_time")}
-          />
-          <span>
-            <strong>Hide one blank per review</strong>
-            <small>
-              This remains one scheduled card and rotates through the marked blanks
-              over successive reviews.
-            </small>
-          </span>
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="cloze-mode"
-            checked={mode === "all_together"}
-            onChange={() => onModeChange("all_together")}
-          />
-          <span>
-            <strong>Hide all blanks together</strong>
-            <small>Use one scheduled card with every marked word or phrase hidden.</small>
-          </span>
-        </label>
-      </fieldset>
+      <div className="tw:grid tw:gap-3">
+        <h3 className="tw:m-0 tw:text-label tw:font-medium">Blank behavior</h3>
+        <RadioGroup label="Blank behavior" name="cloze-mode" value={mode} disabled={disabled} onValueChange={onModeChange}
+          options={[
+            { value: "one_at_a_time", label: <span className="tw:grid tw:gap-1"><strong>Hide one blank per review</strong><small className="tw:font-normal tw:text-muted-foreground">One scheduled card rotates through the marked blanks over successive reviews.</small></span> },
+            { value: "all_together", label: <span className="tw:grid tw:gap-1"><strong>Hide all blanks together</strong><small className="tw:font-normal tw:text-muted-foreground">Use one scheduled card with every marked word or phrase hidden.</small></span> },
+          ]} />
+      </div>
 
       <Panel as="div">
-        <div className={ownedClassNames(ownedStyleMaps, "preview-panel-heading")}>
+        <div className={presentation["preview-panel-heading"]}>
           <div>
-            <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>PREVIEW</span>
+            <span className={presentation["eyebrow"]}>PREVIEW</span>
             <h3>Card presentation</h3>
           </div>
           {mode === "one_at_a_time" && groups.length > 1 ? (
             <label>
               <span>Preview blank</span>
-              <select
+              <NativeSelect
                 value={effectivePreviewGroup ?? ""}
                 onChange={(event) => setPreviewGroup(Number(event.currentTarget.value))}
               >
@@ -176,11 +155,11 @@ export function ClozeEditor({
                     Blank {group}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           ) : null}
         </div>
-        <div className={ownedClassNames(ownedStyleMaps, "cloze-preview-sides")}>
+        <div className={presentation["cloze-preview-sides"]}>
           <div>
             <small>Question</small>
             <p>{preview.question || "The question preview appears here."}</p>
@@ -191,6 +170,6 @@ export function ClozeEditor({
           </div>
         </div>
       </Panel>
-    </section>
+    </Surface>
   );
 }
