@@ -7,44 +7,15 @@ use sha2::{Digest, Sha256};
 use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
 
 pub(crate) const CONTENT_SCHEMA_VERSION: i64 = 1;
-pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 2;
+pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 3;
 pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
-pub(crate) const MAX_UNITS_PER_SOURCE: usize = 16;
+// A storage ceiling, not a pedagogical quota per PDF page.
+pub(crate) const MAX_UNITS_PER_SOURCE: usize = 128;
 pub(crate) const MAX_PREPARATION_SOURCES: usize = 100_000;
 pub(crate) const MAX_CONTEXT_BYTES: usize = 32_000;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ScopeKind {
-    General,
-    Deck,
-    Document,
-    Guide,
-    Library,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct StudyScope {
-    pub kind: ScopeKind,
-    pub id: Option<String>,
-}
-
-impl StudyScope {
-    pub(crate) fn validate(&self) -> Result<(), CommandError> {
-        match self.kind {
-            ScopeKind::General | ScopeKind::Library if self.id.is_none() => Ok(()),
-            ScopeKind::Deck | ScopeKind::Document | ScopeKind::Guide => {
-                let id = self.id.as_deref().ok_or_else(|| {
-                    invalid("Select the material to use for this study conversation.")
-                })?;
-                validate_entity_id(id, "study scope")
-            }
-            _ => Err(invalid("This study scope must not contain an entity ID.")),
-        }
-    }
-}
+pub use super::scope::{ScopeKind, StudyScope};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -90,6 +61,11 @@ pub enum EvidenceImage {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SourceRecord {
+    #[serde(
+        default = "legacy_identity_version",
+        skip_serializing_if = "is_legacy_identity"
+    )]
+    pub identity_version: i64,
     pub id: String,
     pub kind: SourceKind,
     pub owner_id: String,
@@ -109,6 +85,13 @@ pub(crate) struct SourceRecord {
     pub images: Vec<EvidenceImage>,
 }
 
+fn legacy_identity_version() -> i64 {
+    1
+}
+fn is_legacy_identity(version: &i64) -> bool {
+    *version == 1
+}
+
 impl SourceRecord {
     /// Identity is independent of a model and its wording. A source's hash
     /// includes evidence and presentation content, not scheduling timestamps.
@@ -120,22 +103,44 @@ impl SourceRecord {
             self.segment_key
         ))[..32]
             .to_string();
-        self.content_hash = hash(
-            &serde_json::to_string(&(
-                CONTENT_SCHEMA_VERSION,
-                self.kind,
-                &self.title,
-                &self.text,
-                self.origin,
-                &self.locator,
-                &self.images,
-            ))
-            .map_err(CommandError::serialization)?,
-        );
+        self.content_hash = if self.identity_version == 2 && self.kind == SourceKind::Document {
+            // Renaming a document or assigning generated display metadata is
+            // not an edit to its canonical evidence. Keep v1 readable for old
+            // backups; new document adapters explicitly publish v2 identities.
+            hash(
+                &serde_json::to_string(&(
+                    "document-evidence-v2",
+                    self.kind,
+                    &self.text,
+                    self.origin,
+                    &self.locator,
+                    &self.images,
+                ))
+                .map_err(CommandError::serialization)?,
+            )
+        } else {
+            hash(
+                &serde_json::to_string(&(
+                    CONTENT_SCHEMA_VERSION,
+                    self.kind,
+                    &self.title,
+                    &self.text,
+                    self.origin,
+                    &self.locator,
+                    &self.images,
+                ))
+                .map_err(CommandError::serialization)?,
+            )
+        };
         self.validate()
     }
 
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
+        if self.identity_version != 1
+            && !(self.identity_version == 2 && self.kind == SourceKind::Document)
+        {
+            return Err(invalid("Unsupported canonical evidence identity version."));
+        }
         validate_entity_id(&self.id, "semantic source")?;
         validate_entity_id(&self.owner_id, "semantic source owner")?;
         for id in [
@@ -218,7 +223,10 @@ pub(crate) struct KnowledgeUnitInput {
     pub statement: String,
     pub qualifications: Vec<String>,
     pub topic: String,
+    /// Legacy primary-source projection, filled from native evidence in v2.
     pub supporting_excerpt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grounding: Option<super::evidence::Grounding>,
 }
 
 impl KnowledgeUnitInput {
@@ -247,6 +255,9 @@ impl KnowledgeUnitInput {
             return Err(invalid(
                 "Conversation messages cannot become authoritative knowledge units.",
             ));
+        }
+        if let Some(grounding) = &self.grounding {
+            grounding.validate_shape(source)?;
         }
         // An exact excerpt proves location, not correctness or entailment.
         // Image-grounded units deliberately have no invented quotation.
@@ -343,18 +354,21 @@ mod tests {
     #[test]
     fn scopes_reject_missing_or_extraneous_identity() {
         assert!(StudyScope {
+            members: Vec::new(),
             kind: ScopeKind::Deck,
             id: None
         }
         .validate()
         .is_err());
         assert!(StudyScope {
+            members: Vec::new(),
             kind: ScopeKind::Library,
             id: Some("a".repeat(32))
         }
         .validate()
         .is_err());
         assert!(StudyScope {
+            members: Vec::new(),
             kind: ScopeKind::General,
             id: None
         }

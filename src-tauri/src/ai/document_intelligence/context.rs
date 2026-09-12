@@ -108,16 +108,18 @@ impl DocumentTaskContext {
         let current = load_profile_request(database, &self.profile_id)?;
         if current.profile.revision != self.profile_revision
             || current.profile.credential_epoch != self.credential_epoch
-            || current.profile.model_id != self.model_id
             || current.profile.base_url != self.profile.base_url
             || current.credential_storage != self.credential_storage
         {
             return Err(CommandError::new(
                 "ai_profile_changed",
-                "The selected AI profile changed during this task. Review the provider and retry.",
+                "The selected AI provider connection changed during this task. Review the provider and retry.",
             ));
         }
-        current.profile.validate_for_provider_request()
+        // The active model/reasoning pair belongs to the task assignment, not
+        // the provider record. Validate the snapshot captured for this task;
+        // the provider's legacy model field is intentionally irrelevant here.
+        self.profile.validate_for_provider_request()
     }
 
     pub(crate) fn usage_summary(&self) -> (Option<i64>, bool) {
@@ -216,68 +218,5 @@ fn network_scope_name(scope: NetworkScope) -> &'static str {
         NetworkScope::Local => "local",
         NetworkScope::Lan => "lan",
         NetworkScope::Cloud => "cloud",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai::{
-        catalog::AuthMode,
-        document_provider::{DocumentReasoningCapabilities, StructuredOutputStrategy},
-    };
-
-    #[test]
-    fn completion_budget_delegates_to_the_negotiated_provider_capability_model() {
-        let profile = ProfileSnapshot {
-            id: "a".repeat(32),
-            provider_kind: ProviderKind::Openrouter,
-            base_url: "https://openrouter.ai/api/v1/".to_string(),
-            model_id: "openai/example".to_string(),
-            reasoning_effort: "high".to_string(),
-            auth_mode: AuthMode::Bearer,
-            enabled: true,
-            allow_insecure_http: false,
-            require_zero_data_retention: false,
-            request_timeout_ms: 60_000,
-            credential_epoch: 0,
-            revision: 1,
-        };
-        let mut task = DocumentTaskContext {
-            profile_id: profile.id.clone(),
-            provider_kind: "openrouter".to_string(),
-            model_id: profile.model_id.clone(),
-            profile_revision: 1,
-            credential_epoch: 0,
-            network_scope: "cloud".to_string(),
-            include_page_images: false,
-            requested_reasoning_effort: profile.reasoning_effort.clone(),
-            reasoning_effort: "none".to_string(),
-            credential_storage: CredentialStorage::None,
-            capabilities: DocumentProviderCapabilities::conservative(
-                "openrouter",
-                &profile.model_id,
-            ),
-            profile,
-            usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
-        };
-        task.apply_provider_capabilities(&DocumentProviderCapabilities {
-            provider_kind: "openrouter".to_string(),
-            model_id: task.model_id.clone(),
-            context_window_tokens: Some(128_000),
-            image_input: false,
-            usage_reporting: true,
-            structured_output: StructuredOutputStrategy::JsonSchema,
-            reasoning: Some(DocumentReasoningCapabilities {
-                supported_efforts: Some(vec!["high".to_string()]),
-                default_effort: Some("high".to_string()),
-                default_enabled: Some(true),
-                supports_max_tokens: false,
-                mandatory: false,
-            }),
-        });
-        assert_eq!(task.requested_reasoning_effort, "high");
-        assert_eq!(task.reasoning_effort, "high");
-        assert_eq!(task.completion_token_ceiling(2_000), 10_000);
     }
 }

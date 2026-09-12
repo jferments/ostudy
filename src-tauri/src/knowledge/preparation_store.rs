@@ -73,7 +73,7 @@ fn load(
                         operation_id: row.get(1)?,
                         consent_key: row.get(2)?,
                         embedding_space: row.get(3)?,
-                        state: row.get(4)?,
+                        state: preparation_state(row.get(4)?, row.get(7)?),
                         total_sources: row.get::<_, u32>(5)? as usize,
                         completed_sources: row.get::<_, u32>(6)? as usize,
                         error_code: row.get(7)?,
@@ -214,4 +214,29 @@ pub(crate) fn index_cleared(database: &Database) -> Result<(), CommandError> {
             .map_err(CommandError::database)?;
         Ok(())
     })
+}
+
+fn preparation_state(state: String, error_code: String) -> String {
+    if state == "failed" && error_code == "semantic_analysis_partial" {
+        "partial".to_string()
+    } else {
+        state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn partial_coverage_is_not_reported_as_complete_or_a_transport_failure() {
+        assert_eq!(
+            preparation_state("failed".into(), "semantic_analysis_partial".into()),
+            "partial"
+        );
+        assert_eq!(
+            preparation_state("failed".into(), "ai_provider_unavailable".into()),
+            "failed"
+        );
+        assert_eq!(preparation_state("complete".into(), "".into()), "complete");
+    }
 }

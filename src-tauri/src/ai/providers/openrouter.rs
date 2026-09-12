@@ -18,6 +18,20 @@ pub(super) fn apply_request_policy(
     body["provider"] = provider_preferences(require_parameters, require_zero_data_retention);
 }
 
+/// Apply an explicit reasoning choice when one has been resolved for this
+/// request. `automatic` deliberately leaves routing/model defaults untouched;
+/// `none` must be transmitted because omitting the field can enable a model's
+/// provider-default reasoning and consume a small probe/output budget.
+pub(super) fn apply_reasoning_policy(body: &mut Value, reasoning_effort: &str) {
+    if reasoning_effort == "automatic" {
+        return;
+    }
+    body["reasoning"] = json!({
+        "effort": reasoning_effort,
+        "exclude": true,
+    });
+}
+
 pub(super) fn apply_document_policy(
     body: &mut Value,
     reasoning_effort: &str,
@@ -28,12 +42,7 @@ pub(super) fn apply_document_policy(
         "id": "context-compression",
         "enabled": false,
     }]);
-    if reasoning_effort != "none" && reasoning_effort != "automatic" {
-        body["reasoning"] = json!({
-            "effort": reasoning_effort,
-            "exclude": true,
-        });
-    }
+    apply_reasoning_policy(body, reasoning_effort);
 }
 
 /// OpenRouter's model catalog declares `structured_outputs` separately from
@@ -165,6 +174,18 @@ mod tests {
         assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("low")));
         assert_eq!(body.pointer("/reasoning/exclude"), Some(&json!(true)));
         assert!(body.get("session_id").is_none());
+    }
+
+    #[test]
+    fn reasoning_none_is_transmitted_instead_of_falling_back_to_model_defaults() {
+        let mut body = json!({});
+        apply_reasoning_policy(&mut body, "none");
+        assert_eq!(body.pointer("/reasoning/effort"), Some(&json!("none")));
+        assert_eq!(body.pointer("/reasoning/exclude"), Some(&json!(true)));
+
+        let mut automatic = json!({});
+        apply_reasoning_policy(&mut automatic, "automatic");
+        assert!(automatic.get("reasoning").is_none());
     }
 
     #[test]

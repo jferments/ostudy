@@ -90,6 +90,7 @@ fn fixture() -> Fixture {
         CreateConversationInput {
             operation_id,
             scope: StudyScope {
+                members: Vec::new(),
                 kind: ScopeKind::General,
                 id: None,
             },
@@ -364,6 +365,7 @@ fn hints_use_native_reveal_state_and_the_exact_practice_question() {
         Ok(())
     }).unwrap();
     let scope = StudyScope {
+        members: Vec::new(),
         kind: ScopeKind::Deck,
         id: Some("b".repeat(32)),
     };
@@ -423,3 +425,5 @@ fn hints_use_native_reveal_state_and_the_exact_practice_question() {
         .hidden
     );
 }
+
+mod source_optional;

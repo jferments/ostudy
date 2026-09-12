@@ -94,18 +94,37 @@ pub(crate) fn expand(
     // Explicit knowledge links survive generator rewording and can point to
     // evidence that a broad topic association alone would not select.
     database.with_connection(|connection| {
-        for source in selected.iter().take(4) {
-            for unit in repository::linked_units(connection, source)? {
-                if result.len() >= 12 {
-                    break;
-                }
-                if seen.contains(&unit.source_id) {
+        let mut seen_units = HashSet::new();
+        for source in selected.iter().take(12) {
+            let mut units = repository::linked_units(connection, source)?;
+            units.extend(repository::load_units(connection, &source.id)?);
+            for unit in units {
+                if !seen_units.insert(unit.id.clone()) {
                     continue;
                 }
-                if let Some(evidence) = repository::load_source(connection, &unit.source_id)? {
-                    if evidence.content_hash == unit.source_hash {
-                        seen.insert(evidence.id.clone());
-                        result.push(evidence);
+                let dependencies = unit.content.grounding.as_ref().map_or_else(
+                    || vec![(unit.source_id.clone(), unit.source_hash.clone())],
+                    |grounding| {
+                        grounding
+                            .evidence
+                            .iter()
+                            .map(|reference| {
+                                (reference.source_id.clone(), reference.source_hash.clone())
+                            })
+                            .collect()
+                    },
+                );
+                for (id, hash) in dependencies {
+                    if result.len() >= 12 {
+                        break;
+                    }
+                    if !seen.contains(&id) {
+                        if let Some(evidence) = repository::load_source(connection, &id)? {
+                            if evidence.content_hash == hash {
+                                seen.insert(id);
+                                result.push(evidence);
+                            }
+                        }
                     }
                 }
             }

@@ -2,9 +2,31 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { SourceLocator } from "./studyGuides";
 
+export type MaterialScope = { kind: "deck" | "document" | "guide"; id: string };
 export type StudyScope =
   | { kind: "general" | "library"; id: null }
-  | { kind: "deck" | "document" | "guide"; id: string };
+  | MaterialScope
+  | { kind: "selection"; id: null; members: MaterialScope[] };
+
+/** Canonical order matches native scope serialization and permission identity. */
+export function selectedScope(members: MaterialScope[]): StudyScope {
+  const unique = [...new Map(members.map((member) => [studyScopeKey(member), member])).values()];
+  unique.sort((a, b) => {
+    const left = JSON.stringify({ kind: a.kind, id: a.id });
+    const right = JSON.stringify({ kind: b.kind, id: b.id });
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+  if (unique.length > 16) throw new Error("Select at most 16 study sources.");
+  if (!unique.length) return { kind: "general", id: null };
+  if (unique.length === 1) return unique[0];
+  return { kind: "selection", id: null, members: unique };
+}
+
+export function scopeMembers(scope: StudyScope): MaterialScope[] {
+  if (scope.kind === "selection") return scope.members;
+  if (scope.kind === "deck" || scope.kind === "document" || scope.kind === "guide") return [scope];
+  return [];
+}
 
 export interface ScopeChoice {
   scope: StudyScope;
@@ -48,7 +70,7 @@ export interface PreparationStatus {
   operationId: string;
   consentKey: string;
   embeddingSpace: string;
-  state: "running" | "complete" | "failed" | "interrupted" | "canceled";
+  state: "running" | "complete" | "partial" | "failed" | "interrupted" | "canceled";
   totalSources: number;
   completedSources: number;
   errorCode: string;
@@ -126,9 +148,11 @@ export async function clearSemanticIndex(): Promise<void> {
 }
 
 export function studyScopeKey(scope: StudyScope): string {
-  return `${scope.kind}:${scope.id ?? ""}`;
+  return scope.kind === "selection"
+    ? `selection:${scope.members.map(studyScopeKey).sort().join("|")}`
+    : `${scope.kind}:${scope.id ?? ""}`;
 }
 
 export function sameStudyScope(left: StudyScope, right: StudyScope): boolean {
-  return left.kind === right.kind && left.id === right.id;
+  return studyScopeKey(left) === studyScopeKey(right);
 }

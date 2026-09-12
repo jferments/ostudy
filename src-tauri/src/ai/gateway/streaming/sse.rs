@@ -1,4 +1,6 @@
-use serde_json::Value;
+use std::collections::BTreeMap;
+
+use serde_json::{json, Value};
 
 use super::usage::safe_usage_envelope;
 use crate::ai::gateway::{
@@ -10,8 +12,7 @@ use crate::ai::gateway::{
 pub(crate) struct SseChatAccumulator {
     pending: Vec<u8>,
     pub(crate) content: String,
-    pub(crate) tool_name: Option<String>,
-    pub(crate) tool_arguments: String,
+    tools: BTreeMap<u64, ToolCall>,
     pub(crate) finish_reason: Option<String>,
     pub(crate) usage: Option<Value>,
     pub(crate) reasoning_bytes: usize,
@@ -32,8 +33,7 @@ impl SseChatAccumulator {
         Self {
             pending: Vec::new(),
             content: String::new(),
-            tool_name: None,
-            tool_arguments: String::new(),
+            tools: BTreeMap::new(),
             finish_reason: None,
             usage: None,
             reasoning_bytes: 0,
@@ -94,13 +94,34 @@ impl SseChatAccumulator {
             let line = std::mem::take(&mut self.pending);
             self.process_line(&line)?;
         }
+        if self.tools.values().any(|tool| tool.name.is_empty()) {
+            return Err(protocol_error(
+                "A streamed structured tool result has no function name.",
+            ));
+        }
         Ok(())
+    }
+
+    pub(crate) fn tool_arguments_len(&self) -> usize {
+        self.tools.values().map(|tool| tool.arguments.len()).sum()
+    }
+
+    pub(crate) fn tool_calls(&self) -> Vec<Value> {
+        self.tools
+            .iter()
+            .map(|(index, tool)| {
+                json!({
+                    "index":index, "id":tool.id, "type":"function",
+                    "function":{"name":tool.name,"arguments":tool.arguments}
+                })
+            })
+            .collect()
     }
 
     pub(crate) fn model_progress_bytes(&self) -> usize {
         self.content
             .len()
-            .saturating_add(self.tool_arguments.len())
+            .saturating_add(self.tool_arguments_len())
             .saturating_add(self.reasoning_bytes)
     }
 
@@ -173,87 +194,179 @@ impl SseChatAccumulator {
             .and_then(|delta| delta.get("content"))
             .and_then(Value::as_str)
         {
-            self.append_compat_content(content)?;
+            self.append_content(content, false)?;
         } else if let Some(content) = choice
             .and_then(|choice| choice.get("message"))
             .and_then(|message| message.get("content"))
             .and_then(Value::as_str)
-            .or_else(|| {
-                choice
-                    .and_then(|choice| choice.get("text"))
-                    .and_then(Value::as_str)
-            })
+        {
+            self.append_content(content, true)?;
+        } else if let Some(content) = choice
+            .and_then(|choice| choice.get("text"))
+            .and_then(Value::as_str)
             .or_else(|| value.get("content").and_then(Value::as_str))
         {
-            self.append_compat_content(content)?;
+            self.append_content(content, false)?;
         }
-        if let Some(tool_call) = delta
-            .and_then(|delta| delta.get("tool_calls"))
-            .and_then(Value::as_array)
-            .and_then(|calls| calls.first())
+        if let Some(calls) = delta.and_then(|delta| delta.get("tool_calls")) {
+            self.append_tools(calls, false)?;
+        } else if let Some(calls) = choice
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("tool_calls"))
         {
-            if let Some(name) = tool_call
-                .get("function")
-                .and_then(|function| function.get("name"))
-                .and_then(Value::as_str)
-                .filter(|name| !name.is_empty())
-            {
-                match self.tool_name.as_deref() {
-                    Some(existing) if existing != name => {
-                        return Err(error(
-                            "ai_provider_protocol_error",
-                            "The AI provider changed structured-output tool names mid-stream.",
-                            false,
-                            None,
-                        ));
-                    }
-                    None => self.tool_name = Some(name.to_string()),
-                    _ => {}
-                }
-            }
-            if let Some(arguments) = tool_call
-                .get("function")
-                .and_then(|function| function.get("arguments"))
-                .and_then(Value::as_str)
-            {
-                if self
-                    .content
-                    .len()
-                    .saturating_add(self.tool_arguments.len())
-                    .saturating_add(arguments.len())
-                    > self.maximum_content_bytes
-                {
-                    return Err(error(
-                        "ai_response_too_large",
-                        "The AI provider returned more structured output than ostudy accepts.",
-                        false,
-                        None,
-                    ));
-                }
-                self.tool_arguments.push_str(arguments);
-            }
+            self.append_tools(calls, true)?;
         }
         Ok(())
     }
 
-    fn append_compat_content(&mut self, content: &str) -> Result<(), AiGatewayError> {
+    fn append_content(&mut self, content: &str, snapshot: bool) -> Result<(), AiGatewayError> {
         if content.is_empty() {
             return Ok(());
         }
-        if !self.content.is_empty() && content.starts_with(&self.content) {
-            return Ok(());
+        let added = if snapshot {
+            content.strip_prefix(&self.content).ok_or_else(|| {
+                protocol_error("The final message conflicts with its streamed text.")
+            })?
+        } else {
+            content
+        };
+        if self
+            .content
+            .len()
+            .saturating_add(self.tool_arguments_len())
+            .saturating_add(added.len())
+            > self.maximum_content_bytes
+        {
+            return Err(output_limit());
         }
-        if self.content.len().saturating_add(content.len()) > self.maximum_content_bytes {
-            return Err(error(
-                "ai_response_too_large",
-                "The AI provider returned more generated content than ostudy accepts.",
-                false,
-                None,
-            ));
-        }
-        self.content.push_str(content);
+        // Deltas are literal increments, even when identical to earlier text.
+        // A full-message snapshot contributes ONLY its not-yet-received tail.
+        let added = added.to_string();
+        self.content.push_str(&added);
         Ok(())
     }
+
+    fn append_tools(&mut self, value: &Value, snapshot: bool) -> Result<(), AiGatewayError> {
+        if value.is_null() {
+            return Ok(());
+        }
+        let calls = value
+            .as_array()
+            .filter(|calls| calls.len() <= 128)
+            .ok_or_else(|| {
+                protocol_error("The provider returned an invalid tool-call collection.")
+            })?;
+        for (position, call) in calls.iter().enumerate() {
+            let index = match call.get("index") {
+                Some(index) => index.as_u64(),
+                None if snapshot => Some(position as u64),
+                None if calls.len() == 1 && self.tools.keys().all(|index| *index == 0) => Some(0),
+                None => None,
+            }
+            .filter(|index| *index < 128)
+            .ok_or_else(|| {
+                protocol_error("Streamed tool calls require a bounded unambiguous index.")
+            })?;
+            if call
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind != "function")
+            {
+                return Err(protocol_error(
+                    "The provider returned an unsupported tool-call type.",
+                ));
+            }
+            let id = call
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty());
+            if id.is_some_and(|id| {
+                id.len() > 256
+                    || self.tools.iter().any(|(other_index, tool)| {
+                        *other_index != index && tool.id.as_deref() == Some(id)
+                    })
+            }) {
+                return Err(protocol_error(
+                    "The provider returned conflicting tool-call identities.",
+                ));
+            }
+            let function = call
+                .get("function")
+                .and_then(Value::as_object)
+                .ok_or_else(|| {
+                    protocol_error("The provider returned an invalid tool-call function.")
+                })?;
+            let name = function
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|name| !name.is_empty());
+            if name.is_some_and(|name| name.len() > 128) {
+                return Err(protocol_error(
+                    "The provider returned an oversized tool name.",
+                ));
+            }
+            let arguments = match function.get("arguments") {
+                None | Some(Value::Null) => "",
+                Some(Value::String(text)) => text.as_str(),
+                _ => {
+                    return Err(protocol_error(
+                        "Tool arguments must be streamed as strings.",
+                    ))
+                }
+            };
+            let total = self.content.len().saturating_add(self.tool_arguments_len());
+            let tool = self.tools.entry(index).or_default();
+            if let Some(id) = id {
+                if tool.id.as_deref().is_some_and(|previous| previous != id) {
+                    return Err(protocol_error(
+                        "The provider changed a tool-call identity mid-stream.",
+                    ));
+                }
+                tool.id = Some(id.to_string());
+            }
+            if let Some(name) = name {
+                if !tool.name.is_empty() && tool.name != name {
+                    return Err(protocol_error(
+                        "The provider changed a tool name mid-stream.",
+                    ));
+                }
+                tool.name = name.to_string();
+            }
+            let added = if snapshot {
+                arguments.strip_prefix(&tool.arguments).ok_or_else(|| {
+                    protocol_error("The final tool result conflicts with its streamed arguments.")
+                })?
+            } else {
+                arguments
+            };
+            if total.saturating_add(added.len()) > self.maximum_content_bytes {
+                return Err(output_limit());
+            }
+            let added = added.to_string();
+            tool.arguments.push_str(&added);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct ToolCall {
+    id: Option<String>,
+    name: String,
+    arguments: String,
+}
+
+fn protocol_error(message: &str) -> AiGatewayError {
+    error("ai_provider_protocol_error", message, false, None)
+}
+
+fn output_limit() -> AiGatewayError {
+    error(
+        "ai_response_too_large",
+        "The provider returned more generated content than ostudy accepts.",
+        false,
+        None,
+    )
 }
 
 fn trim_ascii(mut bytes: &[u8]) -> &[u8] {

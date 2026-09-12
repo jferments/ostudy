@@ -50,6 +50,10 @@ vi.mock("../../ui/overlays/Dialog", () => ({
   Dialog: ({ title, children }: { title: string; children: ReactNode }) => (
     <section role="dialog" aria-label={title}>{children}</section>
   ),
+  Sheet: ({ title, children }: { title: string; children: ReactNode }) => (
+    <section role="dialog" aria-label={title}>{children}</section>
+  ),
+  DialogActions: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 const scope = { kind: "deck" as const, id: "a".repeat(32) };
@@ -120,10 +124,10 @@ beforeEach(() => {
 });
 
 describe("Tutor workspace consent and source reads", () => {
-  it("exposes the opt-in without preparing or changing conversation permissions automatically", async () => {
+  it("keeps opt-in in chat settings without preparing or changing permissions automatically", async () => {
     render(<Harness />);
     await act(async () => { controller.newConversation(scope); });
-    fireEvent.click(screen.getByText("Material"));
+    fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
     const checkbox = screen.getByRole("checkbox", {
       name: "Search permitted conversations in this material selection",
     }) as HTMLInputElement;
@@ -151,9 +155,43 @@ describe("Tutor workspace consent and source reads", () => {
         },
       });
     });
-    fireEvent.click(screen.getByText("Material"));
+    expect(screen.queryByRole("button", { name: "Chat settings" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sources" })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: /Search permitted conversations/ })).toBeNull();
     expect(controller.includeConversations).toBe(false);
+  });
+
+  it("keeps ordinary chat free of maintenance panels and restores saved history", async () => {
+    render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sources" })).toBeTruthy();
+    expect(screen.queryByText("Search index maintenance")).toBeNull();
+    expect(screen.queryByText("Restore message to composer")).toBeNull();
+    expect(screen.queryByText("Prepare selected material")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Conversations" }));
+    expect(screen.getByRole("navigation", { name: "Conversations" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Geometry" })).toBeTruthy();
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+  });
+
+  it("applies a source checklist to a new chat without editing prior conversation scope", async () => {
+    const second = { kind: "document" as const, id: "4".repeat(32) };
+    vi.mocked(listSemanticScopeChoices).mockResolvedValue([
+      { scope, title: "Geometry deck" }, { scope: second, title: "Physics document" },
+    ]);
+    render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    await act(async () => { controller.setDraft("Compare the ideas"); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sources" })); });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Physics document/ }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use sources" })); });
+    expect(controller.scope.kind).toBe("selection");
+    expect(controller.detail).toBeNull();
+    expect(controller.draft).toBe("Compare the ideas");
+    expect(detail.conversation.scope).toEqual(scope);
+    expect(previewSemanticPreparation).not.toHaveBeenCalled();
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
   });
 
   it.each([false, true])(

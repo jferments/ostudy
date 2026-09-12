@@ -225,6 +225,13 @@ pub(super) async fn test_profile(
         ));
     }
 
+    // Capability probes should spend their small output budgets validating the
+    // requested contract, not a provider-default hidden reasoning trace. For an
+    // OpenRouter model that declares optional reasoning, explicitly disable it.
+    // Models with mandatory reasoning retain their configured/default effort;
+    // models with no reasoning metadata receive no reasoning parameter at all.
+    request_profile.reasoning_effort = probe_reasoning_effort(&request_profile, models.as_deref());
+
     let mut properties = ProviderProperties::default();
     if profile.provider_kind == ProviderKind::LlamaCpp {
         let property_start = Instant::now();
@@ -421,6 +428,27 @@ fn classify_model_match(profile: &ProfileSnapshot, models: &[ProviderModel]) -> 
     ModelMatch::Missing
 }
 
+fn probe_reasoning_effort(profile: &ProfileSnapshot, models: Option<&[ProviderModel]>) -> String {
+    if profile.provider_kind != ProviderKind::Openrouter {
+        return profile.reasoning_effort.clone();
+    }
+    let Some(reasoning) = models
+        .and_then(|models| models.iter().find(|model| model.id == profile.model_id))
+        .and_then(|model| model.reasoning.as_ref())
+    else {
+        return "automatic".to_string();
+    };
+    if reasoning.mandatory {
+        if profile.reasoning_effort == "none" {
+            "automatic".to_string()
+        } else {
+            profile.reasoning_effort.clone()
+        }
+    } else {
+        "none".to_string()
+    }
+}
+
 fn validate_profile_reference(input: &AiProfileReferenceInput) -> Result<(), CommandError> {
     crate::util::validate_entity_id(&input.profile_id, "AI provider profile")?;
     if input.revision < 1 {
@@ -464,4 +492,12 @@ pub(super) fn classify_model_match_for_test(
         ModelMatch::SoleLlamaServerId(id) => format!("sole:{id}"),
         ModelMatch::Missing => "missing".to_string(),
     }
+}
+
+#[cfg(test)]
+pub(super) fn probe_reasoning_effort_for_test(
+    profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
+) -> String {
+    probe_reasoning_effort(profile, models)
 }

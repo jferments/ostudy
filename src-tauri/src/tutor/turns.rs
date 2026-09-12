@@ -133,12 +133,16 @@ pub(crate) fn complete(
         feedback: answer.feedback.clone(),
     })
     .map_err(CommandError::serialization)?;
-    let text = if context.notice.is_empty() {
-        answer.text.clone()
-    } else {
-        format!("Context note: {}\n\n{}", context.notice, answer.text)
-    };
-    crate::knowledge::contracts::bounded(&text, 24_000, "published tutor message", false)?;
+    if !context.notice.is_empty() {
+        crate::logging::debug_target(
+            "ai.tutor.context",
+            "tutor_context_diagnostic",
+            "Retained an internal context diagnostic without adding it to the learner's response.",
+            serde_json::json!({"notice": context.notice}),
+        );
+    }
+    let text = &answer.text;
+    crate::knowledge::contracts::bounded(text, 24_000, "published tutor message", false)?;
     database.with_connection(|connection| {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
@@ -156,9 +160,10 @@ pub(crate) fn complete(
         let now = unix_time_millis()?;
         let changed = transaction.execute(
             "UPDATE tutor_turns SET assistant_text = ?1, state = 'complete',
-                 citations_json = ?2, quiz_json = ?3, total_tokens = ?4, updated_at = ?5
+                 citations_json = ?2, quiz_json = ?3, total_tokens = ?4, updated_at = ?5,
+                 mode = CASE WHEN mode = 'explain' AND ?8 THEN 'quiz' ELSE mode END
              WHERE id = ?6 AND request_hash = ?7 AND state = 'running'",
-            params![text, citation_json, assessment_json, total_tokens, now, identity.id, identity.request_hash],
+            params![text, citation_json, assessment_json, total_tokens, now, identity.id, identity.request_hash, answer.quiz.is_some()],
         ).map_err(CommandError::database)?;
         if changed != 1 {
             return Err(conversations::changed());
@@ -357,3 +362,6 @@ pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError>
         transaction.commit().map_err(CommandError::database)
     })
 }
+
+#[cfg(test)]
+mod conversation_tests;

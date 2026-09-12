@@ -155,18 +155,16 @@ async fn generate_document_study_guide_impl(
         &task.reasoning_effort,
         calibration,
     )?;
-    let capability_fingerprint = capabilities.planning_fingerprint();
     let outline = ensure_document_outline(EnsureDocumentOutlineInput {
         database: database.inner(),
+        paths: paths.inner(),
         runtime: runtime.inner(),
         task: &task,
         document_id: &input.document_id,
-        document_title: &stored.title,
         extraction_backend: &stored.extraction_backend,
         source: &stored.source,
         chunks: &chunks,
         plan: scale_plan,
-        provider_capability_fingerprint: &capability_fingerprint,
     })
     .await?;
 

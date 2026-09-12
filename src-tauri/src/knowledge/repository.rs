@@ -37,7 +37,8 @@ pub(crate) fn publish_source(
                  updated_at = excluded.updated_at
              WHERE knowledge_sources.active = 0
                 OR knowledge_sources.owner_revision <> excluded.owner_revision
-                OR knowledge_sources.content_hash <> excluded.content_hash",
+                OR knowledge_sources.content_hash <> excluded.content_hash
+                OR knowledge_sources.record_json <> excluded.record_json",
             params![
                 source.id,
                 source.kind.as_str(),
@@ -123,7 +124,10 @@ pub(crate) fn load_units(
         .prepare(
             "SELECT u.record_json FROM knowledge_units u
              JOIN knowledge_sources s ON s.id = u.source_id
-             WHERE u.source_id = ?1 AND s.active = 1 AND u.source_hash = s.content_hash
+             WHERE (u.source_id = ?1 OR EXISTS (
+                 SELECT 1 FROM knowledge_unit_evidence e WHERE e.unit_id = u.id AND e.source_id = ?1))
+               AND s.active = 1 AND u.source_hash = s.content_hash
+               AND u.extraction_contract = s.extraction_contract
              ORDER BY u.id",
         )
         .map_err(CommandError::database)?;
@@ -132,9 +136,24 @@ pub(crate) fn load_units(
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    rows.into_iter()
-        .map(|value| serde_json::from_str(&value).map_err(CommandError::serialization))
-        .collect()
+    decode_current_units(connection, rows)
+}
+
+/// Saved interpretation belongs to a source revision, not a consuming model.
+/// The producer's contract remains recorded for provenance and checkpoint repair.
+pub(crate) fn extraction_available(
+    connection: &Connection,
+    source: &SourceRecord,
+) -> Result<bool, CommandError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM knowledge_sources WHERE id=?1 AND active=1
+         AND content_hash=?2 AND owner_revision=?3 AND extracted_hash=?2
+         AND length(extraction_contract)=64)",
+            params![source.id, source.content_hash, source.owner_revision],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)
 }
 
 pub(crate) fn extraction_is_current(
@@ -154,22 +173,43 @@ pub(crate) fn extraction_is_current(
 }
 
 /// Persist one validated extraction only if the exact source is still current.
-/// Invalid siblings are not quietly accepted: extraction is a single contract.
+/// The caller admits individual units; window coverage is recorded separately.
 pub(crate) fn publish_units(
     database: &Database,
     source: &SourceRecord,
     contract: &str,
     inputs: Vec<KnowledgeUnitInput>,
 ) -> Result<Vec<KnowledgeUnit>, CommandError> {
+    database.with_connection(|connection| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        let units = publish_units_in(&transaction, source, contract, inputs, unix_time_millis()?)?;
+        transaction.commit().map_err(CommandError::database)?;
+        Ok(units)
+    })
+}
+
+pub(crate) fn publish_units_in(
+    transaction: &Connection,
+    source: &SourceRecord,
+    contract: &str,
+    inputs: Vec<KnowledgeUnitInput>,
+    now: i64,
+) -> Result<Vec<KnowledgeUnit>, CommandError> {
     if !is_hash(contract) || inputs.len() > MAX_UNITS_PER_SOURCE {
         return Err(invalid(
             "The knowledge extraction contract or unit count is invalid.",
         ));
     }
+    if !source_is_current(transaction, source)? {
+        return Err(stale_source());
+    }
     let mut units = Vec::with_capacity(inputs.len());
     let mut seen = HashSet::new();
     for content in inputs {
         content.validate(source)?;
+        validate_grounding(transaction, &content)?;
         let content_json = serde_json::to_string(&content).map_err(CommandError::serialization)?;
         let id = hash(&format!("unit-v1|{}|{content_json}", source.id))[..32].to_string();
         if seen.insert(id.clone()) {
@@ -182,28 +222,22 @@ pub(crate) fn publish_units(
             });
         }
     }
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        if !source_is_current(&transaction, source)? {
-            return Err(stale_source());
-        }
-        let ids = units.iter().map(|unit| &unit.id).collect::<Vec<_>>();
-        transaction
-            .execute(
-                "DELETE FROM knowledge_units WHERE source_id = ?1
+    let ids = units.iter().map(|unit| &unit.id).collect::<Vec<_>>();
+    transaction
+        .execute(
+            "DELETE FROM knowledge_units WHERE source_id = ?1
                  AND id NOT IN (SELECT value FROM json_each(?2))",
-                params![source.id, serde_json::to_string(&ids).map_err(CommandError::serialization)?],
-            )
-            .map_err(CommandError::database)?;
-        for unit in &units {
-            let serialized = serde_json::to_string(unit).map_err(CommandError::serialization)?;
-            let content_hash = hash(
-                &serde_json::to_string(&unit.content).map_err(CommandError::serialization)?,
-            );
-            transaction
+            params![
+                source.id,
+                serde_json::to_string(&ids).map_err(CommandError::serialization)?
+            ],
+        )
+        .map_err(CommandError::database)?;
+    for unit in &units {
+        let serialized = serde_json::to_string(unit).map_err(CommandError::serialization)?;
+        let content_hash =
+            hash(&serde_json::to_string(&unit.content).map_err(CommandError::serialization)?);
+        transaction
                 .execute(
                     "INSERT INTO knowledge_units (
                          id, source_id, source_hash, content_hash, record_json,
@@ -215,17 +249,28 @@ pub(crate) fn publish_units(
                     params![unit.id, source.id, source.content_hash, content_hash, serialized, contract, now],
                 )
                 .map_err(CommandError::database)?;
-        }
         transaction
             .execute(
-                "UPDATE knowledge_sources SET extraction_contract = ?1, extracted_hash = ?2,
-                     updated_at = ?3 WHERE id = ?4 AND active = 1 AND content_hash = ?2",
-                params![contract, source.content_hash, now, source.id],
+                "DELETE FROM knowledge_unit_evidence WHERE unit_id = ?1",
+                [&unit.id],
             )
             .map_err(CommandError::database)?;
-        transaction.commit().map_err(CommandError::database)?;
-        Ok(())
-    })?;
+        if let Some(grounding) = &unit.content.grounding {
+            for reference in &grounding.evidence {
+                transaction.execute(
+                        "INSERT INTO knowledge_unit_evidence (unit_id, evidence_id, source_id, source_hash) VALUES (?1, ?2, ?3, ?4)",
+                        params![unit.id, reference.id, reference.source_id, reference.source_hash],
+                    ).map_err(CommandError::database)?;
+            }
+        }
+    }
+    transaction
+        .execute(
+            "UPDATE knowledge_sources SET extraction_contract = ?1, extracted_hash = ?2,
+                     updated_at = ?3 WHERE id = ?4 AND active = 1 AND content_hash = ?2",
+            params![contract, source.content_hash, now, source.id],
+        )
+        .map_err(CommandError::database)?;
     Ok(units)
 }
 
@@ -247,6 +292,18 @@ pub(crate) fn link_artifact_units(
         ));
     }
     for id in unit_ids {
+        let serialized: String = connection
+            .query_row(
+                "SELECT record_json FROM knowledge_units WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(CommandError::database)?
+            .ok_or_else(stale_source)?;
+        let unit: KnowledgeUnit =
+            serde_json::from_str(&serialized).map_err(CommandError::serialization)?;
+        validate_grounding(connection, &unit.content)?;
         let changed = connection
             .execute(
                 "INSERT INTO knowledge_artifact_links (source_id, unit_id, source_hash, relationship, created_at)
@@ -286,9 +343,49 @@ pub(crate) fn linked_units(
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    rows.into_iter()
-        .map(|value| serde_json::from_str(&value).map_err(CommandError::serialization))
-        .collect()
+    decode_current_units(connection, rows)
+}
+
+pub(crate) fn validate_grounding(
+    connection: &Connection,
+    content: &KnowledgeUnitInput,
+) -> Result<(), CommandError> {
+    if let Some(grounding) = &content.grounding {
+        for reference in &grounding.evidence {
+            let source = load_source(connection, &reference.source_id)?.ok_or_else(stale_source)?;
+            reference.validate(&source).map_err(|_| stale_source())?;
+        }
+    }
+    Ok(())
+}
+
+fn decode_current_units(
+    connection: &Connection,
+    rows: Vec<String>,
+) -> Result<Vec<KnowledgeUnit>, CommandError> {
+    let mut result = Vec::new();
+    for value in rows {
+        let unit: KnowledgeUnit =
+            serde_json::from_str(&value).map_err(CommandError::serialization)?;
+        // Stale derived units are not usable evidence. Storage/decoding errors
+        // remain errors rather than being mistaken for an empty library.
+        let primary = load_source(connection, &unit.source_id)?;
+        let checked = primary
+            .filter(|source| {
+                source.content_hash == unit.source_hash && source.origin == unit.origin
+            })
+            .ok_or_else(stale_source)
+            .and_then(|source| {
+                unit.content.validate(&source)?;
+                validate_grounding(connection, &unit.content)
+            });
+        match checked {
+            Ok(()) => result.push(unit),
+            Err(error) if error.code == "semantic_source_changed" => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(result)
 }
 
 pub(crate) fn stale_source() -> CommandError {

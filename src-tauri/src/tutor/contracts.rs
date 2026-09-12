@@ -299,6 +299,7 @@ mod tests {
         let input = CreateConversationInput {
             operation_id: "a".repeat(32),
             scope: StudyScope {
+                members: Vec::new(),
                 kind: ScopeKind::General,
                 id: None,
             },

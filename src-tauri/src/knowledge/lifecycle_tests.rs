@@ -49,6 +49,7 @@ fn manual_card_changes_discard_old_units_even_when_rendered_text_is_unchanged() 
             qualifications: vec![],
             topic: "Geometry".to_string(),
             supporting_excerpt: "Three".to_string(),
+            grounding: None,
         }],
     )
     .unwrap();

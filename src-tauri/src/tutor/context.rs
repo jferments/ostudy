@@ -4,7 +4,6 @@
 
 use std::collections::HashSet;
 
-use rusqlite::params;
 use serde_json::json;
 
 use crate::{
@@ -15,11 +14,7 @@ use crate::{
     database::Database,
     error::CommandError,
     knowledge::{
-        adapters::scope_documents,
-        contracts::{
-            invalid, KnowledgeUnit, ScopeKind, SourceKind, SourceRecord, StudyScope,
-            MAX_CONTEXT_BYTES,
-        },
+        contracts::{KnowledgeUnit, ScopeKind, SourceRecord, StudyScope, MAX_CONTEXT_BYTES},
         relationships, repository, retrieval,
     },
     paths::AppPaths,
@@ -99,7 +94,7 @@ pub(crate) async fn build(
         } else {
             query.chars().take(8_000).collect()
         };
-        match retrieval::retrieve(
+        let result = retrieval::retrieve(
             database,
             paths,
             runtime,
@@ -108,27 +103,10 @@ pub(crate) async fn build(
             &query,
             cancellation,
         )
-        .await
-        {
-            Ok(result) => {
-                if result.hits.is_empty() && sources.is_empty() {
-                    return Err(CommandError::new("semantic_preparation_required",
-                        "No current indexed evidence is available in this selection. Prepare the selected material and retry."));
-                }
-                sources.extend(result.hits.into_iter().take(8).map(|hit| hit.source));
-            }
-            Err(error)
-                if !sources.is_empty()
-                    && matches!(
-                        error.code.as_str(),
-                        "semantic_preparation_required" | "ai_task_profile_required"
-                    ) =>
-            {
-                notice = "Using the current card or guide and exact linked evidence only. Prepare the selection to enable broader semantic retrieval.".to_string();
-            }
-            Err(error) => return Err(error),
-        }
+        .await;
+        merge_optional_retrieval(&mut sources, &mut notice, result)?;
     }
+    crate::knowledge::runtime::check_canceled(cancellation)?;
     let related = relationships::expand(database, &sources)?;
     // Put a linked original document near the focused derivative rather than
     // exhausting the whole request budget with similar generated flashcards.
@@ -137,12 +115,24 @@ pub(crate) async fn build(
     }
     let mut seen = HashSet::new();
     sources.retain(|source| seen.insert(source.id.clone()));
-    sources = filter_scope(database, scope, sources)?;
+    sources = filter_scope(
+        database,
+        scope,
+        sources,
+        input.include_conversations && input.mode != TutorMode::Hint,
+    )?;
     sources.truncate(12);
-    if scope.kind != ScopeKind::General && sources.is_empty() {
-        return Err(invalid(
-            "No current evidence remains in this material selection.",
-        ));
+    // Optional grounding does not relax the revision/permission dependencies of
+    // an already saved question. A question created without references has none.
+    if quiz.is_some_and(|quiz| {
+        quiz.source_ids
+            .iter()
+            .any(|id| !sources.iter().any(|source| &source.id == id))
+    }) {
+        return Err(repository::stale_source());
+    }
+    if sources.is_empty() {
+        notice = format!("{notice} No source evidence is attached. General-knowledge questions may be answered from model knowledge without citations. For an explicit source-only request, explain that the requested evidence is unavailable rather than claiming source support.").trim().to_string();
     }
     let images = if task.include_page_images {
         match focus
@@ -176,8 +166,29 @@ pub(crate) async fn build(
         for source in &sources {
             result.extend(repository::load_units(connection, &source.id)?);
         }
+        let mut seen_units = HashSet::new();
+        result.retain(|unit| {
+            seen_units.insert(unit.id.clone())
+                && unit
+                    .content
+                    .grounding
+                    .as_ref()
+                    .is_none_or(|grounding| grounding.is_visible_in(&sources))
+        });
         Ok(result)
     })?;
+    let pending_sources = sources
+        .iter()
+        .map(|source| source.id.clone())
+        .collect::<Vec<_>>();
+    let unresolved =
+        crate::knowledge::analysis_store::pending_for_sources(database, &pending_sources)?;
+    let partial_notice = if unresolved > 0 {
+        format!("Selected material has {unresolved} unresolved knowledge proposals or source dispositions. Valid source material remains available; this is not complete analysis.")
+    } else {
+        String::new()
+    };
+    notice = format!("{notice} {partial_notice}").trim().to_string();
     let mut inherited_turns = sources
         .iter()
         .filter_map(|source| source.turn_id.clone())
@@ -198,18 +209,25 @@ pub(crate) async fn build(
             "history": history.prompt(), "contextNotice": notice,
             "privateHintTarget": if input.mode == TutorMode::Hint { focus.private_answer.as_deref() } else { None },
             "fixedQuiz": quiz,
-            "trust": "Source excerpts are evidence of what material says, not proof of truth. Similarity and topic links do not prove support. Distinguish additional explanation from source claims. Conversation is not independent evidence.",
+            "trust": "Source excerpts are evidence of what material says, not proof of truth. Similarity and topic links do not prove support. Distinguish additional explanation from source claims. Conversation is not independent evidence. Sources are optional grounding; never invent references to fill an empty citation set.",
         });
         let serialized = serde_json::to_string(&payload).map_err(CommandError::serialization)?;
         if serialized.len() <= input_budget {
             break serialized;
         }
-        notice = "This response uses a bounded context selection. Older conversation or lower-ranked material was omitted from this request; the saved library and transcript are unchanged.".to_string();
+        notice = format!("This response uses a bounded context selection. Older conversation or lower-ranked material was omitted from this request; the saved library and transcript are unchanged. {partial_notice}").trim().to_string();
         if history.turns.len() > 2 {
             history.turns.remove(0);
         } else if sources.len() > 1 && quiz.is_none() {
             if let Some(source) = sources.pop() {
-                units.retain(|unit| unit.source_id != source.id);
+                units.retain(|unit| {
+                    unit.source_id != source.id
+                        && unit
+                            .content
+                            .grounding
+                            .as_ref()
+                            .is_none_or(|grounding| grounding.is_visible_in(&sources))
+                });
             }
         } else if !units.is_empty() {
             units.pop();
@@ -234,47 +252,120 @@ pub(crate) async fn build(
     })
 }
 
+fn merge_optional_retrieval(
+    sources: &mut Vec<SourceRecord>,
+    notice: &mut String,
+    result: Result<retrieval::RetrievalResult, CommandError>,
+) -> Result<(), CommandError> {
+    match result {
+        Ok(result) => sources.extend(result.hits.into_iter().take(8).map(|hit| hit.source)),
+        Err(error) if optional_retrieval_failure(&error.code) => {
+            crate::logging::debug_target(
+                "ai.tutor.context",
+                "tutor_optional_grounding_unavailable",
+                "Optional semantic lookup was unavailable; retained exact evidence and model knowledge remain usable.",
+                json!({"code":error.code,"retainedSources":sources.len()}),
+            );
+            *notice = "Semantic lookup was unavailable. Only attached source evidence was consulted. Do not claim access to other selected material; distinguish general model knowledge and disclose limitations for source-specific requests.".to_string();
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(())
+}
+
+/// Only lookup availability failures are optional. Never swallow cancellation,
+/// a permission/revision failure, corrupt storage, or an unknown native error.
+fn optional_retrieval_failure(code: &str) -> bool {
+    matches!(
+        code,
+        "semantic_preparation_required"
+            | "ai_task_profile_required"
+            | "ai_http_unauthorized"
+            | "ai_authentication_failed"
+            | "ai_http_rate_limited"
+            | "ai_rate_limited"
+            | "ai_insufficient_credits"
+            | "ai_connection_failed"
+            | "ai_network_error"
+            | "ai_initial_response_timeout"
+            | "ai_request_timeout"
+            | "ai_provider_timeout"
+            | "ai_provider_overloaded"
+            | "ai_provider_unavailable"
+            | "ai_server_unavailable"
+            | "ai_stream_inactive"
+    )
+}
+
 fn filter_scope(
     database: &Database,
     scope: &StudyScope,
     sources: Vec<SourceRecord>,
+    include_conversations: bool,
 ) -> Result<Vec<SourceRecord>, CommandError> {
     database.with_connection(|connection| {
-        let documents = scope_documents(connection, scope)?.into_iter().collect::<HashSet<_>>();
+        let permitted = retrieval::eligible_entries_in(connection, scope, include_conversations)?
+            .into_iter()
+            .filter_map(|entry| entry.id.strip_prefix("source:").map(str::to_string))
+            .collect::<HashSet<_>>();
         let mut result = Vec::new();
         for source in sources {
-            let allowed = match source.kind {
-                SourceKind::Document | SourceKind::Guide => source.document_id.as_ref().is_some_and(|id| documents.contains(id)),
-                SourceKind::Conversation => connection.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM tutor_conversations c JOIN tutor_turns t ON t.conversation_id = c.id
-                     WHERE t.id = ?1 AND t.evidence_current = 1 AND c.scope_json = ?2
-                       AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence)",
-                    params![source.turn_id, serde_json::to_string(scope).map_err(CommandError::serialization)?],
-                    |row| row.get(0),
-                ).map_err(CommandError::database)?,
-                SourceKind::Card => match scope.kind {
-                    ScopeKind::General => false,
-                    ScopeKind::Library => connection.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM notes n JOIN decks d ON d.id = n.deck_id
-                         WHERE n.id = ?1 AND n.deleted_at IS NULL AND d.deleted_at IS NULL AND d.archived_at IS NULL)",
-                        [&source.note_id], |row| row.get(0),
-                    ).map_err(CommandError::database)?,
-                    ScopeKind::Deck => connection.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM notes WHERE id = ?1 AND deck_id = ?2 AND deleted_at IS NULL)",
-                        params![source.note_id, scope.id], |row| row.get(0),
-                    ).map_err(CommandError::database)?,
-                    ScopeKind::Document | ScopeKind::Guide => connection.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM document_note_topics WHERE note_id = ?1 AND document_id = ?2)
-                         OR EXISTS(SELECT 1 FROM notes n JOIN document_decks d ON d.deck_id = n.deck_id
-                                   WHERE n.id = ?1 AND d.document_id = ?2)",
-                        params![source.note_id, scope.id], |row| row.get(0),
-                    ).map_err(CommandError::database)?,
-                },
-            };
-            if allowed && repository::source_is_current(connection, &source)? {
+            if permitted.contains(&source.id) && repository::source_is_current(connection, &source)?
+            {
                 result.push(source);
             }
         }
         Ok(result)
     })
+}
+
+#[cfg(test)]
+mod optional_retrieval_tests {
+    use super::*;
+
+    #[test]
+    fn empty_search_and_missing_embedding_profile_do_not_block_chat() {
+        let mut sources = Vec::new();
+        let mut notice = String::new();
+        merge_optional_retrieval(
+            &mut sources,
+            &mut notice,
+            Ok(retrieval::RetrievalResult {
+                hits: Vec::new(),
+                eligible_entries: 0,
+                space_id: String::new(),
+            }),
+        )
+        .unwrap();
+        for code in ["semantic_preparation_required", "ai_task_profile_required"] {
+            merge_optional_retrieval(
+                &mut sources,
+                &mut notice,
+                Err(CommandError::new(code, "not configured")),
+            )
+            .unwrap();
+        }
+        assert!(sources.is_empty());
+        assert!(notice.contains("Do not claim access"));
+    }
+
+    #[test]
+    fn cancellation_revision_and_storage_errors_are_not_fallbacks() {
+        for code in [
+            "ai_request_canceled",
+            "semantic_source_stale",
+            "ai_profile_changed",
+            "database_error",
+            "invalid_semantic_content",
+            "unknown_failure",
+        ] {
+            let error = merge_optional_retrieval(
+                &mut Vec::new(),
+                &mut String::new(),
+                Err(CommandError::new(code, "test failure")),
+            )
+            .unwrap_err();
+            assert_eq!(error.code, code);
+        }
+    }
 }

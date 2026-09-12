@@ -6,18 +6,26 @@
 //! are a replaceable index over those records, never their identity or truth.
 
 pub(crate) mod adapters;
+pub(crate) mod analysis_store;
 pub(crate) mod authoring;
 pub(crate) mod commands;
 pub(crate) mod contracts;
+pub(crate) mod document_view;
+pub(crate) mod evidence;
 pub(crate) mod extraction;
 mod images;
 mod index;
+pub(crate) mod indexing;
+mod parallel;
+pub(crate) mod planning;
 pub(crate) mod preparation;
 mod preparation_store;
 pub(crate) mod relationships;
 pub(crate) mod repository;
 pub(crate) mod retrieval;
 pub(crate) mod runtime;
+mod scope;
+pub(crate) mod snapshot;
 
 pub(crate) use images::load_images;
 pub(crate) use runtime::has_active_tasks;
@@ -36,7 +44,10 @@ pub(crate) fn sanitize_for_device_transfer(
 ) -> Result<(), crate::error::CommandError> {
     connection
         .execute_batch(
-            "DELETE FROM knowledge_artifact_links;
+            "DELETE FROM knowledge_document_views;
+         DELETE FROM knowledge_analysis_windows;
+         DELETE FROM knowledge_unit_evidence;
+         DELETE FROM knowledge_artifact_links;
          DELETE FROM knowledge_units;
          DELETE FROM knowledge_sources;
          DELETE FROM knowledge_preparations;
@@ -47,3 +58,6 @@ pub(crate) fn sanitize_for_device_transfer(
 
 #[cfg(test)]
 mod lifecycle_tests;
+
+#[cfg(test)]
+mod selection_tests;

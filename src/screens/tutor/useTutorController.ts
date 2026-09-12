@@ -6,7 +6,7 @@ import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/comm
 import { cancelLearningTask, listSemanticScopeChoices, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
 import {
   createTutorConversation, deleteTutorConversation, getTutorConversation, listTutorConversations, sendTutorTurn,
-  type ConversationDetail, type ConversationSummary, type TutorMode, type TutorTarget, type TutorTurnInput,
+  type ConversationDetail, type ConversationSummary, type TutorMode, type TutorTarget, type TutorTurn, type TutorTurnInput,
 } from "../../ipc/tutor";
 import { useMaterialPreparation } from "./useMaterialPreparation";
 
@@ -92,6 +92,7 @@ export function useTutorController() {
       if (turn && turn.state !== "running") {
         setPending(null);
         active.current = null;
+        settleDraft(turn.state, request?.text ?? turn.userText);
       }
     } catch (failure: unknown) {
       if (detailLane.isCurrent(token)) setError(getErrorMessage(failure));
@@ -141,6 +142,34 @@ export function useTutorController() {
     setNeedsRefresh(false);
   }
 
+  function changeSources(next: StudyScope): void {
+    if (!canSwitch()) return;
+    const text = draft;
+    newConversation(next);
+    setDraft(text);
+  }
+
+  function settleDraft(state: TutorTurn["state"], text: string): void {
+    if (state === "complete") setDraft((value) => value === text ? "" : value);
+    else if (state !== "running") setDraft((value) => value || text);
+  }
+
+  async function retryTurn(turn: TutorTurn): Promise<void> {
+    const saved = current.current?.turns.at(-1);
+    if (!saved || saved.id !== turn.id || !["failed", "canceled", "interrupted"].includes(saved.state)) {
+      setError("Only the latest failed response can be retried. Send a new message for an earlier question.");
+      return;
+    }
+    if (saved.mode === "hint" && target?.mode !== "hint") {
+      setError("Reopen the current Practice card to request a hint.");
+      return;
+    }
+    // Confirmed terminal failure is a new intent; an ambiguous acknowledgement
+    // uses retryPending with the original identity. Older answers cannot silently
+    // become answers to a newer pending quiz.
+    await send(saved.mode, saved.userText);
+  }
+
   function openContext(next: TutorTarget): void {
     if (!canSwitch()) return;
     setPanelOpen(true);
@@ -164,7 +193,7 @@ export function useTutorController() {
     setPending(turn.state === "running" ? request : null);
     if (turn.state !== "running") {
       active.current = null;
-      setDraft((text) => text === request.text ? "" : text);
+      settleDraft(turn.state, request.text);
     }
     const previous = current.current;
     if (previous?.conversation.id === request.conversationId) {
@@ -285,7 +314,7 @@ export function useTutorController() {
     conversations, profiles, choices, detail, scope, target, panelOpen, draft, profileId, defaultTutorProfileId,
     loading, busy, error, pending, needsRefresh, preparation, includeConversations, setIncludeConversations,
     initialize, refresh, selectConversation,
-    newConversation, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
+    newConversation, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
     send, retryPending, cancel, loadEarlier, removeConversation,
   };
 }

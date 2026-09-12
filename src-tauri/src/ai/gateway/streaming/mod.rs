@@ -285,7 +285,7 @@ impl AiGateway {
         }
         stream.finish()?;
 
-        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
+        if stream.content.trim().is_empty() && stream.tool_arguments_len() == 0 {
             let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
             return Err(empty_stream_failure(finish));
         }
@@ -305,27 +305,19 @@ impl AiGateway {
                 "firstModelOutputMs": first_model_output_ms,
                 "keepaliveEvents": stream.comment_events,
                 "contentBytes": stream.content.len(),
-                "toolArgumentBytes": stream.tool_arguments.len(),
+                "toolArgumentBytes": stream.tool_arguments_len(),
+                "toolCallCount": stream.tool_calls().len(),
                 "reasoningBytesObserved": stream.reasoning_bytes,
                 "usageReported": usage.is_some(),
             }),
         );
-        let message = if stream.tool_arguments.trim().is_empty() {
+        let calls = stream.tool_calls();
+        let message = if calls.is_empty() {
             json!({ "content": stream.content })
         } else {
             json!({
-                "content": if stream.content.trim().is_empty() {
-                    Value::Null
-                } else {
-                    Value::String(stream.content)
-                },
-                "tool_calls": [{
-                    "type": "function",
-                    "function": {
-                        "name": stream.tool_name.unwrap_or_default(),
-                        "arguments": stream.tool_arguments
-                    }
-                }]
+                "content": if stream.content.trim().is_empty() { Value::Null } else { Value::String(stream.content) },
+                "tool_calls": calls
             })
         };
         let mut result = json!({

@@ -7,6 +7,7 @@ import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { UsbSyncCoordinator } from "./components/UsbSyncCoordinator";
 import { TutorProvider } from "./screens/tutor/TutorProvider";
+import { DocumentJobsProvider } from "./controllers/DocumentJobsProvider";
 import { useAppController } from "./controllers/useAppController";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
@@ -92,6 +93,7 @@ function App() {
               </Button>
             </div>
           ) : (
+            <DocumentJobsProvider refreshDecks={controller.refreshDecks} showToast={controller.showToast}>
             <TutorProvider>
               <AmbientBackdrop />
               <div className={shellStyles.shell} data-ui-root="true">
@@ -220,6 +222,7 @@ function App() {
                 <Toast toast={controller.toast} onDismiss={() => controller.setToast(null)} />
               </div>
             </TutorProvider>
+            </DocumentJobsProvider>
           )}
         </TourProvider>
       </AppearanceProvider>
