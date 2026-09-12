@@ -19,73 +19,27 @@ vi.mock("../../../ipc/practice", async (importOriginal) => {
 vi.mock("../../../ipc/tags", () => ({ listTags: vi.fn() }));
 
 const deck: DeckSummary = {
-  id: "a".repeat(32),
-  name: "Anatomy",
-  description: "",
-  sourceNoteCount: 5,
-  generatedCardCount: 6,
-  studyableDueCount: 2,
-  archivedAt: null,
-  createdAt: 1,
-  updatedAt: 1,
-  revision: 3,
+  id: "a".repeat(32), name: "Anatomy", description: "", sourceNoteCount: 5,
+  generatedCardCount: 6, studyableDueCount: 2, archivedAt: null,
+  createdAt: 1, updatedAt: 1, revision: 3,
 };
 const scope: PracticeDeckScope = {
   deckIds: [deck.id],
-  decks: [
-    {
-      id: deck.id,
-      name: deck.name,
-      revision: deck.revision,
-      generatedCardCount: deck.generatedCardCount,
-    },
-  ],
+  decks: [{ id: deck.id, name: deck.name, revision: deck.revision, generatedCardCount: deck.generatedCardCount }],
 };
 const workload: practiceIpc.PracticeWorkloadOverview = {
-  newLimit: 20,
-  reviewLimit: 200,
-  newCompleted: 1,
-  reviewsCompleted: 2,
-  newRemaining: 19,
-  reviewsRemaining: 198,
-  studyableDueReviews: 5,
-  studyableDueNew: 3,
-  scheduledReviews: 0,
-  scheduledNew: 0,
-  omittedDueReviews: 5,
-  omittedDueNew: 3,
-  needsMorePractice: 1,
-  extraAvailable: 8,
+  newLimit: 20, reviewLimit: 200, newCompleted: 1, reviewsCompleted: 2,
+  newRemaining: 19, reviewsRemaining: 198, studyableDueReviews: 5,
+  studyableDueNew: 3, scheduledReviews: 0, scheduledNew: 0,
+  omittedDueReviews: 5, omittedDueNew: 3, needsMorePractice: 1, extraAvailable: 8,
 };
-const tag = {
-  id: "b".repeat(32),
-  name: "Bones",
-  sourceNoteCount: 2,
-  generatedCardCount: 3,
-  studyableDueCount: 1,
-};
+const tag = { id: "b".repeat(32), name: "Bones", sourceNoteCount: 2, generatedCardCount: 3, studyableDueCount: 1 };
 
-function renderSheet(
-  overrides: Partial<React.ComponentProps<typeof PracticeSetupSheet>> = {},
-) {
+function renderSheet(overrides: Partial<React.ComponentProps<typeof PracticeSetupSheet>> = {}) {
   const props: React.ComponentProps<typeof PracticeSetupSheet> = {
-    scope,
-    currentDecks: [deck],
-    initialShuffle: true,
-    onClose: vi.fn(),
-    onStart: vi.fn(),
-    ...overrides,
+    scope, currentDecks: [deck], initialShuffle: true, onClose: vi.fn(), onStart: vi.fn(), ...overrides,
   };
-  return {
-    props,
-    ...render(
-      <LayoutModeProvider>
-        <OverlayProvider>
-          <PracticeSetupSheet {...props} />
-        </OverlayProvider>
-      </LayoutModeProvider>,
-    ),
-  };
+  return { props, ...render(<LayoutModeProvider><OverlayProvider><PracticeSetupSheet {...props} /></OverlayProvider></LayoutModeProvider>) };
 }
 
 // Assert the accessible control, not the implementation's hidden native input.
@@ -98,13 +52,8 @@ describe("PracticeSetupSheet", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.matchMedia = vi.fn().mockReturnValue({
-      matches: false,
-      media: "",
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
+      matches: false, media: "", addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
     });
     vi.mocked(tagsIpc.listTags).mockResolvedValue([tag]);
     vi.mocked(practiceIpc.getPracticeWorkload).mockResolvedValue(workload);
@@ -115,7 +64,8 @@ describe("PracticeSetupSheet", () => {
     const dialog = await screen.findByRole("dialog", { name: "Practice selected decks" });
     expect(within(dialog).getByText("Anatomy")).toBeTruthy();
     expect(within(dialog).getByText(/matching cards must have at least one selected tag/u)).toBeTruthy();
-    expect(within(dialog).getByText("Due reviews")).toBeTruthy();
+    // Dialog presentation is immediate; authoritative workload is a separate async read.
+    expect(await within(dialog).findByText("Due reviews")).toBeTruthy();
     expect(within(dialog).getByText("Omitted new")).toBeTruthy();
     const scheduled = within(dialog).getByRole("radio", { name: /Scheduled study/u });
     const extra = within(dialog).getByRole("radio", { name: /Extra study/u });
@@ -129,8 +79,7 @@ describe("PracticeSetupSheet", () => {
   it("launches the exact displayed tag, shuffle, and explicit extra mode once", async () => {
     const onStart = vi.fn().mockResolvedValue(undefined);
     renderSheet({ onStart });
-    const tagChoice = await screen.findByRole("checkbox", { name: /Bones/u });
-    fireEvent.click(tagChoice);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Bones/u }));
     await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenLastCalledWith([deck.id], [tag.id]));
     fireEvent.click(screen.getByRole("radio", { name: /Extra study/u }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Shuffle cards/u }));
@@ -230,8 +179,7 @@ describe("PracticeSetupSheet", () => {
     vi.mocked(tagsIpc.listTags).mockRejectedValue(new Error("Tags unavailable"));
     const onClose = vi.fn();
     renderSheet({ onClose, onStart: () => pendingStart.promise });
-    const extra = await screen.findByRole("radio", { name: /Extra study/u });
-    fireEvent.click(extra);
+    fireEvent.click(await screen.findByRole("radio", { name: /Extra study/u }));
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
     await waitFor(() => expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true"));
     const retry = screen.getByRole("button", { name: "Retry tags" });
