@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "../icons/Icon";
 import { Alert, AlertDescription, AlertTitle } from "../vendor/shadcn/alert";
 interface InlineNoticeProps { kind?: "info" | "success" | "warning" | "error"; title?: string; children: ReactNode; className?: string; }
-const icons: Record<NonNullable<InlineNoticeProps["kind"]>, IconName> = { info: "info", success: "check", warning: "warning", error: "warning" };
+const icons: Record<NonNullable<InlineNoticeProps["kind"]>, IconName> = { info: "information", success: "check", warning: "warning", error: "warning" };
 export function InlineNotice({ kind = "info", title, children, className }: InlineNoticeProps) {
   return <Alert variant={kind} role={kind === "error" ? "alert" : "status"} className={className}>
     <div className="tw:flex tw:items-start tw:gap-3">
