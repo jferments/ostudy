@@ -1,7 +1,6 @@
 //! Shared interpretation over native evidence IDs. Partial candidates are
 //! checkpointed before targeted repair; native revisions guard every publication.
 pub(crate) mod decode;
-mod envelopes;
 mod schema;
 use super::{
     analysis_store,
@@ -269,7 +268,7 @@ where
             schema: schema::initial(catalog, sources),
         })
         .await
-        .and_then(|value| envelopes::initial(value, catalog, sources));
+        .and_then(|value| decode::initial(value, catalog, sources));
         match decoded {
             Ok(report) => report,
             Err(error) if recoverable_envelope(&error) => {
@@ -283,7 +282,7 @@ where
                     json!({"windowId":analysis_store::window_id(sources,contract)?,"code":error.code,"detail":error.message}),
                 );
                 let value=call(WindowCall{user:format!("{initial_prompt}\nThe prior response failed: {}. Correct this protocol error using the explicit output schema; do not add alternate top-level fields. Keep complete evidence selections and qualifications.",error.message),schema:schema::initial(catalog,sources)}).await?;
-                envelopes::initial(value, catalog, sources)?
+                decode::initial(value, catalog, sources)?
             }
             Err(error) => return Err(error),
         }
@@ -297,7 +296,7 @@ where
             "Repairing only rejected proposals and uncovered sources; admitted siblings remain unchanged.",decode::report_diagnostic(&report));
         let user=format!("{base}\nRepair ONLY these rejected proposal slots and uncovered sources. Do not return successful siblings. The response object has exactly repairs, additionalUnits and noLearningSourceIds, each an array (use [] when unused). Each repairs item supplies slot and a corrected unit, or null if unsupported. additionalUnits may address only uncovered sources.\n<repair-targets>\n{}\n</repair-targets>",report.repair_prompt());
         match call(WindowCall{user,schema:schema::repair(catalog,sources,&report)}).await{
-            Ok(value)=>match envelopes::repair(&report,value,catalog,sources){
+            Ok(value)=>match decode::repair(&report,value,catalog,sources){
                 Ok(repaired)=>report=repaired,
                 Err(_)=>crate::logging::warn_target("ai.knowledge.extraction","knowledge_repair_envelope_rejected",
                     "The repair envelope was invalid; the accepted checkpoint and unresolved draft slots were retained.",decode::report_diagnostic(&report)),

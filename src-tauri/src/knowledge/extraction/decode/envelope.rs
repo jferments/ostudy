@@ -46,6 +46,7 @@ fn combine(
             "The knowledge result collection is empty or exceeds its bound.",
         ));
     }
+    let count = items.len();
     let mut collections = vec![Vec::new(); fields.len()];
     for item in items {
         let object = item.as_object().ok_or_else(|| {
@@ -77,6 +78,12 @@ fn combine(
         .zip(collections)
         .map(|(field, values)| ((*field).to_string(), Value::Array(values)))
         .collect();
+    crate::logging::debug_target(
+        "ai.knowledge.extraction",
+        "knowledge_result_envelopes_combined",
+        "Combined independent proposal collections before native evidence validation.",
+        serde_json::json!({"envelopes":count,"collection":required.unwrap_or("repair")}),
+    );
     Ok(Value::Object(object))
 }
 
@@ -114,5 +121,75 @@ mod tests {
         assert_eq!(merged["repairs"].as_array().unwrap().len(), 2);
         assert_eq!(merged["noLearningSourceIds"], json!(["s1"]));
         assert!(repair(json!([{"unrelated":true}]), 128).is_err());
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use crate::knowledge::{
+        evidence::EvidenceCatalog,
+        extraction::decode::{initial, repair},
+    };
+    use serde_json::{json, Value};
+
+    fn unit(evidence: &str) -> Value {
+        json!({"title":"Sides","kind":"fact","statement":"A triangle has three sides.",
+            "qualifications":[],"topic":"Geometry","importance":"core","evidenceIds":[evidence]})
+    }
+
+    #[test]
+    fn multiple_envelopes_keep_valid_siblings_and_quarantine_invalid_evidence() {
+        let (_, source, _, _) = crate::knowledge::authoring::tests::fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        let report = initial(
+            json!([
+                {"units":[unit("E0")],"noLearningSourceIds":[]},
+                {"units":[unit("E404")],"noLearningSourceIds":[]}
+            ]),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert_eq!(report.accepted.len(), 1);
+        assert_eq!(report.rejected.len(), 1);
+        assert!(!report.is_complete());
+        assert_eq!(
+            report.accepted[0].content.supporting_excerpt,
+            sources[0].text
+        );
+        let fixed = repair(
+            &report,
+            json!([
+                {"repairs":[{"slot":1,"unit":unit("E0")}]},
+                {"repairs":[],"additionalUnits":[],"noLearningSourceIds":[]}
+            ]),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert!(fixed.is_complete());
+        assert_eq!(fixed.accepted.len(), 1);
+    }
+
+    #[test]
+    fn bare_unit_arrays_still_work_and_non_learning_dispositions_survive() {
+        let (_, source, _, _) = crate::knowledge::authoring::tests::fixture();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        assert!(initial(json!([unit("E0")]), &catalog, &sources)
+            .unwrap()
+            .is_complete());
+        let report = initial(
+            json!([
+                {"units":[],"noLearningSourceIds":[sources[0].id]},
+                {"units":[]}
+            ]),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert!(report.is_complete());
+        assert!(report.accepted.is_empty());
     }
 }
