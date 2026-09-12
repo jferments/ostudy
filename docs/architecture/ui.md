@@ -18,7 +18,7 @@ Rust owns durable content, validation, transactions, schedules, history, source 
 
 ## Root composition and state
 
-`src/main.tsx` composes the application providers and imports one global foundation stylesheet. `src/App.tsx` renders lazily selected feature roots. `useAppController` owns the shell's navigation and active-workflow state, dirty guards, practice launch/exit, and checkpoint integration.
+`src/main.tsx` composes the application providers and imports one global foundation stylesheet. `src/App.tsx` renders lazily selected feature roots. `useAppController` owns the shell's navigation and active-workflow state, dirty guards, practice launch/exit, and checkpoint integration. `TutorProvider` owns shared contextual/top-level tutor state; `DocumentJobsProvider` keeps document work alive across navigation.
 
 Visible destination state and an active Practice workflow are separate. A contextual launch is a typed semantic request, not a UI tab selection. Consuming the one-shot launch payload must not unmount the active session. Exit guards run before same-destination navigation can short-circuit.
 
@@ -28,13 +28,14 @@ Independent reads use independent request lanes. An obsolete success or error mu
 
 | Area | Current contract |
 | --- | --- |
-| Main navigation | Flashcards, Study Guides, Documents, Analytics, Settings |
-| Compact navigation | First four directly in the bottom bar; Settings gear in the upper-right app bar; no More menu |
+| Main navigation | Flashcards, Study Guides, Documents, Tutor, Analytics, Settings |
+| Compact navigation | First five directly in the bottom bar; Settings gear in the upper-right app bar; no More menu |
 | Flashcards | Decks and Search/Filter; compact Search label refers to the same workspace |
 | Templates | Full normal Card templates tab in Settings; lazy activation and retained editor state |
 | Transfers | Contextual deck import/export; whole-library recovery and sync in Backup/Sync |
 | Practice | Internal contextual session, not standing navigation |
 | Study Guide reader | Inline workspace preserving main navigation, not a modal |
+| Tutor | Top-level conversations and contextual panels sharing one controller; source-free chat remains available without embeddings |
 
 Selecting Flashcards or Decks returns to the library root, while an open deck's All decks action does the same locally. Selecting Study Guides returns to its library. Unsaved content still requires save/discard protection.
 
@@ -74,7 +75,7 @@ StudyGuidesScreen is the bounded paginated library owner. It handles search/sort
 
 Internal revision badges and standing regeneration controls are not ordinary reader UI. Generation belongs to the retained document's action. The initial generation action changes into an explicit stop control while its task is active. A revisioned generated base is distinct from learner-owned notes and section overrides; conflicts remain visible rather than silently lost.
 
-DocumentsSection gates the native document capability and still uses DocumentsDevelopmentStub as a real unavailable-capability fallback. That component is not dead simply because a configured Linux installation does not show it. DocumentsScreen coordinates current task UI over native document services; do not treat it as authority for parser, provider, or storage policy.
+DocumentsSection gates the native document capability and still uses DocumentsDevelopmentStub as a real unavailable-capability fallback. That component is not dead simply because a configured Linux installation does not show it. DocumentsScreen renders task state over the application-lifetime document controller and native services; it is not authority for parser, provider, or storage policy. Navigation must not cancel durable work by unmounting its view.
 
 ## Overlay lifecycle
 
@@ -82,19 +83,23 @@ OverlayProvider owns the dialog/sheet/menu stack, including parent/depth orderin
 
 Busy/non-dismissible behavior is explicit. Compact overlay layouts account for dynamic viewport, safe areas, and keyboard insets. Features use the shared Dialog/Sheet/Menu/confirmation/overflow primitives, including the narrow compatibility Modal wrapper; they do not hand-write ordinary `window.confirm()`, focus traps, or another dialog stack.
 
-An inline workspace is not forced into that modal policy merely because it is large. Browser `beforeunload` and native active-document close protection remain different mechanisms: a React overlay cannot guarantee a completed decision during all shutdown paths.
+An inline workspace is not forced into that modal policy merely because it is large. Browser `beforeunload` and native active-document close protection remain different mechanisms: a React overlay cannot guarantee a completed decision during all shutdown paths. The shadcn migration has not yet replaced this overlay stack.
 
 ## Styles, tokens, and typography
 
-The only global CSS entry imported by main is `src/ui/foundations/index.css`. It establishes cascade layers, token foundations, base typography, document/root sizing, platform safe-area variables, accessibility utilities, and reduced-motion behavior. New feature/component styling uses CSS Modules, not global stage-named sheets or import-order overrides.
+The only global CSS entry imported by main is `src/ui/foundations/index.css`. It establishes cascade layers, token foundations, base typography, document/root sizing, platform safe-area variables, accessibility utilities, and reduced-motion behavior. It also compiles namespaced `tw:` Tailwind utilities through the official Vite plugin, without importing Preflight or a duplicate reset.
 
-Reference, semantic, and component token sources generate the committed theme artifacts. Themes change values, not feature selectors. Use semantic surface/text/border/emphasis/status roles and named z-index layers; do not hard-code theme-specific colors or arbitrary stacking numbers in feature code.
+Migrated presentation uses Tailwind; unmigrated CSS Modules and specialized rich-content/platform CSS retain explicit ownership. Utilities temporarily compile in the existing components layer so caller-owned feature overrides retain their precedence. Do not add global stage-named sheets or use `!important` to hide precedence problems. The generated Tailwind theme resolves semantic utilities to oStudy tokens without replacing legacy short aliases or creating another dark-mode provider.
+
+Reference, semantic, and component token sources generate the committed theme artifacts. Themes change values, not feature selectors. Use semantic surface/text/border/emphasis/status roles and named z-index layers; do not hard-code theme-specific colors or arbitrary stacking numbers in feature code. Utility names must be complete source literals, not string-interpolated fragments.
+
+Generic components are migrating behind stable oStudy facades to owned shadcn source under `src/ui/vendor/shadcn`. That directory alone imports Base UI. Button, Badge, Skeleton, TextField and NativeSelect have migrated; provider setup and task-model fields consume those facades. Screens may use Tailwind for local layout but not vendor component APIs. The rest of the migration is explicitly tracked in [current implementation](../development/ui-overhaul-current-implementation.md) and [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md).
 
 Interface and card font/scale preferences are independent. IBM Plex Sans is a locally provisioned packaged default with a system fallback. An installed app does not request runtime web fonts; a fresh source build may need to provision uncached assets. Explicit user font choices remain authoritative. Native PDF export owns its own print/font contract.
 
 ## Responsive and accessible presentation
 
-Layout responds to available viewport/container space and input/accessibility capabilities. Wide layouts use a full sidebar and useful multi-column content. Medium remains a labeled-sidebar mode with denser secondary layout. Compact uses four direct bottom destinations, an app-bar Settings action, stacked content, and appropriate sheets.
+Layout responds to available viewport/container space and input/accessibility capabilities. Wide layouts use a full sidebar and useful multi-column content. Medium remains a labeled-sidebar mode with denser secondary layout. Compact uses five direct bottom destinations, an app-bar Settings action, stacked content, and appropriate sheets.
 
 Keep reading measures bounded where unlimited lines would be difficult to scan. Tables can scroll within their own region rather than causing document-level overflow or tiny text. Preserve visible focus, semantic labels, initial/error announcements, topmost dismissal, keyboard alternatives, and touch-sized targets. Respect enlarged text and safe-area/IME insets for fixed/sticky actions.
 
@@ -112,4 +117,4 @@ Test active owners: controllers/request lanes, route reset/dirty guards, overlay
 
 Historical screenshot/performance records remain provenance, not current UI requirements. Remove unused alternate components with their exclusively owned styles/tests while preserving active behavior coverage. Keep versioned routes/checkpoints and actual capability fallbacks. [The cleanup audit](../development/documentation-and-cleanup-audit.md) records the distinction.
 
-Structural enforcement includes IPC, route/smoke, style ownership, token usage, platform and UI policy scripts. None replaces actual compact-width, native, keyboard, touch, and representative manual acceptance. Use [Testing and CI](../development/testing-and-ci.md) and [local handoff](../development/local-testing-and-handoff.md).
+Structural enforcement includes IPC, route/smoke, style ownership, token usage, platform, vendor-import boundaries and compiled Tailwind utility coverage. None replaces actual compact-width, native, keyboard, touch, and representative manual acceptance. Use [Testing and CI](../development/testing-and-ci.md) and [local handoff](../development/local-testing-and-handoff.md).
