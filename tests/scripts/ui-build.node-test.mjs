@@ -8,6 +8,18 @@ import test from "node:test";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 const migratedSources = [
+  "src/ui/primitives/Chip.tsx",
+  "src/ui/primitives/Notification.tsx",
+  "src/ui/vendor/shadcn/notification.tsx",
+  "src/ui/primitives/Progress.tsx",
+  "src/ui/vendor/shadcn/progress.tsx",
+  "src/ui/primitives/EmptyState.tsx",
+  "src/ui/vendor/shadcn/empty.tsx",
+  "src/ui/primitives/InlineNotice.tsx",
+  "src/ui/vendor/shadcn/alert.tsx",
+  "src/ui/vendor/shadcn/tooltip.tsx",
+  "src/ui/vendor/shadcn/dropdown-menu.tsx",
+  "src/ui/vendor/shadcn/modal.tsx",
   "src/ui/vendor/shadcn/button.tsx",
   "src/ui/vendor/shadcn/badge.tsx",
   "src/ui/vendor/shadcn/skeleton.tsx",
