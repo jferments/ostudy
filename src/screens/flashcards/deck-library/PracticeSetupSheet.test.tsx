@@ -88,6 +88,12 @@ function renderSheet(
   };
 }
 
+// Assert the accessible control, not the implementation's hidden native input.
+function expectRadioState(element: HTMLElement, checked: boolean, disabled = false) {
+  expect(element.getAttribute("aria-checked")).toBe(String(checked));
+  if (disabled) expect(element.getAttribute("aria-disabled")).toBe("true");
+}
+
 describe("PracticeSetupSheet", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -108,16 +114,15 @@ describe("PracticeSetupSheet", () => {
     renderSheet();
     const dialog = await screen.findByRole("dialog", { name: "Practice selected decks" });
     expect(within(dialog).getByText("Anatomy")).toBeTruthy();
-    expect(
-      within(dialog).getByText(/matching cards must have at least one selected tag/u),
-    ).toBeTruthy();
+    expect(within(dialog).getByText(/matching cards must have at least one selected tag/u)).toBeTruthy();
     expect(within(dialog).getByText("Due reviews")).toBeTruthy();
     expect(within(dialog).getByText("Omitted new")).toBeTruthy();
     const scheduled = within(dialog).getByRole("radio", { name: /Scheduled study/u });
     const extra = within(dialog).getByRole("radio", { name: /Extra study/u });
-    expect((scheduled as HTMLInputElement).checked).toBe(true);
-    expect((scheduled as HTMLInputElement).disabled).toBe(true);
-    expect((extra as HTMLInputElement).checked).toBe(false);
+    expectRadioState(scheduled, true, true);
+    expectRadioState(extra, false);
+    fireEvent.click(scheduled);
+    expectRadioState(scheduled, true, true);
     expect(within(dialog).getByRole("button", { name: "Start practice" }).hasAttribute("disabled")).toBe(true);
   });
 
@@ -126,26 +131,14 @@ describe("PracticeSetupSheet", () => {
     renderSheet({ onStart });
     const tagChoice = await screen.findByRole("checkbox", { name: /Bones/u });
     fireEvent.click(tagChoice);
-    await waitFor(() =>
-      expect(practiceIpc.getPracticeWorkload).toHaveBeenLastCalledWith(
-        [deck.id],
-        [tag.id],
-      ),
-    );
+    await waitFor(() => expect(practiceIpc.getPracticeWorkload).toHaveBeenLastCalledWith([deck.id], [tag.id]));
     fireEvent.click(screen.getByRole("radio", { name: /Extra study/u }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Shuffle cards/u }));
     expect(screen.getByText(/1 deck, 1 tag, extra mode, shuffle off/u)).toBeTruthy();
     const start = screen.getByRole("button", { name: "Start practice" });
     fireEvent.click(start);
     fireEvent.click(start);
-    await waitFor(() =>
-      expect(onStart).toHaveBeenCalledWith({
-        deckIds: [deck.id],
-        tagIds: [tag.id],
-        shuffle: false,
-        mode: "extra",
-      }),
-    );
+    await waitFor(() => expect(onStart).toHaveBeenCalledWith({ deckIds: [deck.id], tagIds: [tag.id], shuffle: false, mode: "extra" }));
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
@@ -182,38 +175,24 @@ describe("PracticeSetupSheet", () => {
     renderSheet({ onStart });
     unfiltered.resolve({ ...workload, scheduledReviews: 4, scheduledNew: 0 });
     await screen.findByText(/1 deck, 0 tags, scheduled mode/u);
-
     fireEvent.click(await screen.findByRole("checkbox", { name: /Bones/u }));
     expect(screen.queryByText(/1 deck, 0 tags, scheduled mode/u)).toBeNull();
     expect(screen.queryByText("Due reviews")).toBeNull();
     expect(screen.getByRole("button", { name: "Start practice" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
     expect(onStart).not.toHaveBeenCalled();
-
     tagged.resolve({ ...workload, scheduledReviews: 7, scheduledNew: 0 });
     await screen.findByText(/1 deck, 1 tag, scheduled mode/u);
     fireEvent.click(screen.getByRole("button", { name: "Start practice" }));
-    expect(onStart).toHaveBeenCalledWith({
-      deckIds: [deck.id],
-      tagIds: [tag.id],
-      shuffle: true,
-      mode: "scheduled",
-    });
+    expect(onStart).toHaveBeenCalledWith({ deckIds: [deck.id], tagIds: [tag.id], shuffle: true, mode: "scheduled" });
   });
 
   it("clears ready setup data when a valid snapshot becomes stale", async () => {
     const rendered = renderSheet();
     await screen.findByText("Due reviews");
-    rendered.rerender(
-      <LayoutModeProvider>
-        <OverlayProvider>
-          <PracticeSetupSheet
-            {...rendered.props}
-            currentDecks={[{ ...deck, revision: deck.revision + 1 }]}
-          />
-        </OverlayProvider>
-      </LayoutModeProvider>,
-    );
+    rendered.rerender(<LayoutModeProvider><OverlayProvider>
+      <PracticeSetupSheet {...rendered.props} currentDecks={[{ ...deck, revision: deck.revision + 1 }]} />
+    </OverlayProvider></LayoutModeProvider>);
     expect(await screen.findByText(/changed while setup was open/u)).toBeTruthy();
     expect(screen.queryByText("Due reviews")).toBeNull();
     expect(screen.queryByText("Loading tags…")).toBeNull();
@@ -222,31 +201,14 @@ describe("PracticeSetupSheet", () => {
 
   it("opens compact setup at the top, closes with Escape, and restores the opener", async () => {
     window.matchMedia = vi.fn((query: string) => ({
-      matches: query.includes("760"),
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
+      matches: query.includes("760"), media: query, onchange: null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
     }));
     function Harness() {
       const [open, setOpen] = useState(false);
-      return (
-        <>
-          <button type="button" onClick={() => setOpen(true)}>Open setup</button>
-          {open ? (
-            <PracticeSetupSheet
-              scope={scope}
-              currentDecks={[deck]}
-              initialShuffle
-              onClose={() => setOpen(false)}
-              onStart={vi.fn()}
-            />
-          ) : null}
-        </>
-      );
+      return <><button type="button" onClick={() => setOpen(true)}>Open setup</button>
+        {open ? <PracticeSetupSheet scope={scope} currentDecks={[deck]} initialShuffle onClose={() => setOpen(false)} onStart={vi.fn()} /> : null}
+      </>;
     }
     render(<LayoutModeProvider><OverlayProvider><Harness /></OverlayProvider></LayoutModeProvider>);
     const opener = screen.getByRole("button", { name: "Open setup" });
@@ -289,13 +251,8 @@ describe("PracticeSetupSheet", () => {
     for (const [mode, width] of [["wide", 1400], ["medium", 900], ["compact", 390]] as const) {
       window.matchMedia = vi.fn((query: string) => ({
         matches: query.includes("760") ? width <= 760 : query.includes("1180") ? width <= 1180 : false,
-        media: query,
-        onchange: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
+        media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+        addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
       }));
       renderSheet();
       const content = (await screen.findByRole("dialog")).querySelector("[data-layout-mode]");
