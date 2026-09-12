@@ -26,7 +26,7 @@ export const providerStyles = {
 export const guideLibraryStyles = {
   "workspace": "tw:p-5 tw:sm:p-6",
   "toolbar": "tw:mb-5 tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:justify-between tw:gap-5",
-  "search": "tw:flex tw:min-w-0 tw:flex-1 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:min-w-0 tw:[&>label]:flex-1 tw:[&>label]:gap-2 tw:[&>label]:text-sm tw:[&>label]:font-medium",
+  "search": "tw:max-sm:w-full tw:max-sm:flex-[0_1_auto] tw:max-sm:[&>label]:w-full tw:max-sm:[&>label]:max-w-none tw:max-sm:[&>label]:flex-[0_1_auto] tw:flex tw:min-w-0 tw:flex-1 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:min-w-0 tw:[&>label]:flex-1 tw:[&>label]:gap-2 tw:[&>label]:text-sm tw:[&>label]:font-medium",
   "tools": "tw:flex tw:min-w-0 tw:flex-wrap tw:items-end tw:gap-2 tw:[&>label]:grid tw:[&>label]:gap-2 tw:[&>label]:text-sm tw:[&>label]:font-medium",
   "summary": "tw:mb-4 tw:flex tw:flex-wrap tw:justify-between tw:gap-2 tw:text-sm tw:text-muted-foreground",
   "list": "tw:grid tw:min-w-0 tw:gap-3",
@@ -47,7 +47,7 @@ export const guideReaderStyles = {
   "generationButton": "tw:border-destructive/40 tw:bg-destructive-soft tw:text-destructive",
   "stopSign": "tw:grid tw:size-6 tw:place-items-center tw:text-destructive",
   "layout": "tw:grid tw:min-w-0 tw:grid-cols-1 tw:items-start tw:gap-6 tw:xl:grid-cols-[14rem_minmax(0,1fr)]",
-  "contents": "tw:grid tw:min-w-0 tw:gap-1 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:text-sm tw:xl:sticky tw:xl:top-4 tw:xl:max-h-[calc(100dvh-8rem)] tw:xl:overflow-y-auto tw:[&>strong]:mb-3 tw:[&_a]:rounded-lg tw:[&_a]:px-3 tw:[&_a]:py-2 tw:[&_a]:text-muted-foreground tw:[&_a]:no-underline tw:[&_a:hover]:bg-accent tw:[&_a:hover]:text-accent-foreground tw:[&_a:focus-visible]:outline-2 tw:[&_a:focus-visible]:outline-ring",
+  "contents": "tw:grid tw:min-w-0 tw:gap-1 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:text-sm tw:xl:sticky tw:xl:top-4 tw:xl:max-h-[calc(100dvh-8rem)] tw:xl:overflow-y-auto tw:[&>strong]:mb-3 tw:[&_a]:rounded-lg tw:[&_a]:px-3 tw:[&_a]:py-2 tw:[&_a]:text-muted-foreground tw:[&_a]:no-underline tw:[&_a:hover]:underline tw:[&_a:hover]:bg-accent tw:[&_a:hover]:text-accent-foreground tw:[&_a:focus-visible]:outline-2 tw:[&_a:focus-visible]:outline-ring",
   "guide": "tw:grid tw:min-w-0 tw:gap-6",
   "overview": "tw:min-w-0 tw:scroll-mt-6 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-6 tw:shadow-panel tw:[&_h2]:mt-0 tw:[&_h2]:text-2xl tw:[&_h3]:text-lg tw:[&_p]:leading-7 tw:[&_li]:my-2",
   "section": "tw:min-w-0 tw:scroll-mt-6 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-6 tw:shadow-panel",
