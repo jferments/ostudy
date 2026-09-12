@@ -6,15 +6,19 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const [primitive, sharedControls, practice] = await Promise.all([
-  read("src/ui/primitives/Button.module.css"),
+  read("src/ui/vendor/shadcn/button.tsx"),
   read("src/ui/primitives/ControlPatterns.module.css"),
   read("src/screens/practice/Practice.module.css"),
 ]);
 const failures = [];
+const themeBridge = await read("src/ui/tokens/generated/tailwind-theme.css");
+expectContains(primitive, "tw:text-destructive-foreground", "Button destructive foreground");
+expectContains(themeBridge, "--color-primary-foreground: var(--ostudy-color-accent-on)", "Tailwind accent foreground mapping");
+expectContains(themeBridge, "--color-destructive-foreground: var(--ostudy-color-status-danger-on)", "Tailwind destructive foreground mapping");
 
 expectContains(
   primitive,
-  "color: var(--ostudy-color-accent-on)",
+  "tw:text-primary-foreground",
   "Button primitive semantic accent foreground",
 );
 expectContains(

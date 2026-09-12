@@ -51,7 +51,7 @@ node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/verify-xberg-dependency-policy.mjs"
 node "$SCRIPT_DIR/generate-ui-tokens.mjs" --check
 node "$SCRIPT_DIR/verify-ui-token-usage.mjs"
-node --test tests/scripts/ui-theme.test.mjs tests/scripts/ui-import-policy.test.mjs
+node --test tests/scripts/ui-theme.node-test.mjs tests/scripts/ui-import-policy.node-test.mjs
 node "$SCRIPT_DIR/verify-style-ownership.mjs"
 node "$SCRIPT_DIR/verify-button-contrast.mjs"
 node "$SCRIPT_DIR/verify-deck-toolbar-layout.mjs"
@@ -94,6 +94,7 @@ step "Repository script unit tests and owned-class verification"
 python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 node "$SCRIPT_DIR/verify-owned-class-usage.mjs"
 node "$SCRIPT_DIR/verify-ui-boundaries.mjs"
+node --test tests/scripts/ui-build.node-test.mjs
 
 step "Frontend type checking"
 pnpm exec tsc -b --pretty false

@@ -99,9 +99,9 @@ for (const path of sourceFiles) {
         collectClassValues(expression, values, false);
         for (const value of values) {
           for (const token of literalTokens(value)) {
-            if (token === "${}" || approvedGlobalUtilities.has(token)) continue;
+            if (token === "${}" || approvedGlobalUtilities.has(token) || isTailwindUtility(token)) continue;
             failures.push(
-              `${location(sourceFile, node)} emits raw production class ${JSON.stringify(token)}; use a CSS Module value or ownedClassNames with an explicit owner.`,
+              `${location(sourceFile, node)} emits raw production class ${JSON.stringify(token)}; use a CSS Module value, ownedClassNames with an explicit owner, or a complete tw: utility.`,
             );
           }
         }
@@ -214,7 +214,8 @@ function collectClassValues(node, output, inspectFunctionCalls) {
       collectClassValues(node.expression.expression, output, inspectFunctionCalls);
       return;
     }
-    if (inspectFunctionCalls) {
+    // cn is the owned Tailwind composition boundary, not an opaque escape hatch.
+    if (inspectFunctionCalls || (ts.isIdentifier(node.expression) && node.expression.text === "cn")) {
       for (const argument of node.arguments) {
         if (!ts.isArrowFunction(argument) && !ts.isFunctionExpression(argument)) {
           collectClassValues(argument, output, inspectFunctionCalls);
@@ -261,6 +262,12 @@ function validateOwnedValue(value, ownerClasses, approvedUtilities, sourceFile, 
       `${location(sourceFile, node)} uses unowned semantic class ${JSON.stringify(token)} from ${JSON.stringify(value)}.`,
     );
   }
+}
+
+// Tailwind owns these names, not a CSS Module. Actual rule emission is verified
+// by the CSS compilation contract. Interpolated names are never discoverable.
+function isTailwindUtility(token) {
+  return token.startsWith("tw:") && token.length > 3 && !token.includes("${}");
 }
 
 function literalTokens(value) {

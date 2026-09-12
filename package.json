@@ -48,7 +48,8 @@
     "verify:ui-tokens": "node ./scripts/generate-ui-tokens.mjs --check && node ./scripts/verify-ui-token-usage.mjs",
     "verify:platform": "node ./scripts/verify-platform-boundaries.mjs",
     "verify:android": "node ./scripts/verify-android-project.mjs && node ./scripts/verify-android-plugin-routing.mjs",
-    "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs && node ./scripts/verify-platform-boundaries.mjs"
+    "verify:contracts": "node ./scripts/verify-ipc-contract.mjs && node ./scripts/verify-repository-policy.mjs && node ./scripts/verify-platform-boundaries.mjs",
+    "verify:ui-boundaries": "node ./scripts/verify-ui-boundaries.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
@@ -68,7 +69,11 @@
     "@tiptap/extension-underline": "3.28.0",
     "chart.js": "4.5.1",
     "react-chartjs-2": "5.3.1",
-    "marked": "18.0.12"
+    "marked": "18.0.12",
+    "@base-ui/react": "1.6.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.6.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",
@@ -81,7 +86,10 @@
     "jsdom": "29.1.1",
     "typescript": "5.8.3",
     "vite": "7.3.6",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "@tailwindcss/vite": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "@types/node": "24.13.3"
   },
   "description": "A free, local-first flashcard and study application with optional AI-assisted authoring",
   "license": "MIT"

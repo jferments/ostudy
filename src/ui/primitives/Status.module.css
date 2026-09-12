@@ -1,5 +1,4 @@
 @layer components {
-  .badge,
   .chip {
     display: inline-flex;
     width: fit-content;
@@ -15,7 +14,6 @@
     line-height: 1.2;
   }
 
-  .badge { padding: 4px 8px; }
   .chip { min-height: 30px; padding: 5px 10px; }
   .chipButton { font: inherit; cursor: pointer; transition: transform var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard), background var(--ostudy-motion-duration-fast) var(--ostudy-motion-ease-standard); }
   .chipButton:hover { transform: translateY(-1px); }
@@ -27,27 +25,4 @@
   .danger { --status-border: color-mix(in srgb, var(--ostudy-color-status-danger) 45%, var(--ostudy-color-border-subtle)); --status-background: var(--ostudy-color-status-danger-soft); --status-foreground: var(--ostudy-color-status-danger); }
   .info { --status-border: color-mix(in srgb, var(--ostudy-color-status-info) 45%, var(--ostudy-color-border-subtle)); --status-background: var(--ostudy-color-status-info-soft); --status-foreground: var(--ostudy-color-status-info); }
 
-  .skeleton {
-    position: relative;
-    display: block;
-    width: var(--skeleton-width);
-    height: var(--skeleton-height);
-    overflow: hidden;
-    border-radius: var(--skeleton-radius);
-    background: var(--ostudy-color-surface-soft);
-  }
-
-  .skeleton::after {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(100deg, transparent 20%, var(--ostudy-color-surface-highlight) 48%, transparent 76%);
-    content: "";
-    transform: translateX(-100%);
-    animation: skeleton-sweep var(--ostudy-motion-duration-skeleton) var(--ostudy-motion-ease-standard) infinite;
-  }
-
-  :root[data-motion="reduced"] .skeleton::after,
-  :root[data-motion="none"] .skeleton::after { display: none; }
-
-  @keyframes skeleton-sweep { to { transform: translateX(100%); } }
 }

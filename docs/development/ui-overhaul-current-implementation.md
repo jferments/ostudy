@@ -1,50 +1,107 @@
 # UI overhaul implementation after PR #94
 
-Status: implementation in progress on PR #96. The semantic theme adapter and import-boundary checks are implemented; Tailwind build activation and shared-control renderer replacement are the next checkpoint. This is not the completed application-wide redesign.
+Status: Tailwind build integration and the first shared renderer migrations are implemented in PR #96. The application-wide overhaul is not complete. Qualification results belong to the exact-SHA PR evidence, not to this document.
 
-## Baseline and scope
+## Preserved baseline
 
-PR #94 was squash-merged as `fd5659e77671cb814393024c1baa2e0cba9a59d7`, with the same product tree as its qualified final head `34f7b594d0fb618868fb6f5aa020a6a84c043b8f`. Phase 0 assessed the earlier `279430d799b78add3a0885168e011de0b0d47ff8`; implementation preserves the final merged source instead. PR #96 incorporated current main with non-force merge `35ef21cfefc500b7ab47e4f6189e7493de124ab6` and now targets main.
+PR #94 was squash-merged as `fd5659e77671cb814393024c1baa2e0cba9a59d7`.
+PR #96 incorporated that final product tree with non-force merge
+`35ef21cfefc500b7ab47e4f6189e7493de124ab6` and targets main. The original Phase 0
+assessment used the earlier `279430d...` source and is historical evidence.
 
-The current acceptance increment covers roadmap Phases 1–3: the Tailwind build foundation, generated semantic theme/capability bridge, and a narrow shared primitive renderer migration. Settings, navigation, all feature workspaces, diagnostics and help remain in the full roadmap; this increment is not their completed redesign.
+The final Tutor has multi-source selection, contextual chat settings, safe
+Markdown and conversational questions through Send. Source-free general chat
+must not require embeddings. Keep hidden-answer/citation restrictions, source
+permissions, operation identities, private quiz criteria and offline reading.
+Do not restore the removed Quiz me button. `DocumentJobsProvider` retains document
+work across navigation; stop/cancel and nonfatal diagnostics keep their meaning.
+No native, provider, IPC, scheduler, persistence or document-job code changes in
+this renderer increment.
 
-## Updated migration boundaries
+## Implemented boundary: roadmap Phases 1–3
 
-The final Tutor has a multi-source checklist (`TutorSources`), contextual chat settings (`TutorChatSettings`), safe Markdown rendering (`TutorMarkdown`), and conversational questions through Send. Do not restore the removed Quiz me button or require source selection/embeddings for general chat. Source permissions, private question criteria, hint safeguards, operation identities, native requests, and offline conversation reading remain application-owned.
+The official `@tailwindcss/vite` integration compiles static CSS. The build has
+exact pins and a complete lock graph; no browser compiler, CDN or runtime
+registry is used. `components.json` defines the Base UI family and the `tw`
+prefix. TypeScript/Vite aliases agree and preserve the profiling build alias.
 
-`DocumentJobsProvider` preserves document work across route changes. A renderer must not move that lifetime back into a screen, replace cooperative cancellation with unmounting, or turn durable nonfatal diagnostics into error banners. Preserve the single red stop control for running guide generation.
+The token generator owns `tailwind-theme.css`. Color utilities resolve directly
+to oStudy semantic variables; the default Tailwind color palette is disabled.
+Legacy `--muted` and `--accent` keep their old meanings. AppearanceProvider remains
+the theme/capability authority. Root capability variants support coarse input,
+reduced/no motion, no hover, simple materials and forced contrast. The existing
+four themes, platform insets and IME rules remain in place.
 
-The overhaul includes error/retry/empty/loading presentation, contextual help and tours, diagnostics/settings surfaces and shell/sidebar chrome, not only the central study screens. Generic interactions belong in the shared UI layer; domain meaning, native services and application-lifetime state do not move into a component vendor.
+Preflight is not imported. Prefixed utilities prevent collisions with existing
+classes. Utilities initially compile in the existing components layer, not above
+all feature CSS: this preserves caller-owned CSS Module overrides during the
+mixed-renderer stage. Moving them to the final utilities layer requires a later
+caller-override audit. Do not use a global important flag to paper over that issue.
 
-## Implemented foundation checkpoint
+### Migrated production components
 
-`scripts/ui/tailwind-theme.mjs` defines semantic aliases onto existing oStudy tokens. The existing token generator produces and verifies `src/ui/tokens/generated/tailwind-theme.css` together with its previous artifacts. All four theme contracts remain authoritative. The adapter deliberately does not overwrite short legacy properties: `--muted` currently means text, whereas shadcn's muted utility describes a surface; shadcn's accent surface likewise differs from the legacy brand accent. Utilities resolve directly to application-owned variables with `@theme inline`.
+| Public oStudy component | Implementation | Preserved contract |
+| --- | --- | --- |
+| `Button` | Adapted shadcn Base UI Button + CVA | Existing variants/sizes, native button/form behavior, DOM ref, ARIA/data props, disabled/loading state, caller classes |
+| `Badge` | Adapted shadcn Base UI useRender/mergeProps | Span semantics, six status tones and arbitrary text |
+| `Skeleton` | Adapted shadcn Skeleton | Decorative span, dynamic dimensions/radius, reduced/no-motion behavior |
 
-`scripts/verify-ui-boundaries.mjs` uses the existing TypeScript parser to inspect literal imports, re-exports, type imports, import-equals and dynamic import/require calls. Base UI imports belong only in `src/ui/vendor/shadcn`. Vendor imports belong only in that implementation directory and oStudy's primitive, overlay and layout adapters. Features consume the public oStudy components. Normalized relative paths and the `@/` alias cannot bypass the directory boundary.
+Button loading retains the action's accessible name instead of replacing it with
+an anonymous Working label. Disabled/loading controls cannot repeat an action.
+Focus uses a visible outline, and coarse-pointer targets retain their minimum.
+The old Button stylesheet and Badge/Skeleton-exclusive style rules are removed;
+Chip's still-live shared status styles remain. These three shared components now
+benefit their existing callers; raw controls and other primitives are not yet
+migrated.
 
-`check-static.sh` runs the theme/policy regression tests and the import verifier before expensive qualification. The parser-dependent verifier runs after frozen dependency installation. Ten focused Node tests cover theme resolution, alias collisions, invalid mappings, variable normalization and import ownership.
+The source provenance and deliberate adaptations are recorded in
+[the vendor directory](../../src/ui/vendor/shadcn/README.md). Customized shadcn
+source copies need reviewed upstream refreshes; they do not update automatically.
 
-This checkpoint does not yet import the generated Tailwind stylesheet into the application, install a dependency, enable Preflight, or replace a visible control. Keeping it inactive until the build and renderer changes land avoids accidentally changing every existing screen through CSS layer/reset effects.
+## Tests and enforcement
 
-## Acceptance for the current implementation increment
+The TypeScript-parser import verifier limits Base UI to the vendor implementation
+and vendor imports to primitive/overlay/layout adapters. The existing ownership
+verifier accepts namespaced Tailwind utilities while continuing to reject unowned
+old classes. Theme foreground checks now inspect the actual new renderer/mapping
+rather than a deleted stylesheet.
 
-- AC-08: Integrate the exact merged PR #94 tree into PR #96 without losing its planning documents or rewriting shared history; target main afterward.
-- AC-09: Add pinned Tailwind/Vite tooling and a reviewed dependency graph without enabling a second reset or changing unrelated dependencies.
-- AC-10: Generate the semantic theme bridge from existing oStudy token authority, preserving all four themes and avoiding existing short-name collisions. Runtime theme/capability proof follows build activation.
-- AC-11: Enforce vendor/Base UI import ownership before screen migration spreads third-party dependencies.
-- AC-12: Migrate a narrow, real shared primitive boundary with preserved button, loading, accessibility, theme and touch semantics; record exactly which primitives changed.
-- AC-13: Add focused regression coverage, reconcile maintained documentation, and qualify the exact published candidate. Physical-device/visual acceptance and unrun gates must be stated separately.
+The ten Node theme/import-policy tests run explicitly in static qualification as
+`.node-test.mjs` files. Their previous `.test.mjs` names were also discovered by
+Vitest, producing two empty-suite failures despite passing under Node; the naming
+separation fixes that collision without disabling any tests.
 
-## Next implementation boundary
+New Vitest coverage exercises Button form/ref/click/disabled/loading/name
+semantics, all public variants, Badge/Skeleton contracts and prefixed class
+composition. A production Vite/Tailwind CSS test builds in memory, checks every
+utility used by migrated components, all four themes and capability variants,
+and verifies that Tailwind directives are compiled away. This is CSS compilation
+coverage, not a claim of visual or physical-device acceptance.
 
-Activate Tailwind through the reviewed Vite integration, with a complete frozen lockfile and no duplicate reset. Prove the generated theme on actual shared controls behind existing oStudy APIs, starting with Button and other low-risk primitives. Record upstream source provenance and local adaptations: shadcn source copies require reviewed updates; installing a package does not automatically maintain customized copies. Update the existing style/contrast ownership checks alongside their replacement contracts, rather than disabling those checks.
+## Acceptance state
 
-Preserve native element/ref/form semantics, disabled/loading behavior, accessible names, theme contrast, coarse-pointer target sizes and reduced-motion/forced-color behavior. Do not expand into overlays, shell, Settings or Tutor layout before the foundation compiles and its focused tests pass.
+AC-08 preserves merged PR #94 and the main base. AC-09 supplies pinned build
+integration. AC-10 supplies the generated theme/capability bridge. AC-11 enforces
+vendor ownership. AC-12 migrates the three concrete shared controls above.
+AC-13 includes regression coverage and documentation, with exact-source CI and
+manual acceptance tracked separately in the PR. No broader phase is implicitly
+marked complete by the first shared-control migration.
 
-## Validation and rollout
+## Next boundary and remaining scope
 
-Use focused tests and static/fast qualification during implementation. Finish source, documentation and handoff review before terminal full/Linux/Android qualification. Do not update visual baselines merely to conceal a functional regression. Preserve the current native data model, schemas, imports, providers, scheduling and content-rendering safety.
+Phase 4 introduces shared inputs, textarea, checkbox/radio/switch and selectors,
+then applies them to Settings and provider/model configuration. Overlay primitives
+must be stable before replacing their custom focus/Back stack. Later phases cover
+sidebar/navigation, Flashcards/Search, editor, Documents/Guides, Analytics,
+Practice, Tutor, contextual help, diagnostics, errors and transient feedback.
+Progress (including its domain-specific inline content), Chip, Surface and other
+unmigrated primitives keep their existing implementation for now.
 
-Auxiliary source checks are not a substitute for pinned-toolchain GitHub Actions qualification. Record exact tested SHAs and current results in the PR evidence, not as timeless claims here. A passed ancestor Check is historical evidence, not qualification of a newly published candidate.
+Use focused/static/fast checks while iterating. Finish source/docs/handoff review
+before terminal Linux/Android qualification. Visual acceptance must inspect all
+themes, keyboard focus, compact touch targets, enlarged text and preserved screen
+layout. Source rollback is a normal revert of this increment, not a revert of the
+unrelated Tutor/provider baseline. This increment changes no stored-data format.
 
-The detailed sequence remains in [the overhaul roadmap](ui-overhaul-roadmap.md); [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md) owns the renderer boundary. Original Phase 0 acceptance is a historical documentation-only increment, not a restriction against the implementation now requested in PR #96.
+See [the roadmap](ui-overhaul-roadmap.md) and
+[ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md).

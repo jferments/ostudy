@@ -42,6 +42,51 @@ CI failure archives may carry an immutable `git archive` plus commit/tree hashes
 Those are read-only copies of published source, useful for auxiliary inspection;
 they are not source writers, edited candidates, or proof of test success.
 
+### Bounded repair loop and publication checkpoint
+
+After the initial resumption read, keep one active tuple: repository, PR, branch,
+expected parent SHA, parent tree SHA, acceptance increment, and first concrete
+failed command/assertion. Use that known source identity for subsequent reads.
+Do not restart a repository inventory merely because a response is truncated,
+a run is pending, or a new tool call begins. The mandatory pre-publication and
+post-publication ref checks still apply; this rule never permits ignoring drift.
+
+For each failing boundary:
+
+1. Read that failure's log/assertion and only the owning source, immediate callers,
+   tests and contracts needed to fix it.
+2. Prepare one coherent fix and its focused regression. Run the smallest available
+   check. A missing local tool is an unrun local check, not a GitHub outage.
+3. Publish the increment with the expected-parent protocol below. Complete the
+   tree, commit and ref update before beginning another implementation increment.
+4. Verify the remote ref and record the new SHA. Qualify that SHA through Actions.
+5. On failure, return to step 1 with the new concrete failure, not to a full-project
+   reconstruction. Do not rerun the same unchanged candidate without the
+   transient-cause evidence required by the failure policy.
+
+During preparation, keep a small auxiliary publication manifest containing each
+reviewed repository path, file mode, blob SHA, deletions, expected parent/tree and
+any created commit SHA. This is progress metadata, not an executable patch,
+repository ownership marker, source writer or substitute for GitHub. Reuse
+acknowledged blobs instead of resubmitting their unchanged contents. Once a
+coherent set is ready, assembling and publishing it takes priority over more
+optional research, rechecking dependencies or reviewing unrelated files.
+
+A truncated response is a presentation limit. Read the needed range or reuse the
+concrete identifier already returned; do not re-discover the connector or rebuild
+the project state. After an ambiguous mutation acknowledgement, make one targeted
+read of the affected object/ref before deciding whether a retry is necessary.
+Do not blindly repeat writes or abandon a known candidate that GitHub can read.
+Actual head drift is different: inspect the competing commit and reconcile writer
+ownership before continuing, without force-pushing or silently replacing a tree.
+
+Before any handoff, state the verified published SHA, actual qualification and the
+next unfinished boundary. A collection of created blobs is not a published
+implementation. When interrupted, retain the manifest so resumption can complete
+the already reviewed publication instead of repeating its analysis. No status
+message may replace available source publication with a claim of generic
+"GitHub problems"; report a specific failed operation only when one occurred.
+
 ## Expected-parent Git-data publication
 
 Use this sequence for every task-branch commit, including documentation commits:

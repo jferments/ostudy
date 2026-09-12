@@ -20,7 +20,7 @@ Keep effects narrow, declare dependencies accurately, and clean up listeners, ti
 
 Handle empty/loading/error/success states deliberately. Reuse semantic HTML, accessible labels, shared overlays, focus restoration, keyboard access, and visible focus. Check compact touch layouts, themes, text scaling, safe areas, and reduced motion. Do not shrink interactive targets merely to remove visual clutter. Shared UI must not import feature controllers, IPC domains, or Tauri APIs.
 
-Use CSS Modules and semantic tokens under the existing ownership system. The application has one foundation CSS entry point; do not add global feature or stage stylesheets. Reuse the canonical editor adapter/configuration and rich-content serialization; do not create a parallel storage format in a screen.
+Use prefixed (`tw:`) Tailwind utilities and semantic tokens for migrated UI; retain CSS Modules in unmigrated or specialized content code. Import Base UI only inside `src/ui/vendor/shadcn`, and consume it through oStudy primitive/overlay/layout facades. The application has one foundation CSS entry point; do not add global feature or stage stylesheets. Reuse the canonical editor adapter/configuration and rich-content serialization; do not create a parallel storage format in a screen.
 
 Remove obsolete internal behavior end-to-end: UI state, gateways, native commands, request fields, exclusive styles, tests, verifiers, and documentation. Compatibility must name a supported durable-data or external-format consumer and preserve its regression coverage. Bundled frontend/native IPC is not automatically a public external API.
 
