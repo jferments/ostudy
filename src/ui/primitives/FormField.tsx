@@ -10,7 +10,7 @@ import {
 
 import { HelpTrigger } from "../help/HelpProvider";
 import type { HelpTopicId } from "../help/helpRegistry";
-import styles from "./shared.module.css";
+import { cn } from "../internal/cn";
 
 interface FormFieldProps {
   label: string;
@@ -46,15 +46,15 @@ export function FormField({
     .join(" ") || undefined;
 
   return (
-    <label className={`${styles.field} ${className}`.trim()} htmlFor={inputId}>
-      <span className={styles.label}>
-        <span>
+    <div className={cn("tw:grid tw:min-w-0 tw:gap-2", className)}>
+      <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-label tw:font-medium">
+        <label htmlFor={inputId}>
           {label}
           {required ? <span aria-hidden="true"> *</span> : null}
-        </span>
+        </label>
         {helpTopic ? <HelpTrigger topicId={helpTopic} label={`Help for ${label}`} /> : null}
-      </span>
-      {description ? <span id={descriptionId} className={styles.description}>{description}</span> : null}
+      </div>
+      {description ? <span id={descriptionId} className="tw:text-caption tw:leading-relaxed tw:text-muted-foreground">{description}</span> : null}
       {isValidElement(children)
         ? cloneElement(children, {
             id: inputId,
@@ -63,14 +63,14 @@ export function FormField({
             "aria-invalid": error ? true : children.props["aria-invalid"],
           })
         : children}
-      {error ? <span id={errorId} className={styles.error} role="alert">{error}</span> : null}
-    </label>
+      {error ? <span id={errorId} className="tw:text-caption tw:text-destructive" role="alert">{error}</span> : null}
+    </div>
   );
 }
 
 export function FieldGroup({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
-    <fieldset className={styles.fieldGroup}>
+    <fieldset className="tw:m-0 tw:grid tw:gap-4 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-4 tw:[&>legend]:px-2 tw:[&>legend]:text-label tw:[&>legend]:font-medium tw:[&>p]:m-0 tw:[&>p]:text-label tw:[&>p]:text-muted-foreground">
       <legend>{label}</legend>
       {description ? <p>{description}</p> : null}
       {children}
@@ -84,7 +84,7 @@ export function FormStack({
   ...props
 }: FormHTMLAttributes<HTMLFormElement>) {
   return (
-    <form {...props} className={`${styles.formStack} ${className}`.trim()}>
+    <form {...props} className={cn("tw:grid tw:gap-5 tw:[&_label]:grid tw:[&_label]:gap-2", className)}>
       {children}
     </form>
   );
@@ -92,7 +92,7 @@ export function FormStack({
 
 export function FieldError({ children }: { children: ReactNode }) {
   return (
-    <p className={styles.fieldError} role="alert">
+    <p className="tw:mt-2 tw:text-label tw:text-destructive" role="alert">
       {children}
     </p>
   );
@@ -104,7 +104,7 @@ export function SwitchRow({
   ...props
 }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label {...props} className={`${styles.switchRow} ${className}`.trim()}>
+    <label {...props} className={cn("tw:flex tw:min-h-14 tw:items-center tw:justify-between tw:gap-5 tw:py-3 tw:[&_small]:block tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground", className)}>
       {children}
     </label>
   );

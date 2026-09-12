@@ -13,6 +13,10 @@ const migratedSources = [
   "src/ui/vendor/shadcn/skeleton.tsx",
   "src/ui/vendor/shadcn/input.tsx",
   "src/ui/vendor/shadcn/native-select.tsx",
+  "src/ui/vendor/shadcn/form-controls.tsx",
+  "src/ui/vendor/shadcn/tabs.tsx",
+  "src/ui/vendor/shadcn/card.tsx",
+  "src/ui/primitives/FormControls.tsx",
   "src/ui/primitives/Button.tsx",
   "src/screens/settings/AiLlmSettings.tsx",
   "src/screens/settings/DefaultAiModelSettings.tsx",
@@ -51,6 +55,8 @@ test("compiles every migrated utility, all themes and capability variants withou
     const source = await readFile(new URL(`../../${file}`, import.meta.url), "utf8");
     const candidates = new Set(source.match(/tw:[^\s"'`]+/gu));
     for (const candidate of candidates) {
+      // Group/peer names are selector markers, not declarations in their own right.
+      if (/^tw:(?:group|peer)(?:\/[-\w]+)?$/u.test(candidate)) continue;
       const escaped = candidate.replace(/[^a-zA-Z0-9_-]/gu, (character) => `\\${character}`);
       assert.ok(css.includes(`.${escaped}`), `${file}: missing compiled utility ${candidate}`);
     }
