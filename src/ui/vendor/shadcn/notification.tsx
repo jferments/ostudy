@@ -28,7 +28,7 @@ function NotificationContent({ id, message, tone, timeout, busy, action, onDismi
       <Toast.Content className="tw:flex tw:items-start tw:gap-3 tw:p-4">
         <span className={cn("tw:mt-0.5 tw:shrink-0", tone === "error" ? "tw:text-destructive" : tone === "success" ? "tw:text-success" : "tw:text-primary")} aria-hidden="true"><Icon name={tone === "error" ? "warning" : tone === "success" ? "check" : "information"} size={20} /></span>
         <div className="tw:min-w-0 tw:flex-1 tw:space-y-3"><Toast.Description className="tw:text-sm tw:leading-relaxed tw:break-words" />{action}</div>
-        <Toast.Close aria-label="Dismiss notification" render={<Button variant="ghost" size="icon" className="tw:-mr-2 tw:-mt-2" />}><Icon name="close" size={16} /></Toast.Close>
+        <Toast.Close aria-label="Dismiss notification" aria-hidden={false} render={<Button variant="ghost" size="icon" className="tw:-mr-2 tw:-mt-2" />}><Icon name="close" size={16} /></Toast.Close>
       </Toast.Content>
     </Toast.Root>)}
   </Toast.Viewport></Toast.Portal>;
