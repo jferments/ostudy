@@ -11,8 +11,8 @@ const alertVariants = cva("tw:relative tw:w-full tw:rounded-lg tw:border tw:bord
 export function Alert({ className, variant, ...props }: ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
   return <div data-slot="alert" role="alert" className={cn(alertVariants({ variant }), className)} {...props} />;
 }
-export function AlertTitle({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="alert-title" className={cn("tw:mb-1 tw:font-semibold tw:tracking-tight", className)} {...props} />;
+export function AlertTitle({ className, ...props }: ComponentProps<"h3">) {
+  return <h3 data-slot="alert-title" className={cn("tw:mt-0 tw:mb-1 tw:text-base tw:font-semibold tw:tracking-tight", className)} {...props} />;
 }
 export function AlertDescription({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="alert-description" className={cn("tw:min-w-0 tw:break-words tw:[&_p]:m-0 tw:[&_a]:underline tw:[&_a]:underline-offset-4", className)} {...props} />;
