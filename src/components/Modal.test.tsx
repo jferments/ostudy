@@ -1,42 +1,28 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-
 import { Modal } from "./Modal";
-
-function renderModal(onClose = vi.fn()) {
-  render(
-    <Modal title="Confirm action" description="Review the change." onClose={onClose}>
-      <button type="button">Inside action</button>
-    </Modal>,
-  );
-  return onClose;
+function Harness({ onClose }: { onClose: () => void }) {
+  const [open, setOpen] = useState(true);
+  return open ? <Modal title="Confirm action" description="Review the change." onClose={() => { onClose(); setOpen(false); }}><button type="button">Inside action</button></Modal> : null;
 }
-
 describe("Modal", () => {
   it("exposes a labelled modal dialog", () => {
-    renderModal();
-
-    const dialog = screen.getByRole("dialog", { name: "Confirm action" });
-    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    render(<Harness onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog", { name: "Confirm action" }).getAttribute("aria-modal")).toBe("true");
     expect(screen.getByText("Review the change.")).toBeTruthy();
   });
-
-  it("closes from Escape, the close button, and the backdrop", () => {
-    const onClose = renderModal();
-    const dialog = screen.getByRole("dialog", { name: "Confirm action" });
-
-    fireEvent.keyDown(dialog, { key: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
-    fireEvent.mouseDown(dialog);
-
-    expect(onClose).toHaveBeenCalledTimes(3);
+  it.each(["Escape", "close", "backdrop"])("closes once from %s", async (action) => {
+    const onClose = vi.fn(); render(<Harness onClose={onClose} />);
+    const dialog = await screen.findByRole("dialog", { name: "Confirm action" });
+    if (action === "Escape") fireEvent.keyDown(dialog, { key: "Escape" });
+    else if (action === "close") fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    else { const backdrop = document.querySelector('[data-slot="dialog-overlay"]') as HTMLElement; fireEvent.mouseDown(backdrop); fireEvent.click(backdrop); }
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
-
-  it("does not close when content inside the dialog is clicked", () => {
-    const onClose = renderModal();
-
-    fireEvent.mouseDown(screen.getByRole("button", { name: "Inside action" }));
-
-    expect(onClose).not.toHaveBeenCalled();
+  it("does not close when dialog content is clicked", () => {
+    const onClose = vi.fn(); render(<Harness onClose={onClose} />);
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Inside action" })); expect(onClose).not.toHaveBeenCalled();
   });
 });
