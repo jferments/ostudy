@@ -1,7 +1,7 @@
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { IconButton } from "../ui/icons/IconButton";
 import { BrandLockup } from "./Brand";
-import styles from "./MobileAppBar.module.css";
+import { CompactAppHeader } from "../ui/layout/AppFrame";
 
 const TITLES: Record<AppSection, string> = {
   decks: "Flashcards",
@@ -34,10 +34,10 @@ export function MobileAppBar({
   const settingsActive =
     activeWorkflow === null && (section === "settings" || section === "templates");
   return (
-    <header className={styles.bar} data-testid="mobile-app-bar">
+    <CompactAppHeader data-testid="mobile-app-bar">
       <BrandLockup compact />
-      {title ? <strong className={styles.title}>{title}</strong> : <span aria-hidden="true" />}
-      <div className={styles.actions}>
+      {title ? <strong className="tw:truncate tw:text-sm tw:font-semibold tw:text-foreground">{title}</strong> : <span aria-hidden="true" />}
+      <div className="tw:flex tw:min-w-0 tw:justify-end">
         <IconButton
           icon="settings"
           label="Settings"
@@ -47,6 +47,6 @@ export function MobileAppBar({
           onClick={() => void onNavigate("settings")}
         />
       </div>
-    </header>
+    </CompactAppHeader>
   );
 }
