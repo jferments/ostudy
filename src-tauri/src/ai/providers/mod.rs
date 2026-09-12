@@ -8,6 +8,7 @@
 mod deepseek;
 mod dialect;
 mod document;
+pub(crate) mod embeddings;
 mod llama_cpp;
 mod models;
 mod openai_compatible;

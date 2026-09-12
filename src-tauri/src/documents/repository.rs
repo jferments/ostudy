@@ -32,7 +32,12 @@ pub(crate) fn list_document_rows(
                     safe_error_code, safe_error_message, created_at, updated_at,
                     completed_at, archived_at, revision,
                     processing_duration_ms, api_token_count, api_token_usage_complete,
-                    source_format, source_unit_kind, source_unit_count
+                    source_format, source_unit_kind, source_unit_count,
+                    COALESCE((SELECT SUM(w.rejected_count) FROM knowledge_analysis_windows w
+                        WHERE w.document_id = documents.id AND w.state = 'partial'
+                          AND EXISTS(SELECT 1 FROM knowledge_analysis_sources a JOIN knowledge_sources ks ON ks.id = a.source_id
+                              WHERE a.window_id = w.id AND ks.active = 1 AND ks.content_hash = a.source_hash
+                                AND ks.extraction_contract = w.contract)), 0)
              FROM documents
              ORDER BY updated_at DESC, id
              LIMIT ?1",
@@ -67,13 +72,18 @@ pub(crate) fn load_document(
                     completed_at, archived_at, revision,
                     processing_duration_ms, api_token_count, api_token_usage_complete,
                     source_format, source_unit_kind, source_unit_count,
+                    COALESCE((SELECT SUM(w.rejected_count) FROM knowledge_analysis_windows w
+                        WHERE w.document_id = documents.id AND w.state = 'partial'
+                          AND EXISTS(SELECT 1 FROM knowledge_analysis_sources a JOIN knowledge_sources ks ON ks.id = a.source_id
+                              WHERE a.window_id = w.id AND ks.active = 1 AND ks.content_hash = a.source_hash
+                                AND ks.extraction_contract = w.contract)), 0),
                     source_relative_path
              FROM documents WHERE id = ?1",
             [document_id],
             |row| {
                 Ok(StoredDocument {
                     dto: document_row(row)?,
-                    source_relative_path: row.get(36)?,
+                    source_relative_path: row.get(37)?,
                 })
             },
         )
@@ -160,6 +170,7 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         generated_note_count: row.get(20)?,
         generated_card_count: row.get(21)?,
         generated_deck_id: row.get(22)?,
+        analysis_pending_items: row.get(36)?,
         safe_error_code: row.get(23)?,
         safe_error_message: row.get(24)?,
         created_at: row.get(25)?,

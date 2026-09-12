@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { TutorEntryButton } from "../tutor/TutorEntryButton";
 import { RichTextView } from "../../editor/RichTextView";
 import {
   type PracticeCard,
@@ -247,6 +248,17 @@ export function ActivePractice({
           <h1>{current.deckName}</h1>
         </div>
         <div className={ownedClassNames(ownedStyleMaps, "practice-header-actions")}>
+          <TutorEntryButton
+            disabled={busy}
+            className={ownedClassNames(ownedStyleMaps, "practice-header-button")}
+            target={{
+              title: current.deckName,
+              scope: { kind: "deck", id: current.presentation.deckId },
+              focus: { kind: "card", sessionId: session.id, cardId: current.presentation.cardId,
+                noteRevision: current.presentation.noteRevision },
+              mode: revealed ? "explain" : "hint",
+            }}
+          />
           <OverflowMenu
             label="Schedule"
             triggerIcon="timer"

@@ -6,6 +6,8 @@ import { MobileAppBar } from "./components/MobileAppBar";
 import { NavigationSidebar } from "./components/NavigationSidebar";
 import { Toast } from "./components/Toast";
 import { UsbSyncCoordinator } from "./components/UsbSyncCoordinator";
+import { TutorProvider } from "./screens/tutor/TutorProvider";
+import { DocumentJobsProvider } from "./controllers/DocumentJobsProvider";
 import { useAppController } from "./controllers/useAppController";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
@@ -35,6 +37,9 @@ const PracticeScreen = lazy(() =>
 );
 const AnalyticsScreen = lazy(() =>
   import("./screens/AnalyticsScreen").then((module) => ({ default: module.AnalyticsScreen })),
+);
+const TutorScreen = lazy(() =>
+  import("./screens/tutor/TutorWorkspace").then((module) => ({ default: module.TutorScreen })),
 );
 const SettingsScreen = lazy(() =>
   import("./screens/SettingsScreen").then((module) => ({ default: module.SettingsScreen })),
@@ -88,7 +93,8 @@ function App() {
               </Button>
             </div>
           ) : (
-            <>
+            <DocumentJobsProvider refreshDecks={controller.refreshDecks} showToast={controller.showToast}>
+            <TutorProvider>
               <AmbientBackdrop />
               <div className={shellStyles.shell} data-ui-root="true">
                 <IncomingShareCoordinator
@@ -178,6 +184,8 @@ function App() {
                               showToast={controller.showToast}
                             />
                           </PerformanceProfiler>
+                        ) : controller.section === "tutor" ? (
+                          <TutorScreen />
                         ) : controller.section === "analytics" ? (
                           <AnalyticsScreen
                             decks={controller.decks}
@@ -213,7 +221,8 @@ function App() {
 
                 <Toast toast={controller.toast} onDismiss={() => controller.setToast(null)} />
               </div>
-            </>
+            </TutorProvider>
+            </DocumentJobsProvider>
           )}
         </TourProvider>
       </AppearanceProvider>

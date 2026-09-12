@@ -81,9 +81,39 @@ const MIGRATIONS: &[Migration] = &[
         checksum: "a1dfeff574e2d6da17420e0544d0b363de3e232a7793d393024bb4a3432a1019",
         sql: include_str!("../migrations/0009_anki_apkg_staging.sql"),
     },
+    Migration {
+        version: 10,
+        name: "semantic_tutor",
+        checksum: "9d91e43de57c9917444fff479c79a6040d9ee80b1a8a48c8687ea538861b7377",
+        sql: include_str!("../migrations/0010_semantic_tutor.sql"),
+    },
+    Migration {
+        version: 11,
+        name: "semantic_lifecycle",
+        checksum: "dea76f0b89417bea0dc9d34d4f4780a9edea3690c5b4146b391db83ba408bf73",
+        sql: include_str!("../migrations/0011_semantic_lifecycle.sql"),
+    },
+    Migration {
+        version: 12,
+        name: "semantic_eviction_queue",
+        checksum: "b3e26dbd5a7e2e617bc24ae15377dacf046950432256083ba76be8598a52e8fb",
+        sql: include_str!("../migrations/0012_semantic_eviction_queue.sql"),
+    },
+    Migration {
+        version: 13,
+        name: "provider_multi_model",
+        checksum: "3c34380a8312f07646f245351e5edcfd41f80e397442c826a275e70e78d059f1",
+        sql: include_str!("../migrations/0013_provider_multi_model.sql"),
+    },
+    Migration {
+        version: 14,
+        name: "native_knowledge_evidence",
+        checksum: "0207be07db12537a618c2b2a97652a623c5461c553533e7f3ca173788e3dff95",
+        sql: include_str!("../migrations/0014_native_knowledge_evidence.sql"),
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 9;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -369,6 +399,49 @@ fn verify_integrity(connection: &Connection) -> Result<(), String> {
         .map_err(|error| format!("Could not run SQLite integrity_check: {error}"))?;
     if result != "ok" {
         return Err(format!("SQLite integrity_check failed: {result}"));
+    }
+    Ok(())
+}
+
+/// Validate a supported read-only backup before replacing the live library.
+/// Startup still performs the additive migrations on the restored copy.
+pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), CommandError> {
+    if inspect_lineage(connection)
+        .map_err(|message| CommandError::new("invalid_backup", message))?
+        != DatabaseLineage::Public
+    {
+        return Err(CommandError::new(
+            "invalid_backup",
+            "The backup does not have the supported public schema lineage.",
+        ));
+    }
+    let mut statement = connection
+        .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    if rows.is_empty() || rows.len() > MIGRATIONS.len() {
+        return Err(CommandError::new(
+            "invalid_backup",
+            "The backup migration ledger is incomplete or newer than this build.",
+        ));
+    }
+    for (row, migration) in rows.iter().zip(MIGRATIONS) {
+        if row.0 != migration.version || row.1 != migration.name || row.2 != migration.checksum {
+            return Err(CommandError::new(
+                "invalid_backup",
+                "The backup migration ledger does not match this application build.",
+            ));
+        }
     }
     Ok(())
 }

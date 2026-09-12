@@ -1,16 +1,22 @@
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_provider::DocumentProviderCapabilities, database::Database, error::CommandError,
+    ai::document_provider::{load_document_provider_capabilities, DocumentProviderCapabilities},
+    database::Database,
+    error::CommandError,
 };
 
 use super::super::{
-    catalog::ProviderKind,
+    catalog::{AiTaskKind, ProviderKind},
     endpoint_policy::{validate_endpoint, NetworkScope},
     probes::load_document_probe_evidence,
-    profiles::{load_default_profile_request, ProfileSnapshot},
+    profiles::{
+        load_default_profile_request, load_profile_request, load_task_profile_request,
+        ProfileRequestSnapshot, ProfileSnapshot,
+    },
     secrets::CredentialStorage,
 };
 
@@ -39,6 +45,25 @@ struct DocumentUsageAccumulator {
 }
 
 impl DocumentTaskContext {
+    pub(crate) fn for_tutor_profile(
+        database: &Database,
+        profile_id: &str,
+    ) -> Result<Self, CommandError> {
+        context_from_request(database, load_profile_request(database, profile_id)?)?
+            .with_saved_capabilities(database)
+    }
+
+    fn with_saved_capabilities(mut self, database: &Database) -> Result<Self, CommandError> {
+        let capabilities = load_document_provider_capabilities(
+            database,
+            &self.profile_id,
+            &self.provider_kind,
+            &self.model_id,
+        )?;
+        self.apply_provider_capabilities(&capabilities);
+        Ok(self)
+    }
+
     pub(crate) fn apply_provider_capabilities(
         &mut self,
         capabilities: &DocumentProviderCapabilities,
@@ -52,20 +77,49 @@ impl DocumentTaskContext {
             "ai.document.reasoning",
             "document_reasoning_resolved",
             "Resolved the profile's reasoning preference against current model metadata.",
-            json!({
-                "provider": self.provider_kind.as_str(),
-                "model": self.model_id.as_str(),
-                "profileId": self.profile_id.as_str(),
-                "requestedEffort": self.requested_reasoning_effort.as_str(),
-                "effectiveEffort": self.reasoning_effort.as_str(),
-                "recordedEffort": recorded_reasoning_effort.as_deref(),
-            }),
+            json!({"provider": self.provider_kind.as_str(), "model": self.model_id.as_str(),
+                "profileId": self.profile_id.as_str(), "requestedEffort": self.requested_reasoning_effort.as_str(),
+                "effectiveEffort": self.reasoning_effort.as_str(), "recordedEffort": recorded_reasoning_effort.as_deref()}),
         );
     }
 
-    pub(super) fn completion_token_ceiling(&self, visible_tokens: usize) -> usize {
+    pub(crate) fn completion_token_ceiling(&self, visible_tokens: usize) -> usize {
         self.capabilities
             .completion_token_ceiling(&self.reasoning_effort, visible_tokens)
+    }
+
+    pub(crate) fn context_window_tokens(&self) -> Option<usize> {
+        self.capabilities.context_window_tokens
+    }
+
+    pub(crate) fn contract_identity(&self) -> Result<String, CommandError> {
+        let contract = serde_json::to_string(&(
+            &self.provider_kind,
+            &self.profile.base_url,
+            &self.model_id,
+            &self.reasoning_effort,
+            self.capabilities.planning_fingerprint(),
+        ))
+        .map_err(CommandError::serialization)?;
+        Ok(format!("{:x}", Sha256::digest(contract.as_bytes())))
+    }
+
+    pub(crate) fn ensure_current(&self, database: &Database) -> Result<(), CommandError> {
+        let current = load_profile_request(database, &self.profile_id)?;
+        if current.profile.revision != self.profile_revision
+            || current.profile.credential_epoch != self.credential_epoch
+            || current.profile.base_url != self.profile.base_url
+            || current.credential_storage != self.credential_storage
+        {
+            return Err(CommandError::new(
+                "ai_profile_changed",
+                "The selected AI provider connection changed during this task. Review the provider and retry.",
+            ));
+        }
+        // The active model/reasoning pair belongs to the task assignment, not
+        // the provider record. Validate the snapshot captured for this task;
+        // the provider's legacy model field is intentionally irrelevant here.
+        self.profile.validate_for_provider_request()
     }
 
     pub(crate) fn usage_summary(&self) -> (Option<i64>, bool) {
@@ -103,7 +157,23 @@ impl DocumentTaskContext {
 pub(crate) fn load_document_task_context(
     database: &Database,
 ) -> Result<DocumentTaskContext, CommandError> {
-    let request = load_default_profile_request(database)?;
+    context_from_request(database, load_default_profile_request(database)?)
+}
+
+pub(crate) fn load_tutor_task_context(
+    database: &Database,
+) -> Result<DocumentTaskContext, CommandError> {
+    context_from_request(
+        database,
+        load_task_profile_request(database, AiTaskKind::Tutor)?,
+    )?
+    .with_saved_capabilities(database)
+}
+
+fn context_from_request(
+    database: &Database,
+    request: ProfileRequestSnapshot,
+) -> Result<DocumentTaskContext, CommandError> {
     let profile = request.profile;
     profile.validate_for_provider_request()?;
     let endpoint = validate_endpoint(
@@ -112,29 +182,20 @@ pub(crate) fn load_document_task_context(
         profile.allow_insecure_http,
     )?;
     let evidence = load_document_probe_evidence(database, &profile)?;
-
     if profile.provider_kind == ProviderKind::Openrouter && !evidence.probe_matches {
-        return Err(CommandError::new(
-            "ai_document_model_not_verified",
-            "Test this OpenRouter profile again before document generation. The selected model must pass ostudy's representative document structured-output contract.",
-        ));
+        return Err(CommandError::new("ai_document_model_not_verified",
+            "Test this OpenRouter profile again before using learning tools. The selected model must pass ostudy's representative structured-output contract."));
     }
     if evidence.probe_matches && !evidence.document_generation_schema_supported {
-        return Err(CommandError::new(
-            "ai_document_model_not_verified",
-            "The selected AI model did not pass ostudy's representative document structured-output contract. Test the profile again or choose another model.",
-        ));
+        return Err(CommandError::new("ai_document_model_not_verified",
+            "The selected AI model did not pass ostudy's representative document structured-output contract. Test the profile again or choose another model."));
     }
-
-    let include_page_images = profile.provider_kind == ProviderKind::LlamaCpp
-        && evidence.probe_matches
-        && evidence.image_input_supported;
+    let include_page_images = evidence.probe_matches && evidence.image_input_supported;
     let requested_reasoning_effort = profile.reasoning_effort.clone();
     let capabilities = DocumentProviderCapabilities::conservative(
         profile.provider_kind.as_str(),
         &profile.model_id,
     );
-
     Ok(DocumentTaskContext {
         profile_id: profile.id.clone(),
         provider_kind: profile.provider_kind.as_str().to_string(),
@@ -157,68 +218,5 @@ fn network_scope_name(scope: NetworkScope) -> &'static str {
         NetworkScope::Local => "local",
         NetworkScope::Lan => "lan",
         NetworkScope::Cloud => "cloud",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai::{
-        catalog::AuthMode,
-        document_provider::{DocumentReasoningCapabilities, StructuredOutputStrategy},
-    };
-
-    #[test]
-    fn completion_budget_delegates_to_the_negotiated_provider_capability_model() {
-        let profile = ProfileSnapshot {
-            id: "a".repeat(32),
-            provider_kind: ProviderKind::Openrouter,
-            base_url: "https://openrouter.ai/api/v1/".to_string(),
-            model_id: "openai/example".to_string(),
-            reasoning_effort: "high".to_string(),
-            auth_mode: AuthMode::Bearer,
-            enabled: true,
-            allow_insecure_http: false,
-            require_zero_data_retention: false,
-            request_timeout_ms: 60_000,
-            credential_epoch: 0,
-            revision: 1,
-        };
-        let mut task = DocumentTaskContext {
-            profile_id: profile.id.clone(),
-            provider_kind: "openrouter".to_string(),
-            model_id: profile.model_id.clone(),
-            profile_revision: 1,
-            credential_epoch: 0,
-            network_scope: "cloud".to_string(),
-            include_page_images: false,
-            requested_reasoning_effort: profile.reasoning_effort.clone(),
-            reasoning_effort: "none".to_string(),
-            credential_storage: CredentialStorage::None,
-            capabilities: DocumentProviderCapabilities::conservative(
-                "openrouter",
-                &profile.model_id,
-            ),
-            profile,
-            usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
-        };
-        task.apply_provider_capabilities(&DocumentProviderCapabilities {
-            provider_kind: "openrouter".to_string(),
-            model_id: task.model_id.clone(),
-            context_window_tokens: Some(128_000),
-            image_input: false,
-            usage_reporting: true,
-            structured_output: StructuredOutputStrategy::JsonSchema,
-            reasoning: Some(DocumentReasoningCapabilities {
-                supported_efforts: Some(vec!["high".to_string()]),
-                default_effort: Some("high".to_string()),
-                default_enabled: Some(true),
-                supports_max_tokens: false,
-                mandatory: false,
-            }),
-        });
-        assert_eq!(task.requested_reasoning_effort, "high");
-        assert_eq!(task.reasoning_effort, "high");
-        assert_eq!(task.completion_token_ceiling(2_000), 10_000);
     }
 }

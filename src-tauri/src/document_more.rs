@@ -121,7 +121,6 @@ async fn generate_more_impl(
 
     let source = context.source_descriptor()?;
     source.validate()?;
-    let outline = load_outline(database, &input.document_id)?;
     let chunks = document_store::load_semantic_chunks(database, &input.document_id)?;
     if chunks.is_empty() {
         return Err(CommandError::new(
@@ -129,12 +128,6 @@ async fn generate_more_impl(
             "The retained document has no semantic source chunks available for another generation pass.",
         ));
     }
-    let learning_plan =
-        ensure_learning_plan_for_outline(database, &input.document_id, &source, &outline, &chunks)?;
-    let existing_coverage =
-        load_existing_coverage(database, &context.deck_id, MAX_EXISTING_COVERAGE_CHARS)?;
-    let second_pass_outline = second_pass_outline(outline, &existing_coverage);
-
     let mut task = document_intelligence::load_document_task_context(database)?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
@@ -151,6 +144,35 @@ async fn generate_more_impl(
         &task.reasoning_effort,
         calibration,
     )?;
+    let extraction_backend: String = database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT extraction_backend FROM documents WHERE id = ?1",
+                [&input.document_id],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)
+    })?;
+    let outline = crate::document_outline_service::ensure_document_outline(
+        crate::document_outline_service::EnsureDocumentOutlineInput {
+            database,
+            paths,
+            runtime,
+            task: &task,
+            document_id: &input.document_id,
+            extraction_backend: &extraction_backend,
+            source: &source,
+            chunks: &chunks,
+            plan,
+        },
+    )
+    .await?;
+    let learning_plan =
+        ensure_learning_plan_for_outline(database, &input.document_id, &source, &outline, &chunks)?;
+    let existing_coverage =
+        load_existing_coverage(database, &context.deck_id, MAX_EXISTING_COVERAGE_CHARS)?;
+    let second_pass_outline = second_pass_outline(outline, &existing_coverage);
+
     let windows = build_partitioned_semantic_windows(
         &chunks,
         plan,
@@ -167,16 +189,18 @@ async fn generate_more_impl(
                 .max(chunk.full_text.chars().count().div_ceil(4)),
         )
     });
+    let semantic_work = crate::knowledge::planning::estimate(&chunks, task.include_page_images);
     let budget = document_scale::validate_automatic_job_calibrated(
         source.unit_count,
         estimated_source_tokens,
         plan,
-        0,
+        semantic_work.requests,
         windows.len(),
         document_scale::DocumentBudgetContext {
             capabilities: &capabilities,
             reasoning_effort: &task.reasoning_effort,
             calibration,
+            semantic_image_count: semantic_work.images,
         },
     )?;
     crate::logging::info(
@@ -459,34 +483,6 @@ fn load_context(
     })
 }
 
-fn load_outline(
-    database: &Database,
-    document_id: &str,
-) -> Result<document_intelligence::DocumentOutline, CommandError> {
-    let json = database.with_connection(|connection| {
-        connection
-            .query_row(
-                "SELECT outline_json FROM document_outlines WHERE document_id = ?1",
-                [document_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(CommandError::database)?
-            .ok_or_else(|| {
-                CommandError::new(
-                    "document_outline_missing",
-                    "The retained document outline is missing. Retry normal generation to rebuild the document before requesting more cards.",
-                )
-            })
-    })?;
-    serde_json::from_str(&json).map_err(|_| {
-        CommandError::new(
-            "document_outline_invalid",
-            "The retained document outline could not be read. Rebuild the document before requesting more cards.",
-        )
-    })
-}
-
 fn load_existing_coverage(
     database: &Database,
     deck_id: &str,
@@ -639,6 +635,7 @@ mod tests {
         let payload = build_append_payload(
             "Physiology",
             &[SourceGroundedGeneratedCard {
+                knowledge_support: Vec::new(),
                 card: serde_json::json!({
                     "type": "basic",
                     "front": "Q",

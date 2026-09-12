@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 1;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 3;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 4;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 1;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
@@ -94,10 +94,20 @@ pub(crate) struct StudyGuideVisualExplanation {
     pub explanation: String,
 }
 
+/// Internal generation/checkpoint envelope, never the reader's content format.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GroundedStudyGuideSection {
+    pub content: StudyGuideSectionContent,
+    pub knowledge_support: Vec<crate::knowledge::authoring::UnitSupport>,
+    pub catalog_fingerprint: String,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct StudyGuideSectionDraft {
     pub topic_id: String,
     pub content: StudyGuideSectionContent,
+    pub knowledge_support: Vec<crate::knowledge::authoring::UnitSupport>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -259,6 +269,10 @@ pub(crate) fn publish_document_study_guide(
         ));
     }
     let normalized_overview = normalize_overview(overview);
+    let knowledge_by_topic = section_drafts
+        .iter()
+        .map(|draft| (draft.topic_id.clone(), draft.knowledge_support.clone()))
+        .collect::<HashMap<_, _>>();
     let sections = normalize_complete_sections(&plan, section_drafts)?;
     let overview_json = serialize_json(&normalized_overview)?;
     let overview_text = overview_plain_text(&normalized_overview);
@@ -418,6 +432,14 @@ pub(crate) fn publish_document_study_guide(
             ));
         }
 
+        for (topic_id, support) in &knowledge_by_topic {
+            if support.is_empty() { continue; } // Legacy/manual publication fixtures have no invented provenance.
+            crate::knowledge::authoring::publish_artifact_links(&transaction, document_id,
+                &crate::knowledge::adapters::SourceSeed {
+                    kind: crate::knowledge::contracts::SourceKind::Guide,
+                    owner_id: guide_id.clone(), parent_key: topic_id.clone(),
+                }, support, "explains", now)?;
+        }
         transaction.commit().map_err(CommandError::database)
     })?;
     load_document_study_guide(database, &guide_id)
@@ -1343,6 +1365,7 @@ mod tests {
                 key_concepts: plan.key_concepts.clone(),
             },
             vec![StudyGuideSectionDraft {
+                knowledge_support: Vec::new(),
                 topic_id: plan.topics[0].id.clone(),
                 content: content(),
             }],

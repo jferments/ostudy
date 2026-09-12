@@ -70,6 +70,8 @@ pub(crate) struct DocumentScalePlan {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DocumentJobBudget {
     pub estimated_tokens: usize,
+    pub semantic_window_count: usize,
+    pub semantic_token_allowance: usize,
     pub ceiling_tokens: AggregateTokenCeiling,
     pub generation_card_capacity: usize,
     pub context_window_tokens: Option<usize>,
@@ -233,6 +235,7 @@ pub(crate) struct DocumentBudgetContext<'a> {
     pub capabilities: &'a DocumentProviderCapabilities,
     pub reasoning_effort: &'a str,
     pub calibration: DocumentCostCalibration,
+    pub semantic_image_count: usize,
 }
 
 #[cfg(test)]
@@ -240,7 +243,7 @@ pub(crate) fn validate_automatic_job(
     source_unit_count: usize,
     source_tokens: usize,
     plan: DocumentScalePlan,
-    outline_window_count: usize,
+    semantic_window_count: usize,
     generation_window_count: usize,
     provider_kind: &str,
 ) -> Result<DocumentJobBudget, CommandError> {
@@ -248,12 +251,13 @@ pub(crate) fn validate_automatic_job(
         source_unit_count,
         source_tokens,
         plan,
-        outline_window_count,
+        semantic_window_count,
         generation_window_count,
         DocumentBudgetContext {
             capabilities: &DocumentProviderCapabilities::conservative(provider_kind, "unknown"),
             reasoning_effort: "none",
             calibration: DocumentCostCalibration::default(),
+            semantic_image_count: 0,
         },
     )
 }
@@ -262,7 +266,7 @@ pub(crate) fn validate_automatic_job_calibrated(
     source_unit_count: usize,
     source_tokens: usize,
     plan: DocumentScalePlan,
-    outline_window_count: usize,
+    semantic_window_count: usize,
     generation_window_count: usize,
     context: DocumentBudgetContext<'_>,
 ) -> Result<DocumentJobBudget, CommandError> {
@@ -270,6 +274,7 @@ pub(crate) fn validate_automatic_job_calibrated(
         capabilities,
         reasoning_effort: effective_reasoning_effort,
         calibration,
+        semantic_image_count,
     } = context;
     if source_unit_count > MAX_SUPPORTED_SOURCE_UNITS {
         return Err(CommandError::new(
@@ -284,15 +289,16 @@ pub(crate) fn validate_automatic_job_calibrated(
         .saturating_mul(plan.max_cards_per_window)
         .min(10_000);
 
-    let outline_source_estimate = source_tokens
-        .saturating_add(outline_window_count.saturating_mul(plan.outline_window_overlap_tokens));
-    let outline_prompt = calibration.calibrated_prompt_tokens(outline_source_estimate, 0);
-    let outline_completion = capabilities.completion_token_ceiling(
+    // This argument now counts native evidence-analysis batches. Outline view
+    // windows are local projections and do not imply raw-source provider calls.
+    let semantic_prompt = calibration.calibrated_prompt_tokens(source_tokens, semantic_image_count);
+    let semantic_completion = capabilities.completion_token_ceiling(
         effective_reasoning_effort,
-        OUTLINE_VISIBLE_COMPLETION_TOKENS,
+        crate::knowledge::extraction::EXTRACTION_COMPLETION_TOKENS,
     );
-    let outline_fixed =
-        outline_window_count.saturating_mul(1_500_usize.saturating_add(outline_completion));
+    let semantic_token_allowance = semantic_prompt.saturating_add(
+        semantic_window_count.saturating_mul(1_800_usize.saturating_add(semantic_completion)),
+    );
 
     let generation_source_estimate = source_tokens.saturating_add(
         generation_window_count.saturating_mul(plan.generation_window_overlap_tokens),
@@ -306,14 +312,12 @@ pub(crate) fn validate_automatic_job_calibrated(
     );
     let generation_fixed =
         generation_window_count.saturating_mul(1_800_usize.saturating_add(generation_completion));
-    let compact_repair_reserve = outline_window_count
-        .saturating_mul(900)
-        .saturating_add(generation_window_count.saturating_mul(1_200));
+    let compact_repair_reserve =
+        semantic_token_allowance.saturating_add(generation_window_count.saturating_mul(1_200));
     let curation_batches = generation_card_capacity.div_ceil(32);
     let curation_reserve = curation_batches.saturating_mul(2_500);
     let global_synthesis_reserve = 12_000;
-    let estimated_tokens = outline_prompt
-        .saturating_add(outline_fixed)
+    let estimated_tokens = semantic_token_allowance
         .saturating_add(generation_prompt)
         .saturating_add(generation_fixed)
         .saturating_add(compact_repair_reserve)
@@ -322,6 +326,8 @@ pub(crate) fn validate_automatic_job_calibrated(
 
     Ok(DocumentJobBudget {
         estimated_tokens,
+        semantic_window_count,
+        semantic_token_allowance,
         ceiling_tokens: AggregateTokenCeiling::Windowed,
         generation_card_capacity,
         context_window_tokens: capabilities.context_window_tokens,
@@ -453,5 +459,38 @@ mod tests {
                 "document_generation_unit_limit"
             );
         }
+    }
+    #[test]
+    fn semantic_requests_and_image_evidence_include_one_bounded_repair_allowance() {
+        let caps = capabilities("openrouter", Some(100_000));
+        let plan = DocumentScalePlan::for_provider(138, "openrouter");
+        let budget = |requests, images| {
+            validate_automatic_job_calibrated(
+                138,
+                10_000,
+                plan,
+                requests,
+                3,
+                DocumentBudgetContext {
+                    capabilities: &caps,
+                    reasoning_effort: "none",
+                    calibration: DocumentCostCalibration {
+                        prompt_multiplier_milli: 1_000,
+                        image_prompt_tokens: 900,
+                        sample_count: 5,
+                    },
+                    semantic_image_count: images,
+                },
+            )
+            .unwrap()
+        };
+        let base = budget(1, 0);
+        let more = budget(2, 0);
+        assert_eq!(more.semantic_window_count, 2);
+        assert_eq!(
+            more.estimated_tokens - base.estimated_tokens,
+            2 * (more.semantic_token_allowance - base.semantic_token_allowance)
+        );
+        assert_eq!(budget(1, 2).estimated_tokens - base.estimated_tokens, 3_600);
     }
 }

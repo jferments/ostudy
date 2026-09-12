@@ -105,6 +105,7 @@ fn publish(
             key_concepts: plan.key_concepts.clone(),
         },
         vec![StudyGuideSectionDraft {
+            knowledge_support: Vec::new(),
             topic_id: plan.topics[0].id.clone(),
             content: section_content(overview),
         }],

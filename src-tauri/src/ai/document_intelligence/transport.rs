@@ -7,6 +7,7 @@ use crate::{
         providers,
     },
     error::CommandError,
+    task_cancellation::CancellationSignal,
 };
 
 use super::super::AiRuntimeState;
@@ -18,7 +19,7 @@ use super::{
 
 /// Provider-neutral structured task request after a domain module has selected
 /// and bounded its canonical source material.
-pub(super) struct JsonTaskRequest<'a> {
+pub(crate) struct JsonTaskRequest<'a> {
     pub system_prompt: &'a str,
     pub user_text: &'a str,
     pub schema: &'a Value,
@@ -31,6 +32,31 @@ pub(super) async fn request_json(
     task: &DocumentTaskContext,
     request: JsonTaskRequest<'_>,
 ) -> Result<Value, CommandError> {
+    request_json_inner(runtime, task, request, None).await
+}
+
+pub(crate) async fn request_json_cancellable(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    request: JsonTaskRequest<'_>,
+    cancellation: &CancellationSignal,
+) -> Result<Value, CommandError> {
+    request_json_inner(runtime, task, request, Some(cancellation)).await
+}
+
+async fn request_json_inner(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    request: JsonTaskRequest<'_>,
+    cancellation: Option<&CancellationSignal>,
+) -> Result<Value, CommandError> {
+    ensure_context_budget(task, &request)?;
+    crate::logging::debug_target("ai.contract", "structured_request_prepared",
+        "Prepared the same explicit output contract for model instructions and provider schema enforcement.",
+        json!({"provider":task.provider_kind,"model":task.model_id,
+            "schemaFingerprint":crate::ai::structured_output::fingerprint(request.schema),
+            "schemaBytes":request.schema.to_string().len(),"outputBudget":request.max_tokens,
+            "imageCount":request.images.len()}));
     let profile = task.profile();
     let credential =
         runtime
@@ -61,29 +87,57 @@ pub(super) async fn request_json(
         ensure_request_size(compatibility)?;
     }
 
-    let first = runtime
-        .gateway
-        .post_document_json(
-            prepared.url.clone(),
-            bearer,
-            &prepared.body,
-            profile.request_timeout_ms,
-            MAX_COMPLETION_BYTES,
-        )
-        .await;
+    let first = if let Some(cancellation) = cancellation {
+        runtime
+            .gateway
+            .post_task_json(
+                prepared.url.clone(),
+                bearer,
+                &prepared.body,
+                profile.request_timeout_ms,
+                MAX_COMPLETION_BYTES,
+                cancellation,
+            )
+            .await
+    } else {
+        runtime
+            .gateway
+            .post_document_json(
+                prepared.url.clone(),
+                bearer,
+                &prepared.body,
+                profile.request_timeout_ms,
+                MAX_COMPLETION_BYTES,
+            )
+            .await
+    };
     let response = match first {
         Err(first_error) if first_error.safe.code == "ai_http_bad_request" => {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
-                runtime
-                    .gateway
-                    .post_document_json(
-                        prepared.url.clone(),
-                        bearer,
-                        compatibility,
-                        profile.request_timeout_ms,
-                        MAX_COMPLETION_BYTES,
-                    )
-                    .await
+                if let Some(cancellation) = cancellation {
+                    runtime
+                        .gateway
+                        .post_task_json(
+                            prepared.url.clone(),
+                            bearer,
+                            compatibility,
+                            profile.request_timeout_ms,
+                            MAX_COMPLETION_BYTES,
+                            cancellation,
+                        )
+                        .await
+                } else {
+                    runtime
+                        .gateway
+                        .post_document_json(
+                            prepared.url.clone(),
+                            bearer,
+                            compatibility,
+                            profile.request_timeout_ms,
+                            MAX_COMPLETION_BYTES,
+                        )
+                        .await
+                }
             } else {
                 Err(first_error)
             }
@@ -93,15 +147,33 @@ pub(super) async fn request_json(
     .map_err(gateway_to_command)?;
 
     record_document_usage(task, &response);
-    ensure_document_response_not_blocked(&response)?;
-    let finish_reason = response
-        .pointer("/choices/0/finish_reason")
-        .and_then(Value::as_str);
+    ensure_document_response_complete(&response)?;
     match providers::decode_document_output(&prepared, &response) {
         Ok(value) => Ok(value),
-        Err(_) if finish_reason == Some("length") => Err(truncated_output_error()),
         Err(failure) => Err(output_error(failure.message)),
     }
+}
+
+fn ensure_context_budget(
+    task: &DocumentTaskContext,
+    request: &JsonTaskRequest<'_>,
+) -> Result<(), CommandError> {
+    let system =
+        crate::ai::structured_output::system_with_schema(request.system_prompt, request.schema);
+    let upper_bound = system
+        .len()
+        .saturating_add(request.user_text.len())
+        .saturating_add(request.images.len().saturating_mul(8192))
+        .saturating_add(request.max_tokens)
+        .saturating_add(1024);
+    if task
+        .context_window_tokens()
+        .is_some_and(|limit| upper_bound > limit)
+    {
+        return Err(CommandError::new("ai_document_context_budget",
+            "This learning request exceeds the model's conservative context budget after reserving its output contract and completion. No provider request was sent."));
+    }
+    Ok(())
 }
 
 fn ensure_request_size(body: &Value) -> Result<(), CommandError> {
@@ -122,11 +194,16 @@ fn multimodal_user_parts(
     user_text: &str,
     images: &[SourcePageImage],
 ) -> Result<Vec<Value>, CommandError> {
+    if images.len() > MAX_INLINE_IMAGES {
+        return Err(CommandError::new(
+            "ai_request_too_large",
+            "The request exceeds its admitted image limit. No images were silently discarded.",
+        ));
+    }
     let mut parts = vec![json!({"type": "text", "text": user_text})];
-    for image in images.iter().take(MAX_INLINE_IMAGES) {
-        let Some(media_type) = document_image_media_type(&image.bytes) else {
-            continue;
-        };
+    for image in images {
+        let media_type = document_image_media_type(&image.bytes).ok_or_else(||
+            CommandError::new("ai_document_image_invalid", "An admitted source image is not a supported image format. The request was not sent."))?;
         parts.push(json!({
             "type": "text",
             "text": format!(
@@ -199,7 +276,7 @@ fn nonnegative_json_integer(value: &Value) -> Option<u64> {
         .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
 }
 
-fn ensure_document_response_not_blocked(response: &Value) -> Result<(), CommandError> {
+fn ensure_document_response_complete(response: &Value) -> Result<(), CommandError> {
     let finish_reason = response
         .pointer("/choices/0/finish_reason")
         .and_then(Value::as_str);
@@ -210,8 +287,11 @@ fn ensure_document_response_not_blocked(response: &Value) -> Result<(), CommandE
     if finish_reason == Some("content_filter") || refusal.is_some() {
         return Err(CommandError::new(
             "ai_content_policy_rejected",
-            "The AI provider stopped this document request because of its content policy.",
+            "The AI provider stopped this learning request because of its content policy.",
         ));
+    }
+    if finish_reason == Some("length") {
+        return Err(truncated_output_error());
     }
     Ok(())
 }
@@ -243,5 +323,21 @@ mod tests {
             retry_after_seconds: None,
         };
         assert_eq!(serde_json::to_value(error).unwrap()["retryable"], false);
+    }
+    #[test]
+    fn length_finish_is_rejected_even_when_the_content_is_valid_json() {
+        let error = ensure_document_response_complete(&json!({"choices":[{
+            "message":{"content":"{\"units\":[]}"},"finish_reason":"length"
+        }]}))
+        .unwrap_err();
+        assert_eq!(error.code, "ai_document_output_truncated");
+    }
+    #[test]
+    fn invalid_admitted_image_is_an_error_not_silently_dropped_evidence() {
+        let images = [SourcePageImage {
+            page_number: 1,
+            bytes: b"not an image".to_vec(),
+        }];
+        assert!(multimodal_user_parts("source", &images).is_err());
     }
 }

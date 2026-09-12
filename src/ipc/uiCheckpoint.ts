@@ -7,6 +7,7 @@ export type CheckpointSection =
   | "decks"
   | "study-guides"
   | "documents"
+  | "tutor"
   | "analytics"
   | "settings";
 

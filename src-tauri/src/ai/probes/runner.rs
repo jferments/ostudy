@@ -61,7 +61,7 @@ pub(super) async fn list_models(
         .await
         .map_err(gateway_to_command)?;
     let retrieved_at = unix_time_millis()?;
-    repository::persist_selected_model_declarations(database, profile, &models, retrieved_at)?;
+    repository::persist_model_declarations(database, profile, &models, retrieved_at)?;
     Ok(AiProviderModelsDto {
         profile_id: profile.id.clone(),
         profile_revision: profile.revision,
@@ -77,18 +77,24 @@ pub(super) async fn test_profile(
     input: AiProfileReferenceInput,
 ) -> Result<AiProviderProbeResultDto, CommandError> {
     validate_profile_reference(&input)?;
-    let request = load_profile_request(database, &input.profile_id)?;
-    let profile = &request.profile;
-    if profile.revision != input.revision {
+    let mut request = load_profile_request(database, &input.profile_id)?;
+    if request.profile.revision != input.revision {
         return Err(profile_changed());
     }
+    if let Some(model_id) = input.model_id.as_deref() {
+        request.profile.model_id = super::super::profiles::policy::validate_model_id(model_id)?;
+        request.profile.reasoning_effort = super::super::reasoning::validate_reasoning_effort(
+            input.reasoning_effort.as_deref().unwrap_or("automatic"),
+        )?;
+    }
+    let profile = &request.profile;
     profile.validate_for_provider_request()?;
 
     let tested_at = unix_time_millis()?;
     let mut phases = vec![passed_phase(
         "profile_validation",
-        "Profile configuration",
-        "The saved provider profile passed local validation.",
+        "Provider and model configuration",
+        "The saved provider connection and selected model passed local validation.",
         None,
     )];
     let credential = resolve_credential(runtime, &request)?;
@@ -98,7 +104,7 @@ pub(super) async fn test_profile(
         if profile.auth_mode.requires_credential() {
             "A credential is available to the native provider gateway."
         } else {
-            "This profile does not require authentication."
+            "This provider does not require authentication."
         },
         None,
     ));
@@ -118,6 +124,7 @@ pub(super) async fn test_profile(
                 &format!("The provider returned {} available model(s).", models.len()),
                 Some(elapsed_ms(model_start)),
             ));
+            repository::persist_model_declarations(database, profile, &models, tested_at)?;
             Some(models)
         }
         Err(error_value)
@@ -128,7 +135,7 @@ pub(super) async fn test_profile(
             phases.push(failed_phase(
                 "model_discovery",
                 "Model discovery",
-                "This llama.cpp server does not expose model discovery; the saved model ID will be tested directly.",
+                "This llama.cpp server does not expose model discovery; the selected model ID will be tested directly.",
                 Some(elapsed_ms(model_start)),
                 error_value.safe,
             ));
@@ -172,7 +179,7 @@ pub(super) async fn test_profile(
                     SafeAiError {
                         code: "ai_llama_model_id_mismatch".to_string(),
                         message: format!(
-                            "llama.cpp reports the loaded model as `{server_model_id}`. Refresh models and save that ID, or start llama.cpp with `--alias` matching your preferred ID."
+                            "llama.cpp reports the loaded model as `{server_model_id}`. Refresh models and select that ID, or start llama.cpp with `--alias` matching your preferred ID."
                         ),
                         retryable: false,
                         retry_after_seconds: None,
@@ -187,7 +194,7 @@ pub(super) async fn test_profile(
                     None,
                     SafeAiError {
                         code: "ai_model_not_found".to_string(),
-                        message: "The selected model is not available from this provider's document-compatible model list. Refresh models and save one of the returned model IDs.".to_string(),
+                        message: "The selected model is not available from this provider. Refresh models and choose one of the returned model IDs.".to_string(),
                         retryable: false,
                         retry_after_seconds: None,
                     },
@@ -217,6 +224,13 @@ pub(super) async fn test_profile(
             "The selected model will be verified by the completion probe.",
         ));
     }
+
+    // Capability probes should spend their small output budgets validating the
+    // requested contract, not a provider-default hidden reasoning trace. For an
+    // OpenRouter model that declares optional reasoning, explicitly disable it.
+    // Models with mandatory reasoning retain their configured/default effort;
+    // models with no reasoning metadata receive no reasoning parameter at all.
+    request_profile.reasoning_effort = probe_reasoning_effort(&request_profile, models.as_deref());
 
     let mut properties = ProviderProperties::default();
     if profile.provider_kind == ProviderKind::LlamaCpp {
@@ -330,10 +344,6 @@ pub(super) async fn test_profile(
         }
     };
 
-    // Always probe the exact document structured-output dialect independently.
-    // DeepSeek can, for example, fail JSON-object mode while its strict-tool
-    // document contract remains usable. Conversely a provider can pass a tiny
-    // JSON probe but fail ostudy's representative union schema.
     let document_started = Instant::now();
     let (document_schema_outcome, document_schema_supported) =
         match providers::run_document_schema_probe(&runtime.gateway, &request_profile, bearer).await
@@ -418,6 +428,27 @@ fn classify_model_match(profile: &ProfileSnapshot, models: &[ProviderModel]) -> 
     ModelMatch::Missing
 }
 
+fn probe_reasoning_effort(profile: &ProfileSnapshot, models: Option<&[ProviderModel]>) -> String {
+    if profile.provider_kind != ProviderKind::Openrouter {
+        return profile.reasoning_effort.clone();
+    }
+    let Some(reasoning) = models
+        .and_then(|models| models.iter().find(|model| model.id == profile.model_id))
+        .and_then(|model| model.reasoning.as_ref())
+    else {
+        return "automatic".to_string();
+    };
+    if reasoning.mandatory {
+        if profile.reasoning_effort == "none" {
+            "automatic".to_string()
+        } else {
+            profile.reasoning_effort.clone()
+        }
+    } else {
+        "none".to_string()
+    }
+}
+
 fn validate_profile_reference(input: &AiProfileReferenceInput) -> Result<(), CommandError> {
     crate::util::validate_entity_id(&input.profile_id, "AI provider profile")?;
     if input.revision < 1 {
@@ -425,6 +456,17 @@ fn validate_profile_reference(input: &AiProfileReferenceInput) -> Result<(), Com
             "invalid_revision",
             "The AI provider profile revision is invalid.",
         ));
+    }
+    if let Some(model_id) = input.model_id.as_deref() {
+        if super::super::profiles::policy::validate_model_id(model_id)?.is_empty() {
+            return Err(CommandError::new(
+                "invalid_ai_model_id",
+                "Choose a model to test.",
+            ));
+        }
+        super::super::reasoning::validate_reasoning_effort(
+            input.reasoning_effort.as_deref().unwrap_or("automatic"),
+        )?;
     }
     Ok(())
 }
@@ -436,7 +478,7 @@ fn gateway_to_command(error_value: AiGatewayError) -> CommandError {
 fn profile_changed() -> CommandError {
     CommandError::new(
         "ai_profile_changed",
-        "This AI provider profile changed before the request started. Reload it and try again.",
+        "This AI provider connection changed before the request started. Reload it and try again.",
     )
 }
 
@@ -450,4 +492,12 @@ pub(super) fn classify_model_match_for_test(
         ModelMatch::SoleLlamaServerId(id) => format!("sole:{id}"),
         ModelMatch::Missing => "missing".to_string(),
     }
+}
+
+#[cfg(test)]
+pub(super) fn probe_reasoning_effort_for_test(
+    profile: &ProfileSnapshot,
+    models: Option<&[ProviderModel]>,
+) -> String {
+    probe_reasoning_effort(profile, models)
 }

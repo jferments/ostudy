@@ -14,6 +14,7 @@ const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string 
   { section: "decks", icon: "cards", label: "Flashcards" },
   { section: "study-guides", icon: "study-guide", label: "Study Guides" },
   { section: "documents", icon: "document", label: "Documents" },
+  { section: "tutor", icon: "brain", label: "Tutor" },
   { section: "analytics", icon: "analytics", label: "Analytics" },
   { section: "settings", icon: "settings", label: "Settings" },
 ];
@@ -22,6 +23,7 @@ const COMPACT_PRIMARY_SECTIONS = [
   "decks",
   "study-guides",
   "documents",
+  "tutor",
   "analytics",
 ] as const;
 

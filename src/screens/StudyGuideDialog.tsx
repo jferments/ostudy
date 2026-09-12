@@ -18,6 +18,7 @@ import {
   type StudyGuideOverlay,
   type TopicCardProjection,
 } from "../ipc/studyGuides";
+import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { Icon } from "../ui/icons/Icon";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
@@ -322,6 +323,12 @@ export function StudyGuideDialog({
           </strong>
         </div>
         <div className={styles.headerActions}>
+          {guide ? <TutorEntryButton
+            disabled={isGenerating || isSaving || isExporting || editing !== null}
+            target={{ title: documentTitle, scope: { kind: "guide", id: documentId },
+              focus: { kind: "guide", documentId, guideId: guide.id, topicId: null, contentHash: null },
+              mode: "explain" }}
+          /> : null}
           {guide ? (
             <label className={styles.annotationToggle}>
               <input
@@ -449,8 +456,9 @@ export function StudyGuideDialog({
                 section={section}
                 overlays={guide.overlays}
                 guideId={guide.id}
+                documentId={documentId}
                 projection={topicCards[section.topicId]}
-                actionsDisabled={isSaving}
+                actionsDisabled={isSaving || editing !== null}
                 onEditNote={() => beginTopicNote(section)}
                 onEditSection={() => beginSectionOverride(section)}
                 onDiscardOverlay={(overlay, message) => void discardOverlay(overlay, message)}
@@ -510,6 +518,7 @@ interface StudyGuideSectionViewProps {
   section: DocumentStudyGuideSection;
   overlays: StudyGuideOverlay[];
   guideId: string;
+  documentId: string;
   projection?: TopicCardProjection;
   actionsDisabled: boolean;
   onEditNote: () => void;
@@ -523,6 +532,7 @@ function StudyGuideSectionView({
   section,
   overlays,
   guideId,
+  documentId,
   projection,
   actionsDisabled,
   onEditNote,
@@ -549,6 +559,10 @@ function StudyGuideSectionView({
           <h2>{section.title}</h2>
         </div>
         <div className={styles.sectionActions}>
+          <TutorEntryButton disabled={actionsDisabled}
+            target={{ title: section.title, scope: { kind: "guide", id: documentId },
+              focus: { kind: "guide", documentId, guideId, topicId: section.topicId,
+                contentHash: section.contentHash }, mode: "explain" }} />
           <button
             type="button"
             className={ownedClassNames(ownedStyleMaps, "secondary-button")}

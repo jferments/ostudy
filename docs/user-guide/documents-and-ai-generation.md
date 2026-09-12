@@ -12,7 +12,7 @@ The original document is not uploaded to the model as an opaque file. ostudy sta
 
 ## Import and generate
 
-Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and use the active task's stop control when cancellation is needed.
+Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a red stop-sign icon; click that same button to request cancellation.
 
 Open generated cards from Flashcards and generated guides from **Study Guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
 
@@ -28,7 +28,7 @@ Detection uses source content where a signature/container identifies the format.
 
 ## Local processing and source labels
 
-The application stores a managed source copy and extracts bounded source units, semantic blocks, supported images, and chunks. Those derivatives support a reusable outline and learning plan. Stable learning-topic identities connect guide sections with cards generated for those topics.
+The application stores a managed source copy and extracts bounded source units, semantic blocks, supported images, and chunks. Knowledge is interpreted once from those sources and saved for flashcards, study guides and Tutor. Changing the chat or guide model does not repeat that interpretation. Those derivatives support a reusable outline and learning plan. Stable learning-topic identities connect guide sections with cards generated for those topics.
 
 PDF processing can extract native text, render relevant pages, and selectively recover text through OCR. Desktop uses its configured PDFium/Tesseract path; Android uses platform PdfRenderer and bundled ML Kit recognition. OCR is a recovery tool, not a guarantee that every diagram or table was understood.
 
@@ -38,7 +38,7 @@ The guide/source action opens the retained original through the platform. It doe
 
 ## What the provider receives
 
-A request contains a bounded portion of canonical text, relevant outline/plan context, and selected source images only when the verified model supports image input. Large sources are processed through bounded requests rather than an unbounded prompt. Source analysis, topic planning, generation, validation, and curation are distinct stages.
+A request contains a bounded portion of canonical text, relevant outline/plan context, and selected source images only when the verified model supports image input. Large sources are processed through bounded requests rather than an unbounded prompt. Source analysis, topic planning, generation, validation, and curation are distinct stages. When an embedding model is configured, document processing also indexes saved knowledge for search. The embedding service receives saved text/knowledge, not a second request to interpret the document. Missing vectors can be indexed when you send a chat; ordinary navigation sends nothing.
 
 The native provider gateway handles transport. Model output has no direct SQLite, filesystem, shell, or application-command authority. Generated content is checked for structure, limits, allowed rich content, tags, cloze grammar, and duplicates before durable use.
 
@@ -48,7 +48,7 @@ Diagnostics are designed to keep credentials, raw prompts/responses, reasoning t
 
 Progress reports the phases the application can actually observe. Non-PDF native extraction may be indeterminate until the parser returns known source-unit totals. Do not interpret an indeterminate indicator as a stalled or failed task merely because a percentage is unavailable.
 
-Stop controls request cancellation of their task. The current generating control can become the stop action rather than adding a second permanent button. Cancellation is cooperative: local extraction, network work, validation, and publication have explicit boundaries. Already committed reusable derivatives are retained, and a canceled guide regeneration leaves the previous published guide available.
+Stop controls request cancellation of their task. Study guides use a single generating/stop button rather than a second permanent button. Failures remain visible when you return to Documents and are not cleared by routine refreshes. Cancellation is cooperative: local extraction, network work, validation, and publication have explicit boundaries. Already committed reusable derivatives are retained, and a canceled guide regeneration leaves the previous published guide available.
 
 On Android, a user-started long document task uses a foreground service, visible notification, and bounded wake-lock support so work can continue when the Activity is backgrounded. This is not immunity to process termination, resource pressure, device reboot, or explicit stop. Reopening relies on durable task/checkpoint reconciliation, not a surviving WebView promise.
 
@@ -56,11 +56,17 @@ On desktop, closing while document processing is active warns about interrupting
 
 ## Retry, more cards, and regeneration
 
-Retry reuses valid source/outline/generation checkpoints only when their versioned identities still match. Changed parser, prompt, schema, or source evidence can require rebuilding derivatives. A stale checkpoint is not trusted simply because it exists.
+Retry reuses valid source/outline/generation checkpoints only when their versioned identities still match. Current knowledge remains reusable across different consuming models. Changed parser, prompt, schema, or source evidence can require rebuilding derivatives. A stale checkpoint is not trusted simply because it exists.
 
 **Generate more cards** uses retained understanding and current deck coverage. An unchanged source should not be reparsed/rerendered simply to request additional cards. Changed embedded assets receive immutable versioned managed paths, avoiding deletion of the last committed evidence before a replacement succeeds.
 
 Regenerate a guide from the relevant document action. The reader does not need a permanent regenerate button or internal revision badge. Compatible topic work can be reused; a complete new validated guide replaces the active generated revision atomically. Learner annotations follow the separate rules in [Study guides](study-guides.md).
+
+## Analysis diagnostics
+
+Debug logs can report unresolved knowledge proposals (model-proposed concepts or relationships that were not admitted) and source dispositions (supplied material that still lacks an accepted analysis outcome). It does not necessarily mean a false fact or an unprocessed page. Valid knowledge is saved and remains usable. Nonfatal analysis details are retained in diagnostics, not shown as ordinary error banners or warning text on successful generation. A true failure still explains why the requested operation could not finish. Complete protocol coverage likewise does not guarantee every important concept was found.
+
+Older builds limited a page to 16 primary knowledge units. Saved proposals rejected only for that quota are revalidated locally on document retry without asking the model to generate them again. Other invalid or unsupported proposals remain pending. Retry document generation to repair remaining analysis; Tutor uses the saved valid knowledge and does not start a separate understanding stage.
 
 ## Source relationships and lifecycles
 

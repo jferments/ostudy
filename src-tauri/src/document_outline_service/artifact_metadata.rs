@@ -4,17 +4,15 @@
 //! planning pass may therefore refresh generated metadata without overwriting a
 //! learner's document rename or deck description edit.
 
-use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite::{params, OptionalExtension, Transaction};
 
 use crate::{
     ai::document_intelligence::{
         DocumentArtifactMetadataCandidate, DocumentOutline, ARTIFACT_METADATA_GENERATOR_VERSION,
         ARTIFACT_METADATA_PROMPT_VERSION, ARTIFACT_METADATA_SCHEMA_VERSION,
     },
-    database::Database,
     document_citations,
     error::CommandError,
-    util::unix_time_millis,
 };
 
 #[path = "artifact_metadata_values.rs"]
@@ -53,80 +51,75 @@ struct ExistingMetadata {
 }
 
 pub(super) fn ensure_document_artifact_metadata(
-    database: &Database,
+    transaction: &Transaction<'_>,
     document_id: &str,
     outline: &DocumentOutline,
     provider_candidate: Option<&DocumentArtifactMetadataCandidate>,
+    now: i64,
 ) -> Result<(), CommandError> {
-    let now = unix_time_millis()?;
-    database.with_connection(|connection| {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(CommandError::database)?;
-        let source = load_source(&transaction, document_id)?;
+    let source = load_source(transaction, document_id)?;
 
-        // Capture source identity before any display title is changed. Migration
-        // 0007 makes later citation-title refreshes immutable.
-        document_citations::upsert_document_snapshot(&transaction, document_id, now)?;
-        let source_title = load_source_title(&transaction, document_id)?;
-        let existing = load_existing_metadata(&transaction, document_id)?;
+    // Capture source identity before any display title is changed. Migration
+    // 0007 makes later citation-title refreshes immutable.
+    document_citations::upsert_document_snapshot(transaction, document_id, now)?;
+    let source_title = load_source_title(transaction, document_id)?;
+    let existing = load_existing_metadata(transaction, document_id)?;
 
-        let desired = existing
+    let desired = existing
+        .as_ref()
+        .filter(|metadata| {
+            provider_candidate.is_none()
+                && metadata.source_fingerprint_sha256 == source.source_fingerprint_sha256
+                && metadata.generator_version == ARTIFACT_METADATA_GENERATOR_VERSION
+                && metadata.schema_version == ARTIFACT_METADATA_SCHEMA_VERSION
+                && metadata.prompt_version == ARTIFACT_METADATA_PROMPT_VERSION
+        })
+        .map(desired_from_existing)
+        .unwrap_or_else(|| {
+            derive_desired_metadata(
+                outline,
+                provider_candidate,
+                &source.original_filename,
+                &source.source_format,
+            )
+        });
+
+    persist_desired_metadata(
+        transaction,
+        document_id,
+        &source,
+        &desired,
+        existing.as_ref(),
+        now,
+    )?;
+    apply_document_title(
+        transaction,
+        document_id,
+        &source,
+        &source_title,
+        existing
             .as_ref()
-            .filter(|metadata| {
-                provider_candidate.is_none()
-                    && metadata.source_fingerprint_sha256 == source.source_fingerprint_sha256
-                    && metadata.generator_version == ARTIFACT_METADATA_GENERATOR_VERSION
-                    && metadata.schema_version == ARTIFACT_METADATA_SCHEMA_VERSION
-                    && metadata.prompt_version == ARTIFACT_METADATA_PROMPT_VERSION
-            })
-            .map(desired_from_existing)
-            .unwrap_or_else(|| {
-                derive_desired_metadata(
-                    outline,
-                    provider_candidate,
-                    &source.original_filename,
-                    &source.source_format,
-                )
-            });
-
-        persist_desired_metadata(
-            &transaction,
-            document_id,
-            &source,
-            &desired,
-            existing.as_ref(),
-            now,
-        )?;
-        apply_document_title(
-            &transaction,
-            document_id,
+            .and_then(|value| value.applied_document_title.as_deref()),
+        &desired.document_title,
+        now,
+    )?;
+    if let Some(deck_id) = source
+        .generated_deck_id
+        .as_deref()
+        .or_else(|| existing.as_ref().and_then(|value| value.deck_id.as_deref()))
+    {
+        apply_deck_metadata(
+            transaction,
+            deck_id,
             &source,
             &source_title,
-            existing
-                .as_ref()
-                .and_then(|value| value.applied_document_title.as_deref()),
-            &desired.document_title,
+            existing.as_ref(),
+            &desired,
             now,
         )?;
-        if let Some(deck_id) = source
-            .generated_deck_id
-            .as_deref()
-            .or_else(|| existing.as_ref().and_then(|value| value.deck_id.as_deref()))
-        {
-            apply_deck_metadata(
-                &transaction,
-                deck_id,
-                &source,
-                &source_title,
-                existing.as_ref(),
-                &desired,
-                now,
-            )?;
-        }
-        record_applied_values(&transaction, document_id)?;
-        transaction.commit().map_err(CommandError::database)
-    })
+    }
+    record_applied_values(transaction, document_id)?;
+    Ok(())
 }
 
 fn load_source(

@@ -7,6 +7,7 @@ const TITLES: Record<AppSection, string> = {
   decks: "Flashcards",
   "study-guides": "Study Guides",
   documents: "Documents",
+  tutor: "Tutor",
   cards: "Search",
   templates: "Card templates",
   analytics: "Analytics",

@@ -33,6 +33,7 @@ pub enum CheckpointSection {
     Decks,
     StudyGuides,
     Documents,
+    Tutor,
     Analytics,
     Settings,
 }

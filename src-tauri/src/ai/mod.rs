@@ -9,6 +9,7 @@ mod catalog;
 pub(crate) mod concurrency;
 pub(crate) mod document_intelligence;
 pub(crate) mod document_provider;
+pub(crate) mod embeddings;
 mod endpoint_policy;
 mod gateway;
 pub(crate) mod probes;
@@ -16,9 +17,12 @@ pub(crate) mod profiles;
 mod providers;
 pub(crate) mod reasoning;
 mod secrets;
+pub(crate) mod structured_output;
 
 #[cfg(test)]
 mod backup_tests;
+#[cfg(test)]
+mod document_wire_tests;
 #[cfg(test)]
 mod provider_contract_tests;
 

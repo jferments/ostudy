@@ -40,6 +40,7 @@ Focused references provide deeper contracts:
 | Native transport, profile aggregates, probes, and credential isolation | [AI infrastructure](architecture/ai-infrastructure.md) |
 | Model-owned reasoning and task defaults | [AI model profiles](architecture/ai-model-profiles.md) |
 | Canonical sources, parsing/OCR, lifecycle, and learning artifacts | [AI and document processing](architecture/ai-and-document-processing.md) |
+| Native evidence, fallible interpretations, partial analysis, and revision safety | [Knowledge representation](architecture/knowledge-representation.md) |
 | Bounded task routing, prompts, concurrency, and checkpoint policy | [Document AI routing](architecture/document-ai-routing.md) |
 | Editor adapter and validated structured content | [Rich document editor](architecture/rich-document-editor.md) |
 | File, lifecycle, time, secret, and resource ports | [Platform services](architecture/platform-services.md) |

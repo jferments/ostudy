@@ -52,10 +52,13 @@ data: [DONE]
         .unwrap();
     stream.finish().unwrap();
     assert_eq!(
-        stream.tool_name.as_deref(),
+        stream.tool_calls()[0]["function"]["name"].as_str(),
         Some("submit_ostudy_document_result")
     );
-    assert_eq!(stream.tool_arguments, "{\"cards\":[]}");
+    assert_eq!(
+        stream.tool_calls()[0]["function"]["arguments"],
+        "{\"cards\":[]}"
+    );
 
     let mut changed = SseChatAccumulator::new(2_048, 8_192);
     changed
@@ -85,7 +88,7 @@ data: [DONE]
         )
         .unwrap();
     stream.finish().unwrap();
-    assert_eq!(stream.content, "hello");
+    assert_eq!(stream.content, "hello world");
 }
 
 #[test]
@@ -153,4 +156,79 @@ fn wire_and_content_limits_are_independent() {
             .code,
         "ai_response_too_large"
     );
+}
+
+#[test]
+fn interleaved_tool_indices_never_concatenate_independent_json_documents() {
+    let mut stream = SseChatAccumulator::new(4096, 16384);
+    for calls in [
+        json!([{"index":0,"id":"a","function":{"name":"submit","arguments":"{\"units\":["}},
+               {"index":1,"id":"b","function":{"name":"submit","arguments":"{\"units\":["}}]),
+        json!([{"index":1,"function":{"arguments":"]}"}}]),
+        json!([{"index":0,"function":{"arguments":"]}"}}]),
+    ] {
+        stream
+            .push_bytes(
+                format!(
+                    "data: {}\n",
+                    json!({"choices":[{"delta":{"tool_calls":calls}}]})
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    }
+    stream.finish().unwrap();
+    let calls = stream.tool_calls();
+    assert_eq!(calls.len(), 2);
+    for call in calls {
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                call["function"]["arguments"].as_str().unwrap()
+            )
+            .unwrap(),
+            json!({"units":[]})
+        );
+    }
+}
+
+#[test]
+fn repeated_content_deltas_are_literal_and_tool_bytes_share_the_content_limit() {
+    let mut stream = SseChatAccumulator::new(4, 4096);
+    for content in ["a", "a", "ab"] {
+        stream
+            .push_bytes(
+                format!(
+                    "data: {}\n",
+                    json!({"choices":[{"delta":{"content":content}}]})
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+    }
+    assert_eq!(stream.content, "aaab");
+    let failure = stream.push_bytes(b"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"submit\",\"arguments\":\"{}\"}}]}}]}\n").unwrap_err();
+    assert_eq!(failure.safe.code, "ai_response_too_large");
+}
+
+#[test]
+fn ambiguous_indices_and_changed_ids_are_rejected_without_content_in_errors() {
+    let mut stream = SseChatAccumulator::new(4096, 16384);
+    for id in ["first", "second"] {
+        let result = stream.push_bytes(
+            format!(
+                "data: {}\n",
+                json!({"choices":[{"delta":{"tool_calls":[{
+                    "index":0,"id":id,"function":{"name":"submit","arguments":"PRIVATE"}
+                }]}}]})
+            )
+            .as_bytes(),
+        );
+        if id == "first" {
+            result.unwrap();
+        } else {
+            let failure = result.unwrap_err();
+            assert_eq!(failure.safe.code, "ai_provider_protocol_error");
+            assert!(!failure.safe.message.contains("PRIVATE"));
+        }
+    }
 }

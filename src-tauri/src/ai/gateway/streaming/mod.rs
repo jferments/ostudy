@@ -30,6 +30,29 @@ use usage::usage_delta;
 const STREAM_WIRE_MULTIPLIER: usize = 16;
 
 impl AiGateway {
+    /// Interactive tasks supply their own cancellation lifetime rather than
+    /// impersonating a document job. The same SSE framing, inactivity limits,
+    /// response bounds and redaction remain authoritative for both task types.
+    pub(crate) async fn post_task_json(
+        &self,
+        url: Url,
+        bearer: Option<&str>,
+        body: &Value,
+        inactivity_timeout_ms: i64,
+        maximum_content_bytes: usize,
+        cancellation: &CancellationSignal,
+    ) -> Result<Value, AiGatewayError> {
+        self.post_sse_chat_json(
+            url,
+            bearer,
+            body,
+            inactivity_timeout_ms,
+            maximum_content_bytes,
+            cancellation,
+        )
+        .await
+    }
+
     pub(crate) async fn post_document_json(
         &self,
         url: Url,
@@ -262,7 +285,7 @@ impl AiGateway {
         }
         stream.finish()?;
 
-        if stream.content.trim().is_empty() && stream.tool_arguments.trim().is_empty() {
+        if stream.content.trim().is_empty() && stream.tool_arguments_len() == 0 {
             let finish = stream.finish_reason.as_deref().unwrap_or("not provided");
             return Err(empty_stream_failure(finish));
         }
@@ -271,7 +294,7 @@ impl AiGateway {
         crate::logging::debug_target(
             "ai.gateway.streaming",
             "provider_stream_completed",
-            "A document-provider stream completed without logging source, model output, or reasoning content.",
+            "A provider stream completed without logging source, model output, or reasoning content.",
             json!({
                 "endpointHost": endpoint_host.as_deref(),
                 "generationId": stream.generation_id.as_deref(),
@@ -282,27 +305,19 @@ impl AiGateway {
                 "firstModelOutputMs": first_model_output_ms,
                 "keepaliveEvents": stream.comment_events,
                 "contentBytes": stream.content.len(),
-                "toolArgumentBytes": stream.tool_arguments.len(),
+                "toolArgumentBytes": stream.tool_arguments_len(),
+                "toolCallCount": stream.tool_calls().len(),
                 "reasoningBytesObserved": stream.reasoning_bytes,
                 "usageReported": usage.is_some(),
             }),
         );
-        let message = if stream.tool_arguments.trim().is_empty() {
+        let calls = stream.tool_calls();
+        let message = if calls.is_empty() {
             json!({ "content": stream.content })
         } else {
             json!({
-                "content": if stream.content.trim().is_empty() {
-                    Value::Null
-                } else {
-                    Value::String(stream.content)
-                },
-                "tool_calls": [{
-                    "type": "function",
-                    "function": {
-                        "name": stream.tool_name.unwrap_or_default(),
-                        "arguments": stream.tool_arguments
-                    }
-                }]
+                "content": if stream.content.trim().is_empty() { Value::Null } else { Value::String(stream.content) },
+                "tool_calls": calls
             })
         };
         let mut result = json!({

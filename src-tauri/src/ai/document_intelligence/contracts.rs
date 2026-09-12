@@ -13,19 +13,10 @@ pub(super) const MAX_TAGS_PER_CARD: usize = 32;
 pub(super) const MAX_TAG_CHARS: usize = 64;
 pub(super) const MAX_CLOZE_BLANKS: usize = 4;
 pub(super) const MAX_CLOZE_BLANK_CHARS: usize = 160;
-pub(super) const MAX_OUTLINE_OBJECTIVES: usize = 96;
-pub(super) const MAX_OUTLINE_CONCEPTS: usize = 160;
-pub(super) const MAX_OUTLINE_SECTIONS: usize = 160;
 pub(super) const MAX_REQUEST_JSON_BYTES: usize = 64 * 1024 * 1024;
 pub(super) const MAX_COMPLETION_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_CURATE_CARDS_PER_BATCH: usize = 32;
 pub(super) const MAX_INLINE_IMAGES: usize = 6;
-pub(super) const MAX_FRAGMENT_OBJECTIVES: usize = 4;
-pub(super) const MAX_FRAGMENT_CONCEPTS: usize = 8;
-pub(super) const MAX_FRAGMENT_SECTIONS: usize = 4;
-pub(super) const MAX_FRAGMENT_SECTION_OBJECTIVES: usize = 3;
-pub(super) const MAX_FRAGMENT_SECTION_CONCEPTS: usize = 4;
-pub(super) const MAX_GLOBAL_SYNTHESIS_INPUT_CHARS: usize = 12_000;
 
 /// Provider-neutral, reusable learning outline assembled from canonical source
 /// windows. The `page_*` field names are persisted compatibility projections;

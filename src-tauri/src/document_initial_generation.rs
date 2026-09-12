@@ -212,16 +212,18 @@ pub(crate) async fn process_and_generate_initial_flashcards(
     );
     validate_semantic_windows(&outline_windows, &source)?;
     validate_semantic_windows(&generation_windows, &source)?;
+    let semantic_work = crate::knowledge::planning::estimate(&chunks, task.include_page_images);
     let budget = document_scale::validate_automatic_job_calibrated(
         source.unit_count,
         estimated_source_tokens,
         scale_plan,
-        outline_windows.len(),
+        semantic_work.requests,
         generation_windows.len(),
         document_scale::DocumentBudgetContext {
             capabilities: &capabilities,
             reasoning_effort: &task.reasoning_effort,
             calibration,
+            semantic_image_count: semantic_work.images,
         },
     )?;
     crate::logging::debug_target(
@@ -236,7 +238,12 @@ pub(crate) async fn process_and_generate_initial_flashcards(
             "scale": scale_plan.label(),
             "sourceUnits": source.unit_count,
             "sourceTokens": estimated_source_tokens,
-            "outlineWindows": outline_windows.len(),
+            "outlineViewWindows": outline_windows.len(),
+            "semanticWindows": budget.semantic_window_count,
+            "semanticTokenAllowance": budget.semantic_token_allowance,
+            "semanticCharacters": semantic_work.characters,
+            "semanticImages": semantic_work.images,
+            "estimateBasis": "uncached semantic analysis, bounded repair, knowledge reduction, metadata, artifact authoring and curation; not a billing quote",
             "generationWindows": generation_windows.len(),
             "cardCapacity": budget.generation_card_capacity,
             "estimatedJobTokens": budget.estimated_tokens,
@@ -261,15 +268,14 @@ pub(crate) async fn process_and_generate_initial_flashcards(
     let capability_fingerprint = capabilities.planning_fingerprint();
     let outline = ensure_document_outline(EnsureDocumentOutlineInput {
         database,
+        paths,
         runtime,
         task: &task,
         document_id,
-        document_title: &stored.title,
         extraction_backend: &stored.extraction_backend,
         source: &source,
         chunks: &chunks,
         plan: scale_plan,
-        provider_capability_fingerprint: &capability_fingerprint,
     })
     .await?;
     let learning_plan =
@@ -549,6 +555,7 @@ mod tests {
             rendered_source_unit_count: 1,
         };
         let cards = vec![crate::document_card_topics::SourceGroundedGeneratedCard {
+            knowledge_support: Vec::new(),
             card: serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]}),
             source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
         }];

@@ -52,9 +52,9 @@ The normal prepared-file and platform save boundary controls the final destinati
 
 ## Regeneration, stopping, and failures
 
-Use the guide-generation action for the source in Documents to regenerate. In an initial-generation reader, the generating control becomes a stop control while work is active. Cancellation is deliberate and cooperative; do not interpret the stop request as an instruction to delete the source or already committed learning artifacts.
+Use the guide-generation action for the source in Documents to regenerate. While work is active, the **Generating study guide…** button includes a red stop-sign icon; click that same button to stop. There is no separate stop button in Documents. You can navigate to other sections while it runs and return to its current state. Cancellation is deliberate and cooperative; do not interpret the stop request as an instruction to delete the source or already committed learning artifacts.
 
-A complete new generated revision is validated before atomic publication. Failed/canceled regeneration leaves the previous active guide available. Compatible checkpoints may reduce repeated work; changes to source, backend, prompt, or schema can invalidate them. Restart recovery never silently authorizes a new provider transmission.
+A complete new generated revision is validated before atomic publication. Failed/canceled regeneration leaves the previous active guide available. Nonfatal recoveries remain in diagnostics; terminal failures remain visible after refresh or navigation. Compatible checkpoints may reduce repeated work; changes to source, backend, prompt, or schema can invalidate them. Restart recovery never silently authorizes a new provider transmission.
 
 ## Delete a guide without deleting its source
 

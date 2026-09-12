@@ -11,7 +11,7 @@ class MobileNavigationContractTests(unittest.TestCase):
         compact = contract["compactNavigation"]
         self.assertEqual(
             compact["primary"],
-            ["decks", "study-guides", "documents", "analytics"],
+            ["decks", "study-guides", "documents", "tutor", "analytics"],
         )
         self.assertEqual(compact["more"], [])
         self.assertEqual(compact["appBar"], ["settings"])
@@ -20,7 +20,7 @@ class MobileNavigationContractTests(unittest.TestCase):
 
         navigation = (ROOT / "src/components/NavigationSidebar.tsx").read_text()
         app_bar = (ROOT / "src/components/MobileAppBar.tsx").read_text()
-        self.assertIn('"documents",\n  "analytics"', navigation)
+        self.assertIn('"documents",\n  "tutor",\n  "analytics"', navigation)
         self.assertNotIn("nav-more", navigation)
         self.assertIn('data-testid="app-settings"', app_bar)
         self.assertIn('onNavigate("settings")', app_bar)

@@ -44,6 +44,22 @@ if command -v git >/dev/null 2>&1 && git -C "$ROOT_DIR" rev-parse --is-inside-wo
     git -C "$ROOT_DIR" status --short
     git -C "$ROOT_DIR" remote -v | sed -E 's#(https://)[^/@]+@#\1REDACTED@#g'
   } > "$TEMP_DIR/git.txt" 2>&1
+  # CI diagnostics include only the immutable published source, never the
+  # runner's working tree, credentials, toolchains, or learner storage. This
+  # makes exact-source inspection possible without reconstructing old sessions.
+  # Ordinary local diagnostic exports keep their existing smaller contract.
+  if [[ "${CI:-}" == true && "${QUALIFIED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] \
+    && [[ "$(git -C "$ROOT_DIR" rev-parse HEAD)" == "$QUALIFIED_SHA" ]]; then
+    git -C "$ROOT_DIR" archive --format=tar.gz "$QUALIFIED_SHA" \
+      > "$TEMP_DIR/published-source.tar.gz"
+    {
+      printf 'sourceSha=%s\n' "$QUALIFIED_SHA"
+      printf 'treeSha=%s\n' "$(git -C "$ROOT_DIR" rev-parse "$QUALIFIED_SHA^{tree}")"
+      sha256sum "$TEMP_DIR/published-source.tar.gz" | sed "s#$TEMP_DIR/##"
+    } > "$TEMP_DIR/published-source-manifest.txt"
+    printf 'CI-only: published-source.tar.gz is the exact committed source, not an edited candidate.\n' \
+      >> "$TEMP_DIR/README.txt"
+  fi
 fi
 
 cp "$ROOT_DIR/package.json" "$ROOT_DIR/versions.env" "$TEMP_DIR/"
