@@ -63,7 +63,7 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     webdriver.set_input_text(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deck_name,
         deadline,
     )

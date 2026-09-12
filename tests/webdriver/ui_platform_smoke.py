@@ -211,7 +211,7 @@ def overlay_snapshot(session_id: str) -> dict[str, Any]:
     snapshot = execute(
         session_id,
         """
-        const dialogs = [...document.querySelectorAll("dialog[open], [role='dialog'][aria-modal='true']")]
+        const dialogs = [...document.querySelectorAll("[role='dialog'][aria-modal='true'], [role='alertdialog'][aria-modal='true']")]
           .map((dialog) => ({
             label: (dialog.getAttribute('aria-label') || dialog.textContent || '').trim().slice(0, 160),
             tag: dialog.tagName,
@@ -371,6 +371,12 @@ def assert_viewport_consumption(
         const routeLayer = main?.firstElementChild;
         const route = routeSelector ? routeLayer?.querySelector(routeSelector) : null;
         const shellStyle = shell instanceof HTMLElement ? getComputedStyle(shell) : null;
+        const contentBox = main instanceof HTMLElement ? {
+          left: main.getBoundingClientRect().left + main.clientLeft,
+          top: main.getBoundingClientRect().top + main.clientTop,
+          width: main.clientWidth,
+          height: main.clientHeight,
+        } : null;
         const rect = (element) => {
           if (!(element instanceof HTMLElement)) return null;
           const bounds = element.getBoundingClientRect();
@@ -388,6 +394,8 @@ def assert_viewport_consumption(
           viewportHeight: document.documentElement.clientHeight,
           shellPaddingTop: Number.parseFloat(shellStyle?.paddingTop || "0") || 0,
           shellPaddingBottom: Number.parseFloat(shellStyle?.paddingBottom || "0") || 0,
+          shellPaddingRight: Number.parseFloat(shellStyle?.paddingRight || "0") || 0,
+          contentBox,
           shell: rect(shell),
           main: rect(main),
           routeLayer: rect(routeLayer),
@@ -401,12 +409,14 @@ def assert_viewport_consumption(
     shell = measurements.get("shell")
     main = measurements.get("main")
     route_layer = measurements.get("routeLayer")
-    if not all(isinstance(value, dict) for value in (shell, main, route_layer)):
+    content_box = measurements.get("contentBox")
+    if not all(isinstance(value, dict) for value in (shell, main, route_layer, content_box)):
         raise AssertionError(f"Missing shell geometry for {label}: {measurements!r}")
     viewport_width = float(measurements.get("viewportWidth", 0))
     viewport_height = float(measurements.get("viewportHeight", 0))
     shell_padding_top = float(measurements.get("shellPaddingTop", 0))
     shell_padding_bottom = float(measurements.get("shellPaddingBottom", 0))
+    shell_padding_right = float(measurements.get("shellPaddingRight", 0))
     tolerance = 2
     if (
         abs(float(shell["left"])) > tolerance
@@ -417,20 +427,20 @@ def assert_viewport_consumption(
         raise AssertionError(f"Application shell did not consume {label}: {measurements!r}")
     if (
         float(main["width"]) <= 0
-        or abs(float(main["right"]) - float(shell["right"])) > tolerance
+        or abs(float(main["right"]) - (float(shell["right"]) - shell_padding_right)) > tolerance
         or abs(float(main["top"]) - (float(shell["top"]) + shell_padding_top)) > tolerance
         or abs(float(main["bottom"]) - (float(shell["bottom"]) - shell_padding_bottom)) > tolerance
-        or abs(float(route_layer["left"]) - float(main["left"])) > tolerance
-        or abs(float(route_layer["top"]) - float(main["top"])) > tolerance
-        or abs(float(route_layer["width"]) - float(main["width"])) > tolerance
-        or float(route_layer["height"]) + tolerance < float(main["height"])
+        or abs(float(route_layer["left"]) - float(content_box["left"])) > tolerance
+        or abs(float(route_layer["top"]) - float(content_box["top"])) > tolerance
+        or abs(float(route_layer["width"]) - float(content_box["width"])) > tolerance
+        or float(route_layer["height"]) + tolerance < float(content_box["height"])
     ):
         raise AssertionError(f"Main route layer did not consume {label}: {measurements!r}")
     route = measurements.get("route")
     if route_selector and (
         not isinstance(route, dict)
         or abs(float(route["width"]) - float(route_layer["width"])) > tolerance
-        or float(route["height"]) + tolerance < float(main["height"])
+        or float(route["height"]) + tolerance < float(content_box["height"])
     ):
         raise AssertionError(f"Maintained route did not consume {label}: {measurements!r}")
     assert_no_horizontal_overflow(session_id, label)
@@ -441,10 +451,10 @@ def assert_dialog_viewport_bounds(session_id: str, label: str) -> None:
     measurements = execute(
         session_id,
         """
-        const dialog = document.querySelector("dialog[open]");
-        const card = dialog?.querySelector(":scope > section");
+        const dialog = [...document.querySelectorAll("[data-slot='dialog-overlay']")].at(-1);
+        const card = [...document.querySelectorAll("[data-overlay-id][aria-modal='true']")].at(-1);
         const body = card?.querySelector(":scope > div:last-child");
-        if (!(dialog instanceof HTMLDialogElement) || !(card instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+        if (!(dialog instanceof HTMLElement) || !(card instanceof HTMLElement) || !(body instanceof HTMLElement)) {
           return null;
         }
         const d = dialog.getBoundingClientRect();
@@ -838,7 +848,7 @@ def verify_dialog_focus(session_id: str, deadline: float) -> None:
     name_input = webdriver.find_element(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deadline,
     )
     wait_for_focus(session_id, name_input, deadline)
@@ -947,11 +957,7 @@ def verify_medium_flashcards_layout(session_id: str, deadline: float) -> None:
         ["Flashcards", "Study Guides", "Documents", "Tutor", "Analytics", "Settings"],
         "medium",
     )
-    open_study_guides_and_return(
-        session_id,
-        deadline,
-        "medium Study Guides destination",
-    )
+    open_study_guides_and_return(session_id, deadline, "medium Study Guides destination")
     webdriver.find_element(
         session_id,
         "css selector",
@@ -1219,14 +1225,14 @@ def verify_deck_scoped_authoring(session_id: str, deadline: float) -> None:
     webdriver.set_input_text(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deck_name,
         deadline,
     )
     webdriver.set_input_text(
         session_id,
         "css selector",
-        "dialog textarea",
+        "[role='dialog'] textarea",
         deck_description,
         deadline,
     )
