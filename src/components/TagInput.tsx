@@ -44,7 +44,7 @@ export function TagInput({ label = "Tags", tags, suggestions, disabled = false, 
         {tag}<span aria-hidden="true">×</span>
       </ChipButton>)}
     </div> : null}
-    <TextField id={id} value={draft} disabled={disabled} list={listId} maxLength={64}
+    <TextField id={id} aria-label={label} value={draft} disabled={disabled} list={listId} maxLength={64}
       placeholder={tags.length === 0 ? "Add tags" : "Add another"} aria-describedby={helpId}
       onChange={(event) => setDraft(event.currentTarget.value)} onKeyDown={onKeyDown} onBlur={addDraft} />
     <datalist id={listId}>

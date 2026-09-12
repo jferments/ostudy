@@ -92,7 +92,7 @@ def verify_current_deck_detail_header(
     deck_name: str,
     deck_description: str,
 ) -> None:
-    """Verify the current vertical deck header and responsive action policy."""
+    """Verify the responsive title/actions layout and independent library-return action."""
     expected_direct = [
         "Practice",
         f"Export {deck_name}",
@@ -119,7 +119,7 @@ def verify_current_deck_detail_header(
                   .find((candidate) => candidate.textContent?.trim() === deckName);
                 const header = heading?.closest('header');
                 const back = header
-                  ? [...header.querySelectorAll('button')]
+                  ? [...header.parentElement.querySelectorAll('button')]
                     .find((button) => button.textContent?.trim() === '← All decks')
                   : null;
                 const description = header
@@ -187,6 +187,7 @@ def verify_current_deck_detail_header(
                     text: (element.textContent || '').trim().slice(0, 120),
                   }));
                 const above = (upper, lower) => upper.bottom <= lower.top + 1;
+                const stacked = actions.dataset.layoutMode === 'compact';
                 return {
                   mode: actions.dataset.layoutMode,
                   labels,
@@ -196,9 +197,11 @@ def verify_current_deck_detail_header(
                     Boolean(back.compareDocumentPosition(titleBlock) & Node.DOCUMENT_POSITION_FOLLOWING)
                     && Boolean(titleBlock.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING),
                   visuallyOrdered:
-                    above(geometry.back, geometry.titleBlock)
+                    above(geometry.back, geometry.header)
                     && above(geometry.heading, geometry.description)
-                    && above(geometry.titleBlock, geometry.actions),
+                    && (stacked
+                      ? above(geometry.titleBlock, geometry.actions)
+                      : geometry.titleBlock.right <= geometry.actions.left + 1),
                   titleBlockContained:
                     geometry.titleBlock.left >= headerRect.left - 1
                     && geometry.titleBlock.right <= headerRect.right + 1,
