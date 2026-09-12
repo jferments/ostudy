@@ -39,10 +39,10 @@ export function ModalView({ title, description, children, onRequestClose, blocke
           aria-busy={busy || undefined}
           initialFocus={() => initialFocusRef?.current ?? popupRef.current?.querySelector<HTMLElement>("[data-autofocus='true'],[autofocus]") ?? (compact ? popupRef.current?.querySelector<HTMLElement>('[aria-label="Close dialog"]') ?? popupRef.current : true)}
           className={cn("tw:pointer-events-auto tw:flex tw:max-h-[calc(100dvh-3rem)] tw:w-full tw:min-w-0 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-popover tw:font-sans tw:text-foreground tw:shadow-overlay tw:outline-none", widths[width], sheet && "tw:max-h-[calc(100dvh-var(--safe-top)-1rem)] tw:max-w-none tw:rounded-b-none tw:pb-[calc(var(--safe-bottom)+var(--android-ime-bottom))]", presentation === "fullscreen" && "tw:h-full tw:max-h-none tw:max-w-none tw:rounded-none tw:pt-(--safe-top) tw:pb-[calc(var(--safe-bottom)+var(--android-ime-bottom))]", className)}>
-          <header className="tw:flex tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-b tw:border-solid tw:border-border tw:px-6 tw:py-5">
+          <header className="tw:flex tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:px-6 tw:py-5">
             <div className="tw:min-w-0 tw:space-y-1.5">
-              <Dialog.Title render={<h2 />} className="tw:m-0 tw:text-xl tw:font-semibold tw:tracking-tight">{title}</Dialog.Title>
-              {description ? <Dialog.Description className="tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{description}</Dialog.Description> : null}
+              <Dialog.Title render={<h2 />} className="tw:m-0 tw:break-words tw:text-xl tw:font-semibold tw:tracking-tight">{title}</Dialog.Title>
+              {description ? <Dialog.Description className="tw:m-0 tw:break-words tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{description}</Dialog.Description> : null}
             </div>
             <Dialog.Close render={<Button variant="ghost" size="icon" />} aria-label="Close dialog" disabled={blocked}>
               <Icon name="close" size={20} />

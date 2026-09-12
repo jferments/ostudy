@@ -14,13 +14,13 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
       <Icon name={item.icon} size={20} /><span>{item.label}</span>
     </SidebarMenuButton>
   </SidebarMenuItem>);
-  if (compact) return <nav aria-label="Main navigation" data-tour-anchor="app.navigation" data-slot="bottom-navigation" className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-20 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1 tw:pr-[max(0.5rem,var(--safe-right))] tw:pb-[max(0.25rem,var(--safe-bottom))] tw:pl-[max(0.5rem,var(--safe-left))]">
+  if (compact) return <nav aria-label="Main navigation" data-tour-anchor="app.navigation" data-slot="bottom-navigation" className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-20 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1 tw:pr-[max(0.5rem,var(--safe-right))] tw:pb-[max(0.25rem,var(--safe-bottom))] tw:pl-[max(0.5rem,var(--safe-left))]">
     <SidebarMenu className="tw:grid tw:grid-cols-5 tw:gap-1">{content(items.filter((item) => !item.secondary))}</SidebarMenu>
   </nav>;
   return <Sidebar><SidebarHeader>{brand}</SidebarHeader>
     <SidebarContent aria-label="Main navigation" data-tour-anchor="app.navigation">
       <SidebarGroup><SidebarGroupLabel>Workspace</SidebarGroupLabel><SidebarMenu>{content(items.filter((item) => !item.secondary))}</SidebarMenu></SidebarGroup>
-      <SidebarGroup className={cn("tw:mt-auto tw:border-t tw:border-solid tw:border-border tw:pt-3", layoutMode === "medium" && "tw:text-sm")}><SidebarMenu>{content(items.filter((item) => item.secondary))}</SidebarMenu></SidebarGroup>
+      <SidebarGroup className={cn("tw:mt-auto tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-3", layoutMode === "medium" && "tw:text-sm")}><SidebarMenu>{content(items.filter((item) => item.secondary))}</SidebarMenu></SidebarGroup>
     </SidebarContent>
   </Sidebar>;
 }

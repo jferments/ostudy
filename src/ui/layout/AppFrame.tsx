@@ -16,5 +16,5 @@ export function AppContent({ children }: { children: ReactNode }) {
   return <SidebarInset className={cn("tw:h-full tw:w-full", layoutMode !== "compact" && "tw:rounded-2xl tw:border tw:border-solid tw:border-border tw:shadow-panel")}>{children}</SidebarInset>;
 }
 export function CompactAppHeader({ className, ...props }: HTMLAttributes<HTMLElement>) {
-  return <header {...props} className={cn("tw:fixed tw:inset-x-0 tw:top-0 tw:z-20 tw:hidden tw:min-h-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:grid-cols-[minmax(70px,1fr)_auto_minmax(70px,1fr)] tw:items-center tw:gap-2 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:pt-(--safe-top) tw:pr-[max(1rem,var(--safe-right))] tw:pb-1 tw:pl-[max(1rem,var(--safe-left))] tw:max-[760px]:grid", className)} />;
+  return <header {...props} className={cn("tw:fixed tw:inset-x-0 tw:top-0 tw:z-20 tw:hidden tw:min-h-[calc(var(--ostudy-navigation-app-bar-height)+var(--safe-top))] tw:grid-cols-[minmax(70px,1fr)_auto_minmax(70px,1fr)] tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:pt-(--safe-top) tw:pr-[max(1rem,var(--safe-right))] tw:pb-1 tw:pl-[max(1rem,var(--safe-left))] tw:max-[760px]:grid", className)} />;
 }
