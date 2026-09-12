@@ -286,8 +286,8 @@ describe("DecksScreen", () => {
     expect(screen.getByRole("tooltip").textContent).toBe("Delete deck");
 
     fireEvent.click(within(group).getByRole("button", { name: "More actions" }));
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Archive Dog facts" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Archive Dog facts" })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Delete Dog facts" })).toBeNull();
   });
 
@@ -443,7 +443,7 @@ describe("DecksScreen", () => {
       expect(overflowTrigger).toBeTruthy();
       fireEvent.click(overflowTrigger as HTMLButtonElement);
       for (const label of overflow) {
-        expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+        expect(screen.getByRole(mode === "compact" ? "button" : "menuitem", { name: label })).toBeTruthy();
       }
       expect(screen.queryByRole("menuitem", { name: "Delete Dog facts" })).toBeNull();
     }

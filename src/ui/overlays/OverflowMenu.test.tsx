@@ -14,7 +14,7 @@ function renderMenu(compact = false) {
   return onFirst;
 }
 describe("OverflowMenu", () => {
-  it("uses library roving focus, skips disabled items, and restores the trigger", async () => {
+  it("uses library roving focus, makes disabled items discoverable but inactive, and restores the trigger", async () => {
     const onFirst = renderMenu(); const trigger = screen.getByRole("button", { name: "Card actions" });
     trigger.focus(); fireEvent.click(trigger);
     const menu = await screen.findByRole("menu", { name: "Card actions" });
@@ -22,6 +22,12 @@ describe("OverflowMenu", () => {
     const last = within(menu).getByRole("menuitem", { name: "Last" });
     await waitFor(() => expect(document.activeElement).toBe(first));
     fireEvent.keyDown(first, { key: "ArrowDown" });
+    const disabled = within(menu).getByRole("menuitem", { name: "Disabled" });
+    await waitFor(() => expect(document.activeElement).toBe(disabled));
+    fireEvent.click(disabled);
+    expect(screen.getByRole("menu")).toBe(menu);
+    expect(onFirst).not.toHaveBeenCalled();
+    fireEvent.keyDown(disabled, { key: "ArrowDown" });
     await waitFor(() => expect(document.activeElement).toBe(last));
     expect(within(menu).getByRole("menuitem", { name: "Disabled" }).getAttribute("aria-disabled")).toBe("true");
     fireEvent.keyDown(last, { key: "Home" }); await waitFor(() => expect(document.activeElement).toBe(first));

@@ -263,8 +263,8 @@ describe("DeckLibraryWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Nursing folder actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Nursing folder actions" });
-    expect(within(sheet).getByRole("menuitem", { name: "Rename Nursing folder" })).toBeTruthy();
-    expect(within(sheet).getByRole("menuitem", { name: "Delete Nursing folder" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Rename Nursing folder" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Delete Nursing folder" })).toBeTruthy();
   });
 
   it("places an icon-only collapse caret directly beside the folder title", async () => {
