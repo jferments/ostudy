@@ -1,6 +1,6 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 
-import styles from "./Layout.module.css";
+import { cn } from "../internal/cn";
 
 type LayoutElement = "div" | "section" | "article" | "aside" | "header" | "nav" | "main";
 type CssVariables = CSSProperties & Record<`--${string}`, string | number>;
@@ -12,15 +12,15 @@ interface BaseLayoutProps extends HTMLAttributes<HTMLElement> {
 }
 
 export function Stack({ as: Element = "div", gap = "var(--ostudy-space-4)", className = "", style, children, ...props }: BaseLayoutProps) {
-  return <Element {...props} className={`${styles.stack} ${className}`.trim()} style={{ ...style, "--layout-gap": gap } as CssVariables}>{children}</Element>;
+  return <Element {...props} className={cn("tw:flex tw:min-w-0 tw:flex-col tw:gap-(--layout-gap)", className)} style={{ ...style, "--layout-gap": gap } as CssVariables}>{children}</Element>;
 }
 
 export function Inline({ as: Element = "div", gap = "var(--ostudy-space-3)", className = "", style, children, ...props }: BaseLayoutProps) {
-  return <Element {...props} className={`${styles.inline} ${className}`.trim()} style={{ ...style, "--layout-gap": gap } as CssVariables}>{children}</Element>;
+  return <Element {...props} className={cn("tw:flex tw:min-w-0 tw:items-center tw:gap-(--layout-gap)", className)} style={{ ...style, "--layout-gap": gap } as CssVariables}>{children}</Element>;
 }
 
 export function Cluster({ as: Element = "div", gap = "var(--ostudy-space-3)", className = "", style, children, ...props }: BaseLayoutProps) {
-  return <Element {...props} className={`${styles.cluster} ${className}`.trim()} style={{ ...style, "--layout-gap": gap } as CssVariables}>{children}</Element>;
+  return <Element {...props} className={cn("tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-(--layout-gap)", className)} style={{ ...style, "--layout-gap": gap } as CssVariables}>{children}</Element>;
 }
 
 export function ResponsiveGrid({
@@ -35,7 +35,7 @@ export function ResponsiveGrid({
   return (
     <Element
       {...props}
-      className={`${styles.grid} ${className}`.trim()}
+      className={cn("tw:grid tw:min-w-0 tw:grid-cols-[repeat(auto-fit,minmax(min(100%,var(--layout-min-item)),1fr))] tw:gap-(--layout-gap)", className)}
       style={{ ...style, "--layout-gap": gap, "--layout-min-item": minItemWidth } as CssVariables}
     >
       {children}
@@ -50,7 +50,11 @@ export function ContentContainer({
   children,
   ...props
 }: Omit<BaseLayoutProps, "gap"> & { width?: "reading" | "workspace" | "wide" | "full" }) {
-  return <Element {...props} className={`${styles.container} ${styles[width]} ${className}`.trim()}>{children}</Element>;
+  return <Element {...props} className={cn(
+    "tw:mx-auto tw:w-full tw:min-w-0 tw:px-page",
+    { reading: "tw:max-w-(--ostudy-layout-reading-width)", workspace: "tw:max-w-(--ostudy-layout-workspace-width)", wide: "tw:max-w-(--ostudy-layout-wide-width)", full: "tw:max-w-none" }[width],
+    className,
+  )}>{children}</Element>;
 }
 
 export function SplitPane({
@@ -66,7 +70,7 @@ export function SplitPane({
   return (
     <Element
       {...props}
-      className={`${styles.split} ${className}`.trim()}
+      className={cn("tw:grid tw:min-w-0 tw:grid-cols-[var(--layout-primary)_var(--layout-secondary)] tw:items-start tw:gap-(--layout-gap) tw:[&>*]:min-w-0 tw:max-[900px]:grid-cols-1", className)}
       style={{
         ...style,
         "--layout-gap": gap,

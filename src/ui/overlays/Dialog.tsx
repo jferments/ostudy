@@ -4,7 +4,6 @@ import { cn } from "../internal/cn";
 import { ModalView } from "../vendor/shadcn/modal";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { type OverlayCloseReason, OverlayParentContext, useOverlayContext, useOverlayParentId } from "./overlayContext";
-import inlineStyles from "./Dialog.module.css";
 
 export interface DialogProps {
   title: string; description?: string; children: ReactNode;
@@ -85,17 +84,17 @@ export function InlineWorkspace({
 
   return (
     <section
-      className={`${inlineStyles.inlineWorkspace} ${className}`.trim()}
+      className={cn("tw:flex tw:min-h-[min(78dvh,48rem)] tw:w-full tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:border tw:border-solid tw:border-border-strong tw:bg-popover tw:text-popover-foreground tw:shadow-panel tw:max-[760px]:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] tw:max-[760px]:rounded-lg tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas] tw:forced-colors:text-[CanvasText]", className)}
       role="region"
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
       aria-busy={busy || undefined}
       data-inline-workspace="true"
     >
-      <header className={inlineStyles.inlineHeader}>
-        <div className={inlineStyles.heading}>
-          <h2 id={titleId}>{title}</h2>
-          {description ? <p id={descriptionId}>{description}</p> : null}
+      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-w-0 tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-secondary tw:p-5 tw:shadow-panel tw:max-[760px]:p-4 tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
+        <div className="tw:min-w-0">
+          <h2 id={titleId} className="tw:m-0 tw:text-section tw:wrap-anywhere">{title}</h2>
+          {description ? <p id={descriptionId} className="tw:mt-2 tw:mb-0 tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
         </div>
         <IconButton
           ref={closeRef}
@@ -103,12 +102,13 @@ export function InlineWorkspace({
           iconSize={24}
           label={closeLabel}
           tooltip={false}
-          className={inlineStyles.inlineClose}
+          tone="danger"
+          className="tw:size-11.5 tw:min-h-11.5 tw:min-w-11.5 tw:border-destructive tw:bg-destructive-soft tw:text-destructive tw:forced-colors:border-[LinkText] tw:forced-colors:bg-[ButtonFace] tw:forced-colors:text-[LinkText]"
           disabled={!dismissible || busy}
           onClick={onClose}
         />
       </header>
-      <div className={inlineStyles.inlineBody}>{children}</div>
+      <div className="tw:min-h-0 tw:min-w-0 tw:flex-1 tw:overflow-auto">{children}</div>
     </section>
   );
 }

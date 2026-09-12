@@ -22,7 +22,7 @@ function mount(onChanged = vi.fn(async () => {})) {
   const onBusyChange = vi.fn();
   render(<TutorMemoryControls conversationId={memory.conversationId} revision={3} retrievalAvailable={true} disabled={false}
     onChanged={onChanged} onBusyChange={onBusyChange} />);
-  fireEvent.click(screen.getByRole("button", { name: "Conversation memory", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Conversation memory" }));
   return { onChanged, onBusyChange };
 }
 
