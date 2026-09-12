@@ -1,32 +1,17 @@
-import { useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
-
+import { useMemo, useState, type ChangeEvent } from "react";
 import { Modal } from "../../components/Modal";
-import {
-  transferCards,
-  type TransferCardsMode,
-} from "../../ipc/cards";
-import {
-  getErrorMessage,
-} from "../../ipc/common";
-import {
-  type DeckSummary,
-} from "../../ipc/decks";
+import { transferCards, type TransferCardsMode } from "../../ipc/cards";
+import { getErrorMessage } from "../../ipc/common";
+import type { DeckSummary } from "../../ipc/decks";
 import { Button } from "../../ui/primitives/Button";
+import { Checkbox, RadioGroup } from "../../ui/primitives/FormControls";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { EmptyState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-import ownershipStyles from "./CardBrowserWorkspace.module.css";
+import styles from "./browserPresentation";
 
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
-
-export interface TransferableCard {
-  noteId: string;
-  deckId: string;
-}
-
+export interface TransferableCard { noteId: string; deckId: string; }
 interface MoveCopyModalProps {
   cards: TransferableCard[];
   decks: DeckSummary[];
@@ -35,17 +20,9 @@ interface MoveCopyModalProps {
   showToast?: (kind: "success" | "error" | "info", text: string) => void;
 }
 
-export function MoveCopyModal({
-  cards,
-  decks,
-  onClose,
-  onComplete,
-  showToast,
-}: MoveCopyModalProps) {
+export function MoveCopyModal({ cards, decks, onClose, onComplete, showToast }: MoveCopyModalProps) {
   const sourceDeckIds = useMemo(() => new Set(cards.map((card) => card.deckId)), [cards]);
-  const destinations = decks.filter(
-    (deck) => deck.archivedAt === null && !sourceDeckIds.has(deck.id),
-  );
+  const destinations = decks.filter((deck) => deck.archivedAt === null && !sourceDeckIds.has(deck.id));
   const [targetDeckId, setTargetDeckId] = useState(destinations[0]?.id ?? "");
   const [mode, setMode] = useState<TransferCardsMode>("move");
   const [skipDuplicates, setSkipDuplicates] = useState(true);
@@ -56,15 +33,11 @@ export function MoveCopyModal({
     if (targetDeckId === "" || cards.length === 0 || isSaving) return;
     setIsSaving(true);
     setErrorMessage(null);
-
     let affectedCount: number;
     let skippedDuplicates: number;
     try {
       const result = await transferCards({
-        noteIds: cards.map((card) => card.noteId),
-        targetDeckId,
-        mode,
-        skipDuplicates,
+        noteIds: cards.map((card) => card.noteId), targetDeckId, mode, skipDuplicates,
       });
       affectedCount = result.affectedCount;
       skippedDuplicates = result.skippedDuplicates;
@@ -73,25 +46,15 @@ export function MoveCopyModal({
       setIsSaving(false);
       return;
     }
-
     const verb = mode === "move" ? "Moved" : "Copied";
-    const duplicateCopy =
-      skippedDuplicates > 0
-        ? ` ${skippedDuplicates} ${
-            skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
-          } skipped.`
-        : "";
-    showToast?.(
-      "success",
-      `${verb} ${affectedCount} ${affectedCount === 1 ? "card" : "cards"}.${duplicateCopy}`,
-    );
-
+    const duplicateCopy = skippedDuplicates > 0
+      ? ` ${skippedDuplicates} ${skippedDuplicates === 1 ? "duplicate was" : "duplicates were"} skipped.`
+      : "";
+    showToast?.("success", `${verb} ${affectedCount} ${affectedCount === 1 ? "card" : "cards"}.${duplicateCopy}`);
     try {
       await onComplete();
     } catch (error: unknown) {
-      const message = `The cards were ${
-        mode === "move" ? "moved" : "copied"
-      }, but the current view could not refresh: ${getErrorMessage(error)}`;
+      const message = `The cards were ${mode === "move" ? "moved" : "copied"}, but the current view could not refresh: ${getErrorMessage(error)}`;
       if (showToast) showToast("info", message);
       else setErrorMessage(message);
     } finally {
@@ -101,112 +64,38 @@ export function MoveCopyModal({
   }
 
   return (
-    <Modal
-      title="Move or copy cards"
+    <Modal title="Move or copy cards"
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
-      width="medium"
-      onClose={() => {
-        if (!isSaving) onClose();
-      }}
-    >
+      width="medium" busy={isSaving} dismissible={!isSaving}
+      onClose={() => { if (!isSaving) onClose(); }}>
       {destinations.length === 0 ? (
-        <EmptyState
-          compact
-          title="Create or unarchive another deck first"
+        <EmptyState compact title="Create or unarchive another deck first"
           description="A destination deck must be active and different from every selected card’s deck."
-          actions={
-            <Button type="button" variant="primary" onClick={onClose}>
-              Close
-            </Button>
-          }
-        />
+          actions={<Button variant="primary" onClick={onClose}>Close</Button>} />
       ) : (
-        <div className={ownedClassNames(ownedStyleMaps, "move-copy-form")} aria-busy={isSaving}>
-          <fieldset className={ownedClassNames(ownedStyleMaps, "transfer-mode-group")}>
-            <legend>Action</legend>
-            <label className={ownedClassNames(ownedStyleMaps, "transfer-mode-option")}>
-              <input
-                type="radio"
-                name="transfer-mode"
-                value="move"
-                checked={mode === "move"}
-                disabled={isSaving}
-                onChange={() => setMode("move")}
-              />
-              <span>
-                <strong>Move</strong>
-                <small>Keep all review history and reattribute it to the destination deck.</small>
-              </span>
-            </label>
-            <label className={ownedClassNames(ownedStyleMaps, "transfer-mode-option")}>
-              <input
-                type="radio"
-                name="transfer-mode"
-                value="copy"
-                checked={mode === "copy"}
-                disabled={isSaving}
-                onChange={() => setMode("copy")}
-              />
-              <span>
-                <strong>Copy</strong>
-                <small>Create new cards with fresh schedules in the destination.</small>
-              </span>
-            </label>
-          </fieldset>
-
-          <label className={ownedClassNames(ownedStyleMaps, "move-copy-destination")}>
+        <div className={styles.screen} aria-busy={isSaving}>
+          <RadioGroup label="Action" name="transfer-mode" value={mode} onValueChange={setMode} disabled={isSaving}
+            options={[
+              { value: "move", ariaLabel: "Move", label: <span><strong>Move</strong><span className="tw:block tw:mt-1 tw:text-sm tw:text-muted-foreground">Keep all review history and reattribute it to the destination deck.</span></span> },
+              { value: "copy", ariaLabel: "Copy", label: <span><strong>Copy</strong><span className="tw:block tw:mt-1 tw:text-sm tw:text-muted-foreground">Create new cards with fresh schedules in the destination.</span></span> },
+            ]} />
+          <label className={styles.moveCopyDestination}>
             <span>Destination deck</span>
-            <select
-              value={targetDeckId}
-              disabled={isSaving}
-              onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                setTargetDeckId(event.currentTarget.value)
-              }
-            >
-              {destinations.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name}
-                </option>
-              ))}
-            </select>
+            <NativeSelect value={targetDeckId} disabled={isSaving}
+              onChange={(event: ChangeEvent<HTMLSelectElement>) => setTargetDeckId(event.currentTarget.value)}>
+              {destinations.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}</option>)}
+            </NativeSelect>
           </label>
-
-          <label className={ownedClassNames(ownedStyleMaps, "compact-checkbox move-copy-duplicate-option")}>
-            <input
-              type="checkbox"
-              checked={skipDuplicates}
-              disabled={isSaving}
-              onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                setSkipDuplicates(event.currentTarget.checked)
-              }
-            />
+          <label className={styles.compactCheckbox}>
+            <Checkbox checked={skipDuplicates} disabled={isSaving} onCheckedChange={setSkipDuplicates} />
             <span>Skip exact duplicates already in the destination</span>
           </label>
-
           {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-
           <DialogActions>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={isSaving}
-              onClick={onClose}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={isSaving || targetDeckId === ""}
-              onClick={() => void submit()}
-            >
-              {isSaving
-                ? mode === "move"
-                  ? "Moving…"
-                  : "Copying…"
-                : `${mode === "move" ? "Move" : "Copy"} ${cards.length} ${
-                    cards.length === 1 ? "card" : "cards"
-                  }`}
+            <Button variant="secondary" disabled={isSaving} onClick={onClose}>Cancel</Button>
+            <Button variant="primary" disabled={isSaving || targetDeckId === ""} onClick={() => void submit()}>
+              {isSaving ? (mode === "move" ? "Moving…" : "Copying…")
+                : `${mode === "move" ? "Move" : "Copy"} ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
             </Button>
           </DialogActions>
         </div>
