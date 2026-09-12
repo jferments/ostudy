@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import * as cardsIpc from "../ipc/cards";
 import * as commonIpc from "../ipc/common";
 import * as decksIpc from "../ipc/decks";
@@ -10,30 +9,15 @@ import { CardsScreen } from "./CardsScreen";
 
 vi.mock("../controllers/useDurableDraft", () => ({
   useDurableDraft: () => ({
-    draftId: "d".repeat(32),
-    assetDraftId: "7".repeat(32),
-    revision: 1,
-    status: "saved",
-    errorMessage: null,
-    recovered: false,
-    hasUnsavedLocalChanges: false,
-    flush: vi.fn().mockResolvedValue(undefined),
-    discard: vi.fn().mockResolvedValue(undefined),
-    commit: vi.fn().mockResolvedValue(undefined),
-    restart: vi.fn().mockResolvedValue(undefined),
+    draftId: "d".repeat(32), assetDraftId: "7".repeat(32), revision: 1, status: "saved",
+    errorMessage: null, recovered: false, hasUnsavedLocalChanges: false,
+    flush: vi.fn().mockResolvedValue(undefined), discard: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined), restart: vi.fn().mockResolvedValue(undefined),
   }),
 }));
-
 vi.mock("../ipc/cards", () => ({
-  analyzeBulkCards: vi.fn(),
-  bulkCreateCards: vi.fn(),
-  bulkTagCards: vi.fn(),
-  deleteCards: vi.fn(),
-  getCardNote: vi.fn(),
-  listMatchingCards: vi.fn(),
-  listTags: vi.fn(),
-  searchCards: vi.fn(),
-  transferCards: vi.fn(),
+  analyzeBulkCards: vi.fn(), bulkCreateCards: vi.fn(), bulkTagCards: vi.fn(), deleteCards: vi.fn(),
+  getCardNote: vi.fn(), listMatchingCards: vi.fn(), listTags: vi.fn(), searchCards: vi.fn(), transferCards: vi.fn(),
 }));
 vi.mock("../ipc/common", () => ({
   createMutationId: vi.fn(() => "f".repeat(32)),
@@ -42,131 +26,50 @@ vi.mock("../ipc/common", () => ({
     const code = (error as { code?: unknown }).code;
     return typeof code === "string" ? code : null;
   },
-  getErrorMessage: vi.fn((error: unknown) =>
-    error instanceof Error ? error.message : "Unexpected error",
-  ),
+  getErrorMessage: vi.fn((error: unknown) => error instanceof Error ? error.message : "Unexpected error"),
 }));
-vi.mock("../ipc/decks", () => ({
-  createDeck: vi.fn(),
-  deleteDeck: vi.fn(),
-}));
-vi.mock("../ipc/practice", () => ({
-  startCardPractice: vi.fn(),
-}));
-vi.mock("../ipc/scheduling", () => ({
-  applyScheduleAction: vi.fn(),
-}));
-
+vi.mock("../ipc/decks", () => ({ createDeck: vi.fn(), deleteDeck: vi.fn() }));
+vi.mock("../ipc/practice", () => ({ startCardPractice: vi.fn() }));
+vi.mock("../ipc/scheduling", () => ({ applyScheduleAction: vi.fn() }));
 vi.mock("./CardEditorScreen", () => ({
-  CardEditorScreen: ({
-    deck,
-    onSaved,
-  }: {
+  CardEditorScreen: ({ deck, onSaved }: {
     deck: decksIpc.DeckSummary;
     onSaved: (card: { deckId: string }, continueAdding: boolean) => Promise<void>;
-  }) => (
-    <div>
-      <span>Card editor</span>
-      <button type="button" onClick={() => void onSaved({ deckId: deck.id }, true)}>
-        Mock save + another
-      </button>
-    </div>
-  ),
+  }) => <div><span>Card editor</span><button type="button" onClick={() => void onSaved({ deckId: deck.id }, true)}>Mock save + another</button></div>,
 }));
 
 const deck: decksIpc.DeckSummary = {
-  id: "a".repeat(32),
-  name: "Pharmacology",
-  description: "",
-  sourceNoteCount: 2,
-  generatedCardCount: 2,
-  studyableDueCount: 1,
-  archivedAt: null,
-  createdAt: 1,
-  updatedAt: 1,
-  revision: 1,
+  id: "a".repeat(32), name: "Pharmacology", description: "", sourceNoteCount: 2,
+  generatedCardCount: 2, studyableDueCount: 1, archivedAt: null, createdAt: 1, updatedAt: 1, revision: 1,
 };
-const secondDeck: decksIpc.DeckSummary = {
-  ...deck,
-  id: "e".repeat(32),
-  name: "Pathophysiology",
-};
+const secondDeck: decksIpc.DeckSummary = { ...deck, id: "e".repeat(32), name: "Pathophysiology" };
 const browserCard: cardsIpc.CardBrowserRow = {
-  cardId: "b".repeat(32),
-  noteId: "c".repeat(32),
-  deckId: deck.id,
-  deckName: deck.name,
-  cardType: "basic",
-  cardLabel: "Basic",
-  frontText: "What reverses warfarin?",
-  backText: "Vitamin K",
-  tags: ["Anticoagulants"],
-  dueAt: Date.now(),
-  lastReviewedAt: null,
-  reviewCount: 0,
-  suspendedAt: null,
-  buriedUntil: null,
-  needsMorePractice: true,
-  createdAt: 1,
-  updatedAt: 1,
+  cardId: "b".repeat(32), noteId: "c".repeat(32), deckId: deck.id, deckName: deck.name,
+  cardType: "basic", cardLabel: "Basic", frontText: "What reverses warfarin?", backText: "Vitamin K",
+  tags: ["Anticoagulants"], dueAt: Date.now(), lastReviewedAt: null, reviewCount: 0,
+  suspendedAt: null, buriedUntil: null, needsMorePractice: true, createdAt: 1, updatedAt: 1,
 };
 const reverseCard: cardsIpc.CardBrowserRow = {
-  ...browserCard,
-  cardId: "f".repeat(32),
-  cardLabel: "Reverse",
-  frontText: "Vitamin K",
-  backText: "What reverses warfarin?",
-  needsMorePractice: false,
+  ...browserCard, cardId: "f".repeat(32), cardLabel: "Reverse", frontText: "Vitamin K",
+  backText: "What reverses warfarin?", needsMorePractice: false,
 };
-const selection: cardsIpc.SelectionCard = {
-  cardId: browserCard.cardId,
-  noteId: browserCard.noteId,
-  deckId: browserCard.deckId,
-};
-
-function actionResult(
-  affectedCount = 1,
-  requestedCount = 1,
-): schedulingIpc.ScheduleActionResult {
-  return {
-    affectedCount,
-    requestedCount,
-    changedCount: affectedCount,
-    unchangedCount: Math.max(0, requestedCount - affectedCount),
-    rejectedCount: 0,
-    action: "suspend",
-    resolvedDueAt: null,
-  };
+const selection: cardsIpc.SelectionCard = { cardId: browserCard.cardId, noteId: browserCard.noteId, deckId: browserCard.deckId };
+function actionResult(affectedCount = 1, requestedCount = 1): schedulingIpc.ScheduleActionResult {
+  return { affectedCount, requestedCount, changedCount: affectedCount,
+    unchangedCount: Math.max(0, requestedCount - affectedCount), rejectedCount: 0, action: "suspend", resolvedDueAt: null };
 }
-
-function renderScreen(
-  decks: decksIpc.DeckSummary[] = [deck, secondDeck],
-  analyticsSearchLaunch?: AnalyticsSearchLaunch,
-) {
+function renderScreen(decks: decksIpc.DeckSummary[] = [deck, secondDeck], analyticsSearchLaunch?: AnalyticsSearchLaunch) {
   const showToast = vi.fn();
-  const view = render(
-    <CardsScreen
-      decks={decks}
-      refreshDecks={async () => decks}
-      onPracticeCards={vi.fn()}
-      onDirtyChange={vi.fn()}
-      showToast={showToast}
-      analyticsSearchLaunch={analyticsSearchLaunch}
-    />,
-  );
+  const view = render(<CardsScreen decks={decks} refreshDecks={async () => decks}
+    onPracticeCards={vi.fn()} onDirtyChange={vi.fn()} showToast={showToast} analyticsSearchLaunch={analyticsSearchLaunch} />);
   return { ...view, showToast };
 }
-
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((promiseResolve, promiseReject) => {
-    resolve = promiseResolve;
-    reject = promiseReject;
-  });
+  const promise = new Promise<T>((promiseResolve, promiseReject) => { resolve = promiseResolve; reject = promiseReject; });
   return { promise, resolve, reject };
 }
-
 function chooseSelectedAction(label: string): void {
   fireEvent.click(screen.getByRole("button", { name: "More selection actions" }));
   fireEvent.click(screen.getByRole("menuitem", { name: label }));
@@ -175,19 +78,8 @@ function chooseSelectedAction(label: string): void {
 describe("CardsScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(cardsIpc.listTags).mockResolvedValue([
-      {
-        id: "d".repeat(32),
-        name: "Anticoagulants",
-        sourceNoteCount: 1,
-        generatedCardCount: 1,
-        studyableDueCount: 1,
-      },
-    ]);
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
-      cards: [browserCard],
-      totalCount: 1,
-    });
+    vi.mocked(cardsIpc.listTags).mockResolvedValue([{ id: "d".repeat(32), name: "Anticoagulants", sourceNoteCount: 1, generatedCardCount: 1, studyableDueCount: 1 }]);
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard], totalCount: 1 });
     vi.mocked(cardsIpc.listMatchingCards).mockResolvedValue([selection]);
     vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(actionResult());
   });
@@ -197,81 +89,39 @@ describe("CardsScreen", () => {
     expect(await screen.findByText("Needs more practice")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /All filters/u }));
     const dialog = await screen.findByRole("dialog", { name: "Filter flashcards" });
-    fireEvent.change(within(dialog).getByLabelText("Status"), {
-      target: { value: "suspended" },
-    });
-    await waitFor(() =>
-      expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(
-        expect.objectContaining({ statusFilter: "suspended" }),
-      ),
-    );
+    fireEvent.change(within(dialog).getByLabelText("Status"), { target: { value: "suspended" } });
+    await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenLastCalledWith(expect.objectContaining({ statusFilter: "suspended" })));
   });
 
   it("gates an Analytics launch until its exact stable tag ID is verified", async () => {
     const tagId = "d".repeat(32);
     const lookup = deferred<cardsIpc.TagSummary[]>();
     vi.mocked(cardsIpc.listTags).mockReturnValueOnce(lookup.promise);
-    renderScreen(undefined, {
-      requestId: 41,
-      source: "analytics",
-      tagIds: [tagId],
-    });
-
+    renderScreen(undefined, { requestId: 41, source: "analytics", tagIds: [tagId] });
     await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
     expect(cardsIpc.searchCards).not.toHaveBeenCalled();
-    lookup.resolve([
-      {
-        id: tagId,
-        name: "Anticoagulants",
-        sourceNoteCount: 1,
-        generatedCardCount: 1,
-        studyableDueCount: 1,
-      },
-    ]);
-
+    lookup.resolve([{ id: tagId, name: "Anticoagulants", sourceNoteCount: 1, generatedCardCount: 1, studyableDueCount: 1 }]);
     await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
     expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([tagId]);
-    expect(
-      vi.mocked(cardsIpc.searchCards).mock.calls.every(
-        ([input]) => input.tagIds.length === 1 && input.tagIds[0] === tagId,
-      ),
-    ).toBe(true);
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 1 && input.tagIds[0] === tagId)).toBe(true);
   });
 
   it("blocks a missing Analytics tag until the user explicitly clears it", async () => {
     vi.mocked(cardsIpc.listTags).mockResolvedValue([]);
-    renderScreen(undefined, {
-      requestId: 42,
-      source: "analytics",
-      tagIds: ["9".repeat(32)],
-    });
-
-    const clearButton = await screen.findByRole("button", {
-      name: "Clear unavailable tag filter",
-    });
+    renderScreen(undefined, { requestId: 42, source: "analytics", tagIds: ["9".repeat(32)] });
+    const clearButton = await screen.findByRole("button", { name: "Clear unavailable tag filter" });
     expect(cardsIpc.searchCards).not.toHaveBeenCalled();
     fireEvent.click(clearButton);
-
     await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
     expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
   });
 
   it("blocks a rejected Analytics tag lookup until the user explicitly clears it", async () => {
-    vi.mocked(cardsIpc.listTags)
-      .mockRejectedValueOnce(new Error("Tag lookup failed"))
-      .mockResolvedValueOnce([]);
-    renderScreen(undefined, {
-      requestId: 43,
-      source: "analytics",
-      tagIds: ["8".repeat(32)],
-    });
-
+    vi.mocked(cardsIpc.listTags).mockRejectedValueOnce(new Error("Tag lookup failed")).mockResolvedValueOnce([]);
+    renderScreen(undefined, { requestId: 43, source: "analytics", tagIds: ["8".repeat(32)] });
     expect(await screen.findByText(/Tag lookup failed/u)).toBeTruthy();
     expect(cardsIpc.searchCards).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Clear unavailable tag filter" }),
-    );
-
+    fireEvent.click(screen.getByRole("button", { name: "Clear unavailable tag filter" }));
     await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
     expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
   });
@@ -279,151 +129,81 @@ describe("CardsScreen", () => {
   it("keeps an explicit clear while verification is pending despite late completion", async () => {
     const tagId = "7".repeat(32);
     const lookup = deferred<cardsIpc.TagSummary[]>();
-    vi.mocked(cardsIpc.listTags)
-      .mockReturnValueOnce(lookup.promise)
-      .mockResolvedValueOnce([]);
-    renderScreen(undefined, {
-      requestId: 44,
-      source: "analytics",
-      tagIds: [tagId],
-    });
-
+    vi.mocked(cardsIpc.listTags).mockReturnValueOnce(lookup.promise).mockResolvedValueOnce([]);
+    renderScreen(undefined, { requestId: 44, source: "analytics", tagIds: [tagId] });
     await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
     expect(vi.mocked(cardsIpc.searchCards).mock.calls[0]?.[0].tagIds).toEqual([]);
-
-    lookup.resolve([
-      {
-        id: tagId,
-        name: "Late tag",
-        sourceNoteCount: 1,
-        generatedCardCount: 1,
-        studyableDueCount: 1,
-      },
-    ]);
+    lookup.resolve([{ id: tagId, name: "Late tag", sourceNoteCount: 1, generatedCardCount: 1, studyableDueCount: 1 }]);
     await Promise.resolve();
-    expect(
-      vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0),
-    ).toBe(true);
-    expect(
-      screen.queryByRole("button", { name: "Clear unavailable tag filter" }),
-    ).toBeNull();
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Clear unavailable tag filter" })).toBeNull();
   });
 
   it("keeps an explicit clear while verification is pending despite late rejection", async () => {
     const lookup = deferred<cardsIpc.TagSummary[]>();
-    vi.mocked(cardsIpc.listTags)
-      .mockReturnValueOnce(lookup.promise)
-      .mockResolvedValueOnce([]);
-    renderScreen(undefined, {
-      requestId: 45,
-      source: "analytics",
-      tagIds: ["6".repeat(32)],
-    });
-
+    vi.mocked(cardsIpc.listTags).mockReturnValueOnce(lookup.promise).mockResolvedValueOnce([]);
+    renderScreen(undefined, { requestId: 45, source: "analytics", tagIds: ["6".repeat(32)] });
     await waitFor(() => expect(cardsIpc.listTags).toHaveBeenCalledWith([]));
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     await waitFor(() => expect(cardsIpc.searchCards).toHaveBeenCalled());
     lookup.reject(new Error("Late tag failure"));
     await Promise.resolve();
-
-    expect(
-      vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0),
-    ).toBe(true);
+    expect(vi.mocked(cardsIpc.searchCards).mock.calls.every(([input]) => input.tagIds.length === 0)).toBe(true);
     expect(screen.queryByText(/Late tag failure/u)).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Clear unavailable tag filter" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear unavailable tag filter" })).toBeNull();
   });
 
   it("applies an exact-card suspend action from the selection menu", async () => {
     renderScreen();
-    fireEvent.click(
-      await screen.findByRole("checkbox", {
-        name: "Select What reverses warfarin?",
-      }),
-    );
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select What reverses warfarin?" }));
     chooseSelectedAction("Suspend cards");
-    await waitFor(() =>
-      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
-        mutationId: "f".repeat(32),
-        cardIds: [browserCard.cardId],
-        action: "suspend",
-      }),
-    );
+    await waitFor(() => expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({ mutationId: "f".repeat(32), cardIds: [browserCard.cardId], action: "suspend" }));
   });
 
   it("submits every selected presentation in one transactional request", async () => {
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
-      cards: [browserCard, reverseCard],
-      totalCount: 2,
-    });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard, reverseCard], totalCount: 2 });
     vi.mocked(schedulingIpc.applyScheduleAction).mockResolvedValue(actionResult(1, 2));
     const { showToast } = renderScreen();
-
     fireEvent.click(await screen.findByRole("button", { name: "Select visible" }));
     chooseSelectedAction("Suspend cards");
-
     await waitFor(() => {
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledOnce();
-      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({
-        mutationId: "f".repeat(32),
-        cardIds: [browserCard.cardId, reverseCard.cardId].sort(),
-        action: "suspend",
-      });
-      expect(showToast).toHaveBeenCalledWith(
-        "success",
-        "Suspended 1 card. 1 card was already suspended.",
-      );
+      expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledWith({ mutationId: "f".repeat(32), cardIds: [browserCard.cardId, reverseCard.cardId].sort(), action: "suspend" });
+      expect(showToast).toHaveBeenCalledWith("success", "Suspended 1 card. 1 card was already suspended.");
     });
   });
 
   it("reuses one mutation ID after an ambiguous selection response", async () => {
-    vi.mocked(schedulingIpc.applyScheduleAction)
-      .mockRejectedValueOnce(new Error("Native response was lost."))
-      .mockResolvedValueOnce(actionResult());
+    vi.mocked(schedulingIpc.applyScheduleAction).mockRejectedValueOnce(new Error("Native response was lost.")).mockResolvedValueOnce(actionResult());
     renderScreen();
-    fireEvent.click(
-      await screen.findByRole("checkbox", {
-        name: "Select What reverses warfarin?",
-      }),
-    );
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select What reverses warfarin?" }));
     chooseSelectedAction("Suspend cards");
     expect(await screen.findByText(/safely retry the complete selection/u)).toBeTruthy();
     chooseSelectedAction("Suspend cards");
-
     await waitFor(() => {
       expect(schedulingIpc.applyScheduleAction).toHaveBeenCalledTimes(2);
       expect(commonIpc.createMutationId).toHaveBeenCalledOnce();
-      expect(vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(
-        vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[0]?.[0],
-      );
+      expect(vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[1]?.[0]).toEqual(vi.mocked(schedulingIpc.applyScheduleAction).mock.calls[0]?.[0]);
     });
   });
 
   it("selects reverse and forward presentations independently", async () => {
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
-      cards: [browserCard, reverseCard],
-      totalCount: 2,
-    });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard, reverseCard], totalCount: 2 });
     renderScreen();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Vitamin K" }));
+    const reverse = await screen.findByRole("checkbox", { name: "Select Vitamin K" });
+    fireEvent.click(reverse);
     expect(screen.getByText("1 item selected")).toBeTruthy();
-    expect(
-      (
-        screen.getByRole("checkbox", {
-          name: "Select What reverses warfarin?",
-        }) as HTMLInputElement
-      ).checked,
-    ).toBe(false);
+    expect(reverse.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "Select What reverses warfarin?" }).getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(reverse);
+    expect(reverse.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByText("1 item selected")).toBeNull();
   });
 
   it("selects all filtered results through the backend", async () => {
-    vi.mocked(cardsIpc.searchCards).mockResolvedValue({
-      cards: [browserCard],
-      totalCount: 12,
-    });
+    vi.mocked(cardsIpc.searchCards).mockResolvedValue({ cards: [browserCard], totalCount: 12 });
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Select all (12)" }));
     await waitFor(() => expect(cardsIpc.listMatchingCards).toHaveBeenCalled());
@@ -432,23 +212,15 @@ describe("CardsScreen", () => {
   it("shows full filters without authoring and enables Practice selected only after selection", async () => {
     renderScreen();
     const table = await screen.findByRole("table", { name: "Matching cards" });
-
     expect(screen.getByRole("region", { name: "Card filters" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add flashcard" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Bulk add" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Practice results" })).toBeNull();
     expect(within(table).queryByText("Ready now")).toBeNull();
-
     expect(screen.queryByRole("button", { name: "Practice selected" })).toBeNull();
-
-    fireEvent.click(
-      screen.getByRole("checkbox", {
-        name: "Select What reverses warfarin?",
-      }),
-    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select What reverses warfarin?" }));
     const practiceSelected = screen.getByRole("button", { name: "Practice selected" });
     expect((practiceSelected as HTMLButtonElement).disabled).toBe(false);
-
     fireEvent.click(practiceSelected);
     expect(await screen.findByRole("dialog", { name: "Practice these cards" })).toBeTruthy();
   });
