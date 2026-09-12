@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +20,17 @@ function Harness() {
   );
 }
 
+async function expectActiveTab(name: string, panel: string) {
+  // Base UI schedules composite focus. Assert the user-visible result, not
+  // synchronous implementation timing immediately after dispatching keydown.
+  await waitFor(() => {
+    const tab = screen.getByRole("tab", { name });
+    expect(document.activeElement).toBe(tab);
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tabpanel").textContent).toContain(panel);
+  });
+}
+
 describe("Tabs", () => {
   it("associates the active tab and panel with accessible tab semantics", () => {
     render(<Harness />);
@@ -32,17 +43,20 @@ describe("Tabs", () => {
     expect(screen.getByRole("tabpanel").textContent).toContain("Second panel");
   });
 
-  it("supports roving arrow, Home, and End keyboard navigation", () => {
+  it("supports roving arrow, Home, End and wrapping keyboard navigation", async () => {
     render(<Harness />);
     const first = screen.getByRole("tab", { name: "First" });
-    first.focus();
+    act(() => first.focus());
     fireEvent.keyDown(first, { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: "Second" }).getAttribute("aria-selected")).toBe("true");
+    await expectActiveTab("Second", "Second panel");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Second" }), { key: "End" });
-    expect(screen.getByRole("tab", { name: "Third" }).getAttribute("aria-selected")).toBe("true");
+    await expectActiveTab("Third", "Third panel");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "Third" }), { key: "Home" });
-    expect(screen.getByRole("tab", { name: "First" }).getAttribute("aria-selected")).toBe("true");
+    await expectActiveTab("First", "First panel");
+
+    fireEvent.keyDown(first, { key: "ArrowLeft" });
+    await expectActiveTab("Third", "Third panel");
   });
 });

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Button } from "./Button";
@@ -26,7 +27,6 @@ describe("shared UI primitives", () => {
 
   it("owns destructive secondary button presentation without legacy classes", () => {
     render(<Button variant="dangerSecondary">Delete deck</Button>);
-
     const button = screen.getByRole("button", { name: "Delete deck" });
     expect(button.className).not.toContain("secondary-button");
     expect(button.className).not.toContain("danger-text");
@@ -38,7 +38,6 @@ describe("shared UI primitives", () => {
         <InlineNotice kind="error">Could not save.</InlineNotice>
       </Panel>,
     );
-
     expect(screen.getByRole("heading", { name: "Study settings" })).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Could not save.");
   });
@@ -56,41 +55,40 @@ describe("shared UI primitives", () => {
     expect(screen.getByRole("status").textContent).toContain("Loading decks");
   });
 
-  it("exposes radio semantics and roving arrow-key selection", () => {
+  it("exposes radio semantics and roving arrow-key selection", async () => {
     const onChange = vi.fn();
-    render(
-      <SegmentedControl
-        label="Range"
-        value="7d"
-        options={[
-          { value: "7d", label: "Week" },
-          { value: "30d", label: "Month" },
-          { value: "90d", label: "Quarter" },
-        ]}
-        onChange={onChange}
-      />,
-    );
-
+    function Harness() {
+      const [value, setValue] = useState("7d");
+      return <SegmentedControl label="Range" value={value} options={[
+        { value: "7d", label: "Week" },
+        { value: "30d", label: "Month" },
+        { value: "90d", label: "Quarter" },
+      ]} onChange={(next) => { setValue(next); onChange(next); }} />;
+    }
+    render(<Harness />);
     const week = screen.getByRole("radio", { name: "Week" });
     const month = screen.getByRole("radio", { name: "Month" });
     const quarter = screen.getByRole("radio", { name: "Quarter" });
-    expect(screen.getByRole("radiogroup", { name: "Range" }).getAttribute("aria-orientation")).toBe(
-      "horizontal",
-    );
+    expect(screen.getByRole("radiogroup", { name: "Range" }).getAttribute("aria-orientation")).toBe("horizontal");
     expect(week.getAttribute("aria-checked")).toBe("true");
     expect(week.getAttribute("tabindex")).toBe("0");
     expect(month.getAttribute("tabindex")).toBe("-1");
 
-    week.focus();
+    act(() => week.focus());
     fireEvent.keyDown(week, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(month);
-    expect(onChange).toHaveBeenLastCalledWith("30d");
-
+    await waitFor(() => {
+      expect(document.activeElement).toBe(month);
+      expect(month.getAttribute("aria-checked")).toBe("true");
+      expect(onChange).toHaveBeenLastCalledWith("30d");
+    });
     fireEvent.keyDown(month, { key: "End" });
-    expect(document.activeElement).toBe(quarter);
-    expect(onChange).toHaveBeenLastCalledWith("90d");
-
+    await waitFor(() => {
+      expect(document.activeElement).toBe(quarter);
+      expect(quarter.getAttribute("aria-checked")).toBe("true");
+      expect(onChange).toHaveBeenLastCalledWith("90d");
+    });
     fireEvent.click(month);
     expect(onChange).toHaveBeenLastCalledWith("30d");
+    expect(month.getAttribute("aria-checked")).toBe("true");
   });
 });
