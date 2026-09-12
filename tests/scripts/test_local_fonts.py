@@ -39,7 +39,7 @@ class LocalFontVerifierTests(unittest.TestCase):
             packaged_names.append(packaged_name)
             (self.assets / packaged_name).write_bytes(b"wOF2fixture")
         font_faces = "\n".join(
-            f'@font-face{{font-family:"Fixture";src:url("./{name}") format("woff2")}}'
+            f'@font-face{{font-family:"{"IBM Plex Sans" if name.startswith("ibm-plex") else "Fixture"}";src:url("./{name}") format("woff2")}}'
             for name in packaged_names
         )
         (self.assets / "app.css").write_text(
@@ -73,6 +73,54 @@ class LocalFontVerifierTests(unittest.TestCase):
         result = self.verify()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("hashed packaged WOFF2 assets and OFL notice", result.stdout)
+
+    def test_accepts_minified_font_stacks_without_changing_the_contract(self) -> None:
+        css = self.assets / "app.css"
+        original = css.read_text(encoding="utf-8")
+        source_stack = ' "IBM Plex Sans", var(--ostudy-font-family-system)'
+        for stack in (
+            '"IBM Plex Sans",var(--ostudy-font-family-system)',
+            "'IBM Plex Sans',var(--ostudy-font-family-system)",
+            "IBM Plex Sans,var(--ostudy-font-family-system)",
+            " IBM  Plex\nSans , var( --ostudy-font-family-system ) ",
+        ):
+            with self.subTest(stack=stack):
+                css.write_text(original.replace(source_stack, stack), encoding="utf-8")
+                result = self.verify()
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_missing_changed_or_extended_fallback_stacks(self) -> None:
+        css = self.assets / "app.css"
+        original = css.read_text(encoding="utf-8")
+        source_stack = ' "IBM Plex Sans", var(--ostudy-font-family-system)'
+        for property_name in ("--ui-font-family", "--card-font-family"):
+            for stack in (
+                '"IBM Plex Sans"',
+                '"IBM Plex Sans",var(--wrong-system-font)',
+                '"IBMPlexSans",var(--ostudy-font-family-system)',
+                '"IBM Plex Sans",var(--ostudy-font-family-system),serif',
+            ):
+                with self.subTest(property=property_name, stack=stack):
+                    css.write_text(
+                        original.replace(f"{property_name}:{source_stack}", f"{property_name}:{stack}"),
+                        encoding="utf-8",
+                    )
+                    result = self.verify()
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("missing-face fallback", result.stderr)
+
+    def test_comments_do_not_satisfy_a_missing_fallback(self) -> None:
+        css = self.assets / "app.css"
+        css.write_text(
+            css.read_text(encoding="utf-8").replace(
+                '--ui-font-family: "IBM Plex Sans", var(--ostudy-font-family-system);',
+                '/* --ui-font-family: "IBM Plex Sans", var(--ostudy-font-family-system); */',
+            ),
+            encoding="utf-8",
+        )
+        result = self.verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("packaged interface missing-face fallback", result.stderr)
 
     def test_rejects_a_missing_packaged_font(self) -> None:
         missing = self.assets / "ibm-plex-sans-latin-variable-fixtureHash.woff2"
