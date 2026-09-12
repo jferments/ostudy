@@ -4,6 +4,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { renderTailwindTheme } from "./ui/tailwind-theme.mjs";
+
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sourceDirectory = join(root, "src", "ui", "tokens");
 const outputDirectory = join(sourceDirectory, "generated");
@@ -26,6 +28,9 @@ validateThemeContract(themeTokens);
 validateAliases(referenceTokens, componentTokens, themeTokens);
 
 const outputs = new Map([
+  [join(outputDirectory, "tailwind-theme.css"), renderTailwindTheme(new Set([
+    ...referenceTokens.keys(), ...componentTokens.keys(), ...themeTokens.get("light").keys(),
+  ]))],
   [join(outputDirectory, "reference.css"), renderRootCss(referenceTokens)],
   [join(outputDirectory, "component.css"), renderRootCss(componentTokens)],
   ...[...themeTokens.entries()].map(([theme, tokens]) => [
