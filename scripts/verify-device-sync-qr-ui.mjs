@@ -6,34 +6,11 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const [
-  nativeScanner,
-  nativeUsb,
-  nativeManifest,
-  qrCommand,
-  frontendIpc,
-  platformIpc,
-  usbCoordinator,
-  compositionRoot,
-  startup,
-  settingsUi,
-  settingsCss,
-  syncCore,
-  syncCancellation,
-  syncNetwork,
-  syncTransport,
-  syncUsb,
-  syncPackage,
-  syncScope,
-  syncMerge,
-  aiProfileRepository,
-  aiDefaults,
-  aiProbeRepository,
-  logging,
-  linuxSetup,
-  linuxBundle,
-  udevRules,
-  accessoryFilter,
-  referenceTokens,
+  nativeScanner, nativeUsb, nativeManifest, qrCommand, frontendIpc, platformIpc,
+  usbCoordinator, compositionRoot, startup, settingsUi, settingsCss, syncCore,
+  syncCancellation, syncNetwork, syncTransport, syncUsb, syncPackage, syncScope,
+  syncMerge, aiProfileRepository, aiDefaults, aiProbeRepository, logging,
+  linuxSetup, linuxBundle, udevRules, accessoryFilter, referenceTokens,
 ] = await Promise.all([
   read("plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt"),
   read("plugins/ostudy-platform/android/src/main/java/OstudyUsbPlugin.kt"),
@@ -85,17 +62,9 @@ expectContains(frontendIpc, 'transport: input.transport ?? "local-network"', "ex
 expectContains(frontendIpc, "joinUsbDevicePairing", "automatic attached-USB receive IPC");
 expectContains(frontendIpc, "ostudy-sync://usb-attached", "internal USB attachment sentinel");
 expectNotContains(frontendIpc, "includeCredentials", "removed receiver credential consent field");
-expectContains(
-  compositionRoot,
-  "device_sync_qr_commands::scan_device_pairing_qr_async",
-  "async QR command registration",
-);
+expectContains(compositionRoot, "device_sync_qr_commands::scan_device_pairing_qr_async", "async QR command registration");
 expectContains(compositionRoot, "tauri_plugin_ostudy_platform::init_usb()", "dedicated native USB plugin registration");
-expectContains(
-  compositionRoot,
-  "device_sync::cancel_device_sync_session",
-  "sync cancellation command registration",
-);
+expectContains(compositionRoot, "device_sync::cancel_device_sync_session", "sync cancellation command registration");
 expectContains(compositionRoot, ".setup(startup::setup)", "startup composition boundary registration");
 expectContains(startup, "device_sync::reconcile_startup(&paths)", "stale-session startup reconciliation");
 expectContains(startup, "logging::initialize(paths.app_data_dir())", "persistent diagnostic initialization");
@@ -125,7 +94,7 @@ expectContains(settingsUi, 'aria-label={`Cancel ${session.direction', "active-se
 expectContains(settingsUi, "What to synchronize", "sender category selection group");
 expectContains(settingsUi, "Flashcards", "Flashcards scope checkbox");
 expectContains(settingsUi, "Documents", "Documents scope checkbox");
-expectContains(settingsUi, "Study Guides", "Study Guides scope checkbox");
+expectContains(settingsUi, "Study Guides", "Study Guide scope checkbox");
 expectContains(settingsUi, "API provider settings", "API provider settings scope checkbox");
 expectContains(settingsUi, "Saved API keys", "saved API credential scope checkbox");
 expectContains(settingsUi, 'changeSelection("documents"', "Documents dependency handler");
@@ -141,18 +110,15 @@ expectNotContains(settingsUi, "USB interface address", "manual USB endpoint fiel
 expectNotContains(settingsUi, 'value="usb-network"', "USB-network transport selector");
 expectNotContains(settingsUi, "USB tethering", "manual USB tethering instruction");
 expectContains(settingsCss, "width: min(100%, 340px);", "large desktop pairing QR presentation");
-expectContains(settingsCss, ".scopeFieldset", "granular sync scope presentation");
-expectContains(
-  settingsCss,
-  "background: var(--ostudy-color-neutral-0);",
-  "token-owned high-contrast QR quiet-zone background",
-);
+expectContains(settingsUi, "<SyncChoice", "shared accessible scope controls");
+expectContains(settingsCss, "background: var(--ostudy-color-neutral-0);", "token-owned high-contrast QR quiet-zone background");
 if (referenceTokenData?.color?.neutral?.["0"]?.$value !== "#ffffff") {
   failures.push("Reference token color.neutral.0 must remain literal #ffffff for QR quiet-zone contrast.");
 }
-expectContains(settingsCss, '.scanStatus[data-state="receiving"]', "visible receiving-state treatment");
-expectContains(settingsCss, '.scanStatus[data-state="received"]', "visible completed-state treatment");
-expectContains(settingsCss, ".sessionPill", "active-session cancellation presentation");
+expectContains(settingsUi, 'tw:data-[state=receiving]:bg-accent', "visible receiving-state treatment");
+expectContains(settingsUi, 'tw:data-[state=received]:bg-success-soft', "visible completed-state treatment");
+expectContains(settingsUi, 'tw:data-[state=detected]:bg-warning-soft', "detected-but-incomplete state is not success");
+expectContains(settingsUi, 'aria-label="Active synchronization sessions"', "active-session cancellation presentation");
 
 expectContains(syncCore, "const PROTOCOL_VERSION: u32 = 3;", "transport-bound offer protocol version");
 expectContains(syncCore, "PairingTransport", "typed LAN/direct-USB invitation transport");
@@ -224,11 +190,7 @@ expectContains(syncPackage, "document_backup::validate_document_files", "documen
 expectNotContains(syncMerge, 'TableSpec::new("app_settings"', "app settings in merge allowlist");
 expectContains(syncMerge, 'TableSpec::new("documents"', "Documents merge graph");
 expectContains(syncMerge, 'TableSpec::new("document_study_guides"', "Study Guide merge graph");
-expectContains(
-  syncMerge,
-  "first_contact_remote_creation_is_not_a_delete_conflict",
-  "first-contact sender rows merge without synthetic delete conflicts",
-);
+expectContains(syncMerge, "first_contact_remote_creation_is_not_a_delete_conflict", "first-contact sender rows merge without synthetic delete conflicts");
 expectContains(logging, 'DIAGNOSTIC_FILE: &str = "ostudy.jsonl"', "persistent diagnostic log");
 expectContains(logging, "WRITER_QUEUE_CAPACITY", "bounded asynchronous diagnostic queue");
 expectContains(logging, "sender.try_send(WriterMessage::Event", "nonblocking diagnostic write path");
@@ -241,23 +203,16 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log(
-  "OK   Device sync keeps LAN QR pairing and direct Android USB as separate adapters beneath one authenticated SyncIo protocol; USB uses Android Open Accessory bulk I/O with automatic attachment, no tethering/IP/QR/debugging workflow; sender-selected scopes, merge/privacy rules, and credential boundaries remain shared.",
-);
+console.log("OK   Device sync keeps LAN QR pairing and direct Android USB as separate adapters beneath one authenticated SyncIo protocol; USB uses Android Open Accessory bulk I/O with automatic attachment, no tethering/IP/QR/debugging workflow; sender-selected scopes, merge/privacy rules, and credential boundaries remain shared.");
 
-async function read(relativePath) {
-  return readFile(join(root, relativePath), "utf8");
-}
-
+async function read(relativePath) { return readFile(join(root, relativePath), "utf8"); }
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
 }
-
 function expectContainsNormalized(source, expected, label) {
   const normalized = source.replace(/\s+/gu, " ");
   if (!normalized.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
 }
-
 function expectNotContains(source, forbidden, label) {
   if (source.includes(forbidden)) failures.push(`Forbidden ${label}: ${forbidden}`);
 }
