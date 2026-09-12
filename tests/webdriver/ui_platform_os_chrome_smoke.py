@@ -4,15 +4,29 @@
 The redesign deliberately removed ostudy-rendered maximize/full-screen buttons,
 and the responsive action system deliberately promotes a sole overflow action
 instead of rendering a one-item More menu. This adapter replaces only stale
-assertions for those two policies while reusing the complete UI-platform smoke.
+assertions for those policies and accessible workspace-tab names while reusing
+the complete UI-platform smoke. Responsive labels can have multiple DOM spans;
+only the explicit accessible name identifies a tab across viewport sizes.
 """
 
 from __future__ import annotations
 
+import json
 import time
 
 import ui_platform_smoke as ui
 import smoke as webdriver
+
+
+def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
+    """Match the actual accessible tab name, not concatenated responsive spans."""
+    return webdriver.find_element(
+        session_id,
+        "xpath",
+        "//main//*[@role='tablist' and @aria-label='Flashcards workspaces']"
+        f"//button[@role='tab' and @aria-label={json.dumps(label)}]",
+        deadline,
+    )
 
 
 def assert_no_app_window_controls(session_id: str, label: str) -> None:
@@ -276,6 +290,7 @@ def verify_current_deck_detail_header(
 
 
 if __name__ == "__main__":
+    ui.find_workspace_tab = find_workspace_tab
     ui.verify_native_window_controls = verify_os_owned_native_window_states
     ui.verify_deck_detail_header = verify_current_deck_detail_header
     raise SystemExit(ui.main())
