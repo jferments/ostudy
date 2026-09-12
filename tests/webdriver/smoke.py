@@ -766,7 +766,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     set_input_text(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deck_name,
         deadline,
     )
@@ -825,7 +825,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     selection = find_element(
         session_id,
         "xpath",
-        f"//input[@aria-label={json.dumps(f'Select {deck_name}')}]",
+        f"//*[@role='checkbox' and @aria-label={json.dumps(f'Select {deck_name}')}]",
         deadline,
     )
     click(session_id, selection)
@@ -859,7 +859,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
                     {
                         "script": """
                             const content = document.querySelector(
-                              "dialog [data-layout-mode]",
+                              "[role='dialog'] [data-layout-mode]",
                             );
                             return content ? {
                               mode: content.dataset.layoutMode,
@@ -890,7 +890,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     close_setup = find_element(
         session_id,
         "css selector",
-        "dialog button[aria-label='Close dialog']",
+        "[role='dialog'] button[aria-label='Close dialog']",
         deadline,
     )
     click(session_id, close_setup)
@@ -933,7 +933,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_row = find_element(
         session_id,
         "xpath",
-        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        f"//main//*[@role='button' and @aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     click(session_id, deck_row)
