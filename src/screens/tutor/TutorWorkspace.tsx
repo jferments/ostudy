@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from "react";
-
 import { useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
 import { getSemanticSourceCitation, sameStudyScope, scopeMembers, studyScopeKey, type SourceCitation } from "../../ipc/knowledge";
@@ -8,11 +7,15 @@ import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { Dialog, Sheet } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
+import { Textarea, Disclosure } from "../../ui/primitives/FormControls";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { EmptyState } from "../../ui/primitives/EmptyState";
+import { PageScaffold, PageHeader } from "../../ui/patterns/WorkspacePatterns";
 import { TutorChatSettings } from "./TutorChatSettings";
 import { useTutor } from "./TutorContext";
 import { TutorMarkdown } from "./TutorMarkdown";
 import { TutorSources } from "./TutorSources";
-import styles from "./TutorWorkspace.module.css";
+import { styles } from "./presentation";
 
 export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean }) {
   const tutor = useTutor();
@@ -36,34 +39,24 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const sourceLabel = tutor.scope.kind === "library" ? "Library" : members.length > 1 ? `${members.length} sources`
     : members.length === 1 ? tutor.choices.find((choice) => sameStudyScope(choice.scope, members[0]))?.title ?? "Selected source" : "No sources";
   const inlineHistory = showHistory && layoutMode !== "compact" && !hintOnly;
-
   useEffect(() => {
-    sourceLane.invalidate();
-    setSource(null);
-    setSourceError(null);
-    setSourceBusy(false);
-    followTail.current = true;
+    sourceLane.invalidate(); setSource(null); setSourceError(null); setSourceBusy(false); followTail.current = true;
   }, [sourceLane, tutor.detail?.conversation.id, hintOnly]);
   useEffect(() => {
     if (followTail.current && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
   }, [tutor.detail, tutor.busy]);
-
   async function showSource(citation: SourceCitation): Promise<void> {
     if (hintOnly) return;
-    const token = sourceLane.begin();
-    setSourceBusy(true); setSourceError(null);
+    const token = sourceLane.begin(); setSourceBusy(true); setSourceError(null);
     try {
       const value = await getSemanticSourceCitation({ sourceId: citation.id, contentHash: citation.contentHash });
       if (sourceLane.isCurrent(token)) setSource(value);
-    } catch (failure: unknown) {
-      if (sourceLane.isCurrent(token)) setSourceError(getErrorMessage(failure));
-    } finally { if (sourceLane.isCurrent(token)) setSourceBusy(false); }
+    } catch (failure: unknown) { if (sourceLane.isCurrent(token)) setSourceError(getErrorMessage(failure)); }
+    finally { if (sourceLane.isCurrent(token)) setSourceBusy(false); }
   }
   async function remove(): Promise<void> {
-    if (await confirm({ title: "Delete this conversation?", description: "Only this chat is deleted. Documents, cards, study guides and review schedules stay unchanged.",
-      confirmLabel: "Delete conversation", destructive: true })) {
-      await tutor.removeConversation();
-      setSettingsOpen(false);
+    if (await confirm({ title: "Delete this conversation?", description: "Only this chat is deleted. Documents, cards, study guides and review schedules stay unchanged.", confirmLabel: "Delete conversation", destructive: true })) {
+      await tutor.removeConversation(); setSettingsOpen(false);
     }
   }
   function submit(): void { void tutor.send(hintOnly ? "hint" : question ? "answer" : "explain"); }
@@ -73,32 +66,28 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     return <nav className={styles.history} aria-label="Conversations">
       <Button disabled={locked} onClick={() => { tutor.newConversation(); setHistoryOpen(false); }}><Icon name="plus" /> New chat</Button>
       {!conversations.length ? <p className={styles.muted}>Your conversations appear here.</p> : null}
-      {conversations.map((saved) => <button type="button" key={saved.id} className={styles.historyItem}
+      {conversations.map((saved) => <Button variant="ghost" key={saved.id} className={styles.historyItem}
         aria-current={tutor.detail?.conversation.id === saved.id ? "page" : undefined} disabled={locked}
-        onClick={() => { void tutor.selectConversation(saved.id); setHistoryOpen(false); }}>{saved.title}</button>)}
+        onClick={() => { void tutor.selectConversation(saved.id); setHistoryOpen(false); }}>{saved.title}</Button>)}
     </nav>;
   }
-  return <section className={inlineHistory ? styles.withHistory : styles.workspace}
-    aria-label={hintOnly ? "Flashcard hints" : "Tutor conversation"}>
+  return <section className={inlineHistory ? styles.withHistory : styles.workspace} aria-label={hintOnly ? "Flashcard hints" : "Tutor conversation"}>
     {inlineHistory ? <aside className={styles.historyPane}>{history()}</aside> : null}
     <div className={styles.chat}>
       {!hintOnly ? <header className={styles.chatHeader}>
-        <div className={styles.heading}><h2>{tutor.detail?.conversation.title ?? "New chat"}</h2>
-          <span className={styles.muted}>{tutor.target?.title ?? sourceLabel}</span></div>
+        <div className={styles.heading}><h2>{tutor.detail?.conversation.title ?? "New chat"}</h2><span className={styles.muted}>{tutor.target?.title ?? sourceLabel}</span></div>
         <div className={styles.toolbar}>
           {!inlineHistory ? <Button size="small" disabled={locked} onClick={() => setHistoryOpen(true)}><Icon name="menu" /> Conversations</Button> : null}
           <Button size="small" disabled={locked} onClick={() => { setSourcesOpen(true); void tutor.initialize(); }}><Icon name="document" /> Sources</Button>
           <Button size="icon" aria-label="Chat settings" disabled={locked} onClick={() => setSettingsOpen(true)}><Icon name="settings" /></Button>
         </div>
       </header> : <p className={styles.muted}>Hints keep the answer and source previews hidden. Close this panel to return to the same card.</p>}
-      {!tutor.profiles.length && !tutor.loading ? <p className={styles.notice}>Select a Tutor model in Settings → AI/LLM to send messages. Saved chats remain readable offline.</p> : null}
+      {!tutor.profiles.length && !tutor.loading ? <InlineNotice>Select a Tutor model in Settings → AI/LLM to send messages. Saved chats remain readable offline.</InlineNotice> : null}
       <div ref={transcript} className={styles.transcript} role="log" aria-label="Saved conversation" aria-relevant="additions"
         onScroll={() => { const element = transcript.current; if (element) followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; }}>
-        {!turns.length ? <div className={styles.empty}><Icon name="brain" size={32} />
-          <h3>{hintOnly ? "Work toward the answer" : "What would you like to understand?"}</h3>
-          <p>Ask for an explanation, compare ideas, or test your knowledge.</p>
-          {!hintOnly ? <p>Choose optional sources above. Your saved material is ready to use; no separate understanding step.</p> : null}
-        </div> : null}
+        {!turns.length ? <EmptyState className={styles.empty} icon={<Icon name="brain" size={32} />}
+          title={hintOnly ? "Work toward the answer" : "What would you like to understand?"}
+          description={hintOnly ? "Ask for an explanation, compare ideas, or test your knowledge." : "Ask for an explanation, compare ideas, or test your knowledge. Choose optional sources above. Your saved material is ready to use; no separate understanding step."} /> : null}
         {tutor.detail?.hasEarlierTurns && !hintOnly ? <Button disabled={locked} onClick={() => { followTail.current = false; void tutor.loadEarlier(); }}>Load earlier messages</Button> : null}
         {turns.map((turn) => <article className={styles.turn} key={turn.id}>
           {turn.userText ? <section className={styles.userMessage} aria-label="Your message"><strong>You</strong><div className={styles.message}>{turn.userText}</div></section> : null}
@@ -106,9 +95,9 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
             <div className={styles.toolbar}><strong>Tutor</strong><span className={styles.muted}>{turn.model}</span></div>
             {turn.assistantText && turn.assistantText !== turn.errorMessage ? turn.mode === "hint" ? <div className={styles.message}>{turn.assistantText}</div> : <TutorMarkdown text={turn.assistantText} /> : null}
             {turn.state === "running" ? <p role="status">Working on your response…</p> : null}
-            {turn.errorMessage ? <p role="alert">{turn.errorMessage}</p> : null}
-            {!turn.evidenceCurrent && turn.state === "complete" ? <p className={styles.notice}>The source has changed or been removed. This answer is historical, not current evidence.</p> : null}
-            {turn.feedback ? <details><summary>Quiz feedback</summary>{turn.feedback.criteriaFeedback.map((text, index) => <TutorMarkdown key={index} text={text} />)}</details> : null}
+            {turn.errorMessage ? <InlineNotice kind="error">{turn.errorMessage}</InlineNotice> : null}
+            {!turn.evidenceCurrent && turn.state === "complete" ? <InlineNotice kind="warning">The source has changed or been removed. This answer is historical, not current evidence.</InlineNotice> : null}
+            {turn.feedback ? <Disclosure title="Quiz feedback">{turn.feedback.criteriaFeedback.map((text, index) => <TutorMarkdown key={index} text={text} />)}</Disclosure> : null}
             {!hintOnly && turn.mode !== "quiz" ? <div className={styles.sources}>{turn.citations.map((citation, index) => <Button key={citation.id} size="small" variant="text"
               disabled={sourceBusy || !turn.evidenceCurrent} onClick={() => { void showSource(citation); }}>Source {index + 1}: {citation.title}</Button>)}</div> : null}
             {turn.id === tutor.detail?.turns.at(-1)?.id && (turn.mode !== "hint" || hintOnly) && ["failed", "canceled", "interrupted"].includes(turn.state) ? <Button size="small" disabled={locked || tutor.needsRefresh}
@@ -117,14 +106,14 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         </article>)}
         {tutor.busy && !turns.some((turn) => turn.state === "running") ? <p role="status">{hintOnly ? "Preparing a hint…" : "Searching saved material and composing your response…"}</p> : null}
       </div>
-      {sourceError ? <p role="alert">{sourceError}</p> : null}
-      {tutor.error ? <p className={styles.notice} role="alert">{tutor.error}</p> : null}
+      {sourceError ? <InlineNotice kind="error">{sourceError}</InlineNotice> : null}
+      {tutor.error ? <InlineNotice kind="error">{tutor.error}</InlineNotice> : null}
       {tutor.needsRefresh ? <Button disabled={tutor.busy} onClick={() => { void tutor.refresh(); }}>Refresh saved conversation</Button> : null}
-      {tutor.pending ? <div className={styles.notice}><p>Checking this response will not submit a duplicate message.</p>
-        <Button disabled={tutor.busy} onClick={() => { void tutor.retryPending(); }}>Check response</Button></div> : null}
+      {tutor.pending ? <InlineNotice><p>Checking this response will not submit a duplicate message.</p>
+        <Button disabled={tutor.busy} onClick={() => { void tutor.retryPending(); }}>Check response</Button></InlineNotice> : null}
       <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <label className={styles.composerLabel} htmlFor={`${id}-message`}>{hintOnly ? "Hint request" : question ? "Your answer" : "Message"}</label>
-        <textarea id={`${id}-message`} rows={2} maxLength={8000} value={tutor.draft}
+        <Textarea className={styles.composerInput} id={`${id}-message`} rows={2} maxLength={8000} value={tutor.draft}
           placeholder={question ? "Type your answer…" : "Ask a question…"} disabled={locked || tutor.needsRefresh}
           onChange={(event) => tutor.setDraft(event.target.value)} onKeyDown={(event) => {
             if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); }
@@ -148,13 +137,12 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     </Dialog> : null}
   </section>;
 }
-
 export function TutorScreen() {
   const tutor = useTutor();
   useEffect(() => { void tutor.initialize(); }, [tutor.initialize]);
-  return <div className={styles.screen} data-testid="tutor-screen">
-    <h1 className={styles.pageTitle}>Tutor</h1>
+  return <PageScaffold width="full" className={styles.screen} data-testid="tutor-screen">
+    <PageHeader title="Tutor" icon="brain" description="Explore ideas with your study material, or start a general conversation." />
     {tutor.loading ? <p role="status">Loading saved chats and settings…</p> : null}
     <TutorWorkspace showHistory />
-  </div>;
+  </PageScaffold>;
 }
