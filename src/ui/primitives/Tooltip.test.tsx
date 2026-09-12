@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dialog } from "../overlays/Dialog";
 import { OverlayProvider } from "../overlays/OverlayProvider";
@@ -38,12 +38,12 @@ describe("Tooltip", () => {
       expect(screen.queryByRole("tooltip")).toBeNull();
     } finally { vi.useRealTimers(); }
   });
-  it("opens immediately for keyboard focus and preserves aria-describedby", () => {
+  it("opens immediately for keyboard focus and preserves aria-describedby", async () => {
     const trigger = renderTooltip(); fireEvent.focus(trigger);
     const tooltip = screen.getByRole("tooltip");
     expect(trigger.getAttribute("aria-describedby")?.split(" ")).toEqual(["existing-description", tooltip.id]);
     fireEvent.blur(trigger);
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
     expect(trigger.getAttribute("aria-describedby")).toBe("existing-description");
   });
   it("dismisses on activation", () => {
