@@ -1,78 +1,29 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { build } from "vite";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const root = fileURLToPath(new URL("../../", import.meta.url));
-const migratedSources = [
-  "src/ui/vendor/shadcn/sidebar.tsx",
-  "src/ui/layout/AppFrame.tsx",
-  "src/ui/layout/AppNavigation.tsx",
-  "src/App.tsx",
-  "src/components/MobileAppBar.tsx",
-  "src/components/AppErrorBoundary.tsx",
-  "src/ui/patterns/WorkspacePatterns.tsx",
-  "src/ui/patterns/SelectionToolbar.tsx",
-  "src/ui/primitives/Tabs.tsx",
-  "src/screens/flashcards/deck-library/libraryPresentation.ts",
-  "src/screens/flashcards/deck-library/DeckItem.tsx",
-  "src/screens/flashcards/deck-library/FolderSection.tsx",
-  "src/screens/flashcards/deck-library/DeckLibraryView.tsx",
-  "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx",
-  "src/screens/flashcards/deck-library/ArchivedDecksSection.tsx",
-  "src/screens/flashcards/deck-library/DeckLibrarySheets.tsx",
-  "src/screens/flashcards/deck-library/PracticeSetupSheet.tsx",
-  "src/screens/flashcards/FlashcardsWorkspace.tsx",
-  "src/screens/flashcards/DeckTransferDialog.tsx",
-  "src/screens/flashcards/AnkiImportReport.tsx",
-  "src/screens/cards/CardBrowserWorkspace.tsx",
-  "src/screens/cards/browserPresentation.ts",
-  "src/screens/cards/CardFilters.tsx",
-  "src/screens/cards/CardFilters.presentation.ts",
-  "src/screens/cards/BulkEntryModal.tsx",
-  "src/screens/cards/BulkTagModal.tsx",
-  "src/screens/cards/DeleteCardsModal.tsx",
-  "src/screens/cards/MoveCopyModal.tsx",
-  "src/screens/cards/PracticeResultsModal.tsx",
-  "src/screens/cards/ScheduleActionModal.tsx",
-  "src/components/TagInput.tsx",
-  "src/ui/primitives/Chip.tsx",
-  "src/ui/primitives/Notification.tsx",
-  "src/ui/vendor/shadcn/notification.tsx",
-  "src/ui/primitives/Progress.tsx",
-  "src/ui/vendor/shadcn/progress.tsx",
-  "src/ui/primitives/EmptyState.tsx",
-  "src/ui/vendor/shadcn/empty.tsx",
-  "src/ui/primitives/InlineNotice.tsx",
-  "src/ui/vendor/shadcn/alert.tsx",
-  "src/ui/vendor/shadcn/tooltip.tsx",
-  "src/ui/vendor/shadcn/dropdown-menu.tsx",
-  "src/ui/vendor/shadcn/modal.tsx",
-  "src/ui/vendor/shadcn/button.tsx",
-  "src/ui/vendor/shadcn/badge.tsx",
-  "src/ui/vendor/shadcn/skeleton.tsx",
-  "src/ui/vendor/shadcn/input.tsx",
-  "src/ui/vendor/shadcn/native-select.tsx",
-  "src/ui/vendor/shadcn/form-controls.tsx",
-  "src/ui/vendor/shadcn/tabs.tsx",
-  "src/ui/vendor/shadcn/card.tsx",
-  "src/ui/primitives/FormControls.tsx",
-  "src/ui/primitives/Button.tsx",
-  "src/ui/primitives/Panel.tsx",
-  "src/screens/SettingsScreen.tsx",
-  "src/screens/TemplatesScreen.tsx",
-  "src/screens/templates/TemplateLayoutEditor.tsx",
-  "src/screens/settings/SettingsControls.tsx",
-  "src/screens/settings/AppearanceSettings.tsx",
-  "src/screens/settings/StorageBackupSettings.tsx",
-  "src/screens/settings/ReviewSchedulingSettings.tsx",
-  "src/screens/settings/DiagnosticsSettings.tsx",
-  "src/screens/settings/DeviceSyncSettings.tsx",
-  "src/screens/settings/AiLlmSettings.tsx",
-  "src/screens/settings/DefaultAiModelSettings.tsx",
+const rootUrl = new URL("../../", import.meta.url);
+const root = fileURLToPath(rootUrl);
+// The live Phase 4–8 owners, not a hand-maintained subset of control examples.
+const directories = ["src/ui", "src/screens/settings", "src/screens/cards", "src/screens/flashcards"];
+const entryFiles = [
+  "src/App.tsx", "src/components/MobileAppBar.tsx", "src/components/NavigationSidebar.tsx",
+  "src/components/AppErrorBoundary.tsx", "src/components/TagInput.tsx", "src/components/Toast.tsx",
+  "src/screens/SettingsScreen.tsx", "src/screens/TemplatesScreen.tsx", "src/screens/templates/TemplateLayoutEditor.tsx",
 ];
+async function sourceFiles(directory) {
+  const result = [];
+  for (const entry of await readdir(new URL(`${directory}/`, rootUrl), { withFileTypes: true })) {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) result.push(...await sourceFiles(path));
+    else if (/\.tsx?$/u.test(entry.name) && !/\.(?:test|spec)\.tsx?$/u.test(entry.name)) result.push(path);
+  }
+  return result;
+}
+const migratedSources = [...new Set([...entryFiles, ...(await Promise.all(directories.map(sourceFiles))).flat()])].sort();
 
 test("compiles every migrated utility, all themes and capability variants without writing source", async () => {
   const result = await build({
@@ -96,16 +47,33 @@ test("compiles every migrated utility, all themes and capability variants withou
   assert.ok(css.includes("pointer: coarse"));
   assert.ok(css.includes("ostudy-skeleton"));
   for (const file of migratedSources) {
-    const source = await readFile(new URL(`../../${file}`, import.meta.url), "utf8");
+    const source = await readFile(new URL(file, rootUrl), "utf8");
     const candidates = new Set(source.match(/tw:[^\s"'`]+/gu));
     for (const candidate of candidates) {
-      // Group/peer names are selector markers, not declarations in their own right.
       if (/^tw:(?:group|peer)(?:\/[-\w]+)?$/u.test(candidate)) continue;
       const escaped = candidate.replace(/[^a-zA-Z0-9_-]/gu, (character) => `\\${character}`);
       assert.ok(css.includes(`.${escaped}`), `${file}: missing compiled utility ${candidate}`);
     }
   }
-  const foundation = await readFile(new URL("../../src/ui/foundations/index.css", import.meta.url), "utf8");
+  const foundation = await readFile(new URL("src/ui/foundations/index.css", rootUrl), "utf8");
   assert.doesNotMatch(foundation, /@import\s+["']tailwindcss(?:["']|\/preflight)/u);
   assert.ok(foundation.includes('layer(components) source("../..") prefix(tw)'));
+});
+
+test("live migrated features use shared controls rather than another native-control vocabulary", async () => {
+  for (const file of migratedSources) {
+    if (file.startsWith("src/ui/")) continue;
+    const source = await readFile(new URL(file, rootUrl), "utf8");
+    assert.doesNotMatch(source, /<(?:button|input|select|textarea|details|summary)(?=[\s/>])/u,
+      `${file}: use the shared oStudy control; keep genuinely special rendering behind an explicit adapter`);
+  }
+});
+
+test("no-Preflight shell and overlay separators explicitly clear the other border edges", async () => {
+  for (const file of ["src/ui/layout/AppFrame.tsx", "src/ui/layout/AppNavigation.tsx", "src/ui/vendor/shadcn/modal.tsx", "src/ui/overlays/OverflowMenu.tsx"]) {
+    const source = await readFile(new URL(file, rootUrl), "utf8");
+    for (const match of source.matchAll(/["']([^"']*tw:border-[bt](?:\s)[^"']*)["']/gu)) {
+      assert.ok(match[1].includes("tw:border-0"), `${file}: partial border must not inherit medium browser-default edges`);
+    }
+  }
 });

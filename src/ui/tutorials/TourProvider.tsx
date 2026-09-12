@@ -142,7 +142,7 @@ export function TourProvider({ enabled, children }: { enabled: boolean; children
         <section className={styles.popover} role="dialog" aria-modal="false" aria-labelledby="ostudy-tour-title" aria-describedby="ostudy-tour-body" style={popoverStyle(anchorBox, step.placement ?? "auto")}>
           <header className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
             <span className="tw:text-xs tw:font-medium tw:tracking-wide tw:text-accent-foreground">{module.title}</span>
-            <IconButton icon="close" iconSize={18} label="Close tutorial" tooltip={false} onClick={dismiss} />
+            <IconButton icon="close" iconSize={16} label="Close tutorial" tooltip={false} onClick={dismiss} />
           </header>
           <div className="tw:flex tw:gap-1.5" aria-label={`Step ${active.stepIndex + 1} of ${module.steps.length}`}>
             {module.steps.map((candidate, index) => <span key={candidate.id} data-current={index === active.stepIndex || undefined} data-complete={index < active.stepIndex || undefined}

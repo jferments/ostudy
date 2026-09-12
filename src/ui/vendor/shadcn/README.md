@@ -1,55 +1,33 @@
 # Owned shadcn components
 
-Upstream: shadcn-ui/ui commit `3ba91b1cc83e1bbe4ab35a422ff2a694849c5048`.
+Upstream baseline: shadcn-ui/ui commit `3ba91b1cc83e1bbe4ab35a422ff2a694849c5048`.
 License: MIT; the distributed notice is [SHADCN-MIT.txt](../../../../public/licenses/SHADCN-MIT.txt).
 
-Components are adapted from `apps/v4/registry/bases/base/ui/`: `button.tsx`,
-`badge.tsx`, `skeleton.tsx`, `input.tsx`, `native-select.tsx`, `checkbox.tsx`,
-`switch.tsx`, `radio-group.tsx`, `slider.tsx`, `textarea.tsx`, `collapsible.tsx`,
-`tabs.tsx`, and `card.tsx`. Form renderers are grouped in `form-controls.tsx`. This directory
-is the only Base UI import owner. Feature callers use the oStudy facades, not
-these files or vendor prop types.
+The Base UI family in `apps/v4/registry/bases/base/ui/` supplies the composition patterns for Button, Badge, Skeleton, Input, NativeSelect, Checkbox, Switch, RadioGroup, Slider, Textarea, Collapsible, Tabs, Card, Dialog, DropdownMenu, Tooltip, Toast, Alert, Progress, Empty and Sidebar. Form renderers are grouped in `form-controls.tsx`; modal/notification files adapt the dialog/toast patterns to oStudy's facade APIs.
+
+This directory is the only Base UI import owner. Features import oStudy facades, not copied implementations or vendor prop types. Native structural elements inside these implementations are normal shadcn composition, not a claim that every div needs a behavioral primitive.
 
 ## Deliberate adaptations
 
-- Button retains upstream Base UI behavior and CVA composition. Fully expanded
-  semantic utility strings replace the registry's `cn-button-*` style placeholders.
-  `tw:` is the configured Tailwind prefix. oStudy supplies colors, radii, motion,
-  font, focus treatment and touch dimensions rather than an upstream palette.
-- The existing destructive-outline, destructive-ghost and back appearances are
-  represented internally so the public Button API does not change.
-- Badge retains Base UI mergeProps/useRender composition; oStudy status tones
-  supply its semantic variants. Badges remain spans, not buttons or live regions.
-- Skeleton remains a span to preserve existing callers. Its pulse uses the
-  existing oStudy animation duration and is disabled for reduced/no-motion states.
-- Input retains Base UI Input behavior with native React input props behind
-  `TextField`. Labels, validation, secrets and form state remain outside this layer.
-- NativeSelect retains the upstream wrapper/select/decorative-icon composition.
-  The existing oStudy icon replaces the registry icon placeholder. Native refs,
-  change events, options/optgroups, multiple selection and numeric listbox size
-  are preserved. Caller className targets the select, not its wrapper. Listboxes
-  omit the dropdown arrow rather than advertising an unavailable picker.
-- Utility composition uses the conventional clsx/tailwind-merge combination,
-  configured for the prefix and semantic font sizes, behind `ui/internal/cn`.
+- Registry `cn-*` placeholders are expanded to semantic `tw:` utility recipes. oStudy supplies colors, radii, fonts, motion, focus and touch dimensions; the upstream default palette is not another theme authority.
+- Button retains Base UI and CVA composition while preserving the existing primary/destructive/outline/ghost/back appearances, native refs/forms and loading action names.
+- Badge retains mergeProps/useRender and span semantics with application status tones. Skeleton retains span callers and disables its pulse for reduced/no motion.
+- TextField uses Base UI Input behind native React props. NativeSelect intentionally preserves OS picker, options/optgroups, multiple selection and numeric listboxes; listboxes do not show a misleading dropdown arrow. Labels, validation and secrets stay outside the vendor layer.
+- Checkbox, Switch, RadioGroup and Slider use upstream state/interaction rather than custom event imitation. Tabs use roving focus and automatic activation. SegmentedControl's existing Home/End contract is supplied by its semantic facade using public rendered controls.
+- Disclosure content stays mounted to preserve drafts. FormField keeps help actions outside the input label. Input text does not inherit small bold label styling.
+- Card/Sidebar use composable structural elements. The sidebar is intentionally non-collapsing: LayoutModeProvider owns responsive behavior, so there is no second cookie, mobile detector or vendor navigation hotkey.
+- ModalView uses Base UI Dialog for browser behavior. oStudy owns application overlay registration/native Back, width and compact/fullscreen presentation, busy dismissal and explicit focus policy. InlineWorkspace remains outside modal behavior.
+- Dropdown menus close before a chosen action opens a new dialog. Compact actions render through the same shared Sheet policy. Tooltip behavior uses upstream positioning rather than manual screen coordinates.
+- NotificationView uses Base UI Toast with one visible message, preserving the existing app API. The facade owns absolute Undo expiry and asynchronous action identity; ordinary success remains status, not an error alert.
+- Standard progress uses the upstream behavior; oStudy still supports specialized rich inline progress content. Unknown totals use indeterminate feedback rather than fabricated counts. Empty/Alert retain application wording, severity and recovery actions.
+- `cn` uses clsx/tailwind-merge with the configured prefix and semantic font sizes. Partial-border recipes explicitly clear other edges because Preflight is intentionally absent.
 
-- Tabs use upstream automatic activation and roving focus. Radio groups keep
-  upstream behavior; the oStudy SegmentedControl facade retains its additional
-  Home/End shortcut contract using the public rendered controls.
-- Disclosure panels stay mounted while closed so draft form values survive.
-  Labels and contextual-help actions stay separate in the application FormField.
-- Form inputs use normal body text rather than inheriting bold, small label text.
+## Updating and qualification
 
-## Updating
+These are customized source copies, not an npm package that automatically updates the application's controls. Compare a pinned upstream revision, review behavior/dependencies, port relevant changes and record adaptations. Do not blindly run CLI overwrite against owned source.
 
-These are source copies, not a package that automatically updates our customized
-components. Compare a pinned upstream revision, review behavior and dependency
-changes, then port the relevant changes. Never run an unreviewed CLI overwrite
-against the owned source. Record the new revision and local adaptations here.
-`components.json` describes the Base UI style family, aliases and prefix; no CLI,
-remote registry, CDN, hosted font or provider is required when the app runs.
+`components.json` records family, aliases and prefix. Runtime needs no CLI, registry, CDN, hosted font or external provider to render the UI. The app's actual provider services remain unrelated to UI dependencies.
 
-Use the primitive behavior tests and CSS compilation contract before wider UI
-qualification. Primitive utilities currently compile into the existing components
-layer, allowing unmigrated feature CSS to retain its override precedence. Remove
-that temporary placement only after auditing caller overrides, not by globally
-forcing `!important`.
+Use behavior and CSS-compilation tests before wider native qualification. Utilities temporarily compile into the existing components layer so unmigrated feature overrides remain compatible. Move them to the final layer only after auditing the remaining consumers, not by forcing global important declarations.
+
+The generated CSS contract discovers shared UI and live Phase 4–8 sources, verifies every literal utility and all themes/capabilities. It is not a screenshot test or physical-device acceptance. Actual native focus/IME/Back, layout and human visual review remain separate requirements.

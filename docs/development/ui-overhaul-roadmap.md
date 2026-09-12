@@ -1,10 +1,8 @@
 # shadcn/ui + Tailwind UI overhaul roadmap
 
-Status: implementation roadmap recorded by Phase 0. Runtime migration has not started in this document's Phase 0 PR.
+Status: Phase 0 planning is recorded; source implementation through Phase 8 is integrated in PR #96 and is subject to exact-head qualification and human visual/device acceptance. Phases 9–15 remain later work. [Current implementation](ui-overhaul-current-implementation.md) owns the precise implemented surface and retained-CSS exceptions. A phase's source completion is not a claim that all tests or manual acceptance passed.
 
-Planning base: PR #94 (`agent/semantic-ai-tutor`) at `279430d799b78add3a0885168e011de0b0d47ff8`.
-
-The roadmap assumes PR #94's Tutor and expanded provider/model UI are part of the application being migrated. If the parent PR changes materially before a later implementation stage, that stage must re-read the current merged/source head rather than treating this inventory as a frozen source manifest.
+The original planning base was PR #94 at `279430d799b78add3a0885168e011de0b0d47ff8`. Implementation reconciled its final main merge `fd5659e77671cb814393024c1baa2e0cba9a59d7`. The historical inventory is not a frozen manifest of today's source.
 
 ## Target architecture
 
@@ -17,273 +15,146 @@ feature/domain UI
           -> DOM/CSS in the Tauri WebView
 ```
 
-Tailwind is allowed in feature/domain components for local presentation. Base UI and vendor shadcn imports are not. oStudy's token sources, appearance provider, platform capability rules, native/controller boundaries, and domain semantics remain authoritative.
+Feature components may use Tailwind for local presentation, but not Base UI/vendor imports. Tokens, AppearanceProvider, platform capabilities, controllers and native domain policy remain authoritative. Source copies require reviewed upstream updates, not blind CLI overwrites.
 
 ## Cross-phase rules
 
-Every implementation stage follows these rules:
+1. Retain the exact known head/tree while working. Refresh after publication or a genuine concurrent change, not after every truncated response.
+2. Migrate a bounded subsystem, publish it and qualify the concrete result before accumulating another independent candidate.
+3. Keep legacy CSS Modules interoperable during migration; both old and new presentation consume the same semantic tokens.
+4. Preserve public UI behavior before changing APIs. Do not mix scheduler/provider/data changes into renderer replacement.
+5. Run the smallest relevant tests first. Repair their actual failure rather than restarting the project investigation.
+6. Finish documentation, cleanup and source review before freezing a candidate for expensive Linux/Android qualification.
+7. Never put shadcn/Base UI/Tailwind concepts into Rust persistence, IPC, provider policy, retrieval, scheduling or document processing.
+8. Preserve accessible labels/focus, keyboard and touch behavior, enlarged text, coarse input, reduced motion/materials, forced colors, safe areas, Android IME and Back.
+9. Judge the intended visual hierarchy, not only functional continuity. Keeping obsolete screen CSS over new controls is not the completed visual migration.
 
-1. **Re-read the actual base/head.** A later stage must not assume PR #94 or this roadmap still matches current source exactly.
-2. **One subsystem at a time.** Avoid a repository-wide mechanical conversion that mixes primitives, navigation, Tutor, editor, drag/drop and platform fixes in one review boundary.
-3. **Keep old and new renderers interoperable during migration.** Legacy CSS Modules and Tailwind may coexist temporarily because both consume the same oStudy semantic tokens.
-4. **Do not mix semantic redesign with renderer replacement unless required.** Preserve existing public component props and behavior first; perform API cleanup only when it yields a clear product/maintenance benefit.
-5. **Test the smallest affected boundary first.** Static/fast checks should catch dependency/style-policy failures before Linux/Android runtime gates.
-6. **Freeze before expensive qualification.** Documentation, cleanup, stale-claim review and source audit happen before terminal full/platform qualification, not after it starts.
-7. **No framework leakage into durable layers.** Rust, IPC, controllers, domain state, persistence, scheduling, Tutor retrieval/provider logic and document processing must not acquire shadcn/Base UI/Tailwind concepts.
-8. **Preserve accessibility/platform state.** Keyboard, focus restoration, touch targets, coarse pointer, hover absence, reduced motion/transparency, forced colors, safe areas, Android IME and Back behavior are acceptance requirements.
+## Phase 0 — inventory and architecture
 
-## Phase 0 — inventory, architecture and migration contract
+**Recorded.** Establish the architecture decision, PR #94-aware affected-surface inventory, staged roadmap, documentation index, acceptance criteria and non-goals. Its initial documentation-only child branch was subsequently reconciled with merged PR #94 for implementation; that historical exit condition does not prohibit the later source work requested in this PR.
 
-**Purpose:** establish what will change and what must not change before dependencies or rendering are touched.
+## Phase 1 — build foundation
 
-**Deliverables:**
+**Implemented.** Tailwind/Vite integration, shadcn configuration and aliases, exact dependency/lock graph, small class-merge utility, source detection, licenses and initial boundary checks. No CDN/compiler is needed at runtime. Preflight is not imported; utilities are namespaced to avoid existing-class collisions.
 
-- accepted architecture record for shadcn/ui + Tailwind behind oStudy ownership;
-- PR #94-aware affected-surface inventory;
-- this staged roadmap;
-- documentation index links;
-- explicit acceptance criteria and non-goals.
-
-**Exit criteria:** documentation-only diff; child PR is stacked on PR #94; no dependency/lockfile/source changes; inventory covers Tutor/provider UI; later phases have clear ordering and ownership.
-
-**Validation:** documentation/link verification and PR metadata/stack review. Full runtime qualification is not justified by an intentionally Markdown-only Phase 0 change unless repository automation requires it.
-
-## Phase 1 — Tailwind/shadcn build foundation
-
-**Purpose:** introduce the toolchain without changing product appearance.
-
-**Expected changes:**
-
-- add Tailwind CSS v4 and the Vite integration;
-- add `components.json` configured for this Vite/React/Tauri project and an explicit `src/ui/vendor/shadcn` alias/path;
-- add only dependencies actually required by the selected initial shadcn/Base UI primitives;
-- add a small `cn`/class-merge utility in the UI implementation layer;
-- configure source detection so production classes are statically discoverable;
-- perform license/dependency/platform audit and update lockfile coherently;
-- add boundary verification scaffolding before vendor imports can spread.
-
-**Do not:** migrate feature screens, replace themes, or import vendor components directly from features.
-
-**Exit criteria:** existing UI renders unchanged; frontend/native builds remain green; Tailwind can compile one non-production/proof class; no duplicate global reset/preflight breaks current CSS.
-
-**Key risk:** Tailwind preflight/layer order changing existing controls/global styling before intentional migration. Explicitly verify current shell, editor content and Android baseline.
+**Acceptance:** frozen dependency installation and frontend/native builds; no accidental reset effects on unmigrated content. Build success is recorded for its actual tested SHA.
 
 ## Phase 2 — token and capability bridge
 
-**Purpose:** make Tailwind/shadcn consume oStudy's existing visual authority.
+**Implemented.** Generate semantic background/foreground/card/popover/primary/secondary/muted/accent/destructive/border/input/ring and application state aliases from oStudy tokens. Preserve light/dark/console/synthwave parity and expose root input/motion/material/contrast capabilities. Existing short aliases do not change meaning, and no parallel dark provider is introduced.
 
-**Expected changes:**
+**Acceptance:** compiled utilities resolve correctly under all themes/capabilities; manual visual contrast/focus remains required.
 
-- extend `scripts/generate-ui-tokens.mjs` to emit a Tailwind semantic theme adapter and shadcn compatibility aliases;
-- map `background`, `foreground`, `card`, `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, radii and application-specific semantic states onto `--ostudy-*` variables;
-- expose root `data-theme`, `data-motion`, `data-material`, `data-input`, `data-hover`, and contrast states to Tailwind through explicit custom variants where useful;
-- keep light/dark/console/synthwave JSON theme parity validation;
-- add tests that prove every compatibility token resolves from oStudy-owned tokens.
+## Phase 3 — low-risk primitive proof
 
-**Do not:** create a separate shadcn palette or a parallel `dark` class theme source.
+**Implemented for the selected proof set.** Button, Badge and Skeleton established stable oStudy facades over copied source, semantic styling, refs/forms/loading/disabled contracts and import ownership. Subsequent phases migrated Panel/Surface and Progress. Do not install unused candidates merely to fill a catalog.
 
-**Exit criteria:** a Tailwind-styled proof component changes correctly across all current themes and capability states without hard-coded palette values.
+**Acceptance:** representative production callers use shared components; old exclusive styles are removed; behavior and theme regressions are covered.
 
-**Key risk:** semantic-name collision between legacy short aliases and new Tailwind/shadcn names. Resolve centrally in generated adapter output, not per component.
+## Phase 4 — forms and Settings
 
-## Phase 3 — low-risk primitive renderer proof
+**Source implementation integrated.** Shared TextField/Input, Textarea, Checkbox, Switch, RadioGroup, Slider, NativeSelect, Disclosure, Tabs and field grouping support the existing required control set. NativeSelect deliberately retains the OS picker; add a richer combobox only when a real workflow needs it.
 
-**Purpose:** prove the vendor boundary and incremental facade strategy.
+**Product scope:** Appearance, Review/Scheduling, AI providers/default task models, Diagnostics, Backup/Storage, DeviceSync, and Template management. Preserve credential ownership, probe/request identity, dirty/discard/delete handling, installed fonts, scope dependencies and safe native operations.
 
-**Initial candidates:** Button, Badge, Separator, Skeleton, Progress, simple Surface/Panel composition.
-
-**Expected changes:**
-
-- generate/copy selected shadcn source into the vendor directory;
-- adapt existing oStudy primitives to the new renderer while preserving caller-facing semantics where practical;
-- retain focused tests for disabled, focus, intent, touch target, ARIA and theme behavior;
-- add `verify:ui-boundaries` or equivalent enforcement forbidding Base UI/vendor imports outside approved UI implementation owners.
-
-**Exit criteria:** representative existing screens use new renderer through unchanged or deliberately versioned oStudy APIs; no feature imports the vendor layer; old primitive CSS is removed only where fully superseded.
-
-**Key risk:** using the migration as an excuse to change button semantics/labels everywhere. Keep renderer proof narrow.
-
-## Phase 4 — forms and Settings vertical slice
-
-**Purpose:** stabilize the generic control vocabulary on a real, form-heavy product area.
-
-**Primitive scope:** Input/TextField, Textarea, Checkbox, RadioGroup, Switch, Select, Slider where currently needed, field descriptions/errors, password visibility controls, form grouping.
-
-**Product scope:** general Settings plus PR #94's expanded AI provider/model settings.
-
-**Important PR #94 surfaces:** provider list/detail, Add provider, provider/API URL, API key/password visibility, connection state, model catalog, Tutor/default/embedding model selection, timeout/auth/storage/privacy options, dirty/discard/delete confirmation and responsive layout.
-
-**Architecture:** preserve `FormField`-style oStudy ownership for labels/help/error ARIA relationships. Controllers continue to own dirty state, requests and secret-safe operations.
-
-**Exit criteria:** Settings no longer relies on ad-hoc native generic controls or legacy shared button classes except documented transitional cases; keyboard/tab order and form labels remain correct; provider secrets remain behind native ownership.
-
-**Validation emphasis:** focused Settings/controller tests, accessibility roles/names, provider error/dirty-state flows, compact layout and Android text-input/IME behavior.
+**Acceptance:** migrated live owners use shared controls/Tailwind rather than ad-hoc native controls or old generic button classes. FormField keeps label/description/error associations. Test keyboard, disabled states, live-region errors, provider assignments, sync category dependencies and compact/IME behavior. Template rich content remains editor-owned.
 
 ## Phase 5 — overlays and adaptive interaction
 
-**Purpose:** replace the hardest generic UI behavior once the theme/form foundation is stable.
+**Source implementation integrated.** Dialog, confirmation/alert, Sheet, menu/overflow and tooltip behavior use Base UI behind oStudy adapters, with one application Back/parent-depth policy. Compact overflow actions become a sheet; desktop menus use popover positioning. Native selectors do not need a second popup implementation.
 
-**Scope:** Dialog, AlertDialog, Drawer/Sheet, DropdownMenu, ContextMenu as needed, Popover, Tooltip, Select/Combobox popovers, confirmation rendering, focus/portal/scroll-lock behavior.
+**Acceptance:** Escape, outside pointer, nested dialogs, initial/final focus, scroll locking, busy/non-dismissible state, safe areas and Android Back/IME. InlineWorkspace remains nonmodal. Guided tutorial spotlight geometry is custom but its ordinary actions use shared controls. New context-menu/combobox widgets are added only for actual consumers, not as unused implementations.
 
-**Application abstractions:** preserve or introduce oStudy `ConfirmDialog`, `AdaptiveDialog`, `AdaptiveActionMenu`, and one overlay stacking/back-navigation policy.
+## Phase 6 — feedback, status and transient UI
 
-**Exit criteria:** feature code does not implement ad-hoc backdrops/focus traps/ordinary `window.confirm`; existing confirmation API callers continue to work; compact/coarse-pointer variants are deliberate and tested.
+**Source implementation integrated.** Shared Base UI notifications, notices, progress, skeletons, badges/chips, empty states and error/retry/cancel presentation. The existing notification API and durable operation boundaries remain application-owned. Absolute Undo expiration remains authoritative even when a toast is hovered or its action is busy.
 
-**Validation emphasis:** Escape, focus restoration, nested overlays, pointer-outside behavior, Android Back, safe areas, IME-visible behavior, scroll locking and reduced motion.
-
-## Phase 6 — feedback, status and transient presentation
-
-**Purpose:** unify loading/success/warning/error/transient UI.
-
-**Scope:** Toast renderer (using the current recommended shadcn ecosystem choice at implementation time), InlineNotice/Alert, progress/skeleton states, status badges, empty states, cancel/retry presentation.
-
-**Architecture:** existing semantic feedback/events remain application-owned. Durable operation success must never depend on animation, toast or haptic/audio effects.
-
-**Exit criteria:** one semantic vocabulary for status states across Settings, Documents, Tutor, sync and imports; no duplicate toast stack; reduced-motion/material settings respected.
+**Acceptance:** one status vocabulary; successful commits cannot become retryable failures merely because a following refresh/navigation fails. Unknown totals do not produce invented progress. Reduced motion and status/alert semantics remain correct. Specialized inline rich progress keeps its content contract.
 
 ## Phase 7 — shell and navigation
 
-**Purpose:** make the entire application feel visually coherent after low-level components are stable.
+**Source implementation integrated.** AppFrame, labeled Sidebar, compact app bar/bottom navigation, PageHeader/PageScaffold, common toolbars and responsive action groups. The visual system uses inset content surfaces, clearer hierarchy and semantic active-state treatment.
 
-**Scope:** App shell, NavigationSidebar, MobileAppBar, Brand, headers, route chrome, common toolbars, responsive surfaces and navigation action presentation.
+**Acceptance:** main destinations and checkpoint/dirty-guard contracts remain stable. Tutor stays first-class; contextual Tutor does not destroy its origin. Compact navigation stays shallow with a separate Settings action. Fixed/sticky chrome handles enlarged text, safe areas and IME. No vendor router/mobile detector replaces the existing controllers.
 
-**PR #94 requirement:** Tutor remains a first-class section in desktop/compact navigation and UI checkpoints. Contextual Tutor entry does not become an ordinary route that destroys origin state.
+## Phase 8 — Flashcards, search, bulk and transfer
 
-**Exit criteria:** navigation semantics and labels are unchanged unless separately approved; compact navigation remains shallow; Settings placement and Android Back contracts pass; shell uses the new visual hierarchy/tokens.
+**Source implementation integrated.** Deck/folder library, archived/unsorted presentation, deck detail, shared card browser, Search/Filter, tags, selection actions, bulk entry/tagging/move-copy/delete/schedule/results, transfer/import receipts, and selected-deck Practice setup.
 
-## Phase 8 — Flashcards library, search/filter and bulk workflows
+**Keep application-owned:** FTS/query semantics, note-versus-presentation identities, visible/all-matching selection, folder mutation revisions, drag geometry, scheduler requests, native transport, import validation and managed assets. Retain keyboard alternatives to dragging. Anki completion is a receipt, never a second import preview/submit.
 
-**Purpose:** migrate the largest ordinary data-management workspace.
-
-**Scope:** deck/folder library, archived/unsorted sections, deck detail, Search/Filter, CardFilters, tags, selection toolbar, bulk dialogs, transfer/import UI and practice setup chrome.
-
-**Keep custom:** selection models, folder/deck organization, drag/reorder state/geometry, FTS/query semantics, transfer rules, scheduling mutations and checkpoint compatibility.
-
-**Order inside phase:** migrate static row/card chrome and controls first; drag handles/reorder DOM last.
-
-**Exit criteria:** ordinary controls use shared primitives; migrated subtrees no longer add CSS Modules; drag/reorder and touch selection behavior match focused regressions.
+**Acceptance:** explicit scheduled/extra mode, stale setup snapshots rejected, duplicate starts prevented, source/card editor state survives layout changes, selection and bulk operations retain identity. Ordinary feature controls use shared components; pointer geometry and the QR quiet zone retain documented CSS. Old unmounted DecksScreen regression fixtures are not production route owners and are cleaned up in Phase 15 with active behavior coverage.
 
 ## Phase 9 — card editor chrome
 
-**Purpose:** modernize the authoring experience without coupling the rich-content model to the UI library.
+**Next major feature phase.** Convert rich editor toolbar, menus, formatting selectors, popovers, media/math dialogs, tags, metadata, template authoring tools, save/delete status and responsive panels.
 
-**Scope:** editor toolbar, buttons, dropdowns, popovers, dialogs, tabs, tags, metadata, template controls, media/math controls, save/delete status and responsive panel layout.
+Retain Tiptap/ProseMirror schemas, extensions, content validation/serialization, cloze semantics, asset ownership and citation safety. The template-management form's earlier migration does not imply the rich editor itself is complete.
 
-**Retain:** Tiptap/ProseMirror schema/extensions, content validation/serialization, cloze/domain behavior, asset/citation ownership and specialized content-editable CSS.
-
-**Exit criteria:** generic chrome uses shared primitives/Tailwind; rich-content rendering remains application-owned; no vendor types enter editor data structures.
+**Exit:** generic editor chrome uses shared components; no vendor types enter durable editor data; formatting, keyboard, focus, drafts, media/math and native Back tests pass. Specialized content-editable CSS is allowed.
 
 ## Phase 10 — Documents and Study Guides
 
-**Purpose:** unify content-library and generated-artifact presentation.
+Convert document upload/import/search, library cards, metadata, progress/status/action presentation and source panels. Convert guide library/reader toolbar, sections/disclosures, source/citations, export/practice/contextual Tutor actions, note/override controls and responsive reader layout.
 
-**Documents scope:** import/upload/search, document list/cards, progress/status, metadata, action menus, generation state, errors and confirmation UI.
+Retain ingestion/OCR, document/guide revisions, source provenance, managed files, learning plans, generation checkpoints and application-lifetime jobs. Learner notes and overrides remain distinct from generated base revisions.
 
-**Study Guides scope:** library, reader toolbar, dialogs/sheets, sections/disclosures, source/citation presentation, export/practice actions and contextual Tutor entry.
-
-**Retain:** ingestion/OCR/rendering, document/guide revisions, source provenance, managed files, generation/checkpoint logic, learner overlays and rich body CSS where appropriate.
-
-**Exit criteria:** ordinary chrome is migrated; source/citation semantics remain intact; reader/document state survives responsive overlay transitions.
+**Exit:** ordinary chrome is migrated; source/citation and job cancellation semantics remain; reading/draft state survives responsive and overlay transitions; no accidental restoration of redundant regeneration/revision controls.
 
 ## Phase 11 — Analytics
 
-**Purpose:** migrate a visually dense but behaviorally isolated area after common form/layout primitives are mature.
+Convert filters, date/deck controls, metric surfaces, tabs, chart containers, responsive layout, loading and empty states. Keep Chart.js and existing aggregation/difficulty-series semantics; adopting a UI library does not justify changing chart engines.
 
-**Scope:** metric surfaces, filters, date/deck selectors, tabs, empty/loading states, chart containers and responsive layout.
+**Exit:** accessible filters/data alternatives and contained responsive charts; visualization configuration stays independent of vendor UI.
 
-**Retain:** Chart.js, analytics query/aggregation semantics and difficulty-series logic.
+## Phase 12 — active Practice and contextual hints
 
-**Exit criteria:** Chart.js remains renderer-independent; filter accessibility and responsive chart containment pass.
+Convert the active study shell, question/answer surface chrome, reveal/progress/status UI, grading presentation, action menus, completion/results and contextual hint presentation. Phase 8 setup is already migrated but is not the whole active study experience.
 
-## Phase 12 — Practice and contextual hint integration
+Retain session snapshots, submission identity, scheduler semantics, shortcuts, intervals, reveal state, exit guards and grading meaning. Grade controls remain domain components over shared Button internals.
 
-**Purpose:** migrate the most interaction-sensitive study workflow after overlays, forms and shell behavior are proven.
-
-**Scope:** practice shell, card surface chrome, reveal/status/progress UI, action menus, completion screen, results, practice setup presentation, and PR #94 contextual Tutor hint entry/panel.
-
-**Retain:** session snapshots, scheduler operations, keyboard shortcuts, interval semantics, review submission, reveal state, exit guard and grading meaning.
-
-**Domain components:** grading controls should remain practice-owned even if they use shared Button internals; they should not become arbitrary generic color variants.
-
-**Exit criteria:** no scheduler behavior changes; active card/session state survives opening/closing contextual Tutor; keyboard, touch and Android Back/IME paths pass focused and platform smoke coverage.
+**Exit:** opening/closing Tutor does not reset the card/session or reveal hidden answers; keyboard, touch, native Back/IME and session restart paths pass.
 
 ## Phase 13 — Tutor workspace
 
-**Purpose:** migrate the PR #94 Tutor only after its dependencies and interaction patterns are stable.
+Convert transcript/messages, composer, conversation/material selectors, multi-source context and memory controls, preparation states, citations/source views, conversational question feedback and retry/cancel presentation. Use the final PR #94 implementation, not the obsolete Quiz me design.
 
-**Scope:** conversation/material selectors, composer Textarea, retrieval/memory controls, preparation progress, transcript/message layout, citations/source dialog, quiz/feedback presentation, retry/cancel/error states and responsive contextual/top-level layouts.
+Keep retrieval, source revisions, provider calls, consent/privacy, persistence, private question criteria and operation identity outside rendering. General chat remains source-optional; saved conversations remain readable offline.
 
-**Domain components to keep application-owned:** `TutorMessage`, `TutorComposer`, `TutorCitation`, `TutorContextIndicator`, quiz/feedback presentation, material-preparation semantics and conversation/memory policy.
+**Exit:** contextual and top-level Tutor share the visual vocabulary; hint restrictions and focus/Back/return behavior survive; no source preview or hidden-answer exposure through UI.
 
-**Retain outside UI:** semantic retrieval, source revision checks, provider calls, consent/privacy, persistence, operation identity, hidden-answer safeguards and quiz evaluation.
+## Phase 14 — remaining ordinary CSS migration
 
-**Exit criteria:** top-level and contextual Tutor share one coherent design vocabulary; hint mode never exposes source previews/hidden-answer controls through a presentation regression; saved conversations remain readable offline; Back/focus/return behavior remains intact.
+Classify each remaining CSS Module: ordinary styling, reusable pattern, specialized content/platform geometry, animation or obsolete rule. Move ordinary styling to semantic Tailwind; move shared behavior to its actual owner; retain dedicated CSS when descendants, pseudo-elements, document/print or native geometry are clearer there.
 
-## Phase 14 — remaining CSS Module migration
+**Exit:** no unexplained generic modules or parallel form/button vocabulary remains. Remove a module only when all imports/callers are migrated and tests cover the replacement. Do not blindly convert selectors or arbitrary computed geometry.
 
-**Purpose:** finish ordinary presentation conversion after all major subsystems have established patterns.
+## Phase 15 — cleanup and stabilization
 
-For every remaining Module:
+Remove obsolete renderers, exclusive tests/styles and legacy shared class maps after their last production consumer migrates. Replace old regression harnesses with equivalent live-route coverage before deleting them. Remove temporary aliases and review final utility-layer placement. Strengthen semantic-color/native-control/vendor/dynamic-class boundaries without banning legitimate content/platform CSS.
 
-1. classify each rule as ordinary component styling, reusable semantic pattern, specialized content CSS, platform workaround, animation, or obsolete rule;
-2. migrate ordinary component styling to Tailwind;
-3. move truly reusable semantics into the correct oStudy UI owner rather than copy/pasting class strings;
-4. retain dedicated CSS when descendant/pseudo/platform/content rules are clearer there;
-5. delete the Module only after import/caller tests prove it is fully superseded.
+Update current architecture/user docs to the implemented system. Accept new visual baselines intentionally, verify performance budgets and evaluate whether retained shadcn tooling still adds value or an eventual source-only/ejected state is preferable.
 
-**Exit criteria:** no unexplained generic feature CSS Modules remain; retained CSS has an owning rationale; no parallel legacy button/form vocabulary remains.
+**Exit:** vendor replacement primarily affects `src/ui`, not business logic. Current docs and actual source agree. Required platform qualification passes on a frozen candidate, and human visual/device acceptance is explicit. No unsupported measured speedup or defect-rate claim.
 
-## Phase 15 — cleanup, enforcement and stabilization
-
-**Purpose:** turn temporary migration rules into permanent architecture.
-
-**Scope:**
-
-- remove dead old primitives/overlay implementations and exclusive tests/styles;
-- retire legacy shared class maps after the final consumer moves;
-- remove temporary compatibility aliases that no longer serve supported code;
-- strengthen boundary/native-control/semantic-color/dynamic-class/legacy-CSS checks;
-- update current UI architecture/user guidance to describe the implemented system rather than this plan;
-- refresh visual/performance baselines only for the accepted final visual system;
-- evaluate whether retaining shadcn tooling still adds value or whether an eventual supported eject/vendor-only state is preferable.
-
-**Exit criteria:** replacing Base UI/shadcn later would primarily affect `src/ui`; feature/domain code remains stable; current docs no longer describe migration as future work; Linux/Android and active desktop/mobile target qualification is green for the frozen candidate.
-
-## Validation ladder for implementation phases
-
-The exact maintained wrappers remain authoritative, but the intended order is:
+## Validation and visual acceptance
 
 ```text
-component/unit tests
-  -> migration-specific static policy checks
-    -> ./scripts/check-changed.sh where useful during iteration
-      -> ./scripts/check-static.sh
-        -> ./scripts/check-fast.sh
-          -> targeted native/WebDriver/Android smoke for affected behavior
-            -> required terminal full/platform qualification on the frozen candidate
+focused behavior tests
+  -> migration-specific policy/CSS compilation
+    -> static
+      -> fast
+        -> targeted native tests for the changed boundary
+          -> frozen full Linux/Android qualification
+            -> human theme/layout/device acceptance
 ```
 
-A late Markdown-only correction must follow the repository's qualification-reuse rules; it is not a reason to repeatedly rerun expensive platform suites. Source, tests, configuration, dependency or lockfile changes are qualification-bearing and invalidate that narrow reuse path.
+Use maintained wrappers from [the command runbook](../agents/COMMAND-RUNBOOK.md). A displayed command is not a passed test. Do not rerun terminal suites for metadata updates; follow the repository's narrow reuse policy for eligible documentation-only changes. Source/config/dependency changes remain qualification-bearing.
 
-## Visual acceptance strategy
+Visual checks cover compact, medium and wide layouts; all four themes; keyboard focus and enlarged text; reduced motion/materials; actual WebKitGTK/Android behavior; and representative empty/populated/error/busy states. Intentional new visuals are not judged solely by old pixel equality. Keep behavior invariants and performance budgets separate from visual baselines.
 
-Do not judge success solely by old screenshot pixel equality: the overhaul intentionally changes presentation. Instead each migrated phase should distinguish:
+## Branch sequence and rollback
 
-- **behavioral invariants** that must remain identical;
-- **visual baselines** that are intentionally replaced after human acceptance;
-- **theme/capability matrices** that must continue rendering coherently;
-- **performance budgets** that prevent expensive component/portal/animation regressions.
+PR #96 continues the user-authorized implementation after reconciling the original child with merged PR #94. It remains a single normal writer. Later independent phases use short-lived branches/PRs from the authoritative merged base after this increment is accepted; never silently discard stacked work or force-push to simplify history.
 
-Representative viewport coverage should continue to include compact/mobile, medium/tablet-like, and wide desktop layouts across the supported themes, with actual Tauri/Linux/Android runtime checks for high-risk interactions.
-
-## Branch/PR sequencing
-
-Phase 0 is intentionally a child of PR #94 because the active Tutor/provider work changes the UI inventory. Later implementation should not grow forever on one stacked branch. After PR #94 is merged and this planning PR is reconciled/merged, implementation phases should use short-lived `agent/<phase-description>` branches from the then-current authoritative base.
-
-If implementation must begin before PR #94 lands, each child PR must clearly state its parent/base dependency and be reconciled with the moving parent before qualification. Do not silently retarget a stale child to `main` and assume the diff still represents the intended product.
-
-## Rollback model
-
-The migration is deliberately reversible by stage. Each phase must leave the application runnable and must delete old implementations only after its replacement is integrated and tested. Because the token source and oStudy semantic facades remain stable, a failed renderer migration can revert at the subsystem boundary without reverting unrelated Tutor/provider/domain work.
-
-This is the central reason to avoid a repository-wide one-shot conversion.
+Each bounded renderer increment is reversible through a normal source revert. Tokens and semantic facades stay stable, so reverting presentation does not require reverting unrelated Tutor/provider/domain work or modifying user data. Publication, qualification, manual acceptance and merge remain distinct facts.

@@ -1,120 +1,117 @@
 # UI architecture
 
-The UI is one shared application across Linux and Android, with capability-oriented platform integration and responsive presentation. The [comprehensive architecture](overview.md) explains the full system; this reference owns frontend composition, interaction, state, styling, and current workspace contracts.
+One React presentation serves Linux and Android through capability-oriented platform adapters. [The comprehensive architecture](overview.md) covers the system; this reference owns current UI composition, interaction, state and styling. [The UI implementation record](../development/ui-overhaul-current-implementation.md) and [roadmap](../development/ui-overhaul-roadmap.md) distinguish the migrated Phase 4–8 owners from later editor/reader/Analytics/Practice/Tutor layout work.
 
 ## Responsibilities and dependency direction
 
-Screens compose controllers, typed read models, and shared UI. Controllers coordinate asynchronous domain reads/mutations, workflow identity, and reconciliation. `src/ipc/` owns direct native command invocation. `src/platform/` owns OS-facing frontend adapters. Shared `src/ui/` owns reusable presentation and must not import IPC, feature controllers, or Tauri APIs.
-
 ```text
-feature screen → controller → typed IPC → native domain
-       │              │
-       └── shared UI  └── platform capability adapter
+feature screen -> controller -> typed IPC -> native domain
+       |              |
+       v              +-> platform capability adapter
+  oStudy UI facade -> owned shadcn source -> Base UI + Tailwind
 ```
 
-The diagram shows call/import responsibility, not an assertion that every screen is already a pure view. General controllers are in `src/controllers/`; focused deck-library hooks/models are colocated with that feature. Some document and shell orchestration remains concentrated. Refactor by responsibility with behavior tests, not by inventing a new ownership layer or imposing arbitrary file sizes.
+Screens compose controllers, typed read models and semantic UI. Controllers own asynchronous domain reads/mutations, request identity and reconciliation. `src/ipc` owns direct native invocation; `src/platform` owns OS-facing frontend adapters. Shared `src/ui` must not import IPC, feature controllers or Tauri APIs.
 
-Rust owns durable content, validation, transactions, schedules, history, source processing, and provider policy. View-specific projections can be efficient without making React's layout the data model. No screen performs SQL or contacts a provider directly.
+This diagram is an ownership rule, not a claim that every old feature is already a pure view. General controllers are in `src/controllers`; focused library hooks/models are colocated with that feature. Refactor with behavior tests rather than arbitrary file-size targets.
+
+Rust owns durable content, validation, transactions, schedules, history, processing and provider policy. Efficient UI projections do not make React's layout the data model. No screen performs SQL or contacts an AI provider directly.
 
 ## Root composition and state
 
-`src/main.tsx` composes the application providers and imports one global foundation stylesheet. `src/App.tsx` renders lazily selected feature roots. `useAppController` owns the shell's navigation and active-workflow state, dirty guards, practice launch/exit, and checkpoint integration. `TutorProvider` owns shared contextual/top-level tutor state; `DocumentJobsProvider` keeps document work alive across navigation.
+`main.tsx` composes providers and imports one foundation stylesheet. `App.tsx` renders lazy feature roots inside AppFrame/AppContent. `useAppController` owns navigation, active workflows, dirty guards, Practice launch/exit and checkpoint integration. TutorProvider shares top-level/contextual Tutor state; DocumentJobsProvider keeps document jobs alive across navigation.
 
-Visible destination state and an active Practice workflow are separate. A contextual launch is a typed semantic request, not a UI tab selection. Consuming the one-shot launch payload must not unmount the active session. Exit guards run before same-destination navigation can short-circuit.
+Destination state and an active Practice workflow are separate. Contextual launch is a semantic request, not a tab selection. Consuming a one-shot payload must not unmount the session. Exit guards run before same-destination short-circuiting.
 
-Independent reads use independent request lanes. An obsolete success or error must not replace current state. Durable mutation completion is not subject to the same stale-read cancellation rule. A committed native operation stays successful when a following list refresh fails; controllers report reconciliation separately and preserve supported retry identity.
+Independent reads use independent request lanes. An obsolete success/error must not replace current state. Durable mutation completion has different semantics: a committed operation remains successful when a subsequent refresh or navigation fails. Reconciliation is reported separately and supported retry identities are preserved.
 
 ## Current destinations
 
-| Area | Current contract |
+| Area | Contract |
 | --- | --- |
 | Main navigation | Flashcards, Study Guides, Documents, Tutor, Analytics, Settings |
-| Compact navigation | First five directly in the bottom bar; Settings gear in the upper-right app bar; no More menu |
-| Flashcards | Decks and Search/Filter; compact Search label refers to the same workspace |
-| Templates | Full normal Card templates tab in Settings; lazy activation and retained editor state |
-| Transfers | Contextual deck import/export; whole-library recovery and sync in Backup/Sync |
-| Practice | Internal contextual session, not standing navigation |
-| Study Guide reader | Inline workspace preserving main navigation, not a modal |
-| Tutor | Top-level conversations and contextual panels sharing one controller; source-free chat remains available without embeddings |
+| Compact navigation | First five in the bottom bar; Settings gear in the upper-right app bar; no More menu |
+| Flashcards | Decks and Search/Filter; compact Search is the same workspace |
+| Templates | Card templates tab in Settings; lazy activation and retained editor state |
+| Transfers | Contextual deck import/export; library recovery and device sync in Backup/Sync |
+| Practice | Internal contextual session, not a standing navigation destination |
+| Study Guide reader | Inline workspace preserving navigation, not a modal |
+| Tutor | Shared top-level/contextual controller; general chat does not require source material or embeddings |
 
-Selecting Flashcards or Decks returns to the library root, while an open deck's All decks action does the same locally. Selecting Study Guides returns to its library. Unsaved content still requires save/discard protection.
-
-The native OS supplies desktop window chrome. The previous frontend maximize/full-screen adapter and duplicate in-app controls are not part of current ownership. Compact width changes responsive layout, not a replacement window manager.
+Selecting Flashcards/Decks returns to the library root. All decks returns from deck detail. Selecting Study Guides returns to its library. Unsaved content retains save/discard protection. The native OS owns desktop window chrome; the frontend does not reintroduce a duplicate maximize/window manager.
 
 ## Restoration and compatibility
 
-The schema-v2 device-local checkpoint records a destination separately from an optional actual resumable-session hint and logical return target. Native SQLite owns session progress and schedules; the checkpoint is not a serialized React store or a backup of content.
+The schema-v2 device-local checkpoint separates destination from a real resumable-session hint and logical return target. Native SQLite owns session progress; the checkpoint is not a serialized React store or a content backup.
 
-Supported schema-v1 input normalizes through native code. A real old session can recover; setup-only Practice state does not masquerade as a running session. Restored transitions use new request/transition identities. A removed deck can fall back to the library without inventing missing content.
-
-Legacy Templates/Flashcards route values remain narrow compatibility readers. They do not require obsolete visible tabs. Selection is transient and not part of the checkpoint. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
+Supported schema-v1 data normalizes through native code. Setup-only Practice does not masquerade as a running session. Restoration uses fresh transition identities; deleted targets fall back without inventing missing content. Legacy route values are compatibility readers, not obsolete visible tabs. Selection remains transient. See [ADR 0050](../decisions/0050-versioned-ui-checkpoint-workflow-restoration.md).
 
 ## Flashcards library and interaction
 
-The library separates organization, selection, drag-session feedback, reorder policy, and view composition. Empty state is conditional: no active/archived decks means one create-deck action and a still-available import affordance. Archived-only content remains accessible. Folders use a `+`; Unsorted appears only when populated. Collapse/expand and select/deselect appear only when their scopes are meaningful.
+The library separates organization, selection, pointer session feedback, reorder policy and view composition. An empty library shows one create action plus import; archived-only data remains accessible. Folder, Unsorted, collapse/expand and selection controls appear only for meaningful scopes.
 
-Row activation, selection, menus, text selection, and dragging are different intents. A pointer drag begins only from a non-interactive surface after its activation threshold. Native state is not mutated for hover, scrolling, cancellation, invalid targets, or a no-op drop. Valid drop feedback shows a semantic destination and insertion boundary.
+Row activation, selection, menus, text selection and dragging are distinct intents. A pointer drag begins on non-interactive surfaces after its threshold. Hover, canceled or no-op drops do not mutate native state. Valid feedback identifies the destination and insertion boundary. Keyboard reorder and Move sheet alternatives remain.
 
-The same organization operations support keyboard reorder controls and the selected Move sheet. Dragging is not the only way to organize material. Optimistic organization commits against a library revision; conflict reloads authoritative data rather than silently overriding a newer order.
+Organization mutations use a library revision. Conflicts reload authoritative state instead of overwriting newer order. Selection survives relevant in-process navigation only for eligible unchanged rows; missing/stale identities are pruned. Empty decks cannot practice; mixed archived/active selection explains its applicable operations.
 
-Selection survives relevant in-process navigation only for unchanged eligible entries. Lifecycle/revision changes prune stale selections. An empty active deck can still be managed but cannot start practice. Mixed active/archived selections explain which operations apply to which subset.
+DeckDetailRoute owns the production deck header/actions, shared browser and source footer. It no longer consumes the retired all-in-one DecksScreen styles. The same browser instance stays mounted when its header hides for editor mode; changing presentation must not discard an unsaved card.
 
-Deck detail composes its own native controller, header actions, card browser, and contextual transfer dialog; it does not require mounting the old all-in-one library component. Shared styling that remains imported by the detail route is live even when its filename reflects an earlier owner.
+## Authoring, Search and transfers
 
-## Authoring and Search
+Deck detail owns Add flashcard/Bulk add with a fixed destination. Cross-library Search manages/query-scopes existing content, not a second authoring route. Common scope/sort controls remain visible; advanced filters open contextually and active chips expose them.
 
-Deck detail owns Add flashcard and Bulk add with a fixed destination. Cross-library Search is a management/query workflow, not a second card-creation screen. Current common query/scope/sort controls stay visible; advanced filters open contextually and active chips expose the scope.
+Source notes and generated card presentations remain distinct. Select visible/all matching resolve different identity sets. Bulk mutations account for forward/reverse cards sharing a note. Tags use stable IDs rather than display names.
 
-CardNote editing and CardPresentation listing/study remain distinct. Select visible and select all matching resolve different identity sets. Note-level bulk actions account for forward/reverse presentations sharing one source. Stable tag IDs, not display text, define current links from Analytics into Search.
+The editor adapter exposes supported commands without distributing a Tiptap instance. Durable drafts and canonical commits have separate lifecycles. Template Settings chrome is migrated, but rich editor-specific toolbar/content work remains Phase 9. See [rich-document editor](rich-document-editor.md).
 
-The editor adapter exposes supported commands/capabilities without passing a Tiptap instance into feature code. Durable drafts and canonical commits have separate lifecycles. Full rich storage capability does not imply every current feature UI exposes every formatting tool: the guide reader's note/override entry is currently plain text backed by rich storage. See [rich-document editor](rich-document-editor.md).
+Transfer UI presents native import/export/share operations. Anki completion is a post-commit receipt; refresh/navigation failure cannot permit duplicate importing. Unknown progress remains indeterminate. Sync UI keeps sender-selected categories, Documents/Guide and settings/key dependencies, credential availability and distinct USB/LAN flows. Appearance preferences remain device-local.
 
-## Study Guides and Documents
+## Study Guides, Documents and Tutor
 
-StudyGuidesScreen is the bounded paginated library owner. It handles search/sort/open and contextual deletion with useStudyGuidesController. Opening one guide hydrates that reader rather than every summary row. The active reader remains named StudyGuideDialog internally but renders an InlineWorkspace with its own close action, contents/article layout, notes/overrides, linked-card practice, and PDF export.
+StudyGuidesScreen owns bounded paginated summaries; opening one guide hydrates its reader. StudyGuideDialog is internally named a dialog but uses InlineWorkspace with contents/article, learner notes/overrides, practice and PDF export.
 
-Internal revision badges and standing regeneration controls are not ordinary reader UI. Generation belongs to the retained document's action. The initial generation action changes into an explicit stop control while its task is active. A revisioned generated base is distinct from learner-owned notes and section overrides; conflicts remain visible rather than silently lost.
+Generated revisions differ from learner-owned notes/overrides. Generation belongs to the retained document's action; its single active control becomes Stop. Internal revision badges and redundant regeneration controls are not ordinary reader UI. Conflicts remain visible.
 
-DocumentsSection gates the native document capability and still uses DocumentsDevelopmentStub as a real unavailable-capability fallback. That component is not dead simply because a configured Linux installation does not show it. DocumentsScreen renders task state over the application-lifetime document controller and native services; it is not authority for parser, provider, or storage policy. Navigation must not cancel durable work by unmounting its view.
+DocumentsSection retains the actual unavailable-capability fallback. DocumentsScreen displays application-lifetime controller/native state; a route unmount cannot cancel durable jobs. Parsing, OCR and provider/storage policy remain native/domain-owned.
+
+Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional conversation, private question criteria and hidden-answer/citation safeguards. Questions use Send; do not restore Quiz me. Shared components affect these screens already, but their domain-specific layouts remain in Phases 10–13.
 
 ## Overlay lifecycle
 
-OverlayProvider owns the dialog/sheet/menu stack, including parent/depth ordering. Only the top layer consumes Escape, platform Back, backdrop/outside dismissal, and focus restoration. Modal primitives establish accessible title/description relations, initial focus, forward/reverse Tab containment, inert/hidden background, and document-scroll locking until the final modal closes.
+Base UI owns browser focus containment/restoration, keyboard interaction, popup positioning, modality and scroll locking through the shared Dialog/Sheet/Menu/Tooltip implementations. OverlayProvider owns application parent/depth registration and native Back dispatch; it is not a duplicate DOM focus trap.
 
-Busy/non-dismissible behavior is explicit. Compact overlay layouts account for dynamic viewport, safe areas, and keyboard insets. Features use the shared Dialog/Sheet/Menu/confirmation/overflow primitives, including the narrow compatibility Modal wrapper; they do not hand-write ordinary `window.confirm()`, focus traps, or another dialog stack.
+Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Features use semantic confirmation/overflow APIs rather than ordinary window.confirm or handwritten backdrops.
 
-An inline workspace is not forced into that modal policy merely because it is large. Browser `beforeunload` and native active-document close protection remain different mechanisms: a React overlay cannot guarantee a completed decision during all shutdown paths. The shadcn migration has not yet replaced this overlay stack.
+An inline workspace stays nonmodal. Browser beforeunload/native active-document shutdown protection remain distinct from an interactive React confirmation, which cannot guarantee completion during every shutdown path.
 
-## Styles, tokens, and typography
+## Styles, tokens and typography
 
-The only global CSS entry imported by main is `src/ui/foundations/index.css`. It establishes cascade layers, token foundations, base typography, document/root sizing, platform safe-area variables, accessibility utilities, and reduced-motion behavior. It also compiles namespaced `tw:` Tailwind utilities through the official Vite plugin, without importing Preflight or a duplicate reset.
+`src/ui/foundations/index.css` is the single global entry. It defines cascade layers, root sizing, typography, token foundations, platform insets and accessibility capabilities. Tailwind compiles namespaced `tw:` utilities through the Vite plugin without Preflight or a second reset.
 
-Migrated presentation uses Tailwind; unmigrated CSS Modules and specialized rich-content/platform CSS retain explicit ownership. Utilities temporarily compile in the existing components layer so caller-owned feature overrides retain their precedence. Do not add global stage-named sheets or use `!important` to hide precedence problems. The generated Tailwind theme resolves semantic utilities to oStudy tokens without replacing legacy short aliases or creating another dark-mode provider.
+Migrated Settings, shell, overlays, feedback and Flashcards owners use Tailwind; they no longer import their superseded generic feature CSS. Utilities temporarily occupy the components layer for unmigrated feature compatibility. Partial separators clear their other border edges explicitly. Do not use global stage sheets or important flags to hide precedence defects.
 
-Reference, semantic, and component token sources generate the committed theme artifacts. Themes change values, not feature selectors. Use semantic surface/text/border/emphasis/status roles and named z-index layers; do not hard-code theme-specific colors or arbitrary stacking numbers in feature code. Utility names must be complete source literals, not string-interpolated fragments.
+Reference/semantic/component token sources generate committed artifacts. Themes change values, not feature selectors. The Tailwind adapter maps semantic roles to oStudy variables without overwriting old short aliases or adding a separate dark provider. Utility names are complete source literals, not interpolated fragments.
 
-Generic components are migrating behind stable oStudy facades to owned shadcn source under `src/ui/vendor/shadcn`. That directory alone imports Base UI. Button, Badge, Skeleton, TextField and NativeSelect have migrated; provider setup and task-model fields consume those facades. Screens may use Tailwind for local layout but not vendor component APIs. The rest of the migration is explicitly tracked in [current implementation](../development/ui-overhaul-current-implementation.md) and [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md).
+Stable oStudy facades wrap owned shadcn source in `src/ui/vendor/shadcn`; only that directory imports Base UI. Feature code may use Tailwind but not vendor types/APIs. Current primitives include forms, tabs, cards/panels, badges/chips, progress, notifications, menus and dialogs. Customized copies need reviewed upstream refreshes; they do not update automatically.
 
-Interface and card font/scale preferences are independent. IBM Plex Sans is a locally provisioned packaged default with a system fallback. An installed app does not request runtime web fonts; a fresh source build may need to provision uncached assets. Explicit user font choices remain authoritative. Native PDF export owns its own print/font contract.
+Interface/card font and scale preferences remain independent. Packaged IBM Plex Sans has a system fallback; a fresh source build may provision uncached fonts, but the installed app needs no runtime font service. Explicit user selections remain authoritative; native PDF export has its own print/font contract.
 
 ## Responsive and accessible presentation
 
-Layout responds to available viewport/container space and input/accessibility capabilities. Wide layouts use a full sidebar and useful multi-column content. Medium remains a labeled-sidebar mode with denser secondary layout. Compact uses five direct bottom destinations, an app-bar Settings action, stacked content, and appropriate sheets.
+Wide/medium use a labeled sidebar and inset content; compact uses five bottom destinations and Settings in the app bar. Layout follows viewport and capabilities, not OS-name conditionals. Bounded reading measures, intrinsic wrapping and contained table scroll prevent oversized pages or unreadably tiny controls.
 
-Keep reading measures bounded where unlimited lines would be difficult to scan. Tables can scroll within their own region rather than causing document-level overflow or tiny text. Preserve visible focus, semantic labels, initial/error announcements, topmost dismissal, keyboard alternatives, and touch-sized targets. Respect enlarged text and safe-area/IME insets for fixed/sticky actions.
+Preserve labels, focus, announcements, topmost dismissal, keyboard alternatives, touch targets, enlarged text and safe-area/IME insets. Motion/material/artwork preferences are distinct. Reduced motion removes nonessential animation without hiding progress; simplified materials preserve hierarchy without blur. Educational images and functional status/icons are not decorative artwork.
 
-Motion/materials/artwork preferences are separate. Reduced motion removes nonessential spatial effects without removing state changes or progress. Simplified materials preserve hierarchy without blur. Educational images and functional status/icons are not decorative artwork and must not disappear with that toggle.
+## Help, tutorials and feedback
 
-## Help, tutorials, and feedback
+HelpProvider uses one registry and shared Sheet presentation; labels/help triggers remain associated without nesting buttons in labels. Tutorials default off and require an explicit user action. Their spotlight target geometry remains custom, while ordinary actions and text use shared UI. Disabling tutorials closes active guidance.
 
-HelpProvider uses one topic registry for short explanations and detailed touch-friendly help. Tutorial opt-in defaults off and a module starts only through an explicit action. An active tour may observe its target for positioning, but route entry or target appearance never authorizes auto-start. Disabling tutorials closes active guidance.
-
-Tutorial progress is versioned device-local presentation state, not a portable personal-library session. Semantic feedback events notify the experience layer after meaningful actions; domain controllers never depend on an effect completing or a device offering haptics/audio.
+Tutorial progress is versioned device-local state, not a portable study session. Semantic feedback follows completed actions; domain success never depends on animation/haptics or a toast. Base UI renders notifications while the app retains action identity, absolute Undo deadlines and post-commit recovery semantics.
 
 ## Testing and cleanup
 
-Test active owners: controllers/request lanes, route reset/dirty guards, overlays/focus/Back, library empty/populated/archive states, pointer and keyboard movement, guide listing/reader behavior, and contextual transfer success/reconciliation. Native WebDriver and Android instrumentation cover integration that mocks cannot establish.
+Test active controllers, route/dirty guards, overlays/Back, library empty/populated/archive states, drag/keyboard movement, authoring identity, imports and sync recovery. CSS compilation discovers migrated feature/shared sources, checks emitted utilities and rejects new raw generic feature controls. Native WebDriver/Android tests establish integration not proven by mocks.
 
-Historical screenshot/performance records remain provenance, not current UI requirements. Remove unused alternate components with their exclusively owned styles/tests while preserving active behavior coverage. Keep versioned routes/checkpoints and actual capability fallbacks. [The cleanup audit](../development/documentation-and-cleanup-audit.md) records the distinction.
+Retain dedicated pointer geometry, QR quiet-zone, guided spotlight, inline rich progress, native root-height, document/editor/print CSS with explicit ownership. Phases 14–15 retire remaining generic styles/maps and the unmounted DecksScreen regression harness after equivalent active-route coverage. Do not delete real versioned compatibility readers or unavailable-capability fallbacks.
 
-Structural enforcement includes IPC, route/smoke, style ownership, token usage, platform, vendor-import boundaries and compiled Tailwind utility coverage. None replaces actual compact-width, native, keyboard, touch, and representative manual acceptance. Use [Testing and CI](../development/testing-and-ci.md) and [local handoff](../development/local-testing-and-handoff.md).
+Historical screenshot/performance records are provenance, not current acceptance. Evaluate the intended new appearance and behavioral invariants separately; no speedup is established merely by adopting a UI library. See [testing and CI](../development/testing-and-ci.md), [local handoff](../development/local-testing-and-handoff.md) and [cleanup audit](../development/documentation-and-cleanup-audit.md).
