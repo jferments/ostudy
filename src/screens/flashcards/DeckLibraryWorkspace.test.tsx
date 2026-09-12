@@ -219,9 +219,8 @@ describe("DeckLibraryWorkspace", () => {
       [{ id: pharmacology.id, revision: pharmacology.revision }],
     );
     expect(
-      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+      screen.getByRole("checkbox", { name: "Select Pharmacology" }).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("mounts the route-owned card workspace immediately without a loading gate", async () => {

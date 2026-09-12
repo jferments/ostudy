@@ -309,8 +309,8 @@ describe("App shell", () => {
     expect(screen.queryByRole("group", { name: "Window controls" })).toBeNull();
 
     const main = screen.getByRole("main");
-    expect(main.className).toContain("main");
-    expect(main.parentElement?.className).toContain("shell");
+    expect(main.getAttribute("data-slot")).toBe("sidebar-inset");
+    expect(main.parentElement?.getAttribute("data-ui-root")).toBe("true");
     expect(main.firstElementChild?.className).toContain("routeLayer");
   });
 
