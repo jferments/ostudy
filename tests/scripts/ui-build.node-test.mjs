@@ -7,9 +7,11 @@ import test from "node:test";
 
 const rootUrl = new URL("../../", import.meta.url);
 const root = fileURLToPath(rootUrl);
-// The live migrated owners through the card editor, not a hand-maintained subset of control examples.
-const directories = ["src/ui", "src/screens/settings", "src/screens/cards", "src/screens/flashcards", "src/screens/card-editor", "src/editor"];
+// Live migrated owners through Documents/Study Guides; no runtime registry or example-only coverage.
+const directories = ["src/ui", "src/screens/settings", "src/screens/cards", "src/screens/flashcards", "src/screens/card-editor", "src/editor", "src/screens/documents"];
 const entryFiles = [
+  "src/screens/DocumentsScreen.tsx", "src/screens/DocumentsSection.tsx", "src/screens/DocumentsDevelopmentStub.tsx",
+  "src/screens/StudyGuideDialog.tsx", "src/screens/StudyGuidesScreen.tsx", "src/components/SourceCitationPanel.tsx",
   "src/screens/CardEditorScreenBase.tsx", "src/App.tsx", "src/components/MobileAppBar.tsx", "src/components/NavigationSidebar.tsx",
   "src/components/AppErrorBoundary.tsx", "src/components/TagInput.tsx", "src/components/Toast.tsx",
   "src/screens/SettingsScreen.tsx", "src/screens/TemplatesScreen.tsx", "src/screens/templates/TemplateLayoutEditor.tsx",
