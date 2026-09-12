@@ -7,6 +7,17 @@ import test from "node:test";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
+const migratedSources = [
+  "src/ui/vendor/shadcn/button.tsx",
+  "src/ui/vendor/shadcn/badge.tsx",
+  "src/ui/vendor/shadcn/skeleton.tsx",
+  "src/ui/vendor/shadcn/input.tsx",
+  "src/ui/vendor/shadcn/native-select.tsx",
+  "src/ui/primitives/Button.tsx",
+  "src/screens/settings/AiLlmSettings.tsx",
+  "src/screens/settings/DefaultAiModelSettings.tsx",
+];
+
 test("compiles every migrated utility, all themes and capability variants without writing source", async () => {
   const result = await build({
     configFile: false,
@@ -36,8 +47,8 @@ test("compiles every migrated utility, all themes and capability variants withou
   assert.ok(css.includes("prefers-reduced-motion"));
   assert.ok(css.includes("pointer: coarse"));
   assert.ok(css.includes("ostudy-skeleton"));
-  for (const file of ["vendor/shadcn/button.tsx", "vendor/shadcn/badge.tsx", "vendor/shadcn/skeleton.tsx", "primitives/Button.tsx"]) {
-    const source = await readFile(new URL(`../../src/ui/${file}`, import.meta.url), "utf8");
+  for (const file of migratedSources) {
+    const source = await readFile(new URL(`../../${file}`, import.meta.url), "utf8");
     const candidates = new Set(source.match(/tw:[^\s"'`]+/gu));
     for (const candidate of candidates) {
       const escaped = candidate.replace(/[^a-zA-Z0-9_-]/gu, (character) => `\\${character}`);

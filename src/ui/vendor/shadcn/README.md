@@ -3,9 +3,10 @@
 Upstream: shadcn-ui/ui commit `3ba91b1cc83e1bbe4ab35a422ff2a694849c5048`.
 License: MIT; the distributed notice is [SHADCN-MIT.txt](../../../../public/licenses/SHADCN-MIT.txt).
 
-The initial components are adapted from `apps/v4/registry/bases/base/ui/button.tsx`,
-`badge.tsx`, and `skeleton.tsx`. This directory is the only Base UI import owner.
-Feature callers use the oStudy facades, not these files or vendor prop types.
+Components are adapted from `apps/v4/registry/bases/base/ui/`: `button.tsx`,
+`badge.tsx`, `skeleton.tsx`, `input.tsx`, and `native-select.tsx`. This directory
+is the only Base UI import owner. Feature callers use the oStudy facades, not
+these files or vendor prop types.
 
 ## Deliberate adaptations
 
@@ -19,6 +20,13 @@ Feature callers use the oStudy facades, not these files or vendor prop types.
   supply its semantic variants. Badges remain spans, not buttons or live regions.
 - Skeleton remains a span to preserve existing callers. Its pulse uses the
   existing oStudy animation duration and is disabled for reduced/no-motion states.
+- Input retains Base UI Input behavior with native React input props behind
+  `TextField`. Labels, validation, secrets and form state remain outside this layer.
+- NativeSelect retains the upstream wrapper/select/decorative-icon composition.
+  The existing oStudy icon replaces the registry icon placeholder. Native refs,
+  change events, options/optgroups, multiple selection and numeric listbox size
+  are preserved. Caller className targets the select, not its wrapper. Listboxes
+  omit the dropdown arrow rather than advertising an unavailable picker.
 - Utility composition uses the conventional clsx/tailwind-merge combination,
   configured for the prefix and semantic font sizes, behind `ui/internal/cn`.
 

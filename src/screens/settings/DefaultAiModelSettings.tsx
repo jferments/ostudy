@@ -19,6 +19,8 @@ import {
   type EmbeddingOptions,
 } from "../../ipc/embeddings";
 import { Button } from "../../ui/primitives/Button";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { TextField } from "../../ui/primitives/TextField";
 import styles from "./DefaultAiModelSettings.module.css";
 import {
   compatibleReasoning,
@@ -237,7 +239,7 @@ function TaskModelRow({
       <div className={styles.assignmentGrid}>
         <label className={styles.field}>
           <span>Provider</span>
-          <select
+          <NativeSelect
             aria-label={`${label} provider`}
             value={profileId}
             disabled={locked}
@@ -256,12 +258,12 @@ function TaskModelRow({
                 {profile.configurationStatus === "ready" ? "" : " — incomplete"}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
         <label className={styles.field}>
           <span>Model</span>
-          <select
+          <NativeSelect
             aria-label={`${label} model`}
             value={modelId}
             disabled={
@@ -299,13 +301,13 @@ function TaskModelRow({
                 {model.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
         {task !== "embeddings" ? (
           <label className={styles.field}>
             <span>Reasoning</span>
-            <select
+            <NativeSelect
               aria-label={`${label} reasoning`}
               value={reasoning}
               disabled={locked || !modelId}
@@ -325,7 +327,7 @@ function TaskModelRow({
                   {reasoningLabel(effort)}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         ) : null}
 
@@ -468,7 +470,7 @@ function EmbeddingModelOptions({
       <div className={styles.embeddingGrid}>
         <label className={styles.field}>
           <span>Dimensions</span>
-          <input
+          <TextField
             inputMode="numeric"
             placeholder="Provider default"
             value={dimensions}
@@ -478,7 +480,7 @@ function EmbeddingModelOptions({
         </label>
         <label className={styles.field}>
           <span>Input policy</span>
-          <select
+          <NativeSelect
             value={policy}
             disabled={disabled || busy}
             onChange={(event) => setPolicy(event.currentTarget.value as EmbeddingInputPolicy)}
@@ -487,7 +489,7 @@ function EmbeddingModelOptions({
             <option value="symmetric">Symmetric</option>
             <option value="qwen_retrieval">Qwen retrieval</option>
             <option value="search_types">Search query/document types</option>
-          </select>
+          </NativeSelect>
         </label>
         <div className={styles.testCell}>
           <Button
