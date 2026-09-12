@@ -489,11 +489,12 @@ def assert_dialog_viewport_bounds(session_id: str, label: str) -> None:
 
 
 def find_workspace_tab(session_id: str, label: str, deadline: float) -> str:
+    """Use the explicit accessible name shared by compact and wide tab labels."""
     return webdriver.find_element(
         session_id,
         "xpath",
         "//main//*[@role='tablist' and @aria-label='Flashcards workspaces']"
-        f"//button[@role='tab' and normalize-space(.)={json.dumps(label)}]",
+        f"//button[@role='tab' and @aria-label={json.dumps(label)}]",
         deadline,
     )
 
