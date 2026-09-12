@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-
 const migratedSources = [
   "src/ui/vendor/shadcn/sidebar.tsx",
   "src/ui/layout/AppFrame.tsx",
@@ -24,8 +23,21 @@ const migratedSources = [
   "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx",
   "src/screens/flashcards/deck-library/ArchivedDecksSection.tsx",
   "src/screens/flashcards/deck-library/DeckLibrarySheets.tsx",
+  "src/screens/flashcards/deck-library/PracticeSetupSheet.tsx",
   "src/screens/flashcards/FlashcardsWorkspace.tsx",
-
+  "src/screens/flashcards/DeckTransferDialog.tsx",
+  "src/screens/flashcards/AnkiImportReport.tsx",
+  "src/screens/cards/CardBrowserWorkspace.tsx",
+  "src/screens/cards/browserPresentation.ts",
+  "src/screens/cards/CardFilters.tsx",
+  "src/screens/cards/CardFilters.presentation.ts",
+  "src/screens/cards/BulkEntryModal.tsx",
+  "src/screens/cards/BulkTagModal.tsx",
+  "src/screens/cards/DeleteCardsModal.tsx",
+  "src/screens/cards/MoveCopyModal.tsx",
+  "src/screens/cards/PracticeResultsModal.tsx",
+  "src/screens/cards/ScheduleActionModal.tsx",
+  "src/components/TagInput.tsx",
   "src/ui/primitives/Chip.tsx",
   "src/ui/primitives/Notification.tsx",
   "src/ui/vendor/shadcn/notification.tsx",
@@ -50,6 +62,8 @@ const migratedSources = [
   "src/ui/primitives/Button.tsx",
   "src/ui/primitives/Panel.tsx",
   "src/screens/SettingsScreen.tsx",
+  "src/screens/TemplatesScreen.tsx",
+  "src/screens/templates/TemplateLayoutEditor.tsx",
   "src/screens/settings/SettingsControls.tsx",
   "src/screens/settings/AppearanceSettings.tsx",
   "src/screens/settings/StorageBackupSettings.tsx",
@@ -62,15 +76,9 @@ const migratedSources = [
 
 test("compiles every migrated utility, all themes and capability variants without writing source", async () => {
   const result = await build({
-    configFile: false,
-    root,
-    publicDir: false,
-    logLevel: "silent",
-    plugins: [tailwindcss()],
+    configFile: false, root, publicDir: false, logLevel: "silent", plugins: [tailwindcss()],
     build: {
-      write: false,
-      minify: false,
-      cssMinify: false,
+      write: false, minify: false, cssMinify: false,
       lib: { entry: fileURLToPath(new URL("../ui/tailwind-entry.ts", import.meta.url)), formats: ["es"], name: "StyleContract" },
     },
   });
@@ -81,9 +89,7 @@ test("compiles every migrated utility, all themes and capability variants withou
   assert.ok(css.length > 1000, "Expected generated CSS");
   assert.ok(!css.includes("@theme"));
   assert.ok(!css.includes("@tailwind"));
-  for (const theme of ["light", "dark", "console", "synthwave"]) {
-    assert.match(css, new RegExp(`data-theme=["']?${theme}`));
-  }
+  for (const theme of ["light", "dark", "console", "synthwave"]) assert.match(css, new RegExp(`data-theme=["']?${theme}`));
   assert.ok(css.includes("var(--ostudy-color-accent-on)"));
   assert.ok(css.includes("var(--ostudy-color-status-danger-on)"));
   assert.ok(css.includes("prefers-reduced-motion"));

@@ -1,15 +1,6 @@
 import { RichTextEditor } from "../../editor/RichTextEditor";
-import {
-  type Asset,
-} from "../../ipc/assets";
-import {
-  type RichDocument,
-} from "../../ipc/common";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-import ownershipStyles from "../TemplatesScreen.module.css";
-
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
+import type { Asset } from "../../ipc/assets";
+import type { RichDocument } from "../../ipc/common";
 
 interface TemplateLayoutEditorProps {
   label: string;
@@ -21,22 +12,15 @@ interface TemplateLayoutEditorProps {
   onAssetImported: (asset: Asset) => void;
 }
 
+/** Template rich-content state stays in the editor, independent of its Settings chrome. */
 export function TemplateLayoutEditor({
-  label,
-  document,
-  assets,
-  assetDraftId,
-  disabled,
-  onChange,
-  onAssetImported,
+  label, document, assets, assetDraftId, disabled, onChange, onAssetImported,
 }: TemplateLayoutEditorProps) {
   return (
-    <section className={ownedClassNames(ownedStyleMaps, "template-layout-editor")}>
+    <section className="tw:grid tw:min-w-0 tw:gap-4">
       <RichTextEditor
         label={label}
-        description={
-          "Type a field name in double braces, such as {{Subject}}. Simple one-paragraph values stay inline; lists, images, headings, block quotes, and multi-paragraph values become blocks automatically."
-        }
+        description="Type a field name in double braces, such as {{Subject}}. Simple one-paragraph values stay inline; lists, images, headings, block quotes, and multi-paragraph values become blocks automatically."
         document={document}
         assets={assets}
         assetDraftId={assetDraftId}
