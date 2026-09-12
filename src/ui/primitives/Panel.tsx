@@ -11,6 +11,6 @@ export function Panel({ as = "section", title, description, actions, children, c
       {title ? <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">{title}</h2> : null}
       {description ? <p className="tw:mt-2 tw:mb-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
     </div>{actions}</CardHeader> : null}
-    <CardContent className={cn(!title && !description && !actions && "tw:pt-6")}>{children}</CardContent>
+    <CardContent className={cn("tw:grid tw:gap-5", !title && !description && !actions && "tw:pt-6")}>{children}</CardContent>
   </Card>;
 }

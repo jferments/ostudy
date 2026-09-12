@@ -9,7 +9,6 @@ import { PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
 import { TemplatesScreen } from "./TemplatesScreen";
 import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
@@ -18,7 +17,6 @@ import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 
-const ownedStyleMaps = sharedClassMaps;
 
 type SettingsTab =
   | "storage"
@@ -201,7 +199,7 @@ export function SettingsScreen({
 
   return (
     <div
-      className={ownedClassNames(ownedStyleMaps, "screen")}
+      className="tw:grid tw:min-w-0 tw:gap-7"
       aria-busy={isSaving || aiController.mutating}
     >
       <PageHeader
@@ -209,7 +207,7 @@ export function SettingsScreen({
         icon="settings"
         compact
         actions={
-          <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
+          <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
             {canRestoreDefaults ? (
               <Button
                 type="button"

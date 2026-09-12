@@ -4,7 +4,9 @@ Upstream: shadcn-ui/ui commit `3ba91b1cc83e1bbe4ab35a422ff2a694849c5048`.
 License: MIT; the distributed notice is [SHADCN-MIT.txt](../../../../public/licenses/SHADCN-MIT.txt).
 
 Components are adapted from `apps/v4/registry/bases/base/ui/`: `button.tsx`,
-`badge.tsx`, `skeleton.tsx`, `input.tsx`, and `native-select.tsx`. This directory
+`badge.tsx`, `skeleton.tsx`, `input.tsx`, `native-select.tsx`, `checkbox.tsx`,
+`switch.tsx`, `radio-group.tsx`, `slider.tsx`, `textarea.tsx`, `collapsible.tsx`,
+`tabs.tsx`, and `card.tsx`. Form renderers are grouped in `form-controls.tsx`. This directory
 is the only Base UI import owner. Feature callers use the oStudy facades, not
 these files or vendor prop types.
 
@@ -29,6 +31,13 @@ these files or vendor prop types.
   omit the dropdown arrow rather than advertising an unavailable picker.
 - Utility composition uses the conventional clsx/tailwind-merge combination,
   configured for the prefix and semantic font sizes, behind `ui/internal/cn`.
+
+- Tabs use upstream automatic activation and roving focus. Radio groups keep
+  upstream behavior; the oStudy SegmentedControl facade retains its additional
+  Home/End shortcut contract using the public rendered controls.
+- Disclosure panels stay mounted while closed so draft form values survive.
+  Labels and contextual-help actions stay separate in the application FormField.
+- Form inputs use normal body text rather than inheriting bold, small label text.
 
 ## Updating
 
