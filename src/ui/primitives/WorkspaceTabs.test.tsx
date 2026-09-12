@@ -23,8 +23,8 @@ describe("responsive workspace tab names", () => {
     const list = screen.getByRole("tablist", { name: "Flashcards workspaces" });
     expect(within(list).getAllByRole("tab").map((tab) => tab.getAttribute("aria-label")))
       .toEqual(["Decks", "Search/Filter"]);
-    const search = within(list).getByRole("tab", { name: "Search/Filter", exact: true });
-    expect(within(list).queryByRole("tab", { name: "Search", exact: true })).toBeNull();
+    const search = within(list).getByRole("tab", { name: /^Search\/Filter$/ });
+    expect(within(list).queryByRole("tab", { name: /^Search$/ })).toBeNull();
     fireEvent.click(search);
     expect(search.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").textContent).toContain("Card search");
@@ -32,8 +32,8 @@ describe("responsive workspace tab names", () => {
 
   it("preserves roving keyboard focus and panel selection with responsive labels", async () => {
     render(<Harness />);
-    const decks = screen.getByRole("tab", { name: "Decks", exact: true });
-    const search = screen.getByRole("tab", { name: "Search/Filter", exact: true });
+    const decks = screen.getByRole("tab", { name: /^Decks$/ });
+    const search = screen.getByRole("tab", { name: /^Search\/Filter$/ });
     act(() => decks.focus());
     fireEvent.keyDown(decks, { key: "ArrowRight" });
     await waitFor(() => {
