@@ -35,3 +35,17 @@ export function Tabs<T extends string>({ value, onValueChange, tabs, ariaLabel }
     </TabsRoot>
   );
 }
+
+export interface WorkspaceTab<T extends string> { value: T; label: string; compactLabel?: string; icon?: ReactNode; }
+export function WorkspaceTabs<T extends string>({ value, onValueChange, tabs, ariaLabel, tourAnchor, children }: {
+  value: T; onValueChange: (value: T) => void; tabs: readonly WorkspaceTab<T>[]; ariaLabel: string; tourAnchor?: string; children: ReactNode;
+}) {
+  return <TabsRoot value={value} onValueChange={(next) => { const tab = tabs.find((item) => item.value === next); if (tab) onValueChange(tab.value); }} className="tw:grid tw:min-w-0 tw:gap-6">
+    <TabsList aria-label={ariaLabel} data-tour-anchor={tourAnchor} activateOnFocus className="tw:max-[760px]:w-full tw:max-[760px]:min-w-0">
+      {tabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} aria-label={tab.label} className="tw:max-[760px]:min-w-0 tw:max-[760px]:flex-1">
+        {tab.icon}<span className={tab.compactLabel ? "tw:max-[760px]:hidden" : undefined}>{tab.label}</span>{tab.compactLabel ? <span className="tw:hidden tw:max-[760px]:inline" aria-hidden="true">{tab.compactLabel}</span> : null}
+      </TabsTrigger>)}
+    </TabsList>
+    <TabsContent value={value}>{children}</TabsContent>
+  </TabsRoot>;
+}

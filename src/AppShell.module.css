@@ -1,0 +1,9 @@
+/* Definite route height is a native viewport/scroll contract, not component styling. */
+@layer components {
+  .routeLayer {
+    height: 100%;
+    min-height: 100%;
+    width: 100%;
+    min-width: 0;
+  }
+}

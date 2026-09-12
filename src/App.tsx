@@ -17,6 +17,7 @@ import { RouteTransition } from "./ui/motion/Motion";
 import { Button } from "./ui/primitives/Button";
 import { LoadingState } from "./ui/primitives/EmptyState";
 import { TourProvider } from "./ui/tutorials/TourProvider";
+import shellStyles from "./AppShell.module.css";
 import { AppFrame, AppContent } from "./ui/layout/AppFrame";
 import { BrandMark } from "./components/Brand";
 import { InlineNotice } from "./ui/primitives/InlineNotice";
@@ -121,7 +122,7 @@ function App() {
                   <RouteTransition
                     routeKey={controller.activeWorkflow ?? controller.section}
                     relation="sibling"
-                    className="tw:h-full tw:min-h-full tw:w-full tw:min-w-0"
+                    className={shellStyles.routeLayer}
                   >
                     <AppErrorBoundary>
                       <Suspense fallback={<LoadingState label="Opening section…" />}>

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { DeckOpenRequest } from "../../App";
 import type { ShowToast } from "../../components/Toast";
@@ -17,7 +17,7 @@ import { PageHeader, PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { CardsScreen } from "../CardsScreen";
 import { CardPracticeProvider } from "../cards/CardPracticeContext";
 import { DeckLibraryWorkspace } from "./DeckLibraryWorkspace";
-import styles from "./FlashcardsWorkspace.module.css";
+import { WorkspaceTabs } from "../../ui/primitives/Tabs";
 
 interface FlashcardsWorkspaceProps {
   workspace: FlashcardsWorkspaceName;
@@ -77,7 +77,6 @@ export function FlashcardsWorkspace({
   onCardDirtyChange,
   showToast,
 }: FlashcardsWorkspaceProps) {
-  const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
   const workspaceChangeRef = useRef(onWorkspaceChange);
   const visibleWorkspace: "decks" | "search" = workspace === "search" ? "search" : "decks";
 
@@ -93,67 +92,15 @@ export function FlashcardsWorkspace({
     });
   }, [visibleWorkspace]);
 
-  function activateAt(index: number): void {
-    const item = WORKSPACES[index];
-    if (!item) return;
-    void onWorkspaceChange(item.value);
-    buttonsRef.current[index]?.focus();
-  }
-
-  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
-    let next: number | null = null;
-    if (event.key === "ArrowRight") next = (index + 1) % WORKSPACES.length;
-    if (event.key === "ArrowLeft") next = (index - 1 + WORKSPACES.length) % WORKSPACES.length;
-    if (event.key === "Home") next = 0;
-    if (event.key === "End") next = WORKSPACES.length - 1;
-    if (next === null) return;
-    event.preventDefault();
-    activateAt(next);
-  }
-
   return (
-    <PageScaffold width="full" className={styles.workspace}>
+    <PageScaffold width="full" className="tw:@container/flashcards-workspace">
       <PageHeader title="Flashcards" icon="cards" compact />
 
-      <div className={styles.tabScroller}>
-        <div
-          className={styles.tabList}
-          role="tablist"
-          aria-label="Flashcards workspaces"
-          data-tour-anchor="flashcards.workspaces"
-        >
-          {WORKSPACES.map((item, index) => {
-            const selected = item.value === visibleWorkspace;
-            return (
-              <button
-                key={item.value}
-                ref={(node) => {
-                  buttonsRef.current[index] = node;
-                }}
-                type="button"
-                role="tab"
-                aria-label={item.label}
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                className={styles.tab}
-                data-selected={selected}
-                onClick={() => void onWorkspaceChange(item.value)}
-                onKeyDown={(event) => handleTabKeyDown(event, index)}
-              >
-                <Icon name={item.icon} size={18} />
-                <span className={styles.tabLabel} data-compact-label={item.compactLabel}>
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
+      <WorkspaceTabs value={visibleWorkspace} onValueChange={(next) => void onWorkspaceChange(next)} ariaLabel="Flashcards workspaces" tourAnchor="flashcards.workspaces" tabs={WORKSPACES.map((item) => ({ ...item, icon: <Icon name={item.icon} size={18} /> }))}>
       <RouteTransition
         routeKey={`${visibleWorkspace}:${navigationKey}`}
         relation="sibling"
-        className={styles.panel}
+        className="tw:min-w-0"
       >
         <CardPracticeProvider onPracticeCards={onPracticeCards}>
           {visibleWorkspace === "decks" ? (
@@ -185,6 +132,7 @@ export function FlashcardsWorkspace({
           ) : null}
         </CardPracticeProvider>
       </RouteTransition>
+      </WorkspaceTabs>
     </PageScaffold>
   );
 }

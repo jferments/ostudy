@@ -8,6 +8,24 @@ import test from "node:test";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 
 const migratedSources = [
+  "src/ui/vendor/shadcn/sidebar.tsx",
+  "src/ui/layout/AppFrame.tsx",
+  "src/ui/layout/AppNavigation.tsx",
+  "src/App.tsx",
+  "src/components/MobileAppBar.tsx",
+  "src/components/AppErrorBoundary.tsx",
+  "src/ui/patterns/WorkspacePatterns.tsx",
+  "src/ui/patterns/SelectionToolbar.tsx",
+  "src/ui/primitives/Tabs.tsx",
+  "src/screens/flashcards/deck-library/libraryPresentation.ts",
+  "src/screens/flashcards/deck-library/DeckItem.tsx",
+  "src/screens/flashcards/deck-library/FolderSection.tsx",
+  "src/screens/flashcards/deck-library/DeckLibraryView.tsx",
+  "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx",
+  "src/screens/flashcards/deck-library/ArchivedDecksSection.tsx",
+  "src/screens/flashcards/deck-library/DeckLibrarySheets.tsx",
+  "src/screens/flashcards/FlashcardsWorkspace.tsx",
+
   "src/ui/primitives/Chip.tsx",
   "src/ui/primitives/Notification.tsx",
   "src/ui/vendor/shadcn/notification.tsx",

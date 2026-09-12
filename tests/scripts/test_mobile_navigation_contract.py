@@ -52,17 +52,12 @@ class MobileNavigationContractTests(unittest.TestCase):
         )
 
     def test_compact_deck_toolbar_keeps_actions_intrinsic_and_import_prominent(self) -> None:
-        css = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryView.module.css").read_text()
+        recipes = (ROOT / "src/screens/flashcards/deck-library/libraryPresentation.ts").read_text()
         root = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx").read_text()
-        self.assertIn(
-            ".toolbarActions {\n      width: auto;\n      justify-content: flex-end;\n    }",
-            css,
-        )
-        self.assertIn(
-            ".toolbarActions > button {\n      flex: 0 0 auto;\n    }",
-            css,
-        )
-        self.assertIn(".importAction svg {\n    stroke-width: 2.15;\n  }", css)
+        toolbar = recipes.split('toolbarActions: "', 1)[1].split('"', 1)[0]
+        for utility in ("tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"):
+            self.assertIn(utility, toolbar.split())
+        self.assertIn('importAction: "tw:[&_svg]:stroke-[2.15]"', recipes)
         self.assertIn('icon="folder-open"\n            iconSize={24}', root)
 
 

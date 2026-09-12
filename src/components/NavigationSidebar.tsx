@@ -19,6 +19,14 @@ const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string 
   { section: "settings", icon: "settings", label: "Settings" },
 ];
 
+const COMPACT_PRIMARY_SECTIONS = [
+  "decks",
+  "study-guides",
+  "documents",
+  "tutor",
+  "analytics",
+] as const;
+
 function isActive(
   item: AppSection,
   current: AppSection,
@@ -39,7 +47,7 @@ export function NavigationSidebar({
   return <AppNavigation brand={<BrandLockup compact={layoutMode === "medium"} />} items={ITEMS.map((item) => ({
     id: item.section, label: item.label, icon: item.icon,
     active: isActive(item.section, section, activeWorkflow),
-    secondary: item.section === "settings",
+    secondary: !COMPACT_PRIMARY_SECTIONS.some((section) => section === item.section),
     onSelect: () => { void onNavigate(item.section); },
   }))} />;
 }
