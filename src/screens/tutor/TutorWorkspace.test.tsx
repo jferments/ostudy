@@ -130,10 +130,10 @@ describe("Tutor workspace consent and source reads", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
     const checkbox = screen.getByRole("checkbox", {
       name: "Search permitted conversations in this material selection",
-    }) as HTMLInputElement;
-    expect(checkbox.checked).toBe(false);
+    });
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
     await act(async () => { fireEvent.click(checkbox); });
-    expect(checkbox.checked).toBe(true);
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
     expect(controller.preparation.selection.includeConversations).toBe(true);
     expect(previewSemanticPreparation).not.toHaveBeenCalled();
     expect(prepareSemanticMaterial).not.toHaveBeenCalled();
