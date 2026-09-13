@@ -152,15 +152,6 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
         </dl>
         <Button variant="secondary" disabled={busy || configuration === null} onClick={() => void flushNow()}>Flush diagnostic log</Button>
       </Panel>
-      <Panel className="tw:col-span-full" title="Privacy and storage limits">
-        <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground">
-          ostudy never uploads diagnostics automatically. API credentials, authorization headers,
-          prompts, model responses, document or OCR text, flashcard content, SQL parameters, and QR
-          payloads are prohibited diagnostic fields and are centrally redacted. The writer keeps only
-          the current and previous bounded log files; logging is never allowed to block database or
-          study operations.
-        </p>
-      </Panel>
     </div>
   );
 }

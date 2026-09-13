@@ -27,6 +27,8 @@ interface DeckDetailRouteProps {
   showToast: ShowToast;
 }
 
+const LEGACY_GENERATED_DESCRIPTION_SUFFIX = "Edit or delete these cards through the normal deck tools.";
+
 /** The route owns the deck identity; the shared browser retains selection and authoring state. */
 export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openRequest,
   onReturnToLibrary, onDirtyChange, showToast }: DeckDetailRouteProps) {
@@ -56,10 +58,12 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
     }).finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; controller.invalidate(); };
   }, [controller, initialDeck, openRequest.deckId]);
+
   useEffect(() => {
     const refreshed = decks.find((candidate) => candidate.id === openRequest.deckId);
     if (refreshed) setDeck(refreshed);
   }, [decks, openRequest.deckId]);
+
   useEffect(() => {
     if (browserView !== "list") return;
     return registerPlatformBackHandler(() => { if (!mutation.current) void onReturnToLibrary(); return true; });
@@ -74,10 +78,12 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
       showToast("info", `${message}, but the deck list could not refresh: ${getErrorMessage(error)}`);
     }
   }
+
   async function returnAfterCommit(message: string): Promise<void> {
     try { await onReturnToLibrary(); }
     catch (error: unknown) { showToast("info", `${message}, but navigation could not finish: ${getErrorMessage(error)}`); }
   }
+
   async function archive(): Promise<void> {
     if (!deck || mutation.current) return;
     mutation.current = true;
@@ -93,6 +99,7 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
     } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
     finally { mutation.current = false; setBusy(false); }
   }
+
   async function deleteDeck(): Promise<void> {
     if (!deck || mutation.current) return;
     mutation.current = true;
@@ -101,7 +108,8 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
       const accepted = await confirm({
         title: `Delete “${deck.name}”?`,
         description: `This will delete ${deck.generatedCardCount} ${deck.generatedCardCount === 1 ? "card" : "cards"} and their review history after the Undo period.`,
-        confirmLabel: "Delete deck", destructive: true,
+        confirmLabel: "Delete deck",
+        destructive: true,
       });
       if (!accepted) return;
       const deletion = await controller.deleteDeck(deck.id);
@@ -126,7 +134,7 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
   return <div className={cn("tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0", browserView === "list" && "tw:max-w-(--ostudy-layout-wide-width) tw:px-page tw:py-8 tw:max-[760px]:px-4 tw:max-[760px]:py-5")}>
     {browserView === "list" ? <>
       <Button variant="back" disabled={busy} onClick={() => void onReturnToLibrary()}>← All decks</Button>
-      <PageHeader title={deck.name} description={deck.description || undefined} eyebrow="Flashcards"
+      <PageHeader title={deck.name} description={visibleDeckDescription(deck.description)}
         actions={<ResponsiveActionGroup label={`${deck.name} actions`} actions={[
           { id: "practice", label: "Practice", placement: "always-visible", variant: "primary",
             disabled: busy || deck.generatedCardCount === 0 || deck.archivedAt !== null,
@@ -144,4 +152,13 @@ export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openReque
     {browserView === "list" ? <footer className="tw:mt-6"><SourceCitationPanel deckId={deck.id} /></footer> : null}
     {showExportDialog ? <DeckTransferDialog request={{ kind: "export", decks: [deck] }} refreshDecks={refreshDecks} onClose={() => setShowExportDialog(false)} showToast={showToast} /> : null}
   </div>;
+}
+
+function visibleDeckDescription(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const withoutLegacyHelp = trimmed.endsWith(LEGACY_GENERATED_DESCRIPTION_SUFFIX)
+    ? trimmed.slice(0, -LEGACY_GENERATED_DESCRIPTION_SUFFIX.length).trim()
+    : trimmed;
+  return withoutLegacyHelp || undefined;
 }

@@ -29,6 +29,17 @@ describe("Conversational Tutor presentation", () => {
     expect(state.send).toHaveBeenCalledWith("explain");
   });
 
+  it("omits empty source copy and keeps the chat-settings glyph centered at its explicit size", () => {
+    const { container } = render(<TutorWorkspace />);
+    expect(screen.queryByText("No sources")).toBeNull();
+    const settings = screen.getByRole("button", { name: "Chat settings" });
+    const icon = settings.querySelector("svg") as SVGElement;
+    expect(icon.getAttribute("width")).toBe("20");
+    expect(icon.getAttribute("height")).toBe("20");
+    expect(icon.classList.contains("tw:size-5")).toBe(true);
+    expect(container.querySelector('[aria-label="Chat settings"]')).toBe(settings);
+  });
+
   it("keeps hint-only messages plain and does not add a quiz shortcut", () => {
     state.target = { mode: "hint" };
     state.detail = { conversation: { id: "a", title: "Hints" }, turns: [{
