@@ -99,7 +99,7 @@ export function InlineWorkspace({
         <IconButton
           ref={closeRef}
           icon="close"
-          iconSize={22}
+          iconSize={24}
           label={closeLabel}
           tooltip={false}
           tone="neutral"
