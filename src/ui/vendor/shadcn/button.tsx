@@ -1,45 +1,50 @@
-// Adapted from shadcn/ui's Base UI button. See README.md for pinned provenance.
+// Adapted from shadcn/ui's Base UI Nova button. See README.md for pinned provenance.
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../../internal/cn";
 
 export const buttonVariants = cva(
-  "tw:relative tw:inline-flex tw:shrink-0 tw:items-center tw:justify-center tw:gap-2 tw:rounded-button tw:border tw:border-solid tw:font-sans tw:font-semibold tw:cursor-pointer tw:select-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:ease-standard tw:reduce-motion:transition-none tw:disabled:cursor-not-allowed tw:disabled:opacity-50 tw:focus-visible:outline-2 tw:focus-visible:outline-offset-2 tw:focus-visible:outline-ring tw:[&_svg]:pointer-events-none tw:[&_svg]:shrink-0",
+  "tw:relative tw:inline-flex tw:shrink-0 tw:cursor-pointer tw:select-none tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded-lg tw:border tw:border-solid tw:border-transparent tw:bg-clip-padding tw:font-sans tw:text-sm tw:font-medium tw:transition-all tw:duration-(--ostudy-motion-duration-fast) tw:ease-standard tw:outline-none tw:reduce-motion:transition-none tw:disabled:pointer-events-none tw:disabled:opacity-50 tw:focus-visible:border-ring tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:[&_svg]:pointer-events-none tw:[&_svg]:shrink-0 tw:[&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "tw:border-primary tw:bg-primary tw:text-primary-foreground tw:shadow-panel tw:enabled:hover:bg-primary-hover",
-        outline: "tw:border-input tw:bg-secondary tw:text-secondary-foreground tw:shadow-panel tw:enabled:hover:bg-muted",
-        ghost: "tw:border-transparent tw:bg-transparent tw:text-accent-foreground tw:enabled:hover:bg-accent",
-        destructive: "tw:border-destructive tw:bg-destructive tw:text-destructive-foreground",
-        "destructive-outline": "tw:border-destructive tw:bg-secondary tw:text-destructive tw:enabled:hover:bg-destructive-soft",
-        link: "tw:border-transparent tw:bg-transparent tw:text-accent-foreground tw:enabled:hover:underline",
-        back: "tw:mb-5 tw:border-transparent tw:bg-transparent tw:text-accent-foreground tw:enabled:hover:underline",
-        "destructive-ghost": "tw:border-transparent tw:bg-transparent tw:text-destructive tw:enabled:hover:bg-destructive-soft",
+        default: "tw:bg-primary tw:text-primary-foreground tw:enabled:hover:bg-primary/80",
+        outline: "tw:border-border tw:bg-background tw:text-foreground tw:enabled:hover:bg-muted tw:aria-expanded:bg-muted",
+        secondary: "tw:bg-secondary tw:text-secondary-foreground tw:enabled:hover:bg-muted tw:aria-expanded:bg-secondary",
+        ghost: "tw:bg-transparent tw:text-foreground tw:enabled:hover:bg-muted tw:aria-expanded:bg-muted",
+        destructive: "tw:bg-destructive-soft tw:text-destructive tw:enabled:hover:bg-destructive/20 tw:focus-visible:border-destructive/40 tw:focus-visible:ring-destructive/20",
+        link: "tw:bg-transparent tw:text-primary tw:underline-offset-4 tw:enabled:hover:underline",
       },
       size: {
-        default: "tw:min-h-control tw:px-4 tw:py-1 tw:text-label",
-        sm: "tw:min-h-8.5 tw:px-3 tw:py-1 tw:text-caption",
-        lg: "tw:min-h-13 tw:px-6 tw:py-2 tw:text-body",
-        icon: "tw:size-touch tw:min-w-touch tw:p-0",
+        xs: "tw:h-6 tw:gap-1 tw:px-2 tw:text-xs tw:[&_svg:not([class*='size-'])]:size-3",
+        sm: "tw:h-7 tw:gap-1 tw:px-2.5 tw:text-[0.8rem] tw:[&_svg:not([class*='size-'])]:size-3.5",
+        default: "tw:h-8 tw:gap-1.5 tw:px-2.5",
+        lg: "tw:h-9 tw:gap-1.5 tw:px-3",
+        icon: "tw:size-8 tw:p-0",
+        "icon-sm": "tw:size-7 tw:p-0 tw:[&_svg:not([class*='size-'])]:size-3.5",
+        "icon-lg": "tw:size-9 tw:p-0",
       },
     },
-    defaultVariants: { variant: "outline", size: "default" },
+    defaultVariants: { variant: "default", size: "default" },
   },
 );
 
 export function Button({
   className,
-  variant,
-  size,
+  variant = "default",
+  size = "default",
   ...props
 }: Omit<ButtonPrimitive.Props, "className"> & VariantProps<typeof buttonVariants> & { className?: string }) {
   return (
     <ButtonPrimitive
       data-slot="button"
       {...props}
-      className={cn(buttonVariants({ variant, size }), "tw:coarse:min-h-touch", className)}
+      className={cn(
+        buttonVariants({ variant, size }),
+        "tw:coarse:min-h-touch tw:coarse:min-w-touch",
+        className,
+      )}
     />
   );
 }
