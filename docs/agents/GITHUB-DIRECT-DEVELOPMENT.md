@@ -111,6 +111,14 @@ A Contents API update protects one blob, not the complete branch parent, and is 
 
 If a write returns no usable acknowledgement, read GitHub before retrying. A created blob/tree/commit is not branch publication until the ref points to it. A verified commit is not a passing test. Do not reissue an ambiguous mutation blindly or create a competing branch to work around uncertainty.
 
+## Optional user-authorized commit batches and communication
+
+The default loop above publishes each coherent increment. When the human explicitly asks for multiple commits before one branch update, create a short linear chain from the verified head, with each commit parent equal to the preceding commit and each tree based on that parent's tree. Keep the original remote head, batch tip/tree and path/blob manifest. Re-read the remote head immediately before one non-force update to the tip, then verify the published ref. Do not invent another writer, workflow, lock service or source-generating job.
+
+Batch size is not a quota or a reason to delay a finished coherent publication. Multiple published commits can also be completed within one user request. A user can restore the default per-increment publication procedure without reverting product code or discarding an existing useful batch.
+
+Give sparse in-turn progress messages after meaningful publication and before terminal qualification. Do not require acknowledgement or another prompt merely to continue the assigned scope. Do not claim that batching, shorter replies or repository instructions cure a platform-level response failure; its low-level cause is not available from GitHub evidence. Preserve concrete publication state so a resumed turn reports completed work accurately.
+
 ## Integrating current main
 
 Read both exact heads. When the task requires integrating newer `main`, preserve the task branch and use a normal non-force merge with reviewed conflict resolution; a Git-data merge commit names both ordered parents and the reconciled tree. Do not replace the task tree with `main`, rebase shared history, or claim integration because the PR base label still says `main`. Requalify the resulting exact SHA. A mere documentation task does not authorize rewriting unrelated application history.

@@ -1,6 +1,6 @@
 # UI overhaul implementation after PR #94
 
-Status: the source implementation through roadmap Phase 8 is integrated in PR #96. This is not the completed application-wide overhaul. Automated qualification, human visual acceptance and merge are separate states; their actual results belong to the exact-SHA PR evidence rather than this document.
+Status: source implementation for Phases 1–15 is integrated in PR #96, following the Phase 0 architecture assessment. The remaining acceptance work is exact-head terminal qualification and human visual/device review, not an unimplemented workspace migration. Automated qualification, human visual acceptance and merge are separate states; their actual results belong to the exact-SHA PR evidence rather than this document.
 
 ## Preserved baseline and ownership
 
@@ -16,7 +16,7 @@ The official Tailwind Vite integration produces static CSS. Exact dependency pin
 
 Generated Tailwind aliases resolve to oStudy semantic tokens. Default palette utilities are disabled; legacy `--muted` and `--accent` retain their old meanings. AppearanceProvider remains the authority for four themes and root input/motion/material/contrast capabilities. Safe areas, IME rules, local fonts and independent interface/card scaling remain.
 
-Preflight is not imported. Prefixing avoids collisions with legacy classes. Utilities temporarily compile in the existing components layer so unmigrated feature overrides remain compatible. Migrated owners no longer import their superseded generic feature styles. Partial-border recipes explicitly clear the other edges because the browser defaults are not reset by Preflight. Moving utilities above all remaining feature styles belongs to the later caller-override audit, not a global important flag.
+Preflight is not imported. Prefixing avoids collisions with legacy classes. Utilities intentionally remain in the components layer. The remaining specialized geometry/content owners may override ordinary surface recipes; a global utility-priority or important flag would break that contract. All ordinary feature owners use the new presentation and no longer import superseded generic styles. Partial-border recipes explicitly clear the other edges because the browser defaults are not reset by Preflight. The final precedence review retained that explicit ordering rather than introducing a second reset or overriding measured geometry.
 
 Button, Badge and Skeleton proved the stable-facade boundary. Later shared controls extend that same design rather than inventing a parallel feature-specific vocabulary.
 
@@ -67,24 +67,66 @@ Selected-deck Practice setup uses shared panels, tagged choices, explicit schedu
 
 DeckDetailRoute owns the migrated header/actions and source footer. The browser remains the same mounted instance when entering/leaving its editor; a regression test verifies unsaved local state survives that layout transition. Deck import/export/share and bounded Anki conversion receipts use the same panels and feedback.
 
-## Deliberate retained CSS and later scope
+## Phase 9: card editor chrome
 
-Completion through Phase 8 does not mean zero CSS or all application screens converted.
+CardEditorScreenBase, EditorToolbar, formatting selectors, link/image/source controls and template editor chrome now use shared fields, actions, panels, notices and semantic Tailwind. Toolbars keep the existing editor command adapter; shadcn types do not enter Tiptap schemas or durable drafts. ContentEditable descendants, embedded media/math and print behavior remain in RichContent.module.css. Draft asset identities, cloze/template semantics, save/discard guards and citation policy are unchanged.
 
-| Retained owner | Reason |
+## Phase 10: Documents and Study Guides
+
+Documents uses shared library/search/actions, metadata panels, progress, cancel/retry and empty/error presentation. The unavailable-platform fallback remains a real supported path. Native/controller jobs survive navigation and their results remain durable.
+
+The guide library and reader use the shared scaffold, toolbar/actions, disclosures, source cards and editable learner-note controls. The reader remains a nonmodal InlineWorkspace; compact contents/article geometry and close-target size are tested. Generated content, learner overrides, revisions, source provenance and PDF-export behavior stay separate from the renderer.
+
+## Phase 11: Analytics
+
+Filters, deck/time selectors, section hierarchy and charts now sit inside the shared presentation. Reusable MetricCard and distribution presentation also serve Practice completion rather than creating another metric-card implementation. Chart.js, aggregation and historical attribution remain unchanged. Responsive containment and accessible data alternatives remain acceptance requirements.
+
+## Phase 12: active Practice
+
+ActivePractice and PracticeComplete use shared actions, inline progress, status, grading surfaces and completion metrics. The inactive 3D card face is inert. Reveal/grading controls are blocked during card management or session-end operations. The card face geometry and reduced-motion transform behavior retain a specialized stylesheet.
+
+Session windows, snapshots, scheduling inputs, answer reveal, confidence semantics and review/retry identity stay application-owned. Contextual Tutor preserves the originating session and its hidden-answer restrictions.
+
+## Phase 13: Tutor
+
+TutorWorkspace, conversation history, composer, source selection, memory/index disclosures, preparation, citations and error/retry presentation use shared components. Ctrl/Cmd+Enter submission remains composition-aware. A source checklist starts a new scoped conversation without rewriting a previous conversation's scope.
+
+Source permissions, pending operation IDs, provider transport, citations, private evaluation criteria and saved/offline conversations are unchanged. Consent tests address the accessible checkbox state instead of assuming that a Base UI checkbox is an HTMLInputElement. Each test resets its mocked response queue so an earlier assertion failure cannot leave a rejected response queued for another case.
+
+The only raw feature inputs are explicitly disabled checklist markers emitted by the sanitized Markdown renderer. The policy rejects interactive controls, spread props and alternative fields under that exception.
+
+## Phases 14–15: cleanup and enforceable ownership
+
+The remaining ordinary layout, branding, responsive actions, visually hidden utility and InlineWorkspace chrome use Tailwind. Dead Menu/Settings styles and the old Button, Tabs, Surface and feature-exclusive styles have been removed. The unmounted all-in-one DecksScreen and its private styles/tests are retired; live DeckDetailRoute, DeckLibraryWorkspace and DeckTransferDialog are the owners.
+
+Coverage is preserved on those active paths: creation routes to the authoritative new identity; deck-only browsing and direct Practice keep their scope; empty/archived decks cannot practice; archive/restore uses the exact revision and prevents duplicate actions; deletion requires confirmation and retains Undo's absolute deadline; post-commit refresh/navigation errors do not invite another write. Transfer tests cover chooser cancellation, unsupported inputs, retry, duplicate reports, exact export totals, busy-state locking and post-commit recovery. Existing library/controller, browser, Anki, dirty-state and native smoke suites remain.
+
+The legacy classOwnership API and its three shared CSS maps are removed after their last production consumer. The replacement verifier checks explicit CSS Module selectors, complete utilities, conditional/cn usage, and rejects reintroducing the retired API. The production CSS contract discovers the entire source tree rather than maintaining a partial screen list.
+
+`scripts/ui/presentation-policy.mjs` is the checked retained-CSS manifest: every remaining Module must have a specific rationale, exist, and have a production importer. No new unexplained Module is permitted. Generic native controls belong only inside the vendor implementation; public oStudy facades and features cannot grow a second checkbox/button system.
+
+### Retained specialized presentation
+
+| Owner | Rationale |
 | --- | --- |
-| Deck pointer/list/drag feedback geometry | Hit testing, insertion destinations, drag transforms, scrolling and performance; not a second generic button system. |
-| DeviceSync QR frame | Machine-readable format needs fixed quiet-zone geometry and literal white contrast. |
-| Guided tutorial spotlight/popover | Target measurement, viewport collision geometry and spotlight masking. Actions/text are migrated. |
-| InlineWorkspace and platform foundation | Native route-height, safe-area, IME and nonmodal layout contracts. |
-| Rich editor, media/math, document and print CSS | Specialized content styling; feature-level editor/reader migration belongs to Phases 9–13. |
-| Legacy shared class maps and unmounted DecksScreen regression harness | Remaining later-phase consumers and historical behavior coverage. Live DeckDetailRoute no longer imports DecksScreen styling. Retire the unmounted harness with equivalent active-route coverage in Phase 15. |
+| AppShell | Definite-height native route and scroll containment. |
+| RichContent and TutorMarkdown | Rich-content descendants, media/math/print, sanitized Markdown and overflow. |
+| PracticeCard | Two-face 3D geometry, inert-face visibility, independent scaling and reduced motion. |
+| Five deck-library geometry Modules | Hit testing, scrolling, pointer transforms and insertion destinations. |
+| DeviceSync QR frame | Machine-readable quiet zone and literal white contrast. |
+| TourProvider | Measured spotlight masking and viewport collision geometry. |
+| Artwork, Motion, Materials and experience | Illustration cropping and optional motion/material/effect geometry. |
+| Progress | Text contrast split across the filled and unfilled track. |
 
-Phases 9–13 still cover editor chrome, Documents/Study Guides, Analytics, the active Practice experience and Tutor transcript/composer layouts. Shared controls affect them now, but that is not a claim that their domain-specific layout migration is complete. Phases 14–15 finish the remaining CSS owners, legacy compatibility cleanup, visual/performance baselines and final whole-application stabilization.
+There are 16 registered Modules. Retaining specialized CSS is intentional, not an unfinished generic screen conversion. Semantic short aliases still used by these owners remain; removing them merely to reduce a count would break supported styling. Owned shadcn source and its provenance are retained; no extra runtime registry or dependency ejection is required.
+
+### Acceptance still requiring a human
+
+Source completion does not approve visual baselines. Inspect all themes, long/populated/error states, enlarged text, keyboard focus, physical Android IME/Back and real asset/document rendering. Existing automated correctness/geometry gates must pass on the frozen candidate. Performance measurements are advisory/manual; no speedup or real-world defect-rate reduction is inferred from library adoption. Refresh screenshots or performance baselines only after acceptance, never to hide a regression.
 
 ## Tests and acceptance
 
-The TypeScript import verifier restricts vendor/Base UI ownership. The class-ownership check rejects interpolated utility names and unowned legacy classes. The in-memory CSS build now discovers all shared UI plus live Phase 4–8 feature sources, verifies every used utility and the four themes/capability variants, and rejects raw generic controls in migrated feature owners. It also checks explicit partial-border behavior with no Preflight.
+The TypeScript import verifier restricts vendor/Base UI ownership. The class-ownership check rejects interpolated utility names and unowned legacy classes. The in-memory CSS build discovers all production frontend sources, verifies every used utility and the four themes/capability variants, and rejects raw generic controls outside the approved implementation boundary. It also checks explicit partial-border behavior with no Preflight.
 
 Behavior suites retain form/ref/loading/disabled contracts, keyboard tab/radio behavior, disclosure drafts, Settings/provider/sync operations, atomic import receipts, deck-library drag/selection, browser bulk actions, Practice setup and nested modal/Back behavior. They assert observable outcomes rather than hidden-input implementation details. Node-only suites remain explicit `.node-test.mjs` files.
 

@@ -1,6 +1,6 @@
 # UI architecture
 
-One React presentation serves Linux and Android through capability-oriented platform adapters. [The comprehensive architecture](overview.md) covers the system; this reference owns current UI composition, interaction, state and styling. [The UI implementation record](../development/ui-overhaul-current-implementation.md) and [roadmap](../development/ui-overhaul-roadmap.md) distinguish the migrated Phase 4–8 owners from later editor/reader/Analytics/Practice/Tutor layout work.
+One React presentation serves Linux and Android through capability-oriented platform adapters. [The comprehensive architecture](overview.md) covers the system; this reference owns current UI composition, interaction, state and styling. [The UI implementation record](../development/ui-overhaul-current-implementation.md) and [roadmap](../development/ui-overhaul-roadmap.md) record the implemented Phase 0–15 ownership and distinguish source completion from automated and human acceptance.
 
 ## Responsibilities and dependency direction
 
@@ -54,7 +54,7 @@ Row activation, selection, menus, text selection and dragging are distinct inten
 
 Organization mutations use a library revision. Conflicts reload authoritative state instead of overwriting newer order. Selection survives relevant in-process navigation only for eligible unchanged rows; missing/stale identities are pruned. Empty decks cannot practice; mixed archived/active selection explains its applicable operations.
 
-DeckDetailRoute owns the production deck header/actions, shared browser and source footer. It no longer consumes the retired all-in-one DecksScreen styles. The same browser instance stays mounted when its header hides for editor mode; changing presentation must not discard an unsaved card.
+DeckDetailRoute owns the production deck header/actions, shared browser and source footer. The old all-in-one DecksScreen and its exclusive styles are removed; active route/controller/transfer regressions cover their meaningful contracts. The same browser instance stays mounted when its header hides for editor mode; changing presentation must not discard an unsaved card.
 
 ## Authoring, Search and transfers
 
@@ -62,7 +62,7 @@ Deck detail owns Add flashcard/Bulk add with a fixed destination. Cross-library 
 
 Source notes and generated card presentations remain distinct. Select visible/all matching resolve different identity sets. Bulk mutations account for forward/reverse cards sharing a note. Tags use stable IDs rather than display names.
 
-The editor adapter exposes supported commands without distributing a Tiptap instance. Durable drafts and canonical commits have separate lifecycles. Template Settings chrome is migrated, but rich editor-specific toolbar/content work remains Phase 9. See [rich-document editor](rich-document-editor.md).
+The editor adapter exposes supported commands without distributing a Tiptap instance. Durable drafts and canonical commits have separate lifecycles. Editor and template chrome use shared controls; rich content, media/math, ProseMirror descendants and print styling remain specialized. See [rich-document editor](rich-document-editor.md).
 
 Transfer UI presents native import/export/share operations. Anki completion is a post-commit receipt; refresh/navigation failure cannot permit duplicate importing. Unknown progress remains indeterminate. Sync UI keeps sender-selected categories, Documents/Guide and settings/key dependencies, credential availability and distinct USB/LAN flows. Appearance preferences remain device-local.
 
@@ -74,7 +74,7 @@ Generated revisions differ from learner-owned notes/overrides. Generation belong
 
 DocumentsSection retains the actual unavailable-capability fallback. DocumentsScreen displays application-lifetime controller/native state; a route unmount cannot cancel durable jobs. Parsing, OCR and provider/storage policy remain native/domain-owned.
 
-Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional conversation, private question criteria and hidden-answer/citation safeguards. Questions use Send; do not restore Quiz me. Shared components affect these screens already, but their domain-specific layouts remain in Phases 10–13.
+Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional conversation, private question criteria and hidden-answer/citation safeguards. Questions use Send; do not restore Quiz me. The Documents, guide reader, Analytics, active Practice and Tutor layouts now use the same scaffold, actions, fields, metrics and feedback. Their controllers and rich-content models remain independent. The inactive Practice face is inert, and Tutor submission remains composition-aware.
 
 ## Overlay lifecycle
 
@@ -88,7 +88,7 @@ An inline workspace stays nonmodal. Browser beforeunload/native active-document 
 
 `src/ui/foundations/index.css` is the single global entry. It defines cascade layers, root sizing, typography, token foundations, platform insets and accessibility capabilities. Tailwind compiles namespaced `tw:` utilities through the Vite plugin without Preflight or a second reset.
 
-Migrated Settings, shell, overlays, feedback and Flashcards owners use Tailwind; they no longer import their superseded generic feature CSS. Utilities temporarily occupy the components layer for unmigrated feature compatibility. Partial separators clear their other border edges explicitly. Do not use global stage sheets or important flags to hide precedence defects.
+All ordinary feature presentation uses Tailwind and shared oStudy components. Utilities intentionally occupy the components layer below retained specialized geometry/content overrides; the final precedence audit does not introduce a global important flag. Partial separators clear their other border edges explicitly. Do not use global stage sheets or important flags to hide precedence defects.
 
 Reference/semantic/component token sources generate committed artifacts. Themes change values, not feature selectors. The Tailwind adapter maps semantic roles to oStudy variables without overwriting old short aliases or adding a separate dark provider. Utility names are complete source literals, not interpolated fragments.
 
@@ -110,8 +110,8 @@ Tutorial progress is versioned device-local state, not a portable study session.
 
 ## Testing and cleanup
 
-Test active controllers, route/dirty guards, overlays/Back, library empty/populated/archive states, drag/keyboard movement, authoring identity, imports and sync recovery. CSS compilation discovers migrated feature/shared sources, checks emitted utilities and rejects new raw generic feature controls. Native WebDriver/Android tests establish integration not proven by mocks.
+Test active controllers, route/dirty guards, overlays/Back, library empty/populated/archive states, drag/keyboard movement, authoring identity, imports and sync recovery. CSS compilation discovers the entire production frontend and checks emitted utilities. The AST-based ownership guard rejects raw generic controls outside the vendor layer, with only disabled sanitized Markdown task markers exempt. Native WebDriver/Android tests establish integration not proven by mocks.
 
-Retain dedicated pointer geometry, QR quiet-zone, guided spotlight, inline rich progress, native root-height, document/editor/print CSS with explicit ownership. Phases 14–15 retire remaining generic styles/maps and the unmounted DecksScreen regression harness after equivalent active-route coverage. Do not delete real versioned compatibility readers or unavailable-capability fallbacks.
+Retain dedicated pointer geometry, QR quiet-zone, guided spotlight, inline rich progress, native root-height and document/editor/print CSS with explicit ownership. The 16 remaining Modules are registered with rationales in `scripts/ui/presentation-policy.mjs`; the verifier rejects missing, dead or unregistered owners. Legacy class maps and the duplicate deck harness are removed. Their creation, archive/restore, Undo and transfer contracts are tested on the live implementation. Do not delete real versioned compatibility readers or unavailable-capability fallbacks.
 
 Historical screenshot/performance records are provenance, not current acceptance. Evaluate the intended new appearance and behavioral invariants separately; no speedup is established merely by adopting a UI library. See [testing and CI](../development/testing-and-ci.md), [local handoff](../development/local-testing-and-handoff.md) and [cleanup audit](../development/documentation-and-cleanup-audit.md).

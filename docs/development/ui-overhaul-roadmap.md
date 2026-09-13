@@ -1,6 +1,6 @@
 # shadcn/ui + Tailwind UI overhaul roadmap
 
-Status: Phase 0 planning is recorded; source implementation through Phase 8 is integrated in PR #96 and is subject to exact-head qualification and human visual/device acceptance. Phases 9–15 remain later work. [Current implementation](ui-overhaul-current-implementation.md) owns the precise implemented surface and retained-CSS exceptions. A phase's source completion is not a claim that all tests or manual acceptance passed.
+Status: Phase 0 planning is recorded; source implementation through Phase 15 is integrated in PR #96. Exact-head terminal qualification and human visual/device acceptance remain separate completion gates. The phase descriptions below retain the architectural scope and exit contracts, not an outstanding workspace TODO list. [Current implementation](ui-overhaul-current-implementation.md) owns the precise implemented surface and retained-CSS exceptions. A phase's source completion is not a claim that all tests or manual acceptance passed.
 
 The original planning base was PR #94 at `279430d799b78add3a0885168e011de0b0d47ff8`. Implementation reconciled its final main merge `fd5659e77671cb814393024c1baa2e0cba9a59d7`. The historical inventory is not a frozen manifest of today's source.
 
@@ -83,17 +83,19 @@ Feature components may use Tailwind for local presentation, but not Base UI/vend
 
 **Keep application-owned:** FTS/query semantics, note-versus-presentation identities, visible/all-matching selection, folder mutation revisions, drag geometry, scheduler requests, native transport, import validation and managed assets. Retain keyboard alternatives to dragging. Anki completion is a receipt, never a second import preview/submit.
 
-**Acceptance:** explicit scheduled/extra mode, stale setup snapshots rejected, duplicate starts prevented, source/card editor state survives layout changes, selection and bulk operations retain identity. Ordinary feature controls use shared components; pointer geometry and the QR quiet zone retain documented CSS. Old unmounted DecksScreen regression fixtures are not production route owners and are cleaned up in Phase 15 with active behavior coverage.
+**Acceptance:** explicit scheduled/extra mode, stale setup snapshots rejected, duplicate starts prevented, source/card editor state survives layout changes, selection and bulk operations retain identity. Ordinary feature controls use shared components; pointer geometry and the QR quiet zone retain documented CSS. The old unmounted DecksScreen and its exclusive styles/tests were retired in Phase 15 after transferring their meaningful coverage to the live routes, transfer dialog and controllers.
 
 ## Phase 9 — card editor chrome
 
-**Next major feature phase.** Convert rich editor toolbar, menus, formatting selectors, popovers, media/math dialogs, tags, metadata, template authoring tools, save/delete status and responsive panels.
+**Source implemented.** The migration covers rich editor toolbar, menus, formatting selectors, popovers, media/math dialogs, tags, metadata, template authoring tools, save/delete status and responsive panels.
 
 Retain Tiptap/ProseMirror schemas, extensions, content validation/serialization, cloze semantics, asset ownership and citation safety. The template-management form's earlier migration does not imply the rich editor itself is complete.
 
 **Exit:** generic editor chrome uses shared components; no vendor types enter durable editor data; formatting, keyboard, focus, drafts, media/math and native Back tests pass. Specialized content-editable CSS is allowed.
 
 ## Phase 10 — Documents and Study Guides
+
+**Source implemented; acceptance contracts retained below.**
 
 Convert document upload/import/search, library cards, metadata, progress/status/action presentation and source panels. Convert guide library/reader toolbar, sections/disclosures, source/citations, export/practice/contextual Tutor actions, note/override controls and responsive reader layout.
 
@@ -103,11 +105,15 @@ Retain ingestion/OCR, document/guide revisions, source provenance, managed files
 
 ## Phase 11 — Analytics
 
+**Source implemented; acceptance contracts retained below.**
+
 Convert filters, date/deck controls, metric surfaces, tabs, chart containers, responsive layout, loading and empty states. Keep Chart.js and existing aggregation/difficulty-series semantics; adopting a UI library does not justify changing chart engines.
 
 **Exit:** accessible filters/data alternatives and contained responsive charts; visualization configuration stays independent of vendor UI.
 
 ## Phase 12 — active Practice and contextual hints
+
+**Source implemented; acceptance contracts retained below.**
 
 Convert the active study shell, question/answer surface chrome, reveal/progress/status UI, grading presentation, action menus, completion/results and contextual hint presentation. Phase 8 setup is already migrated but is not the whole active study experience.
 
@@ -117,6 +123,8 @@ Retain session snapshots, submission identity, scheduler semantics, shortcuts, i
 
 ## Phase 13 — Tutor workspace
 
+**Source implemented; acceptance contracts retained below.**
+
 Convert transcript/messages, composer, conversation/material selectors, multi-source context and memory controls, preparation states, citations/source views, conversational question feedback and retry/cancel presentation. Use the final PR #94 implementation, not the obsolete Quiz me design.
 
 Keep retrieval, source revisions, provider calls, consent/privacy, persistence, private question criteria and operation identity outside rendering. General chat remains source-optional; saved conversations remain readable offline.
@@ -125,11 +133,15 @@ Keep retrieval, source revisions, provider calls, consent/privacy, persistence, 
 
 ## Phase 14 — remaining ordinary CSS migration
 
+**Source implemented; acceptance contracts retained below.**
+
 Classify each remaining CSS Module: ordinary styling, reusable pattern, specialized content/platform geometry, animation or obsolete rule. Move ordinary styling to semantic Tailwind; move shared behavior to its actual owner; retain dedicated CSS when descendants, pseudo-elements, document/print or native geometry are clearer there.
 
 **Exit:** no unexplained generic modules or parallel form/button vocabulary remains. Remove a module only when all imports/callers are migrated and tests cover the replacement. Do not blindly convert selectors or arbitrary computed geometry.
 
 ## Phase 15 — cleanup and stabilization
+
+**Source cleanup, enforcement and documentation implemented. Final acceptance is conditional on exact-head Linux/Android qualification and human visual/device review.** The legacy class maps and duplicate deck harness are retired, and 16 specialized Modules have checked owners. Utility precedence intentionally preserves those geometry/content owners; shadcn provenance/tooling is retained. Visual/performance baselines are not silently refreshed.
 
 Remove obsolete renderers, exclusive tests/styles and legacy shared class maps after their last production consumer migrates. Replace old regression harnesses with equivalent live-route coverage before deleting them. Remove temporary aliases and review final utility-layer placement. Strengthen semantic-color/native-control/vendor/dynamic-class boundaries without banning legitimate content/platform CSS.
 
@@ -155,6 +167,6 @@ Visual checks cover compact, medium and wide layouts; all four themes; keyboard 
 
 ## Branch sequence and rollback
 
-PR #96 continues the user-authorized implementation after reconciling the original child with merged PR #94. It remains a single normal writer. Later independent phases use short-lived branches/PRs from the authoritative merged base after this increment is accepted; never silently discard stacked work or force-push to simplify history.
+PR #96 continues the user-authorized implementation after reconciling the original child with merged PR #94. It remains a single normal writer. Later independent feature work uses short-lived branches/PRs from the authoritative merged base after this overhaul is accepted; never silently discard stacked work or force-push to simplify history.
 
 Each bounded renderer increment is reversible through a normal source revert. Tokens and semantic facades stay stable, so reverting presentation does not require reverting unrelated Tutor/provider/domain work or modifying user data. Publication, qualification, manual acceptance and merge remain distinct facts.
