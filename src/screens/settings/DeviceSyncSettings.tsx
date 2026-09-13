@@ -8,7 +8,6 @@ import {
   type DeviceSyncSelection, type DeviceSyncSession, type DeviceSyncState, type PairingInvitation,
 } from "../../ipc/deviceSync";
 import { useConfirm } from "../../ui/overlays/overlayContext";
-import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { Checkbox, Textarea } from "../../ui/primitives/FormControls";
 import { FormField } from "../../ui/primitives/FormField";
@@ -36,7 +35,6 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
   const [usbSessionId, setUsbSessionId] = useState<string | null>(null);
   const [usbProgress, setUsbProgress] = useState<DeviceSyncProgress | null>(null);
-  const [usbRejected, setUsbRejected] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [cancelingSessionId, setCancelingSessionId] = useState<string | null>(null);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
@@ -94,7 +92,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     if (!session || ACTIVE_SESSION_STATES.has(session.state)) return;
     if (session.state === "completed") showToast("success", "USB synchronization completed.");
     else if (session.state === "canceled") showToast("info", "USB synchronization was canceled.");
-    else if (session.errorCode === "device_sync_rejected") setUsbRejected(true);
+    else if (session.errorCode === "device_sync_rejected") showToast("info", "The receiving Android device rejected the USB sync request.");
     else showToast("error", session.errorMessage ?? "USB synchronization did not complete. Reconnect the phone and try again.");
     setUsbSessionId(null);
     setUsbProgress(null);
@@ -272,9 +270,6 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   return (
     <Panel title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
       actions={<Button variant="text" disabled={busyAction !== null} onClick={() => void refresh()}>Refresh</Button>}>
-      {usbRejected ? <Dialog title="USB sync rejected" description="The receiving Android device rejected the USB sync request." role="alertdialog" dismissible={false} onClose={() => setUsbRejected(false)} width="small">
-        <DialogActions><Button variant="primary" onClick={() => setUsbRejected(false)}>OK</Button></DialogActions>
-      </Dialog> : null}
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {!state && busyAction === "refresh" ? <InlineProgress>Opening the device synchronization store…</InlineProgress> : null}
       {state ? <>

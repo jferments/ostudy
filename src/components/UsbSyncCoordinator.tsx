@@ -11,9 +11,9 @@ import {
 } from "../ipc/deviceSync";
 import { listenToAndroidUsbSync } from "../ipc/platform";
 import { usePlatformCapabilities } from "../platform/PlatformProvider";
-import { Button } from "../ui/primitives/Button";
+import { useConfirm } from "../ui/overlays/overlayContext";
+import { Panel } from "../ui/primitives/Panel";
 import { Progress } from "../ui/primitives/Progress";
-import { Dialog, DialogActions } from "../ui/overlays/Dialog";
 import type { ShowToast } from "./Toast";
 
 interface UsbSyncCoordinatorProps {
@@ -35,11 +35,13 @@ type UsbConsentPhase = "pending" | "accepting" | "rejecting" | "receiving";
  */
 export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinatorProps) {
   const capabilities = usePlatformCapabilities();
+  const confirm = useConfirm();
   const android = capabilities.native?.operatingSystem === "android";
   const [pending, setPending] = useState<PendingUsbSyncRequest | null>(null);
   const [phase, setPhase] = useState<UsbConsentPhase>("pending");
   const [progress, setProgress] = useState<DeviceSyncProgress | null>(null);
   const receiving = useRef(false);
+  const consentPromptOpen = useRef(false);
 
   useEffect(() => {
     if (!android) return;
@@ -127,6 +129,22 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     };
   }, [android]);
 
+  useEffect(() => {
+    if (!pending || phase !== "pending" || consentPromptOpen.current) return;
+    consentPromptOpen.current = true;
+    void confirm({
+      title: "USB sync request",
+      description:
+        "Would you like to accept a USB sync request? This will let the sending device transfer selected flashcards, documents, study guides, and API provider information to this device. This device never sends its own library back.",
+      confirmLabel: "Accept",
+      cancelLabel: "Reject",
+    }).then((accepted) => {
+      consentPromptOpen.current = false;
+      if (accepted) void acceptRequest();
+      else void rejectRequest();
+    });
+  }, [confirm, pending, phase]);
+
   async function acceptRequest(): Promise<void> {
     if (receiving.current) return;
     receiving.current = true;
@@ -175,57 +193,27 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     }
   }
 
-  if (!android || !pending) return null;
+  if (!android || !pending || (phase !== "accepting" && phase !== "receiving")) return null;
 
-  const transferring = phase === "receiving";
   const progressText = progress
     ? `Receiving ${formatBytes(progress.transferredBytes)} of ${formatBytes(progress.totalBytes)}`
     : "Preparing the encrypted USB transfer…";
 
   return (
-    <Dialog
-      title="USB sync request"
-      description="Would you like to accept a USB sync request? This will let the sending device transfer selected flashcards, documents, study guides, and API provider information to this device. This device never sends its own library back."
-      role="alertdialog"
-      dismissible={false}
-      busy={phase !== "pending"}
-      onClose={() => undefined}
-      width="small"
+    <Panel
+      as="aside"
+      aria-live="polite"
+      title="Receiving USB sync"
+      className="tw:fixed tw:right-4 tw:bottom-[calc(var(--safe-bottom)+var(--android-ime-bottom)+5.5rem)] tw:z-[650] tw:w-[calc(100vw-2rem)] tw:max-w-sm tw:shadow-overlay"
     >
-      <div className="tw:grid tw:gap-4 tw:p-4">
-        {transferring || phase === "accepting" ? (
-          <Progress
-            value={progress?.transferredBytes ?? null}
-            max={Math.max(1, progress?.totalBytes ?? 1)}
-            label="USB synchronization progress"
-            valueText={progressText}
-            text={<span>{progressText}</span>}
-          />
-        ) : phase === "rejecting" ? (
-          <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Rejecting the request…</p>
-        ) : (
-          <p className="tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
-            Nothing will be transferred unless you accept this request.
-          </p>
-        )}
-        <DialogActions>
-          <Button
-            variant="secondary"
-            disabled={phase !== "pending"}
-            onClick={() => void rejectRequest()}
-          >
-            Reject
-          </Button>
-          <Button
-            variant="primary"
-            disabled={phase !== "pending"}
-            onClick={() => void acceptRequest()}
-          >
-            Accept
-          </Button>
-        </DialogActions>
-      </div>
-    </Dialog>
+      <Progress
+        value={progress?.transferredBytes ?? null}
+        max={Math.max(1, progress?.totalBytes ?? 1)}
+        label="USB synchronization progress"
+        valueText={progressText}
+        text={<span>{progressText}</span>}
+      />
+    </Panel>
   );
 }
 
