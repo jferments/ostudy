@@ -13,7 +13,7 @@ export const practiceStyles = {
   reviewRatingPanelConfidenceRatingPanel: "tw:mt-3 tw:min-w-0 tw:shrink-0 tw:rounded-lg tw:bg-muted/30 tw:p-3 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
   confidenceRatingHeading: "tw:text-center tw:[&_h2]:m-0 tw:[&_h2]:text-sm tw:[&_h2]:font-medium tw:[&_p]:mt-1 tw:[&_p]:mb-0 tw:[&_p]:text-sm tw:[&_p]:text-muted-foreground",
   confidenceScoreActions: "tw:mt-3 tw:grid tw:min-w-0 tw:grid-cols-4 tw:gap-2 tw:max-[600px]:grid-cols-2",
-  confidenceScoreNumber: "tw:grid tw:size-7 tw:shrink-0 tw:place-items-center tw:rounded-md tw:bg-black/10 tw:text-sm tw:font-medium",
+  confidenceScoreNumber: "tw:grid tw:size-7 tw:shrink-0 tw:place-items-center tw:rounded-md tw:bg-foreground/10 tw:text-sm tw:font-medium",
   confidenceScoreCopy: "tw:min-w-0 tw:text-sm tw:font-medium",
   cardSurface: "tw:relative tw:min-w-0 tw:flex-1 tw:overflow-auto tw:rounded-xl tw:bg-card tw:p-6 tw:ring-1 tw:ring-border tw:font-(family-name:--card-font-family) tw:text-(length:--card-base-size) tw:sm:p-8 tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50",
   confidenceButton: "tw:h-auto tw:min-h-12 tw:min-w-0 tw:rounded-lg tw:border-transparent tw:px-3 tw:py-2.5 tw:text-(--ostudy-color-confidence-on) tw:enabled:hover:text-(--ostudy-color-confidence-on) tw:enabled:hover:brightness-105 tw:coarse:min-h-touch",
