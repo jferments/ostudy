@@ -5,12 +5,17 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 BASELINE_DIR="$ROOT_DIR/tests/visual-baselines/ui-workflow-redesign-stage-0"
 COMMAND="${1:-verify}"
+OUTPUT_DIR="${2:-}"
 
 usage() {
-  printf 'Usage: ./scripts/ui-visual-baselines.sh [verify|capture]\n' >&2
+  printf 'Usage: ./scripts/ui-visual-baselines.sh [verify|capture|candidate [OUTPUT_DIR]]\n' >&2
 }
 
-if [[ "$#" -gt 1 || "$COMMAND" != "verify" && "$COMMAND" != "capture" ]]; then
+if [[ "$#" -gt 2 || "$COMMAND" != "verify" && "$COMMAND" != "capture" && "$COMMAND" != "candidate" ]]; then
+  usage
+  exit 2
+fi
+if [[ -n "$OUTPUT_DIR" && "$COMMAND" != "candidate" ]]; then
   usage
   exit 2
 fi
@@ -28,19 +33,24 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 ostudy_require_current_build
 for command_name in tauri-driver WebKitWebDriver timeout; do
   command -v "$command_name" >/dev/null 2>&1 || {
-    printf 'ERROR: %s is required for native visual-baseline capture.\n' "$command_name" >&2
+    printf 'ERROR: %s is required for native visual capture.\n' "$command_name" >&2
     exit 1
   }
 done
 
 if [[ "${OSTUDY_VISUAL_IN_XVFB:-0}" != "1" ]]; then
   command -v xvfb-run >/dev/null 2>&1 || {
-    printf 'ERROR: xvfb-run is required for headless visual-baseline capture.\n' >&2
+    printf 'ERROR: xvfb-run is required for headless visual capture.\n' >&2
     exit 1
   }
+  if [[ "$COMMAND" == "candidate" && -n "$OUTPUT_DIR" ]]; then
+    exec env OSTUDY_VISUAL_IN_XVFB=1 xvfb-run -a \
+      --server-args="-screen 0 1920x1200x24 -dpi 96 -nolisten tcp" \
+      "$0" candidate "$OUTPUT_DIR"
+  fi
   exec env OSTUDY_VISUAL_IN_XVFB=1 xvfb-run -a \
     --server-args="-screen 0 1920x1200x24 -dpi 96 -nolisten tcp" \
-    "$0" capture
+    "$0" "$COMMAND"
 fi
 
 CAPTURE_HOME="$(mktemp -d -t ostudy-ui-visual-baseline.XXXXXXXX)"
@@ -53,6 +63,24 @@ mkdir -p \
   "$CAPTURE_HOME/state" \
   "$CAPTURE_HOME/runtime"
 chmod 0700 "$CAPTURE_HOME/runtime"
+
+if [[ "$COMMAND" == "candidate" ]]; then
+  CANDIDATE_ARGS=(
+    --application "$OSTUDY_BINARY"
+  )
+  if [[ -n "$OUTPUT_DIR" ]]; then
+    CANDIDATE_ARGS+=(--output-dir "$OUTPUT_DIR")
+  fi
+  XDG_DATA_HOME="$CAPTURE_HOME/data" \
+  XDG_CONFIG_HOME="$CAPTURE_HOME/config" \
+  XDG_CACHE_HOME="$CAPTURE_HOME/cache" \
+  XDG_STATE_HOME="$CAPTURE_HOME/state" \
+  XDG_RUNTIME_DIR="$CAPTURE_HOME/runtime" \
+    timeout --signal=INT 600s \
+      python3 -u "$ROOT_DIR/tests/webdriver/ui_visual_refresh_candidate.py" \
+        "${CANDIDATE_ARGS[@]}"
+  exit 0
+fi
 
 XDG_DATA_HOME="$CAPTURE_HOME/data" \
 XDG_CONFIG_HOME="$CAPTURE_HOME/config" \

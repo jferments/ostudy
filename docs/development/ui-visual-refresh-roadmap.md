@@ -1,6 +1,6 @@
 # UI visual refresh roadmap
 
-Status: active implementation roadmap for the post-PR #96 visual pass. PR #96 completed the shadcn/Base UI/Tailwind architecture migration; this work changes ordinary presentation and removes migration-era visual compatibility while preserving product behavior.
+Status: **source implementation for V0–V6 is integrated in PR #97; qualification is in progress.** PR #96 completed the shadcn/Base UI/Tailwind architecture migration. PR #97 changes ordinary presentation and removes migration-era visual compatibility while preserving product behavior. V7 remains the frozen automated qualification plus explicit human visual/device acceptance boundary.
 
 ## Design contract
 
@@ -18,36 +18,36 @@ No scheduler, persistence, IPC, provider, knowledge/Tutor, document-processing, 
 
 ## V0 — baseline and contracts
 
-Inventory public facades and specialized presentation. Preserve the existing 16 registered CSS owners unless a simpler implementation retains their real geometry/content requirements. Historical visual baselines remain historical evidence rather than new acceptance.
+**Implemented.** Public facades and specialized presentation were re-audited against current `main`. The 16 registered specialized CSS owners remain because they carry real rich-content, drag, Practice-card, QR, tutorial or native geometry. The historical Stage-0 screenshot matrix remains historical evidence rather than the new appearance specification.
 
 ## V1 — primitive normalization
 
-Refresh Button, Card, Badge and form presentation toward Nova. Add application-owned Card slots, Item and ButtonGroup. Standard controls use compact fine-pointer geometry; coarse input expands to the existing touch minimum. Remove vendor-only migration variants where ordinary shadcn variants plus application semantics suffice.
+**Implemented.** Button, Card, Badge, Tabs, Sidebar, native selects and dialog presentation move toward the Base UI Nova vocabulary. Card now exposes standard title/description/action/content/footer slots. Item and ButtonGroup are application-owned primitives. Vendor-only migration variants were removed; the public Button facade retains product-semantic names and loading/write-lock behavior. Fine-pointer controls are compact while coarse input still expands to the application touch minimum.
 
 ## V2 — abstraction cleanup
 
-Prefer Card for bounded information, Item for list objects, Alert/notice for status, Field/FormField for forms and ButtonGroup/Toolbar for related actions. Reduce generic Surface elevation/material styling and retain it only as a compatibility/product-state boundary while consumers migrate.
+**Implemented for ordinary presentation.** Metric tiles compose Card directly, document provider status uses Item, Panel composes the public Card slots, SelectionToolbar no longer requires Surface, and generic Surface rendering is intentionally flattened while remaining available for product-semantic state. Badge/Chip, FormField, Toolbar/ButtonGroup and Card/Item responsibilities are clearer without moving domain behavior into UI primitives.
 
 ## V3 — shell and global hierarchy
 
-Use flatter Sidebar rows, a quiet inset content relationship, simpler page headers, fewer decorative icon tiles, restrained command bars and semantic typography rather than nested boxes.
+**Implemented.** Sidebar navigation uses flatter Nova-like rows, desktop content uses a quiet inset/ring relationship, PageHeader no longer puts routine icons in decorative card tiles, command bars and inline workspaces are flatter, and overlays/tabs use the same compact visual grammar. Compact navigation, safe-area, IME, focus and native Back contracts remain application-owned.
 
 ## V4 — dense workflows
 
-Refresh Settings, provider/task-model setup, sync, templates, Flashcards, Search/Filter, bulk actions and editor chrome. Preserve all existing operations, identities, drafts, import receipts, drag/reorder alternatives and sync dependencies.
+**Implemented.** Settings controls, provider status, Flashcards browser/search presentation, selection actions, rich-editor chrome and card-editor preview/authoring presentation use the refreshed density, rings, typography and action hierarchy. Existing operations, identities, drafts, import receipts, drag/reorder alternatives, templates and sync semantics remain unchanged.
 
 ## V5 — learning/content workflows
 
-Refresh Documents, Study Guides, Tutor, Practice and Analytics so content dominates and application chrome recedes. Documents/guide lists should use Item-like rows where appropriate. Tutor transcript/composer remains the focus while sources/memory/configuration stay secondary. Practice keeps its custom two-face card geometry and scheduling semantics.
+**Implemented.** Documents and Study Guide libraries/readers, Tutor, Practice and Analytics have fewer nested/elevated surfaces and stronger content hierarchy. Study Guide reading remains an inline nonmodal workspace with opaque sticky contents. Tutor transcript/composer is visually primary while history/sources/settings recede. Practice retains its custom two-face geometry and confidence semantics. Chart.js and analytics attribution are unchanged.
 
-## V6 — cleanup and documentation
+## V6 — cleanup, documentation and visual evidence
 
-Delete dead presentation-only variants/wrappers after their consumers migrate. Reconcile `ui-overhaul-*` documents as completed PR #96 history, update `docs/architecture/ui.md`, vendor provenance and agent/code standards, and make this file the current UI implementation roadmap.
+**Implemented in source; final commit/qualification evidence belongs to the PR head.** The #96 implementation/roadmap and ADR are reconciled as completed history, current UI architecture records the stock-first rule, agent code standards discourage presentation-only wrappers, and vendor provenance is pinned to a current reviewed upstream comparison. The visual-baseline wrapper gains a `candidate` mode that captures exact-head review evidence into ignored `.artifacts/` output without overwriting the historical Stage-0 matrix.
 
 ## V7 — visual and platform acceptance
 
-Validation order remains focused tests -> UI policy/CSS compilation -> static -> fast -> targeted native tests -> frozen full Linux/Android qualification -> human visual/device acceptance.
+**In progress.** Validation order remains focused tests -> UI policy/CSS compilation -> static -> fast -> targeted native tests -> frozen full Linux/Android qualification -> human visual/device acceptance.
 
 Human review covers Light/Dark/Console/Synthwave, compact/medium/wide, enlarged text, keyboard focus, coarse input, reduced motion/materials, realistic empty/populated/error/busy states, editor content, Tutor, Study Guides, Practice and physical Android IME/Back behavior.
 
-A new visual baseline is accepted only after the intended appearance is reviewed. Do not overwrite the historical Stage 0 baseline to make intentional differences disappear.
+A new committed visual baseline is accepted only after the intended appearance is reviewed. Do not overwrite the historical Stage-0 baseline to make intentional differences disappear.
