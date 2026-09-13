@@ -35,6 +35,16 @@ expectContains(
   "missing_final_receipt_has_completion_unconfirmed_semantics",
   "sender completion-unconfirmed regression test",
 );
+expectContains(
+  transport,
+  "send_file_with_progress",
+  "encrypted transfer reports sender byte progress",
+);
+expectContains(
+  transport,
+  "receive_file_with_progress",
+  "encrypted transfer reports receiver byte progress",
+);
 
 expectNotContains(
   usbHost,
@@ -51,6 +61,11 @@ expectContains(
   "claim the Android accessory interface",
   "Linux AOA host claims only the accessory interface",
 );
+expectContains(
+  usbHost,
+  '"oStudy USB sync request"',
+  "Android system accessory chooser receives a concise human-readable description",
+);
 
 expectContains(
   usbPlugin,
@@ -61,6 +76,11 @@ expectContains(
   usbPlugin,
   "EMPTY_CLAIM_LOG_INTERVAL_MILLIS",
   "empty USB claim diagnostics are rate limited",
+);
+expectContains(
+  usbPlugin,
+  "fun peekUsbAccessory",
+  "Android can inspect a pending accessory without consuming it before consent",
 );
 expectNotContains(
   usbPlugin,
@@ -111,13 +131,28 @@ expectContains(
 
 expectContains(
   coordinator,
-  "USB_CLAIM_FAST_POLL_INTERVAL_MS",
-  "Android USB coordinator has a bounded fast attachment window",
+  "USB_DISCOVERY_FAST_POLL_INTERVAL_MS",
+  "Android USB coordinator has a bounded fast discovery window",
 );
 expectContains(
   coordinator,
-  "USB_CLAIM_IDLE_POLL_INTERVAL_MS",
+  "USB_DISCOVERY_IDLE_POLL_INTERVAL_MS",
   "Android USB coordinator backs off while idle",
+);
+expectContains(
+  coordinator,
+  "getPendingUsbSyncRequest()",
+  "Android USB discovery does not claim the descriptor before consent",
+);
+expectContains(
+  coordinator,
+  'name: "Accept"',
+  "Android USB request exposes explicit acceptance",
+);
+expectContains(
+  coordinator,
+  'name: "Reject"',
+  "Android USB request exposes explicit rejection",
 );
 expectContains(
   coordinator,
@@ -142,7 +177,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   USB sync preserves post-commit truth, keeps Android transfers alive, claims only the AOA interface, backs off idle polling, and keeps native diagnostics warning-clean.",
+  "OK   USB sync preserves post-commit truth, requires explicit Android consent, reports byte progress, keeps Android transfers alive, claims only the AOA interface, and backs off idle discovery.",
 );
 
 async function read(relativePath) {

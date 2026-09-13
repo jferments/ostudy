@@ -105,6 +105,26 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun peekUsbAccessory(invoke: Invoke) {
+        try {
+            val current = synchronized(lock) { pending }
+            val result = JSObject()
+            result.put("available", current != null)
+            result.put("manufacturer", current?.manufacturer)
+            result.put("model", current?.model)
+            result.put("serialNumber", current?.serialNumber)
+            invoke.resolve(result)
+        } catch (error: Exception) {
+            logUsb(
+                Log.ERROR,
+                "peek_command_failed",
+                "error=${diagnosticValue(safeUsbMessage(error))}",
+            )
+            invoke.reject("The pending Android USB sync request could not be inspected: ${safeUsbMessage(error)}")
+        }
+    }
+
+    @Command
     fun takeUsbAccessory(invoke: Invoke) {
         try {
             val current = synchronized(lock) {

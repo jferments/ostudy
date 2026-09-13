@@ -22,9 +22,11 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
         isActive={item.active}
         data-testid={`nav-${item.id}`}
         onClick={item.onSelect}
-        className={compact ? "tw:grid tw:min-h-14 tw:justify-items-center tw:gap-1 tw:px-1 tw:py-1.5 tw:text-center tw:text-[0.65rem] tw:font-medium" : undefined}
+        className={compact
+          ? "tw:grid tw:h-auto tw:min-h-[4.25rem] tw:overflow-visible tw:justify-items-center tw:gap-1 tw:rounded-md tw:px-0.5 tw:py-1.5 tw:text-center tw:text-[0.6rem] tw:leading-tight tw:font-medium tw:coarse:min-h-[4.25rem] tw:[&>span:last-child]:max-w-full tw:[&>span:last-child]:overflow-visible tw:[&>span:last-child]:text-clip tw:[&>span:last-child]:whitespace-nowrap"
+          : undefined}
       >
-        <Icon name={item.icon} size={20} /><span>{item.label}</span>
+        <Icon name={item.icon} size={compact ? 18 : 20} /><span>{item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   ));
@@ -35,9 +37,9 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
         aria-label="Main navigation"
         data-tour-anchor="app.navigation"
         data-slot="bottom-navigation"
-        className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-20 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1 tw:pr-[max(0.5rem,var(--safe-right))] tw:pb-[max(0.25rem,var(--safe-bottom))] tw:pl-[max(0.5rem,var(--safe-left))]"
+        className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-20 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1.5 tw:pr-[max(0.25rem,var(--safe-right))] tw:pb-[max(0.5rem,var(--safe-bottom))] tw:pl-[max(0.25rem,var(--safe-left))]"
       >
-        <SidebarMenu className="tw:grid tw:grid-cols-5 tw:gap-1">{content(items.filter((item) => !item.secondary))}</SidebarMenu>
+        <SidebarMenu className="tw:grid tw:grid-cols-5 tw:gap-0.5">{content(items.filter((item) => !item.secondary))}</SidebarMenu>
       </nav>
     );
   }

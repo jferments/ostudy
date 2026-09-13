@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { NativeStartupGate } from "./components/NativeStartupGate";
 import { installGlobalWebviewDiagnostics, queueFrontendDiagnostic } from "./ipc/diagnostics";
 import { PlatformProvider } from "./platform/PlatformProvider";
 import { installUiPerformanceBridge } from "./testing/uiPerformanceBridge";
@@ -102,16 +103,18 @@ if (
 
 createRoot(root).render(
   <StrictMode>
-    <PlatformProvider>
-      <OverlayProvider>
-        <HelpProvider>
-          <ExperienceProvider>
-            <AppErrorBoundary>
-              <App />
-            </AppErrorBoundary>
-          </ExperienceProvider>
-        </HelpProvider>
-      </OverlayProvider>
-    </PlatformProvider>
+    <NativeStartupGate>
+      <PlatformProvider>
+        <OverlayProvider>
+          <HelpProvider>
+            <ExperienceProvider>
+              <AppErrorBoundary>
+                <App />
+              </AppErrorBoundary>
+            </ExperienceProvider>
+          </HelpProvider>
+        </OverlayProvider>
+      </PlatformProvider>
+    </NativeStartupGate>
   </StrictMode>,
 );

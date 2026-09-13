@@ -16,6 +16,15 @@ struct TakeUsbAccessoryResult {
     fd: Option<i32>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbAccessoryStatus {
+    pub available: bool,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub serial_number: Option<String>,
+}
+
 pub fn init<R: Runtime, C: DeserializeOwned>(
     app: &AppHandle<R>,
     api: PluginApi<R, C>,
@@ -168,6 +177,14 @@ impl<R: Runtime> OstudyPlatform<R> {
     pub fn dismiss_incoming_share(&self, token: String) -> Result<()> {
         self.platform
             .run_mobile_plugin("dismissIncomingShare", IncomingShareRequest { token })
+            .map_err(Into::into)
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn peek_usb_accessory(&self) -> Result<UsbAccessoryStatus> {
+        let usb = self.app.state::<OstudyUsb<R>>();
+        usb.0
+            .run_mobile_plugin("peekUsbAccessory", ())
             .map_err(Into::into)
     }
 
