@@ -5,7 +5,6 @@ import {
   getPendingUsbSyncRequest,
   joinUsbDevicePairing,
   listenToDeviceSyncProgress,
-  requestUsbAccessoryPermission,
   type DeviceSyncProgress,
   type PendingUsbSyncRequest,
 } from "../ipc/deviceSync";
@@ -24,13 +23,13 @@ const USB_DISCOVERY_FAST_POLL_INTERVAL_MS = 750;
 const USB_DISCOVERY_IDLE_POLL_INTERVAL_MS = 5_000;
 const USB_DISCOVERY_FAST_WINDOW_MS = 12_000;
 
-type UsbReceivePhase = "pending" | "authorizing" | "receiving";
+type UsbReceivePhase = "pending" | "receiving";
 
 /**
- * Android owns the one user-consent prompt for an AOA attachment. Once Android
- * routes the accessory to oStudy, this coordinator claims the granted
- * accessory and starts receiving automatically. There is intentionally no
- * second app-owned Accept/Reject prompt.
+ * Android owns the operating-system consent prompt for an AOA attachment. The
+ * shared frontend never invokes the private Android USB plugin directly: once
+ * discovery finds an attachment, the shared join command lets native Rust
+ * prepare and claim the platform USB receiver before starting the transfer.
  */
 export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinatorProps) {
   const capabilities = usePlatformCapabilities();
@@ -135,23 +134,9 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
   async function acceptRequest(): Promise<void> {
     if (receiving.current) return;
     receiving.current = true;
-    setPhase("authorizing");
+    setPhase("receiving");
     setProgress(null);
     try {
-      // Android grants temporary accessory access when the user allows oStudy
-      // to handle the USB_ACCESSORY_ATTACHED intent. This call verifies that
-      // OS-owned permission and opens the accessory; it is not an app consent.
-      const permission = await requestUsbAccessoryPermission();
-      if (!permission.available) {
-        throw new Error("The attached USB sync request was no longer available.");
-      }
-      if (!permission.granted) {
-        void rejectRequest();
-        showToast("info", "Android did not grant USB access to oStudy.");
-        return;
-      }
-
-      setPhase("receiving");
       const result = await joinUsbDevicePairing();
       if (!result) throw new Error("The attached USB sync request was no longer available.");
       await refreshDecks();
@@ -166,9 +151,7 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
       setProgress(null);
       setPhase("pending");
     } catch (error: unknown) {
-      setPending(null);
-      setProgress(null);
-      setPhase("pending");
+      rejectRequest();
       showToast("error", getErrorMessage(error));
     } finally {
       receiving.current = false;
@@ -181,7 +164,7 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     setPhase("pending");
   }
 
-  if (!android || !pending || (phase !== "authorizing" && phase !== "receiving")) return null;
+  if (!android || !pending || phase !== "receiving") return null;
 
   const progressText = progress
     ? `Receiving ${formatBytes(progress.transferredBytes)} of ${formatBytes(progress.totalBytes)}`

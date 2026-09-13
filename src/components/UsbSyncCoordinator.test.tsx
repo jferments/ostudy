@@ -13,7 +13,6 @@ vi.mock("../ipc/platform", () => ({
 vi.mock("../ipc/deviceSync", () => ({
   getPendingUsbSyncRequest: vi.fn(),
   joinUsbDevicePairing: vi.fn(),
-  requestUsbAccessoryPermission: vi.fn(),
   listenToDeviceSyncProgress: vi.fn().mockResolvedValue(vi.fn()),
 }));
 
@@ -35,10 +34,6 @@ describe("UsbSyncCoordinator", () => {
         model: null,
         serialNumber: null,
       });
-    vi.mocked(syncIpc.requestUsbAccessoryPermission).mockResolvedValue({
-      available: true,
-      granted: true,
-    });
     vi.mocked(syncIpc.joinUsbDevicePairing).mockResolvedValue({
       sessionId: "a".repeat(32),
       peer: {
@@ -64,23 +59,25 @@ describe("UsbSyncCoordinator", () => {
   it("does not add a second app-owned consent dialog after Android routes the accessory", async () => {
     render(<UsbSyncCoordinator refreshDecks={vi.fn()} showToast={vi.fn()} />);
 
-    await waitFor(() => expect(syncIpc.requestUsbAccessoryPermission).toHaveBeenCalledOnce());
     expect(screen.queryByRole("alertdialog", { name: /USB sync request/i })).toBeNull();
     await waitFor(() => expect(syncIpc.joinUsbDevicePairing).toHaveBeenCalledOnce());
   });
 
-  it("does not start the transfer when Android does not grant USB access", async () => {
+  it("surfaces a native USB access rejection without refreshing the library", async () => {
     const showToast = vi.fn();
-    vi.mocked(syncIpc.requestUsbAccessoryPermission).mockResolvedValue({
-      available: true,
-      granted: false,
-    });
+    const refreshDecks = vi.fn();
+    vi.mocked(syncIpc.joinUsbDevicePairing).mockRejectedValueOnce(
+      new Error("The operating system did not grant USB access to oStudy."),
+    );
 
-    render(<UsbSyncCoordinator refreshDecks={vi.fn()} showToast={showToast} />);
+    render(<UsbSyncCoordinator refreshDecks={refreshDecks} showToast={showToast} />);
 
-    await waitFor(() => expect(syncIpc.requestUsbAccessoryPermission).toHaveBeenCalledOnce());
-    expect(syncIpc.joinUsbDevicePairing).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith("info", "Android did not grant USB access to oStudy.");
+    await waitFor(() => expect(syncIpc.joinUsbDevicePairing).toHaveBeenCalledOnce());
+    expect(refreshDecks).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      "error",
+      "The operating system did not grant USB access to oStudy.",
+    );
   });
 
   it("receives automatically after Android system consent and refreshes the library", async () => {
@@ -89,15 +86,7 @@ describe("UsbSyncCoordinator", () => {
 
     render(<UsbSyncCoordinator refreshDecks={refreshDecks} showToast={showToast} />);
 
-    await waitFor(() => expect(syncIpc.requestUsbAccessoryPermission).toHaveBeenCalledOnce());
     await waitFor(() => expect(syncIpc.joinUsbDevicePairing).toHaveBeenCalledOnce());
-    const permissionOrder = vi.mocked(syncIpc.requestUsbAccessoryPermission).mock.invocationCallOrder[0];
-    const joinOrder = vi.mocked(syncIpc.joinUsbDevicePairing).mock.invocationCallOrder[0];
-    expect(permissionOrder).toBeDefined();
-    expect(joinOrder).toBeDefined();
-    expect(permissionOrder ?? Number.MAX_SAFE_INTEGER).toBeLessThan(
-      joinOrder ?? Number.MAX_SAFE_INTEGER,
-    );
     await waitFor(() => expect(refreshDecks).toHaveBeenCalledOnce());
     expect(showToast).toHaveBeenCalledWith(
       "success",
