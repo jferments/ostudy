@@ -51,7 +51,7 @@ def wait_for_selected_conversation(
     last: Any = None
     while time.monotonic() < deadline:
         last = ui.execute(session_id, """
-            const header = document.querySelector("main [data-testid='tutor-screen'] header");
+            const header = document.querySelector("main [data-testid='tutor-screen'] section[aria-label='Tutor conversation'] header");
             const settings = header?.querySelector('button[aria-label="Chat settings"]');
             return {
               title: header?.querySelector('h2')?.textContent?.trim() ?? null,
@@ -62,6 +62,33 @@ def wait_for_selected_conversation(
             return
         time.sleep(0.1)
     raise AssertionError(f"The saved Tutor conversation did not become current: {last!r}")
+
+
+def assert_ordinary_chat(session_id: str) -> None:
+    clean_chat = ui.execute(session_id, """
+        const main = document.querySelector("main [data-testid='tutor-screen'] section[aria-label='Tutor conversation']");
+        if (!main) return null;
+        return ![...main.querySelectorAll('button, summary')].some(item =>
+          ['Conversation memory', 'Search index maintenance', 'Prepare selected material'].includes(item.textContent.trim()));
+    """)
+    if clean_chat is not True:
+        raise AssertionError("Advanced memory/preparation controls leaked into the ordinary chat")
+
+
+def assert_hint_controls_private(session_id: str) -> None:
+    snapshot = ui.execute(session_id, """
+        const dialog = document.querySelector('[role="dialog"] section[aria-label="Flashcard hints"]');
+        if (!dialog) return null;
+        const label = (control) => (control.getAttribute('aria-label') || control.textContent || '').trim();
+        return {
+          sourceButtons: [...dialog.querySelectorAll('button')].some(b =>
+            ['Sources', 'Chat settings'].includes(label(b)) || label(b).startsWith('Source ')),
+          memory: [...dialog.querySelectorAll('button, summary')].some(s => label(s) === 'Conversation memory'),
+          practice: Boolean(document.querySelector('main button[aria-label="Get a flashcard hint"]'))
+        };
+    """)
+    if snapshot != {"sourceButtons": False, "memory": False, "practice": True}:
+        raise AssertionError(f"Hidden-answer panel exposed inappropriate controls: {snapshot!r}")
 
 
 def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
@@ -85,7 +112,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     webdriver.wait_for_main_heading(session_id, "Flashcards", deadline)
     click_css(session_id, "button[data-testid='nav-tutor']", deadline)
     webdriver.wait_for_main_heading(session_id, "Tutor", deadline)
-    if not ui.execute(session_id, "return Boolean(document.querySelector('main nav[aria-label=\"Conversations\"]'));"):
+    if not ui.execute(session_id, "return Boolean(document.querySelector('main nav[aria-label=\"Conversations\"]')); ".strip()):
         history_button = webdriver.wait_for_enabled_element(
             session_id, "xpath", "//main//button[normalize-space(.)='Conversations']", deadline,
         )
@@ -98,20 +125,14 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     webdriver.click(session_id, saved_chat)
     ui.wait_for_overlay_inactive(session_id, deadline, "conversation history selection")
     wait_for_selected_conversation(session_id, conversation["title"], deadline)
-    clean_chat = ui.execute(session_id, """
-        const main = document.querySelector('main');
-        return ![...main.querySelectorAll('summary')].some(item =>
-          ['Conversation memory', 'Search index maintenance', 'Prepare selected material'].includes(item.textContent.trim()));
-    """)
-    if clean_chat is not True:
-        raise AssertionError("Advanced memory/preparation controls leaked into the ordinary chat")
+    assert_ordinary_chat(session_id)
     click_css(session_id, "main button[aria-label='Chat settings']", deadline)
     summary = webdriver.find_element(
-        session_id, "xpath", "//*[@role='dialog']//summary[normalize-space(.)='Conversation memory']", deadline,
+        session_id, "xpath", "//*[@role='dialog']//button[@aria-expanded and normalize-space(.)='Conversation memory']", deadline,
     )
     webdriver.click(session_id, summary)
     checkbox = webdriver.wait_for_enabled_element(
-        session_id, "xpath", "//*[@role='dialog']//label[contains(.,'Use earlier turns automatically')]//input", deadline,
+        session_id, "xpath", "//*[@role='dialog']//label[contains(.,'Use earlier turns automatically')]//*[@role='checkbox']", deadline,
     )
     initial = native(session_id, "get_tutor_memory", {"conversationId": conversation_id})
     if not initial["historyEnabled"] or initial["retrievalEnabled"]:
@@ -153,7 +174,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     webdriver.click(session_id, sources_button)
     source_checkbox = webdriver.wait_for_enabled_element(
         session_id, "xpath",
-        f"//*[@role='dialog']//label[contains(.,{json.dumps(deck_name)})]//input[@type='checkbox']",
+        f"//*[@role='dialog']//label[contains(.,{json.dumps(deck_name)})]//*[@role='checkbox']",
         deadline,
     )
     webdriver.click(session_id, source_checkbox)
@@ -163,7 +184,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
     webdriver.click(session_id, use_sources)
     ui.wait_for_overlay_inactive(session_id, deadline, "source checklist selection")
     webdriver.find_element(
-        session_id, "xpath", f"//main//header//span[normalize-space(.)={json.dumps(deck_name)}]", deadline,
+        session_id, "xpath", f"//main//section[@aria-label='Tutor conversation']//header//span[normalize-space(.)={json.dumps(deck_name)}]", deadline,
     )
     if native(session_id, "list_tutor_conversations"):
         raise AssertionError("Selecting sources unexpectedly created a saved conversation")
@@ -190,16 +211,7 @@ def verify_tutor_and_contextual_return(session_id: str, deck_name: str) -> None:
         raise AssertionError("A newly started practice card was already revealed")
     webdriver.click(session_id, hint)
     webdriver.find_element(session_id, "css selector", "[role='dialog'] section[aria-label='Flashcard hints']", deadline)
-    snapshot = ui.execute(session_id, """
-        const dialog = document.querySelector('[role="dialog"]');
-        return {
-          sourceButtons: [...dialog.querySelectorAll('button')].some(b => b.textContent.trim().startsWith('Source ')),
-          memory: [...dialog.querySelectorAll('summary')].some(s => s.textContent.trim() === 'Conversation memory'),
-          practice: Boolean(document.querySelector('main button[aria-label="Get a flashcard hint"]'))
-        };
-    """)
-    if snapshot != {"sourceButtons": False, "memory": False, "practice": True}:
-        raise AssertionError(f"Hidden-answer panel exposed inappropriate controls: {snapshot!r}")
+    assert_hint_controls_private(session_id)
     click_css(session_id, "[role='dialog'] button[aria-label='Close dialog']", deadline)
     ui.wait_for_overlay_inactive(session_id, deadline, "return from contextual hint")
     restored = native(session_id, "get_ui_checkpoint")["practice"]
