@@ -159,6 +159,10 @@ export function joinUsbDevicePairing(): Promise<DeviceSyncResult | null> {
   });
 }
 
+export function rejectUsbDevicePairing(): Promise<boolean> {
+  return invoke<boolean>("reject_usb_device_pairing");
+}
+
 export function cancelDeviceSyncSession(sessionId: string): Promise<void> {
   return invoke<void>("cancel_device_sync_session", {
     input: { sessionId },

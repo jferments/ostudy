@@ -6,6 +6,7 @@ import {
   getPendingUsbSyncRequest,
   joinDevicePairing,
   joinUsbDevicePairing,
+  rejectUsbDevicePairing,
   resolveDeviceSyncConflict,
   scanDevicePairingQr,
   startDevicePairing,
@@ -88,6 +89,12 @@ describe("device synchronization IPC", () => {
         invitation: "ostudy-sync://usb-attached",
       },
     });
+  });
+
+  it("keeps USB rejection behind the shared Rust command boundary", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(true);
+    await expect(rejectUsbDevicePairing()).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith("reject_usb_device_pairing");
   });
 
   it("cancels one active synchronization session by id", async () => {
