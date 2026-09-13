@@ -302,10 +302,6 @@ impl SecureChannel {
         match write_result {
             Ok(()) => Ok(()),
             Err(error) if frame_type == FRAME_COMPLETE => {
-                // FRAME_COMPLETE is emitted only after the receiver has
-                // durably committed the merge and peer baseline. Losing the
-                // physical link while returning that final receipt must not
-                // reclassify the already-committed receiver session as failed.
                 crate::logging::warn_target(
                     "device_sync.transport",
                     "device_sync_completion_acknowledgement_lost",
@@ -663,7 +659,10 @@ mod tests {
                 })
                 .expect("file should receive");
             assert_eq!(progress.first().copied(), Some((0, expected_bytes)));
-            assert_eq!(progress.last().copied(), Some((expected_bytes, expected_bytes)));
+            assert_eq!(
+                progress.last().copied(),
+                Some((expected_bytes, expected_bytes))
+            );
             channel
                 .send_json(FRAME_COMPLETE, &"done")
                 .expect("completion should send");
@@ -680,7 +679,10 @@ mod tests {
             })
             .expect("file should send");
         assert_eq!(progress.first().copied(), Some((0, expected_bytes)));
-        assert_eq!(progress.last().copied(), Some((expected_bytes, expected_bytes)));
+        assert_eq!(
+            progress.last().copied(),
+            Some((expected_bytes, expected_bytes))
+        );
         let result: String = channel
             .receive_json(FRAME_COMPLETE)
             .expect("completion should receive");
