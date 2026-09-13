@@ -14,6 +14,9 @@ Do not use Codex, `dev-workspace-v1`, the orchestrator, observer, exact-head MCP
 2. Define stable `AC-##` acceptance criteria and explicit non-goals. Conversation establishes intent, not current implementation or test success.
 3. Use one short-lived `agent/<description>` branch and one draft PR. Publish a meaningful first increment, not an ownership marker or no-op access test.
 4. Keep exactly one source writer per branch. For each publication use `create_blob` → `create_tree` based on the expected parent's tree → `create_commit` naming that parent → immediate remote-head check → non-force `update_ref` → remote-head verification.
+
+**Large/critical full-file publication safety is mandatory.** Derive replacement bytes from the exact GitHub head or its exact-head CI source archive, never from a truncated tool response or reconstructed excerpt. Independently compute the Git blob SHA and require the connector's `create_blob` acknowledgement to match it before the blob may enter a tree. Build the candidate commit off-ref and inspect its changed-file list/diff before moving the branch. Do not use the Contents API as a fallback for large or critical maintained source; if exact bytes cannot be transmitted and verified, stop or use an already verified Git object rather than publishing a guessed replacement.
+
 5. Stop on head drift. Inspect the competing commit and reconcile writer ownership; never force or silently replace the tree. A plain ref update is not an atomic compare-and-swap API.
 6. Publish ordinary source and documentation, not task-specific applicators, patch payloads, finalizers, or runner-only product trees. No workflow may author or push source, even when manually dispatched.
 7. Validate the smallest affected boundary while implementation is active. Before terminal qualification, perform the full implementation/documentation/handoff audit, resolve stale maintained prose and cleanup, then freeze that exact candidate.
