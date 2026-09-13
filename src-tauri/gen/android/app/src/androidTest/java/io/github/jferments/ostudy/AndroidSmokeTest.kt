@@ -107,7 +107,7 @@ class AndroidSmokeTest {
             )
             assertEquals("Decks|Search/Filter", snapshot.getString("tabs"))
             assertEquals(
-                "Flashcards|Study Guides|Documents|Tutor|Analytics",
+                "Flashcards|Study\nGuides|Docs|Tutor|Analytics",
                 snapshot.getString("navigation")
             )
             assertTrue(snapshot.getBoolean("settingsGear"))
