@@ -46,11 +46,13 @@ describe("Toast", () => {
     );
 
     const toast = screen.getByRole("status");
-    fireEvent.pointerEnter(toast);
+    fireEvent.pointerEnter(toast, { pointerType: "mouse" });
+    fireEvent.mouseEnter(toast);
     vi.advanceTimersByTime(10_000);
     expect(onDismiss).not.toHaveBeenCalled();
 
-    fireEvent.pointerLeave(toast);
+    fireEvent.pointerLeave(toast, { pointerType: "mouse" });
+    fireEvent.mouseLeave(toast);
     vi.runOnlyPendingTimers();
     expect(onDismiss).toHaveBeenCalledOnce();
   });

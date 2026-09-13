@@ -42,6 +42,51 @@ CI failure archives may carry an immutable `git archive` plus commit/tree hashes
 Those are read-only copies of published source, useful for auxiliary inspection;
 they are not source writers, edited candidates, or proof of test success.
 
+### Bounded repair loop and publication checkpoint
+
+After the initial resumption read, keep one active tuple: repository, PR, branch,
+expected parent SHA, parent tree SHA, acceptance increment, and first concrete
+failed command/assertion. Use that known source identity for subsequent reads.
+Do not restart a repository inventory merely because a response is truncated,
+a run is pending, or a new tool call begins. The mandatory pre-publication and
+post-publication ref checks still apply; this rule never permits ignoring drift.
+
+For each failing boundary:
+
+1. Read that failure's log/assertion and only the owning source, immediate callers,
+   tests and contracts needed to fix it.
+2. Prepare one coherent fix and its focused regression. Run the smallest available
+   check. A missing local tool is an unrun local check, not a GitHub outage.
+3. Publish the increment with the expected-parent protocol below. Complete the
+   tree, commit and ref update before beginning another implementation increment.
+4. Verify the remote ref and record the new SHA. Qualify that SHA through Actions.
+5. On failure, return to step 1 with the new concrete failure, not to a full-project
+   reconstruction. Do not rerun the same unchanged candidate without the
+   transient-cause evidence required by the failure policy.
+
+During preparation, keep a small auxiliary publication manifest containing each
+reviewed repository path, file mode, blob SHA, deletions, expected parent/tree and
+any created commit SHA. This is progress metadata, not an executable patch,
+repository ownership marker, source writer or substitute for GitHub. Reuse
+acknowledged blobs instead of resubmitting their unchanged contents. Once a
+coherent set is ready, assembling and publishing it takes priority over more
+optional research, rechecking dependencies or reviewing unrelated files.
+
+A truncated response is a presentation limit. Read the needed range or reuse the
+concrete identifier already returned; do not re-discover the connector or rebuild
+the project state. After an ambiguous mutation acknowledgement, make one targeted
+read of the affected object/ref before deciding whether a retry is necessary.
+Do not blindly repeat writes or abandon a known candidate that GitHub can read.
+Actual head drift is different: inspect the competing commit and reconcile writer
+ownership before continuing, without force-pushing or silently replacing a tree.
+
+Before any handoff, state the verified published SHA, actual qualification and the
+next unfinished boundary. A collection of created blobs is not a published
+implementation. When interrupted, retain the manifest so resumption can complete
+the already reviewed publication instead of repeating its analysis. No status
+message may replace available source publication with a claim of generic
+"GitHub problems"; report a specific failed operation only when one occurred.
+
 ## Expected-parent Git-data publication
 
 Use this sequence for every task-branch commit, including documentation commits:
@@ -65,6 +110,14 @@ Use ordinary UTF-8 source, not an opaque patch payload, task-specific applicator
 A Contents API update protects one blob, not the complete branch parent, and is not the normal publication path for this workflow. Do not fall back to sequential per-file writes because the Git-data sequence appears verbose.
 
 If a write returns no usable acknowledgement, read GitHub before retrying. A created blob/tree/commit is not branch publication until the ref points to it. A verified commit is not a passing test. Do not reissue an ambiguous mutation blindly or create a competing branch to work around uncertainty.
+
+## Optional user-authorized commit batches and communication
+
+The default loop above publishes each coherent increment. When the human explicitly asks for multiple commits before one branch update, create a short linear chain from the verified head, with each commit parent equal to the preceding commit and each tree based on that parent's tree. Keep the original remote head, batch tip/tree and path/blob manifest. Re-read the remote head immediately before one non-force update to the tip, then verify the published ref. Do not invent another writer, workflow, lock service or source-generating job.
+
+Batch size is not a quota or a reason to delay a finished coherent publication. Multiple published commits can also be completed within one user request. A user can restore the default per-increment publication procedure without reverting product code or discarding an existing useful batch.
+
+Give sparse in-turn progress messages after meaningful publication and before terminal qualification. Do not require acknowledgement or another prompt merely to continue the assigned scope. Do not claim that batching, shorter replies or repository instructions cure a platform-level response failure; its low-level cause is not available from GitHub evidence. Preserve concrete publication state so a resumed turn reports completed work accurately.
 
 ## Integrating current main
 

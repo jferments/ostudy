@@ -93,7 +93,7 @@ describe("DeckItem", () => {
 
       expect(onOpen).toHaveBeenCalledTimes(3);
       expect(onToggleSelected).not.toHaveBeenCalled();
-      expect((selection as HTMLInputElement).checked).toBe(false);
+      expect(selection.getAttribute("aria-checked")).toBe("false");
 
       fireEvent.click(selection);
 

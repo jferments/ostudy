@@ -41,6 +41,18 @@ function datalistValues(): string[] {
 }
 
 describe("TagInput", () => {
+  it("keeps explicit and visible field names synchronized across custom labels", () => {
+    const { rerender } = render(<TagInput tags={[]} suggestions={suggestions} onChange={() => undefined} />);
+    const input = screen.getByRole("combobox", { name: "Tags" });
+    expect(input.getAttribute("aria-label")).toBe("Tags");
+    expect(screen.getByLabelText("Tags")).toBe(input);
+    rerender(<TagInput label="Study topics" tags={[]} suggestions={suggestions} onChange={() => undefined} />);
+    expect(screen.getByRole("combobox", { name: "Study topics" })).toBe(input);
+    expect(input.getAttribute("aria-label")).toBe("Study topics");
+    expect(screen.getByLabelText("Study topics")).toBe(input);
+    expect(screen.queryByRole("combobox", { name: "Tags" })).toBeNull();
+  });
+
   it("normalizes whitespace and accepts Enter, comma, and blur", () => {
     render(<Harness />);
     const input = screen.getByRole("combobox", { name: "Tags" });

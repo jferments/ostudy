@@ -1,13 +1,7 @@
-import { useRef } from "react";
 import type { KeyboardEvent } from "react";
+import { SegmentedRadioGroup, SegmentedRadioItem } from "../vendor/shadcn/form-controls";
 
-import styles from "./shared.module.css";
-
-export interface SegmentedOption<T extends string> {
-  value: T;
-  label: string;
-}
-
+export interface SegmentedOption<T extends string> { value: T; label: string; }
 interface SegmentedControlProps<T extends string> {
   label: string;
   value: T;
@@ -16,61 +10,33 @@ interface SegmentedControlProps<T extends string> {
   disabled?: boolean;
 }
 
-export function SegmentedControl<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  disabled = false,
-}: SegmentedControlProps<T>) {
-  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  function selectByKeyboard(index: number, event: KeyboardEvent<HTMLButtonElement>): void {
-    if (disabled || options.length === 0) return;
-
-    let nextIndex: number | null = null;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      nextIndex = (index + 1) % options.length;
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      nextIndex = (index - 1 + options.length) % options.length;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = options.length - 1;
-    }
-
-    if (nextIndex === null) return;
+export function SegmentedControl<T extends string>({ label, value, options, onChange, disabled = false }: SegmentedControlProps<T>) {
+  function handleBoundaryKey(event: KeyboardEvent<HTMLDivElement>) {
+    // Radio groups intentionally omit Home/End in Base UI. These two shortcuts
+    // are part of oStudy's segmented-control API; arrow navigation stays upstream.
+    if (disabled || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
+      || (event.key !== "Home" && event.key !== "End")) return;
+    const group = event.currentTarget;
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button[role="radio"]'))
+      .filter((button) => button.closest('[role="radiogroup"]') === group
+        && !button.disabled && button.getAttribute("aria-disabled") !== "true");
+    const target = event.key === "Home" ? buttons[0] : buttons.at(-1);
+    if (!target) return;
     event.preventDefault();
-    const next = options[nextIndex];
-    if (!next) return;
-    buttonRefs.current[nextIndex]?.focus();
-    onChange(next.value);
+    target.focus();
+    target.click();
   }
 
   return (
-    <div
-      className={styles.segmented}
-      role="radiogroup"
-      aria-label={label}
-      aria-orientation="horizontal"
-    >
-      {options.map((option, index) => (
-        <button
-          key={option.value}
-          ref={(element) => {
-            buttonRefs.current[index] = element;
-          }}
-          type="button"
-          role="radio"
-          aria-checked={option.value === value}
-          tabIndex={option.value === value ? 0 : -1}
-          disabled={disabled}
-          onKeyDown={(event) => selectByKeyboard(index, event)}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
+    <SegmentedRadioGroup aria-label={label} value={value} disabled={disabled}
+      onKeyDown={handleBoundaryKey}
+      onValueChange={(next) => {
+        const option = options.find((item) => item.value === next);
+        if (option) onChange(option.value);
+      }}>
+      {options.map((option) => (
+        <SegmentedRadioItem key={option.value} value={option.value}>{option.label}</SegmentedRadioItem>
       ))}
-    </div>
+    </SegmentedRadioGroup>
   );
 }

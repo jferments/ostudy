@@ -93,7 +93,7 @@ describe("ResponsiveActionGroup", () => {
     }
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
     for (const label of collapsed) {
-      expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
+      expect(screen.getByRole(mode === "compact" ? "button" : "menuitem", { name: label })).toBeTruthy();
     }
   });
 

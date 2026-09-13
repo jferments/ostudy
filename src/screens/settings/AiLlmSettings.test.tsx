@@ -132,24 +132,16 @@ describe("AiLlmSettings", () => {
     renderSettings(value);
     fireEvent.click(screen.getByText("Advanced settings"));
 
-    expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe(
-      "OpenRouter",
-    );
-    expect(
-      (screen.getByRole("checkbox", { name: "Enable this provider" }) as HTMLInputElement).checked,
-    ).toBe(true);
-    expect(
-      (
-        screen.getByRole("checkbox", {
-          name: "Require OpenRouter zero-data-retention routing",
-        }) as HTMLInputElement
-      ).checked,
-    ).toBe(false);
+    expect((screen.getByRole("textbox", { name: "Profile name" }) as HTMLInputElement).value).toBe("OpenRouter");
+    expect(screen.getByRole("checkbox", { name: "Enable this provider" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "Require OpenRouter zero-data-retention routing" }).getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Require OpenRouter zero-data-retention routing" }));
+    expect(value.updateDraft).toHaveBeenCalledWith({ requireZeroDataRetention: true });
+    fireEvent.click(screen.getByRole("radio", { name: "This session only" }));
+    expect(value.setCredentialPersistence).toHaveBeenCalledWith("session");
     expect(screen.getByRole("button", { name: "Refresh model catalog" })).toBeTruthy();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), {
-      target: { value: "OpenRouter 2" },
-    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Profile name" }), { target: { value: "OpenRouter 2" } });
     expect(value.updateDraft).toHaveBeenCalledWith({ displayName: "OpenRouter 2" });
   });
 
@@ -172,13 +164,13 @@ describe("AiLlmSettings", () => {
     const value = controller(selected);
     value.catalog[0].chatTemplatePolicy = "server_model";
     renderSettings(value);
-    fireEvent.click(screen.getByText("Advanced settings"));
-    const advanced = screen.getByText("Advanced settings").closest("details") as HTMLElement;
-
-    const optIn = within(advanced).getByRole("checkbox", {
-      name: "Allow unencrypted LAN connection",
-    });
-    expect(optIn).toBeTruthy();
+    const trigger = screen.getByRole("button", { name: "Advanced settings" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const advanced = trigger.closest('[data-slot="collapsible"]') as HTMLElement;
+    const optIn = within(advanced).getByRole("checkbox", { name: "Allow unencrypted LAN connection" });
+    expect(optIn.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(optIn);
     expect(value.updateDraft).toHaveBeenCalledWith({ allowInsecureHttp: true });
   });

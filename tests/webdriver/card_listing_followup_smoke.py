@@ -63,7 +63,7 @@ def create_card(session_id: str, deadline: float) -> tuple[str, str, str]:
     webdriver.set_input_text(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deck_name,
         deadline,
     )
@@ -170,39 +170,70 @@ def assert_deck_browser(session_id: str, question: str, answer: str) -> dict[str
     return measurement
 
 
+def assert_search_surface_measurement(measurement: Any) -> None:
+    """Require one painted control, independent of whether shadcn or its wrapper paints it."""
+    if not isinstance(measurement, dict):
+        raise AssertionError(f"Search input surface was not measurable: {measurement!r}")
+    if measurement.get("iconInsideSurface") is not True or measurement.get("iconVisible") is not True:
+        raise AssertionError(f"Search icon is missing or hidden: {measurement!r}")
+    colors = [measurement.get("inputBackground"), measurement.get("surfaceBackground")]
+    if not all(isinstance(color, str) and color.strip() for color in colors):
+        raise AssertionError(f"Search background ownership was not measurable: {measurement!r}")
+    transparent = {"rgba(0,0,0,0)", "transparent"}
+    painted = [color.replace(" ", "").lower() not in transparent for color in colors]
+    if sum(painted) != 1:
+        raise AssertionError(f"Search control must paint exactly one background: {measurement!r}")
+
+    def rect(name: str) -> dict[str, float]:
+        value = measurement.get(name)
+        if not isinstance(value, dict):
+            raise AssertionError(f"Search {name} geometry is missing: {measurement!r}")
+        try:
+            result = {edge: float(value[edge]) for edge in ("left", "top", "right", "bottom")}
+        except (KeyError, TypeError, ValueError) as error:
+            raise AssertionError(f"Search {name} geometry is invalid: {measurement!r}") from error
+        if not (result["right"] > result["left"] and result["bottom"] > result["top"]):
+            raise AssertionError(f"Search {name} has no visible area: {measurement!r}")
+        return result
+
+    def contained(inner: dict[str, float], outer: dict[str, float]) -> bool:
+        return (inner["left"] >= outer["left"] - 1 and inner["right"] <= outer["right"] + 1
+                and inner["top"] >= outer["top"] - 1 and inner["bottom"] <= outer["bottom"] + 1)
+
+    input_rect, surface_rect, icon_rect = rect("inputRect"), rect("surfaceRect"), rect("iconRect")
+    painted_rect = input_rect if painted[0] else surface_rect
+    if not contained(input_rect, surface_rect):
+        raise AssertionError(f"Search input escapes its wrapper: {measurement!r}")
+    if not contained(input_rect, painted_rect) or not contained(icon_rect, painted_rect):
+        raise AssertionError(f"Search input or icon escapes its painted surface: {measurement!r}")
+
+
 def assert_search_surface(session_id: str) -> None:
     measurement = ui.execute(
         session_id,
         """
         const input = document.querySelector("main section[aria-label='Card filters'] input[type='search']");
         const surface = input?.parentElement;
-        if (!(input instanceof HTMLInputElement) || !(surface instanceof HTMLElement)) return null;
-        const inputRect = input.getBoundingClientRect();
-        const surfaceRect = surface.getBoundingClientRect();
+        const icon = surface?.querySelector('svg');
+        if (!(input instanceof HTMLInputElement) || !(surface instanceof HTMLElement)
+            || !(icon instanceof SVGElement)) return null;
+        const rect = (element) => {
+          const { left, top, right, bottom } = element.getBoundingClientRect();
+          return { left, top, right, bottom };
+        };
+        const iconStyle = getComputedStyle(icon);
         return {
-          iconInsideSurface: Boolean(surface.querySelector('svg')),
+          iconInsideSurface: surface.contains(icon),
+          iconVisible: iconStyle.display !== 'none' && iconStyle.visibility !== 'hidden',
           inputBackground: getComputedStyle(input).backgroundColor,
           surfaceBackground: getComputedStyle(surface).backgroundColor,
-          inputLeft: inputRect.left,
-          inputRight: inputRect.right,
-          surfaceLeft: surfaceRect.left,
-          surfaceRight: surfaceRect.right,
+          inputRect: rect(input),
+          surfaceRect: rect(surface),
+          iconRect: rect(icon),
         };
         """,
     )
-    if not isinstance(measurement, dict):
-        raise AssertionError(f"Search input surface was not measurable: {measurement!r}")
-    if measurement.get("iconInsideSurface") is not True:
-        raise AssertionError(f"Search icon is outside the input surface: {measurement!r}")
-    if measurement.get("inputBackground") not in ("rgba(0, 0, 0, 0)", "transparent"):
-        raise AssertionError(f"Search input paints a second background: {measurement!r}")
-    if measurement.get("surfaceBackground") in ("rgba(0, 0, 0, 0)", "transparent"):
-        raise AssertionError(f"Search control has no unified painted surface: {measurement!r}")
-    if (
-        float(measurement["inputLeft"]) < float(measurement["surfaceLeft"])
-        or float(measurement["inputRight"]) > float(measurement["surfaceRight"]) + 1
-    ):
-        raise AssertionError(f"Search input escapes its unified surface: {measurement!r}")
+    assert_search_surface_measurement(measurement)
 
 
 def assert_search_browser(

@@ -5,7 +5,10 @@ import { Button } from "../../../ui/primitives/Button";
 import type { DeckFolder } from "../../../ipc/deckFolders";
 import type { DeckSummary } from "../../../ipc/decks";
 import type { SelectedPracticeRequest } from "../../../ipc/practice";
-import styles from "./DeckLibrarySheets.module.css";
+import { libraryPresentation as styles } from "./libraryPresentation";
+import { TextField } from "../../../ui/primitives/TextField";
+import { NativeSelect } from "../../../ui/primitives/NativeSelect";
+import { Textarea } from "../../../ui/primitives/FormControls";
 import { PracticeSetupSheet } from "./PracticeSetupSheet";
 import type { LibrarySheetState } from "./types";
 
@@ -100,7 +103,7 @@ function MoveSelectionSheet({
       >
         <label>
           <span>Destination</span>
-          <select
+          <NativeSelect
             data-autofocus="true"
             value={targetFolderId}
             disabled={busy}
@@ -112,9 +115,9 @@ function MoveSelectionSheet({
                 {folder.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
-        <div className={styles.actions}>
+        <div className={styles.formActions}>
           <Button disabled={busy} onClick={onClose}>
             Cancel
           </Button>
@@ -156,7 +159,7 @@ function DeckCreateSheet({
       >
         <label>
           <span>Name</span>
-          <input
+          <TextField
             data-autofocus="true"
             value={name}
             maxLength={200}
@@ -167,14 +170,14 @@ function DeckCreateSheet({
           <span>
             Description <small>optional</small>
           </span>
-          <textarea
+          <Textarea
             value={description}
             maxLength={2000}
             rows={4}
             onChange={(event) => setDescription(event.currentTarget.value)}
           />
         </label>
-        <div className={styles.actions}>
+        <div className={styles.formActions}>
           <Button disabled={busy} onClick={onClose}>
             Cancel
           </Button>
@@ -219,14 +222,14 @@ function FolderSheet({
       >
         <label>
           <span>Folder name</span>
-          <input
+          <TextField
             data-autofocus="true"
             value={name}
             maxLength={120}
             onChange={(event) => setName(event.currentTarget.value)}
           />
         </label>
-        <div className={styles.actions}>
+        <div className={styles.formActions}>
           <Button disabled={busy} onClick={onClose}>
             Cancel
           </Button>

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-
 import type { DeckOpenRequest } from "../../App";
 import { SourceCitationPanel } from "../../components/SourceCitationPanel";
 import type { ShowToast } from "../../components/Toast";
@@ -9,19 +8,14 @@ import type { DeckSummary } from "../../ipc/decks";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { ResponsiveActionGroup } from "../../ui/patterns/ResponsiveActionGroup";
+import { PageHeader } from "../../ui/patterns/WorkspacePatterns";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-import ownershipStyles from "../DecksScreen.module.css";
-import {
-  CardBrowserWorkspace,
-  type CardBrowserView,
-} from "../cards/CardBrowserWorkspace";
+import { Button } from "../../ui/primitives/Button";
+import { cn } from "../../ui/internal/cn";
+import { CardBrowserWorkspace, type CardBrowserView } from "../cards/CardBrowserWorkspace";
 import { useCardPracticeLauncher } from "../cards/CardPracticeContext";
 import { DeckTransferDialog } from "./DeckTransferDialog";
-import polishStyles from "./DeckDetailRoute.module.css";
-
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
 
 interface DeckDetailRouteProps {
   decks: DeckSummary[];
@@ -33,25 +27,16 @@ interface DeckDetailRouteProps {
   showToast: ShowToast;
 }
 
-/**
- * Route-owned deck detail. It never mounts the legacy deck-card library, so a
- * deck-row click immediately renders that deck's card browser while the latest
- * complete deck summary is refreshed in the background.
- */
-export function DeckDetailRoute({
-  decks,
-  refreshDecks,
-  onPracticeDeck,
-  openRequest,
-  onReturnToLibrary,
-  onDirtyChange,
-  showToast,
-}: DeckDetailRouteProps) {
+/** The route owns the deck identity; the shared browser retains selection and authoring state. */
+export function DeckDetailRoute({ decks, refreshDecks, onPracticeDeck, openRequest,
+  onReturnToLibrary, onDirtyChange, showToast }: DeckDetailRouteProps) {
   const initialDeck = decks.find((candidate) => candidate.id === openRequest.deckId) ?? null;
   const [deck, setDeck] = useState<DeckSummary | null>(initialDeck);
   const [browserView, setBrowserView] = useState<CardBrowserView>("list");
   const [isLoading, setIsLoading] = useState(initialDeck === null);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const mutation = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const controllerRef = useRef<DecksController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new DecksController();
@@ -62,36 +47,22 @@ export function DeckDetailRoute({
   useEffect(() => {
     let active = true;
     setIsLoading(initialDeck === null);
-    void controller
-      .deck(openRequest.deckId)
-      .then((loaded) => {
-        if (!active) return;
-        if (loaded) setDeck(loaded);
-        else setErrorMessage("This deck is no longer available.");
-      })
-      .catch((error: unknown) => {
-        if (active) setErrorMessage(getErrorMessage(error));
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => {
-      active = false;
-      controller.invalidate();
-    };
+    void controller.deck(openRequest.deckId).then((loaded) => {
+      if (!active) return;
+      if (loaded) setDeck(loaded);
+      else setErrorMessage("This deck is no longer available.");
+    }).catch((error: unknown) => {
+      if (active) setErrorMessage(getErrorMessage(error));
+    }).finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; controller.invalidate(); };
   }, [controller, initialDeck, openRequest.deckId]);
-
   useEffect(() => {
     const refreshed = decks.find((candidate) => candidate.id === openRequest.deckId);
     if (refreshed) setDeck(refreshed);
   }, [decks, openRequest.deckId]);
-
   useEffect(() => {
     if (browserView !== "list") return;
-    return registerPlatformBackHandler(() => {
-      void onReturnToLibrary();
-      return true;
-    });
+    return registerPlatformBackHandler(() => { if (!mutation.current) void onReturnToLibrary(); return true; });
   }, [browserView, onReturnToLibrary]);
 
   async function reconcile(message: string): Promise<void> {
@@ -103,159 +74,74 @@ export function DeckDetailRoute({
       showToast("info", `${message}, but the deck list could not refresh: ${getErrorMessage(error)}`);
     }
   }
-
-  async function archive(): Promise<void> {
-    if (!deck) return;
-    try {
-      await controller.setArchived({
-        deckId: deck.id,
-        revision: deck.revision,
-        archived: true,
-      });
-      showToast("success", `Archived “${deck.name}”; all generated cards are suspended.`);
-      await reconcile("The deck was archived");
-      await onReturnToLibrary();
-    } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
-    }
+  async function returnAfterCommit(message: string): Promise<void> {
+    try { await onReturnToLibrary(); }
+    catch (error: unknown) { showToast("info", `${message}, but navigation could not finish: ${getErrorMessage(error)}`); }
   }
-
-  async function deleteDeck(): Promise<void> {
-    if (!deck) return;
-    const accepted = await confirm({
-      title: `Delete “${deck.name}”?`,
-      description: `This will delete ${deck.generatedCardCount} ${
-        deck.generatedCardCount === 1 ? "card" : "cards"
-      } and their review history after the Undo period.`,
-      confirmLabel: "Delete deck",
-      destructive: true,
-    });
-    if (!accepted) return;
+  async function archive(): Promise<void> {
+    if (!deck || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    const archived = deck.archivedAt === null;
     try {
+      const updated = await controller.setArchived({ deckId: deck.id, revision: deck.revision, archived });
+      setDeck(updated);
+      const message = archived ? `Archived “${deck.name}”; all generated cards are suspended.` : `Restored “${deck.name}”.`;
+      showToast("success", message);
+      await reconcile(archived ? "The deck was archived" : "The deck was restored");
+      if (archived) await returnAfterCommit("The deck was archived");
+    } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
+    finally { mutation.current = false; setBusy(false); }
+  }
+  async function deleteDeck(): Promise<void> {
+    if (!deck || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    try {
+      const accepted = await confirm({
+        title: `Delete “${deck.name}”?`,
+        description: `This will delete ${deck.generatedCardCount} ${deck.generatedCardCount === 1 ? "card" : "cards"} and their review history after the Undo period.`,
+        confirmLabel: "Delete deck", destructive: true,
+      });
+      if (!accepted) return;
       const deletion = await controller.deleteDeck(deck.id);
       showToast("success", `Deleted “${deck.name}”.`, {
-        label: "Undo",
-        expiresAt: deletion.undoExpiresAt,
+        label: "Undo", expiresAt: deletion.undoExpiresAt,
         run: async () => {
           await controller.undo(deletion.undoToken);
-          await refreshDecks();
+          try { await refreshDecks(); }
+          catch (error: unknown) { showToast("info", `The deck was restored, but the library could not refresh: ${getErrorMessage(error)}`); }
         },
       });
-      await onReturnToLibrary();
-    } catch (error: unknown) {
-      showToast("error", getErrorMessage(error));
-    }
+      await returnAfterCommit("The deck was deleted");
+    } catch (error: unknown) { showToast("error", getErrorMessage(error)); }
+    finally { mutation.current = false; setBusy(false); }
   }
 
   if (!deck && isLoading) return <LoadingState label="Opening deck…" />;
-  if (!deck) {
-    return (
-      <InlineNotice kind="error">
-        {errorMessage ?? "This deck could not be opened."}
-      </InlineNotice>
-    );
-  }
+  if (!deck) return <div className="tw:grid tw:gap-4 tw:p-6"><InlineNotice kind="error">{errorMessage ?? "This deck could not be opened."}</InlineNotice><Button variant="back" disabled={busy} onClick={() => void onReturnToLibrary()}>← All decks</Button></div>;
 
-  return (
-    <div
-      className={`${ownedClassNames(
-        ownedStyleMaps,
-        browserView === "editor" ? "deck-card-browser-editor-host" : "screen decks-screen",
-      )} ${polishStyles.route}`}
-    >
-      {browserView === "list" ? (
-        <>
-          <header
-            className={ownedClassNames(ownedStyleMaps, "screen-header deck-detail-header")}
-          >
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "back-button")}
-              onClick={() => void onReturnToLibrary()}
-            >
-              ← All decks
-            </button>
-            <div className={ownedClassNames(ownedStyleMaps, "deck-title-row")}>
-              <h1>{deck.name}</h1>
-              {deck.description ? <p>{deck.description}</p> : null}
-            </div>
-            <ResponsiveActionGroup
-              label={`${deck.name} actions`}
-              className={ownershipStyles["deck-detail-actions"]}
-              actions={[
-                {
-                  id: "practice",
-                  label: "Practice",
-                  placement: "always-visible",
-                  variant: "primary",
-                  disabled: deck.generatedCardCount === 0 || deck.archivedAt !== null,
-                  description:
-                    deck.generatedCardCount === 0
-                      ? "Add a flashcard before practicing this deck"
-                      : `Practice all ${deck.generatedCardCount} cards in this deck`,
-                  onSelect: () => void onPracticeDeck(deck.id),
-                },
-                {
-                  id: "export",
-                  label: `Export ${deck.name}`,
-                  description: "Save deck to file",
-                  placement: "always-visible",
-                  presentation: "icon",
-                  icon: "save",
-                  onSelect: () => setShowExportDialog(true),
-                },
-                {
-                  id: "delete",
-                  label: `Delete ${deck.name}`,
-                  description: "Delete deck",
-                  placement: "always-visible",
-                  presentation: "icon",
-                  icon: "delete",
-                  destructive: true,
-                  onSelect: () => void deleteDeck(),
-                },
-                {
-                  id: "archive",
-                  label: `Archive ${deck.name}`,
-                  placement: "wide-only",
-                  presentation: "icon",
-                  icon: "archive",
-                  onSelect: () => void archive(),
-                },
-              ]}
-            />
-          </header>
-          {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
-        </>
-      ) : null}
-
-      <CardBrowserWorkspace
-        key={`deck-card-browser:${deck.id}`}
-        decks={decks}
-        fixedDeckId={deck.id}
-        showFilters={false}
-        showPageHeader={false}
-        refreshDecks={refreshDecks}
-        onPracticeCards={onPracticeCards}
-        onDirtyChange={onDirtyChange}
-        onViewChange={setBrowserView}
-        showToast={showToast}
-      />
-
-      {browserView === "list" ? (
-        <footer className={polishStyles.sourceFooter}>
-          <SourceCitationPanel deckId={deck.id} />
-        </footer>
-      ) : null}
-
-      {showExportDialog ? (
-        <DeckTransferDialog
-          request={{ kind: "export", decks: [deck] }}
-          refreshDecks={refreshDecks}
-          onClose={() => setShowExportDialog(false)}
-          showToast={showToast}
-        />
-      ) : null}
-    </div>
-  );
+  // Keep the same wrapper element and browser key in list/editor mode. Swapping
+  // layout components here would unmount the browser and lose an unsaved editor.
+  return <div className={cn("tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0", browserView === "list" && "tw:max-w-(--ostudy-layout-wide-width) tw:px-page tw:py-8 tw:max-[760px]:px-4 tw:max-[760px]:py-5")}>
+    {browserView === "list" ? <>
+      <Button variant="back" disabled={busy} onClick={() => void onReturnToLibrary()}>← All decks</Button>
+      <PageHeader title={deck.name} description={deck.description || undefined} eyebrow="Flashcards"
+        actions={<ResponsiveActionGroup label={`${deck.name} actions`} actions={[
+          { id: "practice", label: "Practice", placement: "always-visible", variant: "primary",
+            disabled: busy || deck.generatedCardCount === 0 || deck.archivedAt !== null,
+            description: deck.archivedAt !== null ? "Unarchive this deck before practicing" : deck.generatedCardCount === 0 ? "Add a flashcard before practicing this deck" : `Practice all ${deck.generatedCardCount} cards in this deck`,
+            onSelect: () => void onPracticeDeck(deck.id) },
+          { id: "export", label: `Export ${deck.name}`, description: "Save deck to file", placement: "always-visible", presentation: "icon", icon: "save", disabled: busy, onSelect: () => setShowExportDialog(true) },
+          { id: "delete", label: `Delete ${deck.name}`, description: "Delete deck", placement: "always-visible", presentation: "icon", icon: "delete", destructive: true, disabled: busy, onSelect: () => void deleteDeck() },
+          { id: "archive", label: `${deck.archivedAt === null ? "Archive" : "Restore"} ${deck.name}`, placement: "wide-only", presentation: "icon", icon: "archive", disabled: busy, onSelect: () => void archive() },
+        ]} />} />
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+    </> : null}
+    <CardBrowserWorkspace key={`deck-card-browser:${deck.id}`} decks={decks} fixedDeckId={deck.id}
+      showFilters={false} showPageHeader={false} refreshDecks={refreshDecks}
+      onPracticeCards={onPracticeCards} onDirtyChange={onDirtyChange} onViewChange={setBrowserView} showToast={showToast} />
+    {browserView === "list" ? <footer className="tw:mt-6"><SourceCitationPanel deckId={deck.id} /></footer> : null}
+    {showExportDialog ? <DeckTransferDialog request={{ kind: "export", decks: [deck] }} refreshDecks={refreshDecks} onClose={() => setShowExportDialog(false)} showToast={showToast} /> : null}
+  </div>;
 }

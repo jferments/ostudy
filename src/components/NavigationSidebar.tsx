@@ -1,8 +1,8 @@
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
-import { Icon, type IconName } from "../ui/icons/Icon";
+import { type IconName } from "../ui/icons/Icon";
 import { useLayoutMode } from "../ui/layout/LayoutModeProvider";
 import { BrandLockup } from "./Brand";
-import styles from "./NavigationSidebar.module.css";
+import { AppNavigation } from "../ui/layout/AppNavigation";
 
 interface NavigationSidebarProps {
   section: AppSection;
@@ -44,71 +44,10 @@ export function NavigationSidebar({
   onNavigate,
 }: NavigationSidebarProps) {
   const { layoutMode } = useLayoutMode();
-  const compact = layoutMode === "compact";
-  const medium = layoutMode === "medium";
-
-  function navigate(next: AppSection): void {
-    void onNavigate(next);
-  }
-
-  if (compact) {
-    const compactItems = COMPACT_PRIMARY_SECTIONS.map((compactSection) =>
-      ITEMS.find((item) => item.section === compactSection),
-    ).filter((item): item is (typeof ITEMS)[number] => item !== undefined);
-    return (
-      <nav
-        className={styles.compactNav}
-        aria-label="Main navigation"
-        data-tour-anchor="app.navigation"
-      >
-        {compactItems.map((item) => {
-          const active = isActive(item.section, section, activeWorkflow);
-          return (
-            <button
-              key={item.section}
-              type="button"
-              className={styles.compactButton}
-              data-testid={`nav-${item.section}`}
-              data-active={active}
-              aria-current={active ? "page" : undefined}
-              onClick={() => navigate(item.section)}
-            >
-              <Icon name={item.icon} size={20} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-    );
-  }
-
-  return (
-    <aside className={styles.sidebar}>
-      <BrandLockup compact={medium} />
-      <nav
-        className={styles.sidebarNav}
-        aria-label="Main navigation"
-        data-tour-anchor="app.navigation"
-      >
-        {ITEMS.map((item) => {
-          const active = isActive(item.section, section, activeWorkflow);
-          return (
-            <button
-              key={item.section}
-              type="button"
-              data-testid={`nav-${item.section}`}
-              className={`${styles.navButton} ${active ? styles.active : ""}`.trim()}
-              aria-current={active ? "page" : undefined}
-              onClick={() => navigate(item.section)}
-            >
-              <span className={styles.navIcon}>
-                <Icon name={item.icon} size={21} />
-              </span>
-              <span className={styles.navLabel}>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-    </aside>
-  );
+  return <AppNavigation brand={<BrandLockup compact={layoutMode === "medium"} />} items={ITEMS.map((item) => ({
+    id: item.section, label: item.label, icon: item.icon,
+    active: isActive(item.section, section, activeWorkflow),
+    secondary: !COMPACT_PRIMARY_SECTIONS.some((section) => section === item.section),
+    onSelect: () => { void onNavigate(item.section); },
+  }))} />;
 }

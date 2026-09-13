@@ -1,3 +1,6 @@
+import { Checkbox } from "../../ui/primitives/FormControls";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { TextField } from "../../ui/primitives/TextField";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type {
@@ -21,7 +24,7 @@ import {
 } from "../../ui/patterns/WorkspacePatterns";
 import { Button } from "../../ui/primitives/Button";
 import { Surface } from "../../ui/primitives/Surface";
-import styles from "./CardFilters.module.css";
+import styles from "./CardFilters.presentation";
 
 interface CardFiltersProps {
   activeDecks: DeckSummary[];
@@ -161,7 +164,7 @@ export function CardFilters({
           <span>Search cards</span>
           <span className={styles.searchControl}>
             <Icon name="search" size={18} />
-            <input
+            <TextField
               type="search"
               value={query}
               placeholder="Question, answer, or tag"
@@ -170,18 +173,18 @@ export function CardFilters({
           </span>
         </label>
 
-        <button
+        <Button variant="secondary"
           type="button"
           className={styles.scopeButton}
           onClick={() => setFiltersOpen(true)}
         >
           <Icon name="folder" size={17} />
           <span>{deckFilterSummary(deckIds, activeDecks)}</span>
-        </button>
+        </Button>
 
         <label className={styles.sortField}>
           <span>Sort</span>
-          <select
+          <NativeSelect
             value={sort}
             onChange={(event) => onSortChange(event.currentTarget.value as CardSort)}
           >
@@ -191,7 +194,7 @@ export function CardFilters({
             <option value="updated_desc">Recently updated</option>
             <option value="last_reviewed_desc">Recently studied</option>
             <option value="due_asc">Next scheduled</option>
-          </select>
+          </NativeSelect>
         </label>
 
         <Button
@@ -220,7 +223,7 @@ export function CardFilters({
             title="Scope"
             description="Choose all active decks, a folder, or individual decks."
           >
-            <button
+            <Button variant="secondary"
               type="button"
               className={styles.scopeChoice}
               aria-pressed={deckIds.size === 0}
@@ -230,7 +233,7 @@ export function CardFilters({
               <small>
                 {activeDecks.reduce((sum, deck) => sum + deck.generatedCardCount, 0)} cards
               </small>
-            </button>
+            </Button>
             {folderScopes.length > 0 ? (
               <div className={styles.folderChoices}>
                 {folderScopes.map((scope) => {
@@ -238,7 +241,7 @@ export function CardFilters({
                     deckIds.size === scope.deckIds.length &&
                     scope.deckIds.every((id) => deckIds.has(id));
                   return (
-                    <button
+                    <Button variant="secondary"
                       key={scope.folder.id}
                       type="button"
                       className={styles.scopeChoice}
@@ -248,7 +251,7 @@ export function CardFilters({
                       <Icon name="folder" size={17} />
                       <span>{scope.folder.name}</span>
                       <small>{scope.deckIds.length} decks</small>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -256,12 +259,11 @@ export function CardFilters({
             <div className={styles.checklist}>
               {activeDecks.map((deck) => (
                 <label key={deck.id}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={deckIds.has(deck.id)}
-                    onChange={(event) => {
+                    onCheckedChange={(checked) => {
                       const next = new Set(deckIds);
-                      if (event.currentTarget.checked) next.add(deck.id);
+                      if (checked) next.add(deck.id);
                       else next.delete(deck.id);
                       onDeckIdsChange(next);
                     }}
@@ -281,7 +283,7 @@ export function CardFilters({
             <div className={styles.controlGrid}>
               <label>
                 <span>Availability</span>
-                <select
+                <NativeSelect
                   value={availabilityFilter}
                   disabled={statusFilter === "suspended" || statusFilter === "buried"}
                   onChange={(event) =>
@@ -293,11 +295,11 @@ export function CardFilters({
                   <option value="all">Any schedule</option>
                   <option value="ready_now">Ready now</option>
                   <option value="scheduled_later">Scheduled later</option>
-                </select>
+                </NativeSelect>
               </label>
               <label>
                 <span>Status</span>
-                <select
+                <NativeSelect
                   value={statusFilter}
                   onChange={(event) =>
                     onStatusFilterChange(event.currentTarget.value as CardStatusFilter)
@@ -308,11 +310,11 @@ export function CardFilters({
                   <option value="suspended">Suspended</option>
                   <option value="buried">Buried</option>
                   <option value="needs_more_practice">Needs more practice</option>
-                </select>
+                </NativeSelect>
               </label>
               <label>
                 <span>Last studied</span>
-                <select
+                <NativeSelect
                   value={reviewedFilter}
                   onChange={(event) =>
                     onReviewedFilterChange(event.currentTarget.value as ReviewedFilter)
@@ -326,7 +328,7 @@ export function CardFilters({
                   <option value="before_past_30_local_dates">
                     Before the past 30 local dates
                   </option>
-                </select>
+                </NativeSelect>
               </label>
             </div>
           </FilterGroup>
@@ -341,12 +343,11 @@ export function CardFilters({
               <div className={styles.checklist}>
                 {tags.map((tag) => (
                   <label key={tag.id}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={tagIds.has(tag.id)}
-                      onChange={(event) => {
+                      onCheckedChange={(checked) => {
                         const next = new Set(tagIds);
-                        if (event.currentTarget.checked) next.add(tag.id);
+                        if (checked) next.add(tag.id);
                         else next.delete(tag.id);
                         onTagIdsChange(next);
                       }}

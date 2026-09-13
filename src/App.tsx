@@ -13,13 +13,14 @@ import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation"
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "./ui/layout/LayoutModeProvider";
-import { AmbientBackdrop } from "./ui/materials/AmbientBackdrop";
 import { RouteTransition } from "./ui/motion/Motion";
 import { Button } from "./ui/primitives/Button";
 import { LoadingState } from "./ui/primitives/EmptyState";
 import { TourProvider } from "./ui/tutorials/TourProvider";
 import shellStyles from "./AppShell.module.css";
-import statusStyles from "./AppStatus.module.css";
+import { AppFrame, AppContent } from "./ui/layout/AppFrame";
+import { BrandMark } from "./components/Brand";
+import { InlineNotice } from "./ui/primitives/InlineNotice";
 
 const FlashcardsWorkspace = lazy(() =>
   import("./screens/flashcards/FlashcardsWorkspace").then((module) => ({
@@ -79,15 +80,15 @@ function App() {
       <AppearanceProvider settings={controller.activeSettings}>
         <TourProvider enabled={!controller.isLoading && !controller.fatalError && tutorialsEnabled}>
           {controller.isLoading ? (
-            <div className={statusStyles.status}>
-              <div className={statusStyles.mark}>O</div>
+            <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
+              <div className="tw:mx-auto"><BrandMark /></div>
               <h1>Opening ostudy</h1>
               <p>Loading your decks…</p>
             </div>
           ) : controller.fatalError ? (
-            <div className={statusStyles.status}>
+            <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
               <h1>ostudy could not open the library</h1>
-              <p>{controller.fatalError}</p>
+              <InlineNotice kind="error">{controller.fatalError}</InlineNotice>
               <Button variant="primary" onClick={() => window.location.reload()}>
                 Try again
               </Button>
@@ -95,8 +96,7 @@ function App() {
           ) : (
             <DocumentJobsProvider refreshDecks={controller.refreshDecks} showToast={controller.showToast}>
             <TutorProvider>
-              <AmbientBackdrop />
-              <div className={shellStyles.shell} data-ui-root="true">
+              <AppFrame>
                 <IncomingShareCoordinator
                   refreshDecks={controller.refreshDecks}
                   showToast={controller.showToast}
@@ -118,7 +118,7 @@ function App() {
                   />
                 </PerformanceProfiler>
 
-                <main className={shellStyles.main}>
+                <AppContent>
                   <RouteTransition
                     routeKey={controller.activeWorkflow ?? controller.section}
                     relation="sibling"
@@ -217,10 +217,10 @@ function App() {
                       </Suspense>
                     </AppErrorBoundary>
                   </RouteTransition>
-                </main>
+                </AppContent>
 
                 <Toast toast={controller.toast} onDismiss={() => controller.setToast(null)} />
-              </div>
+              </AppFrame>
             </TutorProvider>
             </DocumentJobsProvider>
           )}

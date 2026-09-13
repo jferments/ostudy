@@ -1,20 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, MutableRefObject } from "react";
-
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MutableRefObject } from "react";
 import type { ShowToast } from "../../components/Toast";
 import { CardsController } from "../../controllers/cardsController";
 import { reconcileCommitted } from "../../controllers/reconciliation";
 import {
-  type AvailabilityFilter,
-  type CardBrowserRow,
-  type CardNote,
-  type CardSearchInput,
-  type CardSearchPage,
-  type CardSort,
-  type CardStatusFilter,
-  type ReviewedFilter,
-  type SelectionCard,
-  type TagSummary,
+  type AvailabilityFilter, type CardBrowserRow, type CardNote, type CardSearchInput,
+  type CardSearchPage, type CardSort, type CardStatusFilter, type ReviewedFilter,
+  type SelectionCard, type TagSummary,
 } from "../../ipc/cards";
 import { createMutationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
@@ -23,7 +14,14 @@ import type { ScheduleAction } from "../../ipc/scheduling";
 import type { CardTemplate, GenerateTemplateCardsResult } from "../../ipc/templates";
 import { IconButton } from "../../ui/icons/IconButton";
 import { SelectionToolbar } from "../../ui/patterns/SelectionToolbar";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
+import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
+import { EmptyState } from "../../ui/primitives/EmptyState";
+import { Badge } from "../../ui/primitives/Badge";
+import { Chip } from "../../ui/primitives/Chip";
+import { Checkbox } from "../../ui/primitives/FormControls";
+import { TextField } from "../../ui/primitives/TextField";
+import { Button } from "../../ui/primitives/Button";
+import { cn } from "../../ui/internal/cn";
 import { CardEditorScreen } from "../CardEditorScreen";
 import { BulkEntryModal } from "./BulkEntryModal";
 import { BulkTagModal } from "./BulkTagModal";
@@ -32,14 +30,11 @@ import { DeleteCardsModal } from "./DeleteCardsModal";
 import { MoveCopyModal, type TransferableCard } from "./MoveCopyModal";
 import { PracticeResultsModal } from "./PracticeResultsModal";
 import { ScheduleActionModal } from "./ScheduleActionModal";
-import ownershipStyles from "./CardBrowserWorkspace.module.css";
 import { scheduleActionNotice } from "./scheduleActionResult";
-
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
+import styles from "./browserPresentation";
 
 export type CardBrowserView = "list" | "editor";
 export type CardBrowserControls = "deck" | "search";
-
 interface CardBrowserWorkspaceProps {
   decks: DeckSummary[];
   refreshDecks: () => Promise<DeckSummary[]>;
@@ -53,76 +48,32 @@ interface CardBrowserWorkspaceProps {
   onViewChange?: (view: CardBrowserView) => void;
   analyticsSearchLaunch?: AnalyticsSearchLaunch;
 }
-
-type SelectionAction =
-  | "move_copy"
-  | "add_tags"
-  | "remove_tags"
-  | "delete"
-  | "suspend"
-  | "resume"
-  | "bury"
-  | "unbury"
-  | "reschedule"
-  | "reset";
-
-interface PendingScheduleMutation {
-  key: string;
-  mutationId: string;
-}
-
+type SelectionAction = "move_copy" | "add_tags" | "remove_tags" | "delete" | "suspend" | "resume" | "bury" | "unbury" | "reschedule" | "reset";
+interface PendingScheduleMutation { key: string; mutationId: string; }
 const PAGE_SIZE = 100;
 
 /**
- * The single card-listing workspace used by both global Search/Filter and an
- * open deck. Both callers use the same native search contract, pagination,
- * row markup, selection semantics, card editing, and bulk operations. The
- * control mode intentionally varies only the screen-specific controls above
- * that shared behavior: Search/Filter gets the complete filter model, while a
- * deck gets a fixed scope and a compact table-level search action.
+ * Deck detail and global search share native queries, pagination and exact-card
+ * selection. Presentation varies only the controls above that shared model.
+ * UI-library components do not own requests, mutation identities or editor state.
  */
 export function CardBrowserWorkspace({
-  decks,
-  refreshDecks,
-  onPracticeCards,
-  onDirtyChange,
-  showToast,
-  fixedDeckId,
-  controls,
-  showFilters,
-  showPageHeader = fixedDeckId === undefined,
-  onViewChange,
+  decks, refreshDecks, onPracticeCards, onDirtyChange, showToast, fixedDeckId,
+  controls, showFilters, showPageHeader = fixedDeckId === undefined, onViewChange,
   analyticsSearchLaunch,
 }: CardBrowserWorkspaceProps) {
-  const controlMode: CardBrowserControls =
-    controls ??
-    (showFilters === undefined
-      ? fixedDeckId === undefined
-        ? "search"
-        : "deck"
-      : showFilters
-        ? "search"
-        : "deck");
-  const activeDecks = useMemo(
-    () => decks.filter((deck) => deck.archivedAt === null),
-    [decks],
-  );
+  const controlMode: CardBrowserControls = controls ??
+    (showFilters === undefined ? (fixedDeckId === undefined ? "search" : "deck") : showFilters ? "search" : "deck");
+  const activeDecks = useMemo(() => decks.filter((deck) => deck.archivedAt === null), [decks]);
   const [filterDeckIds, setFilterDeckIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [deckSearchOpen, setDeckSearchOpen] = useState(false);
-  const [availabilityFilter, setAvailabilityFilter] =
-    useState<AvailabilityFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<CardStatusFilter>(() =>
-    fixedDeckId ? "all" : "active",
-  );
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<CardStatusFilter>(() => fixedDeckId ? "all" : "active");
   const [reviewedFilter, setReviewedFilter] = useState<ReviewedFilter>("all");
   const [sort, setSort] = useState<CardSort>("updated_desc");
-  const [tagIds, setTagIds] = useState<Set<string>>(
-    () => new Set(analyticsSearchLaunch?.tagIds ?? []),
-  );
-  const [searchGate, setSearchGate] = useState<"open" | "pending" | "blocked">(
-    analyticsSearchLaunch ? "pending" : "open",
-  );
+  const [tagIds, setTagIds] = useState<Set<string>>(() => new Set(analyticsSearchLaunch?.tagIds ?? []));
+  const [searchGate, setSearchGate] = useState<"open" | "pending" | "blocked">(analyticsSearchLaunch ? "pending" : "open");
   const [tags, setTags] = useState<TagSummary[]>([]);
   const [page, setPage] = useState<CardSearchPage>({ cards: [], totalCount: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -144,45 +95,19 @@ export function CardBrowserWorkspace({
   if (controllerRef.current === null) controllerRef.current = new CardsController();
   const controller = controllerRef.current;
 
-  const scopedDeckIds = useMemo(
-    () => (fixedDeckId ? [fixedDeckId] : [...filterDeckIds]),
-    [filterDeckIds, fixedDeckId],
-  );
+  const scopedDeckIds = useMemo(() => fixedDeckId ? [fixedDeckId] : [...filterDeckIds], [filterDeckIds, fixedDeckId]);
   const deckIds = useMemo(() => new Set(scopedDeckIds), [scopedDeckIds]);
-  const normalizedSort: CardSort =
-    query.trim() === "" && sort === "relevance" ? "updated_desc" : sort;
-  const searchInput = useMemo<CardSearchInput>(
-    () => ({
-      deckIds: scopedDeckIds,
-      query,
-      tagIds: [...tagIds],
-      availabilityFilter,
-      statusFilter,
-      reviewedFilter,
-      sort: normalizedSort,
-      limit: PAGE_SIZE,
-      offset: 0,
-    }),
-    [
-      availabilityFilter,
-      normalizedSort,
-      query,
-      reviewedFilter,
-      scopedDeckIds,
-      statusFilter,
-      tagIds,
-    ],
-  );
+  const normalizedSort: CardSort = query.trim() === "" && sort === "relevance" ? "updated_desc" : sort;
+  const searchInput = useMemo<CardSearchInput>(() => ({
+    deckIds: scopedDeckIds, query, tagIds: [...tagIds], availabilityFilter,
+    statusFilter, reviewedFilter, sort: normalizedSort, limit: PAGE_SIZE, offset: 0,
+  }), [availabilityFilter, normalizedSort, query, reviewedFilter, scopedDeckIds, statusFilter, tagIds]);
   const selected = useMemo(() => [...selectedCards.values()], [selectedCards]);
   const selectedNotes = useMemo(() => uniqueNotes(selected), [selected]);
-  const selectedDeck =
-    scopedDeckIds.length === 1
-      ? (activeDecks.find((deck) => deck.id === scopedDeckIds[0]) ?? null)
-      : null;
+  const selectedDeck = scopedDeckIds.length === 1
+    ? (activeDecks.find((deck) => deck.id === scopedDeckIds[0]) ?? null) : null;
   const browserView: CardBrowserView = editingCard || creatingDeckId ? "editor" : "list";
-  const practiceSourceLabel = fixedDeckId
-    ? `the “${selectedDeck?.name ?? "current"}” deck`
-    : "Search/Filter";
+  const practiceSourceLabel = fixedDeckId ? `the “${selectedDeck?.name ?? "current"}” deck` : "Search/Filter";
   const deckQueryActive = controlMode === "deck" && query.trim() !== "";
   const deckSearchExpanded = controlMode === "deck" && (deckSearchOpen || deckQueryActive);
 
@@ -195,44 +120,28 @@ export function CardBrowserWorkspace({
         const valid = new Set(loaded.map((tag) => tag.id));
         return new Set([...current].filter((id) => valid.has(id)));
       });
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    }
+    } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
   }, [controller, scopedDeckIds]);
 
-  const loadCards = useCallback(
-    async (offset = 0, append = false): Promise<void> => {
-      if (searchGate !== "open") return;
-      if (append) setIsLoadingMore(true);
-      else {
-        setIsLoading(true);
-        setIsLoadingMore(false);
-        setPage({ cards: [], totalCount: 0 });
-      }
-      setErrorMessage(null);
-      try {
-        const result = await controller.search({ ...searchInput, offset });
-        if (!result) return;
-        setPage((current) => ({
-          totalCount: result.totalCount,
-          cards: append ? [...current.cards, ...result.cards] : result.cards,
-        }));
-      } catch (error: unknown) {
-        setErrorMessage(getErrorMessage(error));
-      } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-      }
-    },
-    [controller, searchGate, searchInput],
-  );
+  const loadCards = useCallback(async (offset = 0, append = false): Promise<void> => {
+    if (searchGate !== "open") return;
+    if (append) setIsLoadingMore(true);
+    else {
+      setIsLoading(true);
+      setIsLoadingMore(false);
+      setPage({ cards: [], totalCount: 0 });
+    }
+    setErrorMessage(null);
+    try {
+      const result = await controller.search({ ...searchInput, offset });
+      if (!result) return;
+      setPage((current) => ({ totalCount: result.totalCount, cards: append ? [...current.cards, ...result.cards] : result.cards }));
+    } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
+    finally { setIsLoading(false); setIsLoadingMore(false); }
+  }, [controller, searchGate, searchInput]);
 
   useEffect(() => () => controller.invalidate(), [controller]);
-
-  useEffect(() => {
-    onViewChange?.(browserView);
-  }, [browserView, onViewChange]);
-
+  useEffect(() => { onViewChange?.(browserView); }, [browserView, onViewChange]);
   useEffect(() => {
     if (fixedDeckId) return;
     setFilterDeckIds((current) => {
@@ -240,58 +149,37 @@ export function CardBrowserWorkspace({
       return new Set([...current].filter((id) => activeIds.has(id)));
     });
   }, [activeDecks, fixedDeckId]);
-
   useEffect(() => {
     if (!analyticsSearchLaunch) return;
     let active = true;
-    void controller
-      .tags([])
-      .then((loaded) => {
-        if (!active || !loaded || requestedTagClearedRef.current) return;
-        setTags(loaded);
-        const availableIds = new Set(loaded.map((tag) => tag.id));
-        const requestedTagsExist = analyticsSearchLaunch.tagIds.every((tagId) =>
-          availableIds.has(tagId),
-        );
-        if (requestedTagsExist) {
-          setSearchGate("open");
-          return;
-        }
-        setIsLoading(false);
-        setSearchGate("blocked");
-        setErrorMessage(
-          "The Analytics tag is no longer available. Clear the unavailable tag filter to search all cards.",
-        );
-      })
-      .catch((error: unknown) => {
-        if (!active || requestedTagClearedRef.current) return;
-        setIsLoading(false);
-        setSearchGate("blocked");
-        setErrorMessage(
-          `The Analytics tag could not be verified: ${getErrorMessage(error)} Clear the unavailable tag filter to search all cards.`,
-        );
-      });
-    return () => {
-      active = false;
-    };
+    void controller.tags([]).then((loaded) => {
+      if (!active || !loaded || requestedTagClearedRef.current) return;
+      setTags(loaded);
+      const availableIds = new Set(loaded.map((tag) => tag.id));
+      if (analyticsSearchLaunch.tagIds.every((tagId) => availableIds.has(tagId))) {
+        setSearchGate("open");
+        return;
+      }
+      setIsLoading(false);
+      setSearchGate("blocked");
+      setErrorMessage("The Analytics tag is no longer available. Clear the unavailable tag filter to search all cards.");
+    }).catch((error: unknown) => {
+      if (!active || requestedTagClearedRef.current) return;
+      setIsLoading(false);
+      setSearchGate("blocked");
+      setErrorMessage(`The Analytics tag could not be verified: ${getErrorMessage(error)} Clear the unavailable tag filter to search all cards.`);
+    });
+    return () => { active = false; };
   }, [analyticsSearchLaunch, controller]);
-
   useEffect(() => {
     if (searchGate !== "open") return;
     if (analyticsSearchLaunch && !requestedTagClearedRef.current) return;
     void loadTags();
   }, [analyticsSearchLaunch, loadTags, searchGate]);
-
+  useEffect(() => { if (query.trim() === "" && sort === "relevance") setSort("updated_desc"); }, [query, sort]);
   useEffect(() => {
-    if (query.trim() === "" && sort === "relevance") setSort("updated_desc");
-  }, [query, sort]);
-
-  useEffect(() => {
-    if (statusFilter === "suspended" || statusFilter === "buried") {
-      setAvailabilityFilter("all");
-    }
+    if (statusFilter === "suspended" || statusFilter === "buried") setAvailabilityFilter("all");
   }, [statusFilter]);
-
   useEffect(() => {
     setSelectedCards(new Map());
     const timeout = window.setTimeout(() => void loadCards(), 180);
@@ -302,22 +190,13 @@ export function CardBrowserWorkspace({
     setQuery(value);
     if (value.trim() !== "" && sort === "updated_desc") setSort("relevance");
   }
-
-  function openDeckSearch(): void {
-    setDeckSearchOpen(true);
-  }
-
-  function closeDeckSearch(): void {
-    changeQuery("");
-    setDeckSearchOpen(false);
-  }
-
+  function openDeckSearch(): void { setDeckSearchOpen(true); }
+  function closeDeckSearch(): void { changeQuery(""); setDeckSearchOpen(false); }
   function handleDeckSearchKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key !== "Escape") return;
     event.preventDefault();
     closeDeckSearch();
   }
-
   function changeTagIds(next: Set<string>): void {
     if (analyticsSearchLaunch && next.size === 0) {
       requestedTagClearedRef.current = true;
@@ -325,22 +204,14 @@ export function CardBrowserWorkspace({
     }
     setTagIds(next);
   }
-
   async function refreshAfterMutation(): Promise<void> {
     await Promise.all([loadCards(), loadTags(), refreshDecks()]);
     setSelectedCards(new Map());
   }
-
   async function reconcileAfterCommit(subject: string): Promise<void> {
     const outcome = await reconcileCommitted(undefined, refreshAfterMutation);
-    if (outcome.reconciliationError) {
-      showToast(
-        "info",
-        `${subject} was saved, but the current card list could not refresh: ${outcome.reconciliationError}`,
-      );
-    }
+    if (outcome.reconciliationError) showToast("info", `${subject} was saved, but the current card list could not refresh: ${outcome.reconciliationError}`);
   }
-
   async function completeSelectionMutation(): Promise<void> {
     if (editingCard || creatingDeckId) {
       onDirtyChange(false);
@@ -349,7 +220,6 @@ export function CardBrowserWorkspace({
     }
     await refreshAfterMutation();
   }
-
   async function openCard(noteId: string): Promise<void> {
     setIsOpeningCard(true);
     setErrorMessage(null);
@@ -357,19 +227,14 @@ export function CardBrowserWorkspace({
       const card = await controller.note(noteId);
       if (!card) return;
       setEditingCard(card);
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setIsOpeningCard(false);
-    }
+    } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
+    finally { setIsOpeningCard(false); }
   }
-
   function beginCreateCard(): void {
     if (!selectedDeck) return;
     setEditingCard(null);
     setCreatingDeckId(selectedDeck.id);
   }
-
   function toggleSelected(card: SelectionCard): void {
     setSelectedCards((current) => {
       const next = new Map(current);
@@ -378,7 +243,6 @@ export function CardBrowserWorkspace({
       return next;
     });
   }
-
   function selectVisible(): void {
     setSelectedCards((current) => {
       const next = new Map(current);
@@ -386,7 +250,6 @@ export function CardBrowserWorkspace({
       return next;
     });
   }
-
   async function selectAllMatching(): Promise<void> {
     if (searchGate !== "open" || page.totalCount === 0 || isSelectingAll) return;
     setIsSelectingAll(true);
@@ -395,31 +258,22 @@ export function CardBrowserWorkspace({
       const matches = await controller.matching(searchInput);
       if (!matches) return;
       setSelectedCards(new Map(matches.map((card) => [card.cardId, card])));
-    } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
-    } finally {
-      setIsSelectingAll(false);
-    }
+    } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
+    finally { setIsSelectingAll(false); }
   }
-
   function beginMoveCopy(cards: TransferableCard[]): void {
     const notes = [...new Map(cards.map((card) => [card.noteId, card])).values()];
     if (notes.length === 0) return;
     setMoveCopyCards(notes);
     setSelectionAction("move_copy");
   }
-
-  async function applySimpleScheduleAction(
-    cards: SelectionCard[],
-    action: Exclude<ScheduleAction, "reset" | "reschedule">,
-  ): Promise<void> {
+  async function applySimpleScheduleAction(cards: SelectionCard[], action: Exclude<ScheduleAction, "reset" | "reschedule">): Promise<void> {
     if (cards.length === 0 || isApplyingSchedule) return;
     const cardIds = [...new Set(cards.map((card) => card.cardId))].sort();
     const key = JSON.stringify({ action, cardIds });
     const mutationId = mutationIdForSchedule(pendingScheduleMutationRef, key);
     setIsApplyingSchedule(true);
     setErrorMessage(null);
-
     let result;
     try {
       result = await controller.schedule({ mutationId, cardIds, action });
@@ -429,162 +283,72 @@ export function CardBrowserWorkspace({
         pendingScheduleMutationRef.current = null;
         setErrorMessage(getErrorMessage(error));
       } else {
-        setErrorMessage(
-          `${getErrorMessage(error)} Choose the same schedule action again to safely retry the complete selection.`,
-        );
+        setErrorMessage(`${getErrorMessage(error)} Choose the same schedule action again to safely retry the complete selection.`);
       }
       setIsApplyingSchedule(false);
       return;
     }
-
     const notice = scheduleActionNotice(result, cardIds.length);
     showToast(notice.kind, notice.text);
     await reconcileAfterCommit("The schedule change");
     setIsApplyingSchedule(false);
   }
-
   function chooseSelectionAction(action: SelectionAction): void {
     if (action === "move_copy") beginMoveCopy(selected);
     else if (["suspend", "resume", "bury", "unbury"].includes(action)) {
-      void applySimpleScheduleAction(
-        selected,
-        action as "suspend" | "resume" | "bury" | "unbury",
-      );
+      void applySimpleScheduleAction(selected, action as "suspend" | "resume" | "bury" | "unbury");
     } else setSelectionAction(action);
   }
-
   function renderSelectionModal() {
-    if (selectionAction === "move_copy") {
-      return (
-        <MoveCopyModal
-          cards={moveCopyCards}
-          decks={activeDecks}
-          onClose={() => {
-            setSelectionAction(null);
-            setMoveCopyCards([]);
-          }}
-          onComplete={completeSelectionMutation}
-          showToast={showToast}
-        />
-      );
-    }
-    if (selectionAction === "add_tags" || selectionAction === "remove_tags") {
-      return (
-        <BulkTagModal
-          cards={selectedNotes}
-          mode={selectionAction === "add_tags" ? "add" : "remove"}
-          suggestions={tags}
-          onClose={() => setSelectionAction(null)}
-          onComplete={completeSelectionMutation}
-          showToast={showToast}
-        />
-      );
-    }
-    if (selectionAction === "delete") {
-      return (
-        <DeleteCardsModal
-          cards={selectedNotes}
-          onClose={() => setSelectionAction(null)}
-          onComplete={completeSelectionMutation}
-          showToast={showToast}
-        />
-      );
-    }
-    if (selectionAction === "reset" || selectionAction === "reschedule") {
-      return (
-        <ScheduleActionModal
-          cards={selected}
-          action={selectionAction}
-          onClose={() => setSelectionAction(null)}
-          onComplete={refreshAfterMutation}
-          showToast={showToast}
-        />
-      );
-    }
+    if (selectionAction === "move_copy") return (
+      <MoveCopyModal cards={moveCopyCards} decks={activeDecks}
+        onClose={() => { setSelectionAction(null); setMoveCopyCards([]); }}
+        onComplete={completeSelectionMutation} showToast={showToast} />
+    );
+    if (selectionAction === "add_tags" || selectionAction === "remove_tags") return (
+      <BulkTagModal cards={selectedNotes} mode={selectionAction === "add_tags" ? "add" : "remove"}
+        suggestions={tags} onClose={() => setSelectionAction(null)} onComplete={completeSelectionMutation} showToast={showToast} />
+    );
+    if (selectionAction === "delete") return (
+      <DeleteCardsModal cards={selectedNotes} onClose={() => setSelectionAction(null)} onComplete={completeSelectionMutation} showToast={showToast} />
+    );
+    if (selectionAction === "reset" || selectionAction === "reschedule") return (
+      <ScheduleActionModal cards={selected} action={selectionAction} onClose={() => setSelectionAction(null)} onComplete={refreshAfterMutation} showToast={showToast} />
+    );
     return null;
   }
 
   if (browserView === "editor") {
     const editorDeckId = editingCard?.deckId ?? creatingDeckId;
     const deck = activeDecks.find((candidate) => candidate.id === editorDeckId);
-    if (!deck) {
-      return (
-        <div className={ownedClassNames(ownedStyleMaps, "screen cards-screen")}>
-          <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>
-            The card’s active deck could not be found. Return to the card list and refresh.
-          </div>
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-            onClick={() => {
-              setEditingCard(null);
-              setCreatingDeckId(null);
-            }}
-          >
-            Back to cards
-          </button>
-        </div>
-      );
-    }
+    if (!deck) return (
+      <div className={styles.screen}>
+        <InlineNotice kind="error">The card’s active deck could not be found. Return to the card list and refresh.</InlineNotice>
+        <Button variant="secondary" onClick={() => { setEditingCard(null); setCreatingDeckId(null); }}>Back to cards</Button>
+      </div>
+    );
     return (
       <>
-        <CardEditorScreen
-          deck={deck}
-          decks={activeDecks}
-          card={editingCard}
-          onDirtyChange={onDirtyChange}
-          onCancel={() => {
-            onDirtyChange(false);
-            setEditingCard(null);
-            setCreatingDeckId(null);
-          }}
-          onMoveCopy={
-            editingCard
-              ? () =>
-                  beginMoveCopy([
-                    {
-                      noteId: editingCard.noteId,
-                      deckId: editingCard.deckId,
-                    },
-                  ])
-              : undefined
-          }
+        <CardEditorScreen deck={deck} decks={activeDecks} card={editingCard} onDirtyChange={onDirtyChange}
+          onCancel={() => { onDirtyChange(false); setEditingCard(null); setCreatingDeckId(null); }}
+          onMoveCopy={editingCard ? () => beginMoveCopy([{ noteId: editingCard.noteId, deckId: editingCard.deckId }]) : undefined}
           onSaved={async (saved, continueAdding) => {
             onDirtyChange(false);
             const wasEditing = editingCard !== null;
-            if (!continueAdding) {
-              setEditingCard(null);
-              setCreatingDeckId(null);
-            }
+            if (!continueAdding) { setEditingCard(null); setCreatingDeckId(null); }
             showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
             if (saved.deckId !== deck.id) showToast("info", "The card is now in a different deck.");
             await reconcileAfterCommit("The flashcard");
           }}
-          onTemplateGenerated={async (
-            result: GenerateTemplateCardsResult,
-            continueAdding: boolean,
-            template: CardTemplate,
-          ) => {
+          onTemplateGenerated={async (result: GenerateTemplateCardsResult, continueAdding: boolean, template: CardTemplate) => {
             onDirtyChange(false);
-            if (!continueAdding) {
-              setEditingCard(null);
-              setCreatingDeckId(null);
-            }
-            const duplicateMessage =
-              result.skippedDuplicates > 0
-                ? ` ${result.skippedDuplicates} exact ${
-                    result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"
-                  } skipped.`
-                : "";
-            showToast(
-              result.createdCount > 0 ? "success" : "info",
-              `Generated ${result.createdCount} ${
-                result.createdCount === 1 ? "card" : "cards"
-              } from “${template.name}”.${duplicateMessage}`,
-            );
+            if (!continueAdding) { setEditingCard(null); setCreatingDeckId(null); }
+            const duplicateMessage = result.skippedDuplicates > 0
+              ? ` ${result.skippedDuplicates} exact ${result.skippedDuplicates === 1 ? "duplicate was" : "duplicates were"} skipped.` : "";
+            showToast(result.createdCount > 0 ? "success" : "info",
+              `Generated ${result.createdCount} ${result.createdCount === 1 ? "card" : "cards"} from “${template.name}”.${duplicateMessage}`);
             await reconcileAfterCommit("The generated cards");
-          }}
-        />
+          }} />
         {renderSelectionModal()}
       </>
     );
@@ -593,452 +357,163 @@ export function CardBrowserWorkspace({
   const listContent = (
     <>
       {controlMode === "search" ? (
-        <CardFilters
-          activeDecks={activeDecks}
-          deckIds={deckIds}
-          query={query}
-          availabilityFilter={availabilityFilter}
-          statusFilter={statusFilter}
-          reviewedFilter={reviewedFilter}
-          sort={sort}
-          tags={tags}
-          tagIds={tagIds}
-          onDeckIdsChange={setFilterDeckIds}
-          onQueryChange={changeQuery}
-          onAvailabilityFilterChange={setAvailabilityFilter}
-          onStatusFilterChange={setStatusFilter}
-          onReviewedFilterChange={setReviewedFilter}
-          onSortChange={setSort}
-          onTagIdsChange={changeTagIds}
-        />
+        <CardFilters activeDecks={activeDecks} deckIds={deckIds} query={query}
+          availabilityFilter={availabilityFilter} statusFilter={statusFilter} reviewedFilter={reviewedFilter}
+          sort={sort} tags={tags} tagIds={tagIds} onDeckIdsChange={setFilterDeckIds} onQueryChange={changeQuery}
+          onAvailabilityFilterChange={setAvailabilityFilter} onStatusFilterChange={setStatusFilter}
+          onReviewedFilterChange={setReviewedFilter} onSortChange={setSort} onTagIdsChange={changeTagIds} />
       ) : null}
-
       {selectedCards.size > 0 ? (
-        <SelectionToolbar
-          selectedCount={selectedCards.size}
-          primaryAction={{
-            id: "practice-selected",
-            label: "Practice selected",
-            onSelect: () => setPracticeCards(selected),
-          }}
+        <SelectionToolbar selectedCount={selectedCards.size}
+          primaryAction={{ id: "practice-selected", label: "Practice selected", onSelect: () => setPracticeCards(selected) }}
           secondaryActions={[
-            ["move_copy", "Move / copy cards"],
-            ["add_tags", "Add tags"],
-            ["remove_tags", "Remove tags"],
-            ["suspend", "Suspend cards"],
-            ["resume", "Resume cards"],
-            ["bury", "Bury until tomorrow"],
-            ["unbury", "Unbury cards"],
-            ["reschedule", "Reschedule cards"],
-            ["reset", "Reset schedules"],
-            ["delete", "Delete cards"],
-          ].map(([id, label]) => ({
-            id,
-            label,
-            placement: "overflow-only" as const,
-            disabled: isApplyingSchedule,
-            destructive: id === "delete" || id === "reset",
-            onSelect: () => chooseSelectionAction(id as SelectionAction),
-          }))}
-          clearLabel="Deselect all"
-          onClearSelection={() => setSelectedCards(new Map())}
-        />
+            ["move_copy", "Move / copy cards"], ["add_tags", "Add tags"], ["remove_tags", "Remove tags"],
+            ["suspend", "Suspend cards"], ["resume", "Resume cards"], ["bury", "Bury until tomorrow"],
+            ["unbury", "Unbury cards"], ["reschedule", "Reschedule cards"], ["reset", "Reset schedules"], ["delete", "Delete cards"],
+          ].map(([id, label]) => ({ id, label, placement: "overflow-only" as const, disabled: isApplyingSchedule,
+            destructive: id === "delete" || id === "reset", onSelect: () => chooseSelectionAction(id as SelectionAction) }))}
+          clearLabel="Deselect all" onClearSelection={() => setSelectedCards(new Map())} />
       ) : null}
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {searchGate === "blocked" ? <Button variant="secondary" onClick={() => changeTagIds(new Set())}>Clear unavailable tag filter</Button> : null}
+      {isOpeningCard ? <InlineProgress>Opening card…</InlineProgress> : null}
+      {isLoading ? <InlineProgress>Searching cards…</InlineProgress> : null}
 
-      {errorMessage ? (
-        <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>
-          {errorMessage}
-        </div>
-      ) : null}
-      {searchGate === "blocked" ? (
-        <button
-          type="button"
-          className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-          onClick={() => changeTagIds(new Set())}
-        >
-          Clear unavailable tag filter
-        </button>
-      ) : null}
-      {isOpeningCard ? (
-        <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Opening card…</div>
-      ) : null}
-      {isLoading ? (
-        <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Searching cards…</div>
-      ) : null}
-
-      <section
-        className={ownedClassNames(
-          ownedStyleMaps,
-          "card-library-panel shared-card-browser",
-        )}
-        aria-label="Card browser"
-      >
-        <div className={ownedClassNames(ownedStyleMaps, "card-browser-heading")}>
-          <div>
-            <h2>{fixedDeckId ? "Cards" : "Results"}</h2>
-            {!fixedDeckId ? (
-              <span className={ownedClassNames(ownedStyleMaps, "card-count-summary")}>
-                {page.totalCount} {page.totalCount === 1 ? "card" : "cards"}
-              </span>
-            ) : null}
+      <section className={styles.cardLibraryPanel} aria-label="Card browser">
+        <div className={styles.cardBrowserHeading}>
+          <div><h2>{fixedDeckId ? "Cards" : "Results"}</h2>
+            {!fixedDeckId ? <span className={styles.cardCountSummary}>{page.totalCount} {page.totalCount === 1 ? "card" : "cards"}</span> : null}
           </div>
           {controlMode === "deck" ? (
-            <div className={ownedClassNames(ownedStyleMaps, "card-browser-actions")}>
-              <button
-                type="button"
-                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                disabled={!selectedDeck}
+            <div className={styles.cardBrowserActions}>
+              <Button variant="secondary" disabled={!selectedDeck}
                 title={selectedDeck ? undefined : "This deck is unavailable for bulk card entry"}
-                onClick={() => {
-                  if (selectedDeck) setBulkEntryOpen(true);
-                }}
-              >
-                Bulk add
-              </button>
-              <button
-                type="button"
-                className={ownedClassNames(ownedStyleMaps, "primary-button")}
-                disabled={!selectedDeck}
-                title={selectedDeck ? undefined : "This deck is unavailable for adding a card"}
-                onClick={beginCreateCard}
-              >
-                Add flashcard
-              </button>
+                onClick={() => { if (selectedDeck) setBulkEntryOpen(true); }}>Bulk add</Button>
+              <Button variant="primary" disabled={!selectedDeck}
+                title={selectedDeck ? undefined : "This deck is unavailable for adding a card"} onClick={beginCreateCard}>Add flashcard</Button>
             </div>
           ) : null}
         </div>
-
         {page.totalCount > 0 || controlMode === "deck" ? (
-          <div className={ownedClassNames(ownedStyleMaps, "card-library-summary")}>
-            <div className={ownedClassNames(ownedStyleMaps, "result-count")}>
-              <strong>
-                {page.cards.length} of {page.totalCount}
-              </strong>
+          <div className={styles.cardLibrarySummary}>
+            <div className={styles.resultCount}><strong>{page.cards.length} of {page.totalCount}</strong>
               <span>{deckQueryActive ? " matching cards shown" : " cards shown"}</span>
             </div>
-            <div
-              className={ownedClassNames(ownedStyleMaps, "selection-buttons")}
-              role="group"
-              aria-label="Card table controls"
-            >
+            <div className={styles.selectionButtons} role="group" aria-label="Card table controls">
               {page.totalCount > 0 ? (
                 <>
-                  <button
-                    type="button"
-                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                    onClick={selectVisible}
-                  >
-                    Select visible
-                  </button>
-                  <button
-                    type="button"
-                    className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-                    disabled={isSelectingAll}
-                    onClick={() => void selectAllMatching()}
-                  >
+                  <Button variant="secondary" onClick={selectVisible}>Select visible</Button>
+                  <Button variant="secondary" disabled={isSelectingAll} onClick={() => void selectAllMatching()}>
                     {isSelectingAll ? "Selecting…" : `Select all (${page.totalCount})`}
-                  </button>
+                  </Button>
                 </>
               ) : null}
               {controlMode === "deck" ? (
-                <div
-                  className={ownedClassNames(ownedStyleMaps, "deck-card-search")}
-                  aria-label="Search this deck"
-                  data-expanded={deckSearchExpanded || undefined}
-                >
+                <div className={styles.deckCardSearch} aria-label="Search this deck" data-expanded={deckSearchExpanded || undefined}>
                   {deckSearchExpanded ? (
                     <>
-                      <label>
-                        <span className="sr-only">Search cards in this deck</span>
-                        <input
-                          autoFocus
-                          type="search"
-                          value={query}
-                          placeholder="Question, answer, or tag"
-                          aria-label="Search cards in this deck"
-                          onChange={(event) => changeQuery(event.currentTarget.value)}
-                          onKeyDown={handleDeckSearchKeyDown}
-                        />
+                      <label><span className="sr-only">Search cards in this deck</span>
+                        <TextField autoFocus type="search" value={query} placeholder="Question, answer, or tag"
+                          aria-label="Search cards in this deck" onChange={(event) => changeQuery(event.currentTarget.value)} onKeyDown={handleDeckSearchKeyDown} />
                       </label>
-                      <IconButton
-                        icon="close"
-                        label="Close deck search"
-                        tooltip={false}
-                        onClick={closeDeckSearch}
-                      />
+                      <IconButton icon="close" label="Close deck search" tooltip={false} onClick={closeDeckSearch} />
                     </>
-                  ) : (
-                    <IconButton
-                      icon="search"
-                      label="Search cards in this deck"
-                      tooltip="Search cards"
-                      onClick={openDeckSearch}
-                    />
-                  )}
+                  ) : <IconButton icon="search" label="Search cards in this deck" tooltip="Search cards" onClick={openDeckSearch} />}
                 </div>
               ) : null}
             </div>
           </div>
         ) : null}
-
         {!isLoading && page.totalCount === 0 ? (
-          <section
-            className={ownedClassNames(
-              ownedStyleMaps,
-              "compact-empty-state large-empty-state",
-            )}
-          >
-            <h2>{fixedDeckId && !deckQueryActive ? "This deck is empty" : "No matching cards"}</h2>
-            <p>
-              {fixedDeckId && !deckQueryActive
-                ? "Add a flashcard or use Bulk add to start studying this deck."
-                : "Try changing or clearing the search."}
-            </p>
-          </section>
+          <EmptyState compact title={fixedDeckId && !deckQueryActive ? "This deck is empty" : "No matching cards"}
+            description={fixedDeckId && !deckQueryActive ? "Add a flashcard or use Bulk add to start studying this deck." : "Try changing or clearing the search."} />
         ) : null}
-
         {page.totalCount > 0 ? (
-          <div
-            className={ownedClassNames(ownedStyleMaps, "organized-card-list")}
-            role="table"
-            aria-label="Matching cards"
-          >
-            {page.cards.map((card) => {
-              const selectedRow = selectedCards.has(card.cardId);
-              return (
-                <CardBrowserListRow
-                  key={card.cardId}
-                  card={card}
-                  selected={selectedRow}
-                  onToggleSelected={() => toggleSelected(selectionFromRow(card))}
-                  onOpen={() => void openCard(card.noteId)}
-                />
-              );
-            })}
+          <div className={styles.organizedCardList} role="table" aria-label="Matching cards">
+            {page.cards.map((card) => <CardBrowserListRow key={card.cardId} card={card}
+              selected={selectedCards.has(card.cardId)} onToggleSelected={() => toggleSelected(selectionFromRow(card))}
+              onOpen={() => void openCard(card.noteId)} />)}
           </div>
         ) : null}
-
         {page.cards.length < page.totalCount ? (
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "secondary-button load-more-cards")}
-            disabled={isLoadingMore}
-            onClick={() => void loadCards(page.cards.length, true)}
-          >
+          <Button variant="secondary" className={styles.loadMoreCards} disabled={isLoadingMore} onClick={() => void loadCards(page.cards.length, true)}>
             {isLoadingMore ? "Loading…" : "Load more"}
-          </button>
+          </Button>
         ) : null}
       </section>
-
       {renderSelectionModal()}
-      {practiceCards ? (
-        <PracticeResultsModal
-          cards={practiceCards}
-          sourceLabel={practiceSourceLabel}
-          refreshDecks={refreshDecks}
-          onPracticeCards={onPracticeCards}
-          onClose={() => setPracticeCards(null)}
-          showToast={showToast}
-        />
-      ) : null}
+      {practiceCards ? <PracticeResultsModal cards={practiceCards} sourceLabel={practiceSourceLabel}
+        refreshDecks={refreshDecks} onPracticeCards={onPracticeCards} onClose={() => setPracticeCards(null)} showToast={showToast} /> : null}
       {bulkEntryOpen && controlMode === "deck" && selectedDeck ? (
-        <BulkEntryModal
-          decks={activeDecks}
-          fixedDeckId={selectedDeck.id}
-          onClose={() => setBulkEntryOpen(false)}
-          onSaved={refreshAfterMutation}
-          showToast={showToast}
-        />
+        <BulkEntryModal decks={activeDecks} fixedDeckId={selectedDeck.id} onClose={() => setBulkEntryOpen(false)}
+          onSaved={refreshAfterMutation} showToast={showToast} />
       ) : null}
     </>
   );
-
-  if (!showPageHeader) {
-    return (
-      <div className={ownedClassNames(ownedStyleMaps, "card-browser-workspace")}>
-        {listContent}
-      </div>
-    );
-  }
-
-  return (
-    <div className={ownedClassNames(ownedStyleMaps, "screen cards-screen")}>
-      <header className={ownedClassNames(ownedStyleMaps, "screen-header compact-screen-header")}>
-        <div>
-          <h1>Search/Filter</h1>
-          <p>
-            Find independently scheduled cards and manage exact schedules without changing sibling
-            presentations.
-          </p>
-        </div>
-      </header>
-      {listContent}
-    </div>
-  );
+  if (!showPageHeader) return <div className={styles.cardBrowserWorkspace}>{listContent}</div>;
+  return <div className={styles.screen}>
+    <header className={styles.screenHeader}><div><h1>Search/Filter</h1>
+      <p>Find independently scheduled cards and manage exact schedules without changing sibling presentations.</p>
+    </div></header>
+    {listContent}
+  </div>;
 }
 
-function CardBrowserListRow({
-  card,
-  selected,
-  onToggleSelected,
-  onOpen,
-}: {
-  card: CardBrowserRow;
-  selected: boolean;
-  onToggleSelected: () => void;
-  onOpen: () => void;
+function CardBrowserListRow({ card, selected, onToggleSelected, onOpen }: {
+  card: CardBrowserRow; selected: boolean; onToggleSelected: () => void; onOpen: () => void;
 }) {
   const dueLabel = formatDue(card.dueAt);
   return (
-    <article
-      className={ownedClassNames(
-        ownedStyleMaps,
-        selected ? "organized-card-row selected" : "organized-card-row",
-      )}
-      role="row"
-    >
-      <label
-        className={ownedClassNames(ownedStyleMaps, "card-row-selector")}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <input
-          type="checkbox"
-          checked={selected}
-          aria-label={`Select ${summarize(card.frontText)}`}
-          onChange={onToggleSelected}
-        />
+    <article className={cn(styles.organizedCardRow, selected && "tw:bg-accent/60")} role="row">
+      <label className={styles.cardRowSelector} onClick={(event) => event.stopPropagation()}>
+        <Checkbox checked={selected} aria-label={`Select ${summarize(card.frontText)}`} onCheckedChange={onToggleSelected} />
       </label>
-      <button
-        type="button"
-        className={ownedClassNames(ownedStyleMaps, "organized-card-main")}
-        onClick={onOpen}
-      >
-        <span className={ownedClassNames(ownedStyleMaps, "organized-card-deck")}>
-          {card.deckName}
-          <span className={ownedClassNames(ownedStyleMaps, "card-type-badge")}>
-            {card.cardLabel}
-          </span>
+      <Button variant="secondary" className={styles.organizedCardMain} onClick={onOpen}>
+        <span className={styles.organizedCardDeck}>{card.deckName}<Badge tone="neutral">{card.cardLabel}</Badge></span>
+        <span className={styles.organizedCardStatuses}>
+          {card.suspendedAt ? <Badge tone="danger">Suspended</Badge> : null}
+          {card.buriedUntil && card.buriedUntil > Date.now() ? <Badge tone="accent">Buried</Badge> : null}
+          {card.needsMorePractice ? <Badge tone="warning">Needs more practice</Badge> : null}
         </span>
-        <span className={ownedClassNames(ownedStyleMaps, "organized-card-statuses")}>
-          {card.suspendedAt ? (
-            <span
-              className={ownedClassNames(
-                ownedStyleMaps,
-                "schedule-status-badge suspended",
-              )}
-            >
-              Suspended
-            </span>
-          ) : null}
-          {card.buriedUntil && card.buriedUntil > Date.now() ? (
-            <span
-              className={ownedClassNames(ownedStyleMaps, "schedule-status-badge buried")}
-            >
-              Buried
-            </span>
-          ) : null}
-          {card.needsMorePractice ? (
-            <span
-              className={ownedClassNames(
-                ownedStyleMaps,
-                "schedule-status-badge needs-practice",
-              )}
-            >
-              Needs more practice
-            </span>
-          ) : null}
+        <span className={styles.organizedCardSides}>
+          <span className={styles.cardListingLine}><span className={styles.cardListingLabel} aria-hidden="true">Q:</span>
+            <span className="sr-only">Question: </span><strong>{summarize(card.frontText)}</strong></span>
+          <span className={styles.cardListingLine}><span className={styles.cardListingLabel} aria-hidden="true">A:</span>
+            <span className="sr-only">Answer: </span><strong>{summarize(card.backText)}</strong></span>
         </span>
-        <span
-          className={ownedClassNames(
-            ownedStyleMaps,
-            "organized-card-sides card-listing-sides",
-          )}
-        >
-          <span className={ownedClassNames(ownedStyleMaps, "card-listing-line")}>
-            <span
-              className={ownedClassNames(ownedStyleMaps, "card-listing-label")}
-              aria-hidden="true"
-            >
-              Q:
-            </span>
-            <span className="sr-only">Question: </span>
-            <strong>{summarize(card.frontText)}</strong>
-          </span>
-          <span className={ownedClassNames(ownedStyleMaps, "card-listing-line")}>
-            <span
-              className={ownedClassNames(ownedStyleMaps, "card-listing-label")}
-              aria-hidden="true"
-            >
-              A:
-            </span>
-            <span className="sr-only">Answer: </span>
-            <strong>{summarize(card.backText)}</strong>
-          </span>
+        <span className={styles.organizedCardTags}>
+          {card.tags.length === 0 ? <small>No tags</small> : card.tags.map((tag) => <Chip key={tag}>{tag}</Chip>)}
         </span>
-        <span className={ownedClassNames(ownedStyleMaps, "organized-card-tags")}>
-          {card.tags.length === 0 ? (
-            <small>No tags</small>
-          ) : (
-            card.tags.map((tag) => (
-              <span
-                className={ownedClassNames(ownedStyleMaps, "tag-chip static")}
-                key={tag}
-              >
-                {tag}
-              </span>
-            ))
-          )}
-        </span>
-      </button>
-      <div className={ownedClassNames(ownedStyleMaps, "organized-card-meta")}>
-        {dueLabel ? <span>{dueLabel}</span> : null}
-        <small>{formatLastStudied(card.lastReviewedAt)}</small>
-      </div>
+      </Button>
+      <div className={styles.organizedCardMeta}>{dueLabel ? <span>{dueLabel}</span> : null}<small>{formatLastStudied(card.lastReviewedAt)}</small></div>
     </article>
   );
 }
-
-function mutationIdForSchedule(
-  pendingRef: MutableRefObject<PendingScheduleMutation | null>,
-  key: string,
-): string {
+function mutationIdForSchedule(pendingRef: MutableRefObject<PendingScheduleMutation | null>, key: string): string {
   if (pendingRef.current?.key === key) return pendingRef.current.mutationId;
   const mutationId = createMutationId();
   pendingRef.current = { key, mutationId };
   return mutationId;
 }
-
 function uniqueNotes(cards: SelectionCard[]): SelectionCard[] {
   const byNoteId = new Map<string, SelectionCard>();
-  for (const card of cards) {
-    if (!byNoteId.has(card.noteId)) byNoteId.set(card.noteId, card);
-  }
+  for (const card of cards) if (!byNoteId.has(card.noteId)) byNoteId.set(card.noteId, card);
   return [...byNoteId.values()];
 }
-
-function selectionFromRow(card: CardBrowserRow): SelectionCard {
-  return { cardId: card.cardId, noteId: card.noteId, deckId: card.deckId };
-}
-
+function selectionFromRow(card: CardBrowserRow): SelectionCard { return { cardId: card.cardId, noteId: card.noteId, deckId: card.deckId }; }
 function summarize(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
   if (normalized === "") return "Image card";
   return normalized.length > 512 ? `${normalized.slice(0, 509)}…` : normalized;
 }
-
 function formatDue(value: number): string | null {
   if (value <= Date.now()) return null;
-  return `Scheduled ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    new Date(value),
-  )}`;
+  return `Scheduled ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value))}`;
 }
-
 function formatLastStudied(value: number | null): string {
   if (value === null) return "Never studied";
   const reviewed = new Date(value);
   const today = new Date();
   if (reviewed.toDateString() === today.toDateString()) return "Studied today";
-  return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
-    reviewed,
-  )}`;
+  return `Studied ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(reviewed)}`;
 }

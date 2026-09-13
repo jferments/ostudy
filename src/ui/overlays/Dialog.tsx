@@ -1,206 +1,44 @@
-import {
-  type KeyboardEvent,
-  type MouseEvent,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-} from "react";
-import { createPortal } from "react-dom";
-
+import { createContext, type ReactNode, type RefObject, useContext, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { IconButton } from "../icons/IconButton";
-import { Button } from "../primitives/Button";
-import {
-  type OverlayCloseReason,
-  OverlayParentContext,
-  useOverlayContext,
-  useOverlayParentId,
-} from "./overlayContext";
-import inlineStyles from "./Dialog.module.css";
-import styles from "./overlays.module.css";
+import { cn } from "../internal/cn";
+import { ModalView } from "../vendor/shadcn/modal";
+import { useLayoutMode } from "../layout/LayoutModeProvider";
+import { type OverlayCloseReason, OverlayParentContext, useOverlayContext, useOverlayParentId } from "./overlayContext";
 
 export interface DialogProps {
-  title: string;
-  description?: string;
-  children: ReactNode;
+  title: string; description?: string; children: ReactNode;
   onClose: (reason: OverlayCloseReason) => void;
   width?: "small" | "medium" | "large" | "workspace";
   presentation?: "dialog" | "sheet" | "fullscreen";
-  role?: "dialog" | "alertdialog";
-  dismissible?: boolean;
-  busy?: boolean;
-  initialFocusRef?: RefObject<HTMLElement | null>;
-  className?: string;
+  role?: "dialog" | "alertdialog"; dismissible?: boolean; busy?: boolean;
+  initialFocusRef?: RefObject<HTMLElement | null>; className?: string;
 }
-
 export interface InlineWorkspaceProps {
-  title: string;
-  description?: string;
-  children: ReactNode;
-  onClose: () => void;
-  dismissible?: boolean;
-  busy?: boolean;
-  className?: string;
-  closeLabel?: string;
+  title: string; description?: string; children: ReactNode; onClose: () => void;
+  dismissible?: boolean; busy?: boolean; className?: string; closeLabel?: string;
 }
+const DepthContext = createContext(0);
 
-const FOCUSABLE = [
-  "button:not([disabled])",
-  "a[href]",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-  "[contenteditable='true']",
-].join(",");
-
-export function Dialog({
-  title,
-  description,
-  children,
-  onClose,
-  width = "medium",
-  presentation = "dialog",
-  role = "dialog",
-  dismissible = true,
-  busy = false,
-  initialFocusRef,
-  className = "",
-}: DialogProps) {
-  const reactId = useId().replaceAll(":", "");
-  const id = `overlay-${reactId}`;
-  const titleId = `${id}-title`;
-  const descriptionId = `${id}-description`;
+/** Base UI owns browser modality; oStudy owns platform Back and business dismissal. */
+export function Dialog({ title, description, children, onClose, width = "medium", presentation = "dialog", role = "dialog", dismissible = true, busy = false, initialFocusRef, className }: DialogProps) {
+  const id = `overlay-${useId().replaceAll(":", "")}`;
   const parentId = useOverlayParentId();
-  const dialogRef = useRef<HTMLDialogElement | null>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
-  const propsRef = useRef({ onClose, dismissible, busy });
-  propsRef.current = { onClose, dismissible, busy };
+  const depth = useContext(DepthContext);
   const { register, isTop } = useOverlayContext();
-
-  useEffect(
-    () =>
-      register({
-        id,
-        parentId,
-        modal: true,
-        requestClose(reason) {
-          const current = propsRef.current;
-          if (!current.dismissible || current.busy) return true;
-          current.onClose(reason);
-          return true;
-        },
-      }),
-    [id, parentId, register],
-  );
-
-  useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (typeof dialog.showModal === "function") {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      dialog.setAttribute("open", "");
-    }
-
-    const focusTarget =
-      initialFocusRef?.current ??
-      dialog.querySelector<HTMLElement>("[data-autofocus='true'], [autofocus]") ??
-      dialog.querySelector<HTMLElement>(FOCUSABLE) ??
-      dialog;
-    queueMicrotask(() => focusTarget.focus());
-
-    return () => {
-      if (dialog.open && typeof dialog.close === "function") dialog.close();
-      else dialog.removeAttribute("open");
-      const opener = openerRef.current;
-      if (opener?.isConnected) queueMicrotask(() => opener.focus());
-    };
-  }, [initialFocusRef]);
-
-  function requestClose(reason: OverlayCloseReason): void {
-    if (!isTop(id) || !dismissible || busy) return;
-    onClose(reason);
-  }
-
-  function onBackdropMouseDown(event: MouseEvent<HTMLDialogElement>): void {
-    if (event.target === event.currentTarget) requestClose("backdrop");
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLDialogElement>): void {
-    if (!isTop(id)) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      requestClose("escape");
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const focusable = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
-    if (focusable.length === 0) {
-      event.preventDefault();
-      dialog.focus();
-      return;
-    }
-    const first = focusable[0] as HTMLElement;
-    const last = focusable.at(-1) as HTMLElement;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <dialog
-      ref={dialogRef}
-      className={styles.dialog}
-      data-presentation={presentation}
-      data-overlay-id={id}
-      role={role}
-      aria-modal="true"
-      aria-labelledby={titleId}
-      aria-describedby={description ? descriptionId : undefined}
-      aria-busy={busy || undefined}
-      onCancel={(event) => {
-        event.preventDefault();
-        requestClose("escape");
-      }}
-      onKeyDown={onKeyDown}
-      onMouseDown={onBackdropMouseDown}
-    >
-      <section className={`${styles.card} ${styles[width]} ${className}`.trim()}>
-        <header className={styles.header}>
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            {description ? <p id={descriptionId}>{description}</p> : null}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Close dialog"
-            disabled={!dismissible || busy}
-            onClick={() => requestClose("close_button")}
-          >
-            ×
-          </Button>
-        </header>
-        <OverlayParentContext.Provider value={id}>
-          <div className={styles.body}>{children}</div>
-        </OverlayParentContext.Provider>
-      </section>
-    </dialog>,
-    document.body,
-  );
+  const { layoutMode } = useLayoutMode();
+  const current = useRef({ onClose, dismissible, busy });
+  current.current = { onClose, dismissible, busy };
+  useEffect(() => register({ id, parentId, modal: true, requestClose(reason) {
+    const props = current.current;
+    if (props.dismissible && !props.busy) props.onClose(reason);
+    return true;
+  } }), [id, parentId, register]);
+  return <ModalView title={title} description={description} width={width} presentation={presentation} role={role}
+    blocked={!dismissible || busy} busy={busy} initialFocusRef={initialFocusRef} className={className}
+    compact={layoutMode === "compact"} id={id} depth={depth}
+    onRequestClose={(reason) => { if (isTop(id) && dismissible && !busy) onClose(reason); }}>
+    <DepthContext.Provider value={depth + 1}><OverlayParentContext.Provider value={id}>{children}</OverlayParentContext.Provider></DepthContext.Provider>
+  </ModalView>;
 }
 
 /**
@@ -246,17 +84,17 @@ export function InlineWorkspace({
 
   return (
     <section
-      className={`${inlineStyles.inlineWorkspace} ${className}`.trim()}
+      className={cn("tw:flex tw:min-h-[min(78dvh,48rem)] tw:w-full tw:min-w-0 tw:flex-1 tw:flex-col tw:overflow-hidden tw:rounded-xl tw:border tw:border-solid tw:border-border-strong tw:bg-popover tw:text-popover-foreground tw:shadow-panel tw:max-[760px]:min-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] tw:max-[760px]:rounded-lg tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas] tw:forced-colors:text-[CanvasText]", className)}
       role="region"
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
       aria-busy={busy || undefined}
       data-inline-workspace="true"
     >
-      <header className={inlineStyles.inlineHeader}>
-        <div className={inlineStyles.heading}>
-          <h2 id={titleId}>{title}</h2>
-          {description ? <p id={descriptionId}>{description}</p> : null}
+      <header className="tw:sticky tw:top-0 tw:z-(--ostudy-layer-sticky) tw:flex tw:min-w-0 tw:shrink-0 tw:items-start tw:justify-between tw:gap-4 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-secondary tw:p-5 tw:shadow-panel tw:max-[760px]:p-4 tw:forced-colors:border-[CanvasText] tw:forced-colors:bg-[Canvas]">
+        <div className="tw:min-w-0">
+          <h2 id={titleId} className="tw:m-0 tw:text-section tw:wrap-anywhere">{title}</h2>
+          {description ? <p id={descriptionId} className="tw:mt-2 tw:mb-0 tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
         </div>
         <IconButton
           ref={closeRef}
@@ -264,12 +102,13 @@ export function InlineWorkspace({
           iconSize={24}
           label={closeLabel}
           tooltip={false}
-          className={inlineStyles.inlineClose}
+          tone="danger"
+          className="tw:size-11.5 tw:min-h-11.5 tw:min-w-11.5 tw:border-destructive tw:bg-destructive-soft tw:text-destructive tw:forced-colors:border-[LinkText] tw:forced-colors:bg-[ButtonFace] tw:forced-colors:text-[LinkText]"
           disabled={!dismissible || busy}
           onClick={onClose}
         />
       </header>
-      <div className={inlineStyles.inlineBody}>{children}</div>
+      <div className="tw:min-h-0 tw:min-w-0 tw:flex-1 tw:overflow-auto">{children}</div>
     </section>
   );
 }
@@ -281,7 +120,7 @@ export function DialogActions({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={`${styles.actions} ${className}`.trim()}>{children}</div>;
+  return <div className={cn("tw:flex tw:flex-wrap tw:justify-end tw:gap-3 tw:max-[760px]:flex-col-reverse tw:max-[760px]:[&>button]:w-full", className)}>{children}</div>;
 }
 
 export function Sheet(props: Omit<DialogProps, "presentation">) {

@@ -1,12 +1,15 @@
+import { Checkbox, RadioGroup } from "../../ui/primitives/FormControls";
+import { Badge } from "../../ui/primitives/Badge";
+import { Progress } from "../../ui/primitives/Progress";
+import { Button } from "../../ui/primitives/Button";
+import { Panel } from "../../ui/primitives/Panel";
 import type {
   AppSettings,
   MaterialPreference,
   MotionPreference,
 } from "../../ipc/settings";
 import { HelpTrigger } from "../../ui/help/HelpProvider";
-import { FontControl, RangeControl, SelectControl, ThemeOption } from "./SettingsControls";
-import previewStyles from "./AppearancePreview.module.css";
-import styles from "./Settings.module.css";
+import { FontControl, RangeControl, SelectControl, ThemePreview } from "./SettingsControls";
 
 interface AppearanceSettingsProps {
   draft: AppSettings;
@@ -28,37 +31,36 @@ const MATERIAL_OPTIONS: ReadonlyArray<{ value: MaterialPreference; label: string
 
 export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
   return (
-    <div className={styles.panelGrid}>
-      <section className={styles.fullWidthCard}>
-        <div className={styles.sectionHeading}>
+    <div className="tw:grid tw:min-w-0 tw:gap-6 tw:xl:grid-cols-2">
+      <Panel className="tw:col-span-full">
+        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
           <div>
-            <h2>Theme</h2>
+            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Theme</h2>
             <p>Theme and typography changes preview immediately throughout ostudy.</p>
           </div>
         </div>
-        <div className={styles.themeGrid} role="radiogroup" aria-label="Application theme">
-          <ThemeOption name="Light" value="light" selected={draft.theme === "light"} onSelect={() => update({ theme: "light" })} />
-          <ThemeOption name="Dark" value="dark" selected={draft.theme === "dark"} onSelect={() => update({ theme: "dark" })} />
-          <ThemeOption name="Console" value="console" selected={draft.theme === "console"} onSelect={() => update({ theme: "console" })} />
-          <ThemeOption name="Synthwave" value="synthwave" selected={draft.theme === "synthwave"} onSelect={() => update({ theme: "synthwave" })} />
-        </div>
-      </section>
+        <RadioGroup label="Application theme" value={draft.theme} presentation="cards"
+          options={(["light", "dark", "console", "synthwave"] as const).map((theme) => ({
+            value: theme, ariaLabel: theme[0].toUpperCase() + theme.slice(1),
+            label: <ThemePreview theme={theme} />,
+          }))} onValueChange={(theme) => update({ theme })} />
+      </Panel>
 
-      <section className={styles.settingsCard}>
-        <h2>Typography</h2>
+      <Panel className="tw:min-w-0">
+        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Typography</h2>
         <FontControl label="Interface font" value={draft.uiFont} onChange={(uiFont) => update({ uiFont })} />
         <FontControl label="Default card font" value={draft.cardFont} onChange={(cardFont) => update({ cardFont })} />
-      </section>
+      </Panel>
 
-      <section className={styles.settingsCard}>
-        <h2>Scale</h2>
+      <Panel className="tw:min-w-0">
+        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Scale</h2>
         <RangeControl label="Interface scale" min={80} max={140} step={5} value={draft.uiScale} suffix="%" onChange={(uiScale) => update({ uiScale })} />
         <RangeControl label="Default card text" min={12} max={32} step={1} value={draft.cardBaseSize} suffix=" px" onChange={(cardBaseSize) => update({ cardBaseSize })} />
-      </section>
+      </Panel>
 
-      <section className={styles.settingsCard}>
-        <div className={styles.sectionHeading}>
-          <h2>Motion and materials</h2>
+      <Panel className="tw:min-w-0">
+        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
+          <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Motion and materials</h2>
           <span>
             <HelpTrigger topicId="settings.motion" label="Help with motion preferences" />
             <HelpTrigger topicId="settings.materialEffects" label="Help with material effects" />
@@ -78,68 +80,59 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
           description="Automatic uses restrained depth and translucency while respecting operating-system transparency preferences."
           onChange={(materialPreference) => update({ materialPreference })}
         />
-      </section>
+      </Panel>
 
-      <section className={styles.settingsCard}>
-        <h2>Artwork and guidance</h2>
-        <label className={styles.switchRow}>
+      <Panel className="tw:min-w-0">
+        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Artwork and guidance</h2>
+        <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
             <strong>Decorative artwork</strong>
             <small>Show mascot art and illustrated empty states. Card and document images are unaffected.</small>
           </span>
-          <input type="checkbox" checked={draft.decorativeArtwork ?? true} onChange={(event) => update({ decorativeArtwork: event.currentTarget.checked })} />
+          <Checkbox checked={draft.decorativeArtwork ?? true} onCheckedChange={(checked) => update({ decorativeArtwork: checked })} />
         </label>
-        <label className={styles.switchRow}>
+        <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
             <strong>Celebrations</strong>
             <small>Allow one-shot completion effects when full motion is enabled.</small>
           </span>
-          <input type="checkbox" checked={draft.celebrationsEnabled ?? true} onChange={(event) => update({ celebrationsEnabled: event.currentTarget.checked })} />
+          <Checkbox checked={draft.celebrationsEnabled ?? true} onCheckedChange={(checked) => update({ celebrationsEnabled: checked })} />
         </label>
-        <label className={styles.switchRow}>
+        <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
             <strong>Interactive tutorials</strong>
             <small>Allow tutorials that you explicitly start from Help. They never open automatically.</small>
           </span>
-          <input type="checkbox" checked={draft.tutorialsEnabled ?? false} onChange={(event) => update({ tutorialsEnabled: event.currentTarget.checked })} />
+          <Checkbox checked={draft.tutorialsEnabled ?? false} onCheckedChange={(checked) => update({ tutorialsEnabled: checked })} />
         </label>
-      </section>
+      </Panel>
 
-      <section className={styles.fullWidthCard} aria-labelledby="appearance-preview-heading">
-        <div className={styles.sectionHeading}>
+      <Panel className="tw:col-span-full" aria-labelledby="appearance-preview-heading">
+        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
           <div>
-            <h2 id="appearance-preview-heading">Live visual-system preview</h2>
+            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight" id="appearance-preview-heading">Live visual-system preview</h2>
             <p>Representative surfaces, typography, controls, progress, and metrics use the same semantic tokens as the application.</p>
           </div>
         </div>
         <AppearancePreview />
-      </section>
+      </Panel>
     </div>
   );
 }
 
 function AppearancePreview() {
-  return (
-    <div className={previewStyles.preview}>
-      <header className={previewStyles.chrome}>
-        <span className={previewStyles.brand}>
-          <span className={previewStyles.mark} aria-hidden="true">O</span>
-          ostudy
-        </span>
-        <button type="button">Create card</button>
-      </header>
-      <div className={previewStyles.content}>
-        <article className={previewStyles.card}>
-          <span className={previewStyles.eyebrow}>Practice</span>
-          <h3>How does spaced repetition improve recall?</h3>
-          <p>It schedules review near the point where a memory is likely to become difficult to retrieve.</p>
-          <div className={previewStyles.progress} aria-label="68 percent complete"><span /></div>
-        </article>
-        <div className={previewStyles.metrics}>
-          <article className={previewStyles.metric}><small>Ready now</small><strong>24</strong></article>
-          <article className={previewStyles.metric}><small>Studied this week</small><strong>138</strong></article>
-        </div>
+  return <div className="tw:grid tw:items-start tw:gap-4 tw:lg:grid-cols-[2fr_1fr]">
+    <Panel title="How does spaced repetition improve recall?" description="Practice · a preview of your chosen appearance">
+      <p className="tw:m-0 tw:text-body tw:leading-relaxed">It schedules review near the point where a memory is likely to become difficult to retrieve.</p>
+      <Progress value={68} max={100} label="68 percent complete" />
+      <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+        <Badge tone="success">Ready to review</Badge>
+        <Button type="button" variant="primary" disabled>Create card</Button>
       </div>
+    </Panel>
+    <div className="tw:grid tw:gap-4 tw:sm:grid-cols-2 tw:lg:grid-cols-1">
+      <Panel title="Ready now"><strong className="tw:text-title tw:tabular-nums">24</strong></Panel>
+      <Panel title="Studied this week"><strong className="tw:text-title tw:tabular-nums">138</strong></Panel>
     </div>
-  );
+  </div>;
 }

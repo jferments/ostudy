@@ -5,7 +5,7 @@ import { IconButton } from "../icons/IconButton";
 import { useLayoutMode, type LayoutMode } from "../layout/LayoutModeProvider";
 import { OverflowMenu } from "../overlays/OverflowMenu";
 import { Button, type ButtonProps } from "../primitives/Button";
-import styles from "./ResponsiveActionGroup.module.css";
+import { cn } from "../internal/cn";
 
 export type ResponsiveActionPlacement =
   | "always-visible"
@@ -60,7 +60,7 @@ export function ResponsiveActionGroup({
 
   return (
     <div
-      className={`${styles.group} ${className}`.trim()}
+      className={cn("tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-end tw:gap-2", className)}
       role="group"
       aria-label={label}
       data-layout-mode={layoutMode}
@@ -99,7 +99,7 @@ export function ResponsiveActionGroup({
               >
                 {action.icon ? (
                   <span
-                    className={styles.actionIcon}
+                    className="tw:inline-grid tw:shrink-0 tw:place-items-center tw:data-[tone=danger]:text-destructive"
                     data-tone={action.destructive ? "danger" : undefined}
                     aria-hidden="true"
                   >

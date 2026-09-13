@@ -14,7 +14,7 @@ const memory: TutorMemory = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   get.mockResolvedValue(memory);
 });
 
@@ -22,7 +22,7 @@ function mount(onChanged = vi.fn(async () => {})) {
   const onBusyChange = vi.fn();
   render(<TutorMemoryControls conversationId={memory.conversationId} revision={3} retrievalAvailable={true} disabled={false}
     onChanged={onChanged} onBusyChange={onBusyChange} />);
-  fireEvent.click(screen.getByText("Conversation memory"));
+  fireEvent.click(screen.getByRole("button", { name: "Conversation memory" }));
   return { onChanged, onBusyChange };
 }
 
@@ -32,7 +32,9 @@ describe("conversation memory controls", () => {
     await screen.findByText("An earlier topic");
     expect(get).toHaveBeenCalledWith(memory.conversationId);
     expect(change).not.toHaveBeenCalled();
-    expect((screen.getByLabelText("Allow this conversation in semantic retrieval") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByRole("checkbox", {
+      name: "Allow this conversation in semantic retrieval",
+    }).getAttribute("aria-checked")).toBe("false");
   });
 
   it("keeps the exact operation for an ambiguous retry", async () => {
@@ -40,7 +42,7 @@ describe("conversation memory controls", () => {
     change.mockResolvedValueOnce({ ...memory, revision: 4, retrievalEnabled: true });
     const callbacks = mount();
     await screen.findByText("An earlier topic");
-    fireEvent.click(screen.getByLabelText("Allow this conversation in semantic retrieval"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Allow this conversation in semantic retrieval" }));
     await screen.findByRole("button", { name: "Check memory change result" });
     const original = change.mock.calls[0][0];
     expect(original.action).toBe("allow_retrieval");

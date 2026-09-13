@@ -1,23 +1,12 @@
 import { useState } from "react";
-
 import { Modal } from "../../components/Modal";
 import type { ShowToast } from "../../components/Toast";
-import {
-  deleteCards,
-  undoDeletion,
-  type SelectionCard,
-} from "../../ipc/cards";
-import {
-  getErrorMessage,
-} from "../../ipc/common";
+import { deleteCards, undoDeletion, type SelectionCard } from "../../ipc/cards";
+import { getErrorMessage } from "../../ipc/common";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { DialogActions } from "../../ui/overlays/Dialog";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-import ownershipStyles from "./CardBrowserWorkspace.module.css";
-
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
+import styles from "./browserPresentation";
 
 interface DeleteCardsModalProps {
   cards: SelectionCard[];
@@ -26,12 +15,7 @@ interface DeleteCardsModalProps {
   showToast: ShowToast;
 }
 
-export function DeleteCardsModal({
-  cards,
-  onClose,
-  onComplete,
-  showToast,
-}: DeleteCardsModalProps) {
+export function DeleteCardsModal({ cards, onClose, onComplete, showToast }: DeleteCardsModalProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -39,7 +23,6 @@ export function DeleteCardsModal({
     if (cards.length === 0 || isDeleting) return;
     setIsDeleting(true);
     setErrorMessage(null);
-
     try {
       const result = await deleteCards(cards.map((card) => card.noteId));
       let refreshSuffix = "";
@@ -48,11 +31,8 @@ export function DeleteCardsModal({
       } catch (error: unknown) {
         refreshSuffix = ` The current view could not refresh: ${getErrorMessage(error)}`;
       }
-      showToast(
-        refreshSuffix ? "info" : "success",
-        `Deleted ${result.affectedCount} ${
-          result.affectedCount === 1 ? "card" : "cards"
-        }.${refreshSuffix}`,
+      showToast(refreshSuffix ? "info" : "success",
+        `Deleted ${result.affectedCount} ${result.affectedCount === 1 ? "card" : "cards"}.${refreshSuffix}`,
         {
           label: "Undo",
           expiresAt: result.undoExpiresAt,
@@ -76,40 +56,20 @@ export function DeleteCardsModal({
   }
 
   return (
-    <Modal
-      title="Delete selected cards"
+    <Modal title="Delete selected cards"
       description={`${cards.length} ${cards.length === 1 ? "card is" : "cards are"} selected.`}
-      width="small"
-      onClose={() => {
-        if (!isDeleting) onClose();
-      }}
-    >
-      <div className={ownedClassNames(ownedStyleMaps, "delete-cards-form")} aria-busy={isDeleting}>
+      width="small" busy={isDeleting} dismissible={!isDeleting}
+      onClose={() => { if (!isDeleting) onClose(); }}>
+      <div className={styles.deleteCardsForm} aria-busy={isDeleting}>
         <InlineNotice kind="warning">
           This removes the selected cards from their decks. Their schedules, review
           history, tags, and images remain recoverable during the brief Undo window.
         </InlineNotice>
-        {errorMessage ? (
-          <InlineNotice kind="error">{errorMessage}</InlineNotice>
-        ) : null}
+        {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
         <DialogActions>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isDeleting}
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="danger"
-            disabled={isDeleting}
-            onClick={() => void submit()}
-          >
-            {isDeleting
-              ? "Deleting…"
-              : `Delete ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+          <Button variant="secondary" disabled={isDeleting} onClick={onClose}>Cancel</Button>
+          <Button variant="danger" disabled={isDeleting} onClick={() => void submit()}>
+            {isDeleting ? "Deleting…" : `Delete ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
           </Button>
         </DialogActions>
       </div>

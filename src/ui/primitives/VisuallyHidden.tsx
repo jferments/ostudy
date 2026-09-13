@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-import styles from "./VisuallyHidden.module.css";
+import { cn } from "../internal/cn";
 
 interface VisuallyHiddenProps extends HTMLAttributes<HTMLElement> {
   as?: "span" | "div";
@@ -13,7 +13,7 @@ export function VisuallyHidden({
   className = "",
   ...props
 }: VisuallyHiddenProps) {
-  const combinedClassName = `${styles.root} ${className}`.trim();
+  const combinedClassName = cn("tw:sr-only", className);
   return as === "div" ? (
     <div className={combinedClassName} {...props}>
       {children}

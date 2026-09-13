@@ -47,7 +47,9 @@ describe("MetadataDialog and InfoButton", () => {
     fireEvent.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "Operational details" });
     expect(dialog.getAttribute("data-presentation")).toBe("sheet");
-    fireEvent.mouseDown(dialog);
+    const backdrop = document.querySelector('[data-slot="dialog-overlay"]') as HTMLElement;
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

@@ -1,14 +1,17 @@
+import { Checkbox, Disclosure, RadioGroup } from "../../ui/primitives/FormControls";
+import { InlineProgress } from "../../ui/primitives/InlineNotice";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { Panel } from "../../ui/primitives/Panel";
 import { useState, type ReactNode } from "react";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import type { AiProviderKind } from "../../ipc/aiProfiles";
 import { useConfirm } from "../../ui/overlays/overlayContext";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-import aiStyles from "./AiLlmSettings.module.css";
-import layoutStyles from "./AiModelsLayout.module.css";
-import styles from "./Settings.module.css";
+import { Button } from "../../ui/primitives/Button";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { TextField } from "../../ui/primitives/TextField";
 
-const ownedStyleMaps = sharedClassMaps;
+
 
 interface AiLlmSettingsProps {
   controller: AiProfilesController;
@@ -46,29 +49,22 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
   }
 
   return (
-    <div className={layoutStyles.layout}>
+    <div className="tw:grid tw:min-w-0 tw:gap-8">
       {controller.errorMessage ? (
-        <div
-          className={ownedClassNames(
-            ownedStyleMaps,
-            `${styles.fullWidth} inline-alert error-alert`,
-          )}
-        >
-          {controller.errorMessage}
-        </div>
+        <InlineNotice kind="error">{controller.errorMessage}</InlineNotice>
       ) : null}
 
       {defaultBlock}
 
-      <section className={layoutStyles.modelListSection} aria-label="AI providers">
-        <div className={styles.sectionHeading}>
+      <Panel className="tw:min-w-0" aria-label="AI providers">
+        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
           <div>
-            <h2>AI providers</h2>
+            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">AI providers</h2>
             <p>Manage API keys and local or remote provider connections.</p>
           </div>
-          <button
+          <Button
             type="button"
-            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            variant="secondary"
             disabled={controller.mutating || availableProviders.length === 0}
             onClick={() => {
               const preferred =
@@ -78,38 +74,39 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             }}
           >
             Add provider
-          </button>
+          </Button>
         </div>
 
         {controller.loading ? (
-          <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>
-            Loading AI providers…
-          </div>
+          <InlineProgress>Loading AI providers…</InlineProgress>
         ) : null}
 
-        <div className={layoutStyles.profileList}>
+        <div className="tw:grid tw:gap-3 tw:sm:grid-cols-2 tw:xl:grid-cols-3">
           {controller.profiles.map((profile) => (
-            <button
+            <Button
               key={profile.id}
               type="button"
-              className={layoutStyles.profileListItem}
+              variant="ghost"
+              className="tw:h-auto tw:min-h-24 tw:items-start tw:justify-start tw:whitespace-normal tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4 tw:text-left tw:font-normal tw:transition-colors tw:hover:border-primary tw:data-[selected=true]:border-primary tw:data-[selected=true]:bg-accent"
               data-selected={profile.id === controller.selectedProfileId}
               onClick={() => void changeProfile(profile.id)}
             >
-              <strong>{profile.displayName}</strong>
-              <small>{profile.providerLabel}</small>
-              <span className={layoutStyles.statusText} data-status={profile.configurationStatus}>
-                {configurationLabel(profile.configurationStatus)}
+              <span className="tw:grid tw:min-w-0 tw:gap-1">
+                <strong>{profile.displayName}</strong>
+                <small>{profile.providerLabel}</small>
+                <span className="tw:text-caption tw:font-medium tw:text-muted-foreground tw:data-[status=ready]:text-success tw:data-[status=incomplete]:text-warning" data-status={profile.configurationStatus}>
+                  {configurationLabel(profile.configurationStatus)}
+                </span>
               </span>
-            </button>
+            </Button>
           ))}
           {!controller.loading && controller.profiles.length === 0 ? (
-            <p className={styles.emptyCopy}>No AI providers configured.</p>
+            <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">No AI providers configured.</p>
           ) : null}
         </div>
-      </section>
+      </Panel>
 
-      <main className={layoutStyles.detail}>
+      <div className="tw:grid tw:min-w-0 tw:gap-5">
         {controller.draft ? (
           <ProfileSetup
             controller={controller}
@@ -121,12 +118,12 @@ export function AiLlmSettings({ controller, defaultBlock }: AiLlmSettingsProps) 
             onDelete={() => void deleteProfile()}
           />
         ) : (
-          <section className={styles.emptyDetail}>
-            <h2>Add an AI provider</h2>
+          <Panel className="tw:col-span-full">
+            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Add an AI provider</h2>
             <p>Choose a provider to configure a local server or API connection.</p>
-          </section>
+          </Panel>
         )}
-      </main>
+      </div>
     </div>
   );
 }
@@ -171,18 +168,18 @@ function ProfileSetup({
 
   return (
     <>
-      <section className={styles.settingsCard} aria-busy={controller.mutating}>
-        <div className={styles.sectionHeading}>
+      <Panel className="tw:min-w-0" aria-busy={controller.mutating}>
+        <div className="tw:flex tw:flex-wrap tw:items-start tw:justify-between tw:gap-4 tw:[&_h2]:m-0 tw:[&_h2]:text-section tw:[&_h2]:font-semibold tw:[&_p]:mt-2 tw:[&_p]:mb-0 tw:[&_p]:text-label tw:[&_p]:font-normal tw:[&_p]:leading-relaxed tw:[&_p]:text-muted-foreground">
           <div>
-            <h2>{profile ? `Configure ${profile.displayName}` : "Add AI provider"}</h2>
+            <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">{profile ? `Configure ${profile.displayName}` : "Add AI provider"}</h2>
             <p>Configure the provider connection and credential used by one or more AI models.</p>
           </div>
         </div>
 
-        <div className={styles.formGrid}>
-          <label className={styles.stackedField}>
+        <div className="tw:grid tw:min-w-0 tw:gap-5 tw:lg:grid-cols-2">
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
             <span>Provider</span>
-            <select
+            <NativeSelect
               aria-label="Provider"
               value={draft.providerKind}
               disabled={profile !== null || controller.mutating}
@@ -193,13 +190,13 @@ function ProfileSetup({
                   {entry.displayName}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
 
           {provider?.baseUrlEditable ? (
-            <label className={styles.stackedField}>
+            <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
               <span>{isLlama ? "Server URL" : "API URL"}</span>
-              <input
+              <TextField
                 type="url"
                 value={draft.baseUrl}
                 maxLength={2048}
@@ -209,39 +206,37 @@ function ProfileSetup({
           ) : null}
 
           {requiresCredential ? (
-            <label
-              className={ownedClassNames(
-                ownedStyleMaps,
-                `${styles.stackedField} ${provider?.baseUrlEditable ? styles.fullWidth : ""}`,
-              )}
-            >
-              <span>API key</span>
-              <span className={aiStyles.credentialField}>
-                <input
+            <div className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
+              <label htmlFor="provider-credential">API key</label>
+              <span className="tw:flex tw:min-w-0 tw:items-center tw:gap-2">
+                <TextField
+                  id="provider-credential"
                   type={credentialVisible ? "text" : "password"}
                   autoComplete="off"
                   value={controller.credentialDraft}
                   placeholder={hasCredential ? "Saved — enter only to replace" : "Enter API key"}
                   onChange={(event) => controller.setCredentialDraft(event.currentTarget.value)}
                 />
-                <button
+                <Button
                   type="button"
-                  className={aiStyles.credentialVisibility}
+                  variant="ghost"
+                  size="icon"
+                  className="tw:shrink-0"
                   aria-label={credentialVisible ? "Hide API key" : "Show API key"}
                   aria-pressed={credentialVisible}
                   onClick={() => setCredentialVisible((current) => !current)}
                 >
                   <CredentialEye crossed={credentialVisible} />
-                </button>
+                </Button>
               </span>
-            </label>
+            </div>
           ) : null}
         </div>
 
-        <div className={styles.actionRow}>
-          <button
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+          <Button
             type="button"
-            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+            variant="secondary"
             disabled={!canConnect || (!connectionDirty && controller.modelsLoaded)}
             onClick={() => void controller.connectSetup()}
           >
@@ -250,45 +245,45 @@ function ProfileSetup({
               : controller.modelsLoaded && !connectionDirty
                 ? "Connected"
                 : "Connect"}
-          </button>
+          </Button>
           {profile && !connectionDirty ? (
-            <button
+            <Button
               type="button"
-              className={ownedClassNames(ownedStyleMaps, "text-button")}
+              variant="text"
               disabled={controller.refreshingModels || controller.dirty}
               onClick={() => void controller.refreshModels()}
             >
               {controller.refreshingModels ? "Refreshing…" : "Refresh model catalog"}
-            </button>
+            </Button>
           ) : null}
           {canSaveProfile ? (
-            <button
+            <Button
               type="button"
-              className={ownedClassNames(ownedStyleMaps, "primary-button")}
+              variant="primary"
               disabled={controller.mutating}
               onClick={() => void controller.saveProfile()}
             >
               Save provider
-            </button>
+            </Button>
           ) : null}
         </div>
-      </section>
+      </Panel>
 
-      <details className={aiStyles.advancedSettings}>
-        <summary>Advanced settings</summary>
-        <div className={aiStyles.advancedBody}>
-          <label className={styles.stackedField}>
+      <Disclosure title="Advanced settings" className="tw:bg-card">
+        
+        <div className="tw:grid tw:gap-5 tw:pt-3 tw:lg:grid-cols-2">
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
             <span>Profile name</span>
-            <input
+            <TextField
               value={draft.displayName}
               maxLength={100}
               onChange={(event) => controller.updateDraft({ displayName: event.currentTarget.value })}
             />
           </label>
 
-          <label className={styles.stackedField}>
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
             <span>Provider inactivity timeout</span>
-            <select
+            <NativeSelect
               value={draft.requestTimeoutMs}
               onChange={(event) =>
                 controller.updateDraft({ requestTimeoutMs: Number(event.currentTarget.value) })
@@ -298,22 +293,21 @@ function ProfileSetup({
               <option value={60_000}>60 seconds</option>
               <option value={120_000}>2 minutes</option>
               <option value={300_000}>5 minutes</option>
-            </select>
+            </NativeSelect>
           </label>
 
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
+          <label className="tw:flex tw:min-h-11 tw:items-center tw:gap-3 tw:text-label tw:font-normal">
+            <Checkbox
               checked={draft.enabled}
-              onChange={(event) => controller.updateDraft({ enabled: event.currentTarget.checked })}
+              onCheckedChange={(checked) => controller.updateDraft({ enabled: checked })}
             />
             <span>Enable this provider</span>
           </label>
 
           {isLlama ? (
-            <label className={styles.stackedField}>
+            <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
               <span>Server authentication</span>
-              <select
+              <NativeSelect
                 value={draft.authMode}
                 onChange={(event) =>
                   controller.updateDraft({ authMode: event.currentTarget.value as "none" | "bearer" })
@@ -321,17 +315,16 @@ function ProfileSetup({
               >
                 <option value="none">None</option>
                 <option value="bearer">API key</option>
-              </select>
+              </NativeSelect>
             </label>
           ) : null}
 
           {isLlama && requiresInsecureLanOptIn(draft.baseUrl) ? (
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
+            <label className="tw:flex tw:min-h-11 tw:items-center tw:gap-3 tw:text-label tw:font-normal">
+              <Checkbox
                 checked={draft.allowInsecureHttp}
-                onChange={(event) =>
-                  controller.updateDraft({ allowInsecureHttp: event.currentTarget.checked })
+                onCheckedChange={(checked) =>
+                  controller.updateDraft({ allowInsecureHttp: checked })
                 }
               />
               <span>Allow unencrypted LAN connection</span>
@@ -339,70 +332,49 @@ function ProfileSetup({
           ) : null}
 
           {requiresCredential ? (
-            <fieldset className={styles.persistenceOptions}>
-              <legend>API key storage</legend>
-              {profile?.credentialStatus.securePersistenceAvailable !== false ? (
-                <label>
-                  <input
-                    type="radio"
-                    name="credential-storage"
-                    value="secure"
-                    checked={controller.credentialPersistence === "secure"}
-                    onChange={() => controller.setCredentialPersistence("secure")}
-                  />
-                  Save securely
-                </label>
-              ) : null}
-              <label>
-                <input
-                  type="radio"
-                  name="credential-storage"
-                  value="session"
-                  checked={controller.credentialPersistence === "session"}
-                  onChange={() => controller.setCredentialPersistence("session")}
-                />
-                This session only
-              </label>
-            </fieldset>
+            <RadioGroup label="API key storage" name="credential-storage" value={controller.credentialPersistence}
+              options={profile?.credentialStatus.securePersistenceAvailable !== false
+                ? [{ value: "secure", label: "Save securely" }, { value: "session", label: "This session only" }]
+                : [{ value: "session", label: "This session only" }]}
+              onValueChange={controller.setCredentialPersistence} disabled={controller.mutating} />
           ) : null}
 
           {draft.providerKind === "openrouter" ? (
-            <label className={styles.checkboxField}>
-              <input
-                type="checkbox"
+            <label className="tw:flex tw:min-h-11 tw:items-center tw:gap-3 tw:text-label tw:font-normal">
+              <Checkbox
                 checked={draft.requireZeroDataRetention ?? false}
-                onChange={(event) =>
-                  controller.updateDraft({ requireZeroDataRetention: event.currentTarget.checked })
+                onCheckedChange={(checked) =>
+                  controller.updateDraft({ requireZeroDataRetention: checked })
                 }
               />
               <span>Require OpenRouter zero-data-retention routing</span>
             </label>
           ) : null}
 
-          <div className={styles.actionRow}>
+          <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
             {profile && requiresCredential && hasCredential ? (
-              <button
+              <Button
                 type="button"
-                className={ownedClassNames(ownedStyleMaps, "secondary-button")}
+                variant="secondary"
                 disabled={controller.mutating}
                 onClick={() => void controller.clearCredential()}
               >
                 Remove API key
-              </button>
+              </Button>
             ) : null}
             {profile ? (
-              <button
+              <Button
                 type="button"
-                className={ownedClassNames(ownedStyleMaps, "danger-button")}
+                variant="danger"
                 disabled={controller.mutating}
                 onClick={onDelete}
               >
                 Delete provider
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
-      </details>
+      </Disclosure>
     </>
   );
 }
@@ -458,7 +430,7 @@ function configurationLabel(
 
 function CredentialEye({ crossed }: { crossed: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2.4 12s3.5-6 9.6-6 9.6 6 9.6 6-3.5 6-9.6 6-9.6-6-9.6-6Z" />
       <circle cx="12" cy="12" r="2.8" />
       {crossed ? <path d="M4 4 20 20" /> : null}

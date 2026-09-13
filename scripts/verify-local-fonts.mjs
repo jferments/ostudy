@@ -5,6 +5,7 @@ import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { localFontSources } from "./font-sources.mjs";
+import { hasPackagedFontFallback } from "./ui/font-fallback.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const requireInstalled = process.argv.includes("--installed");
@@ -214,16 +215,8 @@ async function verifyPackagedFonts(directory, sourceLicenseNotice) {
     "packaged runtime remote-font reference",
   );
   expectContains(packagedCss, "IBM Plex Sans", "packaged IBM Plex Sans @font-face/default");
-  expectContains(
-    packagedCss,
-    '--ui-font-family: "IBM Plex Sans", var(--ostudy-font-family-system)',
-    "packaged interface missing-face fallback",
-  );
-  expectContains(
-    packagedCss,
-    '--card-font-family: "IBM Plex Sans", var(--ostudy-font-family-system)',
-    "packaged card missing-face fallback",
-  );
+  expectPackagedFontFallback(packagedCss, "--ui-font-family", "interface");
+  expectPackagedFontFallback(packagedCss, "--card-font-family", "card");
 
   for (const font of localFontSources) {
     for (const face of font.faces) {
@@ -294,6 +287,12 @@ async function read(relativePath) {
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectPackagedFontFallback(source, property, label) {
+  if (!hasPackagedFontFallback(source, property)) {
+    failures.push(`Missing packaged ${label} missing-face fallback: ${property}`);
+  }
 }
 
 function expectDoesNotMatch(source, pattern, label) {

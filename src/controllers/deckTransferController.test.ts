@@ -50,6 +50,18 @@ describe("DeckTransferController", () => {
     await expect(transfer.importFromFile()).resolves.toBeNull();
   });
 
+  it("rejects unsupported selected data without invoking either importer", async () => {
+    const { controller, dependencies, transfer } = harness();
+    vi.mocked(dependencies.selectImport).mockResolvedValue({
+      id: "unsupported", purpose: "study_content", detectedKind: "pdf",
+      displayName: "notes.pdf", mediaType: "application/pdf", byteSize: 4,
+      sha256: "f".repeat(64), expiresAt: 100,
+    });
+    await expect(transfer.importFromFile()).rejects.toThrow("Select an ostudy deck");
+    expect(controller.importStudydeck).not.toHaveBeenCalled();
+    expect(controller.importGenerated).not.toHaveBeenCalled();
+  });
+
   it("reuses the same idempotency key when a studydeck import is retried after an unclassified failure", async () => {
     const { controller, dependencies, transfer } = harness();
     const selected = {

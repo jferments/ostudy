@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const [viewCss, folderCss, deckCss, feedbackCss, rootSource, deckSource, folderSource, reorderSource, tauriConfigText] = await Promise.all([
+const [recipes, buttonSource, viewCss, folderCss, deckCss, feedbackCss, rootSource, deckSource, folderSource, reorderSource, tauriConfigText] = await Promise.all([
+  readFile(join(root, "src/screens/flashcards/deck-library/libraryPresentation.ts"), "utf8"),
+  readFile(join(root, "src/ui/vendor/shadcn/button.tsx"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/DeckLibraryView.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/FolderSection.module.css"), "utf8"),
   readFile(join(root, "src/screens/flashcards/deck-library/DeckItem.module.css"), "utf8"),
@@ -20,73 +22,18 @@ const css = `${viewCss}\n${folderCss}\n${deckCss}\n${feedbackCss}`;
 const movementSource = `${deckSource}\n${folderSource}\n${reorderSource}`;
 const failures = [];
 
-expectRule(
-  css,
-  ".root",
-  ["container-type: inline-size", "container-name: deck-library"],
-  "deck-library container",
-);
-expectRule(css, ".toolbar", ["display: flex", "justify-content: flex-end"], "deck toolbar");
-expectRule(
-  css,
-  ".toolbarActions",
-  ["display: flex", "justify-content: flex-end"],
-  "deck toolbar action group",
-);
-expectRule(
-  css,
-  ".toolbarActions > button",
-  ["flex: 0 0 auto", "white-space: nowrap"],
-  "stable action button sizing",
-);
-expectRule(
-  css,
-  ".importAction svg",
-  ["stroke-width: 2.15"],
-  "prominent import icon",
-);
-expectContains(
-  rootSource,
-  'icon="folder-open"\n            iconSize={24}',
-  "24px contextual import icon",
-);
-expectRule(
-  css,
-  ".sectionActions",
-  ["display: flex", "justify-content: flex-end"],
-  "folder section action group",
-);
-expectContains(
-  css,
-  "@container deck-library (max-width: 620px)",
-  "content-width compact breakpoint",
-);
-expectNestedRule(
-  css,
-  "@container deck-library (max-width: 620px)",
-  ".toolbarActions",
-  ["width: auto", "justify-content: flex-end"],
-  "compact intrinsic toolbar actions",
-);
-expectNestedRule(
-  css,
-  "@container deck-library (max-width: 620px)",
-  ".toolbarActions > button",
-  ["flex: 0 0 auto"],
-  "compact intrinsic action button sizing",
-);
-expectNestedRule(
-  css,
-  "@container deck-library (max-width: 620px)",
-  ".sectionActions",
-  ["width: 100%", "justify-content: stretch"],
-  "compact folder controls",
-);
-expectContains(
-  css,
-  ':global(:root[data-input-mode="coarse"]) .keyboardReorder',
-  "coarse-pointer keyboard reorder sizing",
-);
+// Verify the live Tailwind recipes; interaction-specific CSS still owns drag feedback.
+expectRecipe("root", ["tw:@container/deck-library"], "deck-library container");
+expectRecipe("toolbar", ["tw:flex", "tw:justify-end"], "deck toolbar");
+expectRecipe("toolbarActions", ["tw:flex", "tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"], "intrinsic toolbar actions at every width");
+expectRecipe("importAction", ["tw:[&_svg]:stroke-[2.15]"], "prominent import icon");
+expectContains(rootSource, 'icon="folder-open"\n            iconSize={24}', "24px contextual import icon");
+expectRecipe("sectionActions", ["tw:flex", "tw:justify-end", "tw:@max-[620px]/deck-library:w-full", "tw:@max-[620px]/deck-library:justify-stretch"], "content-width compact folder controls");
+expectContains(rootSource, 'libraryPresentation as styles', "live library recipe consumer");
+expectContains(folderSource, '<IconButton', "shared folder reorder control");
+expectContains(folderSource, 'icon="move"', "keyboard reorder affordance");
+expectContains(buttonSource, "tw:coarse:min-h-touch", "coarse-pointer minimum action height");
+expectContains(buttonSource, "tw:min-w-touch", "icon minimum action width");
 expectContains(deckSource, 'data-library-row={archived ? undefined : "deck"}', "active deck pointer row identity");
 expectContains(folderSource, 'data-library-folder-surface="true"', "complete folder pointer destination");
 expectContains(deckSource, "reorder.beginPointerDrag", "deck row pointer session initiation");
@@ -112,12 +59,7 @@ for (const nativeDragFragment of [
     `native HTML movement fragment ${nativeDragFragment}`,
   );
 }
-expectRuleAbsent(
-  css,
-  ".keyboardReorder",
-  "border-inline-end",
-  "removed move-handle divider",
-);
+
 
 const tauriConfig = JSON.parse(tauriConfigText);
 const mainWindow = tauriConfig?.app?.windows?.find((window) => window?.label === "main");
@@ -142,57 +84,10 @@ function expectAbsent(source, forbidden, label) {
   if (source.includes(forbidden)) failures.push(`Unexpected ${label}: ${forbidden}`);
 }
 
-function expectRule(source, selector, declarations, label) {
-  const body = ruleBody(source, selector);
-  if (body === null) {
-    failures.push(`Missing ${label}: ${selector}`);
-    return;
-  }
-  for (const declaration of declarations) {
-    if (!body.includes(declaration)) {
-      failures.push(`Missing ${label} declaration in ${selector}: ${declaration}`);
-    }
-  }
-}
-
-function expectRuleAbsent(source, selector, declaration, label) {
-  const body = ruleBody(source, selector);
-  if (body?.includes(declaration)) {
-    failures.push(`Unexpected ${label} declaration in ${selector}: ${declaration}`);
-  }
-}
-
-function expectNestedRule(source, containerHeader, selector, declarations, label) {
-  const containerStart = source.indexOf(containerHeader);
-  if (containerStart < 0) {
-    failures.push(`Missing ${label} container: ${containerHeader}`);
-    return;
-  }
-  const containerBody = balancedBlock(source, source.indexOf("{", containerStart));
-  if (containerBody === null) {
-    failures.push(`Malformed ${label} container: ${containerHeader}`);
-    return;
-  }
-  expectRule(containerBody, selector, declarations, label);
-}
-
-function ruleBody(source, selector) {
-  const selectorStart = source.indexOf(selector);
-  if (selectorStart < 0) return null;
-  const openingBrace = source.indexOf("{", selectorStart + selector.length);
-  if (openingBrace < 0) return null;
-  return balancedBlock(source, openingBrace);
-}
-
-function balancedBlock(source, openingBrace) {
-  if (openingBrace < 0 || source[openingBrace] !== "{") return null;
-  let depth = 0;
-  for (let index = openingBrace; index < source.length; index += 1) {
-    if (source[index] === "{") depth += 1;
-    if (source[index] === "}") {
-      depth -= 1;
-      if (depth === 0) return source.slice(openingBrace + 1, index);
-    }
-  }
-  return null;
+function expectRecipe(name, utilities, label) {
+  const marker = `${name}: "`;
+  const start = recipes.indexOf(marker);
+  if (start < 0) { failures.push(`Missing ${label} recipe ${name}`); return; }
+  const body = recipes.slice(start + marker.length).split('"', 1)[0].split(/\s+/u);
+  for (const utility of utilities) if (!body.includes(utility)) failures.push(`Missing ${label}: ${utility}`);
 }

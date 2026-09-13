@@ -23,6 +23,8 @@ Do not use Codex, `dev-workspace-v1`, the orchestrator, observer, exact-head MCP
 
 On resumption, read the actual PR, remote head, unresolved review state, and exact-head runs before editing. Do not reconstruct current task state from memory. A snapshot is progress metadata, not a branch lock, job scheduler, or source authority.
 
+After that read, follow the [bounded repair loop and publication checkpoint](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md#bounded-repair-loop-and-publication-checkpoint). Keep the known parent/tree and a small auxiliary path/mode/blob manifest. Fix the concrete failed boundary, complete publication, verify the ref, and qualify that SHA. Truncated output or pending CI is not a reason to repeat the project inventory or connector discovery. Created blobs alone are not published code.
+
 ## Authority and required reading
 
 Within repository policy, the current human request and explicit acceptance criteria take precedence over older plans. Accepted ADRs describe durable decisions; maintained architecture describes current ownership; development and agent guides describe execution. Historical documents are evidence, not active instructions. Report a genuine invariant conflict rather than silently reinterpreting it.
@@ -45,7 +47,7 @@ Read [the documentation index](docs/README.md), [agent index](docs/agents/README
 - Controllers coordinate reads, mutations, navigation, and reconciliation. Some feature-local controllers are colocated with their workspace; ownership matters more than forcing every hook into one directory.
 - Shared UI under `src/ui/` must not import IPC, feature controllers, or Tauri APIs. Operating-system capability adapters live under `src/platform/` and native platform ports. Do not fork product workflows by user-agent or operating-system name.
 - Use shared Dialog, Sheet, confirmation, Menu, and overflow primitives. Do not create ad-hoc backdrops, focus traps, ordinary `window.confirm()` calls, or another overlay stack.
-- `src/main.tsx` has one global foundation CSS entry point. Feature/component styles use owned CSS Modules and semantic tokens, not new global or stage-specific stylesheets.
+- `src/main.tsx` has one global foundation CSS entry point. Migrated presentation uses complete `tw:` Tailwind utilities and oStudy semantic tokens; unmigrated CSS Modules and specialized content/platform CSS retain their explicit owners. Base UI stays under `src/ui/vendor/shadcn`; features import oStudy facades. Do not add a second reset, palette, theme provider, global stage stylesheet or interpolated utility name. Follow the [current migration boundary](docs/development/ui-overhaul-current-implementation.md).
 - Preserve keyboard, touch/coarse-pointer, reduced-motion, theme, focus, safe-area, and compact-screen behavior. A smaller visual control is not permission to shrink its interactive target or clip its label.
 - Optional visual/audio/haptic effects consume semantic feedback; durable operations do not depend on effects succeeding.
 - Independent reads use independent latest-request lanes. Obsolete results and errors must not overwrite newer state. Do not apply stale-read cancellation semantics to durable mutations.
@@ -62,7 +64,7 @@ Read [the documentation index](docs/README.md), [agent index](docs/agents/README
 
 ## Current UI contracts to preserve
 
-Flashcards exposes **Decks** and **Search/Filter**, not standalone Templates or Import/Export tabs. Card templates are a normal Settings tab. Deck import/export is contextual. Compact navigation exposes Flashcards, Study Guides, Documents, and Analytics directly, with Settings in the upper-right gear. Practice is an internal contextual workflow, not a standing navigation destination.
+Flashcards exposes **Decks** and **Search/Filter**, not standalone Templates or Import/Export tabs. Card templates are a normal Settings tab. Deck import/export is contextual. Compact navigation exposes Flashcards, Study Guides, Documents, Tutor, and Analytics directly, with Settings in the upper-right gear. Practice is an internal contextual workflow, not a standing navigation destination.
 
 A truly empty deck library has one useful create-deck state, not empty folder/unsorted tiles or meaningless selection/collapse controls. Folders use a `+` action; collapse/expand and select/deselect controls appear only for meaningful scopes. Archived-only libraries are not empty libraries. Study Guides navigation returns to its library rather than trapping the learner in an open viewer.
 

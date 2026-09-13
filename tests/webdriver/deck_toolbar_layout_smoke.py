@@ -197,7 +197,7 @@ def create_first_deck(session_id: str) -> None:
     webdriver.set_input_text(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deck_name,
         deadline,
     )

@@ -481,6 +481,15 @@ def click(session_id: str, element_id: str) -> None:
 
 
 def clear(session_id: str, element_id: str) -> None:
+    """Reach the editable field through the same hit-tested focus path as a user.
+
+    Finding a contenteditable in the DOM does not make it interactable inside a
+    scrolled workspace. In particular, WebKit may reject Clear before scrolling
+    a lower editor into view. Our existing click helper scrolls, checks a stable
+    unobscured hit target and verifies the actual DOM click before clearing.
+    Never bypass a hidden/covered control with a JavaScript value assignment.
+    """
+    click(session_id, element_id)
     request("POST", f"/session/{session_id}/element/{element_id}/clear", {})
 
 
@@ -766,7 +775,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     set_input_text(
         session_id,
         "css selector",
-        "dialog input[data-autofocus='true']",
+        "[role='dialog'] input[data-autofocus='true']",
         deck_name,
         deadline,
     )
@@ -825,7 +834,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     selection = find_element(
         session_id,
         "xpath",
-        f"//input[@aria-label={json.dumps(f'Select {deck_name}')}]",
+        f"//*[@role='checkbox' and @aria-label={json.dumps(f'Select {deck_name}')}]",
         deadline,
     )
     click(session_id, selection)
@@ -859,7 +868,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
                     {
                         "script": """
                             const content = document.querySelector(
-                              "dialog [data-layout-mode]",
+                              "[role='dialog'] [data-layout-mode]",
                             );
                             return content ? {
                               mode: content.dataset.layoutMode,
@@ -890,7 +899,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     close_setup = find_element(
         session_id,
         "css selector",
-        "dialog button[aria-label='Close dialog']",
+        "[role='dialog'] button[aria-label='Close dialog']",
         deadline,
     )
     click(session_id, close_setup)
@@ -933,7 +942,7 @@ def create_and_review_card(session_id: str) -> tuple[str, str]:
     deck_row = find_element(
         session_id,
         "xpath",
-        f"//main//article[.//strong[normalize-space(.)={json.dumps(deck_name)}]]",
+        f"//main//*[@role='button' and @aria-label={json.dumps(f'Open {deck_name}')}]",
         deadline,
     )
     click(session_id, deck_row)

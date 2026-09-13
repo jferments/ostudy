@@ -1,3 +1,5 @@
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { Panel } from "../../ui/primitives/Panel";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
@@ -9,13 +11,8 @@ import {
   type DiagnosticConfiguration,
   type DiagnosticLevel,
 } from "../../ipc/diagnostics";
-import styles from "./Settings.module.css";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
-import { ownedClassNames, sharedClassMaps } from "../../ui/styles/classOwnership";
-
-const ownedStyleMaps = sharedClassMaps;
-
 
 type DiagnosticTarget =
   | "all"
@@ -114,127 +111,56 @@ export function DiagnosticsSettings({ showToast }: { showToast: ShowToast }) {
   }
 
   return (
-    <div className={styles.panelGrid} aria-busy={busy}>
-      {errorMessage ? (
-        <InlineNotice kind="error" className={styles.fullWidth}>{errorMessage}</InlineNotice>
-      ) : null}
-
-      <section className={styles.settingsCard}>
-        <div className={styles.sectionHeading}>
-          <div>
-            <h2>Temporary diagnostic session</h2>
-            <p>
-              Increase detail for one subsystem while reproducing a problem. The previous filter is
-              restored automatically when the session expires.
-            </p>
-          </div>
-        </div>
-
-        <div className={styles.settingControl}>
-          <label>
-            Subsystem
-            <select
-              value={target}
-              disabled={busy}
-              onChange={(event) => setTarget(event.currentTarget.value as DiagnosticTarget)}
-            >
-              {TARGET_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+    <div className="tw:grid tw:min-w-0 tw:gap-6 tw:xl:grid-cols-2" aria-busy={busy}>
+      {errorMessage ? <InlineNotice kind="error" className="tw:col-span-full">{errorMessage}</InlineNotice> : null}
+      <Panel title="Temporary diagnostic session" description="Increase detail for one subsystem while reproducing a problem. The previous filter is restored automatically when the session expires.">
+        <div className="tw:grid tw:gap-5 tw:[&>label]:grid tw:[&>label]:gap-2 tw:[&>label]:text-label">
+          <label>Subsystem
+            <NativeSelect value={target} disabled={busy} onChange={(event) => {
+              const selected = TARGET_OPTIONS.find((option) => option.value === event.currentTarget.value);
+              if (selected) setTarget(selected.value);
+            }}>{TARGET_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</NativeSelect>
           </label>
-          <label>
-            Detail level
-            <select
-              value={level}
-              disabled={busy}
-              onChange={(event) =>
-                setLevel(event.currentTarget.value as Extract<DiagnosticLevel, "debug" | "trace">)
-              }
-            >
+          <label>Detail level
+            <NativeSelect value={level} disabled={busy} onChange={(event) => {
+              const selected = event.currentTarget.value;
+              if (selected === "debug" || selected === "trace") setLevel(selected);
+            }}>
               <option value="debug">Debug — decisions, counts, and durations</option>
               <option value="trace">Trace — high-detail subsystem internals</option>
-            </select>
+            </NativeSelect>
           </label>
-          <label>
-            Automatic expiry
-            <select
-              value={durationSeconds}
-              disabled={busy}
-              onChange={(event) => setDurationSeconds(Number(event.currentTarget.value))}
-            >
-              <option value={5 * 60}>5 minutes</option>
-              <option value={15 * 60}>15 minutes</option>
-              <option value={30 * 60}>30 minutes</option>
-              <option value={60 * 60}>1 hour</option>
-            </select>
+          <label>Automatic expiry
+            <NativeSelect value={durationSeconds} disabled={busy} onChange={(event) => setDurationSeconds(Number(event.currentTarget.value))}>
+              <option value={5 * 60}>5 minutes</option><option value={15 * 60}>15 minutes</option>
+              <option value={30 * 60}>30 minutes</option><option value={60 * 60}>1 hour</option>
+            </NativeSelect>
           </label>
         </div>
-
-        <p className={styles.note}>
-          Filter preview: <code>{proposedFilter}</code>
-        </p>
-        <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={busy}
-            onClick={() => void applyTemporaryFilter()}
-          >
-            Enable temporary diagnostics
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => void restoreNormalFilter()}
-          >
-            Restore normal diagnostics
-          </Button>
+        <p className="tw:m-0 tw:text-label tw:text-muted-foreground">Filter preview: <code>{proposedFilter}</code></p>
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
+          <Button variant="primary" disabled={busy} onClick={() => void applyTemporaryFilter()}>Enable temporary diagnostics</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => void restoreNormalFilter()}>Restore normal diagnostics</Button>
         </div>
-      </section>
-
-      <section className={styles.settingsCard}>
-        <div className={styles.sectionHeading}>
-          <div>
-            <h2>Current diagnostic state</h2>
-            <p>Diagnostics stay on this device and use bounded rotating files.</p>
-          </div>
-        </div>
-        <dl>
-          <dt>Active filter</dt>
-          <dd>
-            <code>{configuration?.filter ?? "Loading…"}</code>
-          </dd>
-          <dt>Current log</dt>
-          <dd>{configuration?.logPath ?? "Unavailable until application logging initializes"}</dd>
-          <dt>Maximum file size</dt>
-          <dd>{configuration ? formatBytes(configuration.maximumFileBytes) : "Loading…"}</dd>
-          <dt>Dropped queued events</dt>
-          <dd>{configuration?.droppedEvents ?? 0}</dd>
+      </Panel>
+      <Panel title="Current diagnostic state" description="Diagnostics stay on this device and use bounded rotating files.">
+        <dl className="tw:m-0 tw:grid tw:min-w-0 tw:gap-2 tw:[&>dt]:text-caption tw:[&>dt]:text-muted-foreground tw:[&>dd]:m-0 tw:[&>dd]:mb-3 tw:[&>dd]:break-all tw:[&>dd]:text-label">
+          <dt>Active filter</dt><dd><code>{configuration?.filter ?? "Loading…"}</code></dd>
+          <dt>Current log</dt><dd>{configuration?.logPath ?? "Unavailable until application logging initializes"}</dd>
+          <dt>Maximum file size</dt><dd>{configuration ? formatBytes(configuration.maximumFileBytes) : "Loading…"}</dd>
+          <dt>Dropped queued events</dt><dd>{configuration?.droppedEvents ?? 0}</dd>
         </dl>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={busy || configuration === null}
-          onClick={() => void flushNow()}
-        >
-          Flush diagnostic log
-        </Button>
-      </section>
-
-      <section className={styles.fullWidthCard}>
-        <h2>Privacy and storage limits</h2>
-        <p className={styles.securityNote}>
+        <Button variant="secondary" disabled={busy || configuration === null} onClick={() => void flushNow()}>Flush diagnostic log</Button>
+      </Panel>
+      <Panel className="tw:col-span-full" title="Privacy and storage limits">
+        <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground">
           ostudy never uploads diagnostics automatically. API credentials, authorization headers,
           prompts, model responses, document or OCR text, flashcard content, SQL parameters, and QR
           payloads are prohibited diagnostic fields and are centrally redacted. The writer keeps only
           the current and previous bounded log files; logging is never allowed to block database or
           study operations.
         </p>
-      </section>
+      </Panel>
     </div>
   );
 }

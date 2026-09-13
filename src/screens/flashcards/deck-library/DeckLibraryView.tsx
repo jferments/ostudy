@@ -1,3 +1,4 @@
+import listGeometry from "./DeckList.module.css";
 import { memo, type RefObject } from "react";
 
 import type { DeckSummary } from "../../../ipc/decks";
@@ -7,8 +8,10 @@ import { Button } from "../../../ui/primitives/Button";
 import { ArchivedDecksSection } from "./ArchivedDecksSection";
 import type { DeckLibraryController } from "./useDeckLibraryController";
 import { DeckItem } from "./DeckItem";
-import listStyles from "./DeckList.module.css";
-import styles from "./DeckLibraryView.module.css";
+import dragStyles from "./DeckLibraryView.module.css";
+import { libraryPresentation as styles } from "./libraryPresentation";
+import { EmptyState } from "../../../ui/primitives/EmptyState";
+import { cn } from "../../../ui/internal/cn";
 import { FolderSection } from "./FolderSection";
 import type { DeckLibraryReorderAdapter } from "./useDeckLibraryReorder";
 import { UNSORTED_DATA_VALUE } from "./useDeckLibraryReorder";
@@ -40,21 +43,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
   if (!hasAnyDecks) {
     return (
       <div ref={libraryRef} className={styles.library} data-deck-library-pointer-surface="true">
-        <section className={styles.emptyLibrary} aria-labelledby="empty-deck-library-heading">
-          <span className={styles.emptyLibraryIcon} aria-hidden="true">
-            <Icon name="cards" size={30} />
-          </span>
-          <div className={styles.emptyLibraryCopy}>
-            <h2 id="empty-deck-library-heading">No decks have been created yet.</h2>
-            <p>
-              Create a new deck of flashcards here, or use Import deck from file above to add an
-              existing flashcard set.
-            </p>
-          </div>
-          <Button variant="primary" onClick={controller.openDeckCreator}>
-            <Icon name="plus" size={18} /> Create a new deck
-          </Button>
-        </section>
+        <EmptyState title="No decks have been created yet." icon={<Icon name="cards" size={30} />} description="Create a new deck of flashcards here, or use Import deck from file above to add an existing flashcard set." actions={<Button variant="primary" onClick={controller.openDeckCreator}><Icon name="plus" size={18} /> Create a new deck</Button>} />
       </div>
     );
   }
@@ -145,7 +134,7 @@ export const DeckLibraryView = memo(function DeckLibraryView({
 
       {snapshot.unsortedDecks.length > 0 ? (
         <section
-          className={styles.unsortedArea}
+          className={cn(styles.folderArea, dragStyles.unsortedArea)}
           aria-labelledby="unsorted-heading"
           data-library-folder-surface="true"
           data-geometry-key="destination:unsorted"
@@ -157,12 +146,12 @@ export const DeckLibraryView = memo(function DeckLibraryView({
             <div>
               <h2 id="unsorted-heading">Unsorted decks</h2>
               <p>
-                {snapshot.unsortedDecks.length}{" "}
+                {snapshot.unsortedDecks.length} {" "}
                 {snapshot.unsortedDecks.length === 1 ? "deck" : "decks"}
               </p>
             </div>
           </div>
-          <div className={listStyles.list} data-library-deck-list="true">
+          <div className={listGeometry.list} data-library-deck-list="true">
             {snapshot.unsortedDecks.map((deck, index) => (
               <UnsortedDeckItem
                 key={deck.id}

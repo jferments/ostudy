@@ -1,137 +1,64 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { LayoutModeProvider } from "../layout/LayoutModeProvider";
 import { OverlayProvider } from "./OverlayProvider";
 import { OverflowMenu } from "./OverflowMenu";
-
 const originalMatchMedia = window.matchMedia;
-
-afterEach(() => {
-  window.matchMedia = originalMatchMedia;
-  delete document.documentElement.dataset.theme;
-});
-
-function setLayout(mode: "wide" | "medium" | "compact") {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches:
-      query === "(max-width: 760px)"
-        ? mode === "compact"
-        : query === "(max-width: 1180px)"
-          ? mode !== "wide"
-          : false,
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
-}
-
-function renderMenu(mode: "wide" | "medium" | "compact" = "wide") {
-  setLayout(mode);
+afterEach(() => { window.matchMedia = originalMatchMedia; delete document.documentElement.dataset.theme; });
+function renderMenu(compact = false) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({ matches: compact && (query === "(max-width: 760px)" || query === "(max-width: 1180px)"), media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
   const onFirst = vi.fn();
-  const onDelete = vi.fn();
-  render(
-    <LayoutModeProvider>
-      <OverlayProvider>
-        <OverflowMenu
-          label="Card actions"
-          items={[
-            { id: "first", label: "First", onSelect: onFirst },
-            { id: "disabled", label: "Disabled", disabled: true, onSelect: vi.fn() },
-            { id: "last", label: "Last", onSelect: vi.fn() },
-            { id: "delete", label: "Delete", destructive: true, onSelect: onDelete },
-          ]}
-        />
-      </OverlayProvider>
-    </LayoutModeProvider>,
-  );
-  return { onDelete, onFirst };
+  render(<LayoutModeProvider><OverlayProvider><OverflowMenu label="Card actions" items={[
+    { id: "first", label: "First", onSelect: onFirst }, { id: "disabled", label: "Disabled", disabled: true, onSelect: vi.fn() }, { id: "last", label: "Last", onSelect: vi.fn() }, { id: "delete", label: "Delete", destructive: true, onSelect: vi.fn() },
+  ]} /></OverlayProvider></LayoutModeProvider>);
+  return onFirst;
 }
-
 describe("OverflowMenu", () => {
-  it("uses roving focus, skips disabled items, activates with Space, and restores on Escape", async () => {
-    const { onFirst } = renderMenu();
-    const trigger = screen.getByRole("button", { name: "Card actions" });
-    trigger.focus();
-    fireEvent.click(trigger);
+  it("uses library roving focus, makes disabled items discoverable but inactive, and restores the trigger", async () => {
+    const onFirst = renderMenu(); const trigger = screen.getByRole("button", { name: "Card actions" });
+    trigger.focus(); fireEvent.click(trigger);
     const menu = await screen.findByRole("menu", { name: "Card actions" });
     const first = within(menu).getByRole("menuitem", { name: "First" });
     const last = within(menu).getByRole("menuitem", { name: "Last" });
     await waitFor(() => expect(document.activeElement).toBe(first));
-    expect(first.getAttribute("tabindex")).toBe("0");
-
-    fireEvent.keyDown(menu, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(last);
-    expect(
-      (within(menu).getByRole("menuitem", { name: "Disabled" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    fireEvent.keyDown(menu, { key: "Home" });
-    fireEvent.keyDown(menu, { key: " " });
-    expect(onFirst).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("menu")).toBeNull();
-
-    fireEvent.click(trigger);
-    fireEvent.keyDown(await screen.findByRole("menu"), { key: "Escape" });
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    const disabled = within(menu).getByRole("menuitem", { name: "Disabled" });
+    await waitFor(() => expect(document.activeElement).toBe(disabled));
+    fireEvent.click(disabled);
+    expect(screen.getByRole("menu")).toBe(menu);
+    expect(onFirst).not.toHaveBeenCalled();
+    fireEvent.keyDown(disabled, { key: "ArrowDown" });
+    await waitFor(() => expect(document.activeElement).toBe(last));
+    expect(within(menu).getByRole("menuitem", { name: "Disabled" }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.keyDown(last, { key: "Home" }); await waitFor(() => expect(document.activeElement).toBe(first));
+    fireEvent.keyDown(first, { key: " " }); fireEvent.keyUp(first, { key: " " });
+    expect(onFirst).toHaveBeenCalledOnce(); await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.click(trigger); fireEvent.keyDown(await screen.findByRole("menu"), { key: "Escape" });
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
-
-  it("dismisses on an outside pointer and keeps destructive actions in a separated final group", async () => {
-    renderMenu();
-    const trigger = screen.getByRole("button", { name: "Card actions" });
-    fireEvent.click(trigger);
+  it("dismisses outside and separates destructive actions", async () => {
+    renderMenu(); const trigger = screen.getByRole("button", { name: "Card actions" }); trigger.focus(); fireEvent.click(trigger);
     const menu = await screen.findByRole("menu");
-    const separator = within(menu).getByRole("separator");
-    expect(separator.nextElementSibling?.textContent).toBe("Delete");
-
-    fireEvent.pointerDown(document.body);
+    expect(within(menu).getByRole("separator").nextElementSibling?.textContent).toBe("Delete");
+    fireEvent.mouseDown(document.body); fireEvent.click(document.body);
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    expect(document.activeElement).toBe(trigger);
   });
-
-  it("renders a single command directly instead of creating a one-item ellipsis menu", () => {
-    setLayout("wide");
-    const onSelect = vi.fn();
-    render(
-      <LayoutModeProvider>
-        <OverlayProvider>
-          <OverflowMenu
-            label="Ordering actions"
-            items={[{ id: "observe", label: "Observe", onSelect }]}
-          />
-        </OverlayProvider>
-      </LayoutModeProvider>,
-    );
-
+  it("renders a single command directly", () => {
+    const onSelect = vi.fn(); render(<OverflowMenu label="Ordering actions" items={[{ id: "observe", label: "Observe", onSelect }]} />);
     expect(screen.queryByRole("button", { name: "Ordering actions" })).toBeNull();
-    expect(screen.queryByRole("menu")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Observe" }));
-    expect(onSelect).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Observe" })); expect(onSelect).toHaveBeenCalledOnce(); expect(screen.queryByRole("menu")).toBeNull();
   });
-
-  it("uses the shared compact Sheet lifecycle", async () => {
-    renderMenu("compact");
-    const trigger = screen.getByRole("button", { name: "Card actions" });
-    fireEvent.click(trigger);
+  it("uses the shared compact Sheet lifecycle and touch actions", async () => {
+    renderMenu(true); const trigger = screen.getByRole("button", { name: "Card actions" }); trigger.focus(); fireEvent.click(trigger);
     const dialog = await screen.findByRole("dialog", { name: "Card actions" });
     expect(dialog.getAttribute("data-presentation")).toBe("sheet");
-    expect(within(dialog).getByRole("menu", { name: "Card actions" })).toBeTruthy();
-    fireEvent.keyDown(dialog, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(document.activeElement).toBe(trigger);
+    expect(within(dialog).getByRole("button", { name: "First" })).toBeTruthy();
+    expect((within(dialog).getByRole("button", { name: "Disabled" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(dialog, { key: "Escape" }); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
-
-  it.each(["light", "dark", "console", "synthwave"])(
-    "keeps destructive menu semantics in the %s theme",
-    (theme) => {
-      document.documentElement.dataset.theme = theme;
-      renderMenu();
-      fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
-      expect(screen.getByRole("menuitem", { name: "Delete" }).className).toBeTruthy();
-    },
-  );
+  it.each(["light", "dark", "console", "synthwave"])("keeps destructive actions in %s", async (theme) => {
+    document.documentElement.dataset.theme = theme; renderMenu(); fireEvent.click(screen.getByRole("button", { name: "Card actions" }));
+    expect((await screen.findByRole("menuitem", { name: "Delete" })).className).toContain("tw:text-destructive");
+  });
 });

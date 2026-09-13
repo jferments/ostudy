@@ -24,10 +24,7 @@ vi.mock("../../ui/primitives/Button", () => ({
     children: ReactNode; onClick?: () => void; disabled?: boolean;
   }) => <button type="button" onClick={onClick} disabled={disabled}>{children}</button>,
 }));
-vi.mock("../../ui/primitives/InlineNotice", () => ({
-  InlineNotice: ({ children }: { children: ReactNode }) => <div role="alert">{children}</div>,
-}));
-
+// Use the real notice renderer: success is status, not the error-only alert role.
 const outcome = {
   deckId: "a".repeat(32), committedDeck: null, message: "Imported Examples with 7 cards.",
   ankiReport: {
@@ -56,18 +53,10 @@ describe("Anki import completion", () => {
     mocks.importFromFile.mockImplementationOnce(
       (onProgress?: (progress: OperationProgress) => void) => {
         onProgress?.({
-          schemaVersion: 1,
-          operationId: "d".repeat(32),
-          operationKind: "anki_import",
-          phase: "converting_cards",
-          processed: 250,
-          total: 1000,
-          succeeded: 245,
-          failed: 5,
+          schemaVersion: 1, operationId: "d".repeat(32), operationKind: "anki_import",
+          phase: "converting_cards", processed: 250, total: 1000, succeeded: 245, failed: 5,
         });
-        return new Promise<typeof outcome>((resolve) => {
-          resolveImport = resolve;
-        });
+        return new Promise<typeof outcome>((resolve) => { resolveImport = resolve; });
       },
     );
     mount();
@@ -81,18 +70,31 @@ describe("Anki import completion", () => {
     expect(await screen.findByRole("dialog", { name: "Anki import complete" })).not.toBeNull();
   });
 
+  it("announces package preparation without fabricating a zero-of-one progress count", async () => {
+    let resolveImport!: (value: typeof outcome) => void;
+    mocks.importFromFile.mockImplementationOnce((onProgress?: (progress: OperationProgress) => void) => {
+      onProgress?.({ schemaVersion: 1, operationId: "d".repeat(32), operationKind: "anki_import",
+        phase: "reading_package", processed: null, total: null, succeeded: 0, failed: 0 });
+      return new Promise<typeof outcome>((resolve) => { resolveImport = resolve; });
+    });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
+    expect((await screen.findByRole("status")).textContent).toContain("Reading Anki package");
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    resolveImport(outcome);
+    await screen.findByRole("dialog", { name: "Anki import complete" });
+  });
+
   it("keeps the post-commit report visible until the user opens the imported deck", async () => {
     const { close, open } = mount();
     fireEvent.click(screen.getByRole("button", { name: /Choose file/ }));
     expect(await screen.findByRole("dialog", { name: "Anki import complete" })).not.toBeNull();
     expect(screen.getByLabelText("Anki import report").textContent).toContain("7 of 8 Anki cards imported");
-    expect(screen.getByLabelText("Anki import report").textContent).toContain(
-      "complete static question/answer content was retained",
-    );
+    expect(screen.getByLabelText("Anki import report").textContent).toContain("complete static question/answer content was retained");
     expect(screen.queryByRole("button", { name: /Choose file/ })).toBeNull();
     expect(close).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("Compatibility details (1)"));
+    fireEvent.click(screen.getByRole("button", { name: "Compatibility details (1)" }));
     expect(screen.getByText(/could not be reduced/).textContent).toContain("<script>could not be reduced</script>");
     expect(document.querySelector("script")).toBeNull();
     expect(screen.getByText(/2 additional details omitted/)).not.toBeNull();

@@ -1,10 +1,8 @@
 import { type ReactNode, useState } from "react";
-
 import { IconButton } from "../icons/IconButton";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { Dialog } from "./Dialog";
 import type { OverlayCloseReason } from "./overlayContext";
-import styles from "./MetadataDialog.module.css";
 
 export interface MetadataDialogProps {
   open: boolean;
@@ -13,28 +11,13 @@ export interface MetadataDialogProps {
   children: ReactNode;
   onClose: (reason: OverlayCloseReason) => void;
 }
-
-export function MetadataDialog({
-  open,
-  title,
-  description,
-  children,
-  onClose,
-}: MetadataDialogProps) {
+export function MetadataDialog({ open, title, description, children, onClose }: MetadataDialogProps) {
   const { layoutMode } = useLayoutMode();
   if (!open) return null;
-  return (
-    <Dialog
-      title={title}
-      description={description}
-      width="medium"
-      presentation={layoutMode === "compact" ? "sheet" : "dialog"}
-      className={styles.dialogCard}
-      onClose={onClose}
-    >
-      <div className={styles.body}>{children}</div>
-    </Dialog>
-  );
+  return <Dialog title={title} description={description} width="medium"
+    presentation={layoutMode === "compact" ? "sheet" : "dialog"} onClose={onClose}>
+    <div className="tw:grid tw:min-w-0 tw:gap-4">{children}</div>
+  </Dialog>;
 }
 
 export interface InfoButtonProps {
@@ -45,46 +28,19 @@ export interface InfoButtonProps {
   disabled?: boolean;
   className?: string;
 }
-
-export function InfoButton({
-  label,
-  title,
-  description,
-  children,
-  disabled = false,
-  className = "",
-}: InfoButtonProps) {
+export function InfoButton({ label, title, description, children, disabled = false, className = "" }: InfoButtonProps) {
   const [open, setOpen] = useState(false);
-  return (
-    <>
-      <IconButton
-        icon="information"
-        label={label}
-        disabled={disabled}
-        className={className}
-        onClick={() => setOpen(true)}
-      />
-      <MetadataDialog
-        open={open}
-        title={title}
-        description={description}
-        onClose={() => setOpen(false)}
-      >
-        {children}
-      </MetadataDialog>
-    </>
-  );
+  return <>
+    <IconButton icon="information" label={label} disabled={disabled} className={className} onClick={() => setOpen(true)} />
+    <MetadataDialog open={open} title={title} description={description} onClose={() => setOpen(false)}>{children}</MetadataDialog>
+  </>;
 }
-
 export function MetadataList({ children }: { children: ReactNode }) {
-  return <dl className={styles.list}>{children}</dl>;
+  return <dl className="tw:m-0 tw:grid tw:min-w-0 tw:gap-3">{children}</dl>;
 }
-
 export function MetadataItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className={styles.item}>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
+  return <div className="tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:pb-3 tw:sm:grid-cols-[minmax(8rem,1fr)_2fr] tw:sm:gap-4 tw:forced-colors:border-[CanvasText]">
+    <dt className="tw:text-label tw:font-medium tw:text-muted-foreground">{label}</dt>
+    <dd className="tw:m-0 tw:min-w-0 tw:break-words tw:text-label tw:text-foreground">{value}</dd>
+  </div>;
 }

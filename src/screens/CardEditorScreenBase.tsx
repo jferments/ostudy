@@ -1,3 +1,13 @@
+import { PageScaffold, PageHeader } from "../ui/patterns/WorkspacePatterns";
+import { FormField } from "../ui/primitives/FormField";
+import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
+import { Badge } from "../ui/primitives/Badge";
+import { Surface } from "../ui/primitives/Surface";
+import { presentation } from "./card-editor/presentation";
+import { cn } from "../ui/internal/cn";
+import { Checkbox } from "../ui/primitives/FormControls";
+import { NativeSelect } from "../ui/primitives/NativeSelect";
+import { Button } from "../ui/primitives/Button";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CardEditorController } from "../controllers/cardEditorController";
@@ -44,12 +54,6 @@ import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
-import { ownedClassNames, sharedClassMaps } from "../ui/styles/classOwnership";
-import ownershipStyles from "./CardEditorScreen.module.css";
-
-const ownedStyleMaps = [...sharedClassMaps, ownershipStyles] as const;
-
-
 
 interface CardEditorDraftPayload extends Record<string, unknown> {
   selectedDeckId: string;
@@ -235,7 +239,6 @@ export function CardEditorScreen({
     },
   });
 
-
   useEffect(() => () => controller.invalidate(), [controller]);
 
   useEffect(() => {
@@ -262,7 +265,6 @@ export function CardEditorScreen({
     assetDraftRef.current = durableDraft.assetDraftId;
     setAssetDraftId(durableDraft.assetDraftId);
   }, [durableDraft.assetDraftId]);
-
 
   useEffect(() => {
     if (!assetDraftId) return;
@@ -636,312 +638,92 @@ export function CardEditorScreen({
       : "Save card";
 
   return (
-    <div
-      className={ownedClassNames(ownedStyleMaps, "card-editor-screen")}
-      aria-busy={isSaving || isLoadingTemplate}
-    >
-      <header className={ownedClassNames(ownedStyleMaps, "screen-header card-editor-header")}>
-        <div>
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "back-button")}
-            disabled={isSaving}
-            onClick={() => void cancel()}
-          >
-            ← {deck.name}
-          </button>
-          <h1>{title}</h1>
-        </div>
-        <div className={ownedClassNames(ownedStyleMaps, "header-actions")}>
-          {existing ? (
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-              disabled={isSaving || dirty}
-              title={dirty ? "Save or discard edits before moving this card" : undefined}
-              onClick={openMoveCopy}
-            >
-              Move / copy
-            </button>
-          ) : null}
-          {!selectedCustomTemplate && builtInCardType === "basic" ? (
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-              disabled={isSaving}
-              onClick={() => {
-                setPreviewOpen((value) => !value);
-                setPreviewAnswer(false);
-              }}
-            >
-              {previewOpen ? "Hide preview" : "Preview card"}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-            disabled={isSaving}
-            onClick={() => void cancel()}
-          >
-            Cancel
-          </button>
-          {!existing ? (
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-              disabled={!canSave}
-              onClick={() => void save(true, false)}
-            >
-              {selectedCustomTemplate ? "Generate + another" : "Save + another"}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={ownedClassNames(ownedStyleMaps, "primary-button")}
-            disabled={!canSave}
-            onClick={() => void save(false, false)}
-          >
-            {isSaving ? (selectedCustomTemplate ? "Generating…" : "Saving…") : saveLabel}
-          </button>
-        </div>
-      </header>
-
-      {errorMessage ? <div className={ownedClassNames(ownedStyleMaps, "inline-alert error-alert")}>{errorMessage}</div> : null}
-
+    <PageScaffold aria-busy={isSaving || isLoadingTemplate}>
+      <PageHeader
+        eyebrow={deck.name}
+        title={title}
+        actions={<>
+          <Button variant="back" disabled={isSaving} onClick={() => void cancel()}>← {deck.name}</Button>
+          {existing ? <Button variant="secondary" disabled={isSaving || dirty}
+            title={dirty ? "Save or discard edits before moving this card" : undefined} onClick={openMoveCopy}>Move / copy</Button> : null}
+          {!selectedCustomTemplate && builtInCardType === "basic" ? <Button variant="secondary" disabled={isSaving}
+            onClick={() => { setPreviewOpen((value) => !value); setPreviewAnswer(false); }}>{previewOpen ? "Hide preview" : "Preview card"}</Button> : null}
+          <Button variant="secondary" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>
+          {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>{selectedCustomTemplate ? "Generate + another" : "Save + another"}</Button> : null}
+          <Button variant="primary" disabled={!canSave} onClick={() => void save(false, false)}>{isSaving ? (selectedCustomTemplate ? "Generating…" : "Saving…") : saveLabel}</Button>
+        </>}
+      />
+      {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       {duplicateMatches.length > 0 ? (
-        <section className={ownedClassNames(ownedStyleMaps, "duplicate-warning")} aria-labelledby="duplicate-warning-title">
-          <div>
-            <h2 id="duplicate-warning-title">This looks like an exact duplicate</h2>
-            <p>
-              A card in {selectedDeck.name} already has the same normalized question and answer.
-              Review it before creating another copy.
-            </p>
-            {duplicateMatches
-              .filter((match) => match.noteId !== "")
-              .slice(0, 3)
-              .map((match) => (
-                <article key={match.noteId}>
-                  <strong>{summarize(match.frontText)}</strong>
-                  <span>{summarize(match.backText)}</span>
-                </article>
-              ))}
+        <InlineNotice kind="warning" title="This looks like an exact duplicate" className="tw:mb-5">
+          <p>A card in {selectedDeck.name} already has the same normalized question and answer. Review it before creating another copy.</p>
+          <div className="tw:grid tw:gap-3">
+            {duplicateMatches.filter((match) => match.noteId !== "").slice(0, 3).map((match) => (
+              <article className="tw:grid tw:gap-1" key={match.noteId}><strong>{summarize(match.frontText)}</strong><span>{summarize(match.backText)}</span></article>
+            ))}
+            <div className="tw:flex tw:flex-wrap tw:gap-2">
+              <Button variant="secondary" disabled={isSaving} onClick={() => setDuplicateMatches([])}>Keep editing</Button>
+              <Button variant="danger" disabled={isSaving} onClick={() => void save(false, true)}>Save duplicate anyway</Button>
+            </div>
           </div>
-          <div className={ownedClassNames(ownedStyleMaps, "duplicate-warning-actions")}>
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "secondary-button")}
-              disabled={isSaving}
-              onClick={() => setDuplicateMatches([])}
-            >
-              Keep editing
-            </button>
-            <button
-              type="button"
-              className={ownedClassNames(ownedStyleMaps, "danger-button")}
-              disabled={isSaving}
-              onClick={() => void save(false, true)}
-            >
-              Save duplicate anyway
-            </button>
-          </div>
-        </section>
+        </InlineNotice>
       ) : null}
-
-      <div className={ownedClassNames(ownedStyleMaps, previewOpen ? "card-editor-layout with-preview" : "card-editor-layout")}>
-        <div className={ownedClassNames(ownedStyleMaps, "card-editor-fields")}>
-          <label className={ownedClassNames(ownedStyleMaps, "card-template-control")}>
-            <span>Card template</span>
-            <select
-              aria-label="Card template"
-              value={selectedTemplateKey}
-              disabled={isSaving || existing}
-              onChange={(event) => {
-                setSelectedTemplateKey(event.currentTarget.value);
-                setPreviewOpen(false);
-                setPreviewAnswer(false);
-                markDirty();
-              }}
-            >
-              <option value="basic">Basic</option>
-              <option value="cloze">Fill in the blank</option>
-              {templateSummaries.length > 0 ? (
-                <optgroup label="Reusable templates">
-                  {templateSummaries.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-            <small>
-              {existing
-                ? "The built-in card type is locked after saving so schedules remain attached to the correct card."
-                : "Choose a built-in card type or a reusable bulk-entry template."}
-            </small>
-          </label>
-
-          <label className={ownedClassNames(ownedStyleMaps, "card-deck-control")}>
-            <span>Deck</span>
-            <select
-              aria-label="Deck"
-              value={selectedDeckId}
-              disabled={isSaving}
-              onChange={(event) => {
-                setSelectedDeckId(event.currentTarget.value);
-                markDirty();
-              }}
-            >
-              {availableDecks.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-            <small>A card belongs to one active deck and can have any number of tags.</small>
-          </label>
-
-          {isLoadingTemplate ? <div className={ownedClassNames(ownedStyleMaps, "inline-progress")}>Loading template…</div> : null}
+      <div className={cn(presentation["card-editor-layout"], previewOpen && presentation["with-preview"])}>
+        <div className={presentation["card-editor-fields"]}>
+          <Surface className="tw:grid tw:gap-5 tw:p-5 tw:lg:grid-cols-2">
+            <FormField label="Card template" description={existing
+              ? "The built-in card type is locked after saving so schedules remain attached to the correct card."
+              : "Choose a built-in card type or a reusable bulk-entry template."}>
+              <NativeSelect value={selectedTemplateKey} disabled={isSaving || existing} onChange={(event) => {
+                setSelectedTemplateKey(event.currentTarget.value); setPreviewOpen(false); setPreviewAnswer(false); markDirty();
+              }}>
+                <option value="basic">Basic</option><option value="cloze">Fill in the blank</option>
+                {templateSummaries.length > 0 ? <optgroup label="Reusable templates">{templateSummaries.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</optgroup> : null}
+              </NativeSelect>
+            </FormField>
+            <FormField label="Deck" description="A card belongs to one active deck and can have any number of tags.">
+              <NativeSelect value={selectedDeckId} disabled={isSaving} onChange={(event) => { setSelectedDeckId(event.currentTarget.value); markDirty(); }}>
+                {availableDecks.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</NativeSelect>
+            </FormField>
+          </Surface>
+          {isLoadingTemplate ? <InlineProgress>Loading template…</InlineProgress> : null}
           {selectedCustomTemplate ? (
-            <TemplateEntryForm
-              key={`${selectedCustomTemplate.id}-${editorGeneration}`}
-              template={selectedCustomTemplate}
-              values={templateValues}
-              previews={templatePreviews}
-              assets={assets}
-              assetDraftId={assetDraftId}
-              disabled={isSaving}
-              isPreviewing={isPreviewingTemplate}
-              onAssetImported={addAsset}
-              onValuesChange={(values) => {
-                setTemplateValues(values);
-                markDirty();
-              }}
-              onPreview={() => void buildTemplatePreview()}
-            />
+            <TemplateEntryForm key={`${selectedCustomTemplate.id}-${editorGeneration}`} template={selectedCustomTemplate}
+              values={templateValues} previews={templatePreviews} assets={assets} assetDraftId={assetDraftId}
+              disabled={isSaving} isPreviewing={isPreviewingTemplate} onAssetImported={addAsset}
+              onValuesChange={(values) => { setTemplateValues(values); markDirty(); }} onPreview={() => void buildTemplatePreview()} />
           ) : builtInCardType === "cloze" ? (
-            <ClozeEditor
-              source={clozeSource}
-              mode={clozeMode}
-              disabled={isSaving}
-              onSourceChange={(source) => {
-                setClozeSource(source);
-                markDirty();
-              }}
-              onModeChange={(mode) => {
-                setClozeMode(mode);
-                markDirty();
-              }}
-            />
-          ) : (
-            <>
-              <RichTextEditor
-                key={`front-${editorGeneration}`}
-                label="Question"
-                document={frontDoc}
-                assets={assets}
-                assetDraftId={assetDraftId}
-                disabled={isSaving}
-                onAssetImported={addAsset}
-                onChange={(document: RichDocument, plainText: string) => {
-                  setFrontDoc(document);
-                  setFrontText(plainText);
-                  markDirty();
-                }}
-              />
-              <RichTextEditor
-                key={`back-${editorGeneration}`}
-                label="Answer"
-                document={backDoc}
-                assets={assets}
-                assetDraftId={assetDraftId}
-                disabled={isSaving}
-                onAssetImported={addAsset}
-                onChange={(document: RichDocument, plainText: string) => {
-                  setBackDoc(document);
-                  setBackText(plainText);
-                  markDirty();
-                }}
-                minHeight={220}
-              />
-              <label className={ownedClassNames(ownedStyleMaps, "switch-row reverse-card-option")}>
-                <span>
-                  <strong>Create reverse card</strong>
-                  <small>Study both directions with separate schedules and review histories.</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={reverseEnabled}
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    setReverseEnabled(event.currentTarget.checked);
-                    markDirty();
-                  }}
-                />
-              </label>
-            </>
-          )}
-
-          <TagInput
-            tags={tags}
-            suggestions={tagSuggestions}
-            disabled={isSaving}
-            onChange={(nextTags) => {
-              setTags(nextTags);
-              markDirty();
-            }}
-          />
+            <ClozeEditor source={clozeSource} mode={clozeMode} disabled={isSaving}
+              onSourceChange={(source) => { setClozeSource(source); markDirty(); }} onModeChange={(mode) => { setClozeMode(mode); markDirty(); }} />
+          ) : (<>
+            <RichTextEditor key={`front-${editorGeneration}`} label="Question" document={frontDoc} assets={assets} assetDraftId={assetDraftId}
+              disabled={isSaving} onAssetImported={addAsset} onChange={(document: RichDocument, plainText: string) => { setFrontDoc(document); setFrontText(plainText); markDirty(); }} />
+            <RichTextEditor key={`back-${editorGeneration}`} label="Answer" document={backDoc} assets={assets} assetDraftId={assetDraftId}
+              disabled={isSaving} onAssetImported={addAsset} onChange={(document: RichDocument, plainText: string) => { setBackDoc(document); setBackText(plainText); markDirty(); }} minHeight={220} />
+            <Surface className="tw:p-5"><label className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-label">
+              <span><strong>Create reverse card</strong><small className="tw:mt-1 tw:block tw:text-muted-foreground">Study both directions with separate schedules and review histories.</small></span>
+              <Checkbox checked={reverseEnabled} disabled={isSaving} onCheckedChange={(checked) => { setReverseEnabled(checked); markDirty(); }} />
+            </label></Surface>
+          </>)}
+          <TagInput tags={tags} suggestions={tagSuggestions} disabled={isSaving} onChange={(nextTags) => { setTags(nextTags); markDirty(); }} />
         </div>
-
         {previewOpen && builtInCardType === "basic" && !selectedCustomTemplate ? (
-          <aside className={ownedClassNames(ownedStyleMaps, "editor-preview-panel")}>
-            <div className={ownedClassNames(ownedStyleMaps, "preview-panel-heading")}>
-              <div>
-                <span className={ownedClassNames(ownedStyleMaps, "eyebrow")}>LIVE PREVIEW</span>
-                <h2>{previewAnswer ? "Answer" : "Question"}</h2>
-              </div>
-              <button
-                type="button"
-                className={ownedClassNames(ownedStyleMaps, "small-primary-button")}
-                disabled={isSaving}
-                onClick={() => setPreviewAnswer((value) => !value)}
-              >
-                {previewAnswer ? "Show question" : "Reveal answer"}
-              </button>
+          <Surface as="aside" className={presentation["editor-preview-panel"]}>
+            <div className={presentation["preview-panel-heading"]}>
+              <div><span className={presentation["eyebrow"]}>LIVE PREVIEW</span><h2>{previewAnswer ? "Answer" : "Question"}</h2></div>
+              <Button variant="primary" size="small" disabled={isSaving} onClick={() => setPreviewAnswer((value) => !value)}>{previewAnswer ? "Show question" : "Reveal answer"}</Button>
             </div>
-            {tags.length > 0 ? (
-              <div className={ownedClassNames(ownedStyleMaps, "preview-tag-list")}>
-                {tags.map((tag) => (
-                  <span className={ownedClassNames(ownedStyleMaps, "tag-chip static")} key={tag}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            <div className={ownedClassNames(ownedStyleMaps, "flashcard-preview-surface")}>
-              <RichTextView
-                document={previewAnswer ? backDoc : frontDoc}
-                assets={assets}
-                onLinkError={setErrorMessage}
-              />
-            </div>
-          </aside>
+            {tags.length > 0 ? <div className="tw:mb-4 tw:flex tw:flex-wrap tw:gap-2">{tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}</div> : null}
+            <div className={presentation["flashcard-preview-surface"]}><RichTextView document={previewAnswer ? backDoc : frontDoc} assets={assets} onLinkError={setErrorMessage} /></div>
+          </Surface>
         ) : null}
       </div>
-
       {moveCopyOpen && card ? (
-        <MoveCopyModal
-          cards={[{ noteId: card.noteId, deckId: card.deckId }]}
-          decks={availableDecks}
-          onClose={() => setMoveCopyOpen(false)}
-          onComplete={async () => {
-            setMoveCopyOpen(false);
-            const refreshed = await getCardNote(card.noteId);
-            await onSaved(refreshed, false);
-          }}
-        />
+        <MoveCopyModal cards={[{ noteId: card.noteId, deckId: card.deckId }]} decks={availableDecks} onClose={() => setMoveCopyOpen(false)} onComplete={async () => {
+          setMoveCopyOpen(false); const refreshed = await getCardNote(card.noteId); await onSaved(refreshed, false);
+        }} />
       ) : null}
-    </div>
+    </PageScaffold>
   );
 }
 

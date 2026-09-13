@@ -11,7 +11,7 @@ import { Button } from "../../../ui/primitives/Button";
 import { SelectionToolbar } from "../../../ui/patterns/SelectionToolbar";
 import { DeckLibrarySheets } from "./DeckLibrarySheets";
 import { DeckLibraryView } from "./DeckLibraryView";
-import styles from "./DeckLibraryView.module.css";
+import { libraryPresentation as styles } from "./libraryPresentation";
 import { LibraryDragFeedback } from "./LibraryDragFeedback";
 import type { DeckLibrarySnapshot } from "./organizationModel";
 import { practiceSelectionValidation } from "./practiceSetupModel";

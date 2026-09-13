@@ -1,23 +1,9 @@
-import type { CSSProperties, HTMLAttributes } from "react";
+import type { HTMLAttributes } from "react";
 
-import styles from "./Status.module.css";
-
-type SkeletonStyle = CSSProperties & Record<`--${string}`, string | number>;
+import { Skeleton as ShadcnSkeleton } from "../vendor/shadcn/skeleton";
 
 export function Skeleton({
-  width = "100%",
-  height = "1rem",
-  radius = "var(--ostudy-radius-small)",
-  className = "",
-  style,
-  ...props
+  width = "100%", height = "1rem", radius = "var(--ostudy-radius-small)", style, ...props
 }: HTMLAttributes<HTMLSpanElement> & { width?: string; height?: string; radius?: string }) {
-  return (
-    <span
-      {...props}
-      aria-hidden="true"
-      className={`${styles.skeleton} ${className}`.trim()}
-      style={{ ...style, "--skeleton-width": width, "--skeleton-height": height, "--skeleton-radius": radius } as SkeletonStyle}
-    />
-  );
+  return <ShadcnSkeleton {...props} aria-hidden="true" style={{ ...style, width, height, borderRadius: radius }} />;
 }

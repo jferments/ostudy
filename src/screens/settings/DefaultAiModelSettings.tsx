@@ -1,3 +1,5 @@
+import { Panel } from "../../ui/primitives/Panel";
+import { Disclosure } from "../../ui/primitives/FormControls";
 import { useEffect, useMemo, useState } from "react";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
@@ -19,7 +21,8 @@ import {
   type EmbeddingOptions,
 } from "../../ipc/embeddings";
 import { Button } from "../../ui/primitives/Button";
-import styles from "./DefaultAiModelSettings.module.css";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { TextField } from "../../ui/primitives/TextField";
 import {
   compatibleReasoning,
   reasoningChoices,
@@ -41,8 +44,8 @@ interface ModelChoice {
 
 export function DefaultAiModelSettings({ controller }: { controller: AiProfilesController }) {
   return (
-    <section className={styles.card} aria-labelledby="default-ai-model-title">
-      <h2 id="default-ai-model-title">Default AI models</h2>
+    <Panel title="Default AI models" description="Choose separate models for generation, tutoring, and semantic search.">
+      <div className="tw:grid tw:min-w-0 tw:gap-4 tw:xl:grid-cols-3">
       <TaskModelRow
         controller={controller}
         task="flashcard_generation"
@@ -61,8 +64,9 @@ export function DefaultAiModelSettings({ controller }: { controller: AiProfilesC
         label="Semantic embeddings"
         assignment={assignmentFor(controller, "embeddings")}
       />
+      </div>
       {controller.pendingTaskDefault ? (
-        <p role="alert" className={styles.inlineStatus}>
+        <p role="alert" className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
           The assignment outcome needs checking.{" "}
           <Button
             size="small"
@@ -75,7 +79,7 @@ export function DefaultAiModelSettings({ controller }: { controller: AiProfilesC
           </Button>
         </p>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -232,12 +236,12 @@ function TaskModelRow({
   }
 
   return (
-    <div className={styles.assignment} data-task={task}>
-      <strong className={styles.assignmentTitle}>{label}</strong>
-      <div className={styles.assignmentGrid}>
-        <label className={styles.field}>
+    <div className="tw:grid tw:min-w-0 tw:content-start tw:gap-4 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-5" data-task={task}>
+      <strong className="tw:text-body tw:font-semibold tw:tracking-tight">{label}</strong>
+      <div className="tw:grid tw:min-w-0 tw:gap-4">
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
           <span>Provider</span>
-          <select
+          <NativeSelect
             aria-label={`${label} provider`}
             value={profileId}
             disabled={locked}
@@ -256,12 +260,12 @@ function TaskModelRow({
                 {profile.configurationStatus === "ready" ? "" : " — incomplete"}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
-        <label className={styles.field}>
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
           <span>Model</span>
-          <select
+          <NativeSelect
             aria-label={`${label} model`}
             value={modelId}
             disabled={
@@ -299,13 +303,13 @@ function TaskModelRow({
                 {model.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
 
         {task !== "embeddings" ? (
-          <label className={styles.field}>
+          <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
             <span>Reasoning</span>
-            <select
+            <NativeSelect
               aria-label={`${label} reasoning`}
               value={reasoning}
               disabled={locked || !modelId}
@@ -325,11 +329,11 @@ function TaskModelRow({
                   {reasoningLabel(effort)}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         ) : null}
 
-        <div className={styles.testCell}>
+        <div className="tw:flex tw:items-center tw:gap-2">
           <Button
             size="small"
             variant="secondary"
@@ -347,17 +351,17 @@ function TaskModelRow({
         <EmbeddingModelOptions profileId={profileId} modelId={modelId} disabled={locked || testing} />
       ) : null}
       {reasoningValidationError ? (
-        <p className={styles.error} role="alert">
+        <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-destructive" role="alert">
           {reasoningValidationError}
         </p>
       ) : null}
       {status ? (
-        <p className={styles.success} role="status">
+        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground" role="status">
           {status}
         </p>
       ) : null}
       {error ? (
-        <p className={styles.error} role="alert">
+        <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-destructive" role="alert">
           {error}
         </p>
       ) : null}
@@ -463,12 +467,12 @@ function EmbeddingModelOptions({
   }
 
   return (
-    <details className={styles.embeddingOptions}>
-      <summary>Embedding options</summary>
-      <div className={styles.embeddingGrid}>
-        <label className={styles.field}>
+    <Disclosure title="Embedding options" className="tw:mt-1">
+      
+      <div className="tw:mt-4 tw:grid tw:min-w-0 tw:gap-4">
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
           <span>Dimensions</span>
-          <input
+          <TextField
             inputMode="numeric"
             placeholder="Provider default"
             value={dimensions}
@@ -476,9 +480,9 @@ function EmbeddingModelOptions({
             onChange={(event) => setDimensions(event.currentTarget.value)}
           />
         </label>
-        <label className={styles.field}>
+        <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
           <span>Input policy</span>
-          <select
+          <NativeSelect
             value={policy}
             disabled={disabled || busy}
             onChange={(event) => setPolicy(event.currentTarget.value as EmbeddingInputPolicy)}
@@ -487,9 +491,9 @@ function EmbeddingModelOptions({
             <option value="symmetric">Symmetric</option>
             <option value="qwen_retrieval">Qwen retrieval</option>
             <option value="search_types">Search query/document types</option>
-          </select>
+          </NativeSelect>
         </label>
-        <div className={styles.testCell}>
+        <div className="tw:flex tw:items-center tw:gap-2">
           <Button
             size="small"
             variant="secondary"
@@ -502,13 +506,13 @@ function EmbeddingModelOptions({
           </Button>
         </div>
       </div>
-      {!validDimensions ? <p className={styles.error}>Use 32–4096 dimensions or leave blank.</p> : null}
+      {!validDimensions ? <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-destructive">Use 32–4096 dimensions or leave blank.</p> : null}
       {error ? (
-        <p className={styles.error} role="alert">
+        <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-destructive" role="alert">
           {error}
         </p>
       ) : null}
-    </details>
+    </Disclosure>
   );
 }
 

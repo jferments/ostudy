@@ -1,8 +1,8 @@
+import listGeometry from "./DeckList.module.css";
 import type { DeckSummary } from "../../../ipc/decks";
 import { Icon } from "../../../ui/icons/Icon";
-import styles from "./ArchivedDecksSection.module.css";
+import { Button } from "../../../ui/primitives/Button";
 import { DeckItem } from "./DeckItem";
-import listStyles from "./DeckList.module.css";
 import type { DeckLibraryReorderAdapter } from "./useDeckLibraryReorder";
 
 interface ArchivedDecksSectionProps {
@@ -32,10 +32,10 @@ export function ArchivedDecksSection({
 }: ArchivedDecksSectionProps) {
   if (decks.length === 0) return null;
   return (
-    <section className={styles.root}>
-      <button
+    <section className="tw:grid tw:min-w-0 tw:gap-3">
+      <Button variant="ghost"
         type="button"
-        className={styles.toggle}
+        className="tw:w-full tw:justify-between tw:py-4 tw:text-start tw:[&>span]:flex tw:[&>span]:w-full tw:[&>span]:items-center tw:[&>span]:justify-between tw:[&_strong]:block tw:[&_strong]:text-sm tw:[&_small]:block tw:[&_small]:text-xs tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground"
         aria-expanded={expanded}
         onClick={onToggle}
       >
@@ -44,9 +44,9 @@ export function ArchivedDecksSection({
           <small>{decks.length} stored with cards suspended</small>
         </span>
         <Icon name={expanded ? "chevron-down" : "chevron-right"} size={18} />
-      </button>
+      </Button>
       {expanded ? (
-        <div className={listStyles.list}>
+        <div className={listGeometry.list}>
           {decks.map((deck, index) => (
             <DeckItem
               key={deck.id}

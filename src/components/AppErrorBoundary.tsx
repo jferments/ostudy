@@ -2,7 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { recordWebviewDiagnostic } from "../ipc/diagnostics";
 import { Button } from "../ui/primitives/Button";
-import styles from "./AppErrorBoundary.module.css";
+import { InlineNotice } from "../ui/primitives/InlineNotice";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -40,9 +40,9 @@ export class AppErrorBoundary extends Component<
     if (!this.state.error) return this.props.children;
 
     return (
-      <section className={styles.fatal} role="alert">
-        <h1>This screen could not be displayed</h1>
-        <p>{this.state.error.message || "An unexpected interface error occurred."}</p>
+      <section className="tw:mx-auto tw:grid tw:max-w-2xl tw:gap-5 tw:p-8">
+        <h1 className="tw:m-0 tw:text-2xl tw:font-semibold tw:tracking-tight">This screen could not be displayed</h1>
+        <InlineNotice kind="error">{this.state.error.message || "An unexpected interface error occurred."}</InlineNotice>
         <Button variant="primary" onClick={() => window.location.reload()}>
           Reload ostudy
         </Button>

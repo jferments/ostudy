@@ -1,3 +1,5 @@
+import { Checkbox } from "../../ui/primitives/FormControls";
+import { Panel } from "../../ui/primitives/Panel";
 import { useEffect, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
@@ -13,7 +15,6 @@ import {
   MetadataList,
 } from "../../ui/overlays/MetadataDialog";
 import { DeviceSyncSettings } from "./DeviceSyncSettings";
-import styles from "./Settings.module.css";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 
@@ -107,25 +108,24 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
   }
 
   return (
-    <div className={styles.panelGrid}>
+    <div className="tw:grid tw:min-w-0 tw:gap-6 tw:xl:grid-cols-2">
       {errorMessage ? (
-        <InlineNotice kind="error" className={styles.fullWidth}>{errorMessage}</InlineNotice>
+        <InlineNotice kind="error" className="tw:col-span-full">{errorMessage}</InlineNotice>
       ) : null}
 
-      <section className={styles.settingsCard}>
-        <h2>Data safety</h2>
-        <label className={styles.switchRow}>
+      <Panel className="tw:min-w-0">
+        <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Data safety</h2>
+        <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
             <strong>Confirm deletions</strong>
             <small>Ask before destructive content removal.</small>
           </span>
-          <input
-            type="checkbox"
+          <Checkbox
             checked={draft.confirmDeletions}
-            onChange={(event) => update({ confirmDeletions: event.currentTarget.checked })}
+            onCheckedChange={(checked) => update({ confirmDeletions: checked })}
           />
         </label>
-        <div className={styles.actionRow}>
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3">
           <Button
             type="button"
             variant="secondary"
@@ -153,11 +153,11 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
             Restore backup
           </Button>
         </div>
-        <p className={styles.note}>
+        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
           Complete backups include decks, templates, managed images, schedules, review events,
           sessions, analytics sources, AI provider metadata, task defaults, and ordinary settings.
         </p>
-        <p className={styles.securityNote}>
+        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
           API keys and session-only credentials are never stored in SQLite and are never included
           in an ostudy backup.
         </p>
@@ -166,13 +166,13 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
             Restore is prepared. Close every ostudy window and reopen the application to apply it.
           </InlineNotice>
         ) : null}
-      </section>
+      </Panel>
 
       <DeviceSyncSettings showToast={showToast} />
 
-      <section className={styles.fullWidthCard}>
-        <div className={styles.storageHeading}>
-          <h2>Storage</h2>
+      <Panel className="tw:col-span-full">
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:justify-between">
+          <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Storage</h2>
           {appInfo ? (
             <InfoButton
               label="View storage details"
@@ -193,7 +193,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
             </InfoButton>
           ) : null}
         </div>
-        <p className={styles.securityNote}>
+        <p className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
           <strong>Local library</strong>
           <br />
           The active study library is stored on this device. Backup and device-sync controls are
@@ -202,7 +202,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
         {!appInfo && !errorMessage ? (
           <InlineProgress>Reading storage paths…</InlineProgress>
         ) : null}
-      </section>
+      </Panel>
     </div>
   );
 }

@@ -29,6 +29,7 @@ const allowedRootEntries = new Set([
   "LICENSE",
   "README.md",
   "assets",
+  "components.json", // shadcn CLI discovers its project configuration at the root.
   "docs",
   "index.html",
   "package.json",

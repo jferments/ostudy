@@ -1,9 +1,0 @@
-@layer features {
-  .route {
-    min-width: 0;
-  }
-
-  .sourceFooter {
-    margin-top: var(--ostudy-space-5);
-  }
-}

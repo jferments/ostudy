@@ -219,9 +219,8 @@ describe("DeckLibraryWorkspace", () => {
       [{ id: pharmacology.id, revision: pharmacology.revision }],
     );
     expect(
-      (screen.getByRole("checkbox", { name: "Select Pharmacology" }) as HTMLInputElement)
-        .checked,
-    ).toBe(true);
+      screen.getByRole("checkbox", { name: "Select Pharmacology" }).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("mounts the route-owned card workspace immediately without a loading gate", async () => {
@@ -263,8 +262,8 @@ describe("DeckLibraryWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Nursing folder actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Nursing folder actions" });
-    expect(within(sheet).getByRole("menuitem", { name: "Rename Nursing folder" })).toBeTruthy();
-    expect(within(sheet).getByRole("menuitem", { name: "Delete Nursing folder" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Rename Nursing folder" })).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Delete Nursing folder" })).toBeTruthy();
   });
 
   it("places an icon-only collapse caret directly beside the folder title", async () => {

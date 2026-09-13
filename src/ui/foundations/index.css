@@ -1,5 +1,12 @@
 @layer reset, tokens, theme, base, components, patterns, features, utilities;
 
+/* No Preflight: the application already owns its reset and document styling.
+ * Prefix avoids collisions with existing semantic classes. During primitive
+ * migration, utilities live in components so caller-owned feature CSS keeps
+ * its existing override precedence; no global layer order is changed. */
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(components) source("../..") prefix(tw);
+@import "../tokens/generated/tailwind-theme.css";
 @import "./local-fonts.css" layer(tokens);
 @import "../tokens/generated/reference.css" layer(tokens);
 @import "../tokens/generated/component.css" layer(tokens);
@@ -11,6 +18,21 @@
 @import "./document.css";
 @import "./platform.css";
 @import "./utilities.css";
+
+@source not "../../**/*.test.*";
+@source not "../../test";
+
+@custom-variant coarse {
+  &:where([data-input="coarse"] *) { @slot; }
+  @media (pointer: coarse) { @slot; }
+}
+@custom-variant reduce-motion {
+  &:where([data-motion="reduced"] *, [data-motion="none"] *) { @slot; }
+  @media (prefers-reduced-motion: reduce) { @slot; }
+}
+@custom-variant no-hover (&:where([data-hover="unavailable"] *));
+@custom-variant simple-material (&:where([data-material="simple"] *));
+@custom-variant forced-contrast (&:where([data-contrast="forced"] *));
 
 @layer tokens {
   :root {

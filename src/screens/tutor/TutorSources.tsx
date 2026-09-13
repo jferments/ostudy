@@ -1,16 +1,15 @@
 import { useId, useState } from "react";
-
 import { scopeMembers, selectedScope, studyScopeKey, type MaterialScope, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
 import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
+import { Checkbox } from "../../ui/primitives/FormControls";
+import { TextField } from "../../ui/primitives/TextField";
+import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Button } from "../../ui/primitives/Button";
-import styles from "./TutorWorkspace.module.css";
+import { styles } from "./presentation";
 
-/** Selection is local-only. Applying it creates a new scope, never edits a saved chat's permissions. */
+/** Selection is local-only. Applying creates a new scope, never edits a saved chat's permissions. */
 export function TutorSources({ scope, choices, onApply, onClose }: {
-  scope: StudyScope;
-  choices: ScopeChoice[];
-  onApply: (scope: StudyScope) => void;
-  onClose: () => void;
+  scope: StudyScope; choices: ScopeChoice[]; onApply: (scope: StudyScope) => void; onClose: () => void;
 }) {
   const id = useId();
   const [selected, setSelected] = useState<MaterialScope[]>(() => scopeMembers(scope));
@@ -28,29 +27,24 @@ export function TutorSources({ scope, choices, onApply, onClose }: {
     const next = selected.filter((entry) => studyScopeKey(entry) !== key);
     if (checked) next.push(member);
     if (next.length > 16) { setError("Select at most 16 sources for one conversation."); return; }
-    setSelected(next);
-    setError(null);
+    setSelected(next); setError(null);
   }
-  return <Dialog title="Sources" description="Choose study material to ground this conversation. No selection means general discussion."
-    onClose={onClose} width="medium">
+  return <Dialog title="Sources" description="Choose study material to ground this conversation. No selection means general discussion." onClose={onClose} width="medium">
     <label className={styles.field} htmlFor={`${id}-search`}>Find material
-      <input id={`${id}-search`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
+      <TextField id={`${id}-search`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
     </label>
     <div className={styles.sourceChoices}>
       {available.filter((choice) => choice.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map((choice) => {
-        const member = choice.scope as MaterialScope;
-        const key = studyScopeKey(member);
+        const member = choice.scope as MaterialScope, key = studyScopeKey(member);
         return <label key={key} className={styles.sourceChoice}>
-          <input type="checkbox" checked={selected.some((entry) => studyScopeKey(entry) === key)}
-            onChange={(event) => toggle(member, event.target.checked)} />
+          <Checkbox checked={selected.some((entry) => studyScopeKey(entry) === key)} onCheckedChange={(checked) => toggle(member, checked)} />
           <span>{choice.title}<small>{member.kind === "deck" ? "Flashcards" : member.kind === "guide" ? "Study guide" : "Document"}</small></span>
         </label>;
       })}
       {!available.length ? <p className={styles.muted}>Import a document or create flashcards to add study sources.</p> : null}
     </div>
-    <p className={styles.muted}>{selected.length} selected. Changing sources starts a new chat; previous chats keep their sources.
-      Saved knowledge is reused. Selecting material here sends nothing.</p>
-    {error ? <p role="alert">{error}</p> : null}
+    <p className={styles.muted}>{selected.length} selected. Changing sources starts a new chat; previous chats keep their sources. Saved knowledge is reused. Selecting material here sends nothing.</p>
+    {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
     <DialogActions>
       <Button onClick={() => { setSelected([]); setError(null); }}>Clear selection</Button>
       <Button onClick={onClose}>Cancel</Button>

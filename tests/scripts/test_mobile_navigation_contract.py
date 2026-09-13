@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -9,15 +10,11 @@ class MobileNavigationContractTests(unittest.TestCase):
     def test_compact_learning_destinations_and_settings_app_bar_are_disjoint(self) -> None:
         contract = json.loads((ROOT / "scripts/route-smoke-contract.json").read_text())
         compact = contract["compactNavigation"]
-        self.assertEqual(
-            compact["primary"],
-            ["decks", "study-guides", "documents", "tutor", "analytics"],
-        )
+        self.assertEqual(compact["primary"], ["decks", "study-guides", "documents", "tutor", "analytics"])
         self.assertEqual(compact["more"], [])
         self.assertEqual(compact["appBar"], ["settings"])
         all_destinations = compact["primary"] + compact["more"] + compact["appBar"]
         self.assertEqual(len(all_destinations), len(set(all_destinations)))
-
         navigation = (ROOT / "src/components/NavigationSidebar.tsx").read_text()
         app_bar = (ROOT / "src/components/MobileAppBar.tsx").read_text()
         self.assertIn('"documents",\n  "tutor",\n  "analytics"', navigation)
@@ -34,35 +31,28 @@ class MobileNavigationContractTests(unittest.TestCase):
             "  record_case a_seedLibraryPracticeAndAnalytics || seed_ok=0"
         )
         self.assertIn(healthy_sequence, runner)
-
-        launch_failure_block = runner.split("if ((launch_ok == 0)); then", 1)[1].split(
-            "else", 1
-        )[0]
+        launch_failure_block = runner.split("if ((launch_ok == 0)); then", 1)[1].split("else", 1)[0]
         self.assertIn("a1_freshLibraryUsesQuietNavigation", launch_failure_block)
 
     def test_compact_study_guide_search_resets_desktop_flex_bases(self) -> None:
-        css = (ROOT / "src/screens/StudyGuidesScreen.module.css").read_text()
-        self.assertIn(
-            ".search {\n      width: 100%;\n      flex: 0 1 auto;\n    }",
-            css,
-        )
-        self.assertIn(
-            ".search label {\n      width: 100%;\n      max-width: none;\n      flex: 0 1 auto;\n    }",
-            css,
-        )
+        source = (ROOT / "src/screens/documents/presentation.ts").read_text()
+        match = re.search(r"export const guideLibraryStyles = (\{.*?\}) as const;", source, re.S)
+        self.assertIsNotNone(match)
+        recipe = json.loads(match.group(1))["search"]
+        for utility in (
+            "tw:min-w-0", "tw:flex-wrap", "tw:max-sm:w-full", "tw:max-sm:flex-[0_1_auto]",
+            "tw:max-sm:[&>label]:w-full", "tw:max-sm:[&>label]:max-w-none",
+            "tw:max-sm:[&>label]:flex-[0_1_auto]",
+        ):
+            self.assertIn(utility, recipe.split())
 
     def test_compact_deck_toolbar_keeps_actions_intrinsic_and_import_prominent(self) -> None:
-        css = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryView.module.css").read_text()
+        recipes = (ROOT / "src/screens/flashcards/deck-library/libraryPresentation.ts").read_text()
         root = (ROOT / "src/screens/flashcards/deck-library/DeckLibraryRoot.tsx").read_text()
-        self.assertIn(
-            ".toolbarActions {\n      width: auto;\n      justify-content: flex-end;\n    }",
-            css,
-        )
-        self.assertIn(
-            ".toolbarActions > button {\n      flex: 0 0 auto;\n    }",
-            css,
-        )
-        self.assertIn(".importAction svg {\n    stroke-width: 2.15;\n  }", css)
+        toolbar = recipes.split('toolbarActions: "', 1)[1].split('"', 1)[0]
+        for utility in ("tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"):
+            self.assertIn(utility, toolbar.split())
+        self.assertIn('importAction: "tw:[&_svg]:stroke-[2.15]"', recipes)
         self.assertIn('icon="folder-open"\n            iconSize={24}', root)
 
 
