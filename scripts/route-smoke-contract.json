@@ -111,7 +111,7 @@
             "assertionFragments": [
               "No decks have been created yet.",
               "Import deck from file",
-              "Flashcards|Study Guides|Documents|Tutor|Analytics"
+              "Flashcards|Study\\nGuides|Docs|Tutor|Analytics"
             ]
           }
         ]
