@@ -301,7 +301,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             </fieldset>
             {!credentialsAvailable ? <InlineNotice kind="warning">This device's secure secret store is unavailable, so saved API keys cannot be added to the offer. Provider settings can still be synchronized without keys.</InlineNotice> : null}
             {state.usbHostAvailable ? <>
-              <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground"><strong>USB cable:</strong> plug an Android phone into this computer with a data-capable cable, then click USB Sync. Android opens ostudy for the accessory, and ostudy asks the receiving user to Accept or Reject before any selected study data is transferred. No tethering, IP address, QR code, developer mode, or USB debugging setup is required.</p>
+              <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground"><strong>USB cable:</strong> plug an Android phone into this computer with a data-capable cable, then click USB Sync. Android opens ostudy for the accessory, and ostudy asks the receiving user to Accept or Reject before any selected study data is transferred. This needs no tethering, IP address, QR code, developer mode, or USB debugging setup.</p>
               <Button variant="primary" disabled={busyAction !== null || !hasSelectedCategory || usbSessionId !== null} onClick={() => void startUsbSync()}>{busyAction === "usb" ? "Connecting phone…" : "USB Sync"}</Button>
               {usbSessionId ? <Progress value={usbProgress?.transferredBytes ?? null} max={Math.max(1, usbProgress?.totalBytes ?? 1)} label="USB synchronization progress" valueText={usbProgressText} text={<span>{usbProgressText}</span>} /> : null}
             </> : null}
