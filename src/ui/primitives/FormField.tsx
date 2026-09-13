@@ -46,15 +46,19 @@ export function FormField({
     .join(" ") || undefined;
 
   return (
-    <div className={cn("tw:grid tw:min-w-0 tw:gap-2", className)}>
-      <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-label tw:font-medium">
-        <label htmlFor={inputId}>
+    <div role="group" data-slot="field" className={cn("tw:flex tw:min-w-0 tw:w-full tw:flex-col tw:gap-1.5", className)}>
+      <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
+        <label htmlFor={inputId} className="tw:min-w-0 tw:text-sm tw:font-medium tw:leading-none tw:text-foreground">
           {label}
           {required ? <span aria-hidden="true"> *</span> : null}
         </label>
         {helpTopic ? <HelpTrigger topicId={helpTopic} label={`Help for ${label}`} /> : null}
       </div>
-      {description ? <span id={descriptionId} className="tw:text-caption tw:leading-relaxed tw:text-muted-foreground">{description}</span> : null}
+      {description ? (
+        <p id={descriptionId} data-slot="field-description" className="tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
       {isValidElement(children)
         ? cloneElement(children, {
             id: inputId,
@@ -63,16 +67,20 @@ export function FormField({
             "aria-invalid": error ? true : children.props["aria-invalid"],
           })
         : children}
-      {error ? <span id={errorId} className="tw:text-caption tw:text-destructive" role="alert">{error}</span> : null}
+      {error ? (
+        <p id={errorId} data-slot="field-error" className="tw:m-0 tw:text-sm tw:text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 export function FieldGroup({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
   return (
-    <fieldset className="tw:m-0 tw:grid tw:gap-4 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-4 tw:[&>legend]:px-2 tw:[&>legend]:text-label tw:[&>legend]:font-medium tw:[&>p]:m-0 tw:[&>p]:text-label tw:[&>p]:text-muted-foreground">
-      <legend>{label}</legend>
-      {description ? <p>{description}</p> : null}
+    <fieldset data-slot="field-set" className="tw:m-0 tw:flex tw:min-w-0 tw:flex-col tw:gap-3 tw:border-0 tw:p-0">
+      <legend className="tw:mb-1 tw:px-0 tw:text-sm tw:font-medium tw:text-foreground">{label}</legend>
+      {description ? <p className="tw:-mt-2 tw:mb-1 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
       {children}
     </fieldset>
   );
@@ -84,7 +92,7 @@ export function FormStack({
   ...props
 }: FormHTMLAttributes<HTMLFormElement>) {
   return (
-    <form {...props} className={cn("tw:grid tw:gap-5 tw:[&_label]:grid tw:[&_label]:gap-2", className)}>
+    <form {...props} className={cn("tw:flex tw:min-w-0 tw:flex-col tw:gap-5", className)}>
       {children}
     </form>
   );
@@ -92,7 +100,7 @@ export function FormStack({
 
 export function FieldError({ children }: { children: ReactNode }) {
   return (
-    <p className="tw:mt-2 tw:text-label tw:text-destructive" role="alert">
+    <p data-slot="field-error" className="tw:mt-1 tw:text-sm tw:text-destructive" role="alert">
       {children}
     </p>
   );
@@ -104,7 +112,13 @@ export function SwitchRow({
   ...props
 }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label {...props} className={cn("tw:flex tw:min-h-14 tw:items-center tw:justify-between tw:gap-5 tw:py-3 tw:[&_small]:block tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground", className)}>
+    <label
+      {...props}
+      className={cn(
+        "tw:flex tw:min-h-10 tw:items-center tw:justify-between tw:gap-5 tw:py-2 tw:text-sm tw:[&_small]:block tw:[&_small]:mt-0.5 tw:[&_small]:text-sm tw:[&_small]:font-normal tw:[&_small]:text-muted-foreground tw:coarse:min-h-touch",
+        className,
+      )}
+    >
       {children}
     </label>
   );

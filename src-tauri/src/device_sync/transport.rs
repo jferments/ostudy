@@ -140,7 +140,14 @@ impl SecureChannel {
         self.send_frame(FRAME_ERROR, &payload)
     }
 
-    pub(crate) fn send_file(&mut self, source: &Path) -> Result<(), CommandError> {
+    pub(crate) fn send_file_with_progress<F>(
+        &mut self,
+        source: &Path,
+        mut on_progress: F,
+    ) -> Result<(), CommandError>
+    where
+        F: FnMut(u64, u64),
+    {
         let metadata = fs::metadata(source).map_err(CommandError::io)?;
         if metadata.len() == 0 || metadata.len() > MAX_TRANSFER_BYTES {
             return Err(CommandError::new(
@@ -148,30 +155,44 @@ impl SecureChannel {
                 "The synchronization package exceeds the supported transfer size.",
             ));
         }
+        let total = metadata.len();
         let sha256 = hash_file(source)?;
         self.send_json(
             FRAME_FILE_HEADER,
             &FileHeader {
-                byte_size: metadata.len(),
+                byte_size: total,
                 sha256,
             },
         )?;
+        on_progress(0, total);
         let mut file = OpenOptions::new()
             .read(true)
             .open(source)
             .map_err(CommandError::io)?;
         let mut buffer = vec![0_u8; FILE_CHUNK_BYTES];
+        let mut sent = 0_u64;
         loop {
             let read = file.read(&mut buffer).map_err(CommandError::io)?;
             if read == 0 {
                 break;
             }
             self.send_frame(FRAME_FILE_CHUNK, &buffer[..read])?;
+            sent = sent.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+            on_progress(sent.min(total), total);
         }
-        self.send_frame(FRAME_FILE_END, &[])
+        self.send_frame(FRAME_FILE_END, &[])?;
+        on_progress(total, total);
+        Ok(())
     }
 
-    pub(crate) fn receive_file(&mut self, destination: &Path) -> Result<(), CommandError> {
+    pub(crate) fn receive_file_with_progress<F>(
+        &mut self,
+        destination: &Path,
+        mut on_progress: F,
+    ) -> Result<(), CommandError>
+    where
+        F: FnMut(u64, u64),
+    {
         let header: FileHeader = self.receive_json(FRAME_FILE_HEADER)?;
         if header.byte_size == 0
             || header.byte_size > MAX_TRANSFER_BYTES
@@ -196,6 +217,7 @@ impl SecureChannel {
             .map_err(CommandError::io)?;
         let mut received = 0_u64;
         let mut hasher = Sha256::new();
+        on_progress(0, header.byte_size);
         loop {
             let (frame_type, bytes) = self.receive_frame()?;
             match frame_type {
@@ -210,6 +232,7 @@ impl SecureChannel {
                     }
                     file.write_all(&bytes).map_err(CommandError::io)?;
                     hasher.update(&bytes);
+                    on_progress(received, header.byte_size);
                 }
                 FRAME_FILE_END => break,
                 FRAME_ERROR => {
@@ -231,6 +254,7 @@ impl SecureChannel {
                 "The received synchronization package failed its size or hash check.",
             ));
         }
+        on_progress(header.byte_size, header.byte_size);
         Ok(())
     }
 
@@ -270,10 +294,6 @@ impl SecureChannel {
         match write_result {
             Ok(()) => Ok(()),
             Err(error) if frame_type == FRAME_COMPLETE => {
-                // FRAME_COMPLETE is emitted only after the receiver has
-                // durably committed the merge and peer baseline. Losing the
-                // physical link while returning that final receipt must not
-                // reclassify the already-committed receiver session as failed.
                 crate::logging::warn_target(
                     "device_sync.transport",
                     "device_sync_completion_acknowledgement_lost",
@@ -599,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn encrypted_channel_round_trip_preserves_json_and_file_bytes() {
+    fn encrypted_channel_round_trip_preserves_json_file_bytes_and_progress() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
         let address = listener.local_addr().expect("address should resolve");
         let keys = SessionKeys {
@@ -615,6 +635,7 @@ mod tests {
         let source = root.with_extension("source");
         let destination = root.with_extension("destination");
         fs::write(&source, b"encrypted sync payload").expect("source should write");
+        let expected_bytes = fs::metadata(&source).unwrap().len();
         let server_destination = destination.clone();
         let handle = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("connection should accept");
@@ -623,9 +644,17 @@ mod tests {
                 .receive_json(FRAME_METADATA)
                 .expect("message should receive");
             assert_eq!(message, "hello");
+            let mut progress = Vec::new();
             channel
-                .receive_file(&server_destination)
+                .receive_file_with_progress(&server_destination, |transferred, total| {
+                    progress.push((transferred, total));
+                })
                 .expect("file should receive");
+            assert_eq!(progress.first().copied(), Some((0, expected_bytes)));
+            assert_eq!(
+                progress.last().copied(),
+                Some((expected_bytes, expected_bytes))
+            );
             channel
                 .send_json(FRAME_COMPLETE, &"done")
                 .expect("completion should send");
@@ -635,7 +664,17 @@ mod tests {
         channel
             .send_json(FRAME_METADATA, &"hello")
             .expect("message should send");
-        channel.send_file(&source).expect("file should send");
+        let mut progress = Vec::new();
+        channel
+            .send_file_with_progress(&source, |transferred, total| {
+                progress.push((transferred, total));
+            })
+            .expect("file should send");
+        assert_eq!(progress.first().copied(), Some((0, expected_bytes)));
+        assert_eq!(
+            progress.last().copied(),
+            Some((expected_bytes, expected_bytes))
+        );
         let result: String = channel
             .receive_json(FRAME_COMPLETE)
             .expect("completion should receive");

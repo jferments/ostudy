@@ -1,6 +1,6 @@
 # shadcn/ui + Tailwind UI overhaul roadmap
 
-Status: Phase 0 planning is recorded; source implementation through Phase 15 is integrated in PR #96. Exact-head terminal qualification and human visual/device acceptance remain separate completion gates. The phase descriptions below retain the architectural scope and exit contracts, not an outstanding workspace TODO list. [Current implementation](ui-overhaul-current-implementation.md) owns the precise implemented surface and retained-CSS exceptions. A phase's source completion is not a claim that all tests or manual acceptance passed.
+Status: **completed historical roadmap for PR #96.** Phases 0–15 were implemented, exact-head automated qualification passed on the final PR head, and PR #96 was squash-merged to `main` as `5a4a4212e15c847db5bbf5daf1948e6ca6b3f860`. The phase descriptions below preserve the architectural scope and exit contracts; they are not an outstanding TODO list. [The implementation record](ui-overhaul-current-implementation.md) owns the precise #96 surface and retained-CSS exceptions. Post-merge aesthetic work is tracked by the [visual refresh roadmap](ui-visual-refresh-roadmap.md).
 
 The original planning base was PR #94 at `279430d799b78add3a0885168e011de0b0d47ff8`. Implementation reconciled its final main merge `fd5659e77671cb814393024c1baa2e0cba9a59d7`. The historical inventory is not a frozen manifest of today's source.
 
@@ -31,7 +31,7 @@ Feature components may use Tailwind for local presentation, but not Base UI/vend
 
 ## Phase 0 — inventory and architecture
 
-**Recorded.** Establish the architecture decision, PR #94-aware affected-surface inventory, staged roadmap, documentation index, acceptance criteria and non-goals. Its initial documentation-only child branch was subsequently reconciled with merged PR #94 for implementation; that historical exit condition does not prohibit the later source work requested in this PR.
+**Recorded.** Establish the architecture decision, PR #94-aware affected-surface inventory, staged roadmap, documentation index, acceptance criteria and non-goals. Its initial documentation-only child branch was subsequently reconciled with merged PR #94 for implementation; that historical exit condition did not prohibit the later source work requested in PR #96.
 
 ## Phase 1 — build foundation
 
@@ -53,7 +53,7 @@ Feature components may use Tailwind for local presentation, but not Base UI/vend
 
 ## Phase 4 — forms and Settings
 
-**Source implementation integrated.** Shared TextField/Input, Textarea, Checkbox, Switch, RadioGroup, Slider, NativeSelect, Disclosure, Tabs and field grouping support the existing required control set. NativeSelect deliberately retains the OS picker; add a richer combobox only when a real workflow needs it.
+**Implemented.** Shared TextField/Input, Textarea, Checkbox, Switch, RadioGroup, Slider, NativeSelect, Disclosure, Tabs and field grouping support the existing required control set. NativeSelect deliberately retains the OS picker; add a richer combobox only when a real workflow needs it.
 
 **Product scope:** Appearance, Review/Scheduling, AI providers/default task models, Diagnostics, Backup/Storage, DeviceSync, and Template management. Preserve credential ownership, probe/request identity, dirty/discard/delete handling, installed fonts, scope dependencies and safe native operations.
 
@@ -61,25 +61,25 @@ Feature components may use Tailwind for local presentation, but not Base UI/vend
 
 ## Phase 5 — overlays and adaptive interaction
 
-**Source implementation integrated.** Dialog, confirmation/alert, Sheet, menu/overflow and tooltip behavior use Base UI behind oStudy adapters, with one application Back/parent-depth policy. Compact overflow actions become a sheet; desktop menus use popover positioning. Native selectors do not need a second popup implementation.
+**Implemented.** Dialog, confirmation/alert, Sheet, menu/overflow and tooltip behavior use Base UI behind oStudy adapters, with one application Back/parent-depth policy. Compact overflow actions become a sheet; desktop menus use popover positioning. Native selectors do not need a second popup implementation.
 
 **Acceptance:** Escape, outside pointer, nested dialogs, initial/final focus, scroll locking, busy/non-dismissible state, safe areas and Android Back/IME. InlineWorkspace remains nonmodal. Guided tutorial spotlight geometry is custom but its ordinary actions use shared controls. New context-menu/combobox widgets are added only for actual consumers, not as unused implementations.
 
 ## Phase 6 — feedback, status and transient UI
 
-**Source implementation integrated.** Shared Base UI notifications, notices, progress, skeletons, badges/chips, empty states and error/retry/cancel presentation. The existing notification API and durable operation boundaries remain application-owned. Absolute Undo expiration remains authoritative even when a toast is hovered or its action is busy.
+**Implemented.** Shared Base UI notifications, notices, progress, skeletons, badges/chips, empty states and error/retry/cancel presentation. The existing notification API and durable operation boundaries remain application-owned. Absolute Undo expiration remains authoritative even when a toast is hovered or its action is busy.
 
 **Acceptance:** one status vocabulary; successful commits cannot become retryable failures merely because a following refresh/navigation fails. Unknown totals do not produce invented progress. Reduced motion and status/alert semantics remain correct. Specialized inline rich progress keeps its content contract.
 
 ## Phase 7 — shell and navigation
 
-**Source implementation integrated.** AppFrame, labeled Sidebar, compact app bar/bottom navigation, PageHeader/PageScaffold, common toolbars and responsive action groups. The visual system uses inset content surfaces, clearer hierarchy and semantic active-state treatment.
+**Implemented.** AppFrame, labeled Sidebar, compact app bar/bottom navigation, PageHeader/PageScaffold, common toolbars and responsive action groups. The visual system uses inset content surfaces, clearer hierarchy and semantic active-state treatment.
 
 **Acceptance:** main destinations and checkpoint/dirty-guard contracts remain stable. Tutor stays first-class; contextual Tutor does not destroy its origin. Compact navigation stays shallow with a separate Settings action. Fixed/sticky chrome handles enlarged text, safe areas and IME. No vendor router/mobile detector replaces the existing controllers.
 
 ## Phase 8 — Flashcards, search, bulk and transfer
 
-**Source implementation integrated.** Deck/folder library, archived/unsorted presentation, deck detail, shared card browser, Search/Filter, tags, selection actions, bulk entry/tagging/move-copy/delete/schedule/results, transfer/import receipts, and selected-deck Practice setup.
+**Implemented.** Deck/folder library, archived/unsorted presentation, deck detail, shared card browser, Search/Filter, tags, selection actions, bulk entry/tagging/move-copy/delete/schedule/results, transfer/import receipts, and selected-deck Practice setup.
 
 **Keep application-owned:** FTS/query semantics, note-versus-presentation identities, visible/all-matching selection, folder mutation revisions, drag geometry, scheduler requests, native transport, import validation and managed assets. Retain keyboard alternatives to dragging. Anki completion is a receipt, never a second import preview/submit.
 
@@ -87,7 +87,7 @@ Feature components may use Tailwind for local presentation, but not Base UI/vend
 
 ## Phase 9 — card editor chrome
 
-**Source implemented.** The migration covers rich editor toolbar, menus, formatting selectors, popovers, media/math dialogs, tags, metadata, template authoring tools, save/delete status and responsive panels.
+**Implemented.** The migration covers rich editor toolbar, menus, formatting selectors, popovers, media/math dialogs, tags, metadata, template authoring tools, save/delete status and responsive panels.
 
 Retain Tiptap/ProseMirror schemas, extensions, content validation/serialization, cloze semantics, asset ownership and citation safety. The template-management form's earlier migration does not imply the rich editor itself is complete.
 
@@ -95,9 +95,7 @@ Retain Tiptap/ProseMirror schemas, extensions, content validation/serialization,
 
 ## Phase 10 — Documents and Study Guides
 
-**Source implemented; acceptance contracts retained below.**
-
-Convert document upload/import/search, library cards, metadata, progress/status/action presentation and source panels. Convert guide library/reader toolbar, sections/disclosures, source/citations, export/practice/contextual Tutor actions, note/override controls and responsive reader layout.
+**Implemented.** Convert document upload/import/search, library cards, metadata, progress/status/action presentation and source panels. Convert guide library/reader toolbar, sections/disclosures, source/citations, export/practice/contextual Tutor actions, note/override controls and responsive reader layout.
 
 Retain ingestion/OCR, document/guide revisions, source provenance, managed files, learning plans, generation checkpoints and application-lifetime jobs. Learner notes and overrides remain distinct from generated base revisions.
 
@@ -105,17 +103,13 @@ Retain ingestion/OCR, document/guide revisions, source provenance, managed files
 
 ## Phase 11 — Analytics
 
-**Source implemented; acceptance contracts retained below.**
-
-Convert filters, date/deck controls, metric surfaces, tabs, chart containers, responsive layout, loading and empty states. Keep Chart.js and existing aggregation/difficulty-series semantics; adopting a UI library does not justify changing chart engines.
+**Implemented.** Convert filters, date/deck controls, metric surfaces, tabs, chart containers, responsive layout, loading and empty states. Keep Chart.js and existing aggregation/difficulty-series semantics; adopting a UI library does not justify changing chart engines.
 
 **Exit:** accessible filters/data alternatives and contained responsive charts; visualization configuration stays independent of vendor UI.
 
 ## Phase 12 — active Practice and contextual hints
 
-**Source implemented; acceptance contracts retained below.**
-
-Convert the active study shell, question/answer surface chrome, reveal/progress/status UI, grading presentation, action menus, completion/results and contextual hint presentation. Phase 8 setup is already migrated but is not the whole active study experience.
+**Implemented.** Convert the active study shell, question/answer surface chrome, reveal/progress/status UI, grading presentation, action menus, completion/results and contextual hint presentation. Phase 8 setup is already migrated but is not the whole active study experience.
 
 Retain session snapshots, submission identity, scheduler semantics, shortcuts, intervals, reveal state, exit guards and grading meaning. Grade controls remain domain components over shared Button internals.
 
@@ -123,9 +117,7 @@ Retain session snapshots, submission identity, scheduler semantics, shortcuts, i
 
 ## Phase 13 — Tutor workspace
 
-**Source implemented; acceptance contracts retained below.**
-
-Convert transcript/messages, composer, conversation/material selectors, multi-source context and memory controls, preparation states, citations/source views, conversational question feedback and retry/cancel presentation. Use the final PR #94 implementation, not the obsolete Quiz me design.
+**Implemented.** Convert transcript/messages, composer, conversation/material selectors, multi-source context and memory controls, preparation states, citations/source views, conversational question feedback and retry/cancel presentation. Use the final PR #94 implementation, not the obsolete Quiz me design.
 
 Keep retrieval, source revisions, provider calls, consent/privacy, persistence, private question criteria and operation identity outside rendering. General chat remains source-optional; saved conversations remain readable offline.
 
@@ -133,23 +125,21 @@ Keep retrieval, source revisions, provider calls, consent/privacy, persistence, 
 
 ## Phase 14 — remaining ordinary CSS migration
 
-**Source implemented; acceptance contracts retained below.**
-
-Classify each remaining CSS Module: ordinary styling, reusable pattern, specialized content/platform geometry, animation or obsolete rule. Move ordinary styling to semantic Tailwind; move shared behavior to its actual owner; retain dedicated CSS when descendants, pseudo-elements, document/print or native geometry are clearer there.
+**Implemented.** Classify each remaining CSS Module: ordinary styling, reusable pattern, specialized content/platform geometry, animation or obsolete rule. Move ordinary styling to semantic Tailwind; move shared behavior to its actual owner; retain dedicated CSS when descendants, pseudo-elements, document/print or native geometry are clearer there.
 
 **Exit:** no unexplained generic modules or parallel form/button vocabulary remains. Remove a module only when all imports/callers are migrated and tests cover the replacement. Do not blindly convert selectors or arbitrary computed geometry.
 
 ## Phase 15 — cleanup and stabilization
 
-**Source cleanup, enforcement and documentation implemented. Final acceptance is conditional on exact-head Linux/Android qualification and human visual/device review.** The legacy class maps and duplicate deck harness are retired, and 16 specialized Modules have checked owners. Utility precedence intentionally preserves those geometry/content owners; shadcn provenance/tooling is retained. Visual/performance baselines are not silently refreshed.
+**Completed in PR #96.** The legacy class maps and duplicate deck harness were retired, 16 specialized Modules retained checked owners, current documentation was reconciled, and exact-head Linux/Android automated qualification passed before merge. Human visual/device review remained intentionally distinct from source/automation completion, and the later visual refresh is free to intentionally change that appearance.
 
 Remove obsolete renderers, exclusive tests/styles and legacy shared class maps after their last production consumer migrates. Replace old regression harnesses with equivalent live-route coverage before deleting them. Remove temporary aliases and review final utility-layer placement. Strengthen semantic-color/native-control/vendor/dynamic-class boundaries without banning legitimate content/platform CSS.
 
-Update current architecture/user docs to the implemented system. Accept new visual baselines intentionally, verify performance budgets and evaluate whether retained shadcn tooling still adds value or an eventual source-only/ejected state is preferable.
-
-**Exit:** vendor replacement primarily affects `src/ui`, not business logic. Current docs and actual source agree. Required platform qualification passes on a frozen candidate, and human visual/device acceptance is explicit. No unsupported measured speedup or defect-rate claim.
+**Exit achieved:** vendor replacement primarily affects `src/ui`, not business logic. Current docs and actual source agree on the #96 architecture. Required platform qualification passed on its frozen final head; subjective visual acceptance was explicitly separate. No unsupported measured speedup or defect-rate claim was made.
 
 ## Validation and visual acceptance
+
+The migration used this validation order:
 
 ```text
 focused behavior tests
@@ -161,12 +151,12 @@ focused behavior tests
             -> human theme/layout/device acceptance
 ```
 
-Use maintained wrappers from [the command runbook](../agents/COMMAND-RUNBOOK.md). A displayed command is not a passed test. Do not rerun terminal suites for metadata updates; follow the repository's narrow reuse policy for eligible documentation-only changes. Source/config/dependency changes remain qualification-bearing.
+The same resource discipline remains current: use maintained wrappers from [the command runbook](../agents/COMMAND-RUNBOOK.md), do not rerun terminal suites for metadata-only updates, and never treat a displayed command or ancestor result as current-head qualification.
 
-Visual checks cover compact, medium and wide layouts; all four themes; keyboard focus and enlarged text; reduced motion/materials; actual WebKitGTK/Android behavior; and representative empty/populated/error/busy states. Intentional new visuals are not judged solely by old pixel equality. Keep behavior invariants and performance budgets separate from visual baselines.
+The committed Stage-0 visual evidence predates #96 and remains historical provenance. A later aesthetic redesign should capture a separate exact-head candidate and only establish a new baseline after intentional review.
 
 ## Branch sequence and rollback
 
-PR #96 continues the user-authorized implementation after reconciling the original child with merged PR #94. It remains a single normal writer. Later independent feature work uses short-lived branches/PRs from the authoritative merged base after this overhaul is accepted; never silently discard stacked work or force-push to simplify history.
+PR #96 is merged and no longer an active development branch. Independent work starts from authoritative `main` on a new short-lived branch/PR; the active post-migration visual work is described by [ui-visual-refresh-roadmap.md](ui-visual-refresh-roadmap.md). Never force-push or discard stacked work merely to simplify history.
 
 Each bounded renderer increment is reversible through a normal source revert. Tokens and semantic facades stay stable, so reverting presentation does not require reverting unrelated Tutor/provider/domain work or modifying user data. Publication, qualification, manual acceptance and merge remain distinct facts.

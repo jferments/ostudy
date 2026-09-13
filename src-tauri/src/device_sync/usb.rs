@@ -617,11 +617,7 @@ mod linux {
 
         send_aoa_string(handle.0, 0, "oStudy")?;
         send_aoa_string(handle.0, 1, "oStudy USB Sync")?;
-        send_aoa_string(
-            handle.0,
-            2,
-            "Encrypted local-first oStudy device synchronization",
-        )?;
+        send_aoa_string(handle.0, 2, "oStudy USB sync request")?;
         send_aoa_string(handle.0, 3, "1")?;
         send_aoa_string(handle.0, 4, "https://github.com/jferments/ostudy")?;
         send_aoa_string(handle.0, 5, session_id)?;

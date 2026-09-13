@@ -117,10 +117,17 @@ describe("NavigationSidebar", () => {
 
     expect(document.documentElement.dataset.layoutMode).toBe("compact");
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(navigation).getAllByRole("button").map((button) => button.textContent)).toEqual([
+    expect(within(navigation).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
       "Flashcards",
       "Study Guides",
       "Documents",
+      "Tutor",
+      "Analytics",
+    ]);
+    expect(within(navigation).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Flashcards",
+      "Study\nGuides",
+      "Docs",
       "Tutor",
       "Analytics",
     ]);

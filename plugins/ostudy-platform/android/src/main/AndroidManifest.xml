@@ -14,9 +14,13 @@
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
 
-        <!-- Android Open Accessory launches/forwards the cable attachment to the
-             existing ostudy activity. The private USB plugin then hands the
-             opened descriptor to shared Rust; no tethering or ADB is involved. -->
+        <!-- Android Open Accessory must resolve the advertised manufacturer/model
+             to an installed application before Android will route the USB
+             accessory to ostudy. This handler is therefore required. Android may
+             show its system handler confirmation before the app receives the
+             attachment; the ostudy USB plugin still waits for ostudy's own
+             Accept action before opening the descriptor or transferring selected
+             study data. -->
         <activity android:name="io.github.jferments.ostudy.MainActivity">
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />

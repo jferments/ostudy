@@ -8,6 +8,9 @@ pub enum Error {
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
 
+    #[error("The operating system did not grant USB access to oStudy.")]
+    UsbAccessDenied,
+
     #[error("The native ostudy platform adapter is unavailable on this target.")]
     Unsupported,
 }

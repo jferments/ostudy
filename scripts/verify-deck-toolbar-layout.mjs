@@ -27,13 +27,14 @@ expectRecipe("root", ["tw:@container/deck-library"], "deck-library container");
 expectRecipe("toolbar", ["tw:flex", "tw:justify-end"], "deck toolbar");
 expectRecipe("toolbarActions", ["tw:flex", "tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"], "intrinsic toolbar actions at every width");
 expectRecipe("importAction", ["tw:[&_svg]:stroke-[2.15]"], "prominent import icon");
-expectContains(rootSource, 'icon="folder-open"\n            iconSize={24}', "24px contextual import icon");
+expectMatches(rootSource, /icon="folder-open"\s+iconSize=\{24\}/u, "24px contextual import icon");
 expectRecipe("sectionActions", ["tw:flex", "tw:justify-end", "tw:@max-[620px]/deck-library:w-full", "tw:@max-[620px]/deck-library:justify-stretch"], "content-width compact folder controls");
 expectContains(rootSource, 'libraryPresentation as styles', "live library recipe consumer");
 expectContains(folderSource, '<IconButton', "shared folder reorder control");
 expectContains(folderSource, 'icon="move"', "keyboard reorder affordance");
+expectContains(buttonSource, 'icon: "tw:size-8 tw:p-0"', "compact fine-pointer icon size");
 expectContains(buttonSource, "tw:coarse:min-h-touch", "coarse-pointer minimum action height");
-expectContains(buttonSource, "tw:min-w-touch", "icon minimum action width");
+expectContains(buttonSource, "tw:coarse:min-w-touch", "coarse-pointer minimum action width");
 expectContains(deckSource, 'data-library-row={archived ? undefined : "deck"}', "active deck pointer row identity");
 expectContains(folderSource, 'data-library-folder-surface="true"', "complete folder pointer destination");
 expectContains(deckSource, "reorder.beginPointerDrag", "deck row pointer session initiation");
@@ -60,7 +61,6 @@ for (const nativeDragFragment of [
   );
 }
 
-
 const tauriConfig = JSON.parse(tauriConfigText);
 const mainWindow = tauriConfig?.app?.windows?.find((window) => window?.label === "main");
 if (!mainWindow || typeof mainWindow.width !== "number" || mainWindow.width < 1280) {
@@ -78,6 +78,10 @@ console.log(
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectMatches(source, expected, label) {
+  if (!expected.test(source)) failures.push(`Missing ${label}: ${expected}`);
 }
 
 function expectAbsent(source, forbidden, label) {

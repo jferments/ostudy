@@ -65,10 +65,10 @@ describe("DiagnosticsSettings", () => {
     });
   });
 
-  it("states the local-only content-redaction contract", async () => {
+  it("keeps the diagnostics screen focused on diagnostic controls rather than policy documentation", async () => {
     render(<DiagnosticsSettings showToast={vi.fn()} />);
-    expect(await screen.findByText(/never uploads diagnostics automatically/u)).toBeTruthy();
-    expect(screen.getByText(/prompts, model responses/u)).toBeTruthy();
-    expect(screen.getByText(/current and previous bounded log files/u)).toBeTruthy();
+    await screen.findByText("/tmp/ostudy/diagnostics/ostudy.jsonl");
+    expect(screen.queryByRole("heading", { name: "Privacy and storage limits" })).toBeNull();
+    expect(screen.queryByText(/never uploads diagnostics automatically/u)).toBeNull();
   });
 });

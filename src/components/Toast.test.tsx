@@ -34,7 +34,7 @@ describe("Toast", () => {
     expect(screen.getByRole("alert").textContent).toContain("Could not save.");
   });
 
-  it("pauses automatic dismissal while the user is interacting", () => {
+  it("pauses automatic dismissal while the user is interacting with an ordinary toast", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const onDismiss = vi.fn();
@@ -54,6 +54,37 @@ describe("Toast", () => {
     fireEvent.pointerLeave(toast, { pointerType: "mouse" });
     fireEvent.mouseLeave(toast);
     vi.runOnlyPendingTimers();
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Undo actionable for the whole toast lifetime and dismisses the toast instead of showing an expired state", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const onDismiss = vi.fn();
+    render(
+      <Toast
+        toast={{
+          id: 6,
+          kind: "success",
+          text: "Deck deleted.",
+          action: { label: "Undo", run: vi.fn(), expiresAt: 60_000 },
+        }}
+        onDismiss={onDismiss}
+      />,
+    );
+
+    const toast = screen.getByRole("status");
+    const undo = screen.getByRole("button", { name: "Undo" });
+    expect(undo.className).toContain("tw:bg-primary");
+    fireEvent.pointerEnter(toast, { pointerType: "mouse" });
+    fireEvent.mouseEnter(toast);
+
+    vi.advanceTimersByTime(9_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    expect(screen.queryByText(/Undo expired/u)).toBeNull();
+
+    vi.advanceTimersByTime(1);
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
@@ -89,8 +120,8 @@ describe("Toast", () => {
     await waitFor(() => expect(onDismiss).toHaveBeenCalledOnce());
   });
 
-  it("reenables an undo action when restoration fails", async () => {
-    const run = vi.fn().mockRejectedValue(new Error("Expired"));
+  it("reenables an undo action when restoration fails before the toast deadline", async () => {
+    const run = vi.fn().mockRejectedValue(new Error("Temporary failure"));
     render(
       <Toast
         toast={{

@@ -108,12 +108,12 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
   }
 
   return (
-    <div className="tw:grid tw:min-w-0 tw:gap-6 tw:xl:grid-cols-2">
+    <div className="tw:grid tw:min-w-0 tw:gap-6">
       {errorMessage ? (
-        <InlineNotice kind="error" className="tw:col-span-full">{errorMessage}</InlineNotice>
+        <InlineNotice kind="error">{errorMessage}</InlineNotice>
       ) : null}
 
-      <Panel className="tw:min-w-0">
+      <Panel className="tw:min-w-0 tw:self-start">
         <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Data safety</h2>
         <label className="tw:flex tw:min-h-11 tw:items-start tw:justify-between tw:gap-6 tw:text-label tw:[&>span:first-child]:grid tw:[&>span:first-child]:gap-1 tw:[&_small]:text-muted-foreground tw:[&_small]:font-normal tw:[&_small]:leading-relaxed">
           <span>
@@ -170,7 +170,7 @@ export function StorageBackupSettings({ draft, update, showToast }: StorageBacku
 
       <DeviceSyncSettings showToast={showToast} />
 
-      <Panel className="tw:col-span-full">
+      <Panel>
         <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-3 tw:justify-between">
           <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">Storage</h2>
           {appInfo ? (

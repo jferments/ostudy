@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 const USB_AUTO_JOIN_INVITATION = "ostudy-sync://usb-attached";
 
@@ -100,8 +101,26 @@ export interface DeviceSyncResult {
   receivedPackageBytes: number;
 }
 
+export interface PendingUsbSyncRequest {
+  available: boolean;
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+}
+
+export interface DeviceSyncProgress {
+  sessionId: string;
+  direction: "send" | "receive";
+  transferredBytes: number;
+  totalBytes: number;
+}
+
 export function getDeviceSyncState(): Promise<DeviceSyncState> {
   return invoke<DeviceSyncState>("get_device_sync_state");
+}
+
+export function getPendingUsbSyncRequest(): Promise<PendingUsbSyncRequest> {
+  return invoke<PendingUsbSyncRequest>("get_pending_usb_sync_request");
 }
 
 export function updateDeviceSyncName(displayName: string): Promise<DeviceSyncIdentity> {
@@ -140,6 +159,10 @@ export function joinUsbDevicePairing(): Promise<DeviceSyncResult | null> {
   });
 }
 
+export function rejectUsbDevicePairing(): Promise<boolean> {
+  return invoke<boolean>("reject_usb_device_pairing");
+}
+
 export function cancelDeviceSyncSession(sessionId: string): Promise<void> {
   return invoke<void>("cancel_device_sync_session", {
     input: { sessionId },
@@ -168,4 +191,10 @@ export function resolveDeviceSyncConflict(input: {
       mergedPayloadJson: input.mergedPayloadJson ?? null,
     },
   });
+}
+
+export function listenToDeviceSyncProgress(
+  listener: (progress: DeviceSyncProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<DeviceSyncProgress>("ostudy-device-sync-progress", (event) => listener(event.payload));
 }

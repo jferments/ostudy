@@ -16,7 +16,7 @@ export function MetadataDialog({ open, title, description, children, onClose }: 
   if (!open) return null;
   return <Dialog title={title} description={description} width="medium"
     presentation={layoutMode === "compact" ? "sheet" : "dialog"} onClose={onClose}>
-    <div className="tw:grid tw:min-w-0 tw:gap-4">{children}</div>
+    <div className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">{children}</div>
   </Dialog>;
 }
 
@@ -41,6 +41,6 @@ export function MetadataList({ children }: { children: ReactNode }) {
 export function MetadataItem({ label, value }: { label: string; value: ReactNode }) {
   return <div className="tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:pb-3 tw:sm:grid-cols-[minmax(8rem,1fr)_2fr] tw:sm:gap-4 tw:forced-colors:border-[CanvasText]">
     <dt className="tw:text-label tw:font-medium tw:text-muted-foreground">{label}</dt>
-    <dd className="tw:m-0 tw:min-w-0 tw:break-words tw:text-label tw:text-foreground">{value}</dd>
+    <dd className="tw:m-0 tw:min-w-0 tw:[overflow-wrap:anywhere] tw:text-label tw:text-foreground">{value}</dd>
   </div>;
 }

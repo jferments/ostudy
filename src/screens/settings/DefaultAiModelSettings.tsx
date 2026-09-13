@@ -20,6 +20,7 @@ import {
   type EmbeddingInputPolicy,
   type EmbeddingOptions,
 } from "../../ipc/embeddings";
+import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { TextField } from "../../ui/primitives/TextField";
@@ -46,24 +47,24 @@ export function DefaultAiModelSettings({ controller }: { controller: AiProfilesC
   return (
     <Panel title="Default AI models" description="Choose separate models for generation, tutoring, and semantic search.">
       <div className="tw:grid tw:min-w-0 tw:gap-4 tw:xl:grid-cols-3">
-      <TaskModelRow
-        controller={controller}
-        task="flashcard_generation"
-        label="Flashcard and study-guide generation"
-        assignment={assignmentFor(controller, "flashcard_generation")}
-      />
-      <TaskModelRow
-        controller={controller}
-        task="tutor"
-        label="Interactive tutor"
-        assignment={assignmentFor(controller, "tutor")}
-      />
-      <TaskModelRow
-        controller={controller}
-        task="embeddings"
-        label="Semantic embeddings"
-        assignment={assignmentFor(controller, "embeddings")}
-      />
+        <TaskModelRow
+          controller={controller}
+          task="flashcard_generation"
+          label="Flashcard and study-guide generation"
+          assignment={assignmentFor(controller, "flashcard_generation")}
+        />
+        <TaskModelRow
+          controller={controller}
+          task="tutor"
+          label="Interactive tutor"
+          assignment={assignmentFor(controller, "tutor")}
+        />
+        <TaskModelRow
+          controller={controller}
+          task="embeddings"
+          label="Semantic embeddings"
+          assignment={assignmentFor(controller, "embeddings")}
+        />
       </div>
       {controller.pendingTaskDefault ? (
         <p role="alert" className="tw:m-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">
@@ -344,6 +345,14 @@ function TaskModelRow({
           >
             {testing ? "Testing…" : "Test model"}
           </Button>
+          {status ? (
+            <Icon
+              name="check"
+              size={20}
+              label="Model test succeeded"
+              className="tw:size-5 tw:shrink-0 tw:text-success"
+            />
+          ) : null}
         </div>
       </div>
 
@@ -468,7 +477,6 @@ function EmbeddingModelOptions({
 
   return (
     <Disclosure title="Embedding options" className="tw:mt-1">
-      
       <div className="tw:mt-4 tw:grid tw:min-w-0 tw:gap-4">
         <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-label tw:font-medium tw:text-foreground">
           <span>Dimensions</span>

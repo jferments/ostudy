@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { ShowToast } from "../../components/Toast";
 import { getErrorMessage } from "../../ipc/common";
 import {
-  cancelDeviceSyncSession, getDeviceSyncState, joinDevicePairing, removeDeviceSyncPeer,
-  resolveDeviceSyncConflict, scanDevicePairingQr, startDevicePairing, updateDeviceSyncName,
-  type DeviceSyncConflict, type DeviceSyncResult, type DeviceSyncSelection,
-  type DeviceSyncSession, type DeviceSyncState, type PairingInvitation,
+  cancelDeviceSyncSession, getDeviceSyncState, joinDevicePairing, listenToDeviceSyncProgress,
+  removeDeviceSyncPeer, resolveDeviceSyncConflict, scanDevicePairingQr, startDevicePairing,
+  updateDeviceSyncName, type DeviceSyncConflict, type DeviceSyncProgress, type DeviceSyncResult,
+  type DeviceSyncSelection, type DeviceSyncSession, type DeviceSyncState, type PairingInvitation,
 } from "../../ipc/deviceSync";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
@@ -15,6 +15,7 @@ import { TextField } from "../../ui/primitives/TextField";
 import { Panel } from "../../ui/primitives/Panel";
 import { Badge } from "../../ui/primitives/Badge";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
+import { Progress } from "../../ui/primitives/Progress";
 import styles from "./DeviceSyncSettings.module.css";
 
 interface DeviceSyncSettingsProps { showToast: ShowToast; }
@@ -33,6 +34,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
   const [selection, setSelection] = useState<DeviceSyncSelection>(DEFAULT_SELECTION);
   const [invitation, setInvitation] = useState<PairingInvitation | null>(null);
   const [usbSessionId, setUsbSessionId] = useState<string | null>(null);
+  const [usbProgress, setUsbProgress] = useState<DeviceSyncProgress | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [cancelingSessionId, setCancelingSessionId] = useState<string | null>(null);
   const [scanFeedback, setScanFeedback] = useState<ScanFeedback>("idle");
@@ -69,13 +71,31 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     return () => window.clearInterval(interval);
   }, [activeSessions.length, busyAction, invitation]);
   useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listenToDeviceSyncProgress((next) => {
+      if (!disposed && next.direction === "send" && next.sessionId === usbSessionId) setUsbProgress(next);
+    })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [usbSessionId]);
+  useEffect(() => {
     if (!usbSessionId || !state) return;
     const session = state.sessions.find((candidate) => candidate.id === usbSessionId);
     if (!session || ACTIVE_SESSION_STATES.has(session.state)) return;
     if (session.state === "completed") showToast("success", "USB synchronization completed.");
     else if (session.state === "canceled") showToast("info", "USB synchronization was canceled.");
+    else if (session.errorCode === "device_sync_rejected") showToast("info", "The receiving Android device rejected the USB sync request.");
     else showToast("error", session.errorMessage ?? "USB synchronization did not complete. Reconnect the phone and try again.");
     setUsbSessionId(null);
+    setUsbProgress(null);
   }, [showToast, state, usbSessionId]);
 
   function changeSelection(key: SyncSelectionKey, checked: boolean): void {
@@ -127,12 +147,13 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     }
     setBusyAction("usb");
     setInvitation(null);
+    setUsbProgress(null);
     setErrorMessage(null);
     try {
       const created = await startDevicePairing({ transport: "usb", selection });
       setUsbSessionId(created.sessionId);
       await refresh(true);
-      showToast("info", "USB sync started. Keep the Android phone connected while ostudy transfers the selected data.");
+      showToast("info", "USB sync request sent. Waiting for the Android device to accept it.");
     } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
     finally { setBusyAction(null); }
   }
@@ -242,6 +263,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
     finally { setBusyAction(null); }
   }
   const qrSource = invitation?.qrSvg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(invitation.qrSvg)}` : null;
+  const usbProgressText = usbProgress
+    ? `Sending ${formatBytes(usbProgress.transferredBytes)} of ${formatBytes(usbProgress.totalBytes)}`
+    : "Waiting for the Android device to accept the request…";
 
   return (
     <Panel title="Device synchronization" description="Send selected Flashcards, Documents and their LLM processing data, Study Guides, and optional API configuration over your private local network or directly through a USB cable. Appearance and other app settings always stay local to each device."
@@ -272,8 +296,9 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
             </fieldset>
             {!credentialsAvailable ? <InlineNotice kind="warning">This device's secure secret store is unavailable, so saved API keys cannot be added to the offer. Provider settings can still be synchronized without keys.</InlineNotice> : null}
             {state.usbHostAvailable ? <>
-              <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground"><strong>USB cable:</strong> plug an Android phone into this computer with a data-capable cable, then click USB Sync. ostudy discovers the phone and uses a direct encrypted USB accessory channel—no tethering, IP address, QR code, developer mode, or USB debugging setup is required. Android may ask once which app should handle the newly attached ostudy accessory.</p>
-              <Button variant="primary" disabled={busyAction !== null || !hasSelectedCategory} onClick={() => void startUsbSync()}>{busyAction === "usb" ? "Connecting phone…" : "USB Sync"}</Button>
+              <p className="tw:m-0 tw:text-label tw:leading-relaxed tw:text-muted-foreground"><strong>USB cable:</strong> plug an Android phone into this computer with a data-capable cable, then click USB Sync. Android opens ostudy for the accessory, and ostudy asks the receiving user to Accept or Reject before any selected study data is transferred. This needs no tethering, IP address, QR code, developer mode, or USB debugging setup.</p>
+              <Button variant="primary" disabled={busyAction !== null || !hasSelectedCategory || usbSessionId !== null} onClick={() => void startUsbSync()}>{busyAction === "usb" ? "Connecting phone…" : "USB Sync"}</Button>
+              {usbSessionId ? <Progress value={usbProgress?.transferredBytes ?? null} max={Math.max(1, usbProgress?.totalBytes ?? 1)} label="USB synchronization progress" valueText={usbProgressText} text={<span>{usbProgressText}</span>} /> : null}
             </> : null}
             <FormField label="Advanced LAN address override" description="Only needed if automatic private LAN-address detection fails. This field is never used for USB synchronization.">
               <TextField inputMode="decimal" placeholder="Usually detected automatically" value={hostOverride} onChange={(event) => setHostOverride(event.currentTarget.value)} />
@@ -292,7 +317,7 @@ export function DeviceSyncSettings({ showToast }: DeviceSyncSettingsProps) {
               <Button className="tw:w-full" onClick={() => void copyInvitation()}>Copy invitation text</Button>
             </div> : null}
           </Panel>
-          <Panel as="article" title="Receive from another device" description="Network offers can be scanned on Android or pasted below. Direct USB transfers are accepted automatically by the Android app when the desktop starts USB Sync; there is no QR or network setup on the cable path. Accepting a transfer never uploads this device's library back.">
+          <Panel as="article" title="Receive from another device" description="Network offers can be scanned on Android or pasted below. Direct USB transfers are presented as an explicit Accept or Reject request on Android. Accepting a transfer never uploads this device's library back.">
             {state.qrScanAvailable ? <>
               <p className="tw:m-0 tw:text-label tw:text-muted-foreground">Center the complete QR code inside the camera frame and hold the phone steady. After detection, ostudy accepts the network offer and begins receiving automatically.</p>
               <Button disabled={busyAction !== null} onClick={() => void scanPairingCode()}>{busyAction === "scan" ? "Scanning…" : busyAction === "receive" ? "Receiving…" : "Scan and receive"}</Button>
@@ -366,6 +391,14 @@ function describeSelection(selection: DeviceSyncSelection): string {
 function formatFingerprint(value: string): string { return value.match(/.{1,4}/g)?.slice(0, 8).join(" ") ?? value; }
 function formatDateTime(value: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let amount = value;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; }
+  return `${amount >= 10 || unit === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unit]}`;
 }
 function humanizeState(value: string): string { return value.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase()); }
 function sessionPeerLabel(session: DeviceSyncSession, state: DeviceSyncState): string {

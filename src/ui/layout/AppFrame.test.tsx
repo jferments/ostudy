@@ -15,5 +15,14 @@ describe("shadcn application frame", () => {
     expect(screen.getByRole("main").getAttribute("data-slot")).toBe("sidebar-inset");
     expect(view.container.querySelector('[data-frame-layout]')?.getAttribute('data-frame-layout')).toBe(width <= 760 ? "compact" : width <= 1180 ? "medium" : "wide");
     expect(view.container.querySelector('[data-slot="bottom-navigation"]') !== null).toBe(width <= 760);
+    if (width <= 760) {
+      const compactButton = screen.getByRole("button", { name: "Flashcards" });
+      expect(compactButton.className).toContain("tw:min-h-[3.85rem]");
+      expect(compactButton.className).toContain("tw:overflow-visible");
+      expect(compactButton.className).toContain("tw:text-[0.55rem]");
+      expect(compactButton.className).toContain("tw:rounded-sm");
+      expect(compactButton.className).toContain("tw:coarse:px-0.5");
+      expect(view.container.querySelector('[data-slot="bottom-navigation"]')?.className).toContain("tw:pb-[max(0.5rem,var(--safe-bottom))]");
+    }
   });
 });

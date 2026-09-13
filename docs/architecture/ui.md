@@ -1,6 +1,6 @@
 # UI architecture
 
-One React presentation serves Linux and Android through capability-oriented platform adapters. [The comprehensive architecture](overview.md) covers the system; this reference owns current UI composition, interaction, state and styling. [The UI implementation record](../development/ui-overhaul-current-implementation.md) and [roadmap](../development/ui-overhaul-roadmap.md) record the implemented Phase 0–15 ownership and distinguish source completion from automated and human acceptance.
+One React presentation serves Linux and Android through capability-oriented platform adapters. [The comprehensive architecture](overview.md) covers the system; this reference owns current UI composition, interaction, state and styling. PR #96's completed migration is preserved in the [UI implementation record](../development/ui-overhaul-current-implementation.md) and [migration roadmap](../development/ui-overhaul-roadmap.md). The active post-migration aesthetic work is tracked separately in the [visual refresh roadmap](../development/ui-visual-refresh-roadmap.md).
 
 ## Responsibilities and dependency direction
 
@@ -13,7 +13,7 @@ feature screen -> controller -> typed IPC -> native domain
 
 Screens compose controllers, typed read models and semantic UI. Controllers own asynchronous domain reads/mutations, request identity and reconciliation. `src/ipc` owns direct native invocation; `src/platform` owns OS-facing frontend adapters. Shared `src/ui` must not import IPC, feature controllers or Tauri APIs.
 
-This diagram is an ownership rule, not a claim that every old feature is already a pure view. General controllers are in `src/controllers`; focused library hooks/models are colocated with that feature. Refactor with behavior tests rather than arbitrary file-size targets.
+This diagram is an ownership rule, not a claim that every feature is a pure view. General controllers are in `src/controllers`; focused library hooks/models are colocated with that feature. Refactor with behavior tests rather than arbitrary file-size targets.
 
 Rust owns durable content, validation, transactions, schedules, history, processing and provider policy. Efficient UI projections do not make React's layout the data model. No screen performs SQL or contacts an AI provider directly.
 
@@ -74,13 +74,13 @@ Generated revisions differ from learner-owned notes/overrides. Generation belong
 
 DocumentsSection retains the actual unavailable-capability fallback. DocumentsScreen displays application-lifetime controller/native state; a route unmount cannot cancel durable jobs. Parsing, OCR and provider/storage policy remain native/domain-owned.
 
-Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional conversation, private question criteria and hidden-answer/citation safeguards. Questions use Send; do not restore Quiz me. The Documents, guide reader, Analytics, active Practice and Tutor layouts now use the same scaffold, actions, fields, metrics and feedback. Their controllers and rich-content models remain independent. The inactive Practice face is inert, and Tutor submission remains composition-aware.
+Tutor keeps final PR #94 multi-source selection, safe Markdown, source-optional conversation, private question criteria and hidden-answer/citation safeguards. Questions use Send; do not restore Quiz me. The Documents, guide reader, Analytics, active Practice and Tutor layouts use the same scaffold, actions, fields, metrics and feedback while their controllers and rich-content models remain independent. The inactive Practice face is inert, and Tutor submission remains composition-aware.
 
 ## Overlay lifecycle
 
 Base UI owns browser focus containment/restoration, keyboard interaction, popup positioning, modality and scroll locking through the shared Dialog/Sheet/Menu/Tooltip implementations. OverlayProvider owns application parent/depth registration and native Back dispatch; it is not a duplicate DOM focus trap.
 
-Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Features use semantic confirmation/overflow APIs rather than ordinary window.confirm or handwritten backdrops.
+Only the applicable top layer dismisses. Busy/non-dismissible state, alert-dialog pointer behavior, compact safe-area/IME layout and explicit initial focus remain contracts. Menus unmount before an action opens a dialog. Features use semantic confirmation/overflow APIs rather than ordinary `window.confirm` or handwritten backdrops.
 
 An inline workspace stays nonmodal. Browser beforeunload/native active-document shutdown protection remain distinct from an interactive React confirmation, which cannot guarantee completion during every shutdown path.
 
@@ -88,11 +88,19 @@ An inline workspace stays nonmodal. Browser beforeunload/native active-document 
 
 `src/ui/foundations/index.css` is the single global entry. It defines cascade layers, root sizing, typography, token foundations, platform insets and accessibility capabilities. Tailwind compiles namespaced `tw:` utilities through the Vite plugin without Preflight or a second reset.
 
-All ordinary feature presentation uses Tailwind and shared oStudy components. Utilities intentionally occupy the components layer below retained specialized geometry/content overrides; the final precedence audit does not introduce a global important flag. Partial separators clear their other border edges explicitly. Do not use global stage sheets or important flags to hide precedence defects.
+All ordinary feature presentation uses Tailwind and shared oStudy components. Utilities occupy the components layer below retained specialized geometry/content overrides; no global important flag is used. Partial separators clear their other border edges explicitly. Do not use global stage sheets or important flags to hide precedence defects.
 
 Reference/semantic/component token sources generate committed artifacts. Themes change values, not feature selectors. The Tailwind adapter maps semantic roles to oStudy variables without overwriting old short aliases or adding a separate dark provider. Utility names are complete source literals, not interpolated fragments.
 
-Stable oStudy facades wrap owned shadcn source in `src/ui/vendor/shadcn`; only that directory imports Base UI. Feature code may use Tailwind but not vendor types/APIs. Current primitives include forms, tabs, cards/panels, badges/chips, progress, notifications, menus and dialogs. Customized copies need reviewed upstream refreshes; they do not update automatically.
+Stable oStudy facades wrap owned shadcn source in `src/ui/vendor/shadcn`; only that directory imports Base UI. Feature code may use Tailwind but not vendor types/APIs. Current primitives include forms, tabs, Card composition, Item list objects, ButtonGroup/Toolbar actions, badges/chips, progress, notifications, menus and dialogs. Customized copies need reviewed upstream refreshes; they do not update automatically.
+
+### Stock-first visual rule
+
+`components.json` selects shadcn's Base UI Nova family. For ordinary presentation, the default is to use the owned Nova component's sizing, spacing, hierarchy and standard variants rather than recreating the pre-PR #96 appearance. oStudy remains the authority for semantic colors, Light/Dark/Console/Synthwave themes, fonts, accessibility capabilities and product meaning.
+
+A shared application abstraction should exist because it carries product semantics, cross-platform behavior or reusable interaction policy—not merely because it groups Tailwind classes. Prefer Card for bounded information, Item for list objects, Field/FormField for labels/help/errors, Alert/notice for status, and Toolbar/ButtonGroup for related actions. `Surface` remains a compatibility/product-state boundary while generic consumers migrate away from elevation/material vocabulary.
+
+Fine-pointer desktop controls follow Nova's compact geometry. Coarse-pointer capabilities expand interactive targets to the application touch minimum without creating a second mobile component tree. Theme differences change semantic values and optional effects, not the information architecture.
 
 Interface/card font and scale preferences remain independent. Packaged IBM Plex Sans has a system fallback; a fresh source build may provision uncached fonts, but the installed app needs no runtime font service. Explicit user selections remain authoritative; native PDF export has its own print/font contract.
 
@@ -112,6 +120,8 @@ Tutorial progress is versioned device-local state, not a portable study session.
 
 Test active controllers, route/dirty guards, overlays/Back, library empty/populated/archive states, drag/keyboard movement, authoring identity, imports and sync recovery. CSS compilation discovers the entire production frontend and checks emitted utilities. The AST-based ownership guard rejects raw generic controls outside the vendor layer, with only disabled sanitized Markdown task markers exempt. Native WebDriver/Android tests establish integration not proven by mocks.
 
-Retain dedicated pointer geometry, QR quiet-zone, guided spotlight, inline rich progress, native root-height and document/editor/print CSS with explicit ownership. The 16 remaining Modules are registered with rationales in `scripts/ui/presentation-policy.mjs`; the verifier rejects missing, dead or unregistered owners. Legacy class maps and the duplicate deck harness are removed. Their creation, archive/restore, Undo and transfer contracts are tested on the live implementation. Do not delete real versioned compatibility readers or unavailable-capability fallbacks.
+Retain dedicated pointer geometry, QR quiet-zone, guided spotlight, inline rich progress, native root-height and document/editor/print CSS with explicit ownership. The 16 remaining Modules are registered with rationales in `scripts/ui/presentation-policy.mjs`; the verifier rejects missing, dead or unregistered owners. Do not delete real versioned compatibility readers or unavailable-capability fallbacks merely to reduce source counts.
 
-Historical screenshot/performance records are provenance, not current acceptance. Evaluate the intended new appearance and behavioral invariants separately; no speedup is established merely by adopting a UI library. See [testing and CI](../development/testing-and-ci.md), [local handoff](../development/local-testing-and-handoff.md) and [cleanup audit](../development/documentation-and-cleanup-audit.md).
+The committed Stage-0 screenshot matrix is historical provenance, not the current visual specification. During an intentional visual redesign, capture an exact-head **candidate** into ignored `.artifacts/` output, review it separately from behavior gates, and only establish a new committed baseline after human acceptance. Never overwrite the historical matrix to make an intentional difference disappear.
+
+See [testing and CI](../development/testing-and-ci.md), [local handoff](../development/local-testing-and-handoff.md), [visual refresh roadmap](../development/ui-visual-refresh-roadmap.md) and [cleanup audit](../development/documentation-and-cleanup-audit.md).

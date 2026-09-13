@@ -10,10 +10,10 @@ interface NavigationSidebarProps {
   onNavigate: (section: AppSection) => void | Promise<void>;
 }
 
-const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string }> = [
+const ITEMS: ReadonlyArray<{ section: AppSection; icon: IconName; label: string; compactLabel?: string }> = [
   { section: "decks", icon: "cards", label: "Flashcards" },
-  { section: "study-guides", icon: "study-guide", label: "Study Guides" },
-  { section: "documents", icon: "document", label: "Documents" },
+  { section: "study-guides", icon: "study-guide", label: "Study Guides", compactLabel: "Study\nGuides" },
+  { section: "documents", icon: "document", label: "Documents", compactLabel: "Docs" },
   { section: "tutor", icon: "brain", label: "Tutor" },
   { section: "analytics", icon: "analytics", label: "Analytics" },
   { section: "settings", icon: "settings", label: "Settings" },
@@ -45,7 +45,7 @@ export function NavigationSidebar({
 }: NavigationSidebarProps) {
   const { layoutMode } = useLayoutMode();
   return <AppNavigation brand={<BrandLockup compact={layoutMode === "medium"} />} items={ITEMS.map((item) => ({
-    id: item.section, label: item.label, icon: item.icon,
+    id: item.section, label: item.label, compactLabel: item.compactLabel, icon: item.icon,
     active: isActive(item.section, section, activeWorkflow),
     secondary: !COMPACT_PRIMARY_SECTIONS.some((section) => section === item.section),
     onSelect: () => { void onNavigate(item.section); },

@@ -52,27 +52,9 @@ export function DeckLibraryRoot({
   );
 
   return (
-    <div className={styles.root} aria-busy={controller.isLoading || controller.isMutating}>
-      <div className={styles.toolbar} aria-label="Deck library controls">
-        <div className={styles.toolbarActions}>
-          <IconButton
-            icon="folder-open"
-            iconSize={24}
-            className={styles.importAction}
-            label="Import deck from file"
-            tooltip="Import deck from file"
-            disabled={controller.isLoading || controller.isMutating}
-            onClick={onImportDeck}
-          />
-          {hasAnyDecks ? (
-            <Button variant="primary" onClick={controller.openDeckCreator}>
-              <Icon name="plus" size={18} /> New deck
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
+    <div className="tw:relative tw:min-w-0" aria-busy={controller.isLoading || controller.isMutating}>
       <SelectionToolbar
+        overlay
         selectedCount={controller.selectedIds.size}
         label="Selected deck actions"
         primaryAction={{
@@ -152,35 +134,57 @@ export function DeckLibraryRoot({
         ]}
         onClearSelection={controller.clearSelection}
       />
-      {guidance ? <InlineNotice kind="info">{guidance}</InlineNotice> : null}
 
-      <VisuallyHidden as="div" aria-live="polite">
-        {controller.announcement}
-      </VisuallyHidden>
-      {controller.errorMessage ? (
-        <InlineNotice kind="error">{controller.errorMessage}</InlineNotice>
-      ) : null}
-      {controller.isLoading ? <LoadingState label="Loading deck organization…" /> : null}
-      {controller.snapshot ? (
-        <ReadyDeckLibrary
-          controller={controller}
-          snapshot={controller.snapshot}
-          onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
-          onExportDeck={onExportDeck}
+      <div className={styles.root}>
+        <div className={styles.toolbar} aria-label="Deck library controls">
+          <div className={styles.toolbarActions}>
+            <IconButton
+              icon="folder-open"
+              iconSize={24}
+              className={styles.importAction}
+              label="Import deck from file"
+              tooltip="Import deck from file"
+              disabled={controller.isLoading || controller.isMutating}
+              onClick={onImportDeck}
+            />
+            {hasAnyDecks ? (
+              <Button variant="primary" onClick={controller.openDeckCreator}>
+                <Icon name="plus" size={18} /> New deck
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {guidance ? <InlineNotice kind="info">{guidance}</InlineNotice> : null}
+
+        <VisuallyHidden as="div" aria-live="polite">
+          {controller.announcement}
+        </VisuallyHidden>
+        {controller.errorMessage ? (
+          <InlineNotice kind="error">{controller.errorMessage}</InlineNotice>
+        ) : null}
+        {controller.isLoading ? <LoadingState label="Loading deck organization…" /> : null}
+        {controller.snapshot ? (
+          <ReadyDeckLibrary
+            controller={controller}
+            snapshot={controller.snapshot}
+            onPracticeDeck={(deckId) => void onPracticeDeck(deckId)}
+            onExportDeck={onExportDeck}
+          />
+        ) : null}
+        <DeckLibrarySheets
+          sheet={controller.sheet}
+          busy={controller.isMutating}
+          folders={controller.snapshot?.folders ?? []}
+          decks={decks}
+          practiceShuffle={practiceShuffle}
+          onClose={controller.closeSheet}
+          onCreateDeck={controller.createDeck}
+          onSaveFolder={controller.saveFolder}
+          onMoveSelection={controller.moveSelection}
+          onStartPractice={onPracticeSelected}
         />
-      ) : null}
-      <DeckLibrarySheets
-        sheet={controller.sheet}
-        busy={controller.isMutating}
-        folders={controller.snapshot?.folders ?? []}
-        decks={decks}
-        practiceShuffle={practiceShuffle}
-        onClose={controller.closeSheet}
-        onCreateDeck={controller.createDeck}
-        onSaveFolder={controller.saveFolder}
-        onMoveSelection={controller.moveSelection}
-        onStartPractice={onPracticeSelected}
-      />
+      </div>
     </div>
   );
 }

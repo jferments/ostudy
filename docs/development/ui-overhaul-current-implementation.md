@@ -1,14 +1,14 @@
 # UI overhaul implementation after PR #94
 
-Status: source implementation for Phases 1–15 is integrated in PR #96, following the Phase 0 architecture assessment. The remaining acceptance work is exact-head terminal qualification and human visual/device review, not an unimplemented workspace migration. Automated qualification, human visual acceptance and merge are separate states; their actual results belong to the exact-SHA PR evidence rather than this document.
+Status: **historical implementation record for completed PR #96.** PR #96 finished Phases 1–15, passed exact-head automated qualification on its final PR head `8b681f9c4671946158ccd85b9747e539bec281bd`, and was squash-merged to `main` as `5a4a4212e15c847db5bbf5daf1948e6ca6b3f860`. Its intentionally separate human visual/device acceptance boundary did not mean the migration source was unfinished. Post-merge aesthetic work is now owned by [the visual refresh roadmap](ui-visual-refresh-roadmap.md); this file remains the implementation history for the architecture established by #96.
 
 ## Preserved baseline and ownership
 
-PR #94 was squash-merged as `fd5659e77671cb814393024c1baa2e0cba9a59d7`. PR #96 incorporated its final product tree with merge `35ef21cfefc500b7ab47e4f6189e7493de124ab6` and targets main. The original Phase 0 inventory used the earlier `279430d...` source; it remains historical planning evidence.
+PR #94 was squash-merged as `fd5659e77671cb814393024c1baa2e0cba9a59d7`. PR #96 was then completed against that product baseline and squash-merged as `5a4a4212e15c847db5bbf5daf1948e6ca6b3f860`. The original Phase 0 inventory used the earlier `279430d...` source; it remains historical planning evidence rather than a manifest of current files.
 
 The final Tutor retains multi-source selection, contextual chat settings, safe Markdown and conversational questions through Send. General chat does not require embeddings or selected material. Keep hidden-answer/citation restrictions, source permissions, operation identities, private question criteria and offline conversation reading. Do not restore Quiz me. DocumentJobsProvider keeps document work alive across navigation; stop/cancel and nonfatal diagnostics retain their meaning.
 
-No native transport, provider secret storage, database schema, scheduler, IPC or document-job redesign is part of this presentation migration. The Android instrumentation readiness repair changes the test's observation boundary, not production behavior.
+No native transport, provider secret storage, database schema, scheduler, IPC or document-job redesign was part of this presentation migration. The Android instrumentation readiness repair changed the test's observation boundary, not production behavior.
 
 ## Foundation: Phases 1–3
 
@@ -120,9 +120,9 @@ The legacy classOwnership API and its three shared CSS maps are removed after th
 
 There are 16 registered Modules. Retaining specialized CSS is intentional, not an unfinished generic screen conversion. Semantic short aliases still used by these owners remain; removing them merely to reduce a count would break supported styling. Owned shadcn source and its provenance are retained; no extra runtime registry or dependency ejection is required.
 
-### Acceptance still requiring a human
+### Historical human-acceptance boundary
 
-Source completion does not approve visual baselines. Inspect all themes, long/populated/error states, enlarged text, keyboard focus, physical Android IME/Back and real asset/document rendering. Existing automated correctness/geometry gates must pass on the frozen candidate. Performance measurements are advisory/manual; no speedup or real-world defect-rate reduction is inferred from library adoption. Refresh screenshots or performance baselines only after acceptance, never to hide a regression.
+PR #96's source completion and automated qualification did not declare subjective visual approval. Its handoff explicitly assigned four-theme appearance, long/populated/error states, enlarged text, keyboard focus, physical Android IME/Back and real asset/document rendering to human review. The current visual-refresh work intentionally changes those aesthetics, so a new candidate must be reviewed rather than treating the #96 appearance as a pixel specification.
 
 ## Tests and acceptance
 
@@ -130,10 +130,10 @@ The TypeScript import verifier restricts vendor/Base UI ownership. The class-own
 
 Behavior suites retain form/ref/loading/disabled contracts, keyboard tab/radio behavior, disclosure drafts, Settings/provider/sync operations, atomic import receipts, deck-library drag/selection, browser bulk actions, Practice setup and nested modal/Back behavior. They assert observable outcomes rather than hidden-input implementation details. Node-only suites remain explicit `.node-test.mjs` files.
 
-Android's fresh-library test now waits for the asynchronous library surface, not only the earlier route heading. All existing create/import, empty-state and irrelevant-control assertions remain. A Python policy regression locks in that readiness boundary and semantic selectors.
+Android's fresh-library test waits for the asynchronous library surface, not only the earlier route heading. All existing create/import, empty-state and irrelevant-control assertions remain. A Python policy regression locks in that readiness boundary and semantic selectors.
 
-Qualification proceeds focused/static/fast first, then frozen full Linux and Android. Do not perform opportunistic source/docs edits during terminal qualification. A queued run or an ancestor pass is not a current-head result. Manual acceptance still needs four-theme, enlarged-text, keyboard/focus, narrow layout, actual Android picker/IME/Back and representative populated/error states. No measured speedup or real-world defect-rate improvement is asserted solely from library adoption.
+Qualification proceeds focused/static/fast first, then a frozen full Linux and Android candidate. Do not perform opportunistic source/docs edits during terminal qualification. A queued run or an ancestor pass is not a current-head result. Visual redesign acceptance remains separate from behavioral qualification.
 
 Use [local testing and handoff](local-testing-and-handoff.md) for exact checkout, safe data isolation and maintained build/install commands. Revert a UI increment normally to roll back; do not revert unrelated PR #94 work or discard user data.
 
-See [the roadmap](ui-overhaul-roadmap.md), [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md), [vendor provenance](../../src/ui/vendor/shadcn/README.md), and [the bounded publication loop](../agents/GITHUB-DIRECT-DEVELOPMENT.md).
+See the completed [migration roadmap](ui-overhaul-roadmap.md), active [visual refresh roadmap](ui-visual-refresh-roadmap.md), [ADR 0051](../decisions/0051-shadcn-tailwind-presentation-architecture.md), [vendor provenance](../../src/ui/vendor/shadcn/README.md), and [bounded publication loop](../agents/GITHUB-DIRECT-DEVELOPMENT.md).

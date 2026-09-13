@@ -11,9 +11,25 @@ const PLUGIN_IDENTIFIER: &str = "io.github.jferments.ostudy.platform";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UsbAccessoryPermissionResult {
+    available: bool,
+    granted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TakeUsbAccessoryResult {
     available: bool,
     fd: Option<i32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbAccessoryStatus {
+    pub available: bool,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub serial_number: Option<String>,
 }
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
@@ -172,8 +188,27 @@ impl<R: Runtime> OstudyPlatform<R> {
     }
 
     #[cfg(target_os = "android")]
+    pub fn peek_usb_accessory(&self) -> Result<UsbAccessoryStatus> {
+        let usb = self.app.state::<OstudyUsb<R>>();
+        usb.0
+            .run_mobile_plugin("peekUsbAccessory", ())
+            .map_err(Into::into)
+    }
+
+    #[cfg(target_os = "android")]
     pub fn take_usb_accessory_fd(&self) -> Result<Option<i32>> {
         let usb = self.app.state::<OstudyUsb<R>>();
+        let permission: UsbAccessoryPermissionResult = usb
+            .0
+            .run_mobile_plugin("requestUsbAccessoryPermission", ())
+            .map_err(crate::Error::from)?;
+        if !permission.available {
+            return Ok(None);
+        }
+        if !permission.granted {
+            return Err(crate::Error::UsbAccessDenied);
+        }
+
         let result: TakeUsbAccessoryResult = usb
             .0
             .run_mobile_plugin("takeUsbAccessory", ())

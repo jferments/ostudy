@@ -53,7 +53,7 @@ class MobileNavigationContractTests(unittest.TestCase):
         for utility in ("tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"):
             self.assertIn(utility, toolbar.split())
         self.assertIn('importAction: "tw:[&_svg]:stroke-[2.15]"', recipes)
-        self.assertIn('icon="folder-open"\n            iconSize={24}', root)
+        self.assertRegex(root, r'icon="folder-open"\s+iconSize=\{24\}')
 
 
 if __name__ == "__main__":

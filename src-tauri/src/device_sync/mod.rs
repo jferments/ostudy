@@ -33,7 +33,7 @@ use std::{
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     database::Database,
@@ -63,6 +63,7 @@ const MIN_EXPIRY_SECONDS: i64 = 60;
 const MAX_EXPIRY_SECONDS: i64 = 900;
 const ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_INVITATION_CHARS: usize = 8 * 1024;
+const DEVICE_SYNC_PROGRESS_EVENT: &str = "ostudy-device-sync-progress";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -156,6 +157,24 @@ pub struct DeviceSyncResultDto {
     pub received_package_bytes: u64,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingUsbSyncRequestDto {
+    pub available: bool,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub serial_number: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceSyncProgressDto {
+    session_id: String,
+    direction: String,
+    transferred_bytes: u64,
+    total_bytes: u64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PairingInvitation {
@@ -178,6 +197,12 @@ struct PairingInvitation {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UsbSyncBootstrap {
     invitation: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct UsbSyncDecision {
+    accepted: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -317,6 +342,36 @@ pub fn get_device_sync_state(
             CapabilityState::Available
         ),
     })
+}
+
+#[tauri::command]
+pub fn get_pending_usb_sync_request(app: AppHandle) -> Result<PendingUsbSyncRequestDto, CommandError> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_ostudy_platform::OstudyPlatformExt;
+        let pending = app.ostudy_platform().peek_usb_accessory().map_err(|error| {
+            CommandError::new(
+                "device_sync_usb_open_failed",
+                format!("The pending Android USB sync request could not be inspected: {error}"),
+            )
+        })?;
+        return Ok(PendingUsbSyncRequestDto {
+            available: pending.available,
+            manufacturer: pending.manufacturer,
+            model: pending.model,
+            serial_number: pending.serial_number,
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Ok(PendingUsbSyncRequestDto {
+            available: false,
+            manufacturer: None,
+            model: None,
+            serial_number: None,
+        })
+    }
 }
 
 #[tauri::command]
@@ -533,6 +588,27 @@ pub async fn join_device_pairing(
         .map(Some)
 }
 
+#[tauri::command]
+pub async fn reject_usb_device_pairing(app: AppHandle) -> Result<bool, CommandError> {
+    #[cfg(target_os = "android")]
+    {
+        let Some((invitation, stream)) = take_attached_usb_invitation(&app).await? else {
+            return Ok(false);
+        };
+        let _ = invitation;
+        write_usb_decision(stream, false).await?;
+        return Ok(true);
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        Err(CommandError::new(
+            "device_sync_usb_unavailable",
+            "USB synchronization requests can only be accepted or rejected on Android.",
+        ))
+    }
+}
+
 async fn execute_join_session(
     app: AppHandle,
     paths: &AppPaths,
@@ -594,11 +670,9 @@ type UsbJoinStream = usb::AndroidUsbStream;
 struct UsbJoinStream;
 
 #[cfg(target_os = "android")]
-async fn join_attached_usb_device(
-    app: AppHandle,
-    paths: &AppPaths,
-    runtime: &PlatformRuntime,
-) -> Result<Option<DeviceSyncResultDto>, CommandError> {
+async fn take_attached_usb_invitation(
+    app: &AppHandle,
+) -> Result<Option<(PairingInvitation, UsbJoinStream)>, CommandError> {
     use tauri_plugin_ostudy_platform::OstudyPlatformExt;
 
     let fd = app
@@ -634,6 +708,37 @@ async fn join_attached_usb_device(
             "The attached USB accessory did not present a direct-USB ostudy synchronization offer.",
         ));
     }
+    Ok(Some((invitation, stream)))
+}
+
+#[cfg(target_os = "android")]
+async fn write_usb_decision(
+    mut stream: UsbJoinStream,
+    accepted: bool,
+) -> Result<UsbJoinStream, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        write_plain_json(&mut stream, &UsbSyncDecision { accepted })?;
+        Ok::<_, CommandError>(stream)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "device_sync_worker_interrupted",
+            "The USB consent response could not be returned to the sending device.",
+        )
+    })?
+}
+
+#[cfg(target_os = "android")]
+async fn join_attached_usb_device(
+    app: AppHandle,
+    paths: &AppPaths,
+    runtime: &PlatformRuntime,
+) -> Result<Option<DeviceSyncResultDto>, CommandError> {
+    let Some((invitation, stream)) = take_attached_usb_invitation(&app).await? else {
+        return Ok(None);
+    };
+    let stream = write_usb_decision(stream, true).await?;
     execute_join_session(app, paths, runtime, invitation, Some(stream))
         .await
         .map(Some)
@@ -707,7 +812,7 @@ pub fn resolve_device_sync_conflict(
     let store = SyncStore::open(paths.inner())?;
     let conflict = store.conflict(&input.conflict_id)?;
     if conflict.table_name == "app_settings" {
-        return store.resolve_conflict(&input.conflict_id, "keep_left");
+        return store.resolve_conflict(&conflict.id, "keep_left");
     }
     let payload = match input.resolution.as_str() {
         "keep_left" => conflict.left_payload_json.as_deref(),
@@ -897,6 +1002,13 @@ fn run_host_usb(
             invitation: bootstrap_invitation.to_string(),
         },
     )?;
+    let decision: UsbSyncDecision = read_plain_json(&mut stream)?;
+    if !decision.accepted {
+        return Err(CommandError::new(
+            "device_sync_rejected",
+            "The receiving Android device rejected the USB sync request.",
+        ));
+    }
     let state = HostConnectionState {
         invitation,
         pairing_secret,
@@ -1040,7 +1152,11 @@ where
             package: outgoing_summary,
         },
     )?;
-    channel.send_file(&outgoing_package)?;
+    let progress_app = app.clone();
+    let progress_session = invitation.session_id.clone();
+    channel.send_file_with_progress(&outgoing_package, |transferred, total| {
+        emit_sync_progress(&progress_app, &progress_session, "send", transferred, total);
+    })?;
     cancel_signal.check()?;
 
     let acknowledgement: ReceiverAcknowledgement = channel.receive_json(FRAME_COMPLETE)?;
@@ -1230,7 +1346,11 @@ where
         validate_transfer_metadata(&invitation, &server, &metadata)?;
         let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "receive")?;
         let incoming_package = workspace.path.join("incoming.syncpkg");
-        channel.receive_file(&incoming_package)?;
+        let progress_app = app.clone();
+        let progress_session = invitation.session_id.clone();
+        channel.receive_file_with_progress(&incoming_package, |transferred, total| {
+            emit_sync_progress(&progress_app, &progress_session, "receive", transferred, total);
+        })?;
         cancel_signal.check()?;
         store.update_session(&invitation.session_id, Some(&sender.id), "merging", None)?;
         crate::logging::info(
@@ -1379,6 +1499,24 @@ where
         let _ = channel.send_error(error);
     }
     transfer_result
+}
+
+fn emit_sync_progress(
+    app: &AppHandle,
+    session_id: &str,
+    direction: &str,
+    transferred_bytes: u64,
+    total_bytes: u64,
+) {
+    let _ = app.emit(
+        DEVICE_SYNC_PROGRESS_EVENT,
+        DeviceSyncProgressDto {
+            session_id: session_id.to_string(),
+            direction: direction.to_string(),
+            transferred_bytes,
+            total_bytes,
+        },
+    );
 }
 
 fn ensure_identity(
@@ -1797,7 +1935,12 @@ mod tests {
         let parsed = parse_invitation(&encode_invitation(&payload)).unwrap();
         assert_eq!(parsed.transport, PairingTransport::Usb);
         assert_eq!(parsed.endpoint, usb::USB_ENDPOINT_HINT);
+    }
 
+    #[test]
+    fn direct_usb_invitation_rejects_network_endpoint() {
+        let mut payload = test_invitation(false);
+        payload.transport = PairingTransport::Usb;
         payload.endpoint = "192.168.42.1:49251".to_string();
         assert!(parse_invitation(&encode_invitation(&payload)).is_err());
     }
@@ -1831,6 +1974,14 @@ mod tests {
         usb_invitation.endpoint = usb::USB_ENDPOINT_HINT.to_string();
         let usb_transcript = client_transcript(&usb_invitation, &hello).unwrap();
         assert_ne!(without_api, usb_transcript);
+    }
+
+    #[test]
+    fn usb_consent_decision_is_explicit_and_serializable() {
+        let accepted = serde_json::to_string(&UsbSyncDecision { accepted: true }).unwrap();
+        let rejected = serde_json::to_string(&UsbSyncDecision { accepted: false }).unwrap();
+        assert_eq!(accepted, r#"{"accepted":true}"#);
+        assert_eq!(rejected, r#"{"accepted":false}"#);
     }
 
     #[test]

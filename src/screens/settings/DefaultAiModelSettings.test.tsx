@@ -201,6 +201,18 @@ describe("DefaultAiModelSettings", () => {
     );
   });
 
+  it("shows a green success check beside Test model after a successful probe", async () => {
+    render(<DefaultAiModelSettings controller={controller()} />);
+    const tutorModel = await screen.findByRole("combobox", { name: "Interactive tutor model" });
+    await waitFor(() => expect((tutorModel as HTMLSelectElement).disabled).toBe(false));
+    const testButtons = screen.getAllByRole("button", { name: "Test model" });
+    fireEvent.click(testButtons[1]!);
+
+    const success = await screen.findByRole("img", { name: "Model test succeeded" });
+    expect(success.classList.contains("tw:text-success")).toBe(true);
+    expect(success.getAttribute("width")).toBe("20");
+  });
+
   it("renders a returned failed probe as an actionable error with phase detail", async () => {
     vi.mocked(testAiProviderProfile).mockResolvedValue({
       profileId,
@@ -239,6 +251,7 @@ describe("DefaultAiModelSettings", () => {
     expect(alert.textContent).toContain("Model verification failed.");
     expect(alert.textContent).toContain("Text completion");
     expect(alert.textContent).toContain("did not follow the minimal text probe");
+    expect(screen.queryByRole("img", { name: "Model test succeeded" })).toBeNull();
   });
 
   it("reports a failed document schema contract on the generation model row", async () => {

@@ -2,11 +2,12 @@
 """Run the UI-platform smoke against the current desktop UI contracts.
 
 The redesign deliberately removed ostudy-rendered maximize/full-screen buttons,
-and the responsive action system deliberately promotes a sole overflow action
-instead of rendering a one-item More menu. This adapter replaces only stale
-assertions for those policies while reusing the complete UI-platform smoke.
-Workspace-tab selection remains in the shared harness so every native consumer
-uses the same accessible-name contract.
+the responsive action system deliberately promotes a sole overflow action instead
+of rendering a one-item More menu, and compact navigation intentionally uses the
+short visible labels `Study\nGuides` and `Docs` while preserving full accessible
+names. This adapter replaces only stale assertions for those policies while
+reusing the complete UI-platform smoke. Workspace-tab selection remains in the
+shared harness so every native consumer uses the same accessible-name contract.
 """
 
 from __future__ import annotations
@@ -15,6 +16,19 @@ import time
 
 import ui_platform_smoke as ui
 import smoke as webdriver
+
+
+BASE_ASSERT_NAVIGATION_LABELS = ui.assert_navigation_labels
+
+
+def assert_current_navigation_labels(
+    session_id: str,
+    expected: list[str],
+    label: str,
+) -> None:
+    if label == "compact":
+        expected = ["Flashcards", "Study\nGuides", "Docs", "Tutor", "Analytics"]
+    BASE_ASSERT_NAVIGATION_LABELS(session_id, expected, label)
 
 
 def assert_no_app_window_controls(session_id: str, label: str) -> None:
@@ -278,6 +292,7 @@ def verify_current_deck_detail_header(
 
 
 if __name__ == "__main__":
+    ui.assert_navigation_labels = assert_current_navigation_labels
     ui.verify_native_window_controls = verify_os_owned_native_window_states
     ui.verify_deck_detail_header = verify_current_deck_detail_header
     raise SystemExit(ui.main())

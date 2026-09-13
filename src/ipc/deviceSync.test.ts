@@ -3,14 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   cancelDeviceSyncSession,
+  getPendingUsbSyncRequest,
   joinDevicePairing,
   joinUsbDevicePairing,
+  rejectUsbDevicePairing,
   resolveDeviceSyncConflict,
   scanDevicePairingQr,
   startDevicePairing,
 } from "./deviceSync";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
 describe("device synchronization IPC", () => {
   beforeEach(() => {
@@ -73,13 +76,25 @@ describe("device synchronization IPC", () => {
     });
   });
 
-  it("claims an attached USB accessory through the shared join command", async () => {
+  it("peeks at an attached USB request without claiming it", async () => {
+    await getPendingUsbSyncRequest();
+    expect(invoke).toHaveBeenCalledWith("get_pending_usb_sync_request");
+  });
+
+  it("accepts an attached USB accessory only through the shared join command", async () => {
     await joinUsbDevicePairing();
+    expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith("join_device_pairing", {
       input: {
         invitation: "ostudy-sync://usb-attached",
       },
     });
+  });
+
+  it("keeps USB rejection behind the shared Rust command boundary", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(true);
+    await expect(rejectUsbDevicePairing()).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith("reject_usb_device_pairing");
   });
 
   it("cancels one active synchronization session by id", async () => {

@@ -17,7 +17,7 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
 | Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
 
-Flashcards has Decks and Search/Filter. Card templates live in Settings; transfer actions are contextual. Study Guides and Documents are separate destinations. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
+Flashcards has Decks and Search/Filter. Card templates live in Settings; transfer actions are contextual. Study Guides and Documents are separate destinations. Tutor is a first-class destination and can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
 
 ## Install, build, and test locally
 
@@ -56,7 +56,7 @@ Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](ag
 
 [Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) records concrete findings, removals, intentional compatibility, and remaining engineering observations.
 
-The presentation-layer migration is described by the [Phase 0 affected-surface inventory](development/ui-overhaul-phase-0-inventory.md), [shadcn/ui + Tailwind roadmap](development/ui-overhaul-roadmap.md), [ADR 0051](decisions/0051-shadcn-tailwind-presentation-architecture.md), and [current implementation and post-PR #94 acceptance](development/ui-overhaul-current-implementation.md). Planning records do not establish runtime completion; [UI architecture](architecture/ui.md) describes implemented ownership.
+PR #96 completed the shadcn/Base UI/Tailwind presentation migration described by the [Phase 0 affected-surface inventory](development/ui-overhaul-phase-0-inventory.md), [completed migration roadmap](development/ui-overhaul-roadmap.md), [ADR 0051](decisions/0051-shadcn-tailwind-presentation-architecture.md), and [PR #96 implementation record](development/ui-overhaul-current-implementation.md). The current post-migration aesthetic work is the [visual refresh roadmap](development/ui-visual-refresh-roadmap.md). [UI architecture](architecture/ui.md) owns the implemented dependency and styling rules rather than either roadmap.
 
 Focused development references include [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), and the [portability inventory](development/platform-portability-inventory.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
 
@@ -64,7 +64,7 @@ Focused development references include [AI testing](development/ai-infrastructur
 
 The maintained runner topology is described in [Unified Linux/Android runner](development/unified-linux-android-runner.md) and [runner setup/operations](development/unified-runner-setup.md). [Legacy split-runner notes](development/android-self-hosted-runner.md) are migration context, not a request to redeploy that topology.
 
-[UI performance evidence](development/ui-workflow-redesign-performance-baseline.md) and [visual baseline records](development/ui-workflow-redesign-visual-baseline.md) define retained test/provenance contracts. Baseline measurements are historical comparisons, not a claim that the old UI is the current specification. Wall-clock performance remains advisory/manual rather than a substitute for correctness qualification.
+[UI performance evidence](development/ui-workflow-redesign-performance-baseline.md) and the historical [Stage-0 visual baseline record](history/ui-workflow-redesign-visual-baseline.md) are retained provenance, not the current appearance specification. For an intentional redesign, use `./scripts/ui-visual-baselines.sh candidate` to capture exact-head review evidence into ignored `.artifacts/` output. The committed historical baseline remains read-only until a separately reviewed replacement baseline is deliberately accepted. Wall-clock performance remains advisory/manual rather than a substitute for correctness qualification.
 
 ## External formats
 

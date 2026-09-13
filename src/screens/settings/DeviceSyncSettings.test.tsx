@@ -7,7 +7,7 @@ import { DeviceSyncSettings } from "./DeviceSyncSettings";
 vi.mock("../../ipc/deviceSync", () => ({
   getDeviceSyncState: vi.fn(), updateDeviceSyncName: vi.fn(), startDevicePairing: vi.fn(),
   joinDevicePairing: vi.fn(), cancelDeviceSyncSession: vi.fn(), scanDevicePairingQr: vi.fn(),
-  removeDeviceSyncPeer: vi.fn(), resolveDeviceSyncConflict: vi.fn(),
+  removeDeviceSyncPeer: vi.fn(), resolveDeviceSyncConflict: vi.fn(), listenToDeviceSyncProgress: vi.fn(),
 }));
 const localId = "1".repeat(32);
 const peerId = "2".repeat(32);
@@ -48,6 +48,7 @@ describe("DeviceSyncSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(syncIpc.getDeviceSyncState).mockResolvedValue(state());
+    vi.mocked(syncIpc.listenToDeviceSyncProgress).mockResolvedValue(vi.fn());
     vi.mocked(syncIpc.startDevicePairing).mockResolvedValue({
       sessionId: "4".repeat(32), invitation: "ostudy-sync://pair/example",
       qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>', endpoint: "192.168.1.10:44000",
@@ -77,7 +78,7 @@ describe("DeviceSyncSettings", () => {
     expect(screen.getByText(/scanning this code accepts the offer/iu)).toBeTruthy();
   });
 
-  it("starts direct USB sync with one click and no USB networking controls", async () => {
+  it("starts direct USB sync with consent waiting and no USB networking controls", async () => {
     const showToast = renderSync();
     await screen.findByText("Android phone");
     expect(screen.queryByLabelText(/USB interface address/iu)).toBeNull();
@@ -85,7 +86,8 @@ describe("DeviceSyncSettings", () => {
     expect(screen.getByText(/no tethering, IP address, QR code/iu)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "USB Sync" }));
     await waitFor(() => expect(syncIpc.startDevicePairing).toHaveBeenCalledWith({ transport: "usb", selection: defaultSelection }));
-    expect(showToast).toHaveBeenCalledWith("info", expect.stringContaining("USB sync started"));
+    expect(showToast).toHaveBeenCalledWith("info", expect.stringContaining("USB sync request sent"));
+    expect(screen.getByText(/Waiting for the Android device to accept/iu)).toBeTruthy();
   });
 
   it("hides the USB action when this desktop build has no native USB host adapter", async () => {

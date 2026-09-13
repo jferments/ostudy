@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { IconName } from "../icons/Icon";
 import { IconButton } from "../icons/IconButton";
+import { cn } from "../internal/cn";
 import { Button } from "../primitives/Button";
 import { useLayoutMode } from "../layout/LayoutModeProvider";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "../vendor/shadcn/dropdown-menu";
@@ -20,6 +21,10 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { register } = useOverlayContext();
   const groups = [items.filter((item) => !item.destructive), items.filter((item) => item.destructive)];
+  const iconTriggerClassName = cn(
+    className,
+    triggerIcon === "timer" && "tw:[&_svg]:translate-y-0.5",
+  );
   useEffect(() => {
     if (!open || compact || items.length <= 1) return;
     return register({ id, parentId, modal: false, requestClose() { setOpen(false); return true; } });
@@ -35,15 +40,15 @@ export function OverflowMenu({ label, items, disabled = false, className = "", t
   const single = items.length === 1 ? items[0] : undefined;
   const actionLabel = single?.label ?? label;
   const trigger = triggerPresentation === "icon"
-    ? <IconButton ref={triggerRef} icon={single?.destructive ? "delete" : triggerIcon} label={actionLabel} tooltip={false} className={className} tone={single?.destructive ? "danger" : "neutral"} disabled={disabled || items.length === 0 || single?.disabled} />
+    ? <IconButton ref={triggerRef} icon={single?.destructive ? "delete" : triggerIcon} label={actionLabel} tooltip={false} className={iconTriggerClassName} tone={single?.destructive ? "danger" : "neutral"} disabled={disabled || items.length === 0 || single?.disabled} />
     : <Button ref={triggerRef} variant={single?.destructive ? "dangerGhost" : "secondary"} className={className} disabled={disabled || items.length === 0 || single?.disabled}>{actionLabel}</Button>;
   if (single) return triggerPresentation === "icon"
-    ? <IconButton ref={triggerRef} icon={single.destructive ? "delete" : triggerIcon} label={single.label} className={className} tone={single.destructive ? "danger" : "neutral"} disabled={disabled || single.disabled} onClick={single.onSelect} />
+    ? <IconButton ref={triggerRef} icon={single.destructive ? "delete" : triggerIcon} label={single.label} className={iconTriggerClassName} tone={single.destructive ? "danger" : "neutral"} disabled={disabled || single.disabled} onClick={single.onSelect} />
     : <Button variant={single.destructive ? "dangerGhost" : "secondary"} className={className} disabled={disabled || single.disabled} onClick={single.onSelect}>{single.label}</Button>;
 
   if (compact) return <>
     {triggerPresentation === "icon"
-      ? <IconButton ref={triggerRef} icon={triggerIcon} label={label} tooltip={false} className={className} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)} />
+      ? <IconButton ref={triggerRef} icon={triggerIcon} label={label} tooltip={false} className={iconTriggerClassName} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)} />
       : <Button ref={triggerRef} className={className} aria-haspopup="dialog" aria-expanded={open} disabled={disabled || items.length === 0} onClick={() => setOpen(true)}>{label}</Button>}
     {open ? <Sheet title={label} width="small" onClose={() => setOpen(false)}><div className="tw:grid tw:gap-1 tw:p-3" aria-label={label}>
       {groups.map((group, index) => <div key={index} className={index === 1 && groups[0].length > 0 && group.length > 0 ? "tw:border-0 tw:border-t tw:border-solid tw:border-border tw:pt-2" : undefined}>

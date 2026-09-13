@@ -21,6 +21,10 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod deletion_purge;
+// Keep the large synchronization protocol boundary byte-stable while its current
+// USB hardening is under qualification. Split it into smaller owned modules before
+// removing this narrow formatting exemption.
+#[rustfmt::skip]
 mod device_sync;
 mod device_sync_qr_commands;
 mod diagnostics;
@@ -235,9 +239,11 @@ pub fn run() {
             platform::get_platform_capabilities,
             platform::set_platform_back_interception,
             device_sync::get_device_sync_state,
+            device_sync::get_pending_usb_sync_request,
             device_sync::update_device_sync_name,
             device_sync::start_device_pairing,
             device_sync::join_device_pairing,
+            device_sync::reject_usb_device_pairing,
             device_sync::cancel_device_sync_session,
             device_sync_qr_commands::scan_device_pairing_qr_async,
             device_sync::remove_device_sync_peer,

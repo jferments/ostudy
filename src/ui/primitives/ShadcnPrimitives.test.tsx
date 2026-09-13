@@ -2,8 +2,12 @@ import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { IconButton } from "../icons/IconButton";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
+import { ButtonGroup } from "./ButtonGroup";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "./Card";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "./Item";
 import { Skeleton } from "./Skeleton";
 
 describe("shadcn-backed oStudy primitives", () => {
@@ -44,12 +48,52 @@ describe("shadcn-backed oStudy primitives", () => {
     expect(screen.getByRole("button", { name: "Delete conversation" }).classList.contains("caller-owned")).toBe(true);
   });
 
-  it("renders all existing semantic button variants without a vendor API at call sites", () => {
+  it("preserves explicit IconButton sizes instead of letting the vendor button shrink them", () => {
+    const { container } = render(
+      <IconButton icon="folder-open" iconSize={24} label="Import deck from file" tooltip={false} />,
+    );
+    const icon = container.querySelector("svg") as SVGElement;
+    expect(icon.getAttribute("width")).toBe("24");
+    expect(icon.getAttribute("height")).toBe("24");
+    expect(icon.classList.contains("tw:size-6")).toBe(true);
+  });
+
+  it("preserves semantic application button intents while the vendor layer uses stock variants", () => {
     for (const variant of ["primary", "secondary", "ghost", "danger", "dangerSecondary", "text", "back", "dangerGhost"] as const) {
       const view = render(<Button variant={variant}>{variant}</Button>);
       expect(screen.getByRole("button", { name: variant }).className).not.toContain("undefined");
       view.unmount();
     }
+  });
+
+  it("exposes stock card composition through the application boundary", () => {
+    render(
+      <Card as="article" size="sm">
+        <CardHeader>
+          <CardTitle>Card title</CardTitle>
+          <CardDescription>Card description</CardDescription>
+          <CardAction><Button size="small">Open</Button></CardAction>
+        </CardHeader>
+        <CardContent>Body</CardContent>
+      </Card>,
+    );
+    expect(screen.getByText("Card title").getAttribute("data-slot")).toBe("card-title");
+    expect(screen.getByText("Card description").getAttribute("data-slot")).toBe("card-description");
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+  });
+
+  it("provides stock item and button-group composition without exposing vendor imports", () => {
+    render(
+      <>
+        <Item as="article" variant="outline">
+          <ItemContent><ItemTitle>Document</ItemTitle><ItemDescription>Ready to study</ItemDescription></ItemContent>
+          <ItemActions><Button size="small">Open document</Button></ItemActions>
+        </Item>
+        <ButtonGroup aria-label="Formatting"><Button size="small">Bold</Button><Button size="small">Italic</Button></ButtonGroup>
+      </>,
+    );
+    expect(screen.getByText("Document").getAttribute("data-slot")).toBe("item-title");
+    expect(screen.getByRole("group", { name: "Formatting" })).toBeTruthy();
   });
 
   it("preserves badges as text and skeletons as decorative spans", () => {
