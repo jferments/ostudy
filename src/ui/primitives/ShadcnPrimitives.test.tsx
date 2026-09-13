@@ -2,6 +2,7 @@ import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { IconButton } from "../icons/IconButton";
 import { Badge } from "./Badge";
 import { Button } from "./Button";
 import { ButtonGroup } from "./ButtonGroup";
@@ -45,6 +46,16 @@ describe("shadcn-backed oStudy primitives", () => {
   it("preserves explicit ARIA names and caller-owned presentation", () => {
     render(<Button loading size="icon" aria-label="Delete conversation" className="caller-owned" data-testid="delete">×</Button>);
     expect(screen.getByRole("button", { name: "Delete conversation" }).classList.contains("caller-owned")).toBe(true);
+  });
+
+  it("preserves explicit IconButton sizes instead of letting the vendor button shrink them", () => {
+    const { container } = render(
+      <IconButton icon="folder-open" iconSize={24} label="Import deck from file" tooltip={false} />,
+    );
+    const icon = container.querySelector("svg") as SVGElement;
+    expect(icon.getAttribute("width")).toBe("24");
+    expect(icon.getAttribute("height")).toBe("24");
+    expect(icon.classList.contains("tw:size-6")).toBe(true);
   });
 
   it("preserves semantic application button intents while the vendor layer uses stock variants", () => {
