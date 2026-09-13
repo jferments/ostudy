@@ -21,10 +21,6 @@ mod decks;
 mod deletion;
 mod deletion_commands;
 mod deletion_purge;
-// Keep the large synchronization protocol boundary byte-stable while its current
-// USB hardening is under qualification. Split it into smaller owned modules before
-// removing this narrow formatting exemption.
-#[rustfmt::skip]
 mod device_sync;
 mod device_sync_qr_commands;
 mod diagnostics;

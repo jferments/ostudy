@@ -140,10 +140,6 @@ impl SecureChannel {
         self.send_frame(FRAME_ERROR, &payload)
     }
 
-    pub(crate) fn send_file(&mut self, source: &Path) -> Result<(), CommandError> {
-        self.send_file_with_progress(source, |_, _| {})
-    }
-
     pub(crate) fn send_file_with_progress<F>(
         &mut self,
         source: &Path,
@@ -187,10 +183,6 @@ impl SecureChannel {
         self.send_frame(FRAME_FILE_END, &[])?;
         on_progress(total, total);
         Ok(())
-    }
-
-    pub(crate) fn receive_file(&mut self, destination: &Path) -> Result<(), CommandError> {
-        self.receive_file_with_progress(destination, |_, _| {})
     }
 
     pub(crate) fn receive_file_with_progress<F>(
