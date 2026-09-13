@@ -151,7 +151,7 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
       setProgress(null);
       setPhase("pending");
     } catch (error: unknown) {
-      rejectRequest();
+      void rejectRequest();
       showToast("error", getErrorMessage(error));
     } finally {
       receiving.current = false;
