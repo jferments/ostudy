@@ -129,10 +129,10 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
 
   useEffect(() => {
     if (!pending || phase !== "pending" || receiving.current) return;
-    void receiveRequest();
+    void acceptRequest();
   }, [pending, phase]);
 
-  async function receiveRequest(): Promise<void> {
+  async function acceptRequest(): Promise<void> {
     if (receiving.current) return;
     receiving.current = true;
     setPhase("authorizing");
@@ -146,9 +146,7 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
         throw new Error("The attached USB sync request was no longer available.");
       }
       if (!permission.granted) {
-        setPending(null);
-        setProgress(null);
-        setPhase("pending");
+        void rejectRequest();
         showToast("info", "Android did not grant USB access to oStudy.");
         return;
       }
@@ -175,6 +173,12 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     } finally {
       receiving.current = false;
     }
+  }
+
+  function rejectRequest(): void {
+    setPending(null);
+    setProgress(null);
+    setPhase("pending");
   }
 
   if (!android || !pending || (phase !== "authorizing" && phase !== "receiving")) return null;
