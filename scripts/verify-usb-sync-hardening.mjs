@@ -146,12 +146,12 @@ expectContains(
 );
 expectContains(
   coordinator,
-  'name: "Accept"',
+  "void acceptRequest()",
   "Android USB request exposes explicit acceptance",
 );
 expectContains(
   coordinator,
-  'name: "Reject"',
+  "void rejectRequest()",
   "Android USB request exposes explicit rejection",
 );
 expectContains(
