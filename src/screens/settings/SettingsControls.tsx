@@ -15,12 +15,12 @@ export function ThemePreview({ theme }: { theme: AppSettings["theme"] }) {
     synthwave: ["var(--ostudy-theme-preview-synthwave-canvas)", "var(--ostudy-theme-preview-synthwave-sidebar)", "var(--ostudy-theme-preview-synthwave-card)"],
   };
   const [canvas, sidebar, card] = colors[theme];
-  return <span className="tw:grid tw:w-full tw:gap-3">
-    <span aria-hidden="true" className="tw:flex tw:h-20 tw:w-full tw:overflow-hidden tw:rounded-md tw:border tw:border-solid tw:border-border" style={{ background: canvas }}>
+  return <span className="tw:grid tw:w-full tw:gap-2">
+    <span aria-hidden="true" className="tw:flex tw:h-16 tw:w-full tw:overflow-hidden tw:rounded-lg tw:ring-1 tw:ring-border" style={{ background: canvas }}>
       <span className="tw:w-1/4" style={{ background: sidebar }} />
-      <span className="tw:m-3 tw:flex-1 tw:rounded-sm" style={{ background: card }} />
+      <span className="tw:m-2.5 tw:flex-1 tw:rounded-md" style={{ background: card }} />
     </span>
-    <strong className="tw:text-label tw:font-medium">{names[theme]}</strong>
+    <strong className="tw:text-sm tw:font-medium">{names[theme]}</strong>
   </span>;
 }
 
@@ -32,7 +32,7 @@ export function FontControl({ label, value, onChange }: {
   const custom = isCustom ? value.slice("custom:".length) : "";
   const bundled = FONT_PRESET_OPTIONS.filter((option) => option.group === "bundled");
   const system = FONT_PRESET_OPTIONS.filter((option) => option.group === "system");
-  return <div className="tw:grid tw:gap-4">
+  return <div className="tw:grid tw:gap-3">
     <FormField label={label}>
       <NativeSelect value={mode} onChange={(event) => onChange(event.currentTarget.value === "custom" ? "custom:Arial" : event.currentTarget.value)}>
         <optgroup label="Bundled fonts">{bundled.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</optgroup>
@@ -60,10 +60,10 @@ export function RangeControl({ label, min, max, step, value, suffix, onChange }:
   label: string; min: number; max: number; step: number; value: number; suffix: string;
   onChange: (value: number) => void;
 }) {
-  return <div className="tw:grid tw:gap-1">
-    <div className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-label">
+  return <div className="tw:grid tw:gap-1.5">
+    <div className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-sm">
       <span className="tw:font-medium">{label}</span>
-      <output className="tw:rounded-md tw:bg-muted tw:px-2 tw:py-1 tw:font-medium tw:tabular-nums">{value}{suffix}</output>
+      <output className="tw:rounded-md tw:bg-muted tw:px-2 tw:py-0.5 tw:text-xs tw:font-medium tw:tabular-nums">{value}{suffix}</output>
     </div>
     <Slider label={label} min={min} max={max} step={step} value={value} onValueChange={onChange} />
   </div>;
@@ -81,5 +81,5 @@ export function NumberControl({ label, value, onChange }: {
 }
 
 export function PathRow({ label, value }: { label: string; value: string }) {
-  return <div className="tw:grid tw:min-w-0 tw:gap-1"><dt className="tw:text-caption tw:text-muted-foreground">{label}</dt><dd className="tw:m-0 tw:break-all tw:text-label" title={value}>{value}</dd></div>;
+  return <div className="tw:grid tw:min-w-0 tw:gap-0.5"><dt className="tw:text-xs tw:text-muted-foreground">{label}</dt><dd className="tw:m-0 tw:break-all tw:text-sm" title={value}>{value}</dd></div>;
 }

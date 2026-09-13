@@ -1,16 +1,28 @@
 import type { HTMLAttributes, ReactNode } from "react";
-import { Card, CardHeader, CardContent } from "../vendor/shadcn/card";
-import { cn } from "../internal/cn";
+
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "./Card";
+
 interface PanelProps extends HTMLAttributes<HTMLElement> {
   as?: "section" | "article" | "div" | "aside";
-  title?: string; description?: string; actions?: ReactNode; children: ReactNode;
+  title?: string;
+  description?: string;
+  actions?: ReactNode;
+  children: ReactNode;
 }
+
+/** Convenience composition for titled sections; ordinary styling comes from Card. */
 export function Panel({ as = "section", title, description, actions, children, className, ...props }: PanelProps) {
-  return <Card {...props} as={as} className={className}>
-    {title || description || actions ? <CardHeader><div className="tw:min-w-0">
-      {title ? <h2 className="tw:m-0 tw:text-section tw:font-semibold tw:tracking-tight">{title}</h2> : null}
-      {description ? <p className="tw:mt-2 tw:mb-0 tw:text-label tw:font-normal tw:leading-relaxed tw:text-muted-foreground">{description}</p> : null}
-    </div>{actions}</CardHeader> : null}
-    <CardContent className={cn("tw:grid tw:gap-5", !title && !description && !actions && "tw:pt-6")}>{children}</CardContent>
-  </Card>;
+  const hasHeader = Boolean(title || description || actions);
+  return (
+    <Card {...props} as={as} className={className}>
+      {hasHeader ? (
+        <CardHeader>
+          {title ? <CardTitle>{title}</CardTitle> : <span />}
+          {description ? <CardDescription>{description}</CardDescription> : null}
+          {actions ? <CardAction>{actions}</CardAction> : null}
+        </CardHeader>
+      ) : null}
+      <CardContent className="tw:grid tw:gap-4">{children}</CardContent>
+    </Card>
+  );
 }
