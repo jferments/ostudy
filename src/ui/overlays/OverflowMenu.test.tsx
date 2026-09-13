@@ -5,10 +5,10 @@ import { OverlayProvider } from "./OverlayProvider";
 import { OverflowMenu } from "./OverflowMenu";
 const originalMatchMedia = window.matchMedia;
 afterEach(() => { window.matchMedia = originalMatchMedia; delete document.documentElement.dataset.theme; });
-function renderMenu(compact = false) {
+function renderMenu(compact = false, triggerIcon: "overflow" | "timer" = "overflow") {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({ matches: compact && (query === "(max-width: 760px)" || query === "(max-width: 1180px)"), media: query, onchange: null, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
   const onFirst = vi.fn();
-  render(<LayoutModeProvider><OverlayProvider><OverflowMenu label="Card actions" items={[
+  render(<LayoutModeProvider><OverlayProvider><OverflowMenu label="Card actions" triggerIcon={triggerIcon} items={[
     { id: "first", label: "First", onSelect: onFirst }, { id: "disabled", label: "Disabled", disabled: true, onSelect: vi.fn() }, { id: "last", label: "Last", onSelect: vi.fn() }, { id: "delete", label: "Delete", destructive: true, onSelect: vi.fn() },
   ]} /></OverlayProvider></LayoutModeProvider>);
   return onFirst;
@@ -47,6 +47,10 @@ describe("OverflowMenu", () => {
     const onSelect = vi.fn(); render(<OverflowMenu label="Ordering actions" items={[{ id: "observe", label: "Observe", onSelect }]} />);
     expect(screen.queryByRole("button", { name: "Ordering actions" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Observe" })); expect(onSelect).toHaveBeenCalledOnce(); expect(screen.queryByRole("menu")).toBeNull();
+  });
+  it("optically centers timer triggers without changing other icon buttons", () => {
+    renderMenu(false, "timer");
+    expect(screen.getByRole("button", { name: "Card actions" }).className).toContain("tw:[&_svg]:translate-y-0.5");
   });
   it("uses the shared compact Sheet lifecycle and touch actions", async () => {
     renderMenu(true); const trigger = screen.getByRole("button", { name: "Card actions" }); trigger.focus(); fireEvent.click(trigger);

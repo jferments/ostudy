@@ -5,7 +5,7 @@ import { useAiProfilesController } from "../controllers/aiProfilesController";
 import { getErrorMessage } from "../ipc/common";
 import { saveSettings, type AppSettings } from "../ipc/settings";
 import { DEFAULT_FONT_PRESET } from "../ui/appearance/appearanceTypes";
-import { PageHeader } from "../ui/patterns/WorkspacePatterns";
+import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Tabs, type TabDefinition } from "../ui/primitives/Tabs";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
@@ -198,9 +198,11 @@ export function SettingsScreen({
   const canRestoreDefaults = activeTab === "appearance" || activeTab === "storage";
 
   return (
-    <div
-      className="tw:grid tw:min-w-0 tw:gap-7"
+    <PageScaffold
+      width="full"
+      className="tw:grid tw:content-start tw:gap-7"
       aria-busy={isSaving || aiController.mutating}
+      data-testid="settings-screen"
     >
       <PageHeader
         title="Settings"
@@ -243,6 +245,6 @@ export function SettingsScreen({
         tabs={tabs}
         ariaLabel="Settings sections"
       />
-    </div>
+    </PageScaffold>
   );
 }

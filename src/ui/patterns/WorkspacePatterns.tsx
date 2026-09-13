@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import { createContext, type HTMLAttributes, type ReactNode, useContext } from "react";
 
 import { Icon, type IconName } from "../icons/Icon";
 import { cn } from "../internal/cn";
@@ -13,23 +13,38 @@ const widths = {
   full: "tw:max-w-none",
 };
 
+const PageScaffoldContext = createContext(false);
+
 export function PageScaffold({
   width = "wide",
+  inset,
   className,
   children,
   ...props
-}: HTMLAttributes<HTMLDivElement> & { width?: keyof typeof widths; children: ReactNode }) {
+}: HTMLAttributes<HTMLDivElement> & {
+  width?: keyof typeof widths;
+  inset?: boolean;
+  children: ReactNode;
+}) {
+  const nested = useContext(PageScaffoldContext);
+  const resolvedInset = inset ?? !nested;
   return (
-    <div
-      {...props}
-      className={cn(
-        "tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0 tw:px-page tw:pt-7 tw:pb-[calc(4rem+var(--safe-bottom))] tw:max-[760px]:px-4 tw:max-[760px]:pt-5",
-        widths[width],
-        className,
-      )}
-    >
-      {children}
-    </div>
+    <PageScaffoldContext.Provider value>
+      <div
+        {...props}
+        data-page-scaffold="true"
+        className={cn(
+          "tw:mx-auto tw:min-h-full tw:w-full tw:min-w-0 tw:[&>*]:min-w-0",
+          resolvedInset
+            ? "tw:px-page tw:pt-7 tw:pb-[calc(4rem+var(--safe-bottom))] tw:max-[760px]:px-4 tw:max-[760px]:pt-5"
+            : "tw:p-0",
+          widths[width],
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </PageScaffoldContext.Provider>
   );
 }
 

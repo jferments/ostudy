@@ -26,14 +26,15 @@ function setLayout(mode: "wide" | "medium" | "compact") {
   }));
 }
 
-function renderToolbar(mode: "wide" | "medium" | "compact") {
+function renderToolbar(mode: "wide" | "medium" | "compact", overlay = false) {
   setLayout(mode);
   const onPrimary = vi.fn();
   const onMove = vi.fn();
   const onClear = vi.fn();
-  render(
+  const view = render(
     <LayoutModeProvider>
       <SelectionToolbar
+        overlay={overlay}
         selectedCount={3}
         label="Selected deck actions"
         primaryAction={{ id: "practice", label: "Practice", onSelect: onPrimary }}
@@ -49,7 +50,7 @@ function renderToolbar(mode: "wide" | "medium" | "compact") {
       />
     </LayoutModeProvider>,
   );
-  return { onClear, onMove, onPrimary };
+  return { ...view, onClear, onMove, onPrimary };
 }
 
 describe("SelectionToolbar", () => {
@@ -75,6 +76,15 @@ describe("SelectionToolbar", () => {
     const { onClear } = renderToolbar("wide");
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
     expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it("can render in a zero-height overlay layer without reserving content space", () => {
+    const { container } = renderToolbar("wide", true);
+    const layer = container.querySelector('[data-selection-toolbar-layer="true"]') as HTMLElement;
+    expect(layer).toBeTruthy();
+    expect(layer.className).toContain("tw:h-0");
+    expect(layer.className).toContain("tw:overflow-visible");
+    expect(screen.getByRole("region", { name: "Selected deck actions" }).className).toContain("tw:z-30");
   });
 
   it("renders nothing when no items are selected", () => {
