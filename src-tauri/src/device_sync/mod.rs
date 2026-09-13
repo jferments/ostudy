@@ -345,23 +345,16 @@ pub fn get_device_sync_state(
 }
 
 #[tauri::command]
-pub fn get_pending_usb_sync_request(
-    app: AppHandle,
-) -> Result<PendingUsbSyncRequestDto, CommandError> {
+pub fn get_pending_usb_sync_request(app: AppHandle) -> Result<PendingUsbSyncRequestDto, CommandError> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_ostudy_platform::OstudyPlatformExt;
-        let pending = app
-            .ostudy_platform()
-            .peek_usb_accessory()
-            .map_err(|error| {
-                CommandError::new(
-                    "device_sync_usb_open_failed",
-                    format!(
-                        "The pending Android USB sync request could not be inspected: {error}"
-                    ),
-                )
-            })?;
+        let pending = app.ostudy_platform().peek_usb_accessory().map_err(|error| {
+            CommandError::new(
+                "device_sync_usb_open_failed",
+                format!("The pending Android USB sync request could not be inspected: {error}"),
+            )
+        })?;
         return Ok(PendingUsbSyncRequestDto {
             available: pending.available,
             manufacturer: pending.manufacturer,
@@ -1068,9 +1061,15 @@ where
     let hello: ClientHello = read_plain_json(&mut stream)?;
     cancel_signal.check()?;
     validate_client_hello(&invitation, &hello, &pairing_secret)?;
-    let transcript = client_transcript(&invitation, hello)?;
-    let client_ephemeral = crypto::decode_standard(&hello.ephemeral_public_key, "client ephemeral public key")?;
-    let keys = ephemeral.derive(&client_ephemeral, &pairing_secret, &transcript, SessionRole::Host)?;
+    let transcript = client_transcript(&invitation, &hello)?;
+    let client_ephemeral =
+        crypto::decode_standard(&hello.ephemeral_public_key, "client ephemeral public key")?;
+    let keys = ephemeral.derive(
+        &client_ephemeral,
+        &pairing_secret,
+        &transcript,
+        SessionRole::Host,
+    )?;
     let mut channel = SecureChannel::new(stream, keys)?;
     let credentials_included = selection.api_credentials
         && invitation.include_api_settings
@@ -1088,42 +1087,71 @@ where
         credentials_included,
     };
     let server_transcript = server_transcript(&transcript, &unsigned_server)?;
-    channel.send_json(FRAME_METADATA, &ServerHello {
-        protocol_version: PROTOCOL_VERSION,
-        session_id: invitation.session_id.clone(),
-        device_id: identity.device_id.clone(),
-        display_name: identity.display_name.clone(),
-        identity_public_key: identity.public_key_base64.clone(),
-        identity_fingerprint: identity_fingerprint.clone(),
-        include_api_settings: invitation.include_api_settings,
-        credentials_included,
-        identity_signature: identity_key.sign(&server_transcript),
-    })?;
+    channel.send_json(
+        FRAME_METADATA,
+        &ServerHello {
+            protocol_version: PROTOCOL_VERSION,
+            session_id: invitation.session_id.clone(),
+            device_id: identity.device_id.clone(),
+            display_name: identity.display_name.clone(),
+            identity_public_key: identity.public_key_base64.clone(),
+            identity_fingerprint: identity_fingerprint.clone(),
+            include_api_settings: invitation.include_api_settings,
+            credentials_included,
+            identity_signature: identity_key.sign(&server_transcript),
+        },
+    )?;
     cancel_signal.check()?;
 
     let peer_fingerprint = fingerprint_from_base64(&hello.identity_public_key)?;
-    store.upsert_peer(&hello.device_id, &hello.display_name, &hello.identity_public_key, &peer_fingerprint, &endpoint_hint)?;
-    let peer = store.peer(&hello.device_id)?.ok_or_else(|| CommandError::new("device_sync_store_error", "The receiving device was not persisted after authentication."))?;
+    store.upsert_peer(
+        &hello.device_id,
+        &hello.display_name,
+        &hello.identity_public_key,
+        &peer_fingerprint,
+        &endpoint_hint,
+    )?;
+    let peer = store.peer(&hello.device_id)?.ok_or_else(|| {
+        CommandError::new(
+            "device_sync_store_error",
+            "The receiving device was not persisted after authentication.",
+        )
+    })?;
     cancellation::claim_peer(paths.inner(), &invitation.session_id, &peer.id)?;
     store.update_session(&invitation.session_id, Some(&peer.id), "transferring", None)?;
-    crate::logging::info("device_sync_sender_authenticated", format!("session={} peer={}", invitation.session_id, peer.id));
+    crate::logging::info(
+        "device_sync_sender_authenticated",
+        format!("session={} peer={}", invitation.session_id, peer.id),
+    );
 
     cancel_signal.check()?;
     let workspace = SyncWorkspace::new(paths.inner(), &invitation.session_id, "send")?;
     let outgoing_package = workspace.path.join("outgoing.syncpkg");
-    let outgoing_summary = package::create_package(database.inner(), paths.inner(), &outgoing_package, selection)?;
+    let outgoing_summary = package::create_package(
+        database.inner(),
+        paths.inner(),
+        &outgoing_package,
+        selection,
+    )?;
     cancel_signal.check()?;
-    let outgoing_credentials = if credentials_included { credentials::collect_credentials(database.inner(), runtime.secure_secret_store())? } else { Vec::new() };
-    channel.send_json(FRAME_METADATA, &TransferMetadata {
-        protocol_version: PROTOCOL_VERSION,
-        session_id: invitation.session_id.clone(),
-        device_id: identity.device_id.clone(),
-        display_name: identity.display_name.clone(),
-        identity_public_key: identity.public_key_base64.clone(),
-        include_api_settings: invitation.include_api_settings,
-        credentials: outgoing_credentials,
-        package: outgoing_summary,
-    })?;
+    let outgoing_credentials = if credentials_included {
+        credentials::collect_credentials(database.inner(), runtime.secure_secret_store())?
+    } else {
+        Vec::new()
+    };
+    channel.send_json(
+        FRAME_METADATA,
+        &TransferMetadata {
+            protocol_version: PROTOCOL_VERSION,
+            session_id: invitation.session_id.clone(),
+            device_id: identity.device_id.clone(),
+            display_name: identity.display_name.clone(),
+            identity_public_key: identity.public_key_base64.clone(),
+            include_api_settings: invitation.include_api_settings,
+            credentials: outgoing_credentials,
+            package: outgoing_summary,
+        },
+    )?;
     let progress_app = app.clone();
     let progress_session = invitation.session_id.clone();
     channel.send_file_with_progress(&outgoing_package, |transferred, total| {
@@ -1133,39 +1161,86 @@ where
 
     let acknowledgement: ReceiverAcknowledgement = channel.receive_json(FRAME_COMPLETE)?;
     cancel_signal.check()?;
-    if acknowledgement.protocol_version != PROTOCOL_VERSION || acknowledgement.session_id != invitation.session_id {
-        return Err(CommandError::new("device_sync_protocol_error", "The receiving device returned an acknowledgement for another synchronization session."));
+    if acknowledgement.protocol_version != PROTOCOL_VERSION
+        || acknowledgement.session_id != invitation.session_id
+    {
+        return Err(CommandError::new(
+            "device_sync_protocol_error",
+            "The receiving device returned an acknowledgement for another synchronization session.",
+        ));
     }
 
     let baseline_result = (|| -> Result<(), CommandError> {
-        let extracted = package::extract_package(&outgoing_package, &workspace.path.join("accepted-sender-baseline"))?;
-        let snapshot = Connection::open(&extracted.database_path).map_err(CommandError::database)?;
+        let extracted = package::extract_package(
+            &outgoing_package,
+            &workspace.path.join("accepted-sender-baseline"),
+        )?;
+        let snapshot =
+            Connection::open(&extracted.database_path).map_err(CommandError::database)?;
         merge::remember_sent_database(&snapshot, &store, &peer.id, extracted.selection)
     })();
     if let Err(error) = baseline_result {
-        crate::logging::error("device_sync_sender_baseline_failed", format!("peer={} code={} message={}", peer.id, error.code, error.message));
+        crate::logging::error(
+            "device_sync_sender_baseline_failed",
+            format!(
+                "peer={} code={} message={}",
+                peer.id, error.code, error.message
+            ),
+        );
     }
 
     store.mark_peer_synced(&peer.id, &endpoint_hint)?;
-    crate::logging::info("device_sync_sender_completed", format!("peer={} changed_rows={} conflicts={} credentials={}", peer.id, acknowledgement.changed_row_count, acknowledgement.conflict_count, acknowledgement.transferred_credential_count));
+    crate::logging::info(
+        "device_sync_sender_completed",
+        format!(
+            "peer={} changed_rows={} conflicts={} credentials={}",
+            peer.id,
+            acknowledgement.changed_row_count,
+            acknowledgement.conflict_count,
+            acknowledgement.transferred_credential_count
+        ),
+    );
     Ok(peer.id)
 }
 
-fn run_join_network_session(app: AppHandle, invitation: PairingInvitation, cancel_signal: cancellation::SyncCancellationSignal) -> Result<DeviceSyncResultDto, CommandError> {
+fn run_join_network_session(
+    app: AppHandle,
+    invitation: PairingInvitation,
+    cancel_signal: cancellation::SyncCancellationSignal,
+) -> Result<DeviceSyncResultDto, CommandError> {
     if invitation.transport != PairingTransport::LocalNetwork {
-        return Err(CommandError::new("device_sync_invitation_invalid", "A non-network synchronization invitation was routed to the LAN adapter."));
+        return Err(CommandError::new(
+            "device_sync_invitation_invalid",
+            "A non-network synchronization invitation was routed to the LAN adapter.",
+        ));
     }
-    let address: SocketAddr = invitation.endpoint.parse().map_err(|_| CommandError::new("device_sync_invitation_invalid", "The synchronization invitation contains an invalid network endpoint."))?;
+    let address: SocketAddr = invitation.endpoint.parse().map_err(|_| {
+        CommandError::new(
+            "device_sync_invitation_invalid",
+            "The synchronization invitation contains an invalid network endpoint.",
+        )
+    })?;
     if !is_private_address(address.ip()) {
-        return Err(CommandError::new("device_sync_address_rejected", "Device synchronization is restricted to private local-network addresses."));
+        return Err(CommandError::new(
+            "device_sync_address_rejected",
+            "Device synchronization is restricted to private local-network addresses.",
+        ));
     }
     let stream = network::connect_to_sender(address, &invitation.endpoint)?;
     let endpoint_hint = invitation.endpoint.clone();
     run_join_session_with_stream(app, invitation, stream, &endpoint_hint, cancel_signal)
 }
 
-fn run_join_session_with_stream<S>(app: AppHandle, invitation: PairingInvitation, mut stream: S, endpoint_hint: &str, cancel_signal: cancellation::SyncCancellationSignal) -> Result<DeviceSyncResultDto, CommandError>
-where S: SyncIo + SyncAbortSource + 'static {
+fn run_join_session_with_stream<S>(
+    app: AppHandle,
+    invitation: PairingInvitation,
+    mut stream: S,
+    endpoint_hint: &str,
+    cancel_signal: cancellation::SyncCancellationSignal,
+) -> Result<DeviceSyncResultDto, CommandError>
+where
+    S: SyncIo + SyncAbortSource + 'static,
+{
     cancel_signal.attach_stream(&stream)?;
     cancel_signal.check()?;
     let paths = app.state::<AppPaths>();
@@ -1173,11 +1248,23 @@ where S: SyncIo + SyncAbortSource + 'static {
     let runtime = app.state::<PlatformRuntime>();
     let store = SyncStore::open(paths.inner())?;
     let (identity, identity_key) = ensure_identity(&store, runtime.inner())?;
-    crate::logging::info("device_sync_receive_connected", format!("session={} transport={:?} endpoint={}", invitation.session_id, invitation.transport, endpoint_hint));
+    crate::logging::info(
+        "device_sync_receive_connected",
+        format!(
+            "session={} transport={:?} endpoint={}",
+            invitation.session_id, invitation.transport, endpoint_hint
+        ),
+    );
     let pairing_secret = crypto::decode_standard(&invitation.pairing_secret, "pairing secret")?;
-    let host_ephemeral = crypto::decode_standard(&invitation.host_ephemeral_public_key, "sender ephemeral public key")?;
+    let host_ephemeral = crypto::decode_standard(
+        &invitation.host_ephemeral_public_key,
+        "sender ephemeral public key",
+    )?;
     let ephemeral = EphemeralKey::generate()?;
-    let secure_credentials_available = matches!(runtime.capabilities().services.secure_secrets.state, CapabilityState::Available);
+    let secure_credentials_available = matches!(
+        runtime.capabilities().services.secure_secrets.state,
+        CapabilityState::Available
+    );
     let ephemeral_public_key = BASE64_STANDARD.encode(&ephemeral.public_key);
     let unsigned = UnsignedClientHello {
         protocol_version: PROTOCOL_VERSION,
@@ -1197,30 +1284,62 @@ where S: SyncIo + SyncAbortSource + 'static {
         secure_credentials_available,
     };
     let transcript = serde_json::to_vec(&unsigned).map_err(CommandError::serialization)?;
-    write_plain_json(&mut stream, &ClientHello {
-        protocol_version: PROTOCOL_VERSION,
-        session_id: invitation.session_id.clone(),
-        device_id: identity.device_id.clone(),
-        display_name: identity.display_name.clone(),
-        identity_public_key: identity.public_key_base64.clone(),
-        ephemeral_public_key,
-        secure_credentials_available,
-        pairing_proof: crypto::pairing_proof(&pairing_secret, &transcript),
-        identity_signature: identity_key.sign(&transcript),
-    })?;
-    let keys = ephemeral.derive(&host_ephemeral, &pairing_secret, &transcript, SessionRole::Joiner)?;
+    write_plain_json(
+        &mut stream,
+        &ClientHello {
+            protocol_version: PROTOCOL_VERSION,
+            session_id: invitation.session_id.clone(),
+            device_id: identity.device_id.clone(),
+            display_name: identity.display_name.clone(),
+            identity_public_key: identity.public_key_base64.clone(),
+            ephemeral_public_key,
+            secure_credentials_available,
+            pairing_proof: crypto::pairing_proof(&pairing_secret, &transcript),
+            identity_signature: identity_key.sign(&transcript),
+        },
+    )?;
+    let keys = ephemeral.derive(
+        &host_ephemeral,
+        &pairing_secret,
+        &transcript,
+        SessionRole::Joiner,
+    )?;
     let mut channel = SecureChannel::new(stream, keys)?;
     let receiver_session_id = invitation.session_id.clone();
     let endpoint_hint = endpoint_hint.to_string();
     let transfer_result = (|| -> Result<DeviceSyncResultDto, CommandError> {
         let server: ServerHello = channel.receive_json(FRAME_METADATA)?;
         cancel_signal.check()?;
-        validate_server_hello(&invitation, &server, &transcript, secure_credentials_available)?;
-        store.upsert_peer(&server.device_id, &server.display_name, &server.identity_public_key, &server.identity_fingerprint, &endpoint_hint)?;
-        let sender = store.peer(&server.device_id)?.ok_or_else(|| CommandError::new("device_sync_store_error", "The sending device was not persisted after authentication."))?;
+        validate_server_hello(
+            &invitation,
+            &server,
+            &transcript,
+            secure_credentials_available,
+        )?;
+        store.upsert_peer(
+            &server.device_id,
+            &server.display_name,
+            &server.identity_public_key,
+            &server.identity_fingerprint,
+            &endpoint_hint,
+        )?;
+        let sender = store.peer(&server.device_id)?.ok_or_else(|| {
+            CommandError::new(
+                "device_sync_store_error",
+                "The sending device was not persisted after authentication.",
+            )
+        })?;
         cancellation::claim_peer(paths.inner(), &invitation.session_id, &sender.id)?;
-        store.update_session(&invitation.session_id, Some(&sender.id), "transferring", None)?;
-        crate::logging::info("device_sync_receive_authenticated", format!("session={} sender={}", invitation.session_id, sender.id));
+        store.update_session(
+            &invitation.session_id,
+            Some(&sender.id),
+            "transferring",
+            None,
+        )?;
+        crate::logging::info(
+            "device_sync_receive_authenticated",
+            format!("session={} sender={}", invitation.session_id, sender.id),
+        );
 
         cancel_signal.check()?;
         let metadata: TransferMetadata = channel.receive_json(FRAME_METADATA)?;
@@ -1234,51 +1353,128 @@ where S: SyncIo + SyncAbortSource + 'static {
         })?;
         cancel_signal.check()?;
         store.update_session(&invitation.session_id, Some(&sender.id), "merging", None)?;
-        crate::logging::info("device_sync_package_received", format!("session={} sender={} bytes={}", invitation.session_id, sender.id, metadata.package.package_bytes));
+        crate::logging::info(
+            "device_sync_package_received",
+            format!(
+                "session={} sender={} bytes={}",
+                invitation.session_id, sender.id, metadata.package.package_bytes
+            ),
+        );
 
-        let extracted = package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
+        let extracted =
+            package::extract_package(&incoming_package, &workspace.path.join("incoming"))?;
         if extracted.selection.api_settings != invitation.include_api_settings {
-            return Err(CommandError::new("device_sync_protocol_error", "The synchronization package API-settings scope did not match the accepted invitation."));
+            return Err(CommandError::new(
+                "device_sync_protocol_error",
+                "The synchronization package API-settings scope did not match the accepted invitation.",
+            ));
         }
-        let document_file_bytes = extracted.document_files.iter().fold(0_u64, |total, file| total.saturating_add(file.byte_size));
-        if extracted.document_files.len() != metadata.package.document_file_count || document_file_bytes != metadata.package.document_file_bytes {
-            return Err(CommandError::new("device_sync_protocol_error", "The synchronized document files did not match the authenticated transfer summary."));
+        let document_file_bytes = extracted
+            .document_files
+            .iter()
+            .fold(0_u64, |total, file| total.saturating_add(file.byte_size));
+        if extracted.document_files.len() != metadata.package.document_file_count
+            || document_file_bytes != metadata.package.document_file_bytes
+        {
+            return Err(CommandError::new(
+                "device_sync_protocol_error",
+                "The synchronized document files did not match the authenticated transfer summary.",
+            ));
         }
         log_staged_assets("receive", &extracted.assets);
         package::install_assets(paths.inner(), &extracted.assets)?;
         package::install_document_files(paths.inner(), &extracted.document_files)?;
         cancel_signal.check()?;
 
-        let remote_database = Connection::open(&extracted.database_path).map_err(CommandError::database)?;
-        remote_database.execute_batch("PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS app_settings;").map_err(CommandError::database)?;
+        let remote_database =
+            Connection::open(&extracted.database_path).map_err(CommandError::database)?;
+        remote_database
+            .execute_batch("PRAGMA foreign_keys = OFF; DROP TABLE IF EXISTS app_settings;")
+            .map_err(CommandError::database)?;
         if !extracted.selection.api_settings {
-            remote_database.execute_batch("DROP TABLE IF EXISTS ai_task_defaults;\n                     DROP TABLE IF EXISTS ai_provider_profiles;").map_err(CommandError::database)?;
+            remote_database
+                .execute_batch(
+                    "DROP TABLE IF EXISTS ai_task_defaults;\n                     DROP TABLE IF EXISTS ai_provider_profiles;",
+                )
+                .map_err(CommandError::database)?;
         }
-        remote_database.execute_batch("PRAGMA foreign_keys = ON;").map_err(CommandError::database)?;
+        remote_database
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(CommandError::database)?;
 
         cancel_signal.check()?;
-        crate::logging::info("device_sync_merge_started", format!("session={} sender={} flashcards={} documents={} study_guides={} api_settings={}", invitation.session_id, sender.id, extracted.selection.flashcards, extracted.selection.documents, extracted.selection.study_guides, extracted.selection.api_settings));
-        let merge = database.with_connection(|local| merge::merge_remote_database(local, &remote_database, &store, &identity.device_id, &sender.id, extracted.selection))?;
-        crate::logging::info("device_sync_merge_completed", format!("session={} sender={} changed_rows={} conflicts={}", invitation.session_id, sender.id, merge.changed_row_count, merge.conflict_count));
+        crate::logging::info(
+            "device_sync_merge_started",
+            format!(
+                "session={} sender={} flashcards={} documents={} study_guides={} api_settings={}",
+                invitation.session_id,
+                sender.id,
+                extracted.selection.flashcards,
+                extracted.selection.documents,
+                extracted.selection.study_guides,
+                extracted.selection.api_settings,
+            ),
+        );
+        let merge = database.with_connection(|local| {
+            merge::merge_remote_database(
+                local,
+                &remote_database,
+                &store,
+                &identity.device_id,
+                &sender.id,
+                extracted.selection,
+            )
+        })?;
+        crate::logging::info(
+            "device_sync_merge_completed",
+            format!(
+                "session={} sender={} changed_rows={} conflicts={}",
+                invitation.session_id, sender.id, merge.changed_row_count, merge.conflict_count
+            ),
+        );
         cancel_signal.check()?;
         let (transferred_credential_count, credential_warning) = if server.credentials_included {
-            match credentials::apply_credentials(database.inner(), runtime.secure_secret_store(), &metadata.credentials) {
+            match credentials::apply_credentials(
+                database.inner(),
+                runtime.secure_secret_store(),
+                &metadata.credentials,
+            ) {
                 Ok(count) => (count, None),
                 Err(error) => {
-                    crate::logging::warn_target("device_sync.credentials", "device_sync_credentials_not_applied", "Study synchronization completed, but optional saved API credentials could not be stored on the receiving device.", serde_json::json!({ "session": invitation.session_id.as_str(), "sender": sender.id.as_str(), "code": error.code.as_str() }));
-                    (0, Some("Selected study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed.".to_string()))
+                    crate::logging::warn_target(
+                        "device_sync.credentials",
+                        "device_sync_credentials_not_applied",
+                        "Study synchronization completed, but optional saved API credentials could not be stored on the receiving device.",
+                        serde_json::json!({
+                            "session": invitation.session_id.as_str(),
+                            "sender": sender.id.as_str(),
+                            "code": error.code.as_str(),
+                        }),
+                    );
+                    (
+                        0,
+                        Some(
+                            "Selected study data synchronized, but saved API credentials could not be stored securely on this device. Re-enter them in Settings → AI if needed."
+                                .to_string(),
+                        ),
+                    )
                 }
             }
-        } else { (0, None) };
+        } else {
+            (0, None)
+        };
         cancel_signal.check()?;
         store.mark_peer_synced(&sender.id, &endpoint_hint)?;
-        channel.send_json(FRAME_COMPLETE, &ReceiverAcknowledgement {
-            protocol_version: PROTOCOL_VERSION,
-            session_id: invitation.session_id.clone(),
-            changed_row_count: merge.changed_row_count,
-            conflict_count: merge.conflict_count,
-            transferred_credential_count,
-        })?;
+        channel.send_json(
+            FRAME_COMPLETE,
+            &ReceiverAcknowledgement {
+                protocol_version: PROTOCOL_VERSION,
+                session_id: invitation.session_id.clone(),
+                changed_row_count: merge.changed_row_count,
+                conflict_count: merge.conflict_count,
+                transferred_credential_count,
+            },
+        )?;
         Ok(DeviceSyncResultDto {
             session_id: invitation.session_id,
             peer: sender,
@@ -1291,93 +1487,227 @@ where S: SyncIo + SyncAbortSource + 'static {
         })
     })();
     if let Err(error) = &transfer_result {
-        crate::logging::error_target("device_sync.receive", "device_sync_receiver_transfer_failed", "The receiving device could not complete an authenticated synchronization transfer.", serde_json::json!({ "session": receiver_session_id, "code": error.code.as_str() }));
+        crate::logging::error_target(
+            "device_sync.receive",
+            "device_sync_receiver_transfer_failed",
+            "The receiving device could not complete an authenticated synchronization transfer.",
+            serde_json::json!({
+                "session": receiver_session_id,
+                "code": error.code.as_str(),
+            }),
+        );
         let _ = channel.send_error(error);
     }
     transfer_result
 }
 
-fn emit_sync_progress(app: &AppHandle, session_id: &str, direction: &str, transferred_bytes: u64, total_bytes: u64) {
-    let _ = app.emit(DEVICE_SYNC_PROGRESS_EVENT, DeviceSyncProgressDto {
-        session_id: session_id.to_string(),
-        direction: direction.to_string(),
-        transferred_bytes,
-        total_bytes,
-    });
+fn emit_sync_progress(
+    app: &AppHandle,
+    session_id: &str,
+    direction: &str,
+    transferred_bytes: u64,
+    total_bytes: u64,
+) {
+    let _ = app.emit(
+        DEVICE_SYNC_PROGRESS_EVENT,
+        DeviceSyncProgressDto {
+            session_id: session_id.to_string(),
+            direction: direction.to_string(),
+            transferred_bytes,
+            total_bytes,
+        },
+    );
 }
 
-fn ensure_identity(store: &SyncStore, runtime: &PlatformRuntime) -> Result<(DeviceIdentityRecord, IdentityKey), CommandError> {
+fn ensure_identity(
+    store: &SyncStore,
+    runtime: &PlatformRuntime,
+) -> Result<(DeviceIdentityRecord, IdentityKey), CommandError> {
     store.ensure_identity(&default_device_name())?;
-    let identity = store.identity()?.ok_or_else(|| CommandError::new("device_sync_store_error", "The local device identity was not persisted after initialization."))?;
+    let identity = store.identity()?.ok_or_else(|| {
+        CommandError::new(
+            "device_sync_store_error",
+            "The local device identity was not persisted after initialization.",
+        )
+    })?;
     let identity_key = IdentityKey::load_or_create(runtime.secure_secret_store().as_ref())?;
-    if identity.public_key_base64 == identity_key.public_key_base64() { return Ok((identity, identity_key)); }
+    if identity.public_key_base64 == identity_key.public_key_base64() {
+        return Ok((identity, identity_key));
+    }
     let identity = store.set_identity_public_key(&identity_key.public_key_base64())?;
     Ok((identity, identity_key))
 }
 
 fn log_staged_assets(direction: &str, assets: &[package::ExtractedAsset]) {
-    let asset_bytes = assets.iter().fold(0_u64, |total, asset| total.saturating_add(asset.byte_size));
-    let (first_asset, first_mime) = assets.first().map(|asset| (asset.asset_id.as_str(), asset.mime_type.as_str())).unwrap_or(("none", "none"));
-    crate::logging::info("device_sync_assets_staged", format!("direction={direction} count={} bytes={asset_bytes} first_asset={first_asset} first_mime={first_mime}", assets.len()));
+    let asset_bytes = assets
+        .iter()
+        .fold(0_u64, |total, asset| total.saturating_add(asset.byte_size));
+    let (first_asset, first_mime) = assets
+        .first()
+        .map(|asset| (asset.asset_id.as_str(), asset.mime_type.as_str()))
+        .unwrap_or(("none", "none"));
+    crate::logging::info(
+        "device_sync_assets_staged",
+        format!(
+            "direction={direction} count={} bytes={asset_bytes} first_asset={first_asset} first_mime={first_mime}",
+            assets.len()
+        ),
+    );
 }
 
 fn render_pairing_qr(invitation: &str) -> Result<String, CommandError> {
     use qrcode::{render::svg, QrCode};
-    let code = QrCode::new(invitation.as_bytes()).map_err(|_| CommandError::new("device_sync_invitation_too_large", "The synchronization invitation is too large to render as a QR code."))?;
-    Ok(code.render::<svg::Color>().min_dimensions(320, 320).max_dimensions(640, 640).build())
+
+    let code = QrCode::new(invitation.as_bytes()).map_err(|_| {
+        CommandError::new(
+            "device_sync_invitation_too_large",
+            "The synchronization invitation is too large to render as a QR code.",
+        )
+    })?;
+    Ok(code
+        .render::<svg::Color>()
+        .min_dimensions(320, 320)
+        .max_dimensions(640, 640)
+        .build())
 }
 
 fn parse_invitation(value: &str) -> Result<PairingInvitation, CommandError> {
     let trimmed = value.trim();
     if trimmed.len() > MAX_INVITATION_CHARS || !trimmed.starts_with(INVITATION_PREFIX) {
-        return Err(CommandError::new("device_sync_invitation_invalid", "Scan or paste an ostudy synchronization invitation."));
+        return Err(CommandError::new(
+            "device_sync_invitation_invalid",
+            "Scan or paste an ostudy synchronization invitation.",
+        ));
     }
     let encoded = &trimmed[INVITATION_PREFIX.len()..];
     let bytes = crypto::decode_url(encoded)?;
-    let invitation: PairingInvitation = serde_json::from_slice(&bytes).map_err(|error| CommandError::new("device_sync_invitation_invalid", format!("The synchronization invitation is invalid: {error}")))?;
+    let invitation: PairingInvitation = serde_json::from_slice(&bytes).map_err(|error| {
+        CommandError::new(
+            "device_sync_invitation_invalid",
+            format!("The synchronization invitation is invalid: {error}"),
+        )
+    })?;
     validate_entity_id(&invitation.session_id, "sync session")?;
     validate_entity_id(&invitation.host_device_id, "sending device")?;
-    if invitation.protocol_version != PROTOCOL_VERSION || invitation.expires_at <= unix_time_millis()? || invitation.expires_at > unix_time_millis()?.saturating_add(MAX_EXPIRY_SECONDS.saturating_mul(1_000)) {
-        return Err(CommandError::new("device_sync_invitation_expired", "The synchronization invitation is expired or unsupported. Create a new offer on the sending device."));
+    if invitation.protocol_version != PROTOCOL_VERSION
+        || invitation.expires_at <= unix_time_millis()?
+        || invitation.expires_at
+            > unix_time_millis()?.saturating_add(MAX_EXPIRY_SECONDS.saturating_mul(1_000))
+    {
+        return Err(CommandError::new(
+            "device_sync_invitation_expired",
+            "The synchronization invitation is expired or unsupported. Create a new offer on the sending device.",
+        ));
     }
     if invitation.credentials_available && !invitation.include_api_settings {
-        return Err(CommandError::new("device_sync_invitation_invalid", "The synchronization invitation contains an invalid credential scope."));
+        return Err(CommandError::new(
+            "device_sync_invitation_invalid",
+            "The synchronization invitation contains an invalid credential scope.",
+        ));
     }
     match invitation.transport {
         PairingTransport::LocalNetwork => {
-            let address: SocketAddr = invitation.endpoint.parse().map_err(|_| CommandError::new("device_sync_invitation_invalid", "The synchronization invitation contains an invalid local-network endpoint."))?;
-            if !is_private_address(address.ip()) { return Err(CommandError::new("device_sync_address_rejected", "The synchronization invitation does not point to a private local-network address.")); }
+            let address: SocketAddr = invitation.endpoint.parse().map_err(|_| {
+                CommandError::new(
+                    "device_sync_invitation_invalid",
+                    "The synchronization invitation contains an invalid local-network endpoint.",
+                )
+            })?;
+            if !is_private_address(address.ip()) {
+                return Err(CommandError::new(
+                    "device_sync_address_rejected",
+                    "The synchronization invitation does not point to a private local-network address.",
+                ));
+            }
         }
         PairingTransport::Usb => {
-            if invitation.endpoint != usb::USB_ENDPOINT_HINT { return Err(CommandError::new("device_sync_usb_invitation_invalid", "The direct-USB synchronization invitation contains an invalid transport endpoint.")); }
+            if invitation.endpoint != usb::USB_ENDPOINT_HINT {
+                return Err(CommandError::new(
+                    "device_sync_usb_invitation_invalid",
+                    "The direct-USB synchronization invitation contains an invalid transport endpoint.",
+                ));
+            }
         }
     }
-    let host_public = crypto::decode_standard(&invitation.host_identity_public_key, "sender identity public key")?;
-    let host_ephemeral = crypto::decode_standard(&invitation.host_ephemeral_public_key, "sender ephemeral public key")?;
+    let host_public = crypto::decode_standard(
+        &invitation.host_identity_public_key,
+        "sender identity public key",
+    )?;
+    let host_ephemeral = crypto::decode_standard(
+        &invitation.host_ephemeral_public_key,
+        "sender ephemeral public key",
+    )?;
     let secret = crypto::decode_standard(&invitation.pairing_secret, "pairing secret")?;
-    if host_public.len() != 32 || host_ephemeral.len() != 32 || secret.len() != 32 || crypto::fingerprint(&host_public) != invitation.host_identity_fingerprint {
-        return Err(CommandError::new("device_sync_invitation_invalid", "The synchronization invitation contains invalid cryptographic identity data."));
+    if host_public.len() != 32
+        || host_ephemeral.len() != 32
+        || secret.len() != 32
+        || crypto::fingerprint(&host_public) != invitation.host_identity_fingerprint
+    {
+        return Err(CommandError::new(
+            "device_sync_invitation_invalid",
+            "The synchronization invitation contains invalid cryptographic identity data.",
+        ));
     }
     Ok(invitation)
 }
 
-fn validate_client_hello(invitation: &PairingInvitation, hello: &ClientHello, pairing_secret: &[u8]) -> Result<(), CommandError> {
+fn validate_client_hello(
+    invitation: &PairingInvitation,
+    hello: &ClientHello,
+    pairing_secret: &[u8],
+) -> Result<(), CommandError> {
     validate_entity_id(&hello.device_id, "receiving device")?;
-    if hello.protocol_version != PROTOCOL_VERSION || hello.session_id != invitation.session_id || unix_time_millis()? >= invitation.expires_at {
-        return Err(CommandError::new("device_sync_handshake_failed", "The receiving device used an expired or mismatched synchronization session."));
+    if hello.protocol_version != PROTOCOL_VERSION
+        || hello.session_id != invitation.session_id
+        || unix_time_millis()? >= invitation.expires_at
+    {
+        return Err(CommandError::new(
+            "device_sync_handshake_failed",
+            "The receiving device used an expired or mismatched synchronization session.",
+        ));
     }
     let transcript = client_transcript(invitation, hello)?;
     crypto::verify_pairing_proof(pairing_secret, &transcript, &hello.pairing_proof)?;
-    crypto::verify_signature(&hello.identity_public_key, &transcript, &hello.identity_signature)?;
-    if crypto::decode_standard(&hello.identity_public_key, "receiver identity public key")?.len() != 32 || crypto::decode_standard(&hello.ephemeral_public_key, "receiver ephemeral public key")?.len() != 32 {
-        return Err(CommandError::new("device_sync_handshake_failed", "The receiving device presented invalid public keys."));
+    crypto::verify_signature(
+        &hello.identity_public_key,
+        &transcript,
+        &hello.identity_signature,
+    )?;
+    if crypto::decode_standard(&hello.identity_public_key, "receiver identity public key")?.len()
+        != 32
+        || crypto::decode_standard(&hello.ephemeral_public_key, "receiver ephemeral public key")?
+            .len()
+            != 32
+    {
+        return Err(CommandError::new(
+            "device_sync_handshake_failed",
+            "The receiving device presented invalid public keys.",
+        ));
     }
     Ok(())
 }
 
-fn validate_server_hello(invitation: &PairingInvitation, server: &ServerHello, client_transcript: &[u8], receiver_secure_credentials_available: bool) -> Result<(), CommandError> {
-    if server.protocol_version != PROTOCOL_VERSION || server.session_id != invitation.session_id || server.device_id != invitation.host_device_id || server.identity_public_key != invitation.host_identity_public_key || server.identity_fingerprint != invitation.host_identity_fingerprint || server.include_api_settings != invitation.include_api_settings || (server.credentials_included && (!invitation.include_api_settings || !invitation.credentials_available || !receiver_secure_credentials_available)) {
-        return Err(CommandError::new("device_sync_handshake_failed", "The sending device identity or offered synchronization scope did not match the accepted invitation."));
+fn validate_server_hello(
+    invitation: &PairingInvitation,
+    server: &ServerHello,
+    client_transcript: &[u8],
+    receiver_secure_credentials_available: bool,
+) -> Result<(), CommandError> {
+    if server.protocol_version != PROTOCOL_VERSION
+        || server.session_id != invitation.session_id
+        || server.device_id != invitation.host_device_id
+        || server.identity_public_key != invitation.host_identity_public_key
+        || server.identity_fingerprint != invitation.host_identity_fingerprint
+        || server.include_api_settings != invitation.include_api_settings
+        || (server.credentials_included
+            && (!invitation.include_api_settings
+                || !invitation.credentials_available
+                || !receiver_secure_credentials_available))
+    {
+        return Err(CommandError::new(
+            "device_sync_handshake_failed",
+            "The sending device identity or offered synchronization scope did not match the accepted invitation.",
+        ));
     }
     let unsigned = UnsignedServerHello {
         protocol_version: server.protocol_version,
@@ -1390,17 +1720,38 @@ fn validate_server_hello(invitation: &PairingInvitation, server: &ServerHello, c
         credentials_included: server.credentials_included,
     };
     let transcript = server_transcript(client_transcript, &unsigned)?;
-    crypto::verify_signature(&server.identity_public_key, &transcript, &server.identity_signature)
+    crypto::verify_signature(
+        &server.identity_public_key,
+        &transcript,
+        &server.identity_signature,
+    )
 }
 
-fn validate_transfer_metadata(invitation: &PairingInvitation, server: &ServerHello, metadata: &TransferMetadata) -> Result<(), CommandError> {
-    if metadata.protocol_version != PROTOCOL_VERSION || metadata.session_id != invitation.session_id || metadata.device_id != server.device_id || metadata.display_name != server.display_name || metadata.identity_public_key != server.identity_public_key || metadata.include_api_settings != invitation.include_api_settings || (!server.credentials_included && !metadata.credentials.is_empty()) {
-        return Err(CommandError::new("device_sync_protocol_error", "The sending device sent inconsistent synchronization metadata."));
+fn validate_transfer_metadata(
+    invitation: &PairingInvitation,
+    server: &ServerHello,
+    metadata: &TransferMetadata,
+) -> Result<(), CommandError> {
+    if metadata.protocol_version != PROTOCOL_VERSION
+        || metadata.session_id != invitation.session_id
+        || metadata.device_id != server.device_id
+        || metadata.display_name != server.display_name
+        || metadata.identity_public_key != server.identity_public_key
+        || metadata.include_api_settings != invitation.include_api_settings
+        || (!server.credentials_included && !metadata.credentials.is_empty())
+    {
+        return Err(CommandError::new(
+            "device_sync_protocol_error",
+            "The sending device sent inconsistent synchronization metadata.",
+        ));
     }
     Ok(())
 }
 
-fn client_transcript(invitation: &PairingInvitation, hello: &ClientHello) -> Result<Vec<u8>, CommandError> {
+fn client_transcript(
+    invitation: &PairingInvitation,
+    hello: &ClientHello,
+) -> Result<Vec<u8>, CommandError> {
     serde_json::to_vec(&UnsignedClientHello {
         protocol_version: hello.protocol_version,
         transport: invitation.transport,
@@ -1417,70 +1768,134 @@ fn client_transcript(invitation: &PairingInvitation, hello: &ClientHello) -> Res
         identity_public_key: &hello.identity_public_key,
         ephemeral_public_key: &hello.ephemeral_public_key,
         secure_credentials_available: hello.secure_credentials_available,
-    }).map_err(CommandError::serialization)
+    })
+    .map_err(CommandError::serialization)
 }
 
-fn server_transcript(client_transcript: &[u8], server: &UnsignedServerHello<'_>) -> Result<Vec<u8>, CommandError> {
+fn server_transcript(
+    client_transcript: &[u8],
+    server: &UnsignedServerHello<'_>,
+) -> Result<Vec<u8>, CommandError> {
     let mut output = client_transcript.to_vec();
     output.extend_from_slice(&serde_json::to_vec(server).map_err(CommandError::serialization)?);
     Ok(output)
 }
 
 fn resolve_host_ip(override_value: Option<&str>) -> Result<IpAddr, CommandError> {
-    if let Some(value) = override_value.map(str::trim).filter(|value| !value.is_empty()) {
-        let address: IpAddr = value.parse().map_err(|_| CommandError::new("device_sync_host_invalid", "The advanced synchronization host override must be a private IP address."))?;
-        if is_private_address(address) { return Ok(address); }
-        return Err(CommandError::new("device_sync_host_invalid", "The advanced synchronization host override must be a private IP address."));
+    if let Some(value) = override_value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let address: IpAddr = value.parse().map_err(|_| {
+            CommandError::new(
+                "device_sync_host_invalid",
+                "The advanced synchronization host override must be a private IP address.",
+            )
+        })?;
+        if is_private_address(address) {
+            return Ok(address);
+        }
+        return Err(CommandError::new(
+            "device_sync_host_invalid",
+            "The advanced synchronization host override must be a private IP address.",
+        ));
     }
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).map_err(CommandError::io)?;
-    socket.connect((Ipv4Addr::new(192, 0, 2, 1), 9)).map_err(CommandError::io)?;
+    socket
+        .connect((Ipv4Addr::new(192, 0, 2, 1), 9))
+        .map_err(CommandError::io)?;
     let address = socket.local_addr().map_err(CommandError::io)?.ip();
-    if is_private_address(address) && !address.is_loopback() { Ok(address) } else { Err(CommandError::new("device_sync_host_unavailable", "ostudy could not determine a private LAN address. Enter this device's LAN IP in the advanced host field.")) }
+    if is_private_address(address) && !address.is_loopback() {
+        Ok(address)
+    } else {
+        Err(CommandError::new(
+            "device_sync_host_unavailable",
+            "ostudy could not determine a private LAN address. Enter this device's LAN IP in the advanced host field.",
+        ))
+    }
 }
 
 fn is_private_address(address: IpAddr) -> bool {
     match address {
-        IpAddr::V4(address) => address.is_private() || address.is_loopback() || address.is_link_local(),
-        IpAddr::V6(address) => address.is_loopback() || address.is_unicast_link_local() || is_unique_local_ipv6(address),
+        IpAddr::V4(address) => {
+            address.is_private() || address.is_loopback() || address.is_link_local()
+        }
+        IpAddr::V6(address) => {
+            address.is_loopback()
+                || address.is_unicast_link_local()
+                || is_unique_local_ipv6(address)
+        }
     }
 }
 
-fn is_unique_local_ipv6(address: Ipv6Addr) -> bool { address.segments()[0] & 0xfe00 == 0xfc00 }
+fn is_unique_local_ipv6(address: Ipv6Addr) -> bool {
+    address.segments()[0] & 0xfe00 == 0xfc00
+}
 
 fn fingerprint_from_base64(public_key: &str) -> Result<String, CommandError> {
     let bytes = crypto::decode_standard(public_key, "device identity public key")?;
-    if bytes.len() != 32 { return Err(CommandError::new("device_sync_handshake_failed", "The paired device identity public key has an invalid size.")); }
+    if bytes.len() != 32 {
+        return Err(CommandError::new(
+            "device_sync_handshake_failed",
+            "The paired device identity public key has an invalid size.",
+        ));
+    }
     Ok(crypto::fingerprint(&bytes))
 }
 
-fn random_id(bytes: &[u8]) -> String { bytes.iter().map(|byte| format!("{byte:02x}")).collect() }
+fn random_id(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
 fn default_device_name() -> String {
-    std::env::var("HOSTNAME").ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty() && value.chars().count() <= 120).unwrap_or_else(platform_default_device_name)
+    std::env::var("HOSTNAME")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && value.chars().count() <= 120)
+        .unwrap_or_else(platform_default_device_name)
 }
 
 #[cfg(mobile)]
-fn platform_default_device_name() -> String { "Mobile device".to_string() }
+fn platform_default_device_name() -> String {
+    "Mobile device".to_string()
+}
 
 #[cfg(not(mobile))]
-fn platform_default_device_name() -> String { "ostudy device".to_string() }
+fn platform_default_device_name() -> String {
+    "ostudy device".to_string()
+}
 
-struct SyncWorkspace { path: PathBuf }
+struct SyncWorkspace {
+    path: PathBuf,
+}
 
 impl SyncWorkspace {
     fn new(paths: &AppPaths, session_id: &str, role: &str) -> Result<Self, CommandError> {
-        let root = paths.app_data_dir().join("transfers").join("device-sync").join(format!("{session_id}-{role}-{}", std::process::id()));
-        match fs::remove_dir_all(&root) { Ok(()) => {}, Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}, Err(error) => return Err(CommandError::io(error)), }
+        let root = paths
+            .app_data_dir()
+            .join("transfers")
+            .join("device-sync")
+            .join(format!("{session_id}-{role}-{}", std::process::id()));
+        match fs::remove_dir_all(&root) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(CommandError::io(error)),
+        }
         fs::create_dir_all(&root).map_err(CommandError::io)?;
         Ok(Self { path: root })
     }
 }
 
-impl Drop for SyncWorkspace { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.path); } }
+impl Drop for SyncWorkspace {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn test_invitation(include_api_settings: bool) -> PairingInvitation {
         PairingInvitation {
             protocol_version: PROTOCOL_VERSION,
@@ -1498,36 +1913,83 @@ mod tests {
             credentials_available: include_api_settings,
         }
     }
+
     fn encode_invitation(payload: &PairingInvitation) -> String {
-        let encoded = crypto::encode_url(&serde_json::to_vec(payload).expect("invitation should serialize"));
+        let encoded =
+            crypto::encode_url(&serde_json::to_vec(payload).expect("invitation should serialize"));
         format!("{INVITATION_PREFIX}{encoded}")
     }
+
     #[test]
     fn invitation_round_trip_rejects_public_endpoints() {
-        let mut payload = test_invitation(false); payload.endpoint = "203.0.113.10:4444".to_string(); assert!(parse_invitation(&encode_invitation(&payload)).is_err());
+        let mut payload = test_invitation(false);
+        payload.endpoint = "203.0.113.10:4444".to_string();
+        assert!(parse_invitation(&encode_invitation(&payload)).is_err());
     }
+
     #[test]
     fn direct_usb_invitation_uses_symbolic_transport_endpoint() {
-        let mut payload = test_invitation(false); payload.transport = PairingTransport::Usb; payload.endpoint = usb::USB_ENDPOINT_HINT.to_string(); let parsed = parse_invitation(&encode_invitation(&payload)).unwrap(); assert_eq!(parsed.transport, PairingTransport::Usb); assert_eq!(parsed.endpoint, usb::USB_ENDPOINT_HINT);
+        let mut payload = test_invitation(false);
+        payload.transport = PairingTransport::Usb;
+        payload.endpoint = usb::USB_ENDPOINT_HINT.to_string();
+        let parsed = parse_invitation(&encode_invitation(&payload)).unwrap();
+        assert_eq!(parsed.transport, PairingTransport::Usb);
+        assert_eq!(parsed.endpoint, usb::USB_ENDPOINT_HINT);
     }
+
     #[test]
     fn direct_usb_invitation_rejects_network_endpoint() {
-        let mut payload = test_invitation(false); payload.transport = PairingTransport::Usb; payload.endpoint = "192.168.42.1:49251".to_string(); assert!(parse_invitation(&encode_invitation(&payload)).is_err());
+        let mut payload = test_invitation(false);
+        payload.transport = PairingTransport::Usb;
+        payload.endpoint = "192.168.42.1:49251".to_string();
+        assert!(parse_invitation(&encode_invitation(&payload)).is_err());
     }
+
     #[test]
-    fn invitation_rejects_credentials_without_api_scope() { let mut payload = test_invitation(false); payload.credentials_available = true; assert!(parse_invitation(&encode_invitation(&payload)).is_err()); }
+    fn invitation_rejects_credentials_without_api_scope() {
+        let mut payload = test_invitation(false);
+        payload.credentials_available = true;
+        assert!(parse_invitation(&encode_invitation(&payload)).is_err());
+    }
+
     #[test]
     fn client_transcript_binds_sender_selected_api_scope_and_transport() {
-        let hello = ClientHello { protocol_version: PROTOCOL_VERSION, session_id: "a".repeat(32), device_id: "c".repeat(32), display_name: "Receiver".to_string(), identity_public_key: BASE64_STANDARD.encode([4_u8; 32]), ephemeral_public_key: BASE64_STANDARD.encode([5_u8; 32]), secure_credentials_available: true, pairing_proof: String::new(), identity_signature: String::new() };
-        let without_api = client_transcript(&test_invitation(false), &hello).unwrap(); let with_api = client_transcript(&test_invitation(true), &hello).unwrap(); assert_ne!(without_api, with_api);
-        let mut usb_invitation = test_invitation(false); usb_invitation.transport = PairingTransport::Usb; usb_invitation.endpoint = usb::USB_ENDPOINT_HINT.to_string(); let usb_transcript = client_transcript(&usb_invitation, &hello).unwrap(); assert_ne!(without_api, usb_transcript);
+        let hello = ClientHello {
+            protocol_version: PROTOCOL_VERSION,
+            session_id: "a".repeat(32),
+            device_id: "c".repeat(32),
+            display_name: "Receiver".to_string(),
+            identity_public_key: BASE64_STANDARD.encode([4_u8; 32]),
+            ephemeral_public_key: BASE64_STANDARD.encode([5_u8; 32]),
+            secure_credentials_available: true,
+            pairing_proof: String::new(),
+            identity_signature: String::new(),
+        };
+        let without_api = client_transcript(&test_invitation(false), &hello).unwrap();
+        let with_api = client_transcript(&test_invitation(true), &hello).unwrap();
+        assert_ne!(without_api, with_api);
+
+        let mut usb_invitation = test_invitation(false);
+        usb_invitation.transport = PairingTransport::Usb;
+        usb_invitation.endpoint = usb::USB_ENDPOINT_HINT.to_string();
+        let usb_transcript = client_transcript(&usb_invitation, &hello).unwrap();
+        assert_ne!(without_api, usb_transcript);
     }
+
     #[test]
     fn usb_consent_decision_is_explicit_and_serializable() {
-        let accepted = serde_json::to_string(&UsbSyncDecision { accepted: true }).unwrap(); let rejected = serde_json::to_string(&UsbSyncDecision { accepted: false }).unwrap(); assert_eq!(accepted, r#"{"accepted":true}"#); assert_eq!(rejected, r#"{"accepted":false}"#);
+        let accepted = serde_json::to_string(&UsbSyncDecision { accepted: true }).unwrap();
+        let rejected = serde_json::to_string(&UsbSyncDecision { accepted: false }).unwrap();
+        assert_eq!(accepted, r#"{"accepted":true}"#);
+        assert_eq!(rejected, r#"{"accepted":false}"#);
     }
+
     #[test]
     fn private_address_policy_accepts_lan_loopback_and_unique_local_ipv6() {
-        assert!(is_private_address("192.168.1.10".parse().unwrap())); assert!(is_private_address("10.0.0.8".parse().unwrap())); assert!(is_private_address("127.0.0.1".parse().unwrap())); assert!(is_private_address("fd00::1".parse().unwrap())); assert!(!is_private_address("8.8.8.8".parse().unwrap()));
+        assert!(is_private_address("192.168.1.10".parse().unwrap()));
+        assert!(is_private_address("10.0.0.8".parse().unwrap()));
+        assert!(is_private_address("127.0.0.1".parse().unwrap()));
+        assert!(is_private_address("fd00::1".parse().unwrap()));
+        assert!(!is_private_address("8.8.8.8".parse().unwrap()));
     }
 }
