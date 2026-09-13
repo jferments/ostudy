@@ -481,6 +481,15 @@ def click(session_id: str, element_id: str) -> None:
 
 
 def clear(session_id: str, element_id: str) -> None:
+    """Reach the editable field through the same hit-tested focus path as a user.
+
+    Finding a contenteditable in the DOM does not make it interactable inside a
+    scrolled workspace. In particular, WebKit may reject Clear before scrolling
+    a lower editor into view. Our existing click helper scrolls, checks a stable
+    unobscured hit target and verifies the actual DOM click before clearing.
+    Never bypass a hidden/covered control with a JavaScript value assignment.
+    """
+    click(session_id, element_id)
     request("POST", f"/session/{session_id}/element/{element_id}/clear", {})
 
 
