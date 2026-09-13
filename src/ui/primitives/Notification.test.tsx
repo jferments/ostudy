@@ -14,16 +14,19 @@ describe("Notification action lifetime", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
     expect(dismiss).toHaveBeenCalledOnce();
   });
-  it("never executes an expired action even while hover pauses the visual timeout", async () => {
+  it("dismisses the whole notification at the action deadline instead of rendering an expired action", async () => {
     vi.useFakeTimers(); vi.setSystemTime(0);
     const run = vi.fn(); const onDismiss = vi.fn();
     render(<Notification message={{ id: 1, kind: "success", text: "Deleted", action: { label: "Undo", run, expiresAt: 1000 } }} onDismiss={onDismiss} />);
     fireEvent.mouseEnter(screen.getByRole("status"));
-    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
-    const action = screen.getByRole("button", { name: "Undo expired" });
-    expect((action as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(action); expect(run).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(999); });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     expect(onDismiss).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Undo expired" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(run).not.toHaveBeenCalled();
   });
   it("does not dismiss a newer notification when an older async action completes", async () => {
     let resolve!: () => void;
