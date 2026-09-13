@@ -14,12 +14,21 @@
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
 
-        <!-- USB accessory discovery is intentionally app-driven. oStudy must
-             already be open before desktop USB Sync begins. Do not register
-             android.hardware.usb.action.USB_ACCESSORY_ATTACHED or the historical
-             @xml/ostudy_usb_accessory_filter metadata here: either would let the
-             OS chooser appear before the app can explain the transfer and ask
-             for consent. -->
+        <!-- Android Open Accessory must resolve the advertised manufacturer/model
+             to an installed application before Android will route the USB
+             accessory to ostudy. This handler is therefore required. Android may
+             show its system handler confirmation before the app receives the
+             attachment; the ostudy USB plugin still waits for ostudy's own
+             Accept action before opening the descriptor or transferring selected
+             study data. -->
+        <activity android:name="io.github.jferments.ostudy.MainActivity">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
+                android:resource="@xml/ostudy_usb_accessory_filter" />
+        </activity>
 
         <service
             android:name=".OstudyDocumentExecutionService"
