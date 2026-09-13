@@ -18,7 +18,7 @@ describe("NativeStartupGate", () => {
   it("waits until the database-backed settings command is usable before mounting application children", async () => {
     vi.mocked(getSettings)
       .mockRejectedValueOnce(new Error("database not managed yet"))
-      .mockResolvedValue({});
+      .mockResolvedValue({} as Awaited<ReturnType<typeof getSettings>>);
 
     render(<NativeStartupGate><div>Application ready</div></NativeStartupGate>);
 
@@ -28,7 +28,9 @@ describe("NativeStartupGate", () => {
   });
 
   it("resolves immediately once native managed state is published", async () => {
-    vi.mocked(getSettings).mockResolvedValue({});
+    vi.mocked(getSettings).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof getSettings>>,
+    );
     await expect(waitForNativeStartup(100)).resolves.toBeUndefined();
     await waitFor(() => expect(getSettings).toHaveBeenCalledOnce());
   });
@@ -36,7 +38,7 @@ describe("NativeStartupGate", () => {
   it("retries when one bridge invocation itself hangs instead of freezing the splash forever", async () => {
     vi.mocked(getSettings)
       .mockImplementationOnce(() => new Promise<never>(() => undefined))
-      .mockResolvedValue({});
+      .mockResolvedValue({} as Awaited<ReturnType<typeof getSettings>>);
 
     await expect(waitForNativeStartup(250, 25)).resolves.toBeUndefined();
     expect(getSettings).toHaveBeenCalledTimes(2);
