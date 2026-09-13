@@ -28,7 +28,7 @@ private const val USB_PERMISSION_ACTION_SUFFIX = ".ostudy.USB_ACCESSORY_PERMISSI
 private const val USB_DIAGNOSTIC_TAG = "oStudyUsb"
 private const val EMPTY_CLAIM_LOG_INTERVAL_MILLIS = 15_000L
 
-/** Android Open Accessory adapter. Discovery is passive until the user accepts in oStudy. */
+/** Android Open Accessory adapter. Discovery stays passive; authorization happens only when Rust claims the receiver. */
 @TauriPlugin
 class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     private val lock = Any()
@@ -54,6 +54,9 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
             val accessory = accessoryFromIntent(intent)
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
             if (!granted || accessory == null || !isOstudyAccessory(accessory) || !manager.hasPermission(accessory)) {
+                if (accessory != null && isOstudyAccessory(accessory)) {
+                    synchronized(lock) { suppressedKey = accessoryKey(accessory) }
+                }
                 callback?.resolve(permissionResult(accessory != null, false))
                 return
             }
@@ -75,7 +78,7 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     override fun onNewIntent(intent: Intent) {
         // No USB_ACCESSORY_ATTACHED manifest handler is registered. An OEM may
         // still forward an attachment to an already-open activity; observing it
-        // must never request permission before the app-level consent dialog.
+        // remains passive and must not request permission during discovery.
         val accessory = accessoryFromIntent(intent)
         if (intent.action == UsbManager.ACTION_USB_ACCESSORY_ATTACHED && accessory != null && isOstudyAccessory(accessory)) {
             synchronized(lock) {
