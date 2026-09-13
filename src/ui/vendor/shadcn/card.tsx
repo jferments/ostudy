@@ -4,6 +4,7 @@ import type { HTMLAttributes } from "react";
 import { cn } from "../../internal/cn";
 
 export type CardElement = "section" | "article" | "div" | "aside" | "header" | "nav";
+export type CardTitleElement = "h2" | "h3" | "h4" | "div";
 
 export function Card({
   as: Element = "div",
@@ -38,12 +39,20 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
   );
 }
 
-export function CardTitle({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+/** oStudy section cards retain heading semantics even though Nova owns the visual recipe. */
+export function CardTitle({
+  as: Element = "h3",
+  className,
+  ...props
+}: HTMLAttributes<HTMLElement> & { as?: CardTitleElement }) {
   return (
-    <div
+    <Element
       {...props}
       data-slot="card-title"
-      className={cn("tw:min-w-0 tw:text-base tw:font-medium tw:leading-snug tw:group-data-[size=sm]/card:text-sm", className)}
+      className={cn(
+        "tw:m-0 tw:min-w-0 tw:text-base tw:font-medium tw:leading-snug tw:group-data-[size=sm]/card:text-sm",
+        className,
+      )}
     />
   );
 }
