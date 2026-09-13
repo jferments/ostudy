@@ -32,8 +32,9 @@ expectRecipe("sectionActions", ["tw:flex", "tw:justify-end", "tw:@max-[620px]/de
 expectContains(rootSource, 'libraryPresentation as styles', "live library recipe consumer");
 expectContains(folderSource, '<IconButton', "shared folder reorder control");
 expectContains(folderSource, 'icon="move"', "keyboard reorder affordance");
+expectContains(buttonSource, 'icon: "tw:size-8 tw:p-0"', "compact fine-pointer icon size");
 expectContains(buttonSource, "tw:coarse:min-h-touch", "coarse-pointer minimum action height");
-expectContains(buttonSource, "tw:min-w-touch", "icon minimum action width");
+expectContains(buttonSource, "tw:coarse:min-w-touch", "coarse-pointer minimum action width");
 expectContains(deckSource, 'data-library-row={archived ? undefined : "deck"}', "active deck pointer row identity");
 expectContains(folderSource, 'data-library-folder-surface="true"', "complete folder pointer destination");
 expectContains(deckSource, "reorder.beginPointerDrag", "deck row pointer session initiation");
@@ -59,7 +60,6 @@ for (const nativeDragFragment of [
     `native HTML movement fragment ${nativeDragFragment}`,
   );
 }
-
 
 const tauriConfig = JSON.parse(tauriConfigText);
 const mainWindow = tauriConfig?.app?.windows?.find((window) => window?.label === "main");
