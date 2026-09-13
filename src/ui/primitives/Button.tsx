@@ -22,7 +22,7 @@ const variants = {
 } as const;
 const sizes = { small: "sm", medium: "default", large: "lg", icon: "icon" } as const;
 const semanticVariantClasses: Partial<Record<NonNullable<ButtonProps["variant"]>, string>> = {
-  back: "tw:-ml-2 tw:w-fit tw:px-2 tw:text-muted-foreground tw:hover:text-foreground",
+  back: "tw:w-fit tw:px-2 tw:text-muted-foreground tw:hover:text-foreground",
   dangerSecondary: "tw:border-destructive/30 tw:bg-background",
   dangerGhost: "tw:bg-transparent tw:hover:bg-destructive-soft",
 };
