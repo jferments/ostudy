@@ -345,23 +345,16 @@ pub fn get_device_sync_state(
 }
 
 #[tauri::command]
-pub fn get_pending_usb_sync_request(
-    app: AppHandle,
-) -> Result<PendingUsbSyncRequestDto, CommandError> {
+pub fn get_pending_usb_sync_request(app: AppHandle) -> Result<PendingUsbSyncRequestDto, CommandError> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_ostudy_platform::OstudyPlatformExt;
-        let pending = app
-            .ostudy_platform()
-            .peek_usb_accessory()
-            .map_err(|error| {
-                CommandError::new(
-                    "device_sync_usb_open_failed",
-                    format!(
-                        "The pending Android USB sync request could not be inspected: {error}"
-                    ),
-                )
-            })?;
+        let pending = app.ostudy_platform().peek_usb_accessory().map_err(|error| {
+            CommandError::new(
+                "device_sync_usb_open_failed",
+                format!("The pending Android USB sync request could not be inspected: {error}"),
+            )
+        })?;
         return Ok(PendingUsbSyncRequestDto {
             available: pending.available,
             manufacturer: pending.manufacturer,
