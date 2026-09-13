@@ -7,25 +7,17 @@ import test from "node:test";
 
 const rootUrl = new URL("../../", import.meta.url);
 const root = fileURLToPath(rootUrl);
-const directories = ["src/ui", "src/screens/settings", "src/screens/cards", "src/screens/flashcards", "src/screens/card-editor", "src/editor", "src/screens/documents", "src/screens/analytics", "src/screens/practice", "src/screens/tutor"];
-const entryFiles = [
-  "src/screens/AnalyticsScreen.tsx", "src/screens/PracticeScreen.tsx",
-  "src/screens/DocumentsScreen.tsx", "src/screens/DocumentsSection.tsx", "src/screens/DocumentsDevelopmentStub.tsx",
-  "src/screens/StudyGuideDialog.tsx", "src/screens/StudyGuidesScreen.tsx", "src/components/SourceCitationPanel.tsx",
-  "src/screens/CardEditorScreenBase.tsx", "src/App.tsx", "src/components/MobileAppBar.tsx", "src/components/NavigationSidebar.tsx",
-  "src/components/AppErrorBoundary.tsx", "src/components/TagInput.tsx", "src/components/Toast.tsx",
-  "src/screens/SettingsScreen.tsx", "src/screens/TemplatesScreen.tsx", "src/screens/templates/TemplateLayoutEditor.tsx",
-];
+const directories = ["src"];
 async function sourceFiles(directory) {
   const result = [];
   for (const entry of await readdir(new URL(`${directory}/`, rootUrl), { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
-    if (entry.isDirectory()) result.push(...await sourceFiles(path));
-    else if (/\.tsx?$/u.test(entry.name) && !/\.(?:test|spec)\.tsx?$/u.test(entry.name)) result.push(path);
+    if (entry.isDirectory() && !["testing", "__tests__", "tests", "node_modules"].includes(entry.name)) result.push(...await sourceFiles(path));
+    else if (/\.tsx?$/u.test(entry.name) && !/\.(?:test|spec|stories)\.tsx?$/u.test(entry.name)) result.push(path);
   }
   return result;
 }
-const migratedSources = [...new Set([...entryFiles, ...(await Promise.all(directories.map(sourceFiles))).flat()])].sort();
+const migratedSources = [...new Set((await Promise.all(directories.map(sourceFiles))).flat())].sort();
 
 test("compiles every migrated utility, all themes and capability variants without writing source", async () => {
   const result = await build({

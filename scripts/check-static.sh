@@ -51,7 +51,7 @@ node "$SCRIPT_DIR/verify-project-manifests.mjs"
 node "$SCRIPT_DIR/verify-xberg-dependency-policy.mjs"
 node "$SCRIPT_DIR/generate-ui-tokens.mjs" --check
 node "$SCRIPT_DIR/verify-ui-token-usage.mjs"
-node --test tests/scripts/ui-theme.node-test.mjs tests/scripts/ui-import-policy.node-test.mjs
+node --test tests/scripts/ui-theme.node-test.mjs tests/scripts/ui-import-policy.node-test.mjs tests/scripts/ui-presentation-policy.node-test.mjs
 node "$SCRIPT_DIR/verify-style-ownership.mjs"
 node "$SCRIPT_DIR/verify-button-contrast.mjs"
 node "$SCRIPT_DIR/verify-deck-toolbar-layout.mjs"

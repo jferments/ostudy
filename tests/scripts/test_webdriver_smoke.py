@@ -14,7 +14,7 @@ UI_PLATFORM_SMOKE_PATH = ROOT / "tests" / "webdriver" / "ui_platform_smoke.py"
 NATIVE_SMOKE_RUNNER_PATH = ROOT / "scripts" / "smoke-native.sh"
 PROGRESS_STYLES_PATH = ROOT / "src" / "ui" / "primitives" / "Progress.module.css"
 PRACTICE_COMPLETE_PATH = ROOT / "src" / "screens" / "practice" / "PracticeComplete.tsx"
-DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "DecksScreen.tsx"
+DECKS_SCREEN_PATH = ROOT / "src" / "screens" / "flashcards" / "DeckDetailRoute.tsx"
 CARDS_SCREEN_PATH = ROOT / "src" / "screens" / "CardsScreen.tsx"
 CARD_BROWSER_WORKSPACE_PATH = ROOT / "src" / "screens" / "cards" / "CardBrowserWorkspace.tsx"
 MAIN_ENTRY_PATH = ROOT / "src" / "main.tsx"
@@ -260,7 +260,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         search = CARDS_SCREEN_PATH.read_text(encoding="utf-8")
         browser = CARD_BROWSER_WORKSPACE_PATH.read_text(encoding="utf-8")
         self.assertIn("<CardBrowserWorkspace", decks)
-        self.assertIn("fixedDeckId={selectedDeck.id}", decks)
+        self.assertIn("fixedDeckId={deck.id}", decks)
         self.assertIn("showFilters={false}", decks)
         self.assertNotIn("controller.cards(", decks)
         self.assertNotIn('className="card-row-preview"', decks)

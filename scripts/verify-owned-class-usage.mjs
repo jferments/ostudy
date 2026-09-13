@@ -1,315 +1,96 @@
 #!/usr/bin/env node
-
 import { execFileSync } from "node:child_process";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const scriptRoot = fileURLToPath(new URL("..", import.meta.url));
-const rootArgumentIndex = process.argv.indexOf("--root");
-const root = resolve(
-  rootArgumentIndex >= 0 && process.argv[rootArgumentIndex + 1]
-    ? process.argv[rootArgumentIndex + 1]
-    : scriptRoot,
-);
+const argument = process.argv.indexOf("--root");
+const root = resolve(argument >= 0 ? process.argv[argument + 1] : fileURLToPath(new URL("..", import.meta.url)));
 const ts = await loadTypeScript();
 const failures = [];
-const sharedOwnerPaths = [
-  "src/ui/patterns/ScreenPatterns.module.css",
-  "src/ui/primitives/ControlPatterns.module.css",
-  "src/ui/overlays/OverlayPatterns.module.css",
-];
-const sharedClasses = new Set();
-for (const ownerPath of sharedOwnerPaths) {
-  const absolute = join(root, ownerPath);
-  try {
-    for (const className of selectorClasses(await readFile(absolute, "utf8"))) {
-      sharedClasses.add(className);
+const utilitySource = await readFile(join(root, "src/ui/foundations/utilities.css"), "utf8");
+const globalUtilities = new Set([...utilitySource.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/gu)].map((match) => match[1]));
+let checked = 0;
+
+for (const path of await files(join(root, "src"))) {
+  if (!path.endsWith(".tsx") || /\.(?:test|spec|stories)\.tsx$/u.test(path)
+      || /\/(?:__tests__|test)\//u.test(path)) continue;
+  const owner = relative(root, path).replaceAll("\\", "/");
+  const source = ts.createSourceFile(owner, await readFile(path, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const modules = new Map();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const specifier = statement.moduleSpecifier.text;
+    if (/classOwnership(?:\.[jt]s)?$/u.test(specifier)) {
+      failures.push(`${owner}: retired classOwnership API; use shared components and complete utilities.`);
     }
-  } catch {
-    failures.push(`Missing shared CSS Module owner ${ownerPath}.`);
-  }
-}
-
-const utilityPath = join(root, "src/ui/foundations/utilities.css");
-let approvedGlobalUtilities = new Set();
-try {
-  approvedGlobalUtilities = selectorClasses(await readFile(utilityPath, "utf8"));
-} catch {
-  failures.push("Missing global utility owner src/ui/foundations/utilities.css.");
-}
-
-const sourceRoot = join(root, "src");
-const sourceFiles = (await collectFiles(sourceRoot)).filter(
-  (path) => path.endsWith(".tsx") && !isTestSource(path),
-);
-let checkedCalls = 0;
-let checkedRawClassNames = 0;
-
-for (const path of sourceFiles) {
-  const source = await readFile(path, "utf8");
-  if (!source.includes("className") && !source.includes("ownedClassNames")) continue;
-  const displayPath = relative(root, path).replaceAll("\\", "/");
-  const sourceFile = ts.createSourceFile(
-    displayPath,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
-  const cssModuleImports = cssModuleImportPaths(sourceFile, path);
-  const ownerClasses = new Set(sharedClasses);
-  const ownedStyleMapIdentifiers = findOwnedStyleMapIdentifiers(sourceFile);
-
-  for (const identifier of ownedStyleMapIdentifiers) {
-    const modulePath = cssModuleImports.get(identifier);
-    if (!modulePath) continue;
+    if (!specifier.endsWith(".module.css")) continue;
     try {
-      for (const className of selectorClasses(await readFile(modulePath, "utf8"))) {
-        ownerClasses.add(className);
-      }
-    } catch {
-      failures.push(`${displayPath} references missing CSS Module owner ${relative(root, modulePath).replaceAll("\\", "/")}.`);
-    }
+      const css = await readFile(resolve(dirname(path), specifier), "utf8");
+      const names = new Set([...css.replace(/\/\*[\s\S]*?\*\//gu, "").matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/gu)].map((match) => match[1]));
+      if (statement.importClause?.name) modules.set(statement.importClause.name.text, names);
+    } catch { failures.push(`${owner}: missing CSS Module owner ${specifier}.`); }
   }
-
+  function report(node, message) {
+    const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+    failures.push(`${owner}:${line}: ${message}`);
+  }
   function visit(node) {
-    if (
-      ts.isCallExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === "ownedClassNames"
-    ) {
-      checkedCalls += 1;
-      const firstArgument = node.arguments[0];
-      if (!firstArgument || !ts.isIdentifier(firstArgument) || firstArgument.text !== "ownedStyleMaps") {
-        failures.push(`${location(sourceFile, node)} must pass ownedStyleMaps as the first ownedClassNames argument.`);
-      }
-      const values = [];
-      for (const argument of node.arguments.slice(1)) collectClassValues(argument, values, true);
-      for (const value of values) {
-        validateOwnedValue(value, ownerClasses, approvedGlobalUtilities, sourceFile, node, failures);
-      }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "ownedClassNames") {
+      report(node, "retired ownedClassNames API; use explicit CSS Module values or complete tw: utilities.");
     }
-
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && modules.has(node.expression.text)) {
+      if (!modules.get(node.expression.text).has(node.name.text)) report(node, `CSS Module has no .${node.name.text} selector.`);
+    }
     if (ts.isJsxAttribute(node) && node.name.text === "className" && node.initializer) {
-      const expression = jsxClassExpression(node.initializer);
-      if (expression && !containsOwnedClassCall(expression)) {
-        const values = [];
-        collectClassValues(expression, values, false);
-        for (const value of values) {
-          for (const token of literalTokens(value)) {
-            if (token === "${}" || approvedGlobalUtilities.has(token) || isTailwindUtility(token)) continue;
-            failures.push(
-              `${location(sourceFile, node)} emits raw production class ${JSON.stringify(token)}; use a CSS Module value, ownedClassNames with an explicit owner, or a complete tw: utility.`,
-            );
-          }
+      checked++;
+      const expression = ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer;
+      for (const text of literalClasses(expression)) {
+        for (const token of text.split(/\s+/u).filter(Boolean)) {
+          if (token === "${}" || globalUtilities.has(token)) continue;
+          if (token.startsWith("tw:") && token.length > 3 && !token.includes("${}")) continue;
+          report(node, `emits raw production class ${JSON.stringify(token)}; use an owned CSS Module or complete tw: utility.`);
         }
-        checkedRawClassNames += 1;
       }
     }
-
     ts.forEachChild(node, visit);
   }
-
-  visit(sourceFile);
+  visit(source);
 }
+if (failures.length) {
+  console.error(`Owned class usage verification failed:\n${failures.join("\n")}`);
+  process.exitCode = 1;
+} else console.log(`OK   ${checked} className expressions use explicit owners; retired class maps are absent.`);
 
-if (failures.length > 0) {
-  console.error("Owned class usage verification failed:\n");
-  for (const failure of failures) console.error(`- ${failure}`);
-  process.exit(1);
-}
-
-console.log(
-  `OK   Owned class usage: ${checkedCalls} semantic class resolutions and ${checkedRawClassNames} direct className expressions checked.`,
-);
-
-function cssModuleImportPaths(sourceFile, sourcePath) {
-  const imports = new Map();
-  for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    if (!statement.moduleSpecifier.text.endsWith(".module.css")) continue;
-    const localName = statement.importClause?.name?.text;
-    if (!localName) continue;
-    imports.set(localName, resolve(dirname(sourcePath), statement.moduleSpecifier.text));
-  }
-  return imports;
-}
-
-function findOwnedStyleMapIdentifiers(sourceFile) {
-  const identifiers = new Set();
-  function collect(node) {
-    if (ts.isIdentifier(node)) {
-      if (node.text !== "sharedClassMaps") identifiers.add(node.text);
-      return;
-    }
-    ts.forEachChild(node, collect);
-  }
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (
-        ts.isIdentifier(declaration.name)
-        && declaration.name.text === "ownedStyleMaps"
-        && declaration.initializer
-      ) {
-        collect(declaration.initializer);
-      }
-    }
-  }
-  return identifiers;
-}
-
-function jsxClassExpression(initializer) {
-  if (ts.isStringLiteral(initializer)) return initializer;
-  if (ts.isJsxExpression(initializer)) return initializer.expression ?? null;
-  return null;
-}
-
-function containsOwnedClassCall(node) {
-  let found = false;
-  function visit(candidate) {
-    if (
-      ts.isCallExpression(candidate)
-      && ts.isIdentifier(candidate.expression)
-      && candidate.expression.text === "ownedClassNames"
-    ) {
-      found = true;
-      return;
-    }
-    if (!found) ts.forEachChild(candidate, visit);
-  }
-  visit(node);
-  return found;
-}
-
-function collectClassValues(node, output, inspectFunctionCalls) {
-  if (ts.isStringLiteralLike(node)) {
-    output.push(node.text);
-    return;
-  }
-  if (ts.isTemplateExpression(node)) {
-    output.push(templatePattern(node));
-    return;
-  }
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node)) {
-    collectClassValues(node.expression, output, inspectFunctionCalls);
-    return;
-  }
-  if (ts.isConditionalExpression(node)) {
-    collectClassValues(node.whenTrue, output, inspectFunctionCalls);
-    collectClassValues(node.whenFalse, output, inspectFunctionCalls);
-    return;
-  }
-  if (ts.isArrayLiteralExpression(node)) {
-    for (const element of node.elements) collectClassValues(element, output, inspectFunctionCalls);
-    return;
-  }
-  if (ts.isCallExpression(node)) {
-    if (
-      ts.isPropertyAccessExpression(node.expression)
-      && ["filter", "join"].includes(node.expression.name.text)
-    ) {
-      collectClassValues(node.expression.expression, output, inspectFunctionCalls);
-      return;
-    }
-    // cn is the owned Tailwind composition boundary, not an opaque escape hatch.
-    if (inspectFunctionCalls || (ts.isIdentifier(node.expression) && node.expression.text === "cn")) {
-      for (const argument of node.arguments) {
-        if (!ts.isArrowFunction(argument) && !ts.isFunctionExpression(argument)) {
-          collectClassValues(argument, output, inspectFunctionCalls);
-        }
-      }
-    }
-    return;
-  }
+function literalClasses(node) {
+  if (!node) return [];
+  if (ts.isStringLiteralLike(node)) return [node.text];
+  if (ts.isTemplateExpression(node)) return [node.head.text + node.templateSpans.map((span) => "${}" + span.literal.text).join("")];
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node)) return literalClasses(node.expression);
+  if (ts.isConditionalExpression(node)) return [...literalClasses(node.whenTrue), ...literalClasses(node.whenFalse)];
+  if (ts.isArrayLiteralExpression(node)) return node.elements.flatMap(literalClasses);
+  if (ts.isObjectLiteralExpression(node)) return node.properties.flatMap((property) =>
+    ts.isPropertyAssignment(property) && (ts.isStringLiteralLike(property.name) || ts.isIdentifier(property.name)) ? [property.name.text] : []);
   if (ts.isBinaryExpression(node)) {
-    if (
-      node.operatorToken.kind === ts.SyntaxKind.PlusToken
-      || node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-      || node.operatorToken.kind === ts.SyntaxKind.BarBarToken
-      || node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
-    ) {
-      collectClassValues(node.left, output, inspectFunctionCalls);
-      collectClassValues(node.right, output, inspectFunctionCalls);
-    }
-  }
-}
-
-function templatePattern(node) {
-  let pattern = node.head.text;
-  for (const span of node.templateSpans) pattern += "${}" + span.literal.text;
-  return pattern;
-}
-
-function validateOwnedValue(value, ownerClasses, approvedUtilities, sourceFile, node, output) {
-  for (const token of literalTokens(value)) {
-    if (token === "${}" || approvedUtilities.has(token) || ownerClasses.has(token)) continue;
-    if (token.includes("${}")) {
-      const pattern = new RegExp(
-        `^${token
-          .split("${}")
-          .map((part) => escapeRegExp(part))
-          .join("[-A-Za-z0-9_]+")}$`,
-        "u",
-      );
-      if ([...ownerClasses, ...approvedUtilities].some((className) => pattern.test(className))) {
-        continue;
-      }
-    }
-    output.push(
-      `${location(sourceFile, node)} uses unowned semantic class ${JSON.stringify(token)} from ${JSON.stringify(value)}.`,
-    );
-  }
-}
-
-// Tailwind owns these names, not a CSS Module. Actual rule emission is verified
-// by the CSS compilation contract. Interpolated names are never discoverable.
-function isTailwindUtility(token) {
-  return token.startsWith("tw:") && token.length > 3 && !token.includes("${}");
-}
-
-function literalTokens(value) {
-  return value.split(/\s+/u).filter(Boolean);
-}
-
-function selectorClasses(source) {
-  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//gu, "");
-  return new Set(
-    [...withoutComments.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/gu)].map((match) => match[1]),
-  );
-}
-
-function location(sourceFile, node) {
-  const point = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-  return `${sourceFile.fileName}:${point.line + 1}:${point.character + 1}`;
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function isTestSource(path) {
-  const normalized = path.replaceAll("\\", "/");
-  return /(?:^|\/)(?:__tests__|test)(?:\/|$)/u.test(normalized)
-    || /\.(?:test|spec|stories)\.tsx$/u.test(normalized);
-}
-
-async function collectFiles(directory) {
-  try {
-    await access(directory);
-  } catch {
+    if (node.operatorToken.kind === ts.SyntaxKind.PlusToken) return literalClasses(node.left).map((text) => text + "${}");
+    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return literalClasses(node.right);
+    if ([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(node.operatorToken.kind)) return [...literalClasses(node.left), ...literalClasses(node.right)];
     return [];
   }
-  const output = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (["node_modules", "dist", "target", "gen", "artifacts"].includes(entry.name)) continue;
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) output.push(...(await collectFiles(path)));
-    else if (entry.isFile()) output.push(path);
+  if (ts.isCallExpression(node)) {
+    if (ts.isIdentifier(node.expression) && node.expression.text === "cn") return node.arguments.flatMap(literalClasses);
+    if (ts.isPropertyAccessExpression(node.expression) && ["filter", "join"].includes(node.expression.name.text)) return literalClasses(node.expression.expression);
   }
-  return output;
+  return [];
+}
+async function files(directory) {
+  const result = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (["node_modules", "dist", "target", "gen"].includes(entry.name)) continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) result.push(...await files(path)); else if (entry.isFile()) result.push(path);
+  }
+  return result;
 }
 
 async function loadTypeScript() {

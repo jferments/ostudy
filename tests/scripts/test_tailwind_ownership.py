@@ -12,9 +12,6 @@ class TailwindOwnershipTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             for path in (
-                "src/ui/patterns/ScreenPatterns.module.css",
-                "src/ui/primitives/ControlPatterns.module.css",
-                "src/ui/overlays/OverlayPatterns.module.css",
                 "src/ui/foundations/utilities.css",
             ):
                 target = root / path
