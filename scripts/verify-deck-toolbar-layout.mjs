@@ -27,7 +27,7 @@ expectRecipe("root", ["tw:@container/deck-library"], "deck-library container");
 expectRecipe("toolbar", ["tw:flex", "tw:justify-end"], "deck toolbar");
 expectRecipe("toolbarActions", ["tw:flex", "tw:w-auto", "tw:justify-end", "tw:[&>button]:flex-none", "tw:[&>button]:whitespace-nowrap"], "intrinsic toolbar actions at every width");
 expectRecipe("importAction", ["tw:[&_svg]:stroke-[2.15]"], "prominent import icon");
-expectContains(rootSource, 'icon="folder-open"\n            iconSize={24}', "24px contextual import icon");
+expectMatches(rootSource, /icon="folder-open"\s+iconSize=\{24\}/u, "24px contextual import icon");
 expectRecipe("sectionActions", ["tw:flex", "tw:justify-end", "tw:@max-[620px]/deck-library:w-full", "tw:@max-[620px]/deck-library:justify-stretch"], "content-width compact folder controls");
 expectContains(rootSource, 'libraryPresentation as styles', "live library recipe consumer");
 expectContains(folderSource, '<IconButton', "shared folder reorder control");
@@ -78,6 +78,10 @@ console.log(
 
 function expectContains(source, expected, label) {
   if (!source.includes(expected)) failures.push(`Missing ${label}: ${expected}`);
+}
+
+function expectMatches(source, expected, label) {
+  if (!expected.test(source)) failures.push(`Missing ${label}: ${expected}`);
 }
 
 function expectAbsent(source, forbidden, label) {
