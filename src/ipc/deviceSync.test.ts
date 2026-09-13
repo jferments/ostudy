@@ -7,6 +7,7 @@ import {
   joinDevicePairing,
   joinUsbDevicePairing,
   rejectUsbDevicePairing,
+  requestUsbAccessoryPermission,
   resolveDeviceSyncConflict,
   scanDevicePairingQr,
   startDevicePairing,
@@ -81,6 +82,12 @@ describe("device synchronization IPC", () => {
     expect(invoke).toHaveBeenCalledWith("get_pending_usb_sync_request");
   });
 
+  it("requests Android USB permission only through the dedicated native plugin boundary", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ available: true, granted: true });
+    await requestUsbAccessoryPermission();
+    expect(invoke).toHaveBeenCalledWith("plugin:ostudy-usb|requestUsbAccessoryPermission");
+  });
+
   it("accepts an attached USB accessory through the shared join command", async () => {
     await joinUsbDevicePairing();
     expect(invoke).toHaveBeenCalledWith("join_device_pairing", {
@@ -90,9 +97,20 @@ describe("device synchronization IPC", () => {
     });
   });
 
-  it("rejects an attached USB accessory through an explicit consent command", async () => {
-    await rejectUsbDevicePairing();
-    expect(invoke).toHaveBeenCalledWith("reject_usb_device_pairing");
+  it("dismisses a pre-permission USB request without provoking Android permission", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ dismissed: true, canRespond: false });
+    await expect(rejectUsbDevicePairing()).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("plugin:ostudy-usb|dismissUsbAccessory");
+  });
+
+  it("sends the typed rejection when Android USB permission is already available", async () => {
+    vi.mocked(invoke)
+      .mockResolvedValueOnce({ dismissed: true, canRespond: true })
+      .mockResolvedValueOnce(true);
+    await expect(rejectUsbDevicePairing()).resolves.toBe(true);
+    expect(invoke).toHaveBeenNthCalledWith(1, "plugin:ostudy-usb|dismissUsbAccessory");
+    expect(invoke).toHaveBeenNthCalledWith(2, "reject_usb_device_pairing");
   });
 
   it("cancels one active synchronization session by id", async () => {

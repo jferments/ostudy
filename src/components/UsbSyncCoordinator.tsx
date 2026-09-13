@@ -6,6 +6,7 @@ import {
   joinUsbDevicePairing,
   listenToDeviceSyncProgress,
   rejectUsbDevicePairing,
+  requestUsbAccessoryPermission,
   type DeviceSyncProgress,
   type PendingUsbSyncRequest,
 } from "../ipc/deviceSync";
@@ -28,10 +29,10 @@ const USB_DISCOVERY_FAST_WINDOW_MS = 12_000;
 type UsbConsentPhase = "pending" | "accepting" | "rejecting" | "receiving";
 
 /**
- * Discovers Android Open Accessory requests without claiming them. The native
- * descriptor remains pending until the learner explicitly accepts or rejects
- * the request. Only then does Rust take ownership and continue the shared,
- * authenticated device-sync protocol.
+ * Discovers Android Open Accessory requests without opening them or requesting
+ * OS permission. The learner sees oStudy's Accept/Reject explanation first. An
+ * Accept may then request Android USB access; only after that grant does Rust
+ * take descriptor ownership and continue the authenticated sync protocol.
  */
 export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinatorProps) {
   const capabilities = usePlatformCapabilities();
@@ -78,8 +79,8 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
         setPending(request);
         setPhase("pending");
       } catch {
-        // Discovery is a best-effort Android-only convenience. An attachment
-        // event can still surface the same pending descriptor.
+        // Discovery is best-effort. The next bounded poll retries without
+        // opening the accessory or triggering Android's permission UI.
       }
     }
 
@@ -92,6 +93,10 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
 
     void discoverPending().finally(() => schedulePoll());
     void listenToAndroidUsbSync((attachment) => {
+      // The native plugin emits this only after Android USB permission has
+      // already been granted. Consent/transfer is already in progress then, so
+      // never open a second oStudy prompt for the same request.
+      if (receiving.current) return;
       setPending({ available: true, ...attachment });
       setPhase("pending");
       armFastPolling();
@@ -135,7 +140,7 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     void confirm({
       title: "USB sync request",
       description:
-        "Would you like to accept a USB sync request? This will let the sending device transfer selected flashcards, documents, study guides, and API provider information to this device. This device never sends its own library back.",
+        "Accept this USB sync request? Android may show a system USB access prompt next; accept it to continue. The sending device can transfer selected flashcards, documents, study guides, and API provider information to this device. This device never sends its own library back.",
       confirmLabel: "Accept",
       cancelLabel: "Reject",
     }).then((accepted) => {
@@ -151,6 +156,17 @@ export function UsbSyncCoordinator({ refreshDecks, showToast }: UsbSyncCoordinat
     setPhase("accepting");
     setProgress(null);
     try {
+      const permission = await requestUsbAccessoryPermission();
+      if (!permission.available) {
+        throw new Error("The attached USB sync request was no longer available.");
+      }
+      if (!permission.granted) {
+        setPending(null);
+        setProgress(null);
+        setPhase("pending");
+        showToast("info", "USB sync was not authorized in Android.");
+        return;
+      }
       setPhase("receiving");
       const result = await joinUsbDevicePairing();
       if (!result) throw new Error("The attached USB sync request was no longer available.");

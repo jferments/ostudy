@@ -1,36 +1,44 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getNativePlatformSnapshot } from "../ipc/platform";
+import { getSettings } from "../ipc/settings";
 import { NativeStartupGate, waitForNativeStartup } from "./NativeStartupGate";
 
-vi.mock("../ipc/platform", () => ({
-  getNativePlatformSnapshot: vi.fn(),
+vi.mock("../ipc/settings", () => ({
+  getSettings: vi.fn(),
 }));
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("NativeStartupGate", () => {
-  it("retries the cold-start state-publication race before mounting application children", async () => {
-    vi.mocked(getNativePlatformSnapshot)
-      .mockRejectedValueOnce(new Error("state not managed"))
-      .mockResolvedValue({} as Awaited<ReturnType<typeof getNativePlatformSnapshot>>);
+  it("waits until the database-backed settings command is usable before mounting application children", async () => {
+    vi.mocked(getSettings)
+      .mockRejectedValueOnce(new Error("database not managed yet"))
+      .mockResolvedValue({});
 
     render(<NativeStartupGate><div>Application ready</div></NativeStartupGate>);
 
     expect(screen.getByText("Opening ostudy")).toBeTruthy();
     expect(await screen.findByText("Application ready")).toBeTruthy();
-    expect(getNativePlatformSnapshot).toHaveBeenCalledTimes(2);
+    expect(getSettings).toHaveBeenCalledTimes(2);
   });
 
-  it("resolves immediately once managed native state is available", async () => {
-    vi.mocked(getNativePlatformSnapshot).mockResolvedValue(
-      {} as Awaited<ReturnType<typeof getNativePlatformSnapshot>>,
-    );
+  it("resolves immediately once native managed state is published", async () => {
+    vi.mocked(getSettings).mockResolvedValue({});
     await expect(waitForNativeStartup(100)).resolves.toBeUndefined();
-    await waitFor(() => expect(getNativePlatformSnapshot).toHaveBeenCalledOnce());
+    await waitFor(() => expect(getSettings).toHaveBeenCalledOnce());
+  });
+
+  it("retries when one bridge invocation itself hangs instead of freezing the splash forever", async () => {
+    vi.mocked(getSettings)
+      .mockImplementationOnce(() => new Promise<never>(() => undefined))
+      .mockResolvedValue({});
+
+    await expect(waitForNativeStartup(250, 25)).resolves.toBeUndefined();
+    expect(getSettings).toHaveBeenCalledTimes(2);
   });
 });

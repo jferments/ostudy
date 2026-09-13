@@ -16,7 +16,6 @@ import android.webkit.WebView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import app.tauri.Logger
 import app.tauri.annotation.Command
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
@@ -29,98 +28,145 @@ private const val USB_PERMISSION_ACTION_SUFFIX = ".ostudy.USB_ACCESSORY_PERMISSI
 private const val USB_DIAGNOSTIC_TAG = "oStudyUsb"
 private const val EMPTY_CLAIM_LOG_INTERVAL_MILLIS = 15_000L
 
-/**
- * Owns only Android's USB-accessory lifecycle and native file-descriptor handoff.
- *
- * The desktop is the AOA USB host. Android opens the accessory and transfers
- * ownership of the resulting raw descriptor to Rust exactly once. Framing,
- * identity, encryption, package validation, merge policy, and cancellation stay
- * in the shared Rust device-sync implementation.
- */
+/** Android Open Accessory adapter. Discovery is passive until the user accepts in oStudy. */
 @TauriPlugin
 class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
     private val lock = Any()
-    private val manager: UsbManager by lazy {
-        activity.getSystemService(Context.USB_SERVICE) as UsbManager
-    }
+    private val manager by lazy { activity.getSystemService(Context.USB_SERVICE) as UsbManager }
     private val permissionAction = "${activity.packageName}$USB_PERMISSION_ACTION_SUFFIX"
     private var pending: PendingAccessory? = null
-    private var permissionRequestInFlight = false
-    private var permissionReceiverRegistered = false
+    private var suppressedKey: String? = null
+    private var permissionInvoke: Invoke? = null
+    private var permissionInFlight = false
+    private var receiverRegistered = false
     private var lifecycleObserver: DefaultLifecycleObserver? = null
     private var lastEmptyClaimLogElapsed = -EMPTY_CLAIM_LOG_INTERVAL_MILLIS
 
     private val permissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != permissionAction) return
-            synchronized(lock) {
-                permissionRequestInFlight = false
+            val callback = synchronized(lock) {
+                permissionInFlight = false
+                val value = permissionInvoke
+                permissionInvoke = null
+                value
             }
-
-            // requestPermission() is specified to return the exact accessory in
-            // EXTRA_ACCESSORY. Never substitute UsbManager.accessoryList here:
-            // Android can retain a stale logical accessory after a failed AOA
-            // transition even though the host has already returned to MTP/ADB.
             val accessory = accessoryFromIntent(intent)
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-            val hasPermission = accessory != null && manager.hasPermission(accessory)
-            logUsb(
-                Log.INFO,
-                "permission_result",
-                "granted=$granted accessoryPresent=${accessory != null} " +
-                    "matches=${accessory?.let(::isOstudyAccessory) == true} " +
-                    "hasPermission=$hasPermission",
-            )
-            logAccessorySnapshot("permission-result")
-            if (!granted || accessory == null || !isOstudyAccessory(accessory)) {
-                Logger.warn("Android USB accessory permission was not granted for oStudy USB Sync")
+            if (!granted || accessory == null || !isOstudyAccessory(accessory) || !manager.hasPermission(accessory)) {
+                callback?.resolve(permissionResult(accessory != null, false))
                 return
             }
-
-            prepareAccessory(manager, accessory, announce = true)
+            try {
+                callback?.resolve(permissionResult(true, prepareAccessory(accessory, announce = true)))
+            } catch (error: Exception) {
+                callback?.reject("Android granted USB access but oStudy could not open the accessory: ${safeMessage(error)}")
+            }
         }
     }
 
     override fun load(webView: WebView) {
-        logUsb(
-            Log.INFO,
-            "plugin_load",
-            "sdk=${Build.VERSION.SDK_INT} package=${activity.packageName} " +
-                "intentAction=${diagnosticValue(activity.intent?.action)}",
-        )
         registerPermissionReceiver()
         installLifecycleCleanup()
-        logAccessorySnapshot("plugin-load")
-        processAccessoryIntent(activity.intent, announce = true)
+        refreshSuppression()
+        log("plugin_load", "sdk=${Build.VERSION.SDK_INT}")
     }
 
     override fun onNewIntent(intent: Intent) {
-        logUsb(
-            Log.INFO,
-            "new_intent",
-            "action=${diagnosticValue(intent.action)} hasAccessoryExtra=${accessoryFromIntent(intent) != null}",
-        )
-        logAccessorySnapshot("new-intent-before-processing")
-        processAccessoryIntent(intent, announce = true)
+        // No USB_ACCESSORY_ATTACHED manifest handler is registered. An OEM may
+        // still forward an attachment to an already-open activity; observing it
+        // must never request permission before the app-level consent dialog.
+        val accessory = accessoryFromIntent(intent)
+        if (intent.action == UsbManager.ACTION_USB_ACCESSORY_ATTACHED && accessory != null && isOstudyAccessory(accessory)) {
+            synchronized(lock) {
+                if (suppressedKey != accessoryKey(accessory)) suppressedKey = null
+            }
+            log("accessory_intent_observed")
+        }
     }
 
     @Command
     fun peekUsbAccessory(invoke: Invoke) {
         try {
-            val current = synchronized(lock) { pending }
-            val result = JSObject()
-            result.put("available", current != null)
-            result.put("manufacturer", current?.manufacturer)
-            result.put("model", current?.model)
-            result.put("serialNumber", current?.serialNumber)
-            invoke.resolve(result)
+            val opened = synchronized(lock) { pending }
+            if (opened != null) {
+                invoke.resolve(status(true, opened.manufacturer, opened.model, opened.serialNumber))
+                return
+            }
+            val accessory = findDiscoverableAccessory()
+            invoke.resolve(status(accessory != null, accessory?.manufacturer, accessory?.model, accessory?.let(::safeSerial)))
         } catch (error: Exception) {
-            logUsb(
-                Log.ERROR,
-                "peek_command_failed",
-                "error=${diagnosticValue(safeUsbMessage(error))}",
-            )
-            invoke.reject("The pending Android USB sync request could not be inspected: ${safeUsbMessage(error)}")
+            invoke.reject("The pending Android USB sync request could not be inspected: ${safeMessage(error)}")
+        }
+    }
+
+    @Command
+    fun requestUsbAccessoryPermission(invoke: Invoke) {
+        try {
+            if (synchronized(lock) { pending != null }) {
+                invoke.resolve(permissionResult(true, true))
+                return
+            }
+            val accessory = findDiscoverableAccessory()
+            if (accessory == null) {
+                invoke.resolve(permissionResult(false, false))
+                return
+            }
+            if (manager.hasPermission(accessory)) {
+                invoke.resolve(permissionResult(true, prepareAccessory(accessory, announce = true)))
+                return
+            }
+            val accepted = synchronized(lock) {
+                if (permissionInFlight) false else {
+                    permissionInFlight = true
+                    permissionInvoke = invoke
+                    true
+                }
+            }
+            if (!accepted) {
+                invoke.reject("Another Android USB permission request is already active.")
+                return
+            }
+            try {
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                val permissionIntent = PendingIntent.getBroadcast(
+                    activity,
+                    0,
+                    Intent(permissionAction).setPackage(activity.packageName),
+                    flags,
+                )
+                manager.requestPermission(accessory, permissionIntent)
+                log("permission_request_started")
+            } catch (error: Exception) {
+                synchronized(lock) {
+                    permissionInFlight = false
+                    permissionInvoke = null
+                }
+                throw error
+            }
+        } catch (error: Exception) {
+            invoke.reject("Android could not request USB access for oStudy: ${safeMessage(error)}")
+        }
+    }
+
+    @Command
+    fun dismissUsbAccessory(invoke: Invoke) {
+        try {
+            val opened = synchronized(lock) { pending }
+            val accessory = if (opened == null) findDiscoverableAccessory() else null
+            var canRespond = opened != null
+            if (!canRespond && accessory != null && manager.hasPermission(accessory)) {
+                canRespond = prepareAccessory(accessory, announce = false)
+            }
+            val key = opened?.key ?: accessory?.let(::accessoryKey)
+            synchronized(lock) { if (key != null) suppressedKey = key }
+            invoke.resolve(JSObject().apply {
+                put("dismissed", key != null)
+                put("canRespond", canRespond)
+            })
+        } catch (error: Exception) {
+            invoke.reject("The Android USB sync request could not be dismissed: ${safeMessage(error)}")
         }
     }
 
@@ -130,259 +176,90 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
             val current = synchronized(lock) {
                 val value = pending
                 pending = null
+                if (value != null) suppressedKey = value.key
                 value
             }
-            val logIdle = current == null && shouldLogEmptyClaim()
             if (current != null) {
-                logAccessorySnapshot("take-command-claimed")
-                logUsb(
-                    Log.INFO,
-                    "pending_accessory_claimed",
-                    "fd=${current.fd} manufacturer=${diagnosticValue(current.manufacturer)} " +
-                        "model=${diagnosticValue(current.model)} serialPresent=${current.serialNumber != null}",
-                )
                 try {
                     OstudyUsbSyncService.begin(activity, current.fd)
-                    logUsb(Log.INFO, "usb_transfer_foreground_guard_requested", "fd=${current.fd}")
                 } catch (error: Exception) {
                     current.close()
-                    logUsb(
-                        Log.ERROR,
-                        "usb_transfer_foreground_guard_failed",
-                        "error=${diagnosticValue(safeUsbMessage(error))}",
-                    )
-                    invoke.reject(
-                        "Android could not keep the USB synchronization active: ${safeUsbMessage(error)}",
-                    )
+                    invoke.reject("Android could not keep the USB synchronization active: ${safeMessage(error)}")
                     return
                 }
-            } else if (logIdle) {
-                // A descriptor is claimable only after an actual
-                // ACTION_USB_ACCESSORY_ATTACHED intent (or its permission result)
-                // prepared it. UsbManager.accessoryList is deliberately not a
-                // fallback: Pixel/Android can expose a stale accessory object
-                // while the physical link is still MTP/ADB, and opening that
-                // stale object monopolizes /dev/usb_accessory before the next
-                // AOA START transition can complete.
-                logAccessorySnapshot("take-command-idle")
-                logUsb(Log.INFO, "take_command_no_pending_attachment", "available=false")
+            } else if (shouldLogEmptyClaim()) {
+                log("take_command_no_pending_attachment")
             }
-
-            val result = JSObject()
-            if (current == null) {
-                result.put("available", false)
-                result.put("fd", null)
-                result.put("manufacturer", null)
-                result.put("model", null)
-                result.put("serialNumber", null)
-                if (logIdle) logUsb(Log.INFO, "take_command_result", "available=false")
-            } else {
-                result.put("available", true)
-                result.put("fd", current.fd)
-                result.put("manufacturer", current.manufacturer)
-                result.put("model", current.model)
-                result.put("serialNumber", current.serialNumber)
-                logUsb(
-                    Log.INFO,
-                    "descriptor_handoff_to_rust",
-                    "available=true fd=${current.fd} serialPresent=${current.serialNumber != null}",
-                )
-            }
-            invoke.resolve(result)
+            invoke.resolve(JSObject().apply {
+                put("available", current != null)
+                put("fd", current?.fd)
+                put("manufacturer", current?.manufacturer)
+                put("model", current?.model)
+                put("serialNumber", current?.serialNumber)
+            })
         } catch (error: Exception) {
-            logUsb(
-                Log.ERROR,
-                "take_command_failed",
-                "error=${diagnosticValue(safeUsbMessage(error))}",
-            )
-            invoke.reject("The Android USB accessory could not be opened: ${safeUsbMessage(error)}")
+            invoke.reject("The Android USB accessory could not be opened: ${safeMessage(error)}")
         }
     }
 
-    private fun processAccessoryIntent(intent: Intent?, announce: Boolean) {
-        val actualIntent = intent
-        if (actualIntent == null) {
-            logUsb(Log.INFO, "accessory_intent_ignored", "action=null reason=not-accessory-attach")
-            return
-        }
-        val action = actualIntent.action
-        if (action != UsbManager.ACTION_USB_ACCESSORY_ATTACHED) {
-            logUsb(
-                Log.INFO,
-                "accessory_intent_ignored",
-                "action=${diagnosticValue(action)} reason=not-accessory-attach",
-            )
-            return
-        }
-        val accessory = accessoryFromIntent(actualIntent)
-        if (accessory == null) {
-            logUsb(Log.WARN, "accessory_intent_missing_extra", "announce=$announce")
-            return
-        }
-        if (!isOstudyAccessory(accessory)) {
-            logUsb(
-                Log.WARN,
-                "accessory_intent_mismatch",
-                "announce=$announce ${describeAccessory(accessory)}",
-            )
-            return
-        }
-
-        try {
-            val hasPermission = manager.hasPermission(accessory)
-            logUsb(
-                Log.INFO,
-                "accessory_intent_matched",
-                "announce=$announce hasPermission=$hasPermission ${describeAccessory(accessory)}",
-            )
-            if (!hasPermission) {
-                requestAccessoryPermission(manager, accessory)
-                return
-            }
-            prepareAccessory(manager, accessory, announce)
-        } catch (error: Exception) {
-            logUsb(
-                Log.ERROR,
-                "accessory_intent_failed",
-                "error=${diagnosticValue(safeUsbMessage(error))}",
-            )
-            Logger.error("Unable to prepare the oStudy USB accessory: ${safeUsbMessage(error)}")
-        }
-    }
-
-    private fun requestAccessoryPermission(manager: UsbManager, accessory: UsbAccessory) {
-        if (manager.hasPermission(accessory)) {
-            logUsb(Log.INFO, "permission_already_granted", describeAccessory(accessory))
-            prepareAccessory(manager, accessory, announce = true)
-            return
-        }
-        val shouldRequest = synchronized(lock) {
-            if (permissionRequestInFlight) {
-                false
-            } else {
-                permissionRequestInFlight = true
-                true
-            }
-        }
-        if (!shouldRequest) {
-            logUsb(Log.INFO, "permission_request_coalesced", describeAccessory(accessory))
-            return
-        }
-
-        try {
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-            val permissionIntent = PendingIntent.getBroadcast(
-                activity,
-                0,
-                Intent(permissionAction).setPackage(activity.packageName),
-                flags,
-            )
-            logUsb(
-                Log.INFO,
-                "permission_request_started",
-                "sdk=${Build.VERSION.SDK_INT} action=$permissionAction ${describeAccessory(accessory)}",
-            )
-            Logger.info("Requesting Android permission for oStudy USB Sync accessory")
-            manager.requestPermission(accessory, permissionIntent)
-        } catch (error: Exception) {
-            synchronized(lock) {
-                permissionRequestInFlight = false
-            }
-            logUsb(
-                Log.ERROR,
-                "permission_request_failed",
-                "error=${diagnosticValue(safeUsbMessage(error))}",
-            )
-            throw error
-        }
-    }
-
-    private fun prepareAccessory(
-        manager: UsbManager,
-        accessory: UsbAccessory,
-        announce: Boolean,
-    ) {
-        if (!manager.hasPermission(accessory)) {
-            logUsb(Log.WARN, "prepare_without_permission", describeAccessory(accessory))
-            return
-        }
-        logUsb(
-            Log.INFO,
-            "prepare_accessory_started",
-            "announce=$announce ${describeAccessory(accessory)}",
-        )
-        val opened = openAccessory(manager, accessory)
-        if (opened == null) {
-            logUsb(Log.ERROR, "prepare_accessory_open_returned_null", describeAccessory(accessory))
-            return
-        }
-        synchronized(lock) {
-            pending?.close()
-            pending = opened
-        }
-        logUsb(
-            Log.INFO,
-            "accessory_pending_for_rust",
-            "fd=${opened.fd} announce=$announce serialPresent=${opened.serialNumber != null}",
-        )
-        if (announce) {
-            val event = JSObject()
-            event.put("manufacturer", opened.manufacturer)
-            event.put("model", opened.model)
-            event.put("serialNumber", opened.serialNumber)
-            trigger("usb-sync-ready", event)
-            logUsb(Log.INFO, "usb_sync_ready_emitted", "fd=${opened.fd}")
-        }
-    }
-
-    private fun openAccessory(
-        manager: UsbManager,
-        accessory: UsbAccessory,
-    ): PendingAccessory? {
-        logUsb(Log.INFO, "open_accessory_started", describeAccessory(accessory))
-        val descriptor = manager.openAccessory(accessory)
-        if (descriptor == null) {
-            logUsb(Log.ERROR, "open_accessory_failed", "reason=null-descriptor ${describeAccessory(accessory)}")
+    private fun findDiscoverableAccessory(): UsbAccessory? {
+        val matching = manager.accessoryList.orEmpty().filter(::isOstudyAccessory)
+        if (matching.isEmpty()) {
+            synchronized(lock) { suppressedKey = null }
             return null
         }
-        return try {
-            val rawFd = descriptor.detachFd()
-            val serial = accessory.serial
-            logUsb(
-                Log.INFO,
-                "open_accessory_succeeded",
-                "fd=$rawFd serialPresent=${serial != null}",
-            )
+        val suppressed = synchronized(lock) { suppressedKey }
+        return matching.firstOrNull { accessoryKey(it) != suppressed }
+    }
+
+    private fun prepareAccessory(accessory: UsbAccessory, announce: Boolean): Boolean {
+        if (!manager.hasPermission(accessory)) return false
+        val descriptor = manager.openAccessory(accessory) ?: return false
+        val opened = try {
             PendingAccessory(
-                fd = rawFd,
+                fd = descriptor.detachFd(),
                 manufacturer = accessory.manufacturer,
                 model = accessory.model,
-                serialNumber = serial,
+                serialNumber = safeSerial(accessory),
+                key = accessoryKey(accessory),
             )
         } finally {
             descriptor.close()
         }
+        synchronized(lock) {
+            pending?.close()
+            pending = opened
+            suppressedKey = null
+        }
+        if (announce) {
+            trigger("usb-sync-ready", JSObject().apply {
+                put("manufacturer", opened.manufacturer)
+                put("model", opened.model)
+                put("serialNumber", opened.serialNumber)
+            })
+        }
+        return true
+    }
+
+    private fun refreshSuppression() {
+        if (manager.accessoryList.orEmpty().none(::isOstudyAccessory)) {
+            synchronized(lock) { suppressedKey = null }
+        }
     }
 
     private fun registerPermissionReceiver() {
-        if (permissionReceiverRegistered) return
+        if (receiverRegistered) return
         ContextCompat.registerReceiver(
             activity,
             permissionReceiver,
             IntentFilter(permissionAction),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        permissionReceiverRegistered = true
-        logUsb(Log.INFO, "permission_receiver_registered", "action=$permissionAction")
+        receiverRegistered = true
     }
 
     private fun installLifecycleCleanup() {
-        val owner = activity as? LifecycleOwner
-        if (owner == null) {
-            logUsb(Log.WARN, "lifecycle_observer_unavailable", "activity=${activity::class.java.simpleName}")
-            return
-        }
+        val owner = activity as? LifecycleOwner ?: return
         val observer = object : DefaultLifecycleObserver {
             override fun onDestroy(owner: LifecycleOwner) {
                 cleanup()
@@ -391,74 +268,58 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
         }
         lifecycleObserver = observer
         owner.lifecycle.addObserver(observer)
-        logUsb(Log.INFO, "lifecycle_observer_installed", "activity=${activity::class.java.simpleName}")
     }
 
     private fun cleanup() {
-        logAccessorySnapshot("cleanup-start")
-        if (permissionReceiverRegistered) {
-            try {
-                activity.unregisterReceiver(permissionReceiver)
-            } catch (_: IllegalArgumentException) {
-                // Best-effort cleanup during Activity teardown.
-            }
-            permissionReceiverRegistered = false
+        if (receiverRegistered) {
+            try { activity.unregisterReceiver(permissionReceiver) } catch (_: IllegalArgumentException) {}
+            receiverRegistered = false
         }
-        synchronized(lock) {
-            permissionRequestInFlight = false
+        val callback = synchronized(lock) {
+            permissionInFlight = false
+            val value = permissionInvoke
+            permissionInvoke = null
             pending?.close()
             pending = null
+            suppressedKey = null
+            value
         }
+        callback?.reject("The Android USB permission request ended because oStudy closed.")
         lifecycleObserver = null
-        logUsb(Log.INFO, "plugin_cleanup_complete")
     }
 
     private fun shouldLogEmptyClaim(): Boolean {
         val now = SystemClock.elapsedRealtime()
         return synchronized(lock) {
-            if (now - lastEmptyClaimLogElapsed < EMPTY_CLAIM_LOG_INTERVAL_MILLIS) {
-                false
-            } else {
+            if (now - lastEmptyClaimLogElapsed < EMPTY_CLAIM_LOG_INTERVAL_MILLIS) false else {
                 lastEmptyClaimLogElapsed = now
                 true
             }
         }
     }
 
-    private fun logAccessorySnapshot(stage: String) {
-        val accessories = manager.accessoryList.orEmpty()
-        val state = synchronized(lock) {
-            "pending=${pending != null} permissionRequestInFlight=$permissionRequestInFlight"
+    private fun status(available: Boolean, manufacturer: String?, model: String?, serial: String?) =
+        JSObject().apply {
+            put("available", available)
+            put("manufacturer", manufacturer)
+            put("model", model)
+            put("serialNumber", serial)
         }
-        logUsb(
-            Log.INFO,
-            "accessory_snapshot",
-            "stage=$stage count=${accessories.size} $state",
-        )
-        accessories.forEachIndexed { index, accessory ->
-            logUsb(
-                Log.INFO,
-                "accessory_seen",
-                "stage=$stage index=$index hasPermission=${manager.hasPermission(accessory)} " +
-                    describeAccessory(accessory),
-            )
-        }
+
+    private fun permissionResult(available: Boolean, granted: Boolean) = JSObject().apply {
+        put("available", available)
+        put("granted", granted)
     }
 
-    private fun describeAccessory(accessory: UsbAccessory): String =
-        "manufacturer=${diagnosticValue(accessory.manufacturer)} " +
-            "model=${diagnosticValue(accessory.model)} " +
-            "version=${diagnosticValue(accessory.version)} " +
-            "uriPresent=${accessory.uri != null} matchesOstudy=${isOstudyAccessory(accessory)}"
+    private fun accessoryKey(accessory: UsbAccessory): String =
+        listOf(accessory.manufacturer, accessory.model, accessory.version, accessory.uri)
+            .joinToString("|") { it.orEmpty() }
 
-    private fun logUsb(priority: Int, event: String, details: String = "") {
-        val suffix = details.trim().takeIf(String::isNotEmpty)?.let { " $it" }.orEmpty()
-        Log.println(priority, USB_DIAGNOSTIC_TAG, "event=$event$suffix")
-    }
+    private fun safeSerial(accessory: UsbAccessory): String? =
+        try { accessory.serial } catch (_: SecurityException) { null }
 
     private fun isOstudyAccessory(accessory: UsbAccessory): Boolean =
-        accessory.manufacturer == OSTUDY_ACCESSORY_MANUFACTURER &&
-            accessory.model == OSTUDY_ACCESSORY_MODEL
+        accessory.manufacturer == OSTUDY_ACCESSORY_MANUFACTURER && accessory.model == OSTUDY_ACCESSORY_MODEL
 
     @Suppress("DEPRECATION")
     private fun accessoryFromIntent(intent: Intent): UsbAccessory? =
@@ -468,35 +329,23 @@ class OstudyUsbPlugin(private val activity: Activity) : Plugin(activity) {
             intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY)
         }
 
+    private fun log(event: String, details: String = "") {
+        Log.i(USB_DIAGNOSTIC_TAG, "event=$event ${details.take(160)}".trim())
+    }
+
     private data class PendingAccessory(
         val fd: Int,
         val manufacturer: String,
         val model: String,
         val serialNumber: String?,
+        val key: String,
     ) {
         fun close() {
-            if (fd >= 0) {
-                try {
-                    ParcelFileDescriptor.adoptFd(fd).close()
-                } catch (_: Exception) {
-                    // The descriptor is best-effort cleanup for an unclaimed
-                    // attachment; ownership never returns here after take.
-                }
-            }
+            if (fd < 0) return
+            try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Exception) {}
         }
     }
 }
 
-private fun diagnosticValue(value: String?): String {
-    val trimmed = value?.trim().orEmpty()
-    if (trimmed.isEmpty()) return "null"
-    return trimmed
-        .replace(' ', '_')
-        .replace('\t', '_')
-        .replace('\n', '_')
-        .replace('\r', '_')
-        .take(96)
-}
-
-private fun safeUsbMessage(error: Throwable): String =
+private fun safeMessage(error: Throwable): String =
     error.message?.trim()?.takeIf { it.isNotEmpty() } ?: error::class.java.simpleName

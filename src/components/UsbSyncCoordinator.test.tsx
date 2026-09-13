@@ -8,13 +8,11 @@ import { UsbSyncCoordinator } from "./UsbSyncCoordinator";
 vi.mock("../platform/PlatformProvider", () => ({
   usePlatformCapabilities: () => ({ native: { operatingSystem: "android" } }),
 }));
-vi.mock("../ipc/platform", () => ({
-  listenToAndroidUsbSync: vi.fn().mockResolvedValue(vi.fn()),
-}));
 vi.mock("../ipc/deviceSync", () => ({
   getPendingUsbSyncRequest: vi.fn(),
   joinUsbDevicePairing: vi.fn(),
   rejectUsbDevicePairing: vi.fn(),
+  requestUsbAccessoryPermission: vi.fn(),
   listenToDeviceSyncProgress: vi.fn().mockResolvedValue(vi.fn()),
 }));
 
@@ -30,6 +28,10 @@ describe("UsbSyncCoordinator", () => {
       serialNumber: "session",
     });
     vi.mocked(syncIpc.rejectUsbDevicePairing).mockResolvedValue(true);
+    vi.mocked(syncIpc.requestUsbAccessoryPermission).mockResolvedValue({
+      available: true,
+      granted: true,
+    });
     vi.mocked(syncIpc.joinUsbDevicePairing).mockResolvedValue({
       sessionId: "a".repeat(32),
       peer: {
@@ -51,10 +53,12 @@ describe("UsbSyncCoordinator", () => {
     render(<OverlayProvider><UsbSyncCoordinator refreshDecks={vi.fn()} showToast={showToast} /></OverlayProvider>);
 
     const dialog = await screen.findByRole("alertdialog", { name: "USB sync request" });
-    expect(dialog.textContent).toContain("Would you like to accept a USB sync request?");
+    expect(dialog.textContent).toContain("Accept this USB sync request?");
+    expect(dialog.textContent).toContain("system USB access prompt next");
     expect(dialog.textContent).toContain("flashcards, documents, study guides, and API provider information");
     expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(syncIpc.requestUsbAccessoryPermission).not.toHaveBeenCalled();
     expect(syncIpc.joinUsbDevicePairing).not.toHaveBeenCalled();
   });
 
@@ -67,13 +71,35 @@ describe("UsbSyncCoordinator", () => {
     expect(showToast).toHaveBeenCalledWith("info", "USB sync request rejected.");
   });
 
+  it("does not start the transfer when the Android system permission is denied", async () => {
+    const showToast = vi.fn();
+    vi.mocked(syncIpc.requestUsbAccessoryPermission).mockResolvedValue({
+      available: true,
+      granted: false,
+    });
+    render(<OverlayProvider><UsbSyncCoordinator refreshDecks={vi.fn()} showToast={showToast} /></OverlayProvider>);
+    await screen.findByRole("alertdialog", { name: "USB sync request" });
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(syncIpc.requestUsbAccessoryPermission).toHaveBeenCalledOnce());
+    expect(syncIpc.joinUsbDevicePairing).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith("info", "USB sync was not authorized in Android.");
+  });
+
   it("accepts the request and refreshes the library after the transfer completes", async () => {
     const showToast = vi.fn();
     const refreshDecks = vi.fn().mockResolvedValue(undefined);
     render(<OverlayProvider><UsbSyncCoordinator refreshDecks={refreshDecks} showToast={showToast} /></OverlayProvider>);
     await screen.findByRole("alertdialog", { name: "USB sync request" });
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(syncIpc.requestUsbAccessoryPermission).toHaveBeenCalledOnce());
     await waitFor(() => expect(syncIpc.joinUsbDevicePairing).toHaveBeenCalledOnce());
+    const permissionOrder = vi.mocked(syncIpc.requestUsbAccessoryPermission).mock.invocationCallOrder[0];
+    const joinOrder = vi.mocked(syncIpc.joinUsbDevicePairing).mock.invocationCallOrder[0];
+    expect(permissionOrder).toBeDefined();
+    expect(joinOrder).toBeDefined();
+    expect(permissionOrder ?? Number.MAX_SAFE_INTEGER).toBeLessThan(
+      joinOrder ?? Number.MAX_SAFE_INTEGER,
+    );
     await waitFor(() => expect(refreshDecks).toHaveBeenCalledOnce());
     expect(showToast).toHaveBeenCalledWith("success", expect.stringContaining("USB sync received from Desktop"));
   });

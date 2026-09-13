@@ -14,17 +14,12 @@
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
 
-        <!-- Android Open Accessory launches/forwards the cable attachment to the
-             existing ostudy activity. The private USB plugin then hands the
-             opened descriptor to shared Rust; no tethering or ADB is involved. -->
-        <activity android:name="io.github.jferments.ostudy.MainActivity">
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
-            </intent-filter>
-            <meta-data
-                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
-                android:resource="@xml/ostudy_usb_accessory_filter" />
-        </activity>
+        <!-- USB accessory discovery is intentionally app-driven. oStudy must
+             already be open before desktop USB Sync begins. Do not register
+             android.hardware.usb.action.USB_ACCESSORY_ATTACHED or the historical
+             @xml/ostudy_usb_accessory_filter metadata here: either would let the
+             OS chooser appear before the app can explain the transfer and ask
+             for consent. -->
 
         <service
             android:name=".OstudyDocumentExecutionService"

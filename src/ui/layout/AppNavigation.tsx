@@ -7,6 +7,7 @@ import { cn } from "../internal/cn";
 export interface NavigationItem {
   id: string;
   label: string;
+  compactLabel?: string;
   icon: IconName;
   active: boolean;
   onSelect: () => void;
@@ -21,12 +22,14 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
       <SidebarMenuButton
         isActive={item.active}
         data-testid={`nav-${item.id}`}
+        aria-label={compact ? item.label : undefined}
         onClick={item.onSelect}
         className={compact
-          ? "tw:grid tw:h-auto tw:min-h-[4.25rem] tw:overflow-visible tw:justify-items-center tw:gap-1 tw:rounded-md tw:px-0.5 tw:py-1.5 tw:text-center tw:text-[0.6rem] tw:leading-tight tw:font-medium tw:coarse:min-h-[4.25rem] tw:[&>span:last-child]:max-w-full tw:[&>span:last-child]:overflow-visible tw:[&>span:last-child]:text-clip tw:[&>span:last-child]:whitespace-nowrap"
+          ? "tw:grid tw:h-auto tw:min-h-[3.85rem] tw:overflow-visible tw:justify-items-center tw:gap-0.5 tw:rounded-sm tw:px-0.5 tw:py-1 tw:text-center tw:text-[0.55rem] tw:leading-[1.05] tw:font-medium tw:coarse:min-h-[3.85rem] tw:coarse:gap-0.5 tw:coarse:px-0.5 tw:[&>span:last-child]:max-w-full tw:[&>span:last-child]:overflow-visible tw:[&>span:last-child]:text-clip tw:[&>span:last-child]:whitespace-pre-line"
           : undefined}
       >
-        <Icon name={item.icon} size={compact ? 18 : 20} /><span>{item.label}</span>
+        <Icon name={item.icon} size={compact ? 17 : 20} />
+        <span>{compact ? (item.compactLabel ?? item.label) : item.label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   ));
@@ -39,7 +42,7 @@ export function AppNavigation({ items, brand }: { items: readonly NavigationItem
         data-slot="bottom-navigation"
         className="tw:fixed tw:inset-x-0 tw:bottom-0 tw:z-20 tw:border-0 tw:border-t tw:border-solid tw:border-border tw:bg-background tw:pt-1.5 tw:pr-[max(0.25rem,var(--safe-right))] tw:pb-[max(0.5rem,var(--safe-bottom))] tw:pl-[max(0.25rem,var(--safe-left))]"
       >
-        <SidebarMenu className="tw:grid tw:grid-cols-5 tw:gap-0.5">{content(items.filter((item) => !item.secondary))}</SidebarMenu>
+        <SidebarMenu className="tw:grid tw:grid-cols-[1.1fr_1fr_0.8fr_0.75fr_1fr] tw:gap-0">{content(items.filter((item) => !item.secondary))}</SidebarMenu>
       </nav>
     );
   }

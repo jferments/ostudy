@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 const USB_AUTO_JOIN_INVITATION = "ostudy-sync://usb-attached";
+const USB_PLUGIN_REQUEST_PERMISSION = "plugin:ostudy-usb|requestUsbAccessoryPermission";
+const USB_PLUGIN_DISMISS = "plugin:ostudy-usb|dismissUsbAccessory";
 
 export type DeviceSyncTransport = "local-network" | "usb";
 
@@ -108,6 +110,16 @@ export interface PendingUsbSyncRequest {
   serialNumber: string | null;
 }
 
+export interface UsbAccessoryPermissionResult {
+  available: boolean;
+  granted: boolean;
+}
+
+interface UsbAccessoryDismissResult {
+  dismissed: boolean;
+  canRespond: boolean;
+}
+
 export interface DeviceSyncProgress {
   sessionId: string;
   direction: "send" | "receive";
@@ -153,13 +165,20 @@ export async function joinDevicePairing(invitation: string): Promise<DeviceSyncR
   return result;
 }
 
+export function requestUsbAccessoryPermission(): Promise<UsbAccessoryPermissionResult> {
+  return invoke<UsbAccessoryPermissionResult>(USB_PLUGIN_REQUEST_PERMISSION);
+}
+
 export function joinUsbDevicePairing(): Promise<DeviceSyncResult | null> {
   return invoke<DeviceSyncResult | null>("join_device_pairing", {
     input: { invitation: USB_AUTO_JOIN_INVITATION },
   });
 }
 
-export function rejectUsbDevicePairing(): Promise<boolean> {
+export async function rejectUsbDevicePairing(): Promise<boolean> {
+  const dismissed = await invoke<UsbAccessoryDismissResult>(USB_PLUGIN_DISMISS);
+  if (!dismissed.dismissed) return false;
+  if (!dismissed.canRespond) return true;
   return invoke<boolean>("reject_usb_device_pairing");
 }
 
