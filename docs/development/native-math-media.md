@@ -145,9 +145,9 @@ selection, undo/redo and shared-dialog behavior. The MathLive port is stubbed fo
 lifecycle tests; those tests do not establish physical-keyboard, touch keyboard,
 assistive-technology, theme contrast or target-WebView font/geometry acceptance.
 Desktop and physical Android testing, complete application packaging and full
-platform qualification remain explicit acceptance work. Tutor/guide Markdown,
-source extraction, MathML normalization and native-PDF math integration remain
-unfinished; using one renderer for card nodes does not complete those paths.
+platform qualification remain explicit acceptance work. Source extraction, MathML
+normalization and native-PDF math integration remain unfinished; card and Markdown
+rendering do not complete those paths.
 
 ```bash
 pnpm vitest run src/math/render.test.ts src/math/mathlive.test.ts src/editor/FormulaDialog.test.tsx src/editor/formula.test.ts src/editor/tiptap/formulaSession.test.ts src/editor/richText.mathMedia.test.ts
@@ -161,6 +161,47 @@ including first-Back keyboard dismissal, second-Back dialog dismissal, compact
 layout, all themes and focus restoration. Use the maintained build/run wrappers
 in [Local testing and handoff](local-testing-and-handoff.md); a worktree alone does
 not isolate application data. Passing automated tests are not human acceptance.
+
+### Tutor and study-guide mathematical text
+
+`src/components/StudyMarkdown.tsx` owns the shared safe Markdown reader. The Tutor
+facade, saved/new ordinary replies, feedback, and guide structured sections,
+notes, active overrides and preserved conflicts use the same math renderer as
+cards. Guide headings use inline-only Markdown to preserve their host structure;
+source locators and navigation labels remain literal. The hint-only Tutor view
+remains deliberately plain, with its existing source/answer visibility rules.
+
+An isolated Marked lexer in `src/math/markdown.ts` recognizes `\(...\)`,
+`\[...\]` and `$$...$$` before ordinary Markdown escaping. Single-dollar text
+is deliberately not math, so prices and currency cannot absorb surrounding prose.
+Code spans, fences, indented code and raw code/script blocks remain literal.
+Unfinished expressions retain their original backslashes until complete. Math
+operators/subscripts are masked from surrounding Markdown emphasis, not rewritten
+in the stored text. Unsupported KaTeX commands use the existing escaped fallback.
+The reader never inserts Marked-generated HTML or loads Markdown images.
+
+Each field/message has a 24,000-character presentation bound, at most 64 formulas,
+and at most 32,768 total formula-source UTF-8 bytes. Exceeding a shared budget or
+failing to tokenize displays the entire original field/message as plain text,
+without truncation. Each formula retains the stricter existing renderer bounds.
+Budgets and macros are not shared across messages, guides or renders. Unchanged
+formula components reuse their DOM instead of typesetting again on unrelated UI
+updates. There is no MathLive load, provider request or source lookup on this path.
+
+This is a read-only presentation change: guide edit fields and saved overlays
+retain the original source, not KaTeX HTML/MathML. Generated hashes, locators,
+checkpoints, source citations and permission decisions are not rewritten. The
+native PDF exporter does not use this browser renderer and still needs its own
+source-fallback/disclosure acceptance. Existing saved content needs no migration.
+
+```bash
+pnpm vitest run src/math/markdown.test.ts src/screens/tutor/TutorMarkdown.test.tsx src/screens/tutor/TutorPresentation.test.tsx src/screens/StudyGuideDialog.test.tsx
+```
+
+Regressions cover real KaTeX output, code/currency/unfinished input, hostile math,
+aggregate bounds, update cleanup, saved/generated guides, note Save/Cancel with
+exact source, and unchanged historical citation disabling. Native database and
+physical-device acceptance are not established by mocked gateway fixtures.
 
 ### Native Anki math preservation
 

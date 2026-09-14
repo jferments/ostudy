@@ -3,7 +3,7 @@ export const retainedModules = Object.freeze({
   "src/AppShell.module.css": "Definite-height native route and scroll containment.",
   "src/editor/RichContent.module.css": "ProseMirror, rich content, media/math descendant and print styling.",
   "src/screens/settings/DeviceSyncSettings.module.css": "QR quiet-zone geometry and machine-readable white contrast.",
-  "src/screens/tutor/TutorMarkdown.module.css": "Sanitized Markdown descendants and rich-content overflow.",
+  "src/components/StudyMarkdown.module.css": "Sanitized Markdown descendants and rich-content overflow.",
   "src/screens/practice/PracticeCard.module.css": "Two-face 3D card geometry, face visibility, scaling and reduced motion.",
   "src/screens/flashcards/deck-library/FolderSection.module.css": "Folder hit-test regions and drag/reorder geometry.",
   "src/screens/flashcards/deck-library/DeckItem.module.css": "Measured deck row, pointer session and insertion geometry.",
@@ -27,7 +27,7 @@ export function isProductionSource(path) {
 export function nativeControlViolation(owner, tag, attributes) {
   if (!["button", "input", "select", "textarea", "details", "summary"].includes(tag)) return null;
   if (owner.startsWith("src/ui/vendor/shadcn/")) return null;
-  if (owner === "src/screens/tutor/TutorMarkdown.tsx" && tag === "input"
+  if (owner === "src/components/StudyMarkdown.tsx" && tag === "input"
       && attributes.type === "checkbox" && attributes.disabled === true
       && attributes["aria-label"] === "Checklist item"
       && Object.keys(attributes).every((name) => ["type", "checked", "disabled", "aria-label"].includes(name))) {

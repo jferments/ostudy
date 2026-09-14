@@ -52,3 +52,22 @@ describe("Conversational Tutor presentation", () => {
     expect(screen.getByRole("button", { name: "Request hint" })).toBeTruthy();
   });
 });
+
+
+describe("Tutor saved mathematical replies", () => {
+  it("renders the saved answer without rewriting evidence, hint visibility or triggering a request", () => {
+    const detail = { conversation: { id: "a", title: "Saved math" }, turns: [{
+      id: "m", mode: "explain", userText: "Explain", assistantText: String.raw`Answer \(x^2\)`,
+      state: "complete", citations: [{ id: "s", title: "Original source" }], evidenceCurrent: false,
+      pendingQuestion: false, feedback: null, errorMessage: "", model: "fixture",
+    }] };
+    const before = JSON.stringify(detail);
+    state.detail = detail;
+    const { container } = render(<TutorWorkspace />);
+    expect(container.querySelector("math annotation")?.textContent).toBe("x^2");
+    expect((screen.getByRole("button", { name: "Source 1: Original source" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/This answer is historical/u)).toBeTruthy();
+    expect(state.send).not.toHaveBeenCalled();
+    expect(JSON.stringify(detail)).toBe(before);
+  });
+});
