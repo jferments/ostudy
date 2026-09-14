@@ -139,10 +139,13 @@ describe("captured formula editing through the real adapter", () => {
     const editor = open([{ type: "blockMath", attrs: { latex: "x" } }]);
     selectedMath(editor, "blockMath");
     const before = editor.state.doc;
+    // Initial editor normalization may already have a history entry. The save
+    // must preserve existing history, not assume or reset it to an empty stack.
+    const historyBefore = undoDepth(editor.state);
     const session = begin(editor);
     expect(session.save({ ...session.initialValue })).toEqual({ ok: true });
     expect(editor.state.doc).toBe(before);
-    expect(undoDepth(editor.state)).toBe(0);
+    expect(undoDepth(editor.state)).toBe(historyBefore);
   });
 
   it("inserts a block in text without dropping either side, and can convert it to inline", () => {
