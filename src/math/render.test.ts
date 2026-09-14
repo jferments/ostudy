@@ -54,12 +54,17 @@ describe("offline formula rendering", () => {
     } });
     try {
       const adapter = createTiptapEditorAdapter(editor);
-      const before = adapter.document();
       expect(editor.view.dom.querySelector("[data-study-math] .katex")).not.toBeNull();
       expect(editor.getHTML()).not.toContain('class="katex');
       expect(editor.getHTML()).toContain("data-latex");
       editor.view.dispatch(editor.state.tr.insertText("!", 1));
-      expect(adapter.document().content[0].content?.[1]).toEqual(before.content[0].content?.[1]);
+      // The adapter deliberately exposes opaque JSON. Match its actual saved
+      // shape rather than indexing unknown content or casting away that boundary.
+      expect(adapter.document()).toMatchObject({ content: [{ content: [
+        { type: "text", text: "!Before " },
+        { type: "inlineMath", attrs: { latex: String.raw`\frac{a}{b}` } },
+        { type: "text", text: " after" },
+      ] }] });
       expect(JSON.stringify(adapter.document())).not.toContain("MathML");
     } finally { editor.destroy(); }
   });
