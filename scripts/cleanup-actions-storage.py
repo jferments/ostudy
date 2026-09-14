@@ -12,8 +12,9 @@ import argparse
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -21,6 +22,7 @@ from urllib.request import Request, urlopen
 API_VERSION = "2026-03-10"
 PER_PAGE = 100
 MAX_PAGES = 100
+DELETE_WORKERS = 8
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,6 +113,31 @@ def write_summary(lines: list[str]) -> None:
             summary.write(text)
 
 
+def delete_batch(
+    items: list[dict[str, Any]],
+    *,
+    api: GitHubApi,
+    path_for: Callable[[dict[str, Any]], str],
+    dry_run: bool,
+) -> tuple[int, int]:
+    if dry_run:
+        return len(items), sum(int(item.get("size_in_bytes", 0)) for item in items)
+
+    deleted = 0
+    deleted_bytes = 0
+    with ThreadPoolExecutor(max_workers=DELETE_WORKERS) as executor:
+        futures = {
+            executor.submit(api.request, "DELETE", path_for(item)): item
+            for item in items
+        }
+        for future in as_completed(futures):
+            item = futures[future]
+            future.result()
+            deleted += 1
+            deleted_bytes += int(item.get("size_in_bytes", 0))
+    return deleted, deleted_bytes
+
+
 def main() -> int:
     args = parse_args()
     token = os.environ.get("GITHUB_TOKEN")
@@ -125,8 +152,7 @@ def main() -> int:
 
     api = GitHubApi(token, repository, base_url)
     repo_path = f"/repos/{repository}"
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(hours=args.artifact_max_age_hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=args.artifact_max_age_hours)
 
     artifacts = api.paginated(f"{repo_path}/actions/artifacts", "artifacts")
     artifact_bytes = sum(int(item.get("size_in_bytes", 0)) for item in artifacts)
@@ -135,38 +161,36 @@ def main() -> int:
         for item in artifacts
         if parse_github_timestamp(item["created_at"]) <= cutoff
     ]
-    artifact_candidates.sort(key=lambda item: item["created_at"])
+    # Reclaim the most bytes first during a bounded emergency purge. The daily
+    # maintenance pass eventually removes every object that crosses the cutoff.
+    artifact_candidates.sort(
+        key=lambda item: (int(item.get("size_in_bytes", 0)), item["created_at"]),
+        reverse=True,
+    )
 
     caches: list[dict[str, Any]] = []
     if args.delete_all_caches:
         caches = api.paginated(f"{repo_path}/actions/caches", "actions_caches")
+        caches.sort(key=lambda item: int(item.get("size_in_bytes", 0)), reverse=True)
 
-    delete_budget = args.max_deletes
-    deleted_artifacts = 0
-    deleted_artifact_bytes = 0
-    deleted_caches = 0
-    deleted_cache_bytes = 0
+    artifact_batch = artifact_candidates[: args.max_deletes]
+    remaining_budget = args.max_deletes - len(artifact_batch)
+    cache_batch = caches[:remaining_budget]
 
-    for artifact in artifact_candidates:
-        if delete_budget <= 0:
-            break
-        size = int(artifact.get("size_in_bytes", 0))
-        if not args.dry_run:
-            api.request("DELETE", f"{repo_path}/actions/artifacts/{artifact['id']}")
-        deleted_artifacts += 1
-        deleted_artifact_bytes += size
-        delete_budget -= 1
+    deleted_artifacts, deleted_artifact_bytes = delete_batch(
+        artifact_batch,
+        api=api,
+        path_for=lambda item: f"{repo_path}/actions/artifacts/{item['id']}",
+        dry_run=args.dry_run,
+    )
+    deleted_caches, deleted_cache_bytes = delete_batch(
+        cache_batch,
+        api=api,
+        path_for=lambda item: f"{repo_path}/actions/caches/{item['id']}",
+        dry_run=args.dry_run,
+    )
 
-    for cache in caches:
-        if delete_budget <= 0:
-            break
-        size = int(cache.get("size_in_bytes", 0))
-        if not args.dry_run:
-            api.request("DELETE", f"{repo_path}/actions/caches/{cache['id']}")
-        deleted_caches += 1
-        deleted_cache_bytes += size
-        delete_budget -= 1
-
+    delete_budget = args.max_deletes - deleted_artifacts - deleted_caches
     remaining_candidate_count = max(0, len(artifact_candidates) - deleted_artifacts)
     remaining_cache_count = max(0, len(caches) - deleted_caches)
     mode = "DRY RUN" if args.dry_run else "APPLIED"
