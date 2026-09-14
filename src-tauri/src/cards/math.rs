@@ -53,7 +53,11 @@ pub(crate) fn split_delimited_latex(input: &str) -> Result<DelimitedMath<'_>, St
         .into_iter()
         .find(|(open, _, _)| remaining.starts_with(open));
         let Some((open, close, block)) = delimiter.filter(|_| !escaped(input, position)) else {
-            position += remaining.chars().next().expect("nonempty suffix").len_utf8();
+            position += remaining
+                .chars()
+                .next()
+                .expect("nonempty suffix")
+                .len_utf8();
             continue;
         };
         let legacy = open == "[latex]";
@@ -78,7 +82,9 @@ pub(crate) fn split_delimited_latex(input: &str) -> Result<DelimitedMath<'_>, St
                     .fragments
                     .push(MathFragment::Text(&input[text_start..position]));
             }
-            result.fragments.push(MathFragment::Formula { latex, block });
+            result
+                .fragments
+                .push(MathFragment::Formula { latex, block });
             text_start = end;
             if result.fragments.len() >= MAX_MATH_FRAGMENTS {
                 return Err("Mathematical text contains too many fragments.".into());

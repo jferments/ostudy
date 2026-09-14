@@ -201,12 +201,14 @@ fn document_anki_math_reports_rejected_sources_without_losing_other_cards() {
             issue.source_card_id == id && issue.message.contains("16,384 UTF-8 bytes")
         }));
     }
-    assert!(report.issues.iter().any(|issue| {
-        issue.source_card_id == "102" && issue.message.contains("Unclosed math")
-    }));
-    assert!(report.issues.iter().any(|issue| {
-        issue.source_card_id == "103" && issue.message.contains("system TeX")
-    }));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| { issue.source_card_id == "102" && issue.message.contains("Unclosed math") }));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| { issue.source_card_id == "103" && issue.message.contains("system TeX") }));
 }
 
 #[test]
