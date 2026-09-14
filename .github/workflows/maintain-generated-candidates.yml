@@ -14,7 +14,6 @@ on:
         default: false
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
@@ -30,14 +29,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Purge GitHub Actions storage for hygiene migration
-        if: github.ref_name == 'agent/actions-storage-hygiene'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+      - name: Expose user-local tools
         run: |
-          python3 ./scripts/cleanup-actions-storage.py \
-            --artifact-max-age-hours 0 \
-            --delete-all-caches
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # Packaging copies only already-published source and the installed pinned
       # formatter. It neither formats source nor creates a replacement tree.
@@ -66,7 +61,7 @@ jobs:
           git diff --check
           git diff --exit-code
 
-      - name: Upload read-only auxiliary inspection bundle
+      - name: Upload read-only auxiliary inspection bundle temporarily
         if: github.event_name == 'workflow_dispatch' && inputs.export_auxiliary_bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
