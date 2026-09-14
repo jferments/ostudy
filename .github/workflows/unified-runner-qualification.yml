@@ -91,17 +91,13 @@ jobs:
         if: failure()
         run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
 
-      - name: Upload bounded failure evidence
+      - name: Persist bounded failure evidence on runner
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-unified-runner-${{ env.QUALIFIED_SHA }}
-          path: |
-            ${{ runner.temp }}/ostudy-unified-diagnostics.tar.gz
-            ${{ runner.temp }}/android-smoke/**
-            src-tauri/gen/android/app/build/reports/**
-          if-no-files-found: ignore
-          retention-days: 14
+        run: |
+          bash ./scripts/persist-runner-output.sh unified-runner-failure \
+            "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz" \
+            "$RUNNER_TEMP/android-smoke" \
+            "src-tauri/gen/android/app/build/reports"
 
       - name: Publish exact-head qualification summary
         if: always()
