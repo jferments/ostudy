@@ -1,4 +1,5 @@
 import type { RichDocument } from "../ipc/common";
+import type { FormulaEditSession } from "./formula";
 
 export const RICH_DOCUMENT_SCHEMA_VERSION = 2 as const;
 
@@ -126,6 +127,8 @@ export interface EditorAdapter {
   canExecute(request: EditorCommandRequest): boolean;
   setDocument(document: RichDocument, emitChange?: boolean): void;
   setEditable(editable: boolean): void;
+  /** Capture a supported selection before opening the structured formula dialog. */
+  beginFormulaEdit(): FormulaEditSession | null;
   focus(): void;
 }
 

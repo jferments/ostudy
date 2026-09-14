@@ -97,6 +97,23 @@ These are preservation safeguards, not completed MathLive authoring, KaTeX
 typesetting, native acquisition/playback, or Anki conversion. The editor regression
 suite exercises actual Tiptap transactions in addition to the helper tests.
 
+The editor-neutral adapter now exposes a captured formula-edit session. It keeps
+selection and concrete editor objects out of the future MathLive dialog, admits
+bounded UTF-8 source, supports inline/block insertion and selected-formula edits,
+and preserves surrounding text and quote/list/table containers. Cancel and
+unchanged saves do not create content/history entries. Successful edits are one
+undo group, separate from prior and subsequent typing. A replaced document,
+read-only editor, destroyed editor or consumed session cannot receive a stale
+formula write. Code, multi-block and whole-document selections are not admitted.
+This session is an integration boundary, not a user-facing formula editor;
+MathLive and local KaTeX assets/rendering remain the next unfinished step.
+
+Focused regressions live in `src/editor/formula.test.ts` and
+`src/editor/tiptap/formulaSession.test.ts`, alongside the existing rich-atom
+preservation tests. Automated results and their exact tested SHA belong in the
+PR evidence; these test files alone do not establish a passing gate or device
+acceptance.
+
 ## Acceptance criteria
 
 | ID | Required outcome |
