@@ -13,21 +13,25 @@ class AndroidSmokeStartupContractTests(unittest.TestCase):
         source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")
 
         self.assertIn('document.querySelector("main")', source)
-        self.assertIn("async function installAndroidTestBridgeWhenUiReady(): Promise<void>", source)
-        self.assertIn("await waitForAndroidTestUiReady();", source)
+        self.assertIn(
+            "async function installAndroidTestBridgeWhenUiReady(rootNode: HTMLElement): Promise<void>",
+            source,
+        )
+        self.assertIn("await waitForAndroidTestUiReady(rootNode);", source)
 
         bridge_import = source.index('await import("./testing/androidTestBridge")')
-        readiness_wait = source.index("await waitForAndroidTestUiReady();")
+        readiness_wait = source.index("await waitForAndroidTestUiReady(rootNode);")
         self.assertLess(readiness_wait, bridge_import)
 
         render = source.index("createRoot(root).render(")
-        bridge_start = source.rindex("void installAndroidTestBridgeWhenUiReady()")
+        bridge_start = source.rindex("void installAndroidTestBridgeWhenUiReady(root)")
         self.assertLess(render, bridge_start)
 
     def test_bridge_readiness_has_a_bounded_failure_path(self) -> None:
         source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")
 
         self.assertIn("30_000", source)
+        self.assertIn("observer.observe(rootNode", source)
         self.assertIn("observer.disconnect();", source)
         self.assertIn('setAndroidTestBridgeDiagnostic("error", error)', source)
 
