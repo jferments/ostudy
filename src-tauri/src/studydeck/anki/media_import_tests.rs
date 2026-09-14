@@ -48,7 +48,10 @@ fn fixture(cases: &[(i64, String)], files: &[(&str, Vec<u8>)]) -> MediaFixture {
     connection
         .execute(
             "INSERT INTO col VALUES (11, ?1, ?2)",
-            params![models.to_string(), json!({"1": {"name": "Media"}}).to_string()],
+            params![
+                models.to_string(),
+                json!({"1": {"name": "Media"}}).to_string()
+            ],
         )
         .unwrap();
     for (index, (model, fields)) in cases.iter().enumerate() {
@@ -121,7 +124,11 @@ fn decodable_mp4() -> Vec<u8> {
         .unwrap()
 }
 
-fn nodes_of_type<'a>(value: &'a serde_json::Value, kind: &str, output: &mut Vec<&'a serde_json::Value>) {
+fn nodes_of_type<'a>(
+    value: &'a serde_json::Value,
+    kind: &str,
+    output: &mut Vec<&'a serde_json::Value>,
+) {
     match value {
         serde_json::Value::Array(values) => {
             for value in values {
@@ -150,11 +157,20 @@ fn document_anki_media_real_package_converts_audio_video_and_reopens_from_databa
         &[("voice.wav", wav()), ("clip.mp4", decodable_mp4())],
     );
     let (package, report) = read_package(&fixture.path, "media.apkg").unwrap();
-    assert_eq!((report.imported_card_count, report.skipped_card_count), (2, 0));
+    assert_eq!(
+        (report.imported_card_count, report.skipped_card_count),
+        (2, 0)
+    );
     assert_eq!(package.assets.len(), 2);
     assert_eq!(package.note_assets.len(), 2);
-    assert!(package.assets.iter().any(|asset| asset.mime_type == "audio/wav"));
-    assert!(package.assets.iter().any(|asset| asset.mime_type == "video/mp4"));
+    assert!(package
+        .assets
+        .iter()
+        .any(|asset| asset.mime_type == "audio/wav"));
+    assert!(package
+        .assets
+        .iter()
+        .any(|asset| asset.mime_type == "video/mp4"));
     let mut audio = Vec::new();
     let mut video = Vec::new();
     for note in &package.notes {
@@ -165,8 +181,14 @@ fn document_anki_media_real_package_converts_audio_video_and_reopens_from_databa
     }
     assert_eq!(audio.len(), 1);
     assert_eq!(video.len(), 1);
-    assert_eq!(audio[0]["attrs"]["src"].as_str().unwrap().starts_with("study-asset://"), true);
-    assert_eq!(video[0]["attrs"]["src"].as_str().unwrap().starts_with("study-asset://"), true);
+    assert!(audio[0]["attrs"]["src"]
+        .as_str()
+        .unwrap()
+        .starts_with("study-asset://"));
+    assert!(video[0]["attrs"]["src"]
+        .as_str()
+        .unwrap()
+        .starts_with("study-asset://"));
 
     let target = AppPaths::new(fixture.root.join("target")).unwrap();
     let database = Database::open(target.database_path()).unwrap();
@@ -232,19 +254,28 @@ fn document_anki_media_missing_unsupported_and_type_mismatch_skip_only_affected_
             basic("[sound:bad.mp3]", "bad"),
             basic("<audio src='clip.mp4'></audio>", "mismatch"),
         ],
-        &[("bad.mp3", b"not an mp3".to_vec()), ("clip.mp4", decodable_mp4())],
+        &[
+            ("bad.mp3", b"not an mp3".to_vec()),
+            ("clip.mp4", decodable_mp4()),
+        ],
     );
     let (package, report) = read_package(&fixture.path, "bad-media.apkg").unwrap();
-    assert_eq!((report.imported_card_count, report.skipped_card_count), (1, 3));
+    assert_eq!(
+        (report.imported_card_count, report.skipped_card_count),
+        (1, 3)
+    );
     assert_eq!(package.notes.len(), 1);
     assert!(package.assets.is_empty());
-    assert!(report.issues.iter().any(|issue| {
-        issue.source_card_id == "101" && issue.message.contains("missing")
-    }));
-    assert!(report.issues.iter().any(|issue| {
-        issue.source_card_id == "102" && issue.message.contains("unsupported")
-    }));
-    assert!(report.issues.iter().any(|issue| {
-        issue.source_card_id == "103" && issue.message.contains("declared type")
-    }));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| { issue.source_card_id == "101" && issue.message.contains("missing") }));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| { issue.source_card_id == "102" && issue.message.contains("unsupported") }));
+    assert!(report
+        .issues
+        .iter()
+        .any(|issue| { issue.source_card_id == "103" && issue.message.contains("declared type") }));
 }

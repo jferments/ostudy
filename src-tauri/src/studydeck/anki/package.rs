@@ -237,11 +237,9 @@ impl Archive {
         expected: ExpectedMediaKind,
     ) -> Result<Value, String> {
         let filename = decode_filename(encoded_filename)?;
-        let entry = self
-            .media
-            .get(&filename)
-            .cloned()
-            .ok_or("A referenced local audio/video file is missing, external, or unsupported.")?;
+        let entry = self.media.get(&filename).cloned().ok_or(
+            "A referenced local audio/video file is missing, external, or unsupported.",
+        )?;
         let id = source_id("asset", &entry);
         if !self.assets.contains_key(&id) {
             let bytes = self
@@ -308,8 +306,14 @@ impl Archive {
 
 fn ensure_expected_kind(kind: MediaKind, expected: ExpectedMediaKind) -> Result<(), String> {
     if matches!(expected, ExpectedMediaKind::Any)
-        || matches!((kind, expected), (MediaKind::Audio, ExpectedMediaKind::Audio))
-        || matches!((kind, expected), (MediaKind::Video, ExpectedMediaKind::Video))
+        || matches!(
+            (kind, expected),
+            (MediaKind::Audio, ExpectedMediaKind::Audio)
+        )
+        || matches!(
+            (kind, expected),
+            (MediaKind::Video, ExpectedMediaKind::Video)
+        )
     {
         Ok(())
     } else {

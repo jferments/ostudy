@@ -41,7 +41,11 @@ pub(super) fn rewrite(input: &str) -> Result<String, String> {
                 continue;
             }
             if !tag.closing && matches!(tag.name.as_str(), "audio" | "video") {
-                let expected = if tag.name == "audio" { AUDIO_PREFIX } else { VIDEO_PREFIX };
+                let expected = if tag.name == "audio" {
+                    AUDIO_PREFIX
+                } else {
+                    VIDEO_PREFIX
+                };
                 let mut sources = Vec::new();
                 if let Some(source) = tag.attribute("src")? {
                     sources.push(source);
@@ -58,7 +62,9 @@ pub(super) fn rewrite(input: &str) -> Result<String, String> {
                 continue;
             }
             if !tag.closing && tag.name == "source" {
-                return Err("An Anki source element is only supported inside audio or video.".into());
+                return Err(
+                    "An Anki source element is only supported inside audio or video.".into(),
+                );
             }
             output.push_str(&remaining[..consumed]);
             if !tag.closing && !tag.self_closing && matches!(tag.name.as_str(), "code" | "pre") {
@@ -179,7 +185,10 @@ fn escape_literal_sound_openings(text: &str) -> String {
 
 fn placeholder(prefix: &str, filename: &str) -> Result<String, String> {
     validate_filename(filename)?;
-    Ok(format!("<img src=\"{prefix}{}\">", percent_encode(filename)))
+    Ok(format!(
+        "<img src=\"{prefix}{}\">",
+        percent_encode(filename)
+    ))
 }
 
 fn validate_filename(value: &str) -> Result<(), String> {
@@ -326,9 +335,13 @@ fn decode_entities(value: &str) -> Result<String, String> {
             "lt" => Some('<'),
             "gt" => Some('>'),
             _ if entity.starts_with("#x") || entity.starts_with("#X") => {
-                u32::from_str_radix(&entity[2..], 16).ok().and_then(char::from_u32)
+                u32::from_str_radix(&entity[2..], 16)
+                    .ok()
+                    .and_then(char::from_u32)
             }
-            _ if entity.starts_with('#') => entity[1..].parse::<u32>().ok().and_then(char::from_u32),
+            _ if entity.starts_with('#') => {
+                entity[1..].parse::<u32>().ok().and_then(char::from_u32)
+            }
             _ => None,
         };
         if let Some(decoded) = decoded {
@@ -363,7 +376,8 @@ mod tests {
 
     #[test]
     fn document_anki_media_markup_keeps_code_sound_markers_literal() {
-        let rewritten = rewrite("<code>[sound:literal.mp3]</code><pre>[SOUND:also.wav]</pre>").unwrap();
+        let rewritten =
+            rewrite("<code>[sound:literal.mp3]</code><pre>[SOUND:also.wav]</pre>").unwrap();
         assert!(!rewritten.contains(SOUND_PREFIX));
         assert_eq!(
             rewritten,
