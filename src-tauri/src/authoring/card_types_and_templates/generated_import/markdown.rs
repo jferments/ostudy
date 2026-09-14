@@ -232,7 +232,7 @@ fn inline_nodes(text: &str, path: &str) -> Result<Vec<Value>, CommandError> {
         let next = next_inline_marker(remainder).unwrap_or(remainder.len());
         let take = next.max(1);
         let value = &remainder[..take];
-        if value.contains('[') && value.contains("](" ) {
+        if value.contains('[') && value.contains("](") {
             return Err(unsupported_markdown(path, "a Markdown link is malformed"));
         }
         nodes.push(json!({"type": "text", "text": value}));
