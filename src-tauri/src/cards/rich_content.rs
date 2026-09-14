@@ -88,7 +88,9 @@ fn visit_bounded(
         // Count JSON containers as well as nodes. Preserve the existing
         // 128-node content depth, which the current validator still checks.
         if depth > MAX_DEPTH * 3 + 8 || count > MAX_VALUES {
-            return Err(invalid("The rich document exceeds its depth or node budget."));
+            return Err(invalid(
+                "The rich document exceeds its depth or node budget.",
+            ));
         }
         visitor(value)?;
         match value {
@@ -139,7 +141,12 @@ fn validation_projection(document: &Value) -> Result<Value, CommandError> {
     Ok(projection)
 }
 
-fn project(value: &mut Value, parent: &str, index: usize, version: i64) -> Result<(), CommandError> {
+fn project(
+    value: &mut Value,
+    parent: &str,
+    index: usize,
+    version: i64,
+) -> Result<(), CommandError> {
     let Some(object) = value.as_object() else {
         return Ok(());
     };
@@ -148,7 +155,10 @@ fn project(value: &mut Value, parent: &str, index: usize, version: i64) -> Resul
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    if matches!(kind.as_str(), "inlineMath" | "blockMath" | "audio" | "video") {
+    if matches!(
+        kind.as_str(),
+        "inlineMath" | "blockMath" | "audio" | "video"
+    ) {
         if version != 3
             || object
                 .keys()
@@ -166,7 +176,9 @@ fn project(value: &mut Value, parent: &str, index: usize, version: i64) -> Resul
                 || (matches!(parent, "listItem" | "taskItem") && index > 0)
         };
         if !allowed_parent {
-            return Err(invalid("Math or media is not valid at this document position."));
+            return Err(invalid(
+                "Math or media is not valid at this document position.",
+            ));
         }
         let attrs = object
             .get("attrs")
@@ -211,7 +223,9 @@ fn project(value: &mut Value, parent: &str, index: usize, version: i64) -> Resul
 
 fn exact_attributes(attrs: &Map<String, Value>, allowed: &[&str]) -> Result<(), CommandError> {
     if attrs.keys().any(|key| !allowed.contains(&key.as_str())) {
-        return Err(invalid("The math/media node contains unsupported attributes."));
+        return Err(invalid(
+            "The math/media node contains unsupported attributes.",
+        ));
     }
     Ok(())
 }
@@ -230,7 +244,9 @@ fn validate_media(attrs: &Map<String, Value>, kind: &str) -> Result<(), CommandE
     validate_entity_id(id, "asset")?;
     let expected_src = format!("study-asset://{id}");
     if attrs.get("src").and_then(Value::as_str) != Some(expected_src.as_str()) {
-        return Err(invalid("Media cannot reference remote URLs or local paths."));
+        return Err(invalid(
+            "Media cannot reference remote URLs or local paths.",
+        ));
     }
     match attrs.get("title") {
         None | Some(Value::Null) => {}
@@ -244,7 +260,9 @@ fn validate_media(attrs: &Map<String, Value>, kind: &str) -> Result<(), CommandE
                 .as_f64()
                 .is_some_and(|n| n.is_finite() && (1.0..=10_000.0).contains(&n))
             {
-                return Err(invalid("Video dimensions must be between 1 and 10,000 pixels."));
+                return Err(invalid(
+                    "Video dimensions must be between 1 and 10,000 pixels.",
+                ));
             }
         }
     }
