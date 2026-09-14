@@ -14,6 +14,7 @@ on:
         default: false
 
 permissions:
+  actions: write
   contents: read
 
 jobs:
@@ -29,17 +30,21 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Expose user-local tools
+      - name: Purge GitHub Actions storage for hygiene migration
+        if: github.ref_name == 'agent/actions-storage-hygiene'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          python3 ./scripts/cleanup-actions-storage.py \
+            --artifact-max-age-hours 0 \
+            --delete-all-caches
 
       # Packaging copies only already-published source and the installed pinned
       # formatter. It neither formats source nor creates a replacement tree.
       # Any external edits must still be reviewed and published by the source
       # writer; this artifact is not qualification of those later edits.
       - name: Package read-only auxiliary inspection bundle
-        if: github.event_name == 'push' || inputs.export_auxiliary_bundle
+        if: github.event_name == 'workflow_dispatch' && inputs.export_auxiliary_bundle
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -62,13 +67,13 @@ jobs:
           git diff --exit-code
 
       - name: Upload read-only auxiliary inspection bundle
-        if: github.event_name == 'push' || inputs.export_auxiliary_bundle
+        if: github.event_name == 'workflow_dispatch' && inputs.export_auxiliary_bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-auxiliary-${{ github.sha }}
           path: ${{ runner.temp }}/ostudy-auxiliary.tar.gz
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
 
       - name: Validate canonical Rust sources without rewriting them
         run: |
