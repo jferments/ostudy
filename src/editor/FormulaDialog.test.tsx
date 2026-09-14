@@ -112,6 +112,8 @@ describe("formula dialog with actual editor transactions", () => {
     let resolve!: (input: Awaited<ReturnType<typeof mountFormulaInput>>) => void;
     vi.mocked(mountFormulaInput).mockReturnValue(new Promise((done) => { resolve = done; }));
     show(createTiptapEditorAdapter(open()).beginFormulaEdit()!);
+    // Wait for the shared portal to actually mount, not an arbitrary timeout.
+    await waitFor(() => expect(mountFormulaInput).toHaveBeenCalled());
     const signal = vi.mocked(mountFormulaInput).mock.calls.at(-1)![0].signal;
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(signal.aborted).toBe(true));

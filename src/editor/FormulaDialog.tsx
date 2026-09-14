@@ -19,33 +19,34 @@ export function FormulaDialog({ session, onClose }: {
   const [placement, setPlacement] = useState(session.initialValue.placement);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const host = useRef<HTMLDivElement>(null);
-  const keyboardHost = useRef<HTMLDivElement>(null);
+  // Dialog content is portaled after the parent effect can first run. Callback
+  // refs make node availability an explicit input to the mounting lifecycle.
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const [keyboardHost, setKeyboardHost] = useState<HTMLDivElement | null>(null);
   const input = useRef<FormulaInput | null>(null);
   const initialFocus = useRef<HTMLButtonElement>(null);
   const finished = useRef(false);
   const lifecycle = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    if (!host || !keyboardHost || finished.current) return;
     const controller = new AbortController();
     lifecycle.current = controller;
     setReady(false);
-    if (host.current && keyboardHost.current) {
-      void mountFormulaInput({
-        host: host.current, keyboardHost: keyboardHost.current,
-        source: session.initialValue.latex, signal: controller.signal,
-        onChange: setSource, onError: setError,
-      }).then((mounted) => {
-        if (controller.signal.aborted || finished.current) { mounted?.dispose(); return; }
-        input.current = mounted;
-        setReady(mounted !== null);
-        mounted?.focus();
-      }).catch((failure: unknown) => {
-        if (!controller.signal.aborted) {
-          setError(failure instanceof Error ? failure.message : "The formula editor could not load.");
-        }
-      });
-    }
+    void mountFormulaInput({
+      host, keyboardHost,
+      source: session.initialValue.latex, signal: controller.signal,
+      onChange: setSource, onError: setError,
+    }).then((mounted) => {
+      if (controller.signal.aborted || finished.current) { mounted?.dispose(); return; }
+      input.current = mounted;
+      setReady(mounted !== null);
+      mounted?.focus();
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) {
+        setError(failure instanceof Error ? failure.message : "The formula editor could not load.");
+      }
+    });
     return () => {
       controller.abort();
       if (lifecycle.current === controller) lifecycle.current = null;
@@ -53,7 +54,7 @@ export function FormulaDialog({ session, onClose }: {
       input.current = null;
       // StrictMode repeats effects. Cleanup releases the view, not the session.
     };
-  }, [session]);
+  }, [session, host, keyboardHost]);
 
   function cancel(reason: OverlayCloseReason): void {
     if (finished.current) return;
@@ -80,7 +81,7 @@ export function FormulaDialog({ session, onClose }: {
   return <Dialog title="Edit formula" width="large" initialFocusRef={initialFocus} onClose={cancel}
     description="Use the mathematical keyboard or type a formula. Changes apply only when you save.">
     <div className="tw:grid tw:min-w-0 tw:gap-4">
-      <div ref={host} className={contentStyles.formulaInput} />
+      <div ref={setHost} className={contentStyles.formulaInput} />
       {!ready && !error ? <p role="status">Loading formula editor…</p> : null}
       <div className="tw:flex tw:flex-wrap tw:items-end tw:gap-3">
         <Button ref={initialFocus} type="button" variant="secondary" disabled={!ready}
@@ -94,7 +95,7 @@ export function FormulaDialog({ session, onClose }: {
           </NativeSelect>
         </label>
       </div>
-      <div ref={keyboardHost} className={contentStyles.formulaKeyboard} />
+      <div ref={setKeyboardHost} className={contentStyles.formulaKeyboard} />
       <FormulaPreview source={source} block={placement === "block"} />
       {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
       <div className="tw:flex tw:flex-wrap tw:justify-end tw:gap-2">

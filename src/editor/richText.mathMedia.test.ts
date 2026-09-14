@@ -189,7 +189,10 @@ describe("math and media through the actual Tiptap editor", () => {
       media("video", videoId),
     ]), [asset(audioId, "audio/mpeg"), asset(videoId, "video/mp4")]);
     const surface = editor.view.dom;
-    expect(surface.querySelector("img, audio, video, source, iframe, script, a")).toBeNull();
+    // ProseMirror appends a src-less separator image after inline NodeViews.
+    // It is editor scaffolding, not imported HTML: still reject every other
+    // image and any image carrying a fetchable source or an event handler.
+    expect(surface.querySelector("audio, video, source, iframe, script, a, img:not(.ProseMirror-separator), img[src], img[srcset], [onerror], [onload]")).toBeNull();
     expect(surface.querySelector("[data-study-math]")?.textContent).toBe(`\\(${hostile}\\)`);
     expect(surface.textContent).toContain("playback unavailable");
     expect(editor.getHTML()).not.toContain("ostudy-asset.localhost");
