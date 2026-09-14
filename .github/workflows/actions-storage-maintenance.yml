@@ -1,11 +1,6 @@
 name: Actions storage maintenance
 
 on:
-  push:
-    branches: [agent/actions-storage-hygiene]
-    paths:
-      - .github/workflows/actions-storage-maintenance.yml
-      - scripts/cleanup-actions-storage.py
   schedule:
     - cron: "23 11 * * *"
   workflow_dispatch:
