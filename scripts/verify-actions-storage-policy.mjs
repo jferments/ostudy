@@ -98,6 +98,28 @@ for (const required of [
   if (!maintenance.includes(required)) failures.push(`actions-storage-maintenance.yml missing cleanup contract: ${required}`);
 }
 
+const persistence = await readFile(join(root, "scripts", "persist-runner-output.sh"), "utf8");
+for (const required of [
+  "OSTUDY_RUNNER_OUTPUT_RETENTION_DAYS:-7",
+  "OSTUDY_RUNNER_OUTPUT_MAX_BYTES:-21474836480",
+  "prune-runner-output.py",
+  "--retention-days",
+  "--max-bytes",
+]) {
+  if (!persistence.includes(required)) failures.push(`persist-runner-output.sh missing local retention contract: ${required}`);
+}
+
+const localPruner = await readFile(join(root, "scripts", "prune-runner-output.py"), "utf8");
+for (const required of [
+  'RUN_DIR = re.compile(r"^[0-9]+-[0-9]+$")',
+  "item.name != current",
+  "resolved.parent != resolved_root",
+  "retention-days",
+  "max-bytes",
+]) {
+  if (!localPruner.includes(required)) failures.push(`prune-runner-output.py missing safe-pruning contract: ${required}`);
+}
+
 if (failures.length > 0) {
   console.error("Actions storage policy verification failed:");
   for (const failure of failures) console.error(`  - ${failure}`);
@@ -105,5 +127,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Actions storage policy: CI executes on the self-hosted runner, reusable caches and diagnostics stay runner-local, exceptional cloud artifacts are opt-in/bounded to one day, and scheduled cleanup purges stale artifacts and GitHub caches.",
+  "OK   Actions storage policy: CI executes on the self-hosted runner, reusable caches and diagnostics stay runner-local with bounded local retention, exceptional cloud artifacts are opt-in/bounded to one day, and scheduled cleanup purges stale artifacts and GitHub caches.",
 );
