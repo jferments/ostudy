@@ -57,7 +57,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "- Bucket: \`$bucket\`"
     echo "- Path: \`$destination\`"
     echo "- Size: **$size**"
-    echo "- Local retention: **${retention_days} days / 20 GiB default ceiling**"
+    echo "- Local retention: **${retention_days} days / ${max_bytes} bytes ceiling**"
     echo "- Cloud artifact upload: **disabled**"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
