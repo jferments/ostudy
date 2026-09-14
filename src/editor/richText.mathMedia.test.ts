@@ -194,7 +194,15 @@ describe("math and media through the actual Tiptap editor", () => {
     expect(surface.textContent).toContain("playback unavailable");
     expect(editor.getHTML()).not.toContain("ostudy-asset.localhost");
     expect(editor.getHTML()).not.toContain("secret-answer");
-    expect(editor.getHTML()).not.toContain("<img");
+    // Attribute serialization may legally retain '<' inside a quoted value.
+    // Inspect the reparsed DOM, not a substring that also matches inert data.
+    const clipboard = globalThis.document.createElement("template");
+    clipboard.innerHTML = editor.getHTML();
+    expect(clipboard.content.querySelector("img, audio, video, source, iframe, script, a")).toBeNull();
+    expect(clipboard.content.querySelector("[data-study-math]")?.getAttribute("data-latex"))
+      .toBe(hostile);
+    expect(clipboard.content.querySelector("[data-study-math]")?.textContent)
+      .toBe(`\\(${hostile}\\)`);
     expect(JSON.stringify(createTiptapEditorAdapter(editor).document())).toContain("secret-answer");
   });
 
