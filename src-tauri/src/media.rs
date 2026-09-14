@@ -185,7 +185,7 @@ fn mp3_frame_length(bytes: &[u8]) -> Option<usize> {
     let padding = ((header[2] >> 1) & 1) as usize;
     let coefficient = if mpeg1 { 144 } else { 72 };
     let length = coefficient * bitrate / sample_rate + padding;
-    (length >= 24).then_some(length)
+    (24..=bytes.len()).contains(&length).then_some(length)
 }
 
 fn inspect_adts_aac(bytes: &[u8]) -> bool {
@@ -200,9 +200,7 @@ fn adts_frame_length(bytes: &[u8]) -> Option<usize> {
     if h[0] != 0xff || h[1] & 0xf6 != 0xf0 || ((h[2] >> 2) & 0x0f) == 0x0f {
         return None;
     }
-    let length = (((h[3] & 0x03) as usize) << 11)
-        | ((h[4] as usize) << 3)
-        | ((h[5] as usize) >> 5);
+    let length = (((h[3] & 0x03) as usize) << 11) | ((h[4] as usize) << 3) | ((h[5] as usize) >> 5);
     (length >= 7 && length <= bytes.len()).then_some(length)
 }
 
@@ -226,7 +224,9 @@ fn inspect_iso_bmff(bytes: &[u8]) -> Option<MediaKind> {
             return None;
         }
     }
-    let video = codecs.iter().any(|codec| matches!(codec, b"avc1" | b"avc3"));
+    let video = codecs
+        .iter()
+        .any(|codec| matches!(codec, b"avc1" | b"avc3"));
     let audio = codecs.iter().any(|codec| codec == b"mp4a");
     if video {
         Some(MediaKind::Video)
@@ -262,10 +262,7 @@ fn boxes(mut bytes: &[u8]) -> Option<Vec<BoxView<'_>>> {
             if bytes.len() < 16 {
                 return None;
             }
-            (
-                16_usize,
-                u64::from_be_bytes(bytes[8..16].try_into().ok()?),
-            )
+            (16_usize, u64::from_be_bytes(bytes[8..16].try_into().ok()?))
         } else if size32 == 0 {
             (8_usize, bytes.len() as u64)
         } else {
@@ -388,12 +385,7 @@ mod tests {
         let mut ftyp = b"isom".to_vec();
         ftyp.extend_from_slice(&0_u32.to_be_bytes());
         ftyp.extend_from_slice(b"isommp42");
-        [
-            mp4_box(b"ftyp", &ftyp),
-            moov,
-            mp4_box(b"mdat", b"payload"),
-        ]
-        .concat()
+        [mp4_box(b"ftyp", &ftyp), moov, mp4_box(b"mdat", b"payload")].concat()
     }
 
     #[test]

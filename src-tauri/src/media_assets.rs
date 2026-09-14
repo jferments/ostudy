@@ -276,7 +276,10 @@ fn ensure_active_draft(
 
 fn create_parent(path: &Path) -> Result<(), CommandError> {
     let parent = path.parent().ok_or_else(|| {
-        CommandError::new("invalid_asset_path", "The managed media path has no parent.")
+        CommandError::new(
+            "invalid_asset_path",
+            "The managed media path has no parent.",
+        )
     })?;
     fs::create_dir_all(parent).map_err(CommandError::io)
 }
