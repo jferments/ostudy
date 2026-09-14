@@ -63,35 +63,40 @@ function setAndroidTestBridgeDiagnostic(
   );
 }
 
-if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
-  setAndroidTestBridgeDiagnostic("loading");
-  void import("./testing/androidTestBridge")
-    .then(({ installAndroidTestBridge }) => {
-      installAndroidTestBridge();
-      const smokeWindow = window as Window & { __OSTUDY_ANDROID_TEST__?: unknown };
-      const state =
-        typeof smokeWindow.__OSTUDY_ANDROID_TEST__ === "object" ? "ready" : "missing";
-      setAndroidTestBridgeDiagnostic(state);
-      queueFrontendDiagnostic({
-        level: state === "ready" ? "debug" : "warn",
-        target: "frontend.android_test_bridge",
-        event: "android_test_bridge_loaded",
-        message: "The Android smoke-test bridge finished loading.",
-        fields: { state },
-      });
-    })
-    .catch((error: unknown) => {
-      setAndroidTestBridgeDiagnostic("error", error);
-      queueFrontendDiagnostic({
-        level: "error",
-        target: "frontend.android_test_bridge",
-        event: "android_test_bridge_failed",
-        message: "The Android smoke-test bridge could not be installed.",
-        fields: {
-          errorType: error instanceof Error ? error.name : typeof error,
-        },
-      });
+function waitForAndroidTestUiReady(): Promise<void> {
+  if (document.querySelector("main")) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      observer.disconnect();
+      reject(new Error("The Android smoke-test bridge timed out waiting for the application UI to mount."));
+    }, 30_000);
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector("main")) return;
+      window.clearTimeout(timeout);
+      observer.disconnect();
+      resolve();
     });
+    observer.observe(root, { childList: true, subtree: true });
+  });
+}
+
+async function installAndroidTestBridgeWhenUiReady(): Promise<void> {
+  await waitForAndroidTestUiReady();
+  const { installAndroidTestBridge } = await import("./testing/androidTestBridge");
+  installAndroidTestBridge();
+
+  const smokeWindow = window as Window & { __OSTUDY_ANDROID_TEST__?: unknown };
+  const state =
+    typeof smokeWindow.__OSTUDY_ANDROID_TEST__ === "object" ? "ready" : "missing";
+  setAndroidTestBridgeDiagnostic(state);
+  queueFrontendDiagnostic({
+    level: state === "ready" ? "debug" : "warn",
+    target: "frontend.android_test_bridge",
+    event: "android_test_bridge_loaded",
+    message: "The Android smoke-test bridge finished loading after the application UI mounted.",
+    fields: { state },
+  });
 }
 
 if (
@@ -118,3 +123,19 @@ createRoot(root).render(
     </NativeStartupGate>
   </StrictMode>,
 );
+
+if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
+  setAndroidTestBridgeDiagnostic("loading");
+  void installAndroidTestBridgeWhenUiReady().catch((error: unknown) => {
+    setAndroidTestBridgeDiagnostic("error", error);
+    queueFrontendDiagnostic({
+      level: "error",
+      target: "frontend.android_test_bridge",
+      event: "android_test_bridge_failed",
+      message: "The Android smoke-test bridge could not be installed.",
+      fields: {
+        errorType: error instanceof Error ? error.name : typeof error,
+      },
+    });
+  });
+}
