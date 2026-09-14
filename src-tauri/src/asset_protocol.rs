@@ -124,7 +124,9 @@ pub fn respond<R: Runtime>(
     };
     let head_only = request.method() == Method::HEAD;
     match range {
-        Some((start, end)) => ranged_response(&path, &mime_type, expected_size, start, end, head_only),
+        Some((start, end)) => {
+            ranged_response(&path, &mime_type, expected_size, start, end, head_only)
+        }
         None => full_response(&path, &mime_type, expected_size, head_only),
     }
 }
@@ -134,7 +136,11 @@ fn full_response(path: &Path, mime_type: &str, size: u64, head_only: bool) -> Re
         Vec::new()
     } else {
         let Ok(bytes) = fs::read(path) else {
-            return response(StatusCode::NOT_FOUND, "text/plain", b"asset missing".to_vec());
+            return response(
+                StatusCode::NOT_FOUND,
+                "text/plain",
+                b"asset missing".to_vec(),
+            );
         };
         if u64::try_from(bytes.len()).ok() != Some(size) {
             return response(StatusCode::GONE, "text/plain", b"asset changed".to_vec());
@@ -165,7 +171,11 @@ fn ranged_response(
         Vec::new()
     } else {
         let Ok(mut file) = File::open(path) else {
-            return response(StatusCode::NOT_FOUND, "text/plain", b"asset missing".to_vec());
+            return response(
+                StatusCode::NOT_FOUND,
+                "text/plain",
+                b"asset missing".to_vec(),
+            );
         };
         if file.seek(SeekFrom::Start(start)).is_err() {
             return response(StatusCode::GONE, "text/plain", b"asset changed".to_vec());
@@ -185,7 +195,10 @@ fn ranged_response(
         .status(StatusCode::PARTIAL_CONTENT)
         .header(header::CONTENT_TYPE, mime_type)
         .header(header::CONTENT_LENGTH, length.to_string())
-        .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}"))
+        .header(
+            header::CONTENT_RANGE,
+            format!("bytes {start}-{end}/{total}"),
+        )
         .header(header::ACCEPT_RANGES, "bytes")
         .header(header::CACHE_CONTROL, "private, max-age=300")
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
@@ -259,9 +272,18 @@ mod tests {
     #[test]
     fn parses_and_bounds_single_byte_ranges() {
         assert_eq!(parse_single_range(None, 10).unwrap(), None);
-        assert_eq!(parse_single_range(Some("bytes=0-4"), 10).unwrap(), Some((0, 4)));
-        assert_eq!(parse_single_range(Some("bytes=5-"), 10).unwrap(), Some((5, 9)));
-        assert_eq!(parse_single_range(Some("bytes=-3"), 10).unwrap(), Some((7, 9)));
+        assert_eq!(
+            parse_single_range(Some("bytes=0-4"), 10).unwrap(),
+            Some((0, 4))
+        );
+        assert_eq!(
+            parse_single_range(Some("bytes=5-"), 10).unwrap(),
+            Some((5, 9))
+        );
+        assert_eq!(
+            parse_single_range(Some("bytes=-3"), 10).unwrap(),
+            Some((7, 9))
+        );
         let huge = MAX_RANGE_RESPONSE_BYTES * 4;
         assert_eq!(
             parse_single_range(Some("bytes=0-"), huge).unwrap(),
@@ -271,7 +293,14 @@ mod tests {
 
     #[test]
     fn rejects_multiple_invalid_and_unsatisfiable_ranges() {
-        for value in ["items=0-1", "bytes=", "bytes=4-3", "bytes=100-", "bytes=0-1,3-4", "bytes=-0"] {
+        for value in [
+            "items=0-1",
+            "bytes=",
+            "bytes=4-3",
+            "bytes=100-",
+            "bytes=0-1,3-4",
+            "bytes=-0",
+        ] {
             assert!(parse_single_range(Some(value), 10).is_err(), "{value}");
         }
     }
