@@ -39,7 +39,7 @@ An impact-aware iteration aid. It inspects the current diff and chooses a conser
 
 ### `check-static.sh`
 
-Verifies source/repository contracts that do not require the full runtime, including documentation organization/links, manifests/lockfiles/version mirrors, migration/repair policy, TypeScript and Rust formatting/static rules, typed IPC ownership, frontend/platform/shared-UI boundaries, route/destination inventories, AI/document ownership boundaries, external-file streaming architecture, Android static/generated-project contracts, workflow source-read-only policy, and verifier fixture tests.
+Verifies source/repository contracts that do not require the full runtime, including documentation organization/links, manifests/lockfiles/version mirrors, migration/repair policy, TypeScript and Rust formatting/static rules, typed IPC ownership, frontend/platform/shared-UI boundaries, route/destination inventories, AI/document ownership boundaries, external-file streaming architecture, Android static/generated-project contracts, workflow source-read-only policy, Actions runner/storage policy, and verifier fixture tests.
 
 This is the minimum maintained gate for documentation-only work.
 
@@ -154,7 +154,7 @@ Automatic and manual runs have separate contexts/concurrency so a diagnostic dis
 
 For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke.
 
-Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
+Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. That evidence is persisted on the self-hosted runner rather than uploaded to GitHub Actions storage. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
 
 ## `PR Contract`: metadata only
 
@@ -168,16 +168,30 @@ After full `Check` passes, updating the PR body with exact evidence reruns `PR C
 
 ## Source-read-only Actions
 
-All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, upload artifacts, or validate PR metadata. They must not stage, format-rewrite, create commits/trees, push refs, or finalize an agent's product implementation.
+All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, retain runner-local evidence, temporarily publish explicitly requested deliverables, or validate PR metadata. They must not stage, format-rewrite, create commits/trees, push refs, or finalize an agent's product implementation.
 
 The retired Orchestrator PR Ledger and branch-specific frontend source-checkpoint workflow are not part of the current development system. Source publication belongs to the branch writer; Actions qualifies published source.
+
+## Actions compute and storage policy
+
+Routine CI executes on the repository's self-hosted runner. GitHub-hosted operating-system runners are forbidden by repository policy. Reusable Cargo, Gradle, package-manager, and toolchain caches live on the runner; `actions/cache` and action-managed cloud caches are forbidden because a self-hosted job using those features still stores cache data in GitHub's Actions service.
+
+Normal qualification does **not** use `actions/upload-artifact`. Qualification JSON, handoff Markdown, logs, Android smoke evidence, and failure bundles are copied under the runner's persistent ostudy Actions state directory. The workflow summary records the runner-local path.
+
+Cloud Actions artifacts are exceptions rather than a general evidence channel:
+
+- `android-package.yml` always retains the package on the runner and uploads it only when the manual `publish_to_github` input is selected;
+- `release.yml` keeps tagged Linux release output on the runner and briefly mirrors it to the Actions UI for retrieval;
+- `maintain-generated-candidates.yml` uploads its auxiliary inspection bundle only when explicitly requested by manual dispatch.
+
+Every allowed cloud artifact declares `retention-days: 1`. `.github/workflows/actions-storage-maintenance.yml` runs daily on the self-hosted runner, deletes Actions artifacts older than 24 hours, and purges GitHub-hosted Actions caches. A manual purge can set the artifact threshold to zero. `scripts/verify-actions-storage-policy.mjs`, executed by static qualification, rejects new hosted runners/cloud caches/routine artifact uploads or longer artifact retention.
 
 ## Failure evidence and triage
 
 On a current-head failure:
 
 1. confirm the run's SHA equals the current PR head;
-2. read the selected gate, failed step, machine-readable result, and bounded logs/artifacts;
+2. read the selected gate, failed step, machine-readable result, bounded logs, and runner-local evidence path;
 3. classify product, test-contract, runner/environment, GitHub/Connector, or external/manual cause;
 4. reproduce the smallest failed boundary;
 5. repair every independently actionable finding in one coherent batch;
@@ -207,7 +221,7 @@ GitHub control-plane failure is neither product pass nor product fail. When broa
 
 ## Packaging and releases
 
-`android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. `release.yml` produces current tagged Linux artifacts. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
+`android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. Packages are retained on the self-hosted runner by default, with an explicit option for a one-day GitHub Actions mirror when browser download is useful. `release.yml` produces current tagged Linux artifacts, retains them on the runner, and limits the Actions mirror to one day. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
 
 Release candidates additionally run:
 
