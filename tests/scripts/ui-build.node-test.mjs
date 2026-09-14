@@ -52,7 +52,7 @@ test("live migrated features use shared controls rather than another native-cont
   for (const file of migratedSources) {
     if (file.startsWith("src/ui/")) continue;
     let source = await readFile(new URL(file, rootUrl), "utf8");
-    if (file === "src/screens/tutor/TutorMarkdown.tsx") {
+    if (file === "src/components/StudyMarkdown.tsx") {
       // Read-only Markdown task markers are document content, not application form controls.
       // Only these explicitly disabled checkboxes are exempt; all other native controls still fail.
       source = source.replace(/<input type="checkbox" checked=\{token\.checked(?: \?\? false)?\} disabled aria-label="Checklist item" \/>/gu, "");
