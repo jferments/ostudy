@@ -203,6 +203,75 @@ aggregate bounds, update cleanup, saved/generated guides, note Save/Cancel with
 exact source, and unchanged historical citation disabling. Native database and
 physical-device acceptance are not established by mocked gateway fixtures.
 
+### Generated-card mathematical source
+
+Document-generated Basic cards and direct `.ostudy.json` Basic imports share
+`authoring/card_types_and_templates/generated_import/markdown.rs`. Its mathematical
+source protection runs before Markdown emphasis, links or block splitting.
+Explicit `\(...\)`, `\[...\]` and `$$...$$` become the existing native
+`inlineMath`/`blockMath` atoms and therefore use the same KaTeX renderer and MathLive
+editor as imported Anki formulas. This is conversion, not another math renderer.
+
+The temporary conversion markers cannot collide with source text and must each
+be restored exactly once before persistence. Delimiter-free source retains its
+operators, subscripts and line breaks after the existing newline normalization.
+Formatting stays on surrounding prose, not math atoms. Display formulas split
+text blocks while preserving their heading, quote or list context. Supported code
+spans/fences, indented source lines, escaped openings and single-dollar currency
+are not interpreted as formulas; link destinations retain normal link validation.
+No HTML is admitted outside inert formula source. No TeX program executes.
+
+Each card side admits at most 64 formulas and 32,768 aggregate UTF-8 formula bytes,
+with the existing 16,384-byte per-formula limit. Empty, invalid-control, oversized
+or unclosed final formulas report the affected card-side path. Final JSON imports
+remain whole-file validated before mutation; streaming Tutor text has its separate
+read-only incomplete-expression fallback. Root schema 3 is added only for converted
+math; the transport envelope and old math-free documents are unchanged. Rich cloze
+and universal conversion of arbitrary math-looking prose remain outside this step.
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_generated_math
+```
+
+Regressions cover source/emphasis preservation, display placement, quote/list
+containers, code/currency, adversarial marker collisions, source limits and exact
+native SQLite persistence with reverse presentations. A mixed invalid import is
+rejected without writing notes. These tests do not establish provider transcription
+accuracy, file-backed database reopening or physical-device acceptance.
+
+### Extraction, MathML and the PDF export boundary
+
+MathML is an incoming structured notation, not a competing renderer or a new
+storage format. The intended bounded presentation-MathML adapter converts supported
+structures to the same LaTeX atoms; it is still unfinished. KaTeX also derives MathML
+alongside its visual HTML for accessibility. Neither operation is equation OCR.
+
+PDF ingestion currently uses `pdf_backend/extraction.rs` for native text/semantic
+partitioning, alternate native-text recovery through `pdf_document_ingestion/recovery.rs`,
+page rendering and selective platform OCR through `pdf_document_ingestion/pipeline.rs`.
+Desktop OCR uses local Tesseract; Android uses bundled ML Kit text recognition.
+These are text-recovery paths, not a guarantee of correct fraction, matrix or
+superscript reconstruction. Rendered source images remain available as bounded
+visual evidence when the selected task permits an image-capable provider.
+
+Non-PDF sources use the isolated Xberg adapter. Its normalization maps upstream
+`Formula` nodes to canonical equation blocks while preserving the returned text;
+this does not prove every DOCX/EPUB/HTML equation reaches such a node or is LaTeX.
+Structured equation reconstruction, source fidelity and model interpretation must
+be evaluated separately. Do not rewrite existing hashed evidence to substitute a
+model's inferred equation. Generated-card conversion preserves supplied TeX; it
+cannot recover an equation already lost or mistranscribed during extraction.
+
+"PDF source-only fallback" refers to **exporting a generated study guide**, not
+importing or extracting a source PDF. `document_study_guide_export.rs` currently
+writes selectable text using the native oxidize-pdf backend; it does not execute
+browser KaTeX or lay out its HTML/CSS. The fallback means readable equation source
+rather than silently omitted equations. Explicit export disclosure and typeset
+export integration are not implemented by the generated-card converter. A future
+typeset PDF path should reuse the application-owned math-rendering boundary rather
+than introduce a second equation implementation. Original PDF viewing remains a
+faithful page-rendering path, not this study-guide export path.
+
 ### Native Anki math preservation
 
 The shared native math boundary now recognizes explicit `\(...\)` / `\[...\]`

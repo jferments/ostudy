@@ -2,7 +2,20 @@ use serde_json::{json, Value};
 
 use crate::error::CommandError;
 
+#[path = "math.rs"]
+mod math;
+#[cfg(test)]
+#[path = "math_tests.rs"]
+mod math_tests;
+
 pub(super) fn markdown_document(source: &str, path: &str) -> Result<Value, CommandError> {
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    let math = math::ProtectedMath::new(&normalized, path)?;
+    let document = markdown_text_document(&math.source, path)?;
+    math.restore(document, path)
+}
+
+fn markdown_text_document(source: &str, path: &str) -> Result<Value, CommandError> {
     if source.trim().is_empty() {
         return Err(CommandError::new(
             "empty_import_card_side",
@@ -219,7 +232,7 @@ fn inline_nodes(text: &str, path: &str) -> Result<Vec<Value>, CommandError> {
         let next = next_inline_marker(remainder).unwrap_or(remainder.len());
         let take = next.max(1);
         let value = &remainder[..take];
-        if value.contains('[') && value.contains("](") {
+        if value.contains('[') && value.contains("](" ) {
             return Err(unsupported_markdown(path, "a Markdown link is malformed"));
         }
         nodes.push(json!({"type": "text", "text": value}));
