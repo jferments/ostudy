@@ -4,9 +4,13 @@ import { ColorField } from "../../ui/primitives/ColorField";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
+import { FormulaDialog } from "../FormulaDialog";
+import type { FormulaEditSession } from "../formula";
 
 import { importImage } from "../../ipc/assets";
 import { getErrorMessage } from "../../ipc/common";
@@ -78,6 +82,17 @@ export function TiptapRichTextEditor({
   );
   const [editorError, setEditorError] = useState<string | null>(null);
   const [isImportingImage, setIsImportingImage] = useState(false);
+  const [formulaSession, setFormulaSession] = useState<FormulaEditSession | null>(null);
+  const editorRef = useRef<Editor | null>(null);
+
+  function openFormulaEditor(): void {
+    const current = editorRef.current;
+    if (!current || !current.isEditable || current.isDestroyed) return;
+    const session = createTiptapEditorAdapter(current).beginFormulaEdit();
+    if (!session) { setEditorError("Select text or a formula before opening the formula editor."); return; }
+    setEditorError(null);
+    setFormulaSession(session);
+  }
 
   const editor = useEditor({
     extensions,
@@ -88,6 +103,19 @@ export function TiptapRichTextEditor({
         class: contentStyles.content,
         "aria-label": label,
       },
+      handleDoubleClickOn(view, _pos, node, nodePos, _event, direct) {
+        if (!direct || !view.editable || !["inlineMath", "blockMath"].includes(node.type.name)) return false;
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodePos)));
+        openFormulaEditor();
+        return true;
+      },
+      handleKeyDown(view, event) {
+        const selection = view.state.selection;
+        if (event.key !== "Enter" || !view.editable || !(selection instanceof NodeSelection)
+          || !["inlineMath", "blockMath"].includes(selection.node.type.name)) return false;
+        openFormulaEditor();
+        return true;
+      },
     },
     onUpdate: ({ editor: currentEditor }) => {
       const current = createTiptapEditorAdapter(currentEditor);
@@ -96,6 +124,7 @@ export function TiptapRichTextEditor({
     },
     onSelectionUpdate: () => setToolbarVersion((value) => value + 1),
   });
+  editorRef.current = editor;
   const adapter = useMemo(
     () => (editor ? createTiptapEditorAdapter(editor) : null),
     [editor],
@@ -104,6 +133,13 @@ export function TiptapRichTextEditor({
   const pairId = pairSide && assetDraftId ? assetDraftId : null;
   void toolbarVersion;
   void pairVersion;
+
+  useEffect(() => {
+    if (disabled && formulaSession) {
+      formulaSession.cancel();
+      setFormulaSession(null);
+    }
+  }, [disabled, formulaSession]);
 
   useEffect(() => {
     if (!adapter) return;
@@ -265,6 +301,7 @@ export function TiptapRichTextEditor({
           adapter={adapter}
           onAddImage={() => void addImage()}
           onOpenLink={openLinkEditor}
+          onOpenFormula={openFormulaEditor}
           onOpenTable={() => setTableOpen(true)}
           onOpenChecklist={() => setChecklistOpen(true)}
           isImportingImage={isImportingImage}
@@ -314,6 +351,8 @@ export function TiptapRichTextEditor({
         </div>
       </div>
       {editorError && !linkOpen && !checklistOpen ? <InlineNotice kind="error">{editorError}</InlineNotice> : null}
+
+      {formulaSession ? <FormulaDialog session={formulaSession} onClose={() => setFormulaSession(null)} /> : null}
 
       {tableOpen ? (
         <Dialog title="Insert table" width="small" onClose={() => setTableOpen(false)}>
@@ -376,6 +415,7 @@ interface EditorToolbarProps {
   adapter: EditorAdapter;
   onAddImage: () => void;
   onOpenLink: () => void;
+  onOpenFormula: () => void;
   onOpenTable: () => void;
   onOpenChecklist: () => void;
   isImportingImage: boolean;
@@ -383,7 +423,7 @@ interface EditorToolbarProps {
   disabled: boolean;
 }
 
-function EditorToolbar({ adapter, onAddImage, onOpenLink, onOpenTable, onOpenChecklist, isImportingImage, imageDraftReady, disabled }: EditorToolbarProps) {
+function EditorToolbar({ adapter, onAddImage, onOpenFormula, onOpenLink, onOpenTable, onOpenChecklist, isImportingImage, imageDraftReady, disabled }: EditorToolbarProps) {
   const selection = adapter.selection();
   const textStyle = adapter.attributes("textStyle");
   const historyGroup = editorToolbarGroups(adapter.capabilities).find((group) => group.id === "history");
@@ -427,6 +467,7 @@ function EditorToolbar({ adapter, onAddImage, onOpenLink, onOpenTable, onOpenChe
         {(["left", "center", "right"] as const).map((alignment) => <ToolbarAction key={alignment} label={`Align ${alignment}`} pressed={selection.textAlignment === alignment} onMouseDown={preserveSelection} onClick={() => run({ command: "set_text_alignment", value: alignment as EditorTextAlignment })}>{alignment === "left" ? "≡←" : alignment === "center" ? "≡" : "→≡"}</ToolbarAction>)}
       </ToolbarGroup>
       <ToolbarGroup label="Insert content">
+        <ToolbarAction label="Insert or edit formula" onMouseDown={preserveSelection} onClick={onOpenFormula}>Formula</ToolbarAction>
         <ToolbarAction label="Add or edit link" pressed={adapter.isActive("link")} onMouseDown={preserveSelection} onClick={onOpenLink}>Link</ToolbarAction>
         <ToolbarAction label="Insert image" onMouseDown={preserveSelection} onClick={onAddImage} disabled={isImportingImage || !imageDraftReady}>{isImportingImage ? "Adding…" : "Image"}</ToolbarAction>
         <ToolbarAction label="Remove text color and highlight" onMouseDown={preserveSelection} onClick={() => run({ command: "reset_colors" })}>Reset color</ToolbarAction>

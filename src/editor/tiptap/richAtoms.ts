@@ -1,5 +1,6 @@
 import { Extension, Node } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { renderFormula } from "../../math/render";
 
 const atomNames = new Set(["inlineMath", "blockMath", "audio", "video"]);
 const assetIdPattern = /^[0-9a-f]{32}$/u;
@@ -33,8 +34,8 @@ function mathNode(name: "inlineMath" | "blockMath") {
     },
     renderHTML({ node }) {
       const latex = typeof node.attrs.latex === "string" ? node.attrs.latex : "";
-      // This is a deliberately visible source fallback, not a formula editor
-      // or typesetter. ProseMirror creates text nodes: never interpret TeX as HTML.
+      // Portable clipboard HTML remains escaped source, not renderer markup.
+      // The NodeView alone owns on-screen typesetting.
       return [tag, {
         "data-study-math": name,
         "data-latex": latex,
@@ -42,6 +43,26 @@ function mathNode(name: "inlineMath" | "blockMath") {
         contenteditable: "false",
         style: "white-space:pre-wrap;overflow-wrap:anywhere",
       }, formulaText(latex, inline)];
+    },
+    addNodeView() {
+      return ({ node }) => {
+        const dom = document.createElement(tag);
+        dom.dataset.studyMath = name;
+        dom.contentEditable = "false";
+        dom.style.cssText = "max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere";
+        const paint = (latex: unknown) => renderFormula(dom, typeof latex === "string" ? latex : "", !inline);
+        paint(node.attrs.latex);
+        return {
+          dom,
+          update(next) {
+            if (next.type.name !== name) return false;
+            paint(next.attrs.latex);
+            return true;
+          },
+          // Selection still belongs to ProseMirror; typesetter DOM never does.
+          ignoreMutation: (mutation) => mutation.type !== "selection",
+        };
+      };
     },
     renderText({ node }) {
       return formulaText(node.attrs.latex, inline);

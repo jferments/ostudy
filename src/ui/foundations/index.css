@@ -8,6 +8,9 @@
 @import "tailwindcss/utilities.css" layer(components) source("../..") prefix(tw);
 @import "../tokens/generated/tailwind-theme.css";
 @import "./local-fonts.css" layer(tokens);
+/* Locally packaged vendor math fonts/styles; no runtime CDN loading. */
+@import "mathlive/fonts.css";
+@import "katex/dist/katex.css";
 @import "../tokens/generated/reference.css" layer(tokens);
 @import "../tokens/generated/component.css" layer(tokens);
 @import "../tokens/generated/theme-light.css" layer(tokens);

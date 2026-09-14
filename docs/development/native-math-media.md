@@ -89,30 +89,78 @@ source and disclose source-only output rather than silently dropping formulas.
 
 ## Current implementation boundary
 
-The concrete Tiptap schema now retains all four rich atoms during ordinary
-editing and save/reopen, with formula/media text serializers and protection
-against formatting marks that native atom validation rejects. Media placeholders
-are inert and omit runtime URLs and titles; formulas use escaped source fallbacks.
-These are preservation safeguards, not completed MathLive authoring, KaTeX
-typesetting or native acquisition/playback. The editor regression
-suite exercises actual Tiptap transactions in addition to the helper tests.
+The concrete Tiptap schema retains all four rich atoms through ordinary editing
+and save/reopen, with text/clipboard serialization and protection against marks
+that native atom validation rejects. Media placeholders are still inert and omit
+runtime URLs and titles; audio/video acquisition and playback remain unfinished.
 
-The editor-neutral adapter now exposes a captured formula-edit session. It keeps
-selection and concrete editor objects out of the future MathLive dialog, admits
-bounded UTF-8 source, supports inline/block insertion and selected-formula edits,
-and preserves surrounding text and quote/list/table containers. Cancel and
-unchanged saves do not create content/history entries. Successful edits are one
-undo group, separate from prior and subsequent typing. A replaced document,
-read-only editor, destroyed editor or consumed session cannot receive a stale
-formula write. Code, multi-block and whole-document selections are not admitted.
-This session is an integration boundary, not a user-facing formula editor;
-MathLive and local KaTeX assets/rendering remain the next unfinished step.
+### Formula authoring and card rendering
 
-Focused regressions live in `src/editor/formula.test.ts` and
-`src/editor/tiptap/formulaSession.test.ts`, alongside the existing rich-atom
-preservation tests. Automated results and their exact tested SHA belong in the
-PR evidence; these test files alone do not establish a passing gate or device
-acceptance.
+The editor toolbar's **Formula** action opens the real MathLive input in the
+existing shared Dialog. Double-clicking a formula or pressing Enter on a selected
+formula opens the same editor. MathLive owns structured input and its mathematical
+keyboard; oStudy owns inline/block placement, local draft state, validation and
+Save/Cancel. Its optional context menu is disabled because it creates a separate
+untracked overlay and offers out-of-scope computation/speech. This is not a custom
+formula editor. More elaborate menu integration is not claimed by this increment.
+
+`src/math/mathlive.ts` loads the bundled MathLive module only on authoring intent.
+It owns an abortable, exclusive keyboard lifecycle inside the shared Dialog. A
+late import after dismissal cannot attach a field or take focus. Escape/platform
+Back hides an open math keyboard first; a subsequent dismissal cancels the draft.
+Explicit Cancel, backdrop and close-button dismissal cancel immediately. Cleanup
+releases listeners, the field and the global keyboard container. StrictMode view
+cleanup does not consume the editor transaction. Disabling the card editor closes
+its formula session. Clipboard input admits bounded plain LaTeX, not donor HTML.
+
+`EditorAdapter.beginFormulaEdit()` captures document identity and selection before
+the dialog takes focus. Save does not use a later cursor position. Placement
+changes preserve surrounding text and quote/list/table containers. Unchanged Save
+and Cancel do not add content/history entries. One changed Save is one undo group,
+isolated from earlier/later typing. Replaced/read-only/destroyed editors reject
+stale writes. Initial source is retained exactly until actual input, not silently
+normalized merely by opening MathLive. Code, multi-block and whole-document
+selections remain outside this operation.
+
+`src/math/render.ts` is the shared KaTeX rendering boundary, now used by card
+NodeViews (including read-only cards/Practice) and the dialog preview. Stored JSON
+and clipboard HTML keep source-only atoms, never typesetter DOM. The renderer uses
+untrusted mode, independent macro state, finite expansion/size bounds and a bounded
+source/nesting admission step. Unsupported commands, invalid source and parser
+failures display escaped source with an accessible explanation. Renderability is
+not mathematical correctness, and storage admission is intentionally broader than
+rendering admission. Source-bearing failures are not logged.
+
+MathLive **0.110.0** and KaTeX **0.18.7** are exact pinned MIT dependencies. The
+lockfile also pins their resolved transitive graph; existing dependency resolutions
+are preserved. Their distributed font CSS is imported by the existing foundation
+stylesheet, so Vite packages and rewrites font assets locally. No runtime CDN is
+used. MathLive's dynamic font/sound loaders, compute engine and URL-opening hook
+are disabled. The native Content Security Policy is unchanged. Third-party package
+licenses remain with their distributions; no runtime binary or downloaded font is
+committed as product source.
+
+Focused tests cover real KaTeX output/fallbacks and actual Tiptap serialization,
+selection, undo/redo and shared-dialog behavior. The MathLive port is stubbed for
+lifecycle tests; those tests do not establish physical-keyboard, touch keyboard,
+assistive-technology, theme contrast or target-WebView font/geometry acceptance.
+Desktop and physical Android testing, complete application packaging and full
+platform qualification remain explicit acceptance work. Tutor/guide Markdown,
+source extraction, MathML normalization and native-PDF math integration remain
+unfinished; using one renderer for card nodes does not complete those paths.
+
+```bash
+pnpm vitest run src/math/render.test.ts src/math/mathlive.test.ts src/editor/FormulaDialog.test.tsx src/editor/formula.test.ts src/editor/tiptap/formulaSession.test.ts src/editor/richText.mathMedia.test.ts
+```
+
+On an isolated test library, insert a fraction using MathLive, switch placement,
+save/reopen and undo/redo. Select the atom and press Enter or double-click to edit.
+Cancel changes and verify the old formula remains. With networking disabled, check
+font rendering and the mathematical keyboard on desktop and physical Android,
+including first-Back keyboard dismissal, second-Back dialog dismissal, compact
+layout, all themes and focus restoration. Use the maintained build/run wrappers
+in [Local testing and handoff](local-testing-and-handoff.md); a worktree alone does
+not isolate application data. Passing automated tests are not human acceptance.
 
 ### Native Anki math preservation
 
@@ -150,10 +198,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib ca
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_anki_math
 ```
 
-These tests do not establish card-UI editing, typeset display or device acceptance.
-Imported formulas currently use the existing escaped source fallback. Actual
-MathLive Dialog integration and packaged offline KaTeX rendering remain required
-in this PR; they have not been substituted or deferred to another PR.
+These native import tests do not establish card-UI or device acceptance. Imported
+formula atoms now use the shared card renderer and captured MathLive edit session
+described above; unsupported rendering still preserves visible source. The remaining
+Anki media and MathML work stays in this PR.
 
 ## Acceptance criteria
 
