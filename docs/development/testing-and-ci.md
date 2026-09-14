@@ -168,7 +168,7 @@ After full `Check` passes, updating the PR body with exact evidence reruns `PR C
 
 ## Source-read-only Actions
 
-All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, retain runner-local evidence, temporarily publish explicitly requested deliverables, or validate PR metadata. They must not stage, format-rewrite, create commits/trees, push refs, or finalize an agent's product implementation.
+All workflows are source-read-only, including manual maintenance/packaging/validation. They may check, build, package, retain runner-local evidence/deliverables, or validate PR metadata. They must not stage, format-rewrite, create commits/trees, push refs, or finalize an agent's product implementation.
 
 The retired Orchestrator PR Ledger and branch-specific frontend source-checkpoint workflow are not part of the current development system. Source publication belongs to the branch writer; Actions qualifies published source.
 
@@ -176,15 +176,11 @@ The retired Orchestrator PR Ledger and branch-specific frontend source-checkpoin
 
 Routine CI executes on the repository's self-hosted runner. GitHub-hosted operating-system runners are forbidden by repository policy. Reusable Cargo, Gradle, package-manager, and toolchain caches live on the runner; `actions/cache` and action-managed cloud caches are forbidden because a self-hosted job using those features still stores cache data in GitHub's Actions service.
 
-Normal qualification does **not** use `actions/upload-artifact`. Qualification JSON, handoff Markdown, logs, Android smoke evidence, and failure bundles are copied under the runner's persistent ostudy Actions state directory. The workflow summary records the runner-local path.
+GitHub Actions artifact storage is also forbidden for oStudy workflows. Qualification JSON, handoff Markdown, logs, Android smoke evidence, failure bundles, Android packages, tagged Linux release output, and manually requested auxiliary inspection bundles are copied under the runner's persistent oStudy Actions state directory. The workflow summary records the runner-local path. Runner-local evidence defaults to seven-day retention and a 20 GiB total ceiling; the active run is never pruned.
 
-Cloud Actions artifacts are exceptions rather than a general evidence channel:
+`.github/workflows/actions-storage-maintenance.yml` runs daily on the self-hosted runner and deletes **all** residual GitHub Actions artifacts plus all GitHub-hosted Actions caches for the repository. This intentionally catches historical objects and artifacts produced from stale branches. `scripts/verify-actions-storage-policy.mjs`, executed by static qualification, rejects GitHub-hosted runners, cloud caches, or any use of `actions/upload-artifact`.
 
-- `android-package.yml` always retains the package on the runner and uploads it only when the manual `publish_to_github` input is selected;
-- `release.yml` keeps tagged Linux release output on the runner and briefly mirrors it to the Actions UI for retrieval;
-- `maintain-generated-candidates.yml` uploads its auxiliary inspection bundle only when explicitly requested by manual dispatch.
-
-Every allowed cloud artifact declares `retention-days: 1`. `.github/workflows/actions-storage-maintenance.yml` runs daily on the self-hosted runner, deletes Actions artifacts older than 24 hours, and purges GitHub-hosted Actions caches. A manual purge can set the artifact threshold to zero. `scripts/verify-actions-storage-policy.mjs`, executed by static qualification, rejects new hosted runners/cloud caches/routine artifact uploads or longer artifact retention.
+GitHub still retains workflow-run logs and job summaries according to GitHub's workflow retention behavior; those are control-plane records rather than Actions artifacts and are not replaced by this runner-local evidence policy.
 
 ## Failure evidence and triage
 
@@ -221,7 +217,7 @@ GitHub control-plane failure is neither product pass nor product fail. When broa
 
 ## Packaging and releases
 
-`android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. Packages are retained on the self-hosted runner by default, with an explicit option for a one-day GitHub Actions mirror when browser download is useful. `release.yml` produces current tagged Linux artifacts, retains them on the runner, and limits the Actions mirror to one day. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
+`android-package.yml` can build unsigned QA APK/AAB artifacts; it does not hold public release-signing credentials. Packages remain on the self-hosted runner rather than being uploaded as Actions artifacts. `release.yml` produces current tagged Linux artifacts and likewise retains them on the runner. The optional generated-source inspection bundle is persisted runner-locally when requested. If browser-downloadable public release distribution is needed later, design it as an explicit release-distribution boundary rather than reusing Actions artifact storage as a general file store. Public Android signing/Play distribution and continuously qualified Windows/macOS/iOS release pipelines remain separately reviewed work.
 
 Release candidates additionally run:
 
