@@ -19,6 +19,19 @@ pub(crate) struct MediaInspection {
     pub extension: &'static str,
 }
 
+/// Package/backup admission for application-managed assets. Image admission
+/// remains owned by the existing image detector; only its unsupported result is
+/// offered to the bounded media inspector.
+pub(crate) fn inspect_managed_asset_bytes(
+    bytes: &[u8],
+) -> Result<(&'static str, &'static str), CommandError> {
+    if let Ok(image) = crate::assets::detect_image_bytes(bytes) {
+        return Ok(image);
+    }
+    let media = inspect_media_bytes(bytes)?;
+    Ok((media.mime_type, media.extension))
+}
+
 pub(crate) fn inspect_media_bytes(bytes: &[u8]) -> Result<MediaInspection, CommandError> {
     if inspect_wav(bytes) {
         return Ok(audio("audio/wav", "wav"));
