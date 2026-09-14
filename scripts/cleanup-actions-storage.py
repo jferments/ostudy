@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
@@ -23,6 +24,7 @@ API_VERSION = "2026-03-10"
 PER_PAGE = 100
 MAX_PAGES = 100
 DELETE_WORKERS = 8
+MAX_REQUEST_ATTEMPTS = 6
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,27 +57,39 @@ class GitHubApi:
         self.base_url = base_url.rstrip("/")
 
     def request(self, method: str, path: str) -> Any:
-        request = Request(
-            f"{self.base_url}{path}",
-            method=method,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.token}",
-                "X-GitHub-Api-Version": API_VERSION,
-                "User-Agent": "ostudy-actions-storage-maintenance",
-            },
-        )
-        try:
-            with urlopen(request, timeout=30) as response:
-                payload = response.read()
-                return json.loads(payload) if payload else None
-        except HTTPError as error:
-            if method == "DELETE" and error.code in {404, 410}:
-                return None
-            body = error.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"GitHub API {method} {path} failed with HTTP {error.code}: {body[:1000]}"
-            ) from error
+        for attempt in range(1, MAX_REQUEST_ATTEMPTS + 1):
+            request = Request(
+                f"{self.base_url}{path}",
+                method=method,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {self.token}",
+                    "X-GitHub-Api-Version": API_VERSION,
+                    "User-Agent": "ostudy-actions-storage-maintenance",
+                },
+            )
+            try:
+                with urlopen(request, timeout=30) as response:
+                    payload = response.read()
+                    return json.loads(payload) if payload else None
+            except HTTPError as error:
+                if method == "DELETE" and error.code in {404, 410}:
+                    return None
+
+                retry_after = error.headers.get("Retry-After")
+                transient = error.code in {429, 500, 502, 503, 504} or (
+                    error.code == 403 and retry_after is not None
+                )
+                if transient and attempt < MAX_REQUEST_ATTEMPTS:
+                    delay = float(retry_after) if retry_after else min(2 ** (attempt - 1), 30)
+                    time.sleep(delay)
+                    continue
+
+                body = error.read().decode("utf-8", errors="replace")
+                raise RuntimeError(
+                    f"GitHub API {method} {path} failed with HTTP {error.code}: {body[:1000]}"
+                ) from error
+        raise AssertionError("request retry loop exhausted unexpectedly")
 
     def paginated(self, endpoint: str, key: str) -> list[dict[str, Any]]:
         collected: list[dict[str, Any]] = []
