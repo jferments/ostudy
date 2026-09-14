@@ -61,8 +61,9 @@ for (const required of [
   "ostudy-agent-handoff.md",
   "Enforce handoff evidence integrity",
   "export-diagnostics.sh",
-  "Upload bounded diagnostic evidence",
-  "Upload bounded failure evidence",
+  "persist-runner-output.sh",
+  "Persist bounded diagnostic evidence on runner",
+  "Persist bounded failure evidence on runner",
 ]) {
   if (!workflow.includes(required)) failures.push(`check.yml missing ${required}`);
 }
@@ -249,5 +250,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, PR metadata validation is independent from product qualification, exact-head JSON and Markdown handoff evidence are retained, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
+  "OK   Static/fast/full checks share bounded failure capture, CI retains full raw logs with bounded liveness heartbeats, PR metadata validation is independent from product qualification, exact-head JSON and Markdown handoff evidence are retained on the self-hosted runner, source changes supersede obsolete qualification, wall-clock performance remains outside required correctness CI, GUI boundaries have hard timeout fallbacks, and summaries emit focused reproductions.",
 );

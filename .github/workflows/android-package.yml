@@ -92,13 +92,7 @@ jobs:
               ;;
           esac
 
-      - name: Upload Android package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-android-${{ inputs.artifact }}-${{ github.sha }}
-          path: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
+      - name: Persist Android package on runner
+        run: |
+          bash ./scripts/persist-runner-output.sh android-package \
+            "src-tauri/gen/android/app/build/outputs"
