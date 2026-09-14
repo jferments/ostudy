@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { createOperationId } from "./common";
 
 export interface Asset {
   id: string;
@@ -31,4 +32,11 @@ export async function syncAssetDraft(draftId: string, assetIds: string[]): Promi
 
 export async function importImage(stagedFileId: string, draftId: string): Promise<Asset> {
   return invoke<Asset>("import_image", { input: { stagedFileId, draftId } });
+}
+
+export async function importMedia(
+  draftId: string,
+  operationId = createOperationId(),
+): Promise<Asset | null> {
+  return invoke<Asset | null>("import_media", { input: { draftId, operationId } });
 }

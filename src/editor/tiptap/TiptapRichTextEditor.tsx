@@ -12,7 +12,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { FormulaDialog } from "../FormulaDialog";
 import type { FormulaEditSession } from "../formula";
 
-import { importImage } from "../../ipc/assets";
+import { importImage, importMedia } from "../../ipc/assets";
 import { getErrorMessage } from "../../ipc/common";
 import { managedAssetUrl } from "../../platform/assets";
 import { selectExternalImport } from "../../platform/files";
@@ -82,6 +82,7 @@ export function TiptapRichTextEditor({
   );
   const [editorError, setEditorError] = useState<string | null>(null);
   const [isImportingImage, setIsImportingImage] = useState(false);
+  const [isImportingMedia, setIsImportingMedia] = useState(false);
   const [formulaSession, setFormulaSession] = useState<FormulaEditSession | null>(null);
   const editorRef = useRef<Editor | null>(null);
 
@@ -208,6 +209,36 @@ export function TiptapRichTextEditor({
     }
   }
 
+  async function addMedia(): Promise<void> {
+    const current = editorRef.current;
+    if (!current || disabled || isImportingMedia) return;
+    if (!assetDraftId) {
+      setEditorError("The managed asset draft is still opening. Try again in a moment.");
+      return;
+    }
+    setEditorError(null);
+    setIsImportingMedia(true);
+    try {
+      const asset = await importMedia(assetDraftId);
+      if (!asset) return;
+      const type = asset.mimeType.startsWith("audio/")
+        ? "audio"
+        : asset.mimeType.startsWith("video/")
+          ? "video"
+          : null;
+      if (!type) throw new Error("The selected managed asset is not audio or video.");
+      onAssetImported?.(asset);
+      current.chain().focus().insertContent({
+        type,
+        attrs: { assetId: asset.id, src: managedAssetUrl(asset.id) },
+      }).run();
+    } catch (error: unknown) {
+      setEditorError(getErrorMessage(error));
+    } finally {
+      setIsImportingMedia(false);
+    }
+  }
+
   function openLinkEditor(): void {
     if (!adapter || disabled) return;
     const href = adapter.attributes("link").href;
@@ -300,12 +331,15 @@ export function TiptapRichTextEditor({
         <EditorToolbar
           adapter={adapter}
           onAddImage={() => void addImage()}
+          onAddMedia={() => void addMedia()}
           onOpenLink={openLinkEditor}
           onOpenFormula={openFormulaEditor}
           onOpenTable={() => setTableOpen(true)}
           onOpenChecklist={() => setChecklistOpen(true)}
           isImportingImage={isImportingImage}
+          isImportingMedia={isImportingMedia}
           imageDraftReady={onRequestImage !== undefined || assetDraftId !== null}
+          mediaDraftReady={assetDraftId !== null}
           disabled={disabled}
         />
         {linkOpen ? (
@@ -414,16 +448,19 @@ export function TiptapRichTextEditor({
 interface EditorToolbarProps {
   adapter: EditorAdapter;
   onAddImage: () => void;
+  onAddMedia: () => void;
   onOpenLink: () => void;
   onOpenFormula: () => void;
   onOpenTable: () => void;
   onOpenChecklist: () => void;
   isImportingImage: boolean;
+  isImportingMedia: boolean;
   imageDraftReady: boolean;
+  mediaDraftReady: boolean;
   disabled: boolean;
 }
 
-function EditorToolbar({ adapter, onAddImage, onOpenFormula, onOpenLink, onOpenTable, onOpenChecklist, isImportingImage, imageDraftReady, disabled }: EditorToolbarProps) {
+function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, onOpenLink, onOpenTable, onOpenChecklist, isImportingImage, isImportingMedia, imageDraftReady, mediaDraftReady, disabled }: EditorToolbarProps) {
   const selection = adapter.selection();
   const textStyle = adapter.attributes("textStyle");
   const historyGroup = editorToolbarGroups(adapter.capabilities).find((group) => group.id === "history");
@@ -470,6 +507,7 @@ function EditorToolbar({ adapter, onAddImage, onOpenFormula, onOpenLink, onOpenT
         <ToolbarAction label="Insert or edit formula" onMouseDown={preserveSelection} onClick={onOpenFormula}>Formula</ToolbarAction>
         <ToolbarAction label="Add or edit link" pressed={adapter.isActive("link")} onMouseDown={preserveSelection} onClick={onOpenLink}>Link</ToolbarAction>
         <ToolbarAction label="Insert image" onMouseDown={preserveSelection} onClick={onAddImage} disabled={isImportingImage || !imageDraftReady}>{isImportingImage ? "Adding…" : "Image"}</ToolbarAction>
+        <ToolbarAction label="Insert audio or video" onMouseDown={preserveSelection} onClick={onAddMedia} disabled={isImportingMedia || !mediaDraftReady}>{isImportingMedia ? "Adding…" : "Media"}</ToolbarAction>
         <ToolbarAction label="Remove text color and highlight" onMouseDown={preserveSelection} onClick={() => run({ command: "reset_colors" })}>Reset color</ToolbarAction>
       </ToolbarGroup>
       {selection.inTable ? <ToolbarGroup label="Table editing">
