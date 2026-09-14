@@ -63,7 +63,7 @@ function setAndroidTestBridgeDiagnostic(
   );
 }
 
-function waitForAndroidTestUiReady(): Promise<void> {
+function waitForAndroidTestUiReady(rootNode: HTMLElement): Promise<void> {
   if (document.querySelector("main")) return Promise.resolve();
 
   return new Promise((resolve, reject) => {
@@ -77,12 +77,12 @@ function waitForAndroidTestUiReady(): Promise<void> {
       observer.disconnect();
       resolve();
     });
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(rootNode, { childList: true, subtree: true });
   });
 }
 
-async function installAndroidTestBridgeWhenUiReady(): Promise<void> {
-  await waitForAndroidTestUiReady();
+async function installAndroidTestBridgeWhenUiReady(rootNode: HTMLElement): Promise<void> {
+  await waitForAndroidTestUiReady(rootNode);
   const { installAndroidTestBridge } = await import("./testing/androidTestBridge");
   installAndroidTestBridge();
 
@@ -126,7 +126,7 @@ createRoot(root).render(
 
 if (import.meta.env.VITE_OSTUDY_ANDROID_TEST_BRIDGE === "1") {
   setAndroidTestBridgeDiagnostic("loading");
-  void installAndroidTestBridgeWhenUiReady().catch((error: unknown) => {
+  void installAndroidTestBridgeWhenUiReady(root).catch((error: unknown) => {
     setAndroidTestBridgeDiagnostic("error", error);
     queueFrontendDiagnostic({
       level: "error",
