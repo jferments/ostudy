@@ -4,12 +4,6 @@ on:
   schedule:
     - cron: "23 11 * * *"
   workflow_dispatch:
-    inputs:
-      purge_all:
-        description: Delete all current workflow artifacts instead of retaining the newest 24 hours
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   actions: write
@@ -31,16 +25,11 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Prune GitHub-hosted Actions storage
+      - name: Purge GitHub-hosted Actions artifacts and caches
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PURGE_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_all || false }}
         run: |
           set -euo pipefail
-          artifact_age_hours=24
-          if [[ "$PURGE_ALL" == "true" ]]; then
-            artifact_age_hours=0
-          fi
           python3 ./scripts/cleanup-actions-storage.py \
-            --artifact-max-age-hours "$artifact_age_hours" \
+            --artifact-max-age-hours 0 \
             --delete-all-caches
