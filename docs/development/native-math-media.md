@@ -39,9 +39,9 @@ rules. Frontend canonicalization, hydration, asset collection, emptiness, drafts
 search projections and duplicate identity must all understand the new content.
 Opening and saving imported content must not drop an unknown node or orphan media.
 
-Math normalization is independent of Anki. It accepts explicit supported TeX
-and a bounded presentation-MathML subset, not a system TeX program or arbitrary
-XML. Preserve child order, operator meaning, and source evidence. Unsupported
+Math normalization is independent of Anki. Its target contract includes explicit
+supported TeX and a bounded presentation-MathML subset, not a system TeX program
+or arbitrary XML. The current implemented subset is documented below. Preserve child order, operator meaning, and source evidence. Unsupported
 expressions stay explicit; conversion does not prove mathematical correctness.
 
 Local KaTeX behind an application-owned renderer serves cards, previews,
@@ -94,7 +94,7 @@ editing and save/reopen, with formula/media text serializers and protection
 against formatting marks that native atom validation rejects. Media placeholders
 are inert and omit runtime URLs and titles; formulas use escaped source fallbacks.
 These are preservation safeguards, not completed MathLive authoring, KaTeX
-typesetting, native acquisition/playback, or Anki conversion. The editor regression
+typesetting or native acquisition/playback. The editor regression
 suite exercises actual Tiptap transactions in addition to the helper tests.
 
 The editor-neutral adapter now exposes a captured formula-edit session. It keeps
@@ -113,6 +113,47 @@ Focused regressions live in `src/editor/formula.test.ts` and
 preservation tests. Automated results and their exact tested SHA belong in the
 PR evidence; these test files alone do not establish a passing gate or device
 acceptance.
+
+### Native Anki math preservation
+
+The shared native math boundary now recognizes explicit `\(...\)` / `\[...\]`
+and legacy Anki `[$]...[/$]` / `[$$]...[/$$]` in visible HTML text. It emits
+bounded, delimiter-free LaTeX without rewriting the mathematical source. Inline
+formulas remain in their paragraph; block formulas split the paragraph without
+losing text on either side. Surrounding formatting stays on text, not formula
+atoms. Only documents with converted math opt into rich-root schema 3; the
+transport envelope remains unchanged.
+
+HTML code/preformatted regions and dollar currency stay literal. Unclosed or
+HTML-split delimiters remain visible source with a report warning. `[latex]`
+programs remain literal with an explicit warning: system TeX never executes.
+Empty, over-limit or prohibited-control formula sources reject the affected card,
+not otherwise supported cards in the package. This is source admission, not
+mathematical correctness or renderer-support validation. MathML conversion is
+still unfinished, as are packaged audio/video conversion and playback.
+
+Formula-only static content can survive the existing JavaScript-stripping path;
+JavaScript is still never executed, and active/hidden HTML restrictions remain.
+Math-bearing cloze presentations use the existing rich Basic fallback instead of
+flattening typed formulas into the plain-text native cloze representation. This
+does not introduce a new rich-cloze implementation.
+
+`src-tauri/src/cards/math.rs` contains normalizer regressions.
+`src-tauri/src/studydeck/anki/math_import_tests.rs` exercises generated real Anki
+packages, reporting, schema compatibility, native import/replay, fresh schedules
+and exact formula nodes after database reopening. Its `document_` test names are
+included in the existing fast gate. Focused native commands, after normal toolchain
+and PDFium setup, are:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib cards::math::
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_anki_math
+```
+
+These tests do not establish card-UI editing, typeset display or device acceptance.
+Imported formulas currently use the existing escaped source fallback. Actual
+MathLive Dialog integration and packaged offline KaTeX rendering remain required
+in this PR; they have not been substituted or deferred to another PR.
 
 ## Acceptance criteria
 

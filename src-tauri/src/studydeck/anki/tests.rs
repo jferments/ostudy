@@ -369,3 +369,6 @@ fn compatibility_issue_details_are_bounded_without_losing_counts() {
     assert_eq!(report.omitted_issue_count, 50);
     assert!(report.issues.iter().all(|issue| issue.message.len() <= 300));
 }
+
+#[path = "math_import_tests.rs"]
+mod math_import_tests;

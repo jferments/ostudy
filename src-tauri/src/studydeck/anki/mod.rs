@@ -499,7 +499,11 @@ fn convert_card<'a>(
     .map_err(|error| error.message)?;
 
     if source_kind == SourcePresentationKind::Cloze {
-        if let Some(field_name) = template::simple_cloze_field(&template.qfmt, &template.afmt) {
+        // Native cloze is plain text. Use the existing rich Basic fallback when
+        // either face contains formulas, rather than flattening typed math away.
+        if let Some(field_name) = template::simple_cloze_field(&template.qfmt, &template.afmt)
+            .filter(|_| !front.contains_math && !back.contains_math)
+        {
             if let Some(field) = fields.get(&field_name) {
                 if let Some(native) = template::native_cloze(field, card.ordinal + 1)? {
                     let native_front = plain_text_document(&native.question);
