@@ -154,6 +154,7 @@ describe("math and media through the actual Tiptap editor", () => {
     expect(adapter.plainText()).toContain("[Audio]");
     expect(adapter.plainText()).toContain("[Video]");
     expect(adapter.plainText()).not.toContain("private-title");
+    expect(editor.view.dom.querySelectorAll("audio, video")).toHaveLength(2);
     const reopened = openEditor(saved, assets);
     expect(editorAtoms(reopened)).toEqual(before);
     expect(createTiptapEditorAdapter(reopened).document()).toEqual(saved);
@@ -181,7 +182,7 @@ describe("math and media through the actual Tiptap editor", () => {
     expect(legacy.getHTML()).toContain("<strong>Legacy text</strong>");
   });
 
-  it("keeps formula source inert and media URLs and titles out of the DOM", () => {
+  it("keeps formula source inert and mounts players only for exact managed runtime URLs", () => {
     const hostile = '<img src="https://example.invalid/leak" onerror="alert(1)">';
     const editor = openEditor(doc([
       { type: "paragraph", content: [{ type: "inlineMath", attrs: { latex: hostile } }] },
@@ -189,16 +190,18 @@ describe("math and media through the actual Tiptap editor", () => {
       media("video", videoId),
     ]), [asset(audioId, "audio/mpeg"), asset(videoId, "video/mp4")]);
     const surface = editor.view.dom;
-    // ProseMirror appends a src-less separator image after inline NodeViews.
-    // It is editor scaffolding, not imported HTML: still reject every other
-    // image and any image carrying a fetchable source or an event handler.
-    expect(surface.querySelector("audio, video, source, iframe, script, a, img:not(.ProseMirror-separator), img[src], img[srcset], [onerror], [onload]")).toBeNull();
+    expect(surface.querySelector("iframe, script, a, img:not(.ProseMirror-separator), img[src], img[srcset], [onerror], [onload]")).toBeNull();
+    const players = [...surface.querySelectorAll<HTMLMediaElement>("audio, video")];
+    expect(players).toHaveLength(2);
+    expect(players.map((player) => player.getAttribute("src"))).toEqual([
+      `https://ostudy-asset.localhost/${audioId}`,
+      `https://ostudy-asset.localhost/${videoId}`,
+    ]);
+    expect(players.every((player) => player.autoplay === false && player.preload === "metadata")).toBe(true);
     expect(surface.querySelector("[data-study-math]")?.textContent).toBe(`\\(${hostile}\\)`);
-    expect(surface.textContent).toContain("playback unavailable");
+    expect(surface.textContent).not.toContain("secret-answer");
     expect(editor.getHTML()).not.toContain("ostudy-asset.localhost");
     expect(editor.getHTML()).not.toContain("secret-answer");
-    // Attribute serialization may legally retain '<' inside a quoted value.
-    // Inspect the reparsed DOM, not a substring that also matches inert data.
     const clipboard = globalThis.document.createElement("template");
     clipboard.innerHTML = editor.getHTML();
     expect(clipboard.content.querySelector("img, audio, video, source, iframe, script, a")).toBeNull();
@@ -207,6 +210,14 @@ describe("math and media through the actual Tiptap editor", () => {
     expect(clipboard.content.querySelector("[data-study-math]")?.textContent)
       .toBe(`\\(${hostile}\\)`);
     expect(JSON.stringify(createTiptapEditorAdapter(editor).document())).toContain("secret-answer");
+  });
+
+  it("keeps media inert when a matching managed asset is unavailable", () => {
+    const editor = openEditor(doc([media("audio", audioId), media("video", videoId)]));
+    expect(editor.view.dom.querySelector("audio, video")).toBeNull();
+    expect(editor.view.dom.textContent).toContain("[Audio]");
+    expect(editor.view.dom.textContent).toContain("[Video]");
+    expect(editor.getHTML()).not.toContain("study-asset://");
   });
 
   it("round-trips formula clipboard HTML without accepting arbitrary media tags", () => {

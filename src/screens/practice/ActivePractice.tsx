@@ -55,7 +55,7 @@ export function ActivePractice({ session, current, position, revealed, ratedCoun
     function handleKeyDown(event: KeyboardEvent): void {
       if (busy || event.repeat || topId !== null) return;
       const target = event.target;
-      if (target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY"].includes(target.tagName))) return;
+      if (target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY", "AUDIO", "VIDEO"].includes(target.tagName))) return;
       if (!revealed && (event.key === " " || event.key === "Enter")) { event.preventDefault(); onReveal(); return; }
       if (revealed && ["0", "1", "2", "3"].includes(event.key)) { event.preventDefault(); onScore(Number(event.key) as ConfidenceScore); }
     }
@@ -67,14 +67,20 @@ export function ActivePractice({ session, current, position, revealed, ratedCoun
     if (!revealed) { onReveal(); return; }
     setShowingAnswer((side) => !side);
   }
-  const questionContent = <>
-    <span className={view.practiceSideLabel}>Question</span>
-    <RichTextView document={current.presentation.frontDoc} assets={current.presentation.assets} onLinkError={onLinkError} />
-  </>;
-  const answerContent = <>
-    <span className={view.practiceSideLabel}>Answer</span>
-    <RichTextView document={current.presentation.backDoc} assets={current.presentation.assets} onLinkError={onLinkError} />
-  </>;
+  function questionContent(mediaPlaybackActive: boolean) {
+    return <>
+      <span className={view.practiceSideLabel}>Question</span>
+      <RichTextView document={current.presentation.frontDoc} assets={current.presentation.assets}
+        mediaPlaybackActive={mediaPlaybackActive} onLinkError={onLinkError} />
+    </>;
+  }
+  function answerContent(mediaPlaybackActive: boolean) {
+    return <>
+      <span className={view.practiceSideLabel}>Answer</span>
+      <RichTextView document={current.presentation.backDoc} assets={current.presentation.assets}
+        mediaPlaybackActive={mediaPlaybackActive} onLinkError={onLinkError} />
+    </>;
+  }
   // A rich-content card is not a native button: it may contain accessible links/media.
   const cardSurface = animateFlip ? (
     <section className={cn(styles.cardSurface, view.cardSurface, styles.flipCard)} data-flipped={showingAnswer}
@@ -82,7 +88,7 @@ export function ActivePractice({ session, current, position, revealed, ratedCoun
       aria-disabled={busy ? "true" : undefined}
       onClick={(event) => {
         const target = event.target;
-        if (target instanceof HTMLElement && target.closest("a, button, input, textarea, select")) return;
+        if (target instanceof HTMLElement && target.closest("a, button, input, textarea, select, audio, video")) return;
         activateAnimatedCard();
       }}
       onKeyDown={(event) => {
@@ -92,19 +98,19 @@ export function ActivePractice({ session, current, position, revealed, ratedCoun
       }}>
       <div className={styles.flipInner}>
         <div className={cn(styles.flipFace, styles.flipFront)} aria-hidden={showingAnswer} inert={showingAnswer}>
-          {questionContent}
+          {questionContent(!showingAnswer)}
           {!showingAnswer ? <small className={view.practiceFlipHint}>Click the card to flip it</small> : null}
         </div>
         <div className={cn(styles.flipFace, styles.flipBack)} aria-hidden={!showingAnswer} inert={!showingAnswer}>
-          {combineQuestionAndAnswer ? <>{questionContent}<div className={view.practiceAnswerDivider} /></> : null}
-          {answerContent}
+          {combineQuestionAndAnswer ? <>{questionContent(showingAnswer)}<div className={view.practiceAnswerDivider} /></> : null}
+          {answerContent(showingAnswer)}
         </div>
       </div>
     </section>
   ) : (
     <section className={cn(styles.cardSurface, view.cardSurface)}>
-      {!revealed || combineQuestionAndAnswer ? questionContent : null}
-      {revealed ? <>{combineQuestionAndAnswer ? <div className={view.practiceAnswerDivider} /> : null}{answerContent}</> : null}
+      {!revealed || combineQuestionAndAnswer ? questionContent(!revealed || combineQuestionAndAnswer) : null}
+      {revealed ? <>{combineQuestionAndAnswer ? <div className={view.practiceAnswerDivider} /> : null}{answerContent(true)}</> : null}
     </section>
   );
   return <PageScaffold width="wide" className="tw:flex tw:h-full tw:min-h-0 tw:max-w-6xl tw:flex-col tw:overflow-y-auto tw:pt-5 tw:pb-5">
