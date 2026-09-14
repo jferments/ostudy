@@ -12,6 +12,11 @@ on:
           - debug-apk
           - release-apk
           - release-aab
+      publish_to_github:
+        description: Temporarily publish the package to GitHub Actions for browser download
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -92,7 +97,13 @@ jobs:
               ;;
           esac
 
-      - name: Upload Android package
+      - name: Persist Android package on runner
+        run: |
+          bash ./scripts/persist-runner-output.sh android-package \
+            "src-tauri/gen/android/app/build/outputs"
+
+      - name: Upload Android package temporarily
+        if: inputs.publish_to_github
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-android-${{ inputs.artifact }}-${{ github.sha }}
@@ -100,5 +111,5 @@ jobs:
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
           compression-level: 0
