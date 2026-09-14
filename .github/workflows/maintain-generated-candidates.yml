@@ -37,7 +37,7 @@ jobs:
       # Packaging copies only already-published source and the installed pinned
       # formatter. It neither formats source nor creates a replacement tree.
       # Any external edits must still be reviewed and published by the source
-      # writer; this artifact is not qualification of those later edits.
+      # writer; this bundle is not qualification of those later edits.
       - name: Package read-only auxiliary inspection bundle
         if: github.event_name == 'workflow_dispatch' && inputs.export_auxiliary_bundle
         run: |
@@ -61,14 +61,11 @@ jobs:
           git diff --check
           git diff --exit-code
 
-      - name: Upload read-only auxiliary inspection bundle temporarily
+      - name: Persist read-only auxiliary inspection bundle on runner
         if: github.event_name == 'workflow_dispatch' && inputs.export_auxiliary_bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-auxiliary-${{ github.sha }}
-          path: ${{ runner.temp }}/ostudy-auxiliary.tar.gz
-          if-no-files-found: error
-          retention-days: 1
+        run: |
+          bash ./scripts/persist-runner-output.sh auxiliary-inspection \
+            "$RUNNER_TEMP/ostudy-auxiliary.tar.gz"
 
       - name: Validate canonical Rust sources without rewriting them
         run: |
