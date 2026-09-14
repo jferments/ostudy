@@ -1,13 +1,6 @@
 name: Actions storage maintenance
 
 on:
-  # The branch push trigger performs the initial purge before this workflow is
-  # merged. Scheduled runs only execute from the default branch afterward.
-  push:
-    branches: [agent/actions-storage-hygiene]
-    paths:
-      - .github/workflows/actions-storage-maintenance.yml
-      - scripts/cleanup-actions-storage.py
   schedule:
     - cron: "23 11 * * *"
   workflow_dispatch:
@@ -29,7 +22,7 @@ concurrency:
 jobs:
   cleanup:
     runs-on: [self-hosted, linux, x64, ostudy-unified]
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Check out maintenance source
@@ -41,7 +34,7 @@ jobs:
       - name: Prune GitHub-hosted Actions storage
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PURGE_ALL: ${{ github.event_name == 'push' || inputs.purge_all }}
+          PURGE_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.purge_all || false }}
         run: |
           set -euo pipefail
           artifact_age_hours=24
