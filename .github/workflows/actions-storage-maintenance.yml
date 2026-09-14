@@ -1,0 +1,53 @@
+name: Actions storage maintenance
+
+on:
+  # The branch push trigger performs the initial purge before this workflow is
+  # merged. Scheduled runs only execute from the default branch afterward.
+  push:
+    branches: [agent/actions-storage-hygiene]
+    paths:
+      - .github/workflows/actions-storage-maintenance.yml
+      - scripts/cleanup-actions-storage.py
+  schedule:
+    - cron: "23 11 * * *"
+  workflow_dispatch:
+    inputs:
+      purge_all:
+        description: Delete all current workflow artifacts instead of retaining the newest 24 hours
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: actions-storage-maintenance
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out maintenance source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prune GitHub-hosted Actions storage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PURGE_ALL: ${{ github.event_name == 'push' || inputs.purge_all }}
+        run: |
+          set -euo pipefail
+          artifact_age_hours=24
+          if [[ "$PURGE_ALL" == "true" ]]; then
+            artifact_age_hours=0
+          fi
+          python3 ./scripts/cleanup-actions-storage.py \
+            --artifact-max-age-hours "$artifact_age_hours" \
+            --delete-all-caches
