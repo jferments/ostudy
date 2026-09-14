@@ -2,7 +2,7 @@ name: Actions storage maintenance
 
 on:
   schedule:
-    - cron: "23 11 * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   cleanup:
     runs-on: [self-hosted, linux, x64, ostudy-unified]
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: Check out maintenance source
