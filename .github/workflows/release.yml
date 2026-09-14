@@ -22,6 +22,7 @@ jobs:
         with:
           clean: true
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Expose pinned user toolchains and persistent cache
         run: |
@@ -33,9 +34,18 @@ jobs:
       - name: Generate qualified Linux artifacts
         run: ./scripts/release.sh "$GITHUB_REF_NAME"
 
-      - name: Upload release artifacts
+      - name: Persist release artifacts on runner
+        run: |
+          bash ./scripts/persist-runner-output.sh linux-release \
+            "artifacts/${GITHUB_REF_NAME}"
+
+      # Tag builds remain briefly downloadable from the Actions UI, but the
+      # package is canonical on the self-hosted runner and cloud retention is
+      # capped at one day by both this step and storage maintenance.
+      - name: Upload release artifacts temporarily
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ostudy-${{ github.ref_name }}-linux
           path: artifacts/${{ github.ref_name }}/**
           if-no-files-found: error
+          retention-days: 1
