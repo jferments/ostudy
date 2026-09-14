@@ -202,3 +202,14 @@ fn document_generated_math_invalid_final_candidate_keeps_the_whole_import_atomic
         })
         .unwrap();
 }
+
+#[test]
+fn document_generated_math_marker_allocation_is_bounded_for_private_use_runs() {
+    let literal = "\u{e000}".repeat(2048);
+    let source = format!("{literal} {}", r"\(x\)".repeat(64));
+    let protected = super::math::ProtectedMath::new(&source, "front").unwrap();
+    assert!(protected.source.len() <= source.len() + 64 * 80);
+    let document = parse(&source);
+    assert_eq!(formulas(&document).len(), 64);
+    assert_eq!(text(&document), format!("{literal} "));
+}

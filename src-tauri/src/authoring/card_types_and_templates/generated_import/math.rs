@@ -2,6 +2,7 @@
 //! Placeholders are private conversion state, never a storage or renderer format.
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::{cards::math::validate_latex, error::CommandError};
 
@@ -16,11 +17,12 @@ pub(super) struct ProtectedMath {
 
 impl ProtectedMath {
     pub fn new(source: &str, path: &str) -> Result<Self, CommandError> {
-        // A source-chosen collision must not be mistaken for an application token.
-        // Doubling bounds the number of full-source collision scans logarithmically.
-        let mut prefix = "\u{e000}".to_string();
-        while source.contains(&prefix) {
-            prefix = prefix.repeat(2);
+        // A fixed-width source-derived prefix keeps marker allocation bounded,
+        // even for adversarial runs of private-use characters. Check for an exact
+        // source collision rather than assuming that a digest cannot collide.
+        let prefix = format!("\u{e000}{:x}\u{e000}", Sha256::digest(source.as_bytes()));
+        if source.contains(&prefix) {
+            return Err(invalid(path, "source conflicts with a conversion marker"));
         }
         let mut output = String::new();
         let mut formulas = Vec::new();
