@@ -49,9 +49,13 @@ Practice, Tutor and guides. Trust is disabled, macro/work bounds are finite,
 macros do not leak across notes, and errors/source fallbacks are escaped text.
 Code fences and code spans stay literal. Math is tokenized before Markdown
 escaping loses delimiters; currency and unfinished expressions remain text.
-The initial formula dialog uses current shared controls, guided common forms,
-inline/block placement, source editing and live preview. MathLive is a future
-structural editor, not a new persistence format.
+MathLive is mandatory from the first usable formula editor in this PR. It owns
+structured editing and the mathematical keyboard; do not substitute a custom
+guided-form editor or defer MathLive to another PR. Integrate it with the current
+shared Dialog, inline/block placement, bounded source validation, selection/focus
+restoration, cancellation without mutation and one undoable save. Runtime fonts
+and assets must be packaged locally. Persistence remains bounded LaTeX; KaTeX
+is the read-only renderer, not a replacement editor.
 
 Media uses existing draft/import ownership and local asset serving. Acquisition
 must work for native authors as well as Anki. Admission inspects bounded container
@@ -83,6 +87,16 @@ provider, permission, implicit cloud call or second semantic-analysis pipeline.
 The native PDF exporter is separate from browser KaTeX: preserve readable equation
 source and disclose source-only output rather than silently dropping formulas.
 
+## Current implementation boundary
+
+The concrete Tiptap schema now retains all four rich atoms during ordinary
+editing and save/reopen, with formula/media text serializers and protection
+against formatting marks that native atom validation rejects. Media placeholders
+are inert and omit runtime URLs and titles; formulas use escaped source fallbacks.
+These are preservation safeguards, not completed MathLive authoring, KaTeX
+typesetting, native acquisition/playback, or Anki conversion. The editor regression
+suite exercises actual Tiptap transactions in addition to the helper tests.
+
 ## Acceptance criteria
 
 | ID | Required outcome |
@@ -90,7 +104,7 @@ source and disclose source-only output rather than silently dropping formulas.
 | AC-01 | Fresh post-#97 baseline; protected #94/#96/#97 behavior and narrow diff. |
 | AC-02 | Native and frontend schema-3 round trips, old-schema compatibility, projections and asset ownership. |
 | AC-03 | Safe offline math rendering with visible invalid/unsupported-source fallback. |
-| AC-04 | Guided insert/edit formula UI using current editor/overlay contracts and one undoable save. |
+| AC-04 | MathLive insert/edit formula UI using current editor/overlay contracts and one undoable save. |
 | AC-05 | Native local audio/video acquisition, bounded inspection and durable lifecycle. |
 | AC-06 | Native players, inactive-face isolation, keyboard/gesture safety and resource release. |
 | AC-07 | Asset-ID-only GET/HEAD/range serving, allocation bounds and path/lifecycle tests. |
@@ -103,7 +117,7 @@ source and disclose source-only output rather than silently dropping formulas.
 ## Implementation sequence
 
 1. Native/frontend content contract and backward-compatibility tests.
-2. Math normalization, local rendering, editor nodes and guided authoring.
+2. Math normalization, local rendering, editor nodes and MathLive authoring.
 3. Media inspection/acquisition, player lifecycle and bounded asset serving.
 4. Anki integration through real staging and generated packages.
 5. Tutor/guide/source math and PDF source-only disclosure.
@@ -119,7 +133,7 @@ A passing parser test does not prove real native playback or live-provider quali
 ## Non-goals and handoff
 
 No Image Occlusion, rich-cloze redesign, typed grading, recording, transcription,
-pronunciation scoring, remote playback, transcoding, full MathLive UX, universal
+pronunciation scoring, remote playback, transcoding, custom formula editors, universal
 PDF/OMML equation reconstruction, or typeset-native-PDF parity. No automatic merge.
 
 Source rollback does not make old clients understand new rich nodes. Preserve a

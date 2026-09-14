@@ -9,6 +9,7 @@ import StarterKit from "@tiptap/starter-kit";
 
 import { RICH_DOCUMENT_SCHEMA_VERSION } from "./adapter";
 import contentStyles from "./RichContent.module.css";
+import { richAtomExtensions } from "./tiptap/richAtoms";
 
 export const TEMPLATE_FIELD_INLINE = "templateFieldInline";
 export const TEMPLATE_FIELD_BLOCK = "templateFieldBlock";
@@ -358,6 +359,7 @@ export function createEditorExtensions(
     StudyTableCell,
     StudyTaskList,
     StudyTaskItem,
+    ...richAtomExtensions,
   ];
   if (options.templatePlaceholders !== false) {
     extensions.push(TemplateFieldInline, TemplateFieldBlock);
