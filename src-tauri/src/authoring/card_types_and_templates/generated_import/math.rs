@@ -68,9 +68,9 @@ impl ProtectedMath {
                     continue;
                 }
             }
-            if rest.starts_with("](") {
+            if let Some(destination) = rest.strip_prefix("](") {
                 // Destinations are not visible math; ordinary link validation owns them.
-                if let Some(end) = rest[2..].find(')') {
+                if let Some(end) = destination.find(')') {
                     cursor += end + 3;
                     continue;
                 }
