@@ -5,6 +5,16 @@ import type { Asset } from "../../ipc/assets";
 import type { RichDocument } from "../../ipc/common";
 import { TiptapRichTextView } from "./TiptapRichTextView";
 
+const mediaMocks = vi.hoisted(() => ({
+  createObjectUrl: vi.fn(async (id: string, kind: "audio" | "video") => `blob:ostudy-${kind}-${id}`),
+  revokeObjectUrl: vi.fn(),
+}));
+
+vi.mock("../../media/managedPlayback", () => ({
+  createManagedMediaObjectUrl: mediaMocks.createObjectUrl,
+  revokeManagedMediaObjectUrl: mediaMocks.revokeObjectUrl,
+}));
+
 vi.mock("../../platform/assets", () => ({
   managedAssetUrl: (id: string) => `https://ostudy-asset.localhost/${id}`,
 }));
@@ -47,13 +57,15 @@ describe("TiptapRichTextView managed-media lifecycle", () => {
   beforeEach(() => {
     pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     loadSpy = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    mediaMocks.createObjectUrl.mockClear();
+    mediaMocks.revokeObjectUrl.mockClear();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("does not mount inactive media, then releases active players when the face becomes inactive", async () => {
+  it("does not load inactive media, then materializes and releases the active face", async () => {
     const view = render(
       <TiptapRichTextView
         document={mediaDocument()}
@@ -67,6 +79,7 @@ describe("TiptapRichTextView managed-media lifecycle", () => {
     expect(view.container.textContent).toContain("[Video]");
     expect(view.container.textContent).not.toContain("secret-answer");
     expect(view.container.innerHTML).not.toContain("ostudy-asset.localhost");
+    expect(mediaMocks.createObjectUrl).not.toHaveBeenCalled();
 
     view.rerender(
       <TiptapRichTextView
@@ -78,11 +91,13 @@ describe("TiptapRichTextView managed-media lifecycle", () => {
 
     await waitFor(() => {
       expect(view.container.querySelectorAll("audio, video")).toHaveLength(2);
+      expect(view.container.querySelector("audio")?.getAttribute("src"))
+        .toBe(`blob:ostudy-audio-${audioId}`);
+      expect(view.container.querySelector("video")?.getAttribute("src"))
+        .toBe(`blob:ostudy-video-${videoId}`);
     });
     const audio = view.container.querySelector("audio");
     const video = view.container.querySelector("video");
-    expect(audio?.getAttribute("src")).toBe(`https://ostudy-asset.localhost/${audioId}`);
-    expect(video?.getAttribute("src")).toBe(`https://ostudy-asset.localhost/${videoId}`);
     expect(audio?.controls).toBe(true);
     expect(video?.controls).toBe(true);
     expect(audio?.autoplay).toBe(false);
@@ -90,6 +105,9 @@ describe("TiptapRichTextView managed-media lifecycle", () => {
     expect(audio?.preload).toBe("metadata");
     expect(video?.preload).toBe("metadata");
     expect(view.container.textContent).not.toContain("secret-answer");
+    expect(view.container.innerHTML).not.toContain("ostudy-asset.localhost");
+    expect(mediaMocks.createObjectUrl).toHaveBeenCalledWith(audioId, "audio");
+    expect(mediaMocks.createObjectUrl).toHaveBeenCalledWith(videoId, "video");
 
     view.rerender(
       <TiptapRichTextView
@@ -104,24 +122,32 @@ describe("TiptapRichTextView managed-media lifecycle", () => {
     });
     expect(pauseSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(loadSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mediaMocks.revokeObjectUrl).toHaveBeenCalledWith(`blob:ostudy-audio-${audioId}`);
+    expect(mediaMocks.revokeObjectUrl).toHaveBeenCalledWith(`blob:ostudy-video-${videoId}`);
     expect(view.container.innerHTML).not.toContain("ostudy-asset.localhost");
   });
 
-  it("releases every captured active player when the rich view unmounts", async () => {
+  it("releases every captured active player and object URL when the rich view unmounts", async () => {
     const view = render(
       <TiptapRichTextView document={mediaDocument()} assets={assets} mediaPlaybackActive />,
     );
     await waitFor(() => {
       expect(view.container.querySelectorAll("audio, video")).toHaveLength(2);
+      expect(view.container.querySelector("audio")?.getAttribute("src"))
+        .toBe(`blob:ostudy-audio-${audioId}`);
+      expect(view.container.querySelector("video")?.getAttribute("src"))
+        .toBe(`blob:ostudy-video-${videoId}`);
     });
     const players = [...view.container.querySelectorAll<HTMLMediaElement>("audio, video")];
     pauseSpy.mockClear();
     loadSpy.mockClear();
+    mediaMocks.revokeObjectUrl.mockClear();
 
     view.unmount();
 
     expect(pauseSpy.mock.calls.length).toBeGreaterThanOrEqual(players.length);
     expect(loadSpy.mock.calls.length).toBeGreaterThanOrEqual(players.length);
     for (const player of players) expect(player.hasAttribute("src")).toBe(false);
+    expect(mediaMocks.revokeObjectUrl).toHaveBeenCalledTimes(players.length);
   });
 });
