@@ -200,7 +200,7 @@ mod tests {
                 .identity_for_format(DocumentFormat::Docx)
                 .unwrap()
                 .adapter_backend,
-            "xberg-canonical-adapter-v1"
+            "xberg-canonical-adapter-v2-math-input"
         );
         assert_eq!(
             registry
