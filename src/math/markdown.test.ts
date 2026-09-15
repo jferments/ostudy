@@ -23,8 +23,30 @@ describe("bounded mathematical Markdown tokens", () => {
 
   it("preserves code, escaped delimiters and single-dollar currency as literals", () => {
     const text = '`\\(code\\)`\n\n```tex\n\\[code\\]\n$$code$$\n```\n\n    \\[indented\\]\n\n'
-      + String.raw`Escaped \\(not math\\). $5 and $10, or $variable$, are text.`;
+      + String.raw`Escaped \\(not math\\). $5 and $10, are text.`;
     expect(formulas(text)).toEqual([]);
+  });
+
+  it("renders single-dollar inline math while retaining prices and escaped dollars", () => {
+    expect(formulas(String.raw`The $\pm$ means two solutions: $+$ and $-$. Start with $ax^2 + bx + c = 0$ and divide by $a$.`)
+      .map((token) => token.source)).toEqual([String.raw`\pm`, "+", "-", "ax^2 + bx + c = 0", "a"]);
+    expect(formulas(String.raw`Costs $5 and $10; $5–$10; \$x\$; $ 5$; $x $; $x$2; \(valid\).`)
+      .map((token) => token.source)).toEqual(["valid"]);
+    expect(formulas(String.raw`Price $5 and $10, then $x_1$ and $2x^2 - 4x - 3 = 0$.`)
+      .map((token) => token.source)).toEqual(["x_1", "2x^2 - 4x - 3 = 0"]);
+  });
+
+  it("keeps single-dollar formulas intact inside emphasis, tables and streaming updates", () => {
+    expect(formulas(String.raw`*Before $a*b$ after* and **$a_b$** and ~~$x~y$~~`)
+      .map((token) => token.source)).toEqual(["a*b", "a_b", "x~y"]);
+    expect(formulas("| D | Root |\n| --- | --- |\n| $D = 0$ | $x = -b/(2a)$ |")
+      .map((token) => token.source)).toEqual(["D = 0", "x = -b/(2a)"]);
+    expect(formulas("Partial $x_1")).toEqual([]);
+    expect(formulas("Partial $x_1$").map((token) => token.source)).toEqual(["x_1"]);
+    expect(formulas("`$x$`\n\n```tex\n$y$\n```\n\n    $z$")).toEqual([]);
+    expect(formulas(String.raw`<code>$x$</code> and <pre>$y$</pre>`)).toEqual([]);
+    expect(formulas('[Link](https://example.org/$path$ "$title$")')).toEqual([]);
+    expect(lexStudyMarkdown("$x$ ".repeat(65))).toBeNull();
   });
 
   it("does not tokenize raw HTML code or script content", () => {

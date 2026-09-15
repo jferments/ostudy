@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FormulaPreview } from "../math/FormulaPreview";
 import { mountFormulaInput, type FormulaInput } from "../math/mathlive";
 import { formulaRenderingError, formulaSourceError } from "../math/source";
-import { Dialog } from "../ui/overlays/Dialog";
+import { Dialog, DialogActions } from "../ui/overlays/Dialog";
 import type { OverlayCloseReason } from "../ui/overlays/overlayContext";
 import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
@@ -33,6 +33,7 @@ export function FormulaDialog({ session, onClose }: {
     const controller = new AbortController();
     lifecycle.current = controller;
     setReady(false);
+    setError(null);
     void mountFormulaInput({
       host, keyboardHost,
       source: session.initialValue.latex, signal: controller.signal,
@@ -80,7 +81,7 @@ export function FormulaDialog({ session, onClose }: {
 
   return <Dialog title="Edit formula" width="large" initialFocusRef={initialFocus} onClose={cancel}
     description="Use the mathematical keyboard or type a formula. Changes apply only when you save.">
-    <div className="tw:grid tw:min-w-0 tw:gap-4">
+    <div className="tw:box-border tw:grid tw:w-full tw:min-w-0 tw:gap-4 tw:p-4">
       <div ref={setHost} className={contentStyles.formulaInput} />
       {!ready && !error ? <p role="status">Loading formula editor…</p> : null}
       <div className="tw:flex tw:flex-wrap tw:items-end tw:gap-3">
@@ -98,10 +99,10 @@ export function FormulaDialog({ session, onClose }: {
       <div ref={setKeyboardHost} className={contentStyles.formulaKeyboard} />
       <FormulaPreview source={source} block={placement === "block"} />
       {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-      <div className="tw:flex tw:flex-wrap tw:justify-end tw:gap-2">
+      <DialogActions>
         <Button type="button" variant="secondary" onClick={() => cancel("cancel_action")}>Cancel</Button>
         <Button type="button" variant="primary" disabled={!ready || !!formulaSourceError(source)} onClick={save}>Save formula</Button>
-      </div>
+      </DialogActions>
     </div>
   </Dialog>;
 }

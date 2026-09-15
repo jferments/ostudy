@@ -1,4 +1,5 @@
 import { Lexer, Marked, Tokenizer, type Token } from "marked";
+import { inlineDollarEnd } from "./dollar";
 
 export const MAX_STUDY_MARKDOWN_CHARS = 24_000;
 export const MAX_MARKDOWN_FORMULAS = 64;
@@ -90,15 +91,22 @@ function escaped(text: string, position: number): boolean {
 }
 
 function nextOpening(text: string, from = 0): number | undefined {
-  const openings = /\\[([]|\$\$/gu;
+  const openings = /\\[([]|\$\$|\$/gu;
   openings.lastIndex = from;
   for (let match = openings.exec(text); match; match = openings.exec(text)) {
-    if (!escaped(text, match.index)) return match.index;
+    if (escaped(text, match.index)) continue;
+    if (match[0] === "$" && inlineDollarEnd(text.slice(match.index)) === undefined) continue;
+    return match.index;
   }
   return undefined;
 }
 
 function formulaAtStart(text: string): MarkdownFormula | undefined {
+  if (text[0] === "$" && text[1] !== "$") {
+    const end = inlineDollarEnd(text);
+    if (end === undefined) return;
+    return { type: FORMULA_TOKEN, raw: text.slice(0, end + 1), source: text.slice(1, end), block: false, complete: true };
+  }
   const open = text.slice(0, 2);
   const close = open === "\\(" ? "\\)" : open === "\\[" ? "\\]" : open === "$$" ? "$$" : null;
   if (!close) return;
@@ -124,7 +132,7 @@ function maskFormulas(src: string, maskedSrc: string): string {
     // Marked has already hidden code/links and replaced escaped punctuation
     // with '+'. Do not unmask them or treat a delimiter inside code as an opener.
     const visible = maskedSrc.slice(start, start + 2);
-    if (visible === "++" || visible === "$$") {
+    if (visible === "++" || visible === "$$" || (src[position] === "$" && visible[0] === "$")) {
       masked = masked.slice(0, start) + "a".repeat(token.raw.length) + masked.slice(start + token.raw.length);
     }
     position = nextOpening(src, position + token.raw.length);

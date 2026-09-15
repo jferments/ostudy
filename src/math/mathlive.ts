@@ -26,7 +26,7 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
   if (initialError) throw new Error(initialError);
   const { MathfieldElement } = await import("mathlive");
   // A dismissed dialog must not attach a keyboard or steal focus after loading.
-  if (signal.aborted || !host.isConnected) return null;
+  if (signal.aborted || !host.isConnected || !keyboardHost.isConnected) return null;
   if (activeOwner) throw new Error("Another formula editor is already open.");
 
   // Fonts are imported by the foundation stylesheet and rewritten by Vite.
@@ -41,16 +41,31 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
   field.setAttribute("aria-label", "Formula");
   field.setAttribute("spellcheck", "false");
   field.mathVirtualKeyboardPolicy = "manual";
-  // The shared application dialog owns dismissal. Do not create a second
-  // untracked context-menu/scrim stack, or offer evaluation/speech commands.
-  field.menuItems = [];
   field.value = options.source;
-  field.style.cssText = "display:block;min-height:4rem;max-width:100%;font-size:1.4rem";
+  field.style.cssText = "display:block;box-sizing:border-box;width:100%;min-width:0;min-height:4rem;max-width:100%;font-size:1.4rem";
 
   const keyboard = window.mathVirtualKeyboard;
   const previousContainer = keyboard.container;
   const owner = {};
   let disposed = false;
+  let resolveMount: ((ready: boolean) => void) | undefined;
+  let rejectMount: ((error: unknown) => void) | undefined;
+  const mounted = new Promise<boolean>((resolve, reject) => {
+    resolveMount = resolve;
+    rejectMount = reject;
+  });
+  const didMount = () => {
+    if (disposed) return;
+    try {
+      // In MathLive 0.110 menuItems requires its internal mounted mathfield.
+      // DOM attachment alone is not readiness: subscribe before append, then
+      // configure the menu before making the input available to the dialog.
+      field.menuItems = [];
+      resolveMount?.(true);
+    } catch (error) {
+      rejectMount?.(error);
+    }
+  };
   let lastAccepted = options.source;
   const geometryChanged = () => {
     keyboardHost.style.height = keyboard.visible ? `${keyboard.boundingRect.height}px` : "0px";
@@ -81,6 +96,8 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
     if (disposed) return;
     disposed = true;
     signal.removeEventListener("abort", dispose);
+    field.removeEventListener("mount", didMount);
+    resolveMount?.(false);
     field.removeEventListener("input", changed);
     field.removeEventListener("paste", pasted, true);
     keyboard.removeEventListener("geometrychange", geometryChanged);
@@ -100,7 +117,9 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
     field.addEventListener("input", changed);
     field.addEventListener("paste", pasted, true);
     signal.addEventListener("abort", dispose, { once: true });
+    field.addEventListener("mount", didMount, { once: true });
     host.append(field);
+    if (!await mounted || disposed || signal.aborted) { dispose(); return null; }
     // Assigning initial source must not normalize the session's unchanged save.
     // Only actual input events are forwarded to the caller.
     return {

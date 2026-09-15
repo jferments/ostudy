@@ -203,6 +203,10 @@
 }
 
 .formulaInput math-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   color: inherit;
   background: var(--surface);
   border: 1px solid var(--border);
