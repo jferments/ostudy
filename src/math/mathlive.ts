@@ -4,7 +4,8 @@ import { formulaRenderingError } from "./source";
 export interface FormulaInput {
   focus(): void;
   applyTemplate(template: string): boolean;
-  toggleKeyboard(): void;
+  showKeyboard(): boolean;
+  toggleKeyboard(): boolean;
   hideKeyboard(): boolean;
   dispose(): void;
 }
@@ -151,12 +152,20 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
         if (!disposed) field.focus();
       },
       applyTemplate,
+      showKeyboard: () => {
+        if (disposed) return false;
+        field.focus();
+        if (!keyboard.visible) keyboard.show();
+        geometryChanged();
+        return keyboard.visible;
+      },
       toggleKeyboard: () => {
-        if (disposed) return;
+        if (disposed) return false;
         field.focus();
         if (keyboard.visible) keyboard.hide();
         else keyboard.show();
         geometryChanged();
+        return keyboard.visible;
       },
       hideKeyboard: () => {
         if (disposed || !keyboard.visible) return false;
