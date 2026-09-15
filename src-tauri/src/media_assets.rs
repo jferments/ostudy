@@ -7,7 +7,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::Write,
-    path::Path,
+    path::{Component, Path},
 };
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
@@ -31,6 +31,12 @@ const MAX_MEDIA_BYTES: u64 = 25 * 1024 * 1024;
 pub struct ImportMediaInput {
     pub operation_id: String,
     pub draft_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadMediaAssetInput {
+    pub asset_id: String,
 }
 
 #[tauri::command]
@@ -188,6 +194,142 @@ pub async fn import_media(
     result.map(Some)
 }
 
+/// Reads a validated managed media asset as an optimized raw IPC response.
+///
+/// WebKitGTK's GStreamer media backend cannot reliably open application custom
+/// URI schemes directly, even when the same URI handler works for images and
+/// ordinary WebCore requests. The frontend therefore materializes these bytes
+/// into a typed `blob:` URL before assigning them to `<audio>` / `<video>`.
+/// This command preserves the asset-id-only boundary and never exposes a file
+/// path to the WebView. Reads happen outside the SQLite mutex.
+#[tauri::command]
+pub async fn read_media_asset(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: ReadMediaAssetInput,
+) -> Result<tauri::ipc::Response, CommandError> {
+    validate_entity_id(&input.asset_id, "asset")?;
+    let now = unix_time_millis()?;
+    let resolved = database.with_connection(|connection| {
+        load_readable_media_location(connection, &input.asset_id, now)
+    })?;
+    let Some((mime_type, expected_size, relative_path)) = resolved else {
+        return Err(CommandError::new(
+            "media_asset_unavailable",
+            "This managed media asset is no longer available.",
+        ));
+    };
+    if !(mime_type.starts_with("audio/") || mime_type.starts_with("video/")) {
+        return Err(CommandError::new(
+            "media_asset_type_invalid",
+            "The requested managed asset is not audio or video.",
+        ));
+    }
+    let expected_size = u64::try_from(expected_size).map_err(|_| {
+        CommandError::new(
+            "media_asset_changed",
+            "This managed media asset no longer matches its library record.",
+        )
+    })?;
+    if expected_size == 0 || expected_size > MAX_MEDIA_BYTES {
+        return Err(CommandError::new(
+            "media_asset_changed",
+            "This managed media asset no longer matches its library record.",
+        ));
+    }
+    if !safe_managed_media_relative_path(&relative_path) {
+        return Err(CommandError::new(
+            "invalid_asset_path",
+            "The managed media asset path is invalid.",
+        ));
+    }
+    let path = paths.resolve_relative(&relative_path);
+    let expected_mime = mime_type;
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let metadata = fs::metadata(&path).map_err(CommandError::io)?;
+        if !metadata.is_file() || metadata.len() != expected_size {
+            return Err(CommandError::new(
+                "media_asset_changed",
+                "This managed media asset no longer matches its library record.",
+            ));
+        }
+        let bytes = fs::read(&path).map_err(CommandError::io)?;
+        if u64::try_from(bytes.len()).ok() != Some(expected_size) {
+            return Err(CommandError::new(
+                "media_asset_changed",
+                "This managed media asset changed while it was being read.",
+            ));
+        }
+        let inspection = inspect_media_bytes(&bytes)?;
+        if inspection.mime_type != expected_mime {
+            return Err(CommandError::new(
+                "media_asset_changed",
+                "This managed media asset no longer matches its recorded media type.",
+            ));
+        }
+        Ok(bytes)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "media_read_failed",
+            "The managed media read task could not be completed.",
+        )
+    })??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+fn load_readable_media_location(
+    connection: &rusqlite::Connection,
+    asset_id: &str,
+    now: i64,
+) -> Result<Option<(String, i64, String)>, CommandError> {
+    let row = connection
+        .query_row(
+            "SELECT a.mime_type, a.byte_size,
+                    CASE
+                      WHEN a.lifecycle_state = 'ready' THEN a.relative_path
+                      WHEN a.lifecycle_state = 'staged'
+                           AND EXISTS (
+                             SELECT 1 FROM asset_drafts d
+                             WHERE d.id = a.draft_id
+                               AND d.committed_at IS NULL
+                               AND d.canceled_at IS NULL
+                               AND (d.retention_mode != 'ephemeral' OR d.expires_at >= ?2)
+                           )
+                      THEN a.staged_relative_path
+                      ELSE NULL
+                    END
+             FROM assets a
+             WHERE a.id = ?1 AND a.deleted_at IS NULL",
+            params![asset_id, now],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    Ok(row.and_then(|(mime_type, byte_size, relative_path)| {
+        relative_path.map(|relative_path| (mime_type, byte_size, relative_path))
+    }))
+}
+
+fn safe_managed_media_relative_path(value: &str) -> bool {
+    let path = Path::new(value);
+    !path.is_absolute()
+        && !path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+        && (value.starts_with("assets/images/") || value.starts_with("assets/staging/"))
+}
+
 fn load_existing(
     connection: &rusqlite::Connection,
     asset_id: &str,
@@ -316,4 +458,18 @@ fn sync_directory(path: Option<&Path>) -> Result<(), CommandError> {
 #[cfg(not(unix))]
 fn sync_directory(_path: Option<&Path>) -> Result<(), CommandError> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn playback_path_guard_accepts_only_managed_roots() {
+        assert!(safe_managed_media_relative_path("assets/images/a.mp3"));
+        assert!(safe_managed_media_relative_path("assets/staging/d-a.mp4.stage"));
+        assert!(!safe_managed_media_relative_path("assets/../library.sqlite3"));
+        assert!(!safe_managed_media_relative_path("documents/source.pdf"));
+        assert!(!safe_managed_media_relative_path("/tmp/audio.mp3"));
+    }
 }
