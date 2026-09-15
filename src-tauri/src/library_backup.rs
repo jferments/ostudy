@@ -1,7 +1,7 @@
 //! Complete local-library backup and restart-safe restoration.
 //!
 //! A backup contains one coherent SQLite snapshot, every ready managed card
-//! image, and every immutable managed document source, retained document image,
+//! asset, and every immutable managed document source, retained document image,
 //! and PDF rendered page required by the local library. Credentials remain
 //! outside SQLite and are never part of the package. Restore is prepared while
 //! ostudy is running and applied before the database opens on the next launch,
@@ -20,10 +20,10 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    assets::detect_image_bytes,
     database::{Database, LATEST_SCHEMA_VERSION},
     document_backup,
     error::CommandError,
+    media::inspect_managed_asset_bytes,
     paths::AppPaths,
     util::unix_time_millis,
 };
@@ -144,9 +144,6 @@ pub(crate) struct PendingRestoreGuard {
 
 impl PendingRestoreGuard {
     pub(crate) fn commit(mut self) {
-        // Once the restored database has opened and reconciled successfully, a
-        // cleanup failure must never invoke Drop's rollback against that live
-        // connection. Mark the guard committed first and clean conservatively.
         self.committed = true;
         if let Some(path) = self.rollback_database.take() {
             let _ = remove_file_if_exists(&path);
@@ -312,8 +309,6 @@ pub(crate) fn apply_pending_restore(
     extract_backup_package(&pending, &staged_database, &staged_assets)
         .map_err(|error| error.message)?;
 
-    // Vector indexes are deliberately excluded from full backups. A restored
-    // preparation receipt must not claim that its device-local index is ready.
     {
         let restored = Connection::open(&staged_database)
             .map_err(|error| format!("Could not reconcile restored learning state: {error}"))?;
@@ -341,7 +336,7 @@ pub(crate) fn apply_pending_restore(
     remove_file_if_exists(&rollback_database)
         .map_err(|error| format!("Could not clear database rollback path: {error}"))?;
     remove_dir_if_exists(&rollback_assets)
-        .map_err(|error| format!("Could not clear image rollback path: {error}"))?;
+        .map_err(|error| format!("Could not clear asset rollback path: {error}"))?;
     remove_dir_if_exists(&rollback_documents)
         .map_err(|error| format!("Could not clear document rollback path: {error}"))?;
 
@@ -359,7 +354,7 @@ pub(crate) fn apply_pending_restore(
                 let _ = fs::rename(&rollback_database, &database_path);
             }
             return Err(format!(
-                "Could not stage current images for rollback: {error}"
+                "Could not stage current assets for rollback: {error}"
             ));
         }
     }
@@ -397,7 +392,7 @@ pub(crate) fn apply_pending_restore(
             had_assets.then_some(&rollback_assets),
             had_documents.then_some(&rollback_documents),
         );
-        return Err(format!("Could not install the restored images: {error}"));
+        return Err(format!("Could not install the restored assets: {error}"));
     }
     if let Err(error) = fs::rename(&staged_documents, &documents_path) {
         restore_previous_filesystem(
@@ -512,10 +507,6 @@ fn export_backup(
     let snapshot = Connection::open(&snapshot_path).map_err(CommandError::database)?;
     validate_snapshot_database(&snapshot)?;
     let summary = snapshot_summary(&snapshot)?;
-    // The SQLite backup API can leave the destination in WAL mode. Queries on
-    // the live connection see WAL-resident pages, but the backup package embeds
-    // only the main database file. Checkpoint and switch to DELETE mode before
-    // reading raw bytes so the embedded snapshot contains every committed page.
     snapshot
         .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")
         .map_err(CommandError::database)?;
@@ -665,7 +656,7 @@ fn export_asset_files(
         let data = fs::read(paths.resolve_relative(&relative_path)).map_err(|_| {
             CommandError::new(
                 "missing_asset",
-                "A managed image is missing. Repair it before creating a complete backup.",
+                "A managed asset is missing. Repair it before creating a complete backup.",
             )
         })?;
         if data.is_empty()
@@ -674,14 +665,14 @@ fn export_asset_files(
         {
             return Err(CommandError::new(
                 "invalid_asset",
-                "A managed image does not match its database size record.",
+                "A managed asset does not match its database size record.",
             ));
         }
-        let (detected_mime, _) = detect_image_bytes(&data)?;
+        let (detected_mime, _) = inspect_managed_asset_bytes(&data)?;
         if detected_mime != mime_type {
             return Err(CommandError::new(
                 "invalid_asset",
-                "A managed image does not match its database file type.",
+                "A managed asset does not match its database file type.",
             ));
         }
         transaction
@@ -863,7 +854,7 @@ fn validate_backup_assets(
     if expected != actual {
         return Err(CommandError::new(
             "invalid_backup",
-            "The backup does not contain every managed image required by the library and its recoverable drafts.",
+            "The backup does not contain every managed asset required by the library and its recoverable drafts.",
         ));
     }
     let mut statement = package
@@ -927,7 +918,7 @@ fn validate_backup_assets(
         let Some((stored_path, stored_mime, stored_size, lifecycle_state)) = stored else {
             return Err(CommandError::new(
                 "invalid_backup",
-                "A packaged image is not owned by the SQLite asset ledger.",
+                "A packaged asset is not owned by the SQLite asset ledger.",
             ));
         };
         validate_managed_asset_path(&relative_path, &lifecycle_state)?;
@@ -940,21 +931,21 @@ fn validate_backup_assets(
         {
             return Err(CommandError::new(
                 "invalid_backup",
-                "A packaged image does not match the SQLite asset ledger.",
+                "A packaged asset does not match the SQLite asset ledger.",
             ));
         }
-        let (detected_mime, _) = detect_image_bytes(&data)?;
+        let (detected_mime, _) = inspect_managed_asset_bytes(&data)?;
         if detected_mime != mime_type {
             return Err(CommandError::new(
                 "invalid_backup",
-                "A packaged image has an invalid file signature.",
+                "A packaged asset has an invalid file signature.",
             ));
         }
         if let Some(root) = extraction_root {
             let destination = root.join(&relative_path);
             write_new_file(&destination, &data)?;
             sync_directory(destination.parent().ok_or_else(|| {
-                CommandError::new("invalid_restore_path", "A restored image path is invalid.")
+                CommandError::new("invalid_restore_path", "A restored asset path is invalid.")
             })?)?;
         }
     }
@@ -1050,7 +1041,7 @@ fn validate_managed_asset_path(value: &str, lifecycle_state: &str) -> Result<(),
         _ => {
             return Err(CommandError::new(
                 "invalid_backup",
-                "A packaged image has an unsupported lifecycle state.",
+                "A packaged asset has an unsupported lifecycle state.",
             ));
         }
     };
@@ -1063,7 +1054,7 @@ fn validate_managed_asset_path(value: &str, lifecycle_state: &str) -> Result<(),
     {
         return Err(CommandError::new(
             "invalid_backup",
-            "A packaged image path escapes its managed lifecycle directory.",
+            "A packaged asset path escapes its managed lifecycle directory.",
         ));
     }
     Ok(())
@@ -1284,6 +1275,10 @@ mod tests {
             .expect("generic source-asset row should be admitted");
     }
 }
+
+#[cfg(test)]
+#[path = "library_backup/media_backup_tests.rs"]
+mod media_backup_tests;
 
 #[cfg(test)]
 #[path = "library_backup/tutor_backup_tests.rs"]
