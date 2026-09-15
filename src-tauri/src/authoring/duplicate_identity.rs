@@ -59,8 +59,7 @@ pub(super) fn from_serialized_documents(
     front_text: &str,
     back_text: &str,
 ) -> Result<DuplicateIdentity, CommandError> {
-    let front: Value =
-        serde_json::from_str(front_doc_json).map_err(CommandError::serialization)?;
+    let front: Value = serde_json::from_str(front_doc_json).map_err(CommandError::serialization)?;
     let back: Value = serde_json::from_str(back_doc_json).map_err(CommandError::serialization)?;
     Ok(DuplicateIdentity {
         normalized_front: normalize_text(front_text),
@@ -101,8 +100,7 @@ pub(super) fn has_exact_duplicate(
 
     for row in rows {
         let (front_doc, back_doc, front_text, back_text) = row.map_err(CommandError::database)?;
-        let stored =
-            from_serialized_documents(&front_doc, &back_doc, &front_text, &back_text)?;
+        let stored = from_serialized_documents(&front_doc, &back_doc, &front_text, &back_text)?;
         if &stored == identity {
             return Ok(true);
         }
@@ -224,10 +222,7 @@ mod tests {
         assert_eq!(first, metadata_only);
 
         let different_asset = from_serialized_documents(
-            &doc(json!([
-                media("audio", &b, "x"),
-                media("video", &a, "y")
-            ])),
+            &doc(json!([media("audio", &b, "x"), media("video", &a, "y")])),
             &empty,
             "[Audio] [Video]",
             "Answer",
@@ -236,10 +231,7 @@ mod tests {
         assert_ne!(first, different_asset);
 
         let different_order = from_serialized_documents(
-            &doc(json!([
-                media("video", &b, "x"),
-                media("audio", &a, "y")
-            ])),
+            &doc(json!([media("video", &b, "x"), media("audio", &a, "y")])),
             &empty,
             "[Audio] [Video]",
             "Answer",
@@ -249,10 +241,7 @@ mod tests {
 
         let different_side = from_serialized_documents(
             &empty,
-            &doc(json!([
-                media("audio", &a, "x"),
-                media("video", &b, "y")
-            ])),
+            &doc(json!([media("audio", &a, "x"), media("video", &b, "y")])),
             "Answer",
             "[Audio] [Video]",
         )
@@ -267,8 +256,7 @@ mod tests {
             "content": [{"type": "text", "text": "Question"}]
         }]));
         let back = answer_doc();
-        let first =
-            from_serialized_documents(&front, &back, "  QUESTION  ", "Answer").unwrap();
+        let first = from_serialized_documents(&front, &back, "  QUESTION  ", "Answer").unwrap();
         let second = from_serialized_documents(&front, &back, "question", " answer ").unwrap();
         assert_eq!(first, second);
     }
