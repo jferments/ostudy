@@ -120,7 +120,10 @@ pub(super) fn document(
                     let mark_names: BTreeSet<_> = marks.iter().map(|(_, mark)| *mark).collect();
                     if !mark_names.is_empty() {
                         node["marks"] = Value::Array(
-                            mark_names.iter().map(|name| json!({"type":name})).collect(),
+                            mark_names
+                                .iter()
+                                .map(|name| json!({"type":name}))
+                                .collect(),
                         );
                     }
                     inline.push(node);

@@ -9,7 +9,8 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
     if contains_math(&export.overview)
         || export.learning_objectives.iter().any(|s| contains_math(s))
         || export.key_concepts.iter().any(|s| contains_math(s))
-        || export.guide_notes.iter().any(|s| contains_math(s)) {
+        || export.guide_notes.iter().any(|s| contains_math(s))
+    {
         return true;
     }
     export.sections.iter().any(|section| {
@@ -17,8 +18,12 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
             || section.notes.iter().any(|s| contains_math(s))
             || section.body_lines.iter().any(|block| match block {
                 ExportBlock::Heading(s) | ExportBlock::Paragraph(s) => contains_math(s),
-                ExportBlock::Bullets(items) | ExportBlock::Numbered(items) => items.iter().any(|s| contains_math(s)),
-                ExportBlock::Terms(items) => items.iter().any(|(a, b)| contains_math(a) || contains_math(b)),
+                ExportBlock::Bullets(items) | ExportBlock::Numbered(items) => {
+                    items.iter().any(|s| contains_math(s))
+                }
+                ExportBlock::Terms(items) => items
+                    .iter()
+                    .any(|(a, b)| contains_math(a) || contains_math(b)),
                 ExportBlock::Spacer => false,
             })
     })
@@ -39,7 +44,11 @@ pub(super) fn contains_math(source: &str) -> bool {
             let marker = trimmed.as_bytes().first().copied().unwrap_or_default();
             let width = trimmed.bytes().take_while(|b| *b == marker).count();
             if let Some((expected, minimum)) = fence {
-                if indent <= 3 && marker == expected && width >= minimum && trimmed[width..].trim().is_empty() {
+                if indent <= 3
+                    && marker == expected
+                    && width >= minimum
+                    && trimmed[width..].trim().is_empty()
+                {
                     fence = None;
                 }
                 cursor += end + usize::from(end < rest.len());
@@ -62,14 +71,25 @@ pub(super) fn contains_math(source: &str) -> bool {
                 continue;
             }
         }
-        let close = if rest.starts_with("\\(") { Some("\\)") }
-            else if rest.starts_with("\\[") { Some("\\]") }
-            else if rest.starts_with("$$") { Some("$$") } else { None };
+        let close = if rest.starts_with("\\(") {
+            Some("\\)")
+        } else if rest.starts_with("\\[") {
+            Some("\\]")
+        } else if rest.starts_with("$$") {
+            Some("$$")
+        } else {
+            None
+        };
         if let Some(close) = close.filter(|_| !escaped(source, cursor)) {
             let start = cursor + 2;
-            if let Some(end) = source[start..].match_indices(close)
-                .map(|(offset, _)| start + offset).find(|end| !escaped(source, *end)) {
-                if !source[start..end].trim().is_empty() { return true; }
+            if let Some(end) = source[start..]
+                .match_indices(close)
+                .map(|(offset, _)| start + offset)
+                .find(|end| !escaped(source, *end))
+            {
+                if !source[start..end].trim().is_empty() {
+                    return true;
+                }
                 cursor = end + 2;
                 continue;
             }
@@ -81,7 +101,13 @@ pub(super) fn contains_math(source: &str) -> bool {
 }
 
 fn escaped(source: &str, position: usize) -> bool {
-    source.as_bytes()[..position].iter().rev().take_while(|b| **b == b'\\').count() % 2 == 1
+    source.as_bytes()[..position]
+        .iter()
+        .rev()
+        .take_while(|b| **b == b'\\')
+        .count()
+        % 2
+        == 1
 }
 
 /// Ordinary prose wrapping collapses spaces; that would change \text{...} and
@@ -102,7 +128,9 @@ pub(super) fn wrap_source(text: &str, maximum: usize) -> Vec<String> {
                 count = 0;
             }
         }
-        if !chunk.is_empty() || line.is_empty() { lines.push(chunk); }
+        if !chunk.is_empty() || line.is_empty() {
+            lines.push(chunk);
+        }
     }
     lines
 }
@@ -115,7 +143,16 @@ mod tests {
         for source in [r"\(x\)", r"\[x\]", "$$x$$", "**before \\(x_i\\) after**"] {
             assert!(contains_math(source), "{source}");
         }
-        for source in ["$5 and $10", r"\\(x\\)", "`\\(x\\)`", "```tex\n\\[x\\]\n```", "~~~\n$$x$$\n~~~", "    \\(x\\)", r"\(unfinished", r"\(\)"] {
+        for source in [
+            "$5 and $10",
+            r"\\(x\\)",
+            "`\\(x\\)`",
+            "```tex\n\\[x\\]\n```",
+            "~~~\n$$x$$\n~~~",
+            "    \\(x\\)",
+            r"\(unfinished",
+            r"\(\)",
+        ] {
             assert!(!contains_math(source), "{source}");
         }
         assert!(contains_math("```\n$$code$$\n```\n\\(real\\)"));
