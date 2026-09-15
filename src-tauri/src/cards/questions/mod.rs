@@ -2,6 +2,7 @@
 //! filesystem, or scheduler dependency. Persistence services must admit managed
 //! asset ownership and commit captured instances/checks transactionally.
 
+mod attempt;
 mod evaluation;
 mod model;
 mod projection;
@@ -9,6 +10,9 @@ mod snapshot;
 mod validation;
 
 pub use crate::error::CommandError as QuestionError;
+pub use attempt::{
+    AttemptProgress, AttemptView, CheckAnswerRequest, QuestionAttempt, SaveAnswerRequest,
+};
 pub use model::*;
 pub use projection::OcclusionMaskPlan;
 pub use snapshot::{InstanceIdentity, QuestionInstance};
