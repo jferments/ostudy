@@ -83,6 +83,7 @@ describe("editor-neutral adapter contract", () => {
       canExecute: () => true,
       setDocument: vi.fn(),
       setEditable: vi.fn(),
+      beginFormulaEdit: () => null,
       focus: vi.fn(),
     };
 

@@ -1,3 +1,4 @@
+use super::card_types_and_templates::duplicate_identity;
 use super::*;
 
 #[tauri::command]
@@ -33,14 +34,19 @@ pub fn transfer_cards(
             } else {
                 source.duplicate_hash.clone()
             };
+            let identity = duplicate_identity::from_serialized_documents(
+                &source.front_doc,
+                &source.back_doc,
+                &source.front_text,
+                &source.back_text,
+            )?;
             if input.skip_duplicates
                 && duplicate_checkable(&source.front_text, &source.back_text)
-                && has_exact_duplicate(
+                && duplicate_identity::has_exact_duplicate(
                     &transaction,
                     &input.target_deck_id,
                     &source_hash,
-                    &normalized.0,
-                    &normalized.1,
+                    &identity,
                     None,
                 )?
             {

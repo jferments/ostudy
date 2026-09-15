@@ -46,7 +46,13 @@ pub fn find_duplicate_cards(
     if let Some(note_id) = &input.exclude_note_id {
         validate_entity_id(note_id, "note")?;
     }
-    if !duplicate_checkable(&input.front_text, &input.back_text) {
+    if !duplicate_checkable(&input.front_text, &input.back_text)
+        || requires_authoritative_rich_duplicate_check(&input.front_text, &input.back_text)
+    {
+        // This lightweight probe receives public text only. Audio/video nodes
+        // deliberately project to generic placeholders, so their managed asset
+        // identity is unavailable here. The create/update transaction performs
+        // the authoritative rich-document duplicate check before mutation.
         return Ok(Vec::new());
     }
     let normalized = normalized_pair(&input.front_text, &input.back_text);
@@ -62,6 +68,12 @@ pub fn find_duplicate_cards(
             20,
         )
     })
+}
+
+fn requires_authoritative_rich_duplicate_check(front: &str, back: &str) -> bool {
+    [front, back]
+        .into_iter()
+        .any(|text| text.contains("[Audio]") || text.contains("[Video]"))
 }
 
 fn validate_bulk_rows(deck_id: &str, rows: &[BulkCardRowInput]) -> Result<(), CommandError> {
@@ -245,4 +257,24 @@ pub fn bulk_tag_cards(
             affected_count: i64::try_from(note_ids.len()).unwrap_or(i64::MAX),
         })
     })
+}
+
+#[cfg(test)]
+mod duplicate_probe_tests {
+    use super::*;
+
+    #[test]
+    fn media_placeholders_defer_to_the_rich_document_duplicate_check() {
+        assert!(requires_authoritative_rich_duplicate_check(
+            "Listen [Audio]",
+            "Answer"
+        ));
+        assert!(requires_authoritative_rich_duplicate_check(
+            "Question",
+            "Watch [Video]"
+        ));
+        let plain_text_needs_rich_check =
+            requires_authoritative_rich_duplicate_check("Question", "Answer");
+        assert!(!plain_text_needs_rich_check);
+    }
 }

@@ -1,3 +1,4 @@
+use super::super::duplicate_identity;
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -388,6 +389,17 @@ fn template_document_is_inline(document: &Value, asset_ids: &[String]) -> bool {
         })
 }
 
+fn stored_template_has_managed_assets(template: &StoredTemplate) -> Result<bool, CommandError> {
+    for rule in &template.dto.rules {
+        if !crate::cards::collect_asset_ids(&rule.front_doc)?.is_empty()
+            || !crate::cards::collect_asset_ids(&rule.back_doc)?.is_empty()
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub(in super::super) fn render_automatic_template_previews(
     connection: &Connection,
     paths: &AppPaths,
@@ -618,7 +630,10 @@ pub(in super::super) fn generate_automatic_template_cards_in_connection(
         .iter()
         .all(|value| raw_template_value_is_inline(&value.doc))
     {
-        return generate_template_cards_in_connection(connection, paths, input);
+        let template = load_stored_template(connection, paths, &input.template_id, true)?;
+        if !stored_template_has_managed_assets(&template)? {
+            return generate_template_cards_in_connection(connection, paths, input);
+        }
     }
 
     let transaction = connection
@@ -640,13 +655,13 @@ pub(in super::super) fn generate_automatic_template_cards_in_connection(
     for rendered in rendered_cards {
         let normalized = normalized_pair(&rendered.content.front_text, &rendered.content.back_text);
         let hash = duplicate_hash(&normalized.0, &normalized.1);
-        if !seen.insert(normalized.clone())
-            || has_exact_duplicate(
+        let identity = duplicate_identity::from_validated_content(&rendered.content)?;
+        if !seen.insert(identity.clone())
+            || duplicate_identity::has_exact_duplicate(
                 &transaction,
                 &input.deck_id,
                 &hash,
-                &normalized.0,
-                &normalized.1,
+                &identity,
                 None,
             )?
         {

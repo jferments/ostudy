@@ -2,9 +2,12 @@
 
 mod collection;
 mod html;
+mod media_markup;
 mod package;
 mod template;
 
+#[cfg(test)]
+mod media_import_tests;
 #[cfg(test)]
 mod tests;
 
@@ -474,13 +477,18 @@ fn convert_card<'a>(
         question.html.as_str()
     };
     let answer = template::render(&template.afmt, &fields, card.ordinal, true, front_side)?;
-    let front = html::document(&question.html, &mut |name| archive.image(name))?;
-    let back = html::document(&answer.html, &mut |name| archive.image(name))?;
+    let question_html = media_markup::rewrite(&question.html)?;
+    let answer_html = media_markup::rewrite(&answer.html)?;
+    let mut front = html::document(&question_html, &mut |name| archive.asset(name))?;
+    let mut back = html::document(&answer_html, &mut |name| archive.asset(name))?;
+    let front_contains_media = prepare_media_document(&mut front.value);
+    let back_contains_media = prepare_media_document(&mut back.value);
     let style_normalized =
         !model.css.trim().is_empty() || front.style_omitted || back.style_omitted;
     let javascript_salvaged = front.script_omitted || back.script_omitted;
     if javascript_salvaged
-        && (!html::has_study_content(&front.value) || !html::has_study_content(&back.value))
+        && ((!html::has_study_content(&front.value) && !front_contains_media)
+            || (!html::has_study_content(&back.value) && !back_contains_media))
     {
         return Err(
             "Card contains JavaScript that could not be safely reduced to complete static question/answer content."
@@ -499,7 +507,17 @@ fn convert_card<'a>(
     .map_err(|error| error.message)?;
 
     if source_kind == SourcePresentationKind::Cloze {
-        if let Some(field_name) = template::simple_cloze_field(&template.qfmt, &template.afmt) {
+        // Native cloze is plain text. Use the existing rich Basic fallback when
+        // either face contains typed formulas or managed media rather than
+        // flattening atoms out of the stored presentation.
+        if let Some(field_name) = template::simple_cloze_field(&template.qfmt, &template.afmt)
+            .filter(|_| {
+                !front.contains_math
+                    && !back.contains_math
+                    && !front_contains_media
+                    && !back_contains_media
+            })
+        {
             if let Some(field) = fields.get(&field_name) {
                 if let Some(native) = template::native_cloze(field, card.ordinal + 1)? {
                     let native_front = plain_text_document(&native.question);
@@ -561,6 +579,30 @@ fn convert_card<'a>(
         cloze_fallback: false,
         javascript_salvaged,
     })
+}
+
+fn prepare_media_document(value: &mut serde_json::Value) -> bool {
+    if !contains_media(value) {
+        return false;
+    }
+    if !value.get("attrs").is_some_and(serde_json::Value::is_object) {
+        value["attrs"] = json!({});
+    }
+    value["attrs"]["schemaVersion"] = json!(3);
+    true
+}
+
+fn contains_media(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(values) => values.iter().any(contains_media),
+        serde_json::Value::Object(object) => {
+            matches!(
+                object.get("type").and_then(serde_json::Value::as_str),
+                Some("audio" | "video")
+            ) || object.values().any(contains_media)
+        }
+        _ => false,
+    }
 }
 
 fn plain_text_document(text: &str) -> serde_json::Value {

@@ -1,0 +1,188 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mountFormulaInput, type FormulaInput } from "./mathlive";
+
+const vendorState = vi.hoisted(() => ({ delayed: false, failConfiguration: false }));
+
+// A vendor stub isolates the lifecycle/clipboard contract; browser keyboard
+// rendering and physical-device interaction remain separate acceptance work.
+vi.mock("mathlive", () => {
+  class TestField extends HTMLElement {
+    static fontsDirectory: string | null = "https://invalid.example/fonts";
+    static soundsDirectory: string | null = "https://invalid.example/sounds";
+    static computeEngine: unknown = {};
+    static openUrl = vi.fn();
+    static restoreFocusWhenDocumentFocused = true;
+    value = "";
+    mathVirtualKeyboardPolicy = "auto";
+    lastInsert: { source: string; options: unknown } | null = null;
+    private mounted = false;
+    private items: unknown[] = [{}];
+    connectedCallback() {
+      if (!vendorState.delayed) queueMicrotask(() => this.finishMount());
+    }
+    finishMount() {
+      if (!this.isConnected) return;
+      this.mounted = true;
+      this.dispatchEvent(new Event("mount"));
+    }
+    get menuItems() { return this.items; }
+    set menuItems(items: unknown[]) {
+      // Match the real pinned vendor API, which the previous loose stub missed.
+      if (!this.mounted) throw new Error("Mathfield not mounted");
+      if (vendorState.failConfiguration) throw new Error("Menu configuration failed");
+      this.items = items;
+    }
+    insert(source: string, options?: unknown) {
+      this.lastInsert = { source, options };
+      this.value += source;
+      return true;
+    }
+  }
+  customElements.define("test-formula-input", TestField);
+  return { MathfieldElement: TestField };
+});
+
+class TestKeyboard extends EventTarget {
+  container: HTMLElement = document.body;
+  visible = false;
+  boundingRect = new DOMRect(0, 0, 320, 180);
+  show() { this.visible = true; this.dispatchEvent(new Event("geometrychange")); }
+  hide() { this.visible = false; this.dispatchEvent(new Event("geometrychange")); }
+}
+let keyboard: TestKeyboard;
+let host: HTMLDivElement;
+let keyboardHost: HTMLDivElement;
+const mounted: FormulaInput[] = [];
+beforeEach(() => {
+  vendorState.delayed = false; vendorState.failConfiguration = false;
+  keyboard = new TestKeyboard();
+  Object.defineProperty(window, "mathVirtualKeyboard", { configurable: true, value: keyboard });
+  host = document.createElement("div"); keyboardHost = document.createElement("div");
+  document.body.append(host, keyboardHost);
+});
+afterEach(() => {
+  mounted.splice(0).forEach((input) => input.dispose());
+  host.remove(); keyboardHost.remove();
+});
+async function mount(source = "x") {
+  const controller = new AbortController();
+  const onChange = vi.fn(); const onError = vi.fn();
+  const input = await mountFormulaInput({ host, keyboardHost, source, signal: controller.signal, onChange, onError });
+  expect(input).not.toBeNull(); mounted.push(input!);
+  return { input: input!, controller, onChange, onError };
+}
+
+describe("MathLive application port", () => {
+  it("does not attach or claim the keyboard when loading finishes after dismissal", async () => {
+    const controller = new AbortController();
+    const pending = mountFormulaInput({ host, keyboardHost, source: "", signal: controller.signal, onChange: vi.fn(), onError: vi.fn() });
+    controller.abort();
+    expect(await pending).toBeNull();
+    expect(host.childElementCount).toBe(0);
+    expect(keyboard.container).toBe(document.body);
+    await mount(); // The dismissed load did not retain the exclusive owner.
+  });
+
+  it("owns and releases the contained keyboard, listeners and field without normalizing the initial draft", async () => {
+    const { input, controller, onChange } = await mount(" x ");
+    const { MathfieldElement } = await import("mathlive");
+    expect(MathfieldElement.fontsDirectory).toBeNull();
+    expect(MathfieldElement.soundsDirectory).toBeNull();
+    expect(MathfieldElement.computeEngine).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(keyboard.container).toBe(keyboardHost);
+    expect(input.showKeyboard()).toBe(true);
+    expect(keyboardHost.style.height).toBe("180px");
+    expect(input.toggleKeyboard()).toBe(false);
+    expect(input.toggleKeyboard()).toBe(true);
+    expect(input.hideKeyboard()).toBe(true);
+    expect(input.hideKeyboard()).toBe(false);
+    const field = host.firstElementChild!;
+    controller.abort(); input.dispose();
+    field.dispatchEvent(new Event("input"));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(host.childElementCount).toBe(0);
+    expect(keyboard.container).toBe(document.body);
+    expect(keyboard.visible).toBe(false);
+    await mount();
+  });
+
+  it("inserts graphical templates through MathLive selection-aware placeholders", async () => {
+    const { input, onChange } = await mount("x");
+    const field = host.firstElementChild as HTMLElement & {
+      lastInsert: { source: string; options: { format: string; selectionMode: string } } | null;
+    };
+    expect(input.applyTemplate(String.raw`\frac{#@}{#?}`)).toBe(true);
+    expect(field.lastInsert).toEqual({
+      source: String.raw`\frac{#@}{#?}`,
+      options: { format: "latex", selectionMode: "placeholder" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith(String.raw`x\frac{#@}{#?}`);
+  });
+
+  it("admits plain formula paste but blocks HTML-only, oversized and active source", async () => {
+    const { onChange, onError } = await mount("x");
+    const field = host.firstElementChild!;
+    for (const source of ["", String.raw`\href{https://invalid.example}{x}`, "x".repeat(16385)]) {
+      const event = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", { value: { getData: (format: string) => format === "text/plain" ? source : "<img src=x>" } });
+      field.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(3);
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: { getData: () => "+1" } });
+    field.dispatchEvent(paste);
+    expect(onChange).toHaveBeenLastCalledWith("x+1");
+  });
+
+  it("rejects a second concurrent owner without disturbing the first dialog", async () => {
+    const { input } = await mount();
+    input.toggleKeyboard();
+    await expect(mountFormulaInput({ host, keyboardHost, source: "y", signal: new AbortController().signal, onChange: vi.fn(), onError: vi.fn() }))
+      .rejects.toThrow("already open");
+    expect(keyboard.visible).toBe(true);
+    expect(host.childElementCount).toBe(1);
+  });
+
+  it("waits for the vendor mount event before using mounted-only options or returning focus controls", async () => {
+    vendorState.delayed = true;
+    let ready = false;
+    const pending = mount().then((result) => { ready = true; return result; });
+    await vi.waitFor(() => expect(host.childElementCount).toBe(1));
+    expect(ready).toBe(false);
+    const field = host.firstElementChild as HTMLElement & { finishMount(): void; menuItems: unknown[] };
+    expect(field.menuItems).toHaveLength(1);
+    field.finishMount();
+    const { input } = await pending;
+    expect(field.menuItems).toEqual([]);
+    expect(input.showKeyboard()).toBe(true);
+    expect(keyboard.visible).toBe(true);
+  });
+
+  it("aborts a connected but not-yet-mounted field and releases its exclusive owner", async () => {
+    vendorState.delayed = true;
+    const controller = new AbortController();
+    const pending = mountFormulaInput({ host, keyboardHost, source: "x", signal: controller.signal, onChange: vi.fn(), onError: vi.fn() });
+    await vi.waitFor(() => expect(host.childElementCount).toBe(1));
+    const field = host.firstElementChild!;
+    controller.abort();
+    expect(await pending).toBeNull();
+    field.dispatchEvent(new Event("mount"));
+    expect(host.childElementCount).toBe(0);
+    expect(keyboard.container).toBe(document.body);
+    vendorState.delayed = false;
+    await mount();
+  });
+
+  it("cleans up a mounted-only configuration failure so the next editor can open", async () => {
+    vendorState.failConfiguration = true;
+    await expect(mountFormulaInput({ host, keyboardHost, source: "x", signal: new AbortController().signal, onChange: vi.fn(), onError: vi.fn() }))
+      .rejects.toThrow("Menu configuration failed");
+    expect(host.childElementCount).toBe(0);
+    expect(keyboard.container).toBe(document.body);
+    vendorState.failConfiguration = false;
+    await mount();
+  });
+});

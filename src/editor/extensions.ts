@@ -9,6 +9,7 @@ import StarterKit from "@tiptap/starter-kit";
 
 import { RICH_DOCUMENT_SCHEMA_VERSION } from "./adapter";
 import contentStyles from "./RichContent.module.css";
+import { richAtomExtensions } from "./tiptap/richAtoms";
 
 export const TEMPLATE_FIELD_INLINE = "templateFieldInline";
 export const TEMPLATE_FIELD_BLOCK = "templateFieldBlock";
@@ -231,10 +232,22 @@ const StudyTaskItem = Node.create({
   name: "taskItem",
   content: "paragraph block*",
   defining: true,
+  addKeyboardShortcuts() {
+    return {
+      Enter: () =>
+        this.editor.commands.splitListItem(this.name, {
+          checked: false,
+          itemId: null,
+        }),
+      Tab: () => this.editor.commands.sinkListItem(this.name),
+      "Shift-Tab": () => this.editor.commands.liftListItem(this.name),
+    };
+  },
   addAttributes() {
     return {
       checked: {
         default: false,
+        keepOnSplit: false,
         parseHTML: (element: HTMLElement) => element.getAttribute("data-checked") === "true",
         renderHTML: (attributes: Record<string, unknown>) => ({
           "data-checked": attributes.checked === true ? "true" : "false",
@@ -242,6 +255,7 @@ const StudyTaskItem = Node.create({
       },
       itemId: {
         default: null,
+        keepOnSplit: false,
         parseHTML: (element: HTMLElement) => element.getAttribute("data-checklist-item-id"),
         renderHTML: (attributes: Record<string, unknown>) =>
           typeof attributes.itemId === "string" && attributes.itemId !== ""
@@ -358,6 +372,7 @@ export function createEditorExtensions(
     StudyTableCell,
     StudyTaskList,
     StudyTaskItem,
+    ...richAtomExtensions,
   ];
   if (options.templatePlaceholders !== false) {
     extensions.push(TemplateFieldInline, TemplateFieldBlock);

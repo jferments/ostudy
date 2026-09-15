@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ShowToast } from "../components/Toast";
@@ -15,6 +15,7 @@ import {
   type DocumentStudyGuide,
   type StudyGuideOverlay,
 } from "../ipc/studyGuides";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 
 vi.mock("../ipc/studyGuides", async () => {
@@ -269,6 +270,7 @@ describe("StudyGuideDialog", () => {
       guideRevision: 1,
       sectionCount: 1,
       annotationCount: 0,
+      mathSourceFallback: false,
     });
     mockedPublish.mockResolvedValue({
       preparedExportId: "8".repeat(32),
@@ -290,6 +292,30 @@ describe("StudyGuideDialog", () => {
       "success",
       "Exported study guide with 1 section.",
     );
+  });
+
+
+  it.each([true, false])("discloses PDF math and releases the prepared file when accepted=%s", async (accepted) => {
+    const value = guide();
+    value.overview.summary = String.raw`Solve \(x^2\).`;
+    mockedGetGuide.mockResolvedValue(value);
+    mockedPreparePdf.mockResolvedValue({
+      preparedExport: { id: "8".repeat(32), purpose: "study_guide_pdf", suggestedFilename: "math.pdf", mediaType: "application/pdf", byteSize: 2048, sha256: "7".repeat(64), expiresAt: 999999 },
+      guideRevision: 1, sectionCount: 1, annotationCount: 0, mathSourceFallback: true,
+    });
+    mockedPublish.mockResolvedValue({ preparedExportId: "8".repeat(32), displayName: "math.pdf", destinationKind: "file", completedAt: 123 });
+    const showToast = vi.fn();
+    renderGuide({ showToast });
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
+    expect(mockedPublish).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/readable LaTeX source rather than typeset formulas/u)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: accepted ? "Export PDF" : "Cancel" }));
+    await waitFor(() => expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32)));
+    expect(mockedPublish).toHaveBeenCalledTimes(accepted ? 1 : 0);
+    expect(mockedSaveOverlay).not.toHaveBeenCalled();
+    expect(mockedGenerate).not.toHaveBeenCalled();
+    if (!accepted) expect(showToast).not.toHaveBeenCalled();
   });
 
   it("routes exact topic-linked cards through the app practice capability", async () => {
@@ -389,6 +415,74 @@ describe("StudyGuideDialog", () => {
   });
 });
 
+
+describe("Study-guide mathematical presentation", () => {
+  it("renders every structured body field without mutating source text, hashes or locators", async () => {
+    const loaded = guide();
+    loaded.overview.summary = String.raw`Summary \(x_1\)`;
+    loaded.overview.learningObjectives = [String.raw`Find \(x_2\)`];
+    loaded.overview.keyConcepts = [String.raw`Know \(x_3\)`];
+    const section = loaded.sections[0];
+    section.title = String.raw`Topic \(x_4\)`;
+    section.content = {
+      overview: String.raw`Overview \(x_5\)`, keyPoints: [String.raw`Point \(x_6\)`],
+      explanations: [{ heading: String.raw`Why \(x_7\)`, body: String.raw`Because \[x_8\]` }],
+      importantTerms: [{ term: String.raw`Term \(x_9\)`, explanation: String.raw`Meaning \(x_{10}\)` }],
+      processSteps: [String.raw`Apply \(x_{11}\)`],
+      comparisons: [{ subjectA: String.raw`\(x_{12}\)`, subjectB: String.raw`\(x_{13}\)`, relationship: String.raw`Related \(x_{14}\)` }],
+      commonMisconceptions: [String.raw`Not \(x_{15}\)`],
+      visualExplanations: [{ title: String.raw`See \(x_{16}\)`, explanation: String.raw`Diagram \(x_{17}\)` }],
+    };
+    const before = JSON.stringify(loaded);
+    mockedGetGuide.mockResolvedValue(loaded);
+    const { container } = renderGuide();
+    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(17));
+    expect(screen.getByText("Page 2–3")).toBeTruthy();
+    expect(JSON.stringify(loaded)).toBe(before);
+    expect(mockedSaveOverlay).not.toHaveBeenCalled();
+    expect(mockedGenerate).not.toHaveBeenCalled();
+    expect(container.querySelector("p div,a a")).toBeNull();
+  });
+
+  it("shows active and conflicted note formulas and saves original LaTeX instead of renderer DOM", async () => {
+    const source = String.raw`My note \(\frac{a}{b}\)`;
+    const note = { ...topicNote(), plainText: source };
+    const conflict = { ...conflictedOverride(), plainText: String.raw`Older edit \(x^2\)` };
+    const loaded = { ...guide(), overlays: [note, conflict] };
+    mockedGetGuide.mockResolvedValue(loaded);
+    mockedSaveOverlay.mockResolvedValue(note);
+    const { container } = renderGuide();
+    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(2));
+    expect(screen.getByText("Older section edit needs review.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(source);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockedSaveOverlay).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    const edited = source + String.raw` and \(c\)`;
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: edited } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mockedSaveOverlay).toHaveBeenCalledWith(expect.objectContaining({
+      overlayId: note.id, overlayKind: "topic_note", plainText: edited, expectedRevision: 3,
+      richDoc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: edited }] }] },
+    })));
+    expect(JSON.stringify(mockedSaveOverlay.mock.calls)).not.toContain("MathML");
+  });
+
+  it("renders fresh generated content and guide notes through the same offline reader", async () => {
+    const generated = guide();
+    generated.sections[0].content.overview = String.raw`Generated \(x+y\)`;
+    generated.overlays = [{ ...topicNote(), topicId: null, overlayKind: "guide_note", plainText: String.raw`Note \(z\)` }];
+    mockedGetGuide.mockResolvedValue(null);
+    mockedGenerate.mockResolvedValue(generated);
+    const { container } = renderGuide();
+    fireEvent.click(await screen.findByRole("button", { name: "Generate study guide" }));
+    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(2));
+    expect(mockedGenerate).toHaveBeenCalledTimes(1);
+    expect(mockedSaveOverlay).not.toHaveBeenCalled();
+  });
+});
+
 function renderGuide({
   showToast = vi.fn() as ShowToast,
   onClose = vi.fn() as () => void,
@@ -397,12 +491,12 @@ function renderGuide({
   onClose?: () => void;
 } = {}) {
   return render(
-    <StudyGuideDialog
+    <OverlayProvider><StudyGuideDialog
       documentId={documentId}
       documentTitle="Physiology"
       showToast={showToast}
       onPracticeCards={onPracticeCards}
       onClose={onClose}
-    />,
+    /></OverlayProvider>,
   );
 }

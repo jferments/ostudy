@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { StudyMarkdown } from "../components/StudyMarkdown";
 import type { ShowToast } from "../components/Toast";
 import { getErrorCode, getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
@@ -11,6 +12,7 @@ import {
 } from "../ipc/studyGuides";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { Icon } from "../ui/icons/Icon";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
@@ -26,6 +28,7 @@ type EditingMode = "note" | "override";
 interface EditingState { topicId: string | null; mode: EditingMode; value: string; }
 
 export function StudyGuideDialog({ documentId, documentTitle, showToast, onPracticeCards, onClose }: StudyGuideDialogProps) {
+  const confirm = useConfirm();
   const [guide, setGuide] = useState<DocumentStudyGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -88,6 +91,12 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     try {
       const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations);
       preparedExportId = prepared.preparedExport.id;
+      if (prepared.mathSourceFallback && !await confirm({
+        title: "Export math as source notation?",
+        description: "Equations in this PDF will use readable LaTeX source rather than typeset formulas. The study guide in oStudy keeps its typeset math.",
+        confirmLabel: "Export PDF",
+        cancelLabel: "Cancel",
+      })) return;
       const receipt = await publishPreparedExport(prepared.preparedExport.id);
       if (receipt) {
         const annotationSummary = prepared.annotationCount > 0 ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}` : "";
@@ -184,10 +193,10 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
         </nav>
         <article className={styles.guide}>
           <section id="guide-overview" className={styles.overview}>
-            <h2>Overview</h2><p>{guide.overview.summary}</p>
+            <h2>Overview</h2><StudyMarkdown text={guide.overview.summary} />
             <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
             <GuideList title="Key concepts" values={guide.overview.keyConcepts} />
-            {guideNote?.plainText ? <aside className={styles.personalNote}><strong>My guide note</strong><p>{guideNote.plainText}</p></aside> : null}
+            {guideNote?.plainText ? <aside className={styles.personalNote}><strong>My guide note</strong><StudyMarkdown text={guideNote.plainText} /></aside> : null}
             <div className={styles.editorActions}>
               <Button variant="secondary" onClick={beginGuideNote}>{guideNote ? "Edit guide note" : "Add guide note"}</Button>
               {guideNote ? <Button variant="secondary" disabled={isSaving} onClick={() => void discardOverlay(guideNote, "Guide note removed.")}>Remove guide note</Button> : null}
@@ -226,7 +235,7 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
   const conflict = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "body_override" && overlay.state === "conflicted");
   return <section id={`topic-${section.topicId}`} className={styles.section}>
     <header className={styles.sectionHeader}>
-      <div><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2>{section.title}</h2></div>
+      <div><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
       <div className={styles.sectionActions}>
         <TutorEntryButton disabled={actionsDisabled} target={{ title: section.title, scope: { kind: "guide", id: documentId },
           focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" }} />
@@ -238,12 +247,12 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
         <Button variant="primary" disabled={!projection || projection.cardCount === 0} onClick={onStudy}>Study linked cards{projection ? ` (${projection.cardCount})` : ""}</Button>
       </div>
     </header>
-    {override?.state === "active" ? <div className={styles.overrideText}>{renderPlainText(override.plainText)}</div> : <StructuredSection section={section} />}
-    {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong>{renderPlainText(note.plainText)}</aside> : null}
+    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StructuredSection section={section} />}
+    {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
     {conflict ? <InlineNotice kind="warning">
       <strong>Older section edit needs review.</strong>
       <p>The generated base changed, so ostudy did not silently apply the old override to new source-grounded content. The prior edit remains preserved below as a conflict.</p>
-      <div className={styles.overrideText}>{renderPlainText(conflict.plainText)}</div>
+      <div className={styles.overrideText}><StudyMarkdown text={conflict.plainText} /></div>
       <Button variant="secondary" disabled={actionsDisabled} onClick={() => onDiscardOverlay(conflict, "Older section edit discarded.")}>Discard older edit</Button>
     </InlineNotice> : null}
   </section>;
@@ -251,23 +260,23 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
 function StructuredSection({ section }: { section: DocumentStudyGuideSection }) {
   const { content } = section;
   return <div className={styles.structuredSection}>
-    <p>{content.overview}</p><GuideList title="Key points" values={content.keyPoints} />
-    {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><h3>{explanation.heading}</h3><p>{explanation.body}</p></section>)}
+    <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} />
+    {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><h3><StudyMarkdown text={explanation.heading} inline /></h3><StudyMarkdown text={explanation.body} /></section>)}
     {content.importantTerms.length > 0 ? <section><h3>Important terms</h3><dl className={styles.terms}>
-      {content.importantTerms.map((term) => <div key={term.term}><dt>{term.term}</dt><dd>{term.explanation}</dd></div>)}
+      {content.importantTerms.map((term) => <div key={term.term}><dt><StudyMarkdown text={term.term} inline /></dt><dd><StudyMarkdown text={term.explanation} /></dd></div>)}
     </dl></section> : null}
     <GuideList title="Process" values={content.processSteps} ordered />
     {content.comparisons.length > 0 ? <section><h3>Comparisons and relationships</h3><div className={styles.comparisons}>
-      {content.comparisons.map((comparison) => <article key={`${comparison.subjectA}-${comparison.subjectB}`}><strong>{comparison.subjectA} and {comparison.subjectB}</strong><p>{comparison.relationship}</p></article>)}
+      {content.comparisons.map((comparison) => <article key={`${comparison.subjectA}-${comparison.subjectB}`}><strong><StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline /></strong><StudyMarkdown text={comparison.relationship} /></article>)}
     </div></section> : null}
     <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
-    {content.visualExplanations.map((visual) => <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}><strong>{visual.title}</strong><p>{visual.explanation}</p></aside>)}
+    {content.visualExplanations.map((visual) => <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}><strong><StudyMarkdown text={visual.title} inline /></strong><StudyMarkdown text={visual.explanation} /></aside>)}
   </div>;
 }
 function GuideList({ title, values, ordered = false }: { title: string; values: string[]; ordered?: boolean }) {
   if (values.length === 0) return null;
   const List = ordered ? "ol" : "ul";
-  return <section><h3>{title}</h3><List>{values.map((value) => <li key={value}>{value}</li>)}</List></section>;
+  return <section><h3>{title}</h3><List>{values.map((value) => <li key={value}><StudyMarkdown text={value} /></li>)}</List></section>;
 }
 function findEditingOverlay(overlays: StudyGuideOverlay[], topicId: string | null, mode: EditingMode, guideId?: string): StudyGuideOverlay | null {
   const kind = mode === "override" ? "body_override" : topicId ? "topic_note" : "guide_note";
@@ -276,9 +285,6 @@ function findEditingOverlay(overlays: StudyGuideOverlay[], topicId: string | nul
 function plainTextRichDocument(value: string): Record<string, unknown> {
   return { type: "doc", content: value.split(/\n{2,}/u).map((paragraph) => paragraph.trim()).filter(Boolean)
     .map((paragraph) => ({ type: "paragraph", content: [{ type: "text", text: paragraph }] })) };
-}
-function renderPlainText(value: string) {
-  return value.split(/\n{2,}/u).map((paragraph) => paragraph.trim()).filter(Boolean).map((paragraph) => <p key={paragraph}>{paragraph}</p>);
 }
 function formatSourceLocator(locator: { unitKind: string; unitNumbers: number[] }): string {
   const numbers = locator.unitNumbers;

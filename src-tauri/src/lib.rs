@@ -71,6 +71,8 @@ mod knowledge;
 mod library_backup;
 mod library_backup_commands;
 mod logging;
+mod media;
+mod media_assets;
 mod paths;
 mod pdf_backend;
 mod pdf_document_ingestion;
@@ -227,6 +229,8 @@ pub fn run() {
             asset_lifecycle::cancel_asset_draft,
             asset_lifecycle::sync_asset_draft,
             assets::import_image,
+            media_assets::import_media,
+            media_assets::read_media_asset,
             deletion::undo_deletion,
             diagnostics::record_webview_diagnostic,
             diagnostics::record_webview_diagnostic_batch,

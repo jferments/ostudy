@@ -8,6 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 
+use crate::cards::math::{mathml, split_delimited_latex, MathFragment};
+
 const MAX_HTML_BYTES: usize = 256 * 1024;
 const MAX_TOKENS: usize = 20_000;
 
@@ -15,6 +17,7 @@ const MAX_TOKENS: usize = 20_000;
 enum Token {
     Text(String),
     ScriptOmitted,
+    Mathml(String),
     Tag {
         name: String,
         attributes: BTreeMap<String, String>,
@@ -27,6 +30,7 @@ pub(super) struct Document {
     pub warnings: BTreeSet<String>,
     pub style_omitted: bool,
     pub script_omitted: bool,
+    pub contains_math: bool,
 }
 
 pub(super) fn document(
@@ -43,6 +47,8 @@ pub(super) fn document(
     let mut ignoring_style = false;
     let mut style_omitted = false;
     let mut script_omitted = false;
+    let mut pre_depth = 0_usize;
+    let mut contains_math = false;
     for token in tokenize(html)? {
         match token {
             Token::Text(text) => {
@@ -61,15 +67,72 @@ pub(super) fn document(
                                 .into(),
                         );
                     }
-                    let mut node = json!({"type": "text", "text": text});
+                    let fragments = if pre_depth > 0 || mark_names.contains("code") {
+                        vec![MathFragment::Text(text.as_str())]
+                    } else {
+                        let parsed = split_delimited_latex(&text)?;
+                        if parsed.incomplete {
+                            warnings.insert(
+                                "Unclosed math delimiters were retained as literal source.".into(),
+                            );
+                        }
+                        if parsed.legacy_latex {
+                            warnings.insert("Legacy [latex] source was retained literally; system TeX is not executed.".into());
+                        }
+                        parsed.fragments
+                    };
+                    for fragment in fragments {
+                        match fragment {
+                            MathFragment::Text(text) => {
+                                let mut node = json!({"type": "text", "text": text});
+                                if !mark_names.is_empty() {
+                                    node["marks"] = Value::Array(
+                                        mark_names
+                                            .iter()
+                                            .map(|name| json!({"type": name}))
+                                            .collect(),
+                                    );
+                                }
+                                inline.push(node);
+                            }
+                            MathFragment::Formula { latex, block } => {
+                                contains_math = true;
+                                let kind = if block { "blockMath" } else { "inlineMath" };
+                                let node = json!({"type": kind, "attrs": {"latex": latex}});
+                                // Formula atoms must never inherit text formatting marks.
+                                if block {
+                                    flush(&mut blocks, &mut inline);
+                                    blocks.push(node);
+                                } else {
+                                    inline.push(node);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Token::Mathml(source) => {
+                if ignoring_style {
+                    continue;
+                }
+                if pre_depth > 0 || marks.iter().any(|(_, mark)| *mark == "code") {
+                    let mut node = json!({"type":"text", "text":source});
+                    let mark_names: BTreeSet<_> = marks.iter().map(|(_, mark)| *mark).collect();
                     if !mark_names.is_empty() {
                         node["marks"] = Value::Array(
-                            mark_names
-                                .iter()
-                                .map(|name| json!({"type": name}))
-                                .collect(),
+                            mark_names.iter().map(|name| json!({"type":name})).collect(),
                         );
                     }
+                    inline.push(node);
+                    continue;
+                }
+                let formula = mathml::parse(&source)?;
+                contains_math = true;
+                let node = json!({"type":if formula.block {"blockMath"} else {"inlineMath"}, "attrs":{"latex":formula.latex}});
+                if formula.block {
+                    flush(&mut blocks, &mut inline);
+                    blocks.push(node);
+                } else {
                     inline.push(node);
                 }
             }
@@ -94,6 +157,13 @@ pub(super) fn document(
                     script_omitted = true;
                 }
                 reject_active(&name, &attributes)?;
+                if name == "pre" {
+                    if closing {
+                        pre_depth = pre_depth.saturating_sub(1);
+                    } else {
+                        pre_depth += 1;
+                    }
+                }
                 if attributes.contains_key("style") || attributes.contains_key("class") {
                     style_omitted = true;
                 }
@@ -170,11 +240,16 @@ pub(super) fn document(
     if blocks.is_empty() {
         blocks.push(json!({"type": "paragraph", "content": []}));
     }
+    let mut value = json!({"type": "doc", "content": blocks});
+    if contains_math {
+        value["attrs"] = json!({"schemaVersion": 3});
+    }
     Ok(Document {
-        value: json!({"type": "doc", "content": blocks}),
+        value,
         warnings,
         style_omitted,
         script_omitted,
+        contains_math,
     })
 }
 
@@ -186,7 +261,7 @@ pub(super) fn has_study_content(value: &Value) -> bool {
                 .get("text")
                 .and_then(Value::as_str)
                 .is_some_and(|text| !text.trim().is_empty()),
-            Some("image") => true,
+            Some("image" | "inlineMath" | "blockMath") => true,
             _ => object.get("content").is_some_and(has_study_content),
         },
         _ => false,
@@ -264,6 +339,9 @@ pub(super) fn plain_text(html: &str) -> Result<String, String> {
     for token in tokenize(html)? {
         match token {
             Token::Text(value) if !style => output.push_str(&decode_entities(&value).0),
+            Token::Mathml(source) if !style => {
+                output.push_str(&mathml::parse(&source)?.delimited());
+            }
             Token::Tag { name, closing, .. } => {
                 if name == "style" {
                     style = !closing;
@@ -291,6 +369,12 @@ fn tokenize(html: &str) -> Result<Vec<Token>, String> {
         if remaining.starts_with("<!--") {
             let end = remaining.find("-->").ok_or("Unclosed HTML comment.")?;
             position += end + 3;
+            continue;
+        }
+        if mathml::starts_mathml(remaining) {
+            let length = mathml::prefix_len(remaining)?;
+            result.push(Token::Mathml(remaining[..length].to_string()));
+            position += length;
             continue;
         }
         let is_tag = remaining
@@ -559,3 +643,7 @@ mod tests {
         crate::cards::validate_document(&result.value).unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "mathml_input_tests.rs"]
+mod mathml_input_tests;

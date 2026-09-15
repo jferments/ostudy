@@ -11,6 +11,7 @@ import {
 } from "./adapter";
 import { ANSWER_KEY_MODE } from "./extensions";
 import { canonicalizeDocument } from "./richText";
+import { beginTiptapFormulaEdit } from "./tiptap/formulaSession";
 
 export const TIPTAP_EDITOR_CAPABILITIES: EditorCapabilities = {
   schemaVersion: RICH_DOCUMENT_SCHEMA_VERSION,
@@ -63,6 +64,7 @@ export function createTiptapEditorAdapter(editor: Editor): EditorAdapter {
     setDocument: (document, emitChange = false) =>
       editor.commands.setContent(document, { emitUpdate: emitChange }),
     setEditable: (editable) => editor.setEditable(editable, false),
+    beginFormulaEdit: () => beginTiptapFormulaEdit(editor),
     focus: () => {
       editor.commands.focus();
     },

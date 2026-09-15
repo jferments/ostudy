@@ -106,6 +106,8 @@
   }
 
   .content [data-task-item]::before {
+    grid-column: 1;
+    grid-row: 1;
     display: grid;
     width: 1.05em;
     height: 1.05em;
@@ -119,6 +121,11 @@
     font-size: 0.82em;
     font-weight: 800;
     line-height: 1;
+  }
+
+  .content [data-task-item] > * {
+    grid-column: 2;
+    min-width: 0;
   }
 
   .content [data-task-item][data-checked="true"]::before { content: "✓"; }
@@ -190,4 +197,43 @@
     .content th,
     .content td { border-color: CanvasText; }
   }
+}
+
+/* MathLive's shadow content and keyboard require scoped vendor variables. */
+.formulaInput {
+  min-width: 0;
+  color: var(--text);
+  --caret-color: var(--accent);
+  --selection-background-color: var(--accent-soft);
+  --selection-color: var(--text);
+  --contains-highlight-background-color: var(--accent-soft);
+}
+
+.formulaInput math-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 3.5rem 0.5rem 0.5rem;
+}
+
+.formulaInput math-field::part(menu-toggle) { display: none; }
+.formulaInput math-field::part(virtual-keyboard-toggle) { display: none; }
+
+.formulaKeyboard {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  --keyboard-background: var(--surface);
+  --keycap-background: var(--bg);
+  --keycap-text: var(--text);
+  --keycap-primary-background: var(--accent);
+  --keycap-primary-text: var(--on-accent);
+  --keycap-secondary-background: var(--surface-soft);
+  --keycap-secondary-text: var(--text);
 }

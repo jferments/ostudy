@@ -30,6 +30,8 @@ use crate::{
     util::validate_entity_id,
 };
 
+mod math_source;
+
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
 const PAGE_WIDTH: f64 = 595.0;
 const PAGE_HEIGHT: f64 = 842.0;
@@ -57,6 +59,8 @@ struct StudyGuidePdfSummary {
     guide_revision: i64,
     section_count: i64,
     annotation_count: i64,
+    #[serde(default = "legacy_math_fallback")]
+    math_source_fallback: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -66,6 +70,7 @@ pub(crate) struct PreparedStudyGuidePdfDto {
     pub guide_revision: i64,
     pub section_count: i64,
     pub annotation_count: i64,
+    pub math_source_fallback: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -134,6 +139,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
             guide_revision: summary.guide_revision,
             section_count: summary.section_count,
             annotation_count: summary.annotation_count,
+            math_source_fallback: summary.math_source_fallback,
         });
     }
 
@@ -159,6 +165,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
         guide_revision: effective.guide_revision,
         section_count: i64::try_from(effective.sections.len()).unwrap_or(i64::MAX),
         annotation_count: i64::try_from(effective.annotation_count).unwrap_or(i64::MAX),
+        math_source_fallback: math_source::has_math(&effective),
     };
     let suggested_filename = format!(
         "{}-study-guide.pdf",
@@ -184,7 +191,14 @@ pub(crate) fn prepare_document_study_guide_pdf(
         guide_revision: summary.guide_revision,
         section_count: summary.section_count,
         annotation_count: summary.annotation_count,
+        math_source_fallback: summary.math_source_fallback,
     })
+}
+
+// Old prepared exports did not record math presentation. Warn conservatively
+// on replay rather than claiming they contain typeset equations.
+fn legacy_math_fallback() -> bool {
+    true
 }
 
 fn load_effective_export(
@@ -374,6 +388,9 @@ fn render_study_guide_pdf(
         BODY_LINE_HEIGHT,
         false,
     )?;
+    if math_source::has_math(export) {
+        writer.paragraph(math_source::NOTICE, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
+    }
     writer.spacer(10.0)?;
 
     writer.heading("Overview", 16.0, 21.0)?;
@@ -607,6 +624,9 @@ fn wrap_text(text: &str, available_width: f64, font_size: f64) -> Vec<String> {
     let maximum = (available_width / approximate_character_width)
         .floor()
         .max(8.0) as usize;
+    if math_source::contains_math(text) {
+        return math_source::wrap_source(text, maximum);
+    }
     let mut lines = Vec::new();
     for paragraph in text.replace('\r', "").split('\n') {
         if paragraph.trim().is_empty() {
@@ -805,3 +825,6 @@ mod tests {
         fs::remove_file(root).unwrap();
     }
 }
+
+#[cfg(test)]
+mod math_tests;

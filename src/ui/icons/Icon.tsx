@@ -25,6 +25,7 @@ export const ICON_NAMES = [
   "help",
   "import",
   "information",
+  "keyboard",
   "maximize",
   "menu",
   "move",
@@ -210,6 +211,14 @@ function iconPath(name: IconName): ReactNode {
         <>
           <circle cx="12" cy="12" r="9" />
           <path d="M12 11v6M12 7h.01" />
+        </>
+      );
+    case "keyboard":
+      return (
+        <>
+          <rect x="2.5" y="5" width="19" height="14" rx="2" />
+          <path d="M6 9h.01M9 9h.01M12 9h.01M15 9h.01M18 9h.01" />
+          <path d="M6 12h.01M9 12h.01M12 12h.01M15 12h.01M18 12h.01M7 15h10" />
         </>
       );
     case "menu":

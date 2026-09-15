@@ -4,11 +4,15 @@ import { ColorField } from "../../ui/primitives/ColorField";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { TextField } from "../../ui/primitives/TextField";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
+import { FormulaDialog } from "../FormulaDialog";
+import type { FormulaEditSession } from "../formula";
 
-import { importImage } from "../../ipc/assets";
+import { importImage, importMedia } from "../../ipc/assets";
 import { getErrorMessage } from "../../ipc/common";
 import { managedAssetUrl } from "../../platform/assets";
 import { selectExternalImport } from "../../platform/files";
@@ -78,6 +82,18 @@ export function TiptapRichTextEditor({
   );
   const [editorError, setEditorError] = useState<string | null>(null);
   const [isImportingImage, setIsImportingImage] = useState(false);
+  const [isImportingMedia, setIsImportingMedia] = useState(false);
+  const [formulaSession, setFormulaSession] = useState<FormulaEditSession | null>(null);
+  const editorRef = useRef<Editor | null>(null);
+
+  function openFormulaEditor(): void {
+    const current = editorRef.current;
+    if (!current || !current.isEditable || current.isDestroyed) return;
+    const session = createTiptapEditorAdapter(current).beginFormulaEdit();
+    if (!session) { setEditorError("Select text or a formula before opening the formula editor."); return; }
+    setEditorError(null);
+    setFormulaSession(session);
+  }
 
   const editor = useEditor({
     extensions,
@@ -88,6 +104,19 @@ export function TiptapRichTextEditor({
         class: contentStyles.content,
         "aria-label": label,
       },
+      handleDoubleClickOn(view, _pos, node, nodePos, _event, direct) {
+        if (!direct || !view.editable || !["inlineMath", "blockMath"].includes(node.type.name)) return false;
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodePos)));
+        openFormulaEditor();
+        return true;
+      },
+      handleKeyDown(view, event) {
+        const selection = view.state.selection;
+        if (event.key !== "Enter" || !view.editable || !(selection instanceof NodeSelection)
+          || !["inlineMath", "blockMath"].includes(selection.node.type.name)) return false;
+        openFormulaEditor();
+        return true;
+      },
     },
     onUpdate: ({ editor: currentEditor }) => {
       const current = createTiptapEditorAdapter(currentEditor);
@@ -96,6 +125,7 @@ export function TiptapRichTextEditor({
     },
     onSelectionUpdate: () => setToolbarVersion((value) => value + 1),
   });
+  editorRef.current = editor;
   const adapter = useMemo(
     () => (editor ? createTiptapEditorAdapter(editor) : null),
     [editor],
@@ -104,6 +134,13 @@ export function TiptapRichTextEditor({
   const pairId = pairSide && assetDraftId ? assetDraftId : null;
   void toolbarVersion;
   void pairVersion;
+
+  useEffect(() => {
+    if (disabled && formulaSession) {
+      formulaSession.cancel();
+      setFormulaSession(null);
+    }
+  }, [disabled, formulaSession]);
 
   useEffect(() => {
     if (!adapter) return;
@@ -169,6 +206,36 @@ export function TiptapRichTextEditor({
       setEditorError(getErrorMessage(error));
     } finally {
       setIsImportingImage(false);
+    }
+  }
+
+  async function addMedia(): Promise<void> {
+    const current = editorRef.current;
+    if (!current || disabled || isImportingMedia) return;
+    if (!assetDraftId) {
+      setEditorError("The managed asset draft is still opening. Try again in a moment.");
+      return;
+    }
+    setEditorError(null);
+    setIsImportingMedia(true);
+    try {
+      const asset = await importMedia(assetDraftId);
+      if (!asset) return;
+      const type = asset.mimeType.startsWith("audio/")
+        ? "audio"
+        : asset.mimeType.startsWith("video/")
+          ? "video"
+          : null;
+      if (!type) throw new Error("The selected managed asset is not audio or video.");
+      onAssetImported?.(asset);
+      current.chain().focus().insertContent({
+        type,
+        attrs: { assetId: asset.id, src: managedAssetUrl(asset.id) },
+      }).run();
+    } catch (error: unknown) {
+      setEditorError(getErrorMessage(error));
+    } finally {
+      setIsImportingMedia(false);
     }
   }
 
@@ -264,11 +331,15 @@ export function TiptapRichTextEditor({
         <EditorToolbar
           adapter={adapter}
           onAddImage={() => void addImage()}
+          onAddMedia={() => void addMedia()}
           onOpenLink={openLinkEditor}
+          onOpenFormula={openFormulaEditor}
           onOpenTable={() => setTableOpen(true)}
           onOpenChecklist={() => setChecklistOpen(true)}
           isImportingImage={isImportingImage}
+          isImportingMedia={isImportingMedia}
           imageDraftReady={onRequestImage !== undefined || assetDraftId !== null}
+          mediaDraftReady={assetDraftId !== null}
           disabled={disabled}
         />
         {linkOpen ? (
@@ -314,6 +385,8 @@ export function TiptapRichTextEditor({
         </div>
       </div>
       {editorError && !linkOpen && !checklistOpen ? <InlineNotice kind="error">{editorError}</InlineNotice> : null}
+
+      {formulaSession ? <FormulaDialog session={formulaSession} onClose={() => setFormulaSession(null)} /> : null}
 
       {tableOpen ? (
         <Dialog title="Insert table" width="small" onClose={() => setTableOpen(false)}>
@@ -375,15 +448,19 @@ export function TiptapRichTextEditor({
 interface EditorToolbarProps {
   adapter: EditorAdapter;
   onAddImage: () => void;
+  onAddMedia: () => void;
   onOpenLink: () => void;
+  onOpenFormula: () => void;
   onOpenTable: () => void;
   onOpenChecklist: () => void;
   isImportingImage: boolean;
+  isImportingMedia: boolean;
   imageDraftReady: boolean;
+  mediaDraftReady: boolean;
   disabled: boolean;
 }
 
-function EditorToolbar({ adapter, onAddImage, onOpenLink, onOpenTable, onOpenChecklist, isImportingImage, imageDraftReady, disabled }: EditorToolbarProps) {
+function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, onOpenLink, onOpenTable, onOpenChecklist, isImportingImage, isImportingMedia, imageDraftReady, mediaDraftReady, disabled }: EditorToolbarProps) {
   const selection = adapter.selection();
   const textStyle = adapter.attributes("textStyle");
   const historyGroup = editorToolbarGroups(adapter.capabilities).find((group) => group.id === "history");
@@ -418,7 +495,7 @@ function EditorToolbar({ adapter, onAddImage, onOpenLink, onOpenTable, onOpenChe
       <ToolbarGroup label="Lists and indentation">
         <ToolbarAction label="Bullet list" pressed={adapter.isActive("bulletList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_bullet_list" })}>• List</ToolbarAction>
         <ToolbarAction label="Numbered list" pressed={adapter.isActive("orderedList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_numbered_list" })}>1. List</ToolbarAction>
-        <ToolbarAction label="Task list" pressed={adapter.isActive("taskList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_task_list" })}>☐ Tasks</ToolbarAction>
+        <ToolbarAction label="Checkbox list" pressed={adapter.isActive("taskList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_task_list" })}>☐ Checkbox</ToolbarAction>
         {selection.inTaskList ? <ToolbarAction label={selection.taskChecked ? "Mark task incomplete" : "Mark task complete"} pressed={selection.taskChecked === true} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_task_checked" })}>✓</ToolbarAction> : null}
         <ToolbarAction label="Decrease indentation" onMouseDown={preserveSelection} onClick={() => run({ command: "indent", value: -1 })}>⇤</ToolbarAction>
         <ToolbarAction label="Increase indentation" onMouseDown={preserveSelection} onClick={() => run({ command: "indent", value: 1 })}>⇥</ToolbarAction>
@@ -427,8 +504,10 @@ function EditorToolbar({ adapter, onAddImage, onOpenLink, onOpenTable, onOpenChe
         {(["left", "center", "right"] as const).map((alignment) => <ToolbarAction key={alignment} label={`Align ${alignment}`} pressed={selection.textAlignment === alignment} onMouseDown={preserveSelection} onClick={() => run({ command: "set_text_alignment", value: alignment as EditorTextAlignment })}>{alignment === "left" ? "≡←" : alignment === "center" ? "≡" : "→≡"}</ToolbarAction>)}
       </ToolbarGroup>
       <ToolbarGroup label="Insert content">
+        <ToolbarAction label="Insert or edit formula" onMouseDown={preserveSelection} onClick={onOpenFormula}>Formula</ToolbarAction>
         <ToolbarAction label="Add or edit link" pressed={adapter.isActive("link")} onMouseDown={preserveSelection} onClick={onOpenLink}>Link</ToolbarAction>
         <ToolbarAction label="Insert image" onMouseDown={preserveSelection} onClick={onAddImage} disabled={isImportingImage || !imageDraftReady}>{isImportingImage ? "Adding…" : "Image"}</ToolbarAction>
+        <ToolbarAction label="Insert audio or video" onMouseDown={preserveSelection} onClick={onAddMedia} disabled={isImportingMedia || !mediaDraftReady}>{isImportingMedia ? "Adding…" : "Media"}</ToolbarAction>
         <ToolbarAction label="Remove text color and highlight" onMouseDown={preserveSelection} onClick={() => run({ command: "reset_colors" })}>Reset color</ToolbarAction>
       </ToolbarGroup>
       {selection.inTable ? <ToolbarGroup label="Table editing">

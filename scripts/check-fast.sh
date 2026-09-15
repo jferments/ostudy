@@ -95,8 +95,8 @@ cargo test \
   --lib \
   document_
 
-step "Tutor, shared knowledge, and privacy contracts"
-for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::privacy_tests library_backup::tutor_backup_tests; do
+step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
+for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::privacy_tests device_sync::package::media_asset_tests library_backup::media_backup_tests library_backup::tutor_backup_tests; do
   cargo test \
     --manifest-path src-tauri/Cargo.toml \
     --locked \
@@ -120,6 +120,14 @@ cargo test \
   --lib \
   documents::lifecycle::tests::startup_interruption_preserves_ready_state_for_a_guide_only_document \
   -- --exact
+
+step "Native rich-document compatibility"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  cards::
 
 step "Document metadata migration regression"
 cargo test \

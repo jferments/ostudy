@@ -26,20 +26,34 @@ export function cloneDocument(document: RichDocument): RichDocument {
 }
 
 export function canonicalizeDocument(document: RichDocument): RichDocument {
+  const version = isRecord(document.attrs) ? document.attrs.schemaVersion : undefined;
+  if (version !== undefined && (
+    typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > 3
+  )) {
+    throw new Error("This rich-document version is not supported. Update oStudy before editing it.");
+  }
   const copy = cloneDocument(document);
+  let containsRichAtoms = false;
+  walk(copy, (node) => {
+    if (["inlineMath", "blockMath", "audio", "video"].includes(String(node.type))) {
+      containsRichAtoms = true;
+    }
+  });
   copy.type = "doc";
   copy.attrs = {
     ...(isRecord(copy.attrs) ? copy.attrs : {}),
-    schemaVersion: RICH_DOCUMENT_SCHEMA_VERSION,
+    // Do not downgrade schema-3 data when editing older application documents.
+    schemaVersion: Math.max(RICH_DOCUMENT_SCHEMA_VERSION, version ?? 1, containsRichAtoms ? 3 : 1),
   };
   walkMutable(copy, (node) => {
-    if (node.type !== "image" || !isRecord(node.attrs)) {
+    if (!isManagedAssetNode(node) || !isRecord(node.attrs)) {
       return;
     }
     const assetId = node.attrs.assetId;
     if (typeof assetId === "string" && assetId !== "") {
       node.attrs.src = `study-asset://${assetId}`;
     }
+    if (node.type === "audio") return;
     for (const key of ["width", "height"] as const) {
       const value = node.attrs[key];
       const numeric =
@@ -66,7 +80,7 @@ export function hydrateDocument(
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
 
   walkMutable(copy, (node) => {
-    if (node.type !== "image" || !isRecord(node.attrs)) {
+    if (!isManagedAssetNode(node) || !isRecord(node.attrs)) {
       return;
     }
     const assetId = node.attrs.assetId;
@@ -74,12 +88,24 @@ export function hydrateDocument(
       return;
     }
     const asset = byId.get(assetId);
-    if (asset) {
-      node.attrs.src = managedAssetUrl(asset.id);
-      if (typeof node.attrs.alt !== "string" || node.attrs.alt.trim() === "") {
-        node.attrs.alt = asset.originalFilename;
+    if (node.type === "image") {
+      if (asset) {
+        node.attrs.src = managedAssetUrl(asset.id);
+        if (typeof node.attrs.alt !== "string" || node.attrs.alt.trim() === "") {
+          node.attrs.alt = asset.originalFilename;
+        }
       }
+      return;
     }
+    // Only admitted, correctly typed assets receive a runtime media URL. Never
+    // infer a playable URL from a persisted src or a donor-supplied filename.
+    const expectedMime = node.type === "audio" ? "audio/" : "video/";
+    node.attrs.src = asset && /^[0-9a-f]{32}$/u.test(asset.id)
+      && asset.mimeType.startsWith(expectedMime)
+      ? managedAssetUrl(asset.id)
+      : "";
+    // Filenames can contain the expected answer. Do not copy one into a media
+    // node's title, accessible label, or the public question text implicitly.
   });
 
   return copy;
@@ -88,7 +114,7 @@ export function hydrateDocument(
 export function collectAssetIds(document: RichDocument): string[] {
   const ids = new Set<string>();
   walk(document, (node) => {
-    if (node.type !== "image" || !isRecord(node.attrs)) {
+    if (!isManagedAssetNode(node) || !isRecord(node.attrs)) {
       return;
     }
     const assetId = node.attrs.assetId;
@@ -103,7 +129,9 @@ export function isDocumentEmpty(
   text: string,
   document: RichDocument,
 ): boolean {
-  return text.trim() === "" && collectAssetIds(document).length === 0;
+  return text.trim() === ""
+    && extractRichDocumentText(document).trim() === ""
+    && collectAssetIds(document).length === 0;
 }
 
 export function hasAnswerKeyChecklist(document: RichDocument): boolean {
@@ -250,6 +278,20 @@ function extract(value: unknown, parts: string[], parentType: string | null): vo
     parts.push(value.text);
     return;
   }
+  if (type === "inlineMath" || type === "blockMath") {
+    const latex = isRecord(value.attrs) ? value.attrs.latex : undefined;
+    if (typeof latex === "string" && latex.trim() !== "") {
+      if (type === "blockMath" && parts.length > 0 && parts.at(-1) !== "\n") parts.push("\n");
+      parts.push(type === "inlineMath" ? `\\(${latex}\\)` : `\\[${latex}\\]`);
+      if (type === "blockMath") parts.push("\n");
+    }
+    return;
+  }
+  if (type === "audio" || type === "video") {
+    if (parts.length > 0 && parts.at(-1) !== "\n") parts.push("\n");
+    parts.push(type === "audio" ? "[Audio]" : "[Video]", "\n");
+    return;
+  }
   if (type === "hardBreak") {
     parts.push("\n");
     return;
@@ -386,6 +428,10 @@ function walkMutable(
   for (const nested of Object.values(value)) {
     walkMutable(nested, visitor);
   }
+}
+
+function isManagedAssetNode(node: Record<string, unknown>): boolean {
+  return node.type === "image" || node.type === "audio" || node.type === "video";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

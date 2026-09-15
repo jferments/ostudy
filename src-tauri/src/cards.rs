@@ -5,9 +5,11 @@
 
 #[path = "cards/content.rs"]
 mod content;
+pub(crate) mod math;
+mod rich_content;
 
 pub use content::CardPresentationDto;
-pub(crate) use content::{
+pub(crate) use rich_content::{
     collect_asset_ids, validate_content, validate_document, ValidatedContent,
 };
 

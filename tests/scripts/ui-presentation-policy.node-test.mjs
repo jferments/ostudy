@@ -12,7 +12,7 @@ test("every generic feature control must use the public facade", () => {
 });
 
 test("Markdown exception is limited to an explicitly disabled task marker", () => {
-  const owner = "src/screens/tutor/TutorMarkdown.tsx";
+  const owner = "src/components/StudyMarkdown.tsx";
   const allowed = { type: "checkbox", checked: null, disabled: true, "aria-label": "Checklist item" };
   assert.equal(nativeControlViolation(owner, "input", allowed), null);
   for (const attributes of [
@@ -22,6 +22,7 @@ test("Markdown exception is limited to an explicitly disabled task marker", () =
     { ...allowed, "aria-label": "Other control" },
   ]) assert.match(nativeControlViolation(owner, "input", attributes), /facade/u);
   assert.match(nativeControlViolation("src/screens/OtherMarkdown.tsx", "input", allowed), /facade/u);
+  assert.match(nativeControlViolation("src/screens/tutor/TutorMarkdown.tsx", "input", allowed), /facade/u);
 });
 
 test("production inventory excludes fixtures but not real feature controllers", () => {

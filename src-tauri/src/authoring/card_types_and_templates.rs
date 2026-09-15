@@ -1,6 +1,9 @@
 use super::*;
 use std::collections::{BTreeMap, HashMap};
 
+#[path = "duplicate_identity.rs"]
+pub(super) mod duplicate_identity;
+
 const MAX_CLOZE_SOURCE_CHARS: usize = 200_000;
 const MAX_CLOZE_GROUP: u32 = 10_000;
 const MAX_TEMPLATE_NAME_CHARS: usize = 80;
@@ -629,6 +632,7 @@ fn create_prepared_card_note(
     let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
+    let identity = duplicate_identity::from_validated_content(&prepared.content)?;
 
     let note_id = database.with_connection(|connection| {
         let transaction = connection
@@ -638,12 +642,11 @@ fn create_prepared_card_note(
         ensure_assets_available(&transaction, &paths, &asset_ids, asset_draft_id.as_deref())?;
         if !allow_duplicate
             && duplicate_checkable(&prepared.content.front_text, &prepared.content.back_text)
-            && has_exact_duplicate(
+            && duplicate_identity::has_exact_duplicate(
                 &transaction,
                 &deck_id,
                 &hash,
-                &normalized.0,
-                &normalized.1,
+                &identity,
                 None,
             )?
         {
@@ -798,6 +801,7 @@ fn update_prepared_card_note(
     let tags = validate_tags(tags)?;
     let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
     let hash = duplicate_hash(&normalized.0, &normalized.1);
+    let identity = duplicate_identity::from_validated_content(&prepared.content)?;
 
     database.with_connection(|connection| {
         let transaction = connection
@@ -827,12 +831,11 @@ fn update_prepared_card_note(
         }
         if !allow_duplicate
             && duplicate_checkable(&prepared.content.front_text, &prepared.content.back_text)
-            && has_exact_duplicate(
+            && duplicate_identity::has_exact_duplicate(
                 &transaction,
                 &deck_id,
                 &hash,
-                &normalized.0,
-                &normalized.1,
+                &identity,
                 Some(&note_id),
             )?
         {

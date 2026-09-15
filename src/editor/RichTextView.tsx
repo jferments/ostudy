@@ -7,6 +7,8 @@ export interface RichTextViewProps {
   document: RichDocument;
   assets: Asset[];
   answerKeySide?: AnswerKeySide | null;
+  /** Hidden card faces must not receive a runtime media URL or decoder resource. */
+  mediaPlaybackActive?: boolean;
   className?: string;
   onLinkError?: (message: string) => void;
 }
