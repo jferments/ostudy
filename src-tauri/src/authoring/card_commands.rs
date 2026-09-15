@@ -273,9 +273,6 @@ mod duplicate_probe_tests {
             "Question",
             "Watch [Video]"
         ));
-        assert!(!requires_authoritative_rich_duplicate_check(
-            "Question",
-            "Answer"
-        ));
+        assert!(!requires_authoritative_rich_duplicate_check("Question", "Answer"));
     }
 }
