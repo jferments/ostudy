@@ -1,6 +1,11 @@
 import { Extension, Node } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { queueFrontendDiagnostic } from "../../ipc/diagnostics";
 import { renderFormula } from "../../math/render";
+import {
+  createManagedMediaObjectUrl,
+  revokeManagedMediaObjectUrl,
+} from "../../media/managedPlayback";
 import { managedAssetUrl } from "../../platform/assets";
 
 const atomNames = new Set(["inlineMath", "blockMath", "audio", "video"]);
@@ -136,7 +141,22 @@ function mediaNode(name: "audio" | "video") {
         dom.contentEditable = "false";
         dom.style.cssText = "display:block;max-width:100%;margin:0.75em 0";
         let player: HTMLMediaElement | null = null;
+        let objectUrl: string | null = null;
+        let playbackErrorHandler: (() => void) | null = null;
+        let loadGeneration = 0;
         let signature = "";
+
+        const releaseCurrent = () => {
+          loadGeneration += 1;
+          if (player && playbackErrorHandler) {
+            player.removeEventListener("error", playbackErrorHandler);
+          }
+          playbackErrorHandler = null;
+          releasePlayer(player);
+          player = null;
+          revokeManagedMediaObjectUrl(objectUrl);
+          objectUrl = null;
+        };
 
         const paint = (attrs: Record<string, unknown>) => {
           const id = typeof attrs.assetId === "string" ? attrs.assetId : "";
@@ -148,8 +168,7 @@ function mediaNode(name: "audio" | "video") {
           const nextSignature = `${id}\0${src}\0${width ?? ""}\0${height ?? ""}`;
           if (signature === nextSignature) return;
           signature = nextSignature;
-          releasePlayer(player);
-          player = null;
+          releaseCurrent();
           dom.replaceChildren();
           if (assetIdPattern.test(id)) dom.dataset.studyAsset = id;
           else delete dom.dataset.studyAsset;
@@ -163,26 +182,61 @@ function mediaNode(name: "audio" | "video") {
             return;
           }
 
-          player = document.createElement(name);
-          player.dataset.studyManagedMedia = name;
-          player.controls = true;
-          player.autoplay = false;
-          player.preload = "metadata";
-          player.src = src;
-          player.style.maxWidth = "100%";
-          if (name === "audio") player.style.width = "min(100%, 36rem)";
-          player.setAttribute("aria-label", name === "audio" ? "Audio player" : "Video player");
-          player.setAttribute("controlslist", "nodownload noremoteplayback");
+          const current = document.createElement(name);
+          player = current;
+          current.dataset.studyManagedMedia = name;
+          current.controls = true;
+          current.autoplay = false;
+          current.preload = "metadata";
+          current.style.maxWidth = "100%";
+          if (name === "audio") current.style.width = "min(100%, 36rem)";
+          current.setAttribute("aria-label", name === "audio" ? "Audio player" : "Video player");
+          current.setAttribute("controlslist", "nodownload noremoteplayback");
           if (name === "video") {
-            const video = player as HTMLVideoElement;
+            const video = current as HTMLVideoElement;
             video.playsInline = true;
             video.disablePictureInPicture = true;
             if (width !== null && Number.isFinite(width)) video.width = Math.trunc(width);
             if (height !== null && Number.isFinite(height)) video.height = Math.trunc(height);
           }
-          player.addEventListener("play", () => pauseOtherPlayers(player!));
-          managedPlayers.add(player);
-          dom.appendChild(player);
+          current.addEventListener("play", () => pauseOtherPlayers(current));
+          playbackErrorHandler = () => {
+            queueFrontendDiagnostic({
+              level: "error",
+              target: "editor.media",
+              event: "managed_media_playback_error",
+              message: "Managed media playback failed.",
+              fields: {
+                kind: name,
+                errorCode: current.error?.code ?? 0,
+                networkState: current.networkState,
+                readyState: current.readyState,
+              },
+            });
+          };
+          current.addEventListener("error", playbackErrorHandler);
+          managedPlayers.add(current);
+          dom.appendChild(current);
+
+          const generation = ++loadGeneration;
+          void createManagedMediaObjectUrl(id, name).then((url) => {
+            if (generation !== loadGeneration || player !== current) {
+              revokeManagedMediaObjectUrl(url);
+              return;
+            }
+            objectUrl = url;
+            current.src = url;
+            try { current.load(); } catch { /* The native player may start loading on src assignment. */ }
+          }).catch(() => {
+            if (generation !== loadGeneration || player !== current) return;
+            queueFrontendDiagnostic({
+              level: "error",
+              target: "editor.media",
+              event: "managed_media_materialization_failed",
+              message: "Managed media could not be materialized for playback.",
+              fields: { kind: name },
+            });
+          });
         };
 
         paint(node.attrs as Record<string, unknown>);
@@ -196,8 +250,7 @@ function mediaNode(name: "audio" | "video") {
           stopEvent: (event) => event.target instanceof globalThis.Node && dom.contains(event.target),
           ignoreMutation: (mutation) => mutation.type !== "selection",
           destroy() {
-            releasePlayer(player);
-            player = null;
+            releaseCurrent();
           },
         };
       };
