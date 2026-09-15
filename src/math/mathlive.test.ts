@@ -91,8 +91,10 @@ describe("MathLive application port", () => {
     expect(MathfieldElement.computeEngine).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
     expect(keyboard.container).toBe(keyboardHost);
-    input.toggleKeyboard();
+    expect(input.showKeyboard()).toBe(true);
     expect(keyboardHost.style.height).toBe("180px");
+    expect(input.toggleKeyboard()).toBe(false);
+    expect(input.toggleKeyboard()).toBe(true);
     expect(input.hideKeyboard()).toBe(true);
     expect(input.hideKeyboard()).toBe(false);
     const field = host.firstElementChild!;
@@ -155,7 +157,7 @@ describe("MathLive application port", () => {
     field.finishMount();
     const { input } = await pending;
     expect(field.menuItems).toEqual([]);
-    input.toggleKeyboard();
+    expect(input.showKeyboard()).toBe(true);
     expect(keyboard.visible).toBe(true);
   });
 
