@@ -22,6 +22,7 @@ const originalScrollIntoView = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "scrollIntoView",
 );
+const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scroll");
 beforeEach(() => {
   controller = new AbortController();
   // jsdom has no FontFaceSet. MathLive listens for browser font readiness even
@@ -29,9 +30,13 @@ beforeEach(() => {
   const fonts = Object.assign(new EventTarget(), { status: "loaded", check: () => true });
   Object.defineProperty(fonts, "ready", { value: Promise.resolve(fonts) });
   Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
-  // MathLive scrolls a changed selection into view. Browsers provide this API;
-  // jsdom does not, so only this layout side effect is shimmed for integration.
+  // MathLive scrolls a changed selection into view. Browsers provide these APIs;
+  // jsdom does not, so only these layout side effects are shimmed for integration.
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(HTMLElement.prototype, "scroll", {
     configurable: true,
     value: vi.fn(),
   });
@@ -51,6 +56,11 @@ afterEach(() => {
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
   } else {
     Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  }
+  if (originalScroll) {
+    Object.defineProperty(HTMLElement.prototype, "scroll", originalScroll);
+  } else {
+    Reflect.deleteProperty(HTMLElement.prototype, "scroll");
   }
   vi.unstubAllGlobals();
 });
