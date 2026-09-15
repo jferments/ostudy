@@ -100,6 +100,9 @@ mod util;
 mod workload;
 mod xberg_document_adapter;
 
+// Application-owned question contracts, reusable by native authoring and study.
+pub use cards::questions;
+
 #[cfg(test)]
 mod canonical_migration_tests;
 #[cfg(test)]

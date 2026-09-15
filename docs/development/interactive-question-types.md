@@ -31,7 +31,10 @@ Quizlet, RemNote, Duolingo and other proprietary products are design references
 only. Do not embed their services or copy proprietary implementation/assets.
 Evaluate any new dependency for need, open-source license compatibility, exact
 pin, local packaging, platform behavior and offline operation before adoption.
-This first increment adds no dependency and changes no provider configuration.
+The authoring/native-foundation increments add no dependency or provider change.
+The inherited Android ML Kit OCR and Play-services scanner do not establish
+compliance with this requirement. Their replacement and full dependency review
+remain open under AC-22; on-device operation is not an open-source license.
 
 Non-goals: automatic occlusion extraction; dedicated formula OCR; rich-cloze
 redesign; arbitrary HTML/JavaScript templates; a plugin/form-builder platform;
@@ -265,24 +268,53 @@ still owns durable drafts/saving. `TemplateEntryForm.tsx` uses the same field ho
 and emits per-field deltas; the screen applies them with functional state updates
 so multiple edits in one batch do not lose sibling changes.
 
-The first increment changes no native command, storage/transfer schema, scheduler,
-provider, dependency, math/media implementation or workflow. Basic and templates
-use the shared code now; the seven new types are not selectable yet. Typed native
-storage, new forms, objective checking, attempts, generation, occlusion and their
-release qualification remain unfinished. There is no disconnected demo route or
-pretend completion flag. Exact checks and head identity belong to the PR/Actions
-record, not a future-success claim in this document.
+The native domain in `src-tauri/src/cards/questions/` is exposed through the
+application library's `questions` facade. It admits version-1 typed definitions
+for all seven new kinds and version-1 responses for the six objective kinds.
+Validated wrappers keep raw input out of public projection and evaluation. Fields
+reuse the schema-1/2/3 rich validator, with additional per-field/aggregate byte,
+JSON-depth and item limits. Managed-asset collection includes private rationales
+and occlusion images; public projections collect visible-field assets only.
+
+Single-choice, exact-set select-all, Boolean, bijection, category membership and
+complete total-order evaluation return correctness and component feedback, never
+FSRS ratings. Empty select-all keys/responses are valid; unanswered radio/Boolean
+responses are incomplete rather than false. Unknown/duplicate IDs, unexpected
+fields and unsupported versions fail explicitly. This proves structural validity,
+not factual correctness, semantic uniqueness, or a useful ordering criterion.
+
+`QuestionInstance` freezes note/card/instance identity, note revision, definition,
+presentation key, display permutation and grading-policy version. Its bounded
+private serialization restores without consulting a current note or reshuffling.
+A SHA-256 fingerprint identifies the captured content. Incoming answers bind to
+the instance ID. This is an immutable native value, NOT yet a SQLite session
+write, first-attempt receipt, idempotent check, or scheduler integration.
+
+Occlusion validates finite normalized rectangles and independent question targets.
+Native mask plans support both modes and multi-region targets, but have no
+serialization implementation that would casually expose the original image to
+Practice. Public projection refuses occlusion until a managed masked derivative
+is prepared. Rendering/editor integration and image ownership checks remain open.
+
+There is no new IPC command, database migration, transfer/schema activation,
+provider/dependency/workflow change, or enabled question type in this increment.
+Current Basic/Cloze authoring and Practice remain unchanged. Next complete the
+native storage/asset/session/transfer contracts, then integrate the shared choice
+forms and full create/save/reopen/study/check flow. Generation, drag interaction,
+occlusion rendering, analytics and platform acceptance are still unfinished.
 
 Focused regressions:
 
 ```bash
 pnpm exec vitest run src/editor/RichFieldList.test.tsx src/screens/CardEditorFields.test.tsx src/screens/CardEditorScreen.test.tsx
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib cards::questions::
 ```
 
-These cover identity/reordering/reset/lock/resource forwarding and the actual
-screen's Basic save and batched template edits. The concrete editor is mocked at
-this boundary; existing rich-content/math/media tests remain required. These tests
-do not prove physical-device input, native persistence or new question support.
+Native tests exercise actual rich validation, all graders, bounded malformed
+input, asset visibility, frozen snapshots/order and occlusion geometry/identity.
+The existing fast gate's `cards::` filter includes them. They do not establish
+file-backed attempts, import/backup/sync round trips, real UI interaction or
+physical-device acceptance. Exact qualification belongs to the PR/Actions record.
 
 ## Stable acceptance criteria
 

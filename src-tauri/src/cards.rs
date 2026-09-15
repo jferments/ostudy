@@ -6,6 +6,7 @@
 #[path = "cards/content.rs"]
 mod content;
 pub(crate) mod math;
+pub mod questions;
 mod rich_content;
 
 pub use content::CardPresentationDto;
