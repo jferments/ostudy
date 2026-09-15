@@ -5,7 +5,6 @@ import { Badge } from "../ui/primitives/Badge";
 import { Surface } from "../ui/primitives/Surface";
 import { presentation } from "./card-editor/presentation";
 import { cn } from "../ui/internal/cn";
-import { Checkbox } from "../ui/primitives/FormControls";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
 import { Button } from "../ui/primitives/Button";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,7 +13,6 @@ import { CardEditorController } from "../controllers/cardEditorController";
 import { useDurableDraft } from "../controllers/useDurableDraft";
 
 import { TagInput } from "../components/TagInput";
-import { RichTextEditor } from "../editor/RichTextEditor";
 import { RichTextView } from "../editor/RichTextView";
 import {
   EMPTY_RICH_DOCUMENT,
@@ -51,6 +49,7 @@ import {
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
+import { BasicCardFields } from "./card-editor/BasicCardFields";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
@@ -691,20 +690,25 @@ export function CardEditorScreen({
             <TemplateEntryForm key={`${selectedCustomTemplate.id}-${editorGeneration}`} template={selectedCustomTemplate}
               values={templateValues} previews={templatePreviews} assets={assets} assetDraftId={assetDraftId}
               disabled={isSaving} isPreviewing={isPreviewingTemplate} onAssetImported={addAsset}
-              onValuesChange={(values) => { setTemplateValues(values); markDirty(); }} onPreview={() => void buildTemplatePreview()} />
+              onValueChange={(fieldId, doc, text) => {
+                setTemplateValues((current) => current.map((entry) =>
+                  entry.fieldId === fieldId ? { ...entry, doc, text } : entry,
+                ));
+                markDirty();
+              }} onPreview={() => void buildTemplatePreview()} />
           ) : builtInCardType === "cloze" ? (
             <ClozeEditor source={clozeSource} mode={clozeMode} disabled={isSaving}
               onSourceChange={(source) => { setClozeSource(source); markDirty(); }} onModeChange={(mode) => { setClozeMode(mode); markDirty(); }} />
-          ) : (<>
-            <RichTextEditor key={`front-${editorGeneration}`} label="Question" document={frontDoc} assets={assets} assetDraftId={assetDraftId}
-              disabled={isSaving} onAssetImported={addAsset} onChange={(document: RichDocument, plainText: string) => { setFrontDoc(document); setFrontText(plainText); markDirty(); }} />
-            <RichTextEditor key={`back-${editorGeneration}`} label="Answer" document={backDoc} assets={assets} assetDraftId={assetDraftId}
-              disabled={isSaving} onAssetImported={addAsset} onChange={(document: RichDocument, plainText: string) => { setBackDoc(document); setBackText(plainText); markDirty(); }} minHeight={220} />
-            <Surface className="tw:p-5"><label className="tw:flex tw:items-center tw:justify-between tw:gap-4 tw:text-label">
-              <span><strong>Create reverse card</strong><small className="tw:mt-1 tw:block tw:text-muted-foreground">Study both directions with separate schedules and review histories.</small></span>
-              <Checkbox checked={reverseEnabled} disabled={isSaving} onCheckedChange={(checked) => { setReverseEnabled(checked); markDirty(); }} />
-            </label></Surface>
-          </>)}
+          ) : (
+            <BasicCardFields key={`basic-${editorGeneration}`} frontDoc={frontDoc} backDoc={backDoc}
+              reverseEnabled={reverseEnabled} assets={assets} assetDraftId={assetDraftId}
+              disabled={isSaving} onAssetImported={addAsset}
+              onFieldChange={(fieldId, document, plainText) => {
+                if (fieldId === "front") { setFrontDoc(document); setFrontText(plainText); }
+                else { setBackDoc(document); setBackText(plainText); }
+                markDirty();
+              }} onReverseChange={(enabled) => { setReverseEnabled(enabled); markDirty(); }} />
+          )}
           <TagInput tags={tags} suggestions={tagSuggestions} disabled={isSaving} onChange={(nextTags) => { setTags(nextTags); markDirty(); }} />
         </div>
         {previewOpen && builtInCardType === "basic" && !selectedCustomTemplate ? (
