@@ -3,6 +3,7 @@ mod assets;
 mod config;
 mod detection;
 mod errors;
+mod math;
 mod metadata;
 mod normalization;
 mod opc;
@@ -14,7 +15,7 @@ mod tables;
 #[cfg(test)]
 mod tests;
 
-pub(crate) const XBERG_ADAPTER_BACKEND: &str = "xberg-canonical-adapter-v1";
+pub(crate) const XBERG_ADAPTER_BACKEND: &str = "xberg-canonical-adapter-v2-math-input";
 pub(crate) const XBERG_EXTRACTION_BACKEND: &str = "xberg-1.1.0-git-276cbba4-office-excel-v1";
 
 pub(crate) use adapter::extract;

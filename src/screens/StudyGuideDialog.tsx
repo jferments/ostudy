@@ -12,6 +12,7 @@ import {
 } from "../ipc/studyGuides";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { Icon } from "../ui/icons/Icon";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
@@ -27,6 +28,7 @@ type EditingMode = "note" | "override";
 interface EditingState { topicId: string | null; mode: EditingMode; value: string; }
 
 export function StudyGuideDialog({ documentId, documentTitle, showToast, onPracticeCards, onClose }: StudyGuideDialogProps) {
+  const confirm = useConfirm();
   const [guide, setGuide] = useState<DocumentStudyGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -89,6 +91,12 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
     try {
       const prepared = await prepareDocumentStudyGuidePdf(documentId, includeAnnotations);
       preparedExportId = prepared.preparedExport.id;
+      if (prepared.mathSourceFallback && !await confirm({
+        title: "Export math as source notation?",
+        description: "Equations in this PDF will use readable LaTeX source rather than typeset formulas. The study guide in oStudy keeps its typeset math.",
+        confirmLabel: "Export PDF",
+        cancelLabel: "Cancel",
+      })) return;
       const receipt = await publishPreparedExport(prepared.preparedExport.id);
       if (receipt) {
         const annotationSummary = prepared.annotationCount > 0 ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}` : "";

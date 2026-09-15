@@ -4,7 +4,7 @@
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::{cards::math::validate_latex, error::CommandError};
+use crate::{cards::math::{mathml, validate_latex}, error::CommandError};
 
 const MAX_FORMULAS: usize = 64;
 const MAX_TOTAL_LATEX_BYTES: usize = 32 * 1024;
@@ -76,6 +76,20 @@ impl ProtectedMath {
                     cursor += end + 3;
                     continue;
                 }
+            }
+            if mathml::starts_mathml(rest) {
+                let length = mathml::prefix_len(rest).map_err(|detail| invalid(path, &detail))?;
+                let formula = mathml::parse(&rest[..length]).map_err(|detail| invalid(path, &detail))?;
+                total_bytes = total_bytes.saturating_add(formula.latex.len());
+                if formulas.len() >= MAX_FORMULAS || total_bytes > MAX_TOTAL_LATEX_BYTES {
+                    return Err(invalid(path, "a card side exceeds its formula budget"));
+                }
+                output.push_str(&source[copied..cursor]);
+                output.push_str(&format!("{prefix}{}\u{e001}", formulas.len()));
+                formulas.push((formula.latex, formula.block));
+                cursor += length;
+                copied = cursor;
+                continue;
             }
             let delimiter = [
                 ("\\(", "\\)", false),
@@ -251,3 +265,7 @@ fn escaped(source: &str, position: usize) -> bool {
 fn invalid(path: &str, detail: &str) -> CommandError {
     CommandError::new("invalid_import_math", format!("{path}: {detail}."))
 }
+
+#[cfg(test)]
+#[path = "mathml_generated_tests.rs"]
+mod mathml_generated_tests;

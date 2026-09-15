@@ -91,8 +91,9 @@ source and disclose source-only output rather than silently dropping formulas.
 
 The concrete Tiptap schema retains all four rich atoms through ordinary editing
 and save/reopen, with text/clipboard serialization and protection against marks
-that native atom validation rejects. Media placeholders are still inert and omit
-runtime URLs and titles; audio/video acquisition and playback remain unfinished.
+that native atom validation rejects. Media uses native players only for hydrated managed assets; unavailable assets
+remain inert. Native acquisition, Anki conversion, package/sync/backup transport
+are implemented; full lifecycle and device acceptance remain pending.
 
 ### Formula authoring and card rendering
 
@@ -145,9 +146,9 @@ selection, undo/redo and shared-dialog behavior. The MathLive port is stubbed fo
 lifecycle tests; those tests do not establish physical-keyboard, touch keyboard,
 assistive-technology, theme contrast or target-WebView font/geometry acceptance.
 Desktop and physical Android testing, complete application packaging and full
-platform qualification remain explicit acceptance work. Source extraction, MathML
-normalization and native-PDF math integration remain unfinished; card and Markdown
-rendering do not complete those paths.
+platform qualification remain explicit acceptance work. Structured MathML input and disclosed native-PDF source notation are implemented
+below. Dedicated equation recognition and universal source-format fidelity are
+deferred; card and Markdown rendering do not establish transcription accuracy.
 
 ```bash
 pnpm vitest run src/math/render.test.ts src/math/mathlive.test.ts src/editor/FormulaDialog.test.tsx src/editor/formula.test.ts src/editor/tiptap/formulaSession.test.ts src/editor/richText.mathMedia.test.ts
@@ -192,7 +193,8 @@ This is a read-only presentation change: guide edit fields and saved overlays
 retain the original source, not KaTeX HTML/MathML. Generated hashes, locators,
 checkpoints, source citations and permission decisions are not rewritten. The
 native PDF exporter does not use this browser renderer and still needs its own
-source-fallback/disclosure acceptance. Existing saved content needs no migration.
+physical-device export acceptance. It now discloses source notation before saving
+and inside math-bearing PDFs. Existing saved content needs no migration.
 
 ```bash
 pnpm vitest run src/math/markdown.test.ts src/screens/tutor/TutorMarkdown.test.tsx src/screens/tutor/TutorPresentation.test.tsx src/screens/StudyGuideDialog.test.tsx
@@ -242,8 +244,8 @@ accuracy, file-backed database reopening or physical-device acceptance.
 ### Extraction, MathML and the PDF export boundary
 
 MathML is an incoming structured notation, not a competing renderer or a new
-storage format. The intended bounded presentation-MathML adapter converts supported
-structures to the same LaTeX atoms; it is still unfinished. KaTeX also derives MathML
+storage format. The bounded presentation-MathML adapter converts supported structures to the
+same LaTeX atoms. Unsupported structure is not flattened into a guessed formula. KaTeX also derives MathML
 alongside its visual HTML for accessibility. Neither operation is equation OCR.
 
 PDF ingestion currently uses `pdf_backend/extraction.rs` for native text/semantic
@@ -266,8 +268,8 @@ cannot recover an equation already lost or mistranscribed during extraction.
 importing or extracting a source PDF. `document_study_guide_export.rs` currently
 writes selectable text using the native oxidize-pdf backend; it does not execute
 browser KaTeX or lay out its HTML/CSS. The fallback means readable equation source
-rather than silently omitted equations. Explicit export disclosure and typeset
-export integration are not implemented by the generated-card converter. A future
+rather than silently omitted equations. Export disclosure is now implemented in the PDF and its confirmation UI. Typeset
+PDF parity is not part of this PR; the source-notation fallback remains explicit. A future
 typeset PDF path should reuse the application-owned math-rendering boundary rather
 than introduce a second equation implementation. Original PDF viewing remains a
 faithful page-rendering path, not this study-guide export path.
@@ -287,8 +289,8 @@ HTML-split delimiters remain visible source with a report warning. `[latex]`
 programs remain literal with an explicit warning: system TeX never executes.
 Empty, over-limit or prohibited-control formula sources reject the affected card,
 not otherwise supported cards in the package. This is source admission, not
-mathematical correctness or renderer-support validation. MathML conversion is
-still unfinished, as are packaged audio/video conversion and playback.
+mathematical correctness or renderer-support validation. Bounded MathML conversion is implemented as described below. Packaged audio/video
+conversion and native playback are implemented, with target-device acceptance pending.
 
 Formula-only static content can survive the existing JavaScript-stripping path;
 JavaScript is still never executed, and active/hidden HTML restrictions remain.
@@ -310,8 +312,69 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib do
 
 These native import tests do not establish card-UI or device acceptance. Imported
 formula atoms now use the shared card renderer and captured MathLive edit session
-described above; unsupported rendering still preserves visible source. The remaining
-Anki media and MathML work stays in this PR.
+described above; unsupported rendering still preserves visible source. Anki media and structured MathML input use these same native content boundaries.
+Remaining lifecycle/duplicate-identity and platform acceptance stay in this PR.
+
+### Structured MathML input and source provenance
+
+`cards/math/mathml.rs` is the shared native Presentation MathML adapter, using the
+already-pinned roxmltree parser. Anki HTML and generated Basic/JSON card input
+consume a complete MathML subtree before HTML/Markdown can flatten it. Conversion
+produces the existing LaTeX atoms; KaTeX and MathLive are unchanged.
+
+The supported subset includes tokens, rows, fractions, square/indexed roots,
+sub/superscripts, over/under constructions, fences and rectangular matrices, plus
+conservative style attributes and presentation-first `semantics`. Unicode/numeric
+XML entities and the five predefined XML entities work. Donor annotations never
+override the visible presentation. DTDs, external entities, processing instructions,
+foreign namespaces, active attributes, unsupported elements/attributes, malformed
+arity, and ragged matrices reject conversion. Unsupported input is reported, not
+silently simplified. Limits are 65,536 input bytes, 2,048 XML nodes, depth 32, and
+16,384 output LaTeX bytes; card-side aggregate budgets remain in force.
+
+For newly ingested documents, `xberg_document_adapter/math.rs` normalizes only
+MathML equations that the upstream parser explicitly identified. This runs before
+new canonical source units and evidence hashes are created. Metadata identifies
+the input encoding, normalization version, and SHA-256 of the extracted input;
+small originals are also retained verbatim in bounded metadata. The original
+source document remains retained. Unsupported MathML keeps the full extracted
+source and marks extraction degraded. Code/prose and unclassified formula text
+are untouched. No saved evidence hash, citation offset, guide, or checkpoint is
+rewritten and no document is automatically reprocessed.
+
+This does not claim that every DOCX/EPUB/HTML formula is exposed by the upstream
+parser. PDF equation recognition, specialized ML models, formula detectors, model
+comparison/confidence research and universal OMML reconstruction are **deferred**,
+not prerequisites for merging PR #98. The earlier discussion is retained here as
+the follow-up bookmark: favor structured source, then optional local formula
+recognition yielding LaTeX plus exact visual provenance; benchmark before choosing
+a model. No such model, provider, download, permission or pipeline is added here.
+
+### Study-guide PDF source-notation behavior
+
+The native PDF export preserves formula notation as selectable text. It detects
+complete `\(...\)`, `\[...\]` and `$$...$$` outside code/currency in the effective
+overview, objectives, concepts, section content and included notes. Inactive or
+excluded overlays do not trigger disclosure. Math-bearing text preserves spaces
+and Unicode during visual line wrapping; stored guide source is never modified.
+
+A math-bearing PDF includes a source-notation notice. The prepared-export summary
+carries `mathSourceFallback`, and the existing shared confirmation dialog explains
+the limitation before a destination is chosen. Cancel releases the prepared file
+without publishing it or mutating the guide. Plain guides keep their one-step
+export path. Old prepared receipts lacking this field warn conservatively on
+replay; no migration is needed. This is not native typesetting and adds no second
+math renderer. Physical PDF layout/export acceptance remains a manual boundary.
+
+Focused checks after normal locked toolchain setup:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_mathml
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_anki_mathml
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_generated_mathml
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_pdf_math
+pnpm vitest run src/screens/StudyGuideDialog.test.tsx
+```
 
 ## Acceptance criteria
 

@@ -233,6 +233,7 @@ export interface PreparedStudyGuidePdf {
   guideRevision: number;
   sectionCount: number;
   annotationCount: number;
+  mathSourceFallback: boolean;
 }
 
 export async function generateDocumentStudyGuide(

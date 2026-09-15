@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 
-use crate::cards::math::{split_delimited_latex, MathFragment};
+use crate::cards::math::{mathml, split_delimited_latex, MathFragment};
 
 const MAX_HTML_BYTES: usize = 256 * 1024;
 const MAX_TOKENS: usize = 20_000;
@@ -17,6 +17,7 @@ const MAX_TOKENS: usize = 20_000;
 enum Token {
     Text(String),
     ScriptOmitted,
+    Mathml(String),
     Tag {
         name: String,
         attributes: BTreeMap<String, String>,
@@ -108,6 +109,31 @@ pub(super) fn document(
                             }
                         }
                     }
+                }
+            }
+            Token::Mathml(source) => {
+                if ignoring_style {
+                    continue;
+                }
+                if pre_depth > 0 || marks.iter().any(|(_, mark)| *mark == "code") {
+                    let mut node = json!({"type":"text", "text":source});
+                    let mark_names: BTreeSet<_> = marks.iter().map(|(_, mark)| *mark).collect();
+                    if !mark_names.is_empty() {
+                        node["marks"] = Value::Array(
+                            mark_names.iter().map(|name| json!({"type":name})).collect(),
+                        );
+                    }
+                    inline.push(node);
+                    continue;
+                }
+                let formula = mathml::parse(&source)?;
+                contains_math = true;
+                let node = json!({"type":if formula.block {"blockMath"} else {"inlineMath"}, "attrs":{"latex":formula.latex}});
+                if formula.block {
+                    flush(&mut blocks, &mut inline);
+                    blocks.push(node);
+                } else {
+                    inline.push(node);
                 }
             }
             Token::ScriptOmitted => {
@@ -313,6 +339,9 @@ pub(super) fn plain_text(html: &str) -> Result<String, String> {
     for token in tokenize(html)? {
         match token {
             Token::Text(value) if !style => output.push_str(&decode_entities(&value).0),
+            Token::Mathml(source) if !style => {
+                output.push_str(&mathml::parse(&source)?.delimited());
+            }
             Token::Tag { name, closing, .. } => {
                 if name == "style" {
                     style = !closing;
@@ -340,6 +369,12 @@ fn tokenize(html: &str) -> Result<Vec<Token>, String> {
         if remaining.starts_with("<!--") {
             let end = remaining.find("-->").ok_or("Unclosed HTML comment.")?;
             position += end + 3;
+            continue;
+        }
+        if mathml::starts_mathml(remaining) {
+            let length = mathml::prefix_len(remaining)?;
+            result.push(Token::Mathml(remaining[..length].to_string()));
+            position += length;
             continue;
         }
         let is_tag = remaining
@@ -608,3 +643,7 @@ mod tests {
         crate::cards::validate_document(&result.value).unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "mathml_input_tests.rs"]
+mod mathml_input_tests;

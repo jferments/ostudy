@@ -1,5 +1,7 @@
 //! Shared mathematical-source admission. LaTeX is data, never executable TeX.
 
+pub(crate) mod mathml;
+
 pub(crate) const MAX_LATEX_BYTES: usize = 16 * 1024;
 const MAX_MATH_FRAGMENTS: usize = 4096;
 

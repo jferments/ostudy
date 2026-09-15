@@ -83,6 +83,7 @@ pub(crate) fn extract(
 
     progress.report(IngestionProgress::Stage(IngestionStage::MappingStructure))?;
     let mut normalized = normalize_document(&extracted, format, &asset_ids)?;
+    let unsupported_math_count = super::math::normalize_identified_math(&mut normalized);
     attach_unreferenced_assets(&mut normalized.units, &assets);
     if normalized.units.is_empty() {
         return Err(CommandError::new(
@@ -206,6 +207,12 @@ pub(crate) fn extract(
         }
         .to_string(),
     );
+    if unsupported_math_count > 0 {
+        metadata.attributes.insert(
+            "unsupportedMathCount".to_string(),
+            unsupported_math_count.to_string(),
+        );
+    }
     if normalized.skipped_node_count > 0 {
         metadata.attributes.insert(
             "skippedUnsupportedNodeCount".to_string(),
@@ -232,7 +239,8 @@ pub(crate) fn extract(
     }
 
     progress.report(IngestionProgress::Stage(IngestionStage::ValidatingResult))?;
-    let semantic_analysis_degraded = normalized.skipped_node_count > 0
+    let semantic_analysis_degraded = unsupported_math_count > 0
+        || normalized.skipped_node_count > 0
         || normalized.external_image_reference_count > 0
         || skipped_image_count > 0
         || !extracted.processing_warnings.is_empty()

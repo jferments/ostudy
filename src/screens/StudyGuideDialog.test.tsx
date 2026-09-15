@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ShowToast } from "../components/Toast";
@@ -15,6 +15,7 @@ import {
   type DocumentStudyGuide,
   type StudyGuideOverlay,
 } from "../ipc/studyGuides";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { StudyGuideDialog } from "./StudyGuideDialog";
 
 vi.mock("../ipc/studyGuides", async () => {
@@ -269,6 +270,7 @@ describe("StudyGuideDialog", () => {
       guideRevision: 1,
       sectionCount: 1,
       annotationCount: 0,
+      mathSourceFallback: false,
     });
     mockedPublish.mockResolvedValue({
       preparedExportId: "8".repeat(32),
@@ -290,6 +292,30 @@ describe("StudyGuideDialog", () => {
       "success",
       "Exported study guide with 1 section.",
     );
+  });
+
+
+  it.each([true, false])("discloses PDF math and releases the prepared file when accepted=%s", async (accepted) => {
+    const value = guide();
+    value.overview.summary = String.raw`Solve \(x^2\).`;
+    mockedGetGuide.mockResolvedValue(value);
+    mockedPreparePdf.mockResolvedValue({
+      preparedExport: { id: "8".repeat(32), purpose: "study_guide_pdf", suggestedFilename: "math.pdf", mediaType: "application/pdf", byteSize: 2048, sha256: "7".repeat(64), expiresAt: 999999 },
+      guideRevision: 1, sectionCount: 1, annotationCount: 0, mathSourceFallback: true,
+    });
+    mockedPublish.mockResolvedValue({ preparedExportId: "8".repeat(32), displayName: "math.pdf", destinationKind: "file", completedAt: 123 });
+    const showToast = vi.fn();
+    renderGuide({ showToast });
+    fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
+    expect(mockedPublish).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/readable LaTeX source rather than typeset formulas/u)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: accepted ? "Export PDF" : "Cancel" }));
+    await waitFor(() => expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32)));
+    expect(mockedPublish).toHaveBeenCalledTimes(accepted ? 1 : 0);
+    expect(mockedSaveOverlay).not.toHaveBeenCalled();
+    expect(mockedGenerate).not.toHaveBeenCalled();
+    if (!accepted) expect(showToast).not.toHaveBeenCalled();
   });
 
   it("routes exact topic-linked cards through the app practice capability", async () => {
@@ -465,12 +491,12 @@ function renderGuide({
   onClose?: () => void;
 } = {}) {
   return render(
-    <StudyGuideDialog
+    <OverlayProvider><StudyGuideDialog
       documentId={documentId}
       documentTitle="Physiology"
       showToast={showToast}
       onPracticeCards={onPracticeCards}
       onClose={onClose}
-    />,
+    /></OverlayProvider>,
   );
 }
