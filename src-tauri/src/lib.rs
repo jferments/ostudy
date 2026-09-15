@@ -230,6 +230,7 @@ pub fn run() {
             asset_lifecycle::sync_asset_draft,
             assets::import_image,
             media_assets::import_media,
+            media_assets::read_media_asset,
             deletion::undo_deletion,
             diagnostics::record_webview_diagnostic,
             diagnostics::record_webview_diagnostic_batch,
