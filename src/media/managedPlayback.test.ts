@@ -10,6 +10,7 @@ vi.mock("../ipc/assets", () => ({
 
 import {
   createManagedMediaObjectUrl,
+  playbackMimeType,
   revokeManagedMediaObjectUrl,
 } from "./managedPlayback";
 
@@ -38,11 +39,30 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("managed media playback materialization", () => {
-  it("creates a typed Blob from raw managed bytes", async () => {
-    mocks.readMediaAsset.mockResolvedValue(Uint8Array.from([1, 2, 3, 4]).buffer);
+function bytes(...values: number[]): ArrayBuffer {
+  return Uint8Array.from(values).buffer;
+}
 
-    await expect(createManagedMediaObjectUrl(assetId, "audio/mpeg"))
+function ascii(value: string): number[] {
+  return [...value].map((character) => character.charCodeAt(0));
+}
+
+function isoBmffFixture(): ArrayBuffer {
+  return bytes(
+    0, 0, 0, 24,
+    ...ascii("ftyp"),
+    ...ascii("isom"),
+    0, 0, 0, 0,
+    ...ascii("isom"),
+    ...ascii("mp42"),
+  );
+}
+
+describe("managed media playback materialization", () => {
+  it("creates an explicitly typed Blob from raw managed bytes", async () => {
+    mocks.readMediaAsset.mockResolvedValue(bytes(0xff, 0xfb, 0x90, 0x00));
+
+    await expect(createManagedMediaObjectUrl(assetId, "audio"))
       .resolves.toBe("blob:ostudy-media");
 
     expect(mocks.readMediaAsset).toHaveBeenCalledWith(assetId);
@@ -53,20 +73,37 @@ describe("managed media playback materialization", () => {
     expect((blob as Blob).size).toBe(4);
   });
 
-  it("fails closed before IPC for invalid identities and media types", async () => {
-    await expect(createManagedMediaObjectUrl("../secret", "audio/mpeg"))
-      .rejects.toThrow(/identifier is invalid/u);
-    await expect(createManagedMediaObjectUrl(assetId, "image/png"))
-      .rejects.toThrow(/media type is invalid/u);
-    expect(mocks.readMediaAsset).not.toHaveBeenCalled();
+  it("derives every admitted playback container family", () => {
+    expect(playbackMimeType(bytes(...ascii("RIFF"), 4, 0, 0, 0, ...ascii("WAVE")), "audio"))
+      .toBe("audio/wav");
+    expect(playbackMimeType(bytes(...ascii("OggS"), 0, 0, 0, 0), "audio"))
+      .toBe("audio/ogg");
+    expect(playbackMimeType(bytes(...ascii("ID3"), 4, 0, 0, 0), "audio"))
+      .toBe("audio/mpeg");
+    expect(playbackMimeType(bytes(0xff, 0xf1, 0x50, 0x80, 0, 0, 0), "audio"))
+      .toBe("audio/aac");
+    expect(playbackMimeType(bytes(0xff, 0xfb, 0x90, 0x00), "audio"))
+      .toBe("audio/mpeg");
+    expect(playbackMimeType(isoBmffFixture(), "audio")).toBe("audio/mp4");
+    expect(playbackMimeType(isoBmffFixture(), "video")).toBe("video/mp4");
   });
 
-  it("rejects empty responses and revokes released object URLs", async () => {
-    mocks.readMediaAsset.mockResolvedValue(new ArrayBuffer(0));
-    await expect(createManagedMediaObjectUrl(assetId, "video/mp4"))
-      .rejects.toThrow(/returned no bytes/u);
-    expect(createObjectUrl).not.toHaveBeenCalled();
+  it("fails closed for invalid identities, empty reads, and kind mismatches", async () => {
+    await expect(createManagedMediaObjectUrl("../secret", "audio"))
+      .rejects.toThrow(/identifier is invalid/u);
+    expect(mocks.readMediaAsset).not.toHaveBeenCalled();
 
+    mocks.readMediaAsset.mockResolvedValue(new ArrayBuffer(0));
+    await expect(createManagedMediaObjectUrl(assetId, "video"))
+      .rejects.toThrow(/returned no bytes/u);
+
+    mocks.readMediaAsset.mockResolvedValue(bytes(...ascii("RIFF"), 4, 0, 0, 0, ...ascii("WAVE")));
+    await expect(createManagedMediaObjectUrl(assetId, "video"))
+      .rejects.toThrow(/video container is not supported/u);
+    expect(createObjectUrl).not.toHaveBeenCalled();
+  });
+
+  it("revokes released object URLs", () => {
     revokeManagedMediaObjectUrl("blob:released");
     revokeManagedMediaObjectUrl(null);
     expect(revokeObjectUrl).toHaveBeenCalledTimes(1);
