@@ -8,7 +8,8 @@ function input(): FormulaInput {
   return {
     focus: vi.fn(),
     applyTemplate: vi.fn(() => true),
-    toggleKeyboard: vi.fn(),
+    showKeyboard: vi.fn(() => true),
+    toggleKeyboard: vi.fn(() => true),
     hideKeyboard: vi.fn(() => false),
     dispose: vi.fn(),
   };
@@ -49,7 +50,7 @@ describe("FormulaToolbox", () => {
     expect(port.applyTemplate).toHaveBeenLastCalledWith(String.raw`\int_{#?}^{#?} #0\,d#?`);
   });
 
-  it("provides task-oriented help and the pinned MathLive shortcuts", () => {
+  it("provides task-oriented help and the pinned MathLive shortcuts on keyboard platforms", () => {
     render(<FormulaToolbox input={input()} disabled={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Shortcuts & help" }));
 
@@ -60,6 +61,12 @@ describe("FormulaToolbox", () => {
     expect(screen.getByText("Alt+P")).toBeTruthy();
     expect(screen.getByText("Tab")).toBeTruthy();
     expect(screen.getByText(/LaTeX-style commands/u)).toBeTruthy();
+  });
+
+  it("hides desktop shortcut help when the platform does not expose a hardware-keyboard workflow", () => {
+    render(<FormulaToolbox input={input()} disabled={false} showKeyboardHelp={false} />);
+    expect(screen.queryByRole("button", { name: "Shortcuts & help" })).toBeNull();
+    expect(screen.queryByText("Alt+V")).toBeNull();
   });
 
   it("keeps graphical insertion unavailable until the MathLive port is ready", () => {
