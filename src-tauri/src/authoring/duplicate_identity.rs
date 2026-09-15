@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::{cards::ValidatedContent, error::CommandError, util::validate_entity_id};
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(super) struct DuplicateIdentity {
+pub(in super::super) struct DuplicateIdentity {
     normalized_front: String,
     normalized_back: String,
     front_managed: Vec<ManagedNodeIdentity>,
@@ -42,7 +42,7 @@ impl ManagedNodeKind {
     }
 }
 
-pub(super) fn from_validated_content(
+pub(in super::super) fn from_validated_content(
     content: &ValidatedContent,
 ) -> Result<DuplicateIdentity, CommandError> {
     from_serialized_documents(
@@ -53,7 +53,7 @@ pub(super) fn from_validated_content(
     )
 }
 
-pub(super) fn from_serialized_documents(
+pub(in super::super) fn from_serialized_documents(
     front_doc_json: &str,
     back_doc_json: &str,
     front_text: &str,
@@ -69,7 +69,7 @@ pub(super) fn from_serialized_documents(
     })
 }
 
-pub(super) fn has_exact_duplicate(
+pub(in super::super) fn has_exact_duplicate(
     connection: &Connection,
     deck_id: &str,
     candidate_hash: &str,
