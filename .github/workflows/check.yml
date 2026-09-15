@@ -225,36 +225,28 @@ jobs:
         if: failure()
         run: bash ./scripts/export-diagnostics.sh "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz"
 
-      - name: Upload bounded diagnostic evidence
+      - name: Persist bounded diagnostic evidence on runner
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-diagnostics-${{ env.QUALIFIED_SHA }}
-          path: |
-            ${{ runner.temp }}/ostudy-qualification-result.json
-            ${{ runner.temp }}/ostudy-agent-handoff.md
-            ${{ runner.temp }}/ostudy-failure-summary.md
-            ${{ runner.temp }}/ostudy-diagnostics/**
-          if-no-files-found: warn
-          retention-days: 7
+        run: |
+          bash ./scripts/persist-runner-output.sh qualification \
+            "$RUNNER_TEMP/ostudy-qualification-result.json" \
+            "$RUNNER_TEMP/ostudy-agent-handoff.md" \
+            "$RUNNER_TEMP/ostudy-failure-summary.md" \
+            "$RUNNER_TEMP/ostudy-diagnostics"
 
-      - name: Upload bounded failure evidence
+      - name: Persist bounded failure evidence on runner
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ostudy-unified-${{ env.QUALIFIED_SHA }}
-          path: |
-            ${{ runner.temp }}/ostudy-unified-diagnostics.tar.gz
-            ${{ runner.temp }}/ostudy-failure-summary.md
-            ${{ runner.temp }}/ostudy-static-check.log
-            ${{ runner.temp }}/ostudy-fast-check.log
-            ${{ runner.temp }}/ostudy-full-check.log
-            ${{ runner.temp }}/ostudy-android-test.log
-            ${{ runner.temp }}/ostudy-android-smoke.log
-            ${{ runner.temp }}/android-smoke/**
-            src-tauri/gen/android/app/build/reports/**
-          if-no-files-found: ignore
-          retention-days: 14
+        run: |
+          bash ./scripts/persist-runner-output.sh failure \
+            "$RUNNER_TEMP/ostudy-unified-diagnostics.tar.gz" \
+            "$RUNNER_TEMP/ostudy-failure-summary.md" \
+            "$RUNNER_TEMP/ostudy-static-check.log" \
+            "$RUNNER_TEMP/ostudy-fast-check.log" \
+            "$RUNNER_TEMP/ostudy-full-check.log" \
+            "$RUNNER_TEMP/ostudy-android-test.log" \
+            "$RUNNER_TEMP/ostudy-android-smoke.log" \
+            "$RUNNER_TEMP/android-smoke" \
+            "src-tauri/gen/android/app/build/reports"
 
       - name: Publish exact-head qualification summary
         if: always()
@@ -277,5 +269,5 @@ jobs:
       - name: Enforce handoff evidence integrity
         if: always() && steps.handoff.outputs.status != '0'
         run: |
-          echo "Evidence-derived qualification handoff integrity failed; see the uploaded handoff artifact." >&2
+          echo "Evidence-derived qualification handoff integrity failed; see the runner-local evidence path in the step summary." >&2
           exit 1

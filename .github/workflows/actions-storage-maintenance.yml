@@ -1,0 +1,35 @@
+name: Actions storage maintenance
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: actions-storage-maintenance
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, linux, x64, ostudy-unified]
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out maintenance source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Purge GitHub-hosted Actions artifacts and caches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 ./scripts/cleanup-actions-storage.py \
+            --artifact-max-age-hours 0 \
+            --delete-all-caches
