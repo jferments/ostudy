@@ -17,14 +17,17 @@ vi.mock("../math/mathlive", () => ({ mountFormulaInput: vi.fn() }));
 const editors: Editor[] = [];
 const originalMatchMedia = window.matchMedia;
 const hideKeyboard = vi.fn(() => false);
+const showKeyboard = vi.fn(() => true);
 const dispose = vi.fn();
-const toggleKeyboard = vi.fn();
+const toggleKeyboard = vi.fn(() => true);
 const applyTemplate = vi.fn(() => true);
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((media: string) => ({ matches: false, media, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
   hideKeyboard.mockReturnValue(false);
+  showKeyboard.mockReturnValue(true);
+  toggleKeyboard.mockReturnValue(true);
   applyTemplate.mockReturnValue(true);
-  vi.mocked(mountFormulaInput).mockImplementation(async () => ({ focus: vi.fn(), applyTemplate, dispose, toggleKeyboard, hideKeyboard }));
+  vi.mocked(mountFormulaInput).mockImplementation(async () => ({ focus: vi.fn(), applyTemplate, dispose, showKeyboard, toggleKeyboard, hideKeyboard }));
 });
 afterEach(() => {
   editors.splice(0).forEach((editor) => editor.destroy());
@@ -42,7 +45,7 @@ function show(session: FormulaEditSession, strict = false) {
   return render(strict ? <StrictMode><Host /></StrictMode> : <Host />);
 }
 async function loaded() {
-  await waitFor(() => expect((screen.getByRole("button", { name: "Full math keyboard" }) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Show math keyboard" }) as HTMLButtonElement).disabled).toBe(false));
 }
 function type(source: string) {
   act(() => vi.mocked(mountFormulaInput).mock.calls.at(-1)![0].onChange(source));
@@ -112,10 +115,12 @@ describe("formula dialog with actual editor transactions", () => {
     show(createTiptapEditorAdapter(editor).beginFormulaEdit()!); await loaded();
     hideKeyboard.mockReturnValueOnce(true);
     const dialog = screen.getByRole("dialog", { name: "Edit formula" });
-    fireEvent.click(screen.getByRole("button", { name: "Full math keyboard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show math keyboard" }));
     expect(toggleKeyboard).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Hide math keyboard" })).toBeTruthy();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show math keyboard" })).toBeTruthy();
     fireEvent.keyDown(dialog, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(editor.state.doc).toBe(before);
@@ -131,7 +136,7 @@ describe("formula dialog with actual editor transactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(signal.aborted).toBe(true));
     const focus = vi.fn(); const release = vi.fn();
-    await act(async () => resolve({ focus, applyTemplate, dispose: release, toggleKeyboard, hideKeyboard }));
+    await act(async () => resolve({ focus, applyTemplate, dispose: release, showKeyboard, toggleKeyboard, hideKeyboard }));
     expect(focus).not.toHaveBeenCalled(); expect(release).toHaveBeenCalledOnce();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
