@@ -271,9 +271,21 @@ mod tests {
         let note_id = "1".repeat(32);
         let first_asset = "a".repeat(32);
         let second_asset = "b".repeat(32);
-        let stored_front = doc(json!([media("audio", &first_asset, "private filename one")]));
-        let same_front = doc(json!([media("audio", &first_asset, "different private title")]));
-        let different_front = doc(json!([media("audio", &second_asset, "private filename two")]));
+        let stored_front = doc(json!([media(
+            "audio",
+            &first_asset,
+            "private filename one"
+        )]));
+        let same_front = doc(json!([media(
+            "audio",
+            &first_asset,
+            "different private title"
+        )]));
+        let different_front = doc(json!([media(
+            "audio",
+            &second_asset,
+            "private filename two"
+        )]));
         let back = answer_doc();
         let normalized = crate::authoring::normalized_pair("[Audio]", "Answer");
         let hash = crate::authoring::duplicate_hash(&normalized.0, &normalized.1);
@@ -309,11 +321,7 @@ mod tests {
                     connection, &deck_id, &hash, &same, None
                 )?);
                 assert!(!has_exact_duplicate(
-                    connection,
-                    &deck_id,
-                    &hash,
-                    &different,
-                    None
+                    connection, &deck_id, &hash, &different, None
                 )?);
                 assert!(!has_exact_duplicate(
                     connection,
