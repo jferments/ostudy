@@ -44,6 +44,7 @@ describe("bounded mathematical Markdown tokens", () => {
     expect(formulas("Partial $x_1")).toEqual([]);
     expect(formulas("Partial $x_1$").map((token) => token.source)).toEqual(["x_1"]);
     expect(formulas("`$x$`\n\n```tex\n$y$\n```\n\n    $z$")).toEqual([]);
+    expect(formulas("Prices $5 and $10; literal `$x$`, then $y$. ").map((token) => token.source)).toEqual(["y"]);
     expect(formulas(String.raw`<code>$x$</code> and <pre>$y$</pre>`)).toEqual([]);
     expect(formulas('[Link](https://example.org/$path$ "$title$")')).toEqual([]);
     expect(lexStudyMarkdown("$x$ ".repeat(65))).toBeNull();

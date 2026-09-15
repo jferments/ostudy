@@ -5,7 +5,10 @@
 export function inlineDollarEnd(text: string): number | undefined {
   if (text[0] !== "$" || text[1] === "$" || !text[1] || /\s/u.test(text[1])) return;
   for (let end = 1; end < text.length; end += 1) {
-    if (text[end] === "\n" || text[end] === "\r") return;
+    // Markdown owns code spans. An unmatched price must not steal a dollar
+    // from later code (for example: $10 then `$x$`). Explicit \(…\)
+    // delimiters remain available for formulas containing literal backticks.
+    if (text[end] === "\n" || text[end] === "\r" || text[end] === "`") return;
     if (text[end] !== "$") continue;
     let slashes = 0;
     for (let i = end - 1; i >= 0 && text[i] === "\\"; i -= 1) slashes += 1;

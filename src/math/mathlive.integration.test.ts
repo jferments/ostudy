@@ -16,7 +16,15 @@ vi.mock("mathlive", async () => {
 let input: FormulaInput | null = null;
 let host: HTMLDivElement;
 let keyboardHost: HTMLDivElement;
+let controller: AbortController;
+const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 beforeEach(() => {
+  controller = new AbortController();
+  // jsdom has no FontFaceSet. MathLive listens for browser font readiness even
+  // with its dynamic loader disabled; do not stub its field/model to bypass it.
+  const fonts = Object.assign(new EventTarget(), { status: "loaded", check: () => true });
+  Object.defineProperty(fonts, "ready", { value: Promise.resolve(fonts) });
+  Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
   vi.stubGlobal("matchMedia", vi.fn((media: string) => ({ matches: false, media,
     addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() })));
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -24,15 +32,18 @@ beforeEach(() => {
   document.body.append(host, keyboardHost);
 });
 afterEach(() => {
+  controller.abort();
   input?.dispose(); input = null;
   host.remove(); keyboardHost.remove();
+  if (originalFonts) Object.defineProperty(document, "fonts", originalFonts);
+  else Reflect.deleteProperty(document, "fonts");
   vi.unstubAllGlobals();
 });
 
 it("mounts the real mathfield before configuring its menu, edits a fraction, and reopens", async () => {
   const onChange = vi.fn();
   input = await mountFormulaInput({ host, keyboardHost, source: String.raw`\frac{a}{b}`,
-    signal: new AbortController().signal, onChange, onError: vi.fn() });
+    signal: controller.signal, onChange, onError: vi.fn() });
   expect(input).not.toBeNull();
   const field = host.querySelector("math-field") as import("mathlive").MathfieldElement;
   expect(field).not.toBeNull();
@@ -44,7 +55,7 @@ it("mounts the real mathfield before configuring its menu, edits a fraction, and
   expect(onChange).toHaveBeenLastCalledWith("+1");
   input!.dispose();
   expect(host.childElementCount).toBe(0);
-  input = await mountFormulaInput({ host, keyboardHost, source: "x", signal: new AbortController().signal, onChange, onError: vi.fn() });
+  input = await mountFormulaInput({ host, keyboardHost, source: "x", signal: controller.signal, onChange, onError: vi.fn() });
   expect(input).not.toBeNull();
   expect(host.querySelector("math-field")).not.toBeNull();
 });

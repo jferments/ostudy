@@ -106,8 +106,11 @@ untracked overlay and offers out-of-scope computation/speech. This is not a cust
 formula editor. More elaborate menu integration is not claimed by this increment.
 
 `src/math/mathlive.ts` loads the bundled MathLive module only on authoring intent.
-It owns an abortable, exclusive keyboard lifecycle inside the shared Dialog. A
-late import after dismissal cannot attach a field or take focus. Escape/platform
+It owns an abortable, exclusive keyboard lifecycle inside the shared Dialog.
+Mounted-only MathLive options are configured from the vendor `mount` event,
+subscribed before DOM attachment; loading does not finish until that event.
+Abort during loading or mounting releases the field and keyboard ownership.
+A late import after dismissal cannot attach a field or take focus. Escape/platform
 Back hides an open math keyboard first; a subsequent dismissal cancels the draft.
 Explicit Cancel, backdrop and close-button dismissal cancel immediately. Cleanup
 releases listeners, the field and the global keyboard container. StrictMode view
@@ -142,9 +145,14 @@ licenses remain with their distributions; no runtime binary or downloaded font i
 committed as product source.
 
 Focused tests cover real KaTeX output/fallbacks and actual Tiptap serialization,
-selection, undo/redo and shared-dialog behavior. The MathLive port is stubbed for
-lifecycle tests; those tests do not establish physical-keyboard, touch keyboard,
-assistive-technology, theme contrast or target-WebView font/geometry acceptance.
+selection, undo/redo and shared-dialog behavior. Lifecycle stubs reproduce the
+pinned vendor's mounted-only API precondition. A separate integration test loads
+the real packaged MathLive browser build and exercises mount, source, insert and
+reopen; only browser APIs missing in jsdom are supplied by the test environment.
+Neither test establishes physical-keyboard, touch keyboard, assistive-technology,
+theme contrast or target-WebView font/geometry acceptance. Dialog body padding,
+border-box field sizing and shared responsive actions keep controls inset; the
+layout contract is tested, but target-device geometry remains manual acceptance.
 Desktop and physical Android testing, complete application packaging and full
 platform qualification remain explicit acceptance work. Structured MathML input and disclosed native-PDF source notation are implemented
 below. Dedicated equation recognition and universal source-format fidelity are
@@ -173,8 +181,13 @@ source locators and navigation labels remain literal. The hint-only Tutor view
 remains deliberately plain, with its existing source/answer visibility rules.
 
 An isolated Marked lexer in `src/math/markdown.ts` recognizes `\(...\)`,
-`\[...\]` and `$$...$$` before ordinary Markdown escaping. Single-dollar text
-is deliberately not math, so prices and currency cannot absorb surrounding prose.
+`\[...\]`, `$$...$$` and complete `$...$` inline pairs before ordinary Markdown
+escaping. Single-dollar pairs must be on one line, touch non-whitespace content
+on both sides, and not close immediately before a digit or another dollar. They
+cannot cross a code-span delimiter. This recognizes common model-generated
+inline formulas while leaving ordinary prices such as `$5 and $10`, escaped
+dollars and code examples literal. Ambiguous dollar prose can use `\$`; explicit
+`\(...\)` remains the unambiguous formula notation. Saved replies need no rewrite.
 Code spans, fences, indented code and raw code/script blocks remain literal.
 Unfinished expressions retain their original backslashes until complete. Math
 operators/subscripts are masked from surrounding Markdown emphasis, not rewritten
@@ -198,6 +211,7 @@ and inside math-bearing PDFs. Existing saved content needs no migration.
 
 ```bash
 pnpm vitest run src/math/markdown.test.ts src/screens/tutor/TutorMarkdown.test.tsx src/screens/tutor/TutorPresentation.test.tsx src/screens/StudyGuideDialog.test.tsx
+pnpm vitest run src/math/reportedMath.test.tsx src/math/mathlive.integration.test.ts src/editor/FormulaDialog.layout.test.tsx
 ```
 
 Regressions cover real KaTeX output, code/currency/unfinished input, hostile math,

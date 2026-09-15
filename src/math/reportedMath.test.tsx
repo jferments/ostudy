@@ -31,8 +31,7 @@ const sources = [String.raw`\pm`, "+", "-", "ax^2 + bx + c = 0", "a",
 describe("reported mixed inline/display math", () => {
   it.each(["tutor", "guide"])("typesets the screenshot notation through the shared %s reader", async (surface) => {
     const { container } = render(surface === "tutor" ? <TutorMarkdown text={fixture} /> : <StudyMarkdown text={fixture} />);
-    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(sources.length));
-    expect(Array.from(container.querySelectorAll("math annotation"), (node) => node.textContent)).toEqual(sources);
+    await waitFor(() => expect(Array.from(container.querySelectorAll("math annotation"), (node) => node.textContent)).toEqual(sources));
     expect(container.querySelectorAll("table math")).toHaveLength(4);
     expect(container.querySelector("strong")?.textContent).toBe("two solutions");
     expect(container.querySelector("code")?.textContent).toBe("$x$");
