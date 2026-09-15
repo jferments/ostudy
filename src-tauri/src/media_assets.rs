@@ -467,8 +467,12 @@ mod tests {
     #[test]
     fn playback_path_guard_accepts_only_managed_roots() {
         assert!(safe_managed_media_relative_path("assets/images/a.mp3"));
-        assert!(safe_managed_media_relative_path("assets/staging/d-a.mp4.stage"));
-        assert!(!safe_managed_media_relative_path("assets/../library.sqlite3"));
+        assert!(safe_managed_media_relative_path(
+            "assets/staging/d-a.mp4.stage"
+        ));
+        assert!(!safe_managed_media_relative_path(
+            "assets/../library.sqlite3"
+        ));
         assert!(!safe_managed_media_relative_path("documents/source.pdf"));
         assert!(!safe_managed_media_relative_path("/tmp/audio.mp3"));
     }
