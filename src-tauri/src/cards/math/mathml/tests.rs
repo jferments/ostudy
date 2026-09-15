@@ -33,7 +33,12 @@ fn document_mathml_preserves_matrix_cell_order_and_fences() {
 fn document_mathml_uses_presentation_not_hidden_annotation_or_comments() {
     let parsed = parse("<math><semantics><mi>x<!--not a symbol--></mi><annotation encoding='application/x-tex'>\\input{private}</annotation></semantics></math>").unwrap();
     assert_eq!(parsed.latex, "x");
-    assert_eq!(parse("<m:math xmlns:m='http://www.w3.org/1998/Math/MathML'><m:mi>x</m:mi></m:math>").unwrap().latex, "x");
+    assert_eq!(
+        parse("<m:math xmlns:m='http://www.w3.org/1998/Math/MathML'><m:mi>x</m:mi></m:math>")
+            .unwrap()
+            .latex,
+        "x"
+    );
     assert_eq!(
         parse("<math><mtext>rate &amp; dose</mtext></math>")
             .unwrap()

@@ -254,8 +254,7 @@ fn convert(node: Node<'_, '_>, depth: usize) -> Result<String, String> {
                     .chars()
                     .filter(|c| !c.is_whitespace())
                     .collect::<Vec<_>>();
-                if separators.len() > 16
-                    || separators.iter().any(|c| !matches!(c, ',' | ';' | '|'))
+                if separators.len() > 16 || separators.iter().any(|c| !matches!(c, ',' | ';' | '|'))
                 {
                     return Err("MathML uses unsupported fence separators.".into());
                 }
