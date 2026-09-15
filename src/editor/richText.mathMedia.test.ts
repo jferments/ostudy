@@ -13,6 +13,16 @@ import {
   isDocumentEmpty,
 } from "./richText";
 
+const mediaMocks = vi.hoisted(() => ({
+  createObjectUrl: vi.fn(async (id: string, kind: "audio" | "video") => `blob:ostudy-${kind}-${id}`),
+  revokeObjectUrl: vi.fn(),
+}));
+
+vi.mock("../media/managedPlayback", () => ({
+  createManagedMediaObjectUrl: mediaMocks.createObjectUrl,
+  revokeManagedMediaObjectUrl: mediaMocks.revokeObjectUrl,
+}));
+
 vi.mock("../platform/assets", () => ({
   managedAssetUrl: (id: string) => `https://ostudy-asset.localhost/${id}`,
 }));
@@ -105,6 +115,8 @@ describe("math and media rich-document preservation", () => {
 const editors: Editor[] = [];
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy();
+  mediaMocks.createObjectUrl.mockClear();
+  mediaMocks.revokeObjectUrl.mockClear();
 });
 
 function openEditor(document: RichDocument, assets: Asset[] = []): Editor {
@@ -182,7 +194,7 @@ describe("math and media through the actual Tiptap editor", () => {
     expect(legacy.getHTML()).toContain("<strong>Legacy text</strong>");
   });
 
-  it("keeps formula source inert and mounts players only for exact managed runtime URLs", () => {
+  it("keeps formula source inert and gives managed media only ephemeral blob URLs", async () => {
     const hostile = '<img src="https://example.invalid/leak" onerror="alert(1)">';
     const editor = openEditor(doc([
       { type: "paragraph", content: [{ type: "inlineMath", attrs: { latex: hostile } }] },
@@ -191,13 +203,19 @@ describe("math and media through the actual Tiptap editor", () => {
     ]), [asset(audioId, "audio/mpeg"), asset(videoId, "video/mp4")]);
     const surface = editor.view.dom;
     expect(surface.querySelector("iframe, script, a, img:not(.ProseMirror-separator), img[src], img[srcset], [onerror], [onload]")).toBeNull();
+    await vi.waitFor(() => {
+      const players = [...surface.querySelectorAll<HTMLMediaElement>("audio, video")];
+      expect(players).toHaveLength(2);
+      expect(players.map((player) => player.getAttribute("src"))).toEqual([
+        `blob:ostudy-audio-${audioId}`,
+        `blob:ostudy-video-${videoId}`,
+      ]);
+    });
     const players = [...surface.querySelectorAll<HTMLMediaElement>("audio, video")];
-    expect(players).toHaveLength(2);
-    expect(players.map((player) => player.getAttribute("src"))).toEqual([
-      `https://ostudy-asset.localhost/${audioId}`,
-      `https://ostudy-asset.localhost/${videoId}`,
-    ]);
     expect(players.every((player) => player.autoplay === false && player.preload === "metadata")).toBe(true);
+    expect(surface.innerHTML).not.toContain("ostudy-asset.localhost");
+    expect(mediaMocks.createObjectUrl).toHaveBeenCalledWith(audioId, "audio");
+    expect(mediaMocks.createObjectUrl).toHaveBeenCalledWith(videoId, "video");
     expect(surface.querySelector("[data-study-math]")?.textContent).toBe(`\\(${hostile}\\)`);
     expect(surface.textContent).not.toContain("secret-answer");
     expect(editor.getHTML()).not.toContain("ostudy-asset.localhost");
