@@ -40,3 +40,7 @@ export async function importMedia(
 ): Promise<Asset | null> {
   return invoke<Asset | null>("import_media", { input: { draftId, operationId } });
 }
+
+export async function readMediaAsset(assetId: string): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("read_media_asset", { input: { assetId } });
+}
