@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::{
-    invalid, model::*, QuestionError, ValidatedQuestion, GRADING_POLICY_VERSION, MAX_DEFINITION_BYTES,
-    MAX_RESPONSE_BYTES, QUESTION_SCHEMA_VERSION,
+    invalid, model::*, QuestionError, ValidatedQuestion, GRADING_POLICY_VERSION,
+    MAX_DEFINITION_BYTES, MAX_RESPONSE_BYTES, QUESTION_SCHEMA_VERSION,
 };
 use crate::util::validate_entity_id;
 
@@ -53,7 +53,9 @@ impl QuestionInstance {
         validate_entity_id(&identity.note_id, "question note")?;
         validate_entity_id(&identity.card_id, "question card")?;
         if identity.note_revision < 1 {
-            return Err(invalid("A question instance requires a positive note revision."));
+            return Err(invalid(
+                "A question instance requires a positive note revision.",
+            ));
         }
         if !question.presentation_keys().contains(&presentation_key) {
             return Err(invalid("The question presentation does not exist."));
@@ -74,8 +76,9 @@ impl QuestionInstance {
         if json.len() > MAX_SNAPSHOT_BYTES {
             return Err(invalid("The captured question exceeds its byte budget."));
         }
-        let stored: StoredInstance = serde_json::from_str(json)
-            .map_err(|_| invalid("The captured question has an unsupported or malformed structure."))?;
+        let stored: StoredInstance = serde_json::from_str(json).map_err(|_| {
+            invalid("The captured question has an unsupported or malformed structure.")
+        })?;
         if stored.snapshot_version != SNAPSHOT_VERSION
             || stored.grading_policy_version != GRADING_POLICY_VERSION
         {
@@ -138,7 +141,9 @@ impl QuestionInstance {
             ));
         }
         if answer.instance_id != self.identity.instance_id {
-            return Err(invalid("The response belongs to a different question instance."));
+            return Err(invalid(
+                "The response belongs to a different question instance.",
+            ));
         }
         self.question.evaluate(&answer.response)
     }

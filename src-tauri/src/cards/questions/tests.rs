@@ -261,7 +261,10 @@ fn unknown_versions_kinds_fields_and_duplicate_json_members_fail_closed() {
         let error = ValidatedQuestion::parse(&case.to_string()).err().unwrap();
         assert!(!error.message.contains("SECRET"));
     }
-    assert!(ValidatedQuestion::parse("{\"schemaVersion\":1,\"schemaVersion\":1,\"question\":{}}").is_err());
+    assert!(
+        ValidatedQuestion::parse("{\"schemaVersion\":1,\"schemaVersion\":1,\"question\":{}}")
+            .is_err()
+    );
     assert!(ValidatedQuestion::parse("not JSON").is_err());
 }
 
@@ -278,7 +281,10 @@ fn definitions_reject_empty_fields_duplicate_ids_and_unknown_keys() {
     }
     assert_rejected(d);
     let mut d = single();
-    if let QuestionBody::SingleChoice { correct_option_id, .. } = &mut d.question {
+    if let QuestionBody::SingleChoice {
+        correct_option_id, ..
+    } = &mut d.question
+    {
         *correct_option_id = id(999);
     }
     assert_rejected(d);
@@ -318,10 +324,15 @@ fn matching_and_grouping_definitions_admit_only_their_structural_relations() {
 #[test]
 fn math_image_and_media_fields_keep_canonical_atoms_and_all_private_asset_owners() {
     let mut d = single();
-    if let QuestionBody::SingleChoice { prompt, options, .. } = &mut d.question {
+    if let QuestionBody::SingleChoice {
+        prompt, options, ..
+    } = &mut d.question
+    {
         *prompt = json!({"type":"doc","attrs":{"schemaVersion":3},"content":[{"type":"blockMath","attrs":{"latex":"\\frac{x_1}{x_2}"}}]});
         options[0].content = json!({"type":"doc","attrs":{"schemaVersion":3},"content":[{"type":"audio","attrs":{"assetId":id(40),"src":format!("study-asset://{}",id(40))}}]});
-        options[0].rationale = Some(json!({"type":"doc","attrs":{"schemaVersion":3},"content":[{"type":"video","attrs":{"assetId":id(41),"src":format!("study-asset://{}",id(41))}}]}));
+        options[0].rationale = Some(
+            json!({"type":"doc","attrs":{"schemaVersion":3},"content":[{"type":"video","attrs":{"assetId":id(41),"src":format!("study-asset://{}",id(41))}}]}),
+        );
         options[1].content = json!({"type":"doc","attrs":{"schemaVersion":3},"content":[{"type":"image","attrs":{"assetId":id(42),"src":format!("study-asset://{}",id(42))}}]});
     }
     let instance = capture(d);
@@ -396,10 +407,18 @@ fn public_projections_drop_keys_rationales_pairs_and_memberships() {
         let public = capture(d).public_question().unwrap();
         let json = serde_json::to_string(&public).unwrap();
         for forbidden in [
-            "Private", "correctOption", "correctedStatement", "explanation", "rationale",
-            "categoryId", "pairs",
+            "Private",
+            "correctOption",
+            "correctedStatement",
+            "explanation",
+            "rationale",
+            "categoryId",
+            "pairs",
         ] {
-            assert!(!json.contains(forbidden), "public projection leaked {forbidden}");
+            assert!(
+                !json.contains(forbidden),
+                "public projection leaked {forbidden}"
+            );
         }
     }
 }
@@ -412,12 +431,16 @@ fn single_choice_distinguishes_correct_incorrect_and_unanswered() {
         (Some(1), Verdict::Incorrect),
         (None, Verdict::Incomplete),
     ] {
-        let result = instance.evaluate(&answer(single_response(selected))).unwrap();
+        let result = instance
+            .evaluate(&answer(single_response(selected)))
+            .unwrap();
         assert_eq!(result.verdict, expected);
         assert_eq!(result.required_count, 1);
         assert_eq!(result.components.len(), 3);
     }
-    assert!(instance.evaluate(&answer(single_response(Some(9)))).is_err());
+    assert!(instance
+        .evaluate(&answer(single_response(Some(9))))
+        .is_err());
     assert!(instance.evaluate(&answer(multi_response(&[2]))).is_err());
 }
 
@@ -426,13 +449,22 @@ fn select_all_checks_exact_sets_without_credit_for_unselected_distractors() {
     let instance = capture(select_all(vec![id(1), id(3)]));
     for bits in 0_u8..8 {
         let selected: Vec<_> = (1..=3).filter(|n| bits & (1 << (n - 1)) != 0).collect();
-        let result = instance.evaluate(&answer(multi_response(&selected))).unwrap();
-        let expected = if bits == 5 { Verdict::Correct } else { Verdict::Incorrect };
+        let result = instance
+            .evaluate(&answer(multi_response(&selected)))
+            .unwrap();
+        let expected = if bits == 5 {
+            Verdict::Correct
+        } else {
+            Verdict::Incorrect
+        };
         assert_eq!(result.verdict, expected);
         assert_eq!(result.matched_count, (bits & 5).count_ones() as usize);
         assert_eq!(result.required_count, 2);
     }
-    assert_eq!(verdict(&instance, multi_response(&[3, 1])), Verdict::Correct);
+    assert_eq!(
+        verdict(&instance, multi_response(&[3, 1])),
+        Verdict::Correct
+    );
     assert!(instance.evaluate(&answer(multi_response(&[1, 1]))).is_err());
 }
 
@@ -508,11 +540,22 @@ fn ordering_requires_the_complete_total_order_independently_of_display_order() {
     };
     let shown: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
     assert_eq!(shown, vec![id(3), id(2), id(1)]);
-    for permutation in [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]] {
+    for permutation in [
+        [1, 2, 3],
+        [1, 3, 2],
+        [2, 1, 3],
+        [2, 3, 1],
+        [3, 1, 2],
+        [3, 2, 1],
+    ] {
         let response = QuestionResponse::Ordering {
             ordered_item_ids: permutation.into_iter().map(id).collect(),
         };
-        let expected = if permutation == [1, 2, 3] { Verdict::Correct } else { Verdict::Incorrect };
+        let expected = if permutation == [1, 2, 3] {
+            Verdict::Correct
+        } else {
+            Verdict::Incorrect
+        };
         assert_eq!(verdict(&instance, response), expected);
     }
     let partial = QuestionResponse::Ordering {
@@ -529,7 +572,10 @@ fn ordering_requires_the_complete_total_order_independently_of_display_order() {
 fn instance_round_trip_keeps_order_identity_fingerprint_and_frozen_key() {
     let mut d = single();
     let instance = capture(d.clone());
-    if let QuestionBody::SingleChoice { correct_option_id, .. } = &mut d.question {
+    if let QuestionBody::SingleChoice {
+        correct_option_id, ..
+    } = &mut d.question
+    {
         *correct_option_id = id(1);
     }
     let changed = capture(d);
@@ -538,7 +584,10 @@ fn instance_round_trip_keeps_order_identity_fingerprint_and_frozen_key() {
     assert_eq!(instance.fingerprint(), restored.fingerprint());
     assert_ne!(instance.fingerprint(), changed.fingerprint());
     assert!(instance.public_question().unwrap() == restored.public_question().unwrap());
-    assert_eq!(verdict(&restored, single_response(Some(2))), Verdict::Correct);
+    assert_eq!(
+        verdict(&restored, single_response(Some(2))),
+        Verdict::Correct
+    );
 }
 
 #[test]
@@ -573,9 +622,14 @@ fn responses_from_other_instances_or_versions_are_rejected_without_disclosing_ke
     response.schema_version = 2;
     assert!(instance.evaluate(&response).is_err());
     let malformed = json!({"schemaVersion":1,"instanceId":id(100),"response":{"kind":"single_choice","selectedOptionId":id(2),"SECRET":"SECRET"}});
-    let error = instance.evaluate_json(&malformed.to_string()).err().unwrap();
+    let error = instance
+        .evaluate_json(&malformed.to_string())
+        .err()
+        .unwrap();
     assert!(!error.message.contains("SECRET"));
-    assert!(instance.evaluate_json(&" ".repeat(MAX_RESPONSE_BYTES + 1)).is_err());
+    assert!(instance
+        .evaluate_json(&" ".repeat(MAX_RESPONSE_BYTES + 1))
+        .is_err());
 }
 
 #[test]
@@ -583,24 +637,56 @@ fn occlusion_validates_geometry_targets_and_both_mask_modes_without_exposing_sou
     for mode in [OcclusionMode::HideTarget, OcclusionMode::HideAll] {
         let instance = capture(occlusion(mode));
         let plan = instance.occlusion_mask_plan().unwrap();
-        let expected_count = if mode == OcclusionMode::HideTarget { 1 } else { 2 };
+        let expected_count = if mode == OcclusionMode::HideTarget {
+            1
+        } else {
+            2
+        };
         assert_eq!(plan.hidden_masks.len(), expected_count);
         assert_eq!(plan.image_asset_id, id(20));
         assert_eq!(plan.target_id, id(10));
         assert_eq!(plan.target_mask_ids, vec![id(1)]);
         assert!(instance.public_question().is_err());
-        let error = instance.evaluate(&answer(single_response(Some(1)))).err().unwrap();
+        let error = instance
+            .evaluate(&answer(single_response(Some(1))))
+            .err()
+            .unwrap();
         assert_eq!(error.code, "question_requires_self_rating");
     }
     let validated = ValidatedQuestion::validate(occlusion(OcclusionMode::HideTarget)).unwrap();
-    assert_eq!(validated.occlusion_mask_plan(&id(11)).unwrap().hidden_masks.len(), 2);
-    let valid = NormalizedRect { x: 0.0, y: 0.0, width: 0.1, height: 0.1 };
+    assert_eq!(
+        validated
+            .occlusion_mask_plan(&id(11))
+            .unwrap()
+            .hidden_masks
+            .len(),
+        2
+    );
+    let valid = NormalizedRect {
+        x: 0.0,
+        y: 0.0,
+        width: 0.1,
+        height: 0.1,
+    };
     for rect in [
         NormalizedRect { x: -0.1, ..valid },
-        NormalizedRect { x: 0.9, width: 0.2, ..valid },
-        NormalizedRect { width: 0.0, ..valid },
-        NormalizedRect { x: f64::NAN, ..valid },
-        NormalizedRect { y: f64::INFINITY, ..valid },
+        NormalizedRect {
+            x: 0.9,
+            width: 0.2,
+            ..valid
+        },
+        NormalizedRect {
+            width: 0.0,
+            ..valid
+        },
+        NormalizedRect {
+            x: f64::NAN,
+            ..valid
+        },
+        NormalizedRect {
+            y: f64::INFINITY,
+            ..valid
+        },
     ] {
         let mut d = occlusion(OcclusionMode::HideTarget);
         if let QuestionBody::ImageOcclusion { masks, .. } = &mut d.question {
@@ -618,8 +704,13 @@ fn occlusion_validates_geometry_targets_and_both_mask_modes_without_exposing_sou
 #[test]
 fn moving_masks_or_reordering_questions_never_renumbers_occlusion_presentations() {
     let mut d = occlusion(OcclusionMode::HideAll);
-    let before = ValidatedQuestion::validate(d.clone()).unwrap().presentation_keys();
-    if let QuestionBody::ImageOcclusion { masks, questions, .. } = &mut d.question {
+    let before = ValidatedQuestion::validate(d.clone())
+        .unwrap()
+        .presentation_keys();
+    if let QuestionBody::ImageOcclusion {
+        masks, questions, ..
+    } = &mut d.question
+    {
         masks[0].rect.x = 0.1;
         masks.reverse();
         questions.reverse();
@@ -628,5 +719,8 @@ fn moving_masks_or_reordering_questions_never_renumbers_occlusion_presentations(
     let mut keys = after.presentation_keys();
     keys.reverse();
     assert_eq!(keys, before);
-    assert_eq!(after.occlusion_mask_plan(&id(10)).unwrap().target_mask_ids, vec![id(1)]);
+    assert_eq!(
+        after.occlusion_mask_plan(&id(10)).unwrap().target_mask_ids,
+        vec![id(1)]
+    );
 }

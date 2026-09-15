@@ -175,24 +175,12 @@ pub struct LearnerAnswer {
     deny_unknown_fields
 )]
 pub enum QuestionResponse {
-    SingleChoice {
-        selected_option_id: Option<String>,
-    },
-    SelectAll {
-        selected_option_ids: Vec<String>,
-    },
-    TrueFalse {
-        selected: Option<bool>,
-    },
-    Matching {
-        assignments: Vec<Assignment>,
-    },
-    Grouping {
-        assignments: Vec<Assignment>,
-    },
-    Ordering {
-        ordered_item_ids: Vec<String>,
-    },
+    SingleChoice { selected_option_id: Option<String> },
+    SelectAll { selected_option_ids: Vec<String> },
+    TrueFalse { selected: Option<bool> },
+    Matching { assignments: Vec<Assignment> },
+    Grouping { assignments: Vec<Assignment> },
+    Ordering { ordered_item_ids: Vec<String> },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

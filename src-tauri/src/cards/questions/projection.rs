@@ -13,19 +13,35 @@ pub struct OcclusionMaskPlan {
 impl ValidatedQuestion {
     pub(super) fn validate_order(&self, order: &DisplayOrder) -> Result<(), QuestionError> {
         match &self.definition.question {
-            QuestionBody::SingleChoice { options, .. } | QuestionBody::SelectAll { options, .. } => {
-                permutation(&order.item_ids, options.iter().map(|option| option.id.as_str()))?;
+            QuestionBody::SingleChoice { options, .. }
+            | QuestionBody::SelectAll { options, .. } => {
+                permutation(
+                    &order.item_ids,
+                    options.iter().map(|option| option.id.as_str()),
+                )?;
                 permutation(&order.target_ids, std::iter::empty())
             }
             QuestionBody::Matching { pairs, .. } => {
-                permutation(&order.item_ids, pairs.iter().map(|pair| pair.left.id.as_str()))?;
-                permutation(&order.target_ids, pairs.iter().map(|pair| pair.right.id.as_str()))
+                permutation(
+                    &order.item_ids,
+                    pairs.iter().map(|pair| pair.left.id.as_str()),
+                )?;
+                permutation(
+                    &order.target_ids,
+                    pairs.iter().map(|pair| pair.right.id.as_str()),
+                )
             }
             QuestionBody::Grouping {
                 categories, items, ..
             } => {
-                permutation(&order.item_ids, items.iter().map(|item| item.item.id.as_str()))?;
-                permutation(&order.target_ids, categories.iter().map(|category| category.id.as_str()))
+                permutation(
+                    &order.item_ids,
+                    items.iter().map(|item| item.item.id.as_str()),
+                )?;
+                permutation(
+                    &order.target_ids,
+                    categories.iter().map(|category| category.id.as_str()),
+                )
             }
             QuestionBody::Ordering { items, .. } => {
                 permutation(&order.item_ids, items.iter().map(|item| item.id.as_str()))?;
@@ -155,7 +171,10 @@ impl PublicQuestion {
     }
 }
 
-fn ordered_choices(options: &[ChoiceOption], order: &[String]) -> Result<Vec<RichItem>, QuestionError> {
+fn ordered_choices(
+    options: &[ChoiceOption],
+    order: &[String],
+) -> Result<Vec<RichItem>, QuestionError> {
     order
         .iter()
         .map(|id| {
