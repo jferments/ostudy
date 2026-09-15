@@ -9,9 +9,10 @@ import {
 import type { FormulaInput } from "../math/mathlive";
 import { Button } from "../ui/primitives/Button";
 
-export function FormulaToolbox({ input, disabled }: {
+export function FormulaToolbox({ input, disabled, showKeyboardHelp = true }: {
   input: FormulaInput | null;
   disabled: boolean;
+  showKeyboardHelp?: boolean;
 }) {
   const [activeGroup, setActiveGroup] = useState<FormulaToolGroupId>("structures");
   const [showHelp, setShowHelp] = useState(false);
@@ -36,16 +37,18 @@ export function FormulaToolbox({ input, disabled }: {
             Select an existing expression before choosing a structure to wrap it. Fraction, powers, roots, and brackets preserve the selection without adding extra parentheses.
           </p>
         </div>
-        <Button
-          type="button"
-          size="small"
-          variant="ghost"
-          aria-expanded={showHelp}
-          aria-controls="formula-shortcuts-help"
-          onClick={() => setShowHelp((value) => !value)}
-        >
-          {showHelp ? "Hide help" : "Shortcuts & help"}
-        </Button>
+        {showKeyboardHelp ? (
+          <Button
+            type="button"
+            size="small"
+            variant="ghost"
+            aria-expanded={showHelp}
+            aria-controls="formula-shortcuts-help"
+            onClick={() => setShowHelp((value) => !value)}
+          >
+            {showHelp ? "Hide help" : "Shortcuts & help"}
+          </Button>
+        ) : null}
       </div>
 
       <div
@@ -98,7 +101,7 @@ export function FormulaToolbox({ input, disabled }: {
         ))}
       </div>
 
-      {showHelp ? (
+      {showKeyboardHelp && showHelp ? (
         <div
           id="formula-shortcuts-help"
           className="tw:grid tw:min-w-0 tw:gap-3 tw:rounded-md tw:bg-background tw:p-3 tw:ring-1 tw:ring-border"
