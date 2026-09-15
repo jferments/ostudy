@@ -82,7 +82,10 @@ impl AttemptView {
                 let document = match component {
                     ComponentFeedback::Choice { rationale, .. }
                     | ComponentFeedback::Placement { rationale, .. } => rationale,
-                    ComponentFeedback::Boolean { corrected_statement, .. } => corrected_statement,
+                    ComponentFeedback::Boolean {
+                        corrected_statement,
+                        ..
+                    } => corrected_statement,
                     ComponentFeedback::Position { .. } => continue,
                 };
                 if let Some(document) = document {
@@ -98,7 +101,11 @@ impl AttemptView {
 }
 
 #[derive(Serialize)]
-#[serde(tag = "phase", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "phase",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum AttemptProgress {
     Answering {
         saved_answer: Option<LearnerAnswer>,
@@ -249,8 +256,7 @@ impl QuestionAttempt {
             state: self.state.clone(),
         };
         bounded_size(&stored, MAX_ATTEMPT_BYTES)?;
-        serde_json::to_string(&stored)
-            .map_err(|_| invalid("The attempt could not be encoded."))
+        serde_json::to_string(&stored).map_err(|_| invalid("The attempt could not be encoded."))
     }
 
     pub fn restore(json: &str) -> Result<Self, QuestionError> {
@@ -324,7 +330,9 @@ impl QuestionAttempt {
                     || record.checked_at_ms < 0
                     || next_revision(record.request.expected_revision)? != self.revision
                 {
-                    return Err(invalid("The checked answer does not match its frozen evidence."));
+                    return Err(invalid(
+                        "The checked answer does not match its frozen evidence.",
+                    ));
                 }
             }
         }
@@ -334,7 +342,9 @@ impl QuestionAttempt {
 
 fn normalize_answer(mut answer: LearnerAnswer) -> LearnerAnswer {
     match &mut answer.response {
-        QuestionResponse::SelectAll { selected_option_ids } => selected_option_ids.sort(),
+        QuestionResponse::SelectAll {
+            selected_option_ids,
+        } => selected_option_ids.sort(),
         QuestionResponse::Matching { assignments } | QuestionResponse::Grouping { assignments } => {
             assignments.sort_by(|left, right| left.item_id.cmp(&right.item_id));
         }

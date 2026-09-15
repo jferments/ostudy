@@ -56,7 +56,11 @@ fn captured(body: Value) -> QuestionInstance {
     } else {
         DisplayOrder {
             item_ids: vec![id(2), id(1)],
-            target_ids: if kind == "matching" { vec![id(4), id(3)] } else { vec![] },
+            target_ids: if kind == "matching" {
+                vec![id(4), id(3)]
+            } else {
+                vec![]
+            },
         }
     };
     let definition: QuestionDefinition =
@@ -131,12 +135,18 @@ fn initial_projection_and_restoration_have_no_key_feedback_or_submission() {
 fn saved_answers_restore_without_checking_or_changing_display_order() {
     let mut original = attempt("single_choice");
     let before = view(&original)["question"].clone();
-    assert_eq!(original.save_answer(save(1, 20, single(Some(1)))).unwrap(), 2);
+    assert_eq!(
+        original.save_answer(save(1, 20, single(Some(1)))).unwrap(),
+        2
+    );
     let reopened = restore(&original);
     let public = view(&reopened);
     assert_eq!(public["question"], before);
     assert_eq!(public["progress"]["phase"], "answering");
-    assert_eq!(public["progress"]["savedAnswer"]["response"]["selectedOptionId"], id(1));
+    assert_eq!(
+        public["progress"]["savedAnswer"]["response"]["selectedOptionId"],
+        id(1)
+    );
     assert!(!public.to_string().contains("PRIVATE"));
 }
 
@@ -150,11 +160,17 @@ fn duplicate_save_replays_but_changed_identity_and_stale_save_cannot_overwrite()
     assert_eq!(attempt.to_json().unwrap(), stored);
     let mut conflict = first.clone();
     conflict.answer = single(Some(2));
-    assert_eq!(attempt.save_answer(conflict).unwrap_err().code, "question_operation_conflict");
+    assert_eq!(
+        attempt.save_answer(conflict).unwrap_err().code,
+        "question_operation_conflict"
+    );
     assert_eq!(attempt.to_json().unwrap(), stored);
     attempt.save_answer(save(2, 21, single(Some(2)))).unwrap();
     let newer = attempt.to_json().unwrap();
-    assert_eq!(attempt.save_answer(first).unwrap_err().code, "question_attempt_conflict");
+    assert_eq!(
+        attempt.save_answer(first).unwrap_err().code,
+        "question_attempt_conflict"
+    );
     assert_eq!(attempt.to_json().unwrap(), newer);
 }
 
@@ -162,11 +178,16 @@ fn duplicate_save_replays_but_changed_identity_and_stale_save_cannot_overwrite()
 fn checking_is_separate_from_saving_and_freezes_the_first_answer() {
     let mut attempt = attempt("single_choice");
     attempt.save_answer(save(1, 20, single(Some(1)))).unwrap();
-    attempt.check_answer(check(2, 30, single(Some(2))), 900).unwrap();
+    attempt
+        .check_answer(check(2, 30, single(Some(2))), 900)
+        .unwrap();
     let public = view(&attempt);
     assert_eq!(public["revision"], 3);
     assert_eq!(public["progress"]["evaluation"]["verdict"], "correct");
-    assert_eq!(public["progress"]["firstAnswer"]["response"]["selectedOptionId"], id(2));
+    assert_eq!(
+        public["progress"]["firstAnswer"]["response"]["selectedOptionId"],
+        id(2)
+    );
     let stored = attempt.to_json().unwrap();
     assert!(attempt.save_answer(save(3, 21, single(Some(1)))).is_err());
     assert!(attempt.mark_assisted().is_err());
@@ -184,7 +205,10 @@ fn identical_check_retry_after_restart_keeps_time_result_and_revision() {
     reopened.check_answer(request, 20_000).unwrap();
     assert_eq!(reopened.to_json().unwrap(), stored);
     assert_eq!(view(&reopened)["progress"]["checkedAtMs"], 900);
-    assert_eq!(view(&reopened)["progress"]["evaluation"]["verdict"], "incorrect");
+    assert_eq!(
+        view(&reopened)["progress"]["evaluation"]["verdict"],
+        "incorrect"
+    );
 }
 
 #[test]
@@ -227,7 +251,10 @@ fn unanswered_boolean_never_becomes_false_during_save_or_restore() {
         attempt.save_answer(save(1, 20, response.clone())).unwrap();
         let mut reopened = restore(&attempt);
         reopened.check_answer(check(2, 30, response), 900).unwrap();
-        assert_eq!(view(&reopened)["progress"]["evaluation"]["verdict"], expected);
+        assert_eq!(
+            view(&reopened)["progress"]["evaluation"]["verdict"],
+            expected
+        );
     }
 }
 
@@ -251,13 +278,20 @@ fn assignment_order_is_normalized_but_ordering_answers_are_not() {
     let entries = json!([{"itemId":id(2),"targetId":id(4)},
                          {"itemId":id(1),"targetId":id(3)}]);
     let first = answer(json!({"kind":"matching","assignments":entries}));
-    matching.check_answer(check(1, 30, first.clone()), 900).unwrap();
+    matching
+        .check_answer(check(1, 30, first.clone()), 900)
+        .unwrap();
     let mut reordered = first;
     if let QuestionResponse::Matching { assignments } = &mut reordered.response {
         assignments.reverse();
     }
-    matching.check_answer(check(1, 30, reordered), 1000).unwrap();
-    assert_eq!(view(&matching)["progress"]["evaluation"]["verdict"], "correct");
+    matching
+        .check_answer(check(1, 30, reordered), 1000)
+        .unwrap();
+    assert_eq!(
+        view(&matching)["progress"]["evaluation"]["verdict"],
+        "correct"
+    );
     let mut ordering = attempt("ordering");
     let first = answer(json!({"kind":"ordering","orderedItemIds":[id(1),id(2)]}));
     ordering.check_answer(check(1, 30, first), 900).unwrap();
@@ -274,10 +308,17 @@ fn exposed_assistance_is_sticky_and_invalidates_unacknowledged_changes() {
     assert_eq!(attempt.mark_assisted().unwrap(), 3);
     assert_eq!(attempt.save_answer(saved).unwrap(), 2);
     let mut reopened = restore(&attempt);
-    assert!(reopened.check_answer(check(2, 30, single(Some(2))), 900).is_err());
-    reopened.check_answer(check(3, 30, single(Some(2))), 900).unwrap();
+    assert!(reopened
+        .check_answer(check(2, 30, single(Some(2))), 900)
+        .is_err());
+    reopened
+        .check_answer(check(3, 30, single(Some(2))), 900)
+        .unwrap();
     assert_eq!(view(&reopened)["assisted"], true);
-    assert_eq!(view(&reopened)["progress"]["evaluation"]["verdict"], "correct");
+    assert_eq!(
+        view(&reopened)["progress"]["evaluation"]["verdict"],
+        "correct"
+    );
 }
 
 #[test]
@@ -293,14 +334,18 @@ fn malformed_requests_and_time_bounds_do_not_mutate_attempts() {
         request.response_time_ms = elapsed;
         assert!(attempt.check_answer(request, 900).is_err());
     }
-    assert!(attempt.check_answer(check(1, 30, single(Some(2))), -1).is_err());
+    assert!(attempt
+        .check_answer(check(1, 30, single(Some(2))), -1)
+        .is_err());
     assert_eq!(attempt.to_json().unwrap(), stored);
 }
 
 #[test]
 fn corrupted_restored_evaluation_identity_and_versions_fail_closed() {
     let mut attempt = attempt("single_choice");
-    attempt.check_answer(check(1, 30, single(Some(1))), 900).unwrap();
+    attempt
+        .check_answer(check(1, 30, single(Some(1))), 900)
+        .unwrap();
     let original: Value = serde_json::from_str(&attempt.to_json().unwrap()).unwrap();
     for index in 0..6 {
         let mut changed = original.clone();
@@ -325,7 +370,7 @@ fn invalid_unchecked_revisions_and_noncanonical_saved_sets_are_rejected() {
     attempt.save_answer(save(1, 20, response)).unwrap();
     let original: Value = serde_json::from_str(&attempt.to_json().unwrap()).unwrap();
     let mut changed = original.clone();
-    changed["state"]["saved"]["answer"]["response"]["selectedOptionIds"] = json!([id(2),id(1)]);
+    changed["state"]["saved"]["answer"]["response"]["selectedOptionIds"] = json!([id(2), id(1)]);
     assert!(QuestionAttempt::restore(&changed.to_string()).is_err());
     let mut changed = original;
     changed["revision"] = json!(3);
@@ -341,8 +386,12 @@ fn overflow_and_unknown_payload_fields_fail_without_erasing_the_response() {
     value["state"]["saved"]["expectedRevision"] = json!(i64::MAX - 1);
     let mut maximal = QuestionAttempt::restore(&value.to_string()).unwrap();
     let stored = maximal.to_json().unwrap();
-    assert!(maximal.save_answer(save(i64::MAX, 21, single(Some(2)))).is_err());
-    assert!(maximal.check_answer(check(i64::MAX, 30, single(Some(2))), 900).is_err());
+    assert!(maximal
+        .save_answer(save(i64::MAX, 21, single(Some(2))))
+        .is_err());
+    assert!(maximal
+        .check_answer(check(i64::MAX, 30, single(Some(2))), 900)
+        .is_err());
     assert_eq!(maximal.to_json().unwrap(), stored);
     value["unknown"] = json!("PRIVATE INJECTED FIELD");
     let error = QuestionAttempt::restore(&value.to_string()).err().unwrap();
@@ -360,7 +409,9 @@ fn feedback_assets_are_admitted_only_after_checking() {
     let mut attempt = QuestionAttempt::start(captured(source)).unwrap();
     assert_eq!(attempt.instance().asset_ids(), &[id(40)]);
     assert!(attempt.view().unwrap().asset_ids().unwrap().is_empty());
-    attempt.check_answer(check(1, 30, single(Some(2))), 900).unwrap();
+    attempt
+        .check_answer(check(1, 30, single(Some(2))), 900)
+        .unwrap();
     assert_eq!(attempt.view().unwrap().asset_ids().unwrap(), vec![id(40)]);
     let AttemptProgress::Checked { evaluation, .. } = attempt.view().unwrap().progress else {
         panic!("checked view required");
