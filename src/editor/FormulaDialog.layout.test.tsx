@@ -41,7 +41,9 @@ function session(): FormulaEditSession {
   };
 }
 
-function mountedInput(overrides: Partial<Awaited<ReturnType<typeof mountFormulaInput>>> = {}) {
+type MountedFormulaInput = NonNullable<Awaited<ReturnType<typeof mountFormulaInput>>>;
+
+function mountedInput(overrides: Partial<MountedFormulaInput> = {}): MountedFormulaInput {
   return {
     focus: vi.fn(),
     showKeyboard: vi.fn(() => true),
