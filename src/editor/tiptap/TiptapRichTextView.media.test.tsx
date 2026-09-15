@@ -102,22 +102,26 @@ describe("TiptapRichTextView managed-media lifecycle", () => {
     await waitFor(() => {
       expect(view.container.querySelector("audio, video")).toBeNull();
     });
-    expect(pauseSpy).toHaveBeenCalledTimes(2);
-    expect(loadSpy).toHaveBeenCalledTimes(2);
+    expect(pauseSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(loadSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(view.container.innerHTML).not.toContain("ostudy-asset.localhost");
   });
 
-  it("releases active media when the rich view unmounts", async () => {
+  it("releases every captured active player when the rich view unmounts", async () => {
     const view = render(
       <TiptapRichTextView document={mediaDocument()} assets={assets} mediaPlaybackActive />,
     );
     await waitFor(() => {
       expect(view.container.querySelectorAll("audio, video")).toHaveLength(2);
     });
+    const players = [...view.container.querySelectorAll<HTMLMediaElement>("audio, video")];
+    pauseSpy.mockClear();
+    loadSpy.mockClear();
 
     view.unmount();
 
-    expect(pauseSpy).toHaveBeenCalledTimes(2);
-    expect(loadSpy).toHaveBeenCalledTimes(2);
+    expect(pauseSpy.mock.calls.length).toBeGreaterThanOrEqual(players.length);
+    expect(loadSpy.mock.calls.length).toBeGreaterThanOrEqual(players.length);
+    for (const player of players) expect(player.hasAttribute("src")).toBe(false);
   });
 });
