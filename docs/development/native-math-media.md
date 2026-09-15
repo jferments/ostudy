@@ -172,8 +172,9 @@ undo/redo. On Android, verify the keyboard opens expanded immediately below the
 formula field, the field remains visible, the in-field keyboard icon collapses and
 reopens it, desktop shortcut help is absent, and placement is the last authoring
 control. Verify first Back hides an open MathLive keyboard and subsequent Back
-cancels/dismisses according to the shared dialog contract. Passing automated tests
-are not physical-device acceptance.
+cancels/dismisses according to the shared dialog contract. This physical Android
+check is the acceptance boundary for the compact formula-authoring layout; passing
+automated tests alone is not physical-device acceptance.
 
 ### Tutor and study-guide mathematical text
 
