@@ -161,7 +161,7 @@ export function editorToolbarGroups(
   const lists: EditorToolbarItem[] = [];
   if (capabilities.blocks.bulletList) lists.push(item("bullets", "Bullet list", "toggle_bullet_list"));
   if (capabilities.blocks.numberedList) lists.push(item("numbers", "Numbered list", "toggle_numbered_list"));
-  if (capabilities.checklists.ordinary) lists.push(item("tasks", "Task list", "toggle_task_list"));
+  if (capabilities.checklists.ordinary) lists.push(item("tasks", "Checkbox list", "toggle_task_list"));
   if (capabilities.checklists.answerKey) {
     lists.push(item("answer-checklist", "Answer checklist", "insert_answer_checklist"));
   }

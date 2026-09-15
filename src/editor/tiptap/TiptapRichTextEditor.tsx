@@ -495,7 +495,7 @@ function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, onOpenL
       <ToolbarGroup label="Lists and indentation">
         <ToolbarAction label="Bullet list" pressed={adapter.isActive("bulletList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_bullet_list" })}>• List</ToolbarAction>
         <ToolbarAction label="Numbered list" pressed={adapter.isActive("orderedList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_numbered_list" })}>1. List</ToolbarAction>
-        <ToolbarAction label="Task list" pressed={adapter.isActive("taskList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_task_list" })}>☐ Tasks</ToolbarAction>
+        <ToolbarAction label="Checkbox list" pressed={adapter.isActive("taskList")} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_task_list" })}>☐ Checkbox</ToolbarAction>
         {selection.inTaskList ? <ToolbarAction label={selection.taskChecked ? "Mark task incomplete" : "Mark task complete"} pressed={selection.taskChecked === true} onMouseDown={preserveSelection} onClick={() => run({ command: "toggle_task_checked" })}>✓</ToolbarAction> : null}
         <ToolbarAction label="Decrease indentation" onMouseDown={preserveSelection} onClick={() => run({ command: "indent", value: -1 })}>⇤</ToolbarAction>
         <ToolbarAction label="Increase indentation" onMouseDown={preserveSelection} onClick={() => run({ command: "indent", value: 1 })}>⇥</ToolbarAction>
