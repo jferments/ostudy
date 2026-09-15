@@ -1,7 +1,7 @@
 # Native mathematics and managed audio/video
 
-Status: implementation contract for the replacement of PR #95. Publication,
-qualification, and human acceptance are recorded separately in the replacement PR.
+Status: source implementation is complete through AC-11; terminal platform
+qualification and human acceptance are recorded separately in the replacement PR.
 
 ## Baseline and preservation
 
@@ -91,9 +91,19 @@ source and disclose source-only output rather than silently dropping formulas.
 
 The concrete Tiptap schema retains all four rich atoms through ordinary editing
 and save/reopen, with text/clipboard serialization and protection against marks
-that native atom validation rejects. Media uses native players only for hydrated managed assets; unavailable assets
-remain inert. Native acquisition, Anki conversion, package/sync/backup transport
-are implemented; full lifecycle and device acceptance remain pending.
+that native atom validation rejects. Media uses native players only for hydrated
+managed assets; unavailable assets remain inert. Native acquisition, Anki
+conversion, package/sync/backup transport, shared draft/promotion/reconciliation
+lifecycle, inactive-face teardown, and media-aware duplicate identity are
+implemented. Target-device acceptance remains pending.
+
+Managed-media duplicate equality keeps the historical normalized-text hash as the
+candidate index, then compares ordered managed node kind plus `assetId` on each
+side. Filenames, paths, runtime URLs, titles and player metadata do not participate.
+Direct create/update, move/copy and rich template generation use this equality;
+the public text-only advisory defers media-placeholder cases to the authoritative
+transaction. An in-memory SQLite regression verifies same-asset equality,
+different-asset inequality under the same text hash, and `exclude_note_id`.
 
 ### Formula authoring and card rendering
 
@@ -140,7 +150,8 @@ lockfile also pins their resolved transitive graph; existing dependency resoluti
 are preserved. Their distributed font CSS is imported by the existing foundation
 stylesheet, so Vite packages and rewrites font assets locally. No runtime CDN is
 used. MathLive's dynamic font/sound loaders, compute engine and URL-opening hook
-are disabled. The native Content Security Policy is unchanged. Third-party package
+are disabled. The native CSP remains deny-by-default and explicitly admits only
+the managed `ostudy-asset` scheme for local media playback. Third-party package
 licenses remain with their distributions; no runtime binary or downloaded font is
 committed as product source.
 
@@ -326,8 +337,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib do
 
 These native import tests do not establish card-UI or device acceptance. Imported
 formula atoms now use the shared card renderer and captured MathLive edit session
-described above; unsupported rendering still preserves visible source. Anki media and structured MathML input use these same native content boundaries.
-Remaining lifecycle/duplicate-identity and platform acceptance stay in this PR.
+described above; unsupported rendering still preserves visible source. Anki media
+and structured MathML input use these same native content boundaries.
+Lifecycle/duplicate-identity automation is implemented; platform and human
+acceptance remain in this PR.
 
 ### Structured MathML input and source provenance
 
