@@ -8,6 +8,7 @@ import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { NativeSelect } from "../ui/primitives/NativeSelect";
 import type { FormulaEditSession, FormulaPlacement } from "./formula";
+import { FormulaToolbox } from "./FormulaToolbox";
 import contentStyles from "./RichContent.module.css";
 
 /** Draft state is local. Only the captured session can change the card. */
@@ -35,19 +36,29 @@ export function FormulaDialog({ session, onClose }: {
     setReady(false);
     setError(null);
     void mountFormulaInput({
-      host, keyboardHost,
-      source: session.initialValue.latex, signal: controller.signal,
-      onChange: setSource, onError: setError,
-    }).then((mounted) => {
-      if (controller.signal.aborted || finished.current) { mounted?.dispose(); return; }
-      input.current = mounted;
-      setReady(mounted !== null);
-      mounted?.focus();
-    }).catch((failure: unknown) => {
-      if (!controller.signal.aborted) {
-        setError(failure instanceof Error ? failure.message : "The formula editor could not load.");
-      }
-    });
+      host,
+      keyboardHost,
+      source: session.initialValue.latex,
+      signal: controller.signal,
+      onChange: setSource,
+      onError: setError,
+    })
+      .then((mounted) => {
+        if (controller.signal.aborted || finished.current) {
+          mounted?.dispose();
+          return;
+        }
+        input.current = mounted;
+        setReady(mounted !== null);
+        mounted?.focus();
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(
+            failure instanceof Error ? failure.message : "The formula editor could not load.",
+          );
+        }
+      });
     return () => {
       controller.abort();
       if (lifecycle.current === controller) lifecycle.current = null;
@@ -59,7 +70,12 @@ export function FormulaDialog({ session, onClose }: {
 
   function cancel(reason: OverlayCloseReason): void {
     if (finished.current) return;
-    if ((reason === "escape" || reason === "platform_back") && input.current?.hideKeyboard()) return;
+    if (
+      (reason === "escape" || reason === "platform_back") &&
+      input.current?.hideKeyboard()
+    ) {
+      return;
+    }
     finished.current = true;
     lifecycle.current?.abort();
     input.current?.dispose();
@@ -70,39 +86,79 @@ export function FormulaDialog({ session, onClose }: {
   function save(): void {
     if (!ready || finished.current) return;
     const invalid = formulaSourceError(source) || formulaRenderingError(source);
-    if (invalid) { setError(invalid); return; }
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     const result = session.save({ latex: source, placement });
-    if (!result.ok) { setError(result.message); return; }
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
     finished.current = true;
     lifecycle.current?.abort();
     input.current?.dispose();
     onClose();
   }
 
-  return <Dialog title="Edit formula" width="large" initialFocusRef={initialFocus} onClose={cancel}
-    description="Use the mathematical keyboard or type a formula. Changes apply only when you save.">
-    <div className="tw:box-border tw:grid tw:w-full tw:min-w-0 tw:gap-4 tw:p-4">
-      <div ref={setHost} className={contentStyles.formulaInput} />
-      {!ready && !error ? <p role="status">Loading formula editor…</p> : null}
-      <div className="tw:flex tw:flex-wrap tw:items-end tw:gap-3">
-        <Button ref={initialFocus} type="button" variant="secondary" disabled={!ready}
-          onClick={() => input.current?.toggleKeyboard()}>Math keyboard</Button>
-        <label className="tw:grid tw:gap-1 tw:text-sm">
-          Placement
-          <NativeSelect aria-label="Formula placement" value={placement} disabled={!ready}
-            onChange={(event) => setPlacement(event.currentTarget.value as FormulaPlacement)}>
-            <option value="inline">Within the text</option>
-            <option value="block">On its own line</option>
-          </NativeSelect>
-        </label>
+  return (
+    <Dialog
+      title="Edit formula"
+      width="large"
+      initialFocusRef={initialFocus}
+      onClose={cancel}
+      description="Use the visual formula tools, mathematical keyboard, or type directly. Changes apply only when you save."
+    >
+      <div className="tw:box-border tw:grid tw:w-full tw:min-w-0 tw:gap-4 tw:p-4">
+        <div ref={setHost} className={contentStyles.formulaInput} />
+        {!ready && !error ? <p role="status">Loading formula editor…</p> : null}
+
+        <div className="tw:flex tw:flex-wrap tw:items-end tw:gap-3">
+          <Button
+            ref={initialFocus}
+            type="button"
+            variant="secondary"
+            disabled={!ready}
+            onClick={() => input.current?.toggleKeyboard()}
+          >
+            Full math keyboard
+          </Button>
+          <label className="tw:grid tw:gap-1 tw:text-sm">
+            Placement
+            <NativeSelect
+              aria-label="Formula placement"
+              value={placement}
+              disabled={!ready}
+              onChange={(event) =>
+                setPlacement(event.currentTarget.value as FormulaPlacement)
+              }
+            >
+              <option value="inline">Within the text</option>
+              <option value="block">On its own line</option>
+            </NativeSelect>
+          </label>
+        </div>
+
+        <FormulaToolbox input={ready ? input.current : null} disabled={!ready} />
+        <div ref={setKeyboardHost} className={contentStyles.formulaKeyboard} />
+
+        <div className="tw:grid tw:min-w-0 tw:gap-1">
+          <span className="tw:text-xs tw:font-medium tw:text-muted-foreground">Preview</span>
+          <FormulaPreview source={source} block={placement === "block"} />
+        </div>
+        {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
+        <DialogActions>
+          <Button type="button" variant="secondary" onClick={() => cancel("cancel_action")}>Cancel</Button>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={!ready || !!formulaSourceError(source)}
+            onClick={save}
+          >
+            Save formula
+          </Button>
+        </DialogActions>
       </div>
-      <div ref={setKeyboardHost} className={contentStyles.formulaKeyboard} />
-      <FormulaPreview source={source} block={placement === "block"} />
-      {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-      <DialogActions>
-        <Button type="button" variant="secondary" onClick={() => cancel("cancel_action")}>Cancel</Button>
-        <Button type="button" variant="primary" disabled={!ready || !!formulaSourceError(source)} onClick={save}>Save formula</Button>
-      </DialogActions>
-    </div>
-  </Dialog>;
+    </Dialog>
+  );
 }

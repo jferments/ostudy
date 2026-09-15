@@ -30,6 +30,8 @@ Inside a deck, **Add flashcard** opens the full rich editor for that destination
 
 Basic questions and answers support the editor's allowed formatting, lists, links, and managed images. Formatting shortcuts are an authoring convenience; the app stores a validated structured document, not arbitrary executable HTML. Images become managed library assets rather than references to arbitrary local paths or remote image URLs.
 
+Use the editor's **Formula** action for mathematical notation. The formula dialog includes graphical **Structures**, **Symbols**, **Relations**, **Greek**, and **Calculus** controls plus MathLive's full mathematical keyboard. Selecting existing math before choosing Fraction, Power, Root, or a grouping structure wraps that selection rather than requiring LaTeX or adding unwanted parentheses. See [Enter and edit mathematical formulas](formula-entry.md) for the graphical workflow and keyboard-shortcut reference.
+
 A **note** is the shared editable source. A **card** is a presentation you study. A Basic note normally creates one forward presentation. Enabling Reverse creates an independently scheduled reverse presentation of the same source. Editing shared wording or tags therefore affects both directions, while the two cards retain independent review histories and schedules.
 
 A **Fill in the blank** note marks text to hide. One-at-a-time mode selects a blank group for that review; all-together mode hides all groups. It still has one stable scheduled card rather than a separate schedule for every blank. Changing blanks or switching presentation mode does not imply a fresh learning history.

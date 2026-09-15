@@ -3,6 +3,7 @@ import { formulaRenderingError } from "./source";
 /** Application-owned lifecycle; consumers never hold a MathLive instance. */
 export interface FormulaInput {
   focus(): void;
+  applyTemplate(template: string): boolean;
   toggleKeyboard(): void;
   hideKeyboard(): boolean;
   dispose(): void;
@@ -88,9 +89,29 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
     event.stopPropagation();
     const source = event.clipboardData?.getData("text/plain") ?? "";
     const error = formulaRenderingError(source) || formulaRenderingError(lastAccepted + source);
-    if (error) { onError(error); return; }
+    if (error) {
+      onError(error);
+      return;
+    }
     field.insert(source, { format: "latex" });
     changed();
+  };
+  const applyTemplate = (template: string): boolean => {
+    if (disposed) return false;
+    field.focus();
+    // MathLive owns selection-aware #@/#0/#? expansion. Using the public insert
+    // API preserves its structured selection semantics instead of rewriting
+    // LaTeX in oStudy or inventing a second formula model.
+    const inserted = field.insert(template, {
+      format: "latex",
+      selectionMode: "placeholder",
+    });
+    if (!inserted) {
+      onError("That mathematical structure could not be inserted here.");
+      return false;
+    }
+    changed();
+    return true;
   };
   const dispose = () => {
     if (disposed) return;
@@ -119,15 +140,22 @@ export async function mountFormulaInput(options: MountOptions): Promise<FormulaI
     signal.addEventListener("abort", dispose, { once: true });
     field.addEventListener("mount", didMount, { once: true });
     host.append(field);
-    if (!await mounted || disposed || signal.aborted) { dispose(); return null; }
+    if (!(await mounted) || disposed || signal.aborted) {
+      dispose();
+      return null;
+    }
     // Assigning initial source must not normalize the session's unchanged save.
     // Only actual input events are forwarded to the caller.
     return {
-      focus: () => { if (!disposed) field.focus(); },
+      focus: () => {
+        if (!disposed) field.focus();
+      },
+      applyTemplate,
       toggleKeyboard: () => {
         if (disposed) return;
         field.focus();
-        if (keyboard.visible) keyboard.hide(); else keyboard.show();
+        if (keyboard.visible) keyboard.hide();
+        else keyboard.show();
         geometryChanged();
       },
       hideKeyboard: () => {

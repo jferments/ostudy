@@ -19,10 +19,12 @@ const originalMatchMedia = window.matchMedia;
 const hideKeyboard = vi.fn(() => false);
 const dispose = vi.fn();
 const toggleKeyboard = vi.fn();
+const applyTemplate = vi.fn(() => true);
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((media: string) => ({ matches: false, media, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn() }));
   hideKeyboard.mockReturnValue(false);
-  vi.mocked(mountFormulaInput).mockImplementation(async () => ({ focus: vi.fn(), dispose, toggleKeyboard, hideKeyboard }));
+  applyTemplate.mockReturnValue(true);
+  vi.mocked(mountFormulaInput).mockImplementation(async () => ({ focus: vi.fn(), applyTemplate, dispose, toggleKeyboard, hideKeyboard }));
 });
 afterEach(() => {
   editors.splice(0).forEach((editor) => editor.destroy());
@@ -40,7 +42,7 @@ function show(session: FormulaEditSession, strict = false) {
   return render(strict ? <StrictMode><Host /></StrictMode> : <Host />);
 }
 async function loaded() {
-  await waitFor(() => expect((screen.getByRole("button", { name: "Math keyboard" }) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Full math keyboard" }) as HTMLButtonElement).disabled).toBe(false));
 }
 function type(source: string) {
   act(() => vi.mocked(mountFormulaInput).mock.calls.at(-1)![0].onChange(source));
@@ -63,6 +65,17 @@ describe("formula dialog with actual editor transactions", () => {
     expect(createTiptapEditorAdapter(reopened).document()).toEqual(saved);
     editor.commands.undo(); expect(adapter.plainText()).toBe("left right");
     editor.commands.redo(); expect(adapter.document()).toEqual(saved);
+  });
+
+  it("routes visual structure controls through the captured MathLive input", async () => {
+    const editor = open();
+    show(createTiptapEditorAdapter(editor).beginFormulaEdit()!); await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "Fraction" }));
+    expect(applyTemplate).toHaveBeenCalledWith(String.raw`\frac{#@}{#?}`);
+    fireEvent.click(screen.getByRole("tab", { name: "Greek" }));
+    fireEvent.click(screen.getByRole("button", { name: "Theta" }));
+    expect(applyTemplate).toHaveBeenLastCalledWith(String.raw`\theta`);
+    expect(editor.state.doc.textContent).toBe("left right");
   });
 
   it("does not save or consume a session during StrictMode cleanup, cancel, or unchanged editing", async () => {
@@ -99,7 +112,7 @@ describe("formula dialog with actual editor transactions", () => {
     show(createTiptapEditorAdapter(editor).beginFormulaEdit()!); await loaded();
     hideKeyboard.mockReturnValueOnce(true);
     const dialog = screen.getByRole("dialog", { name: "Edit formula" });
-    fireEvent.click(screen.getByRole("button", { name: "Math keyboard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full math keyboard" }));
     expect(toggleKeyboard).toHaveBeenCalledOnce();
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeTruthy();
@@ -118,7 +131,7 @@ describe("formula dialog with actual editor transactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(signal.aborted).toBe(true));
     const focus = vi.fn(); const release = vi.fn();
-    await act(async () => resolve({ focus, dispose: release, toggleKeyboard, hideKeyboard }));
+    await act(async () => resolve({ focus, applyTemplate, dispose: release, toggleKeyboard, hideKeyboard }));
     expect(focus).not.toHaveBeenCalled(); expect(release).toHaveBeenCalledOnce();
     expect(screen.queryByRole("dialog")).toBeNull();
   });

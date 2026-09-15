@@ -40,16 +40,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("mounts the real mathfield before configuring its menu, edits a fraction, and reopens", async () => {
+it("mounts real MathLive, wraps a selection with a visual template, edits, and reopens", async () => {
   const onChange = vi.fn();
-  input = await mountFormulaInput({ host, keyboardHost, source: String.raw`\frac{a}{b}`,
+  input = await mountFormulaInput({ host, keyboardHost, source: "x^2+7x+3",
     signal: controller.signal, onChange, onError: vi.fn() });
   expect(input).not.toBeNull();
   const field = host.querySelector("math-field") as import("mathlive").MathfieldElement;
   expect(field).not.toBeNull();
   expect(field.menuItems).toEqual([]);
-  expect(field.getValue()).toBe(String.raw`\frac{a}{b}`);
+  expect(field.getValue()).toBe("x^2+7x+3");
   expect(onChange).not.toHaveBeenCalled();
+
+  field.executeCommand("selectAll");
+  expect(input!.applyTemplate(String.raw`\frac{#@}{17}`)).toBe(true);
+  const fraction = field.getValue();
+  expect(fraction).toContain(String.raw`\frac`);
+  expect(fraction).toContain("x^2");
+  expect(fraction).toContain("7x");
+  expect(fraction).toContain("17");
+  expect(fraction).not.toContain(String.raw`\left(`);
+  expect(onChange).toHaveBeenCalled();
+
   field.insert("+1", { insertionMode: "replaceAll", format: "latex" });
   field.dispatchEvent(new Event("input"));
   expect(onChange).toHaveBeenLastCalledWith("+1");

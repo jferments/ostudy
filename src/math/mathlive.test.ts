@@ -14,6 +14,7 @@ vi.mock("mathlive", () => {
     static restoreFocusWhenDocumentFocused = true;
     value = "";
     mathVirtualKeyboardPolicy = "auto";
+    lastInsert: { source: string; options: unknown } | null = null;
     private mounted = false;
     private items: unknown[] = [{}];
     connectedCallback() {
@@ -31,7 +32,11 @@ vi.mock("mathlive", () => {
       if (vendorState.failConfiguration) throw new Error("Menu configuration failed");
       this.items = items;
     }
-    insert(source: string) { this.value += source; }
+    insert(source: string, options?: unknown) {
+      this.lastInsert = { source, options };
+      this.value += source;
+      return true;
+    }
   }
   customElements.define("test-formula-input", TestField);
   return { MathfieldElement: TestField };
@@ -100,6 +105,19 @@ describe("MathLive application port", () => {
     await mount();
   });
 
+  it("inserts graphical templates through MathLive selection-aware placeholders", async () => {
+    const { input, onChange } = await mount("x");
+    const field = host.firstElementChild as HTMLElement & {
+      lastInsert: { source: string; options: { format: string; selectionMode: string } } | null;
+    };
+    expect(input.applyTemplate(String.raw`\frac{#@}{#?}`)).toBe(true);
+    expect(field.lastInsert).toEqual({
+      source: String.raw`\frac{#@}{#?}`,
+      options: { format: "latex", selectionMode: "placeholder" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith(String.raw`x\frac{#@}{#?}`);
+  });
+
   it("admits plain formula paste but blocks HTML-only, oversized and active source", async () => {
     const { onChange, onError } = await mount("x");
     const field = host.firstElementChild!;
@@ -165,5 +183,4 @@ describe("MathLive application port", () => {
     vendorState.failConfiguration = false;
     await mount();
   });
-
 });
