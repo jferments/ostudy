@@ -166,6 +166,10 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::{
+        database::Database,
+        decks::{create_deck_in_connection, CreateDeckInput},
+    };
 
     fn doc(content: Value) -> String {
         serde_json::to_string(&json!({
@@ -247,6 +251,80 @@ mod tests {
         )
         .unwrap();
         assert_ne!(first, different_side);
+    }
+
+    #[test]
+    fn database_duplicate_query_uses_managed_identity_after_text_hash_lookup() {
+        let database = Database::open_in_memory().expect("database should open");
+        let deck_id = database
+            .with_connection(|connection| {
+                create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Media duplicate identity".to_string(),
+                        description: None,
+                    },
+                )
+            })
+            .expect("deck should be created")
+            .id;
+        let note_id = "1".repeat(32);
+        let first_asset = "a".repeat(32);
+        let second_asset = "b".repeat(32);
+        let stored_front = doc(json!([media("audio", &first_asset, "private filename one")]));
+        let same_front = doc(json!([media("audio", &first_asset, "different private title")]));
+        let different_front = doc(json!([media("audio", &second_asset, "private filename two")]));
+        let back = answer_doc();
+        let normalized = crate::authoring::normalized_pair("[Audio]", "Answer");
+        let hash = crate::authoring::duplicate_hash(&normalized.0, &normalized.1);
+
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO notes (
+                             id, deck_id, note_type, content_format, content_schema_version,
+                             front_doc, back_doc, front_text, back_text, duplicate_hash,
+                             reverse_enabled, cloze_source, cloze_mode,
+                             created_at, updated_at, revision
+                         ) VALUES (
+                             ?1, ?2, 'basic', 'tiptap-json', 1,
+                             ?3, ?4, '[Audio]', 'Answer', ?5,
+                             0, '', 'one_at_a_time', 1, 1, 1
+                         )",
+                        params![note_id, deck_id, stored_front, back, hash],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("stored media note should insert");
+
+        let same = from_serialized_documents(&same_front, &back, "[Audio]", "Answer")
+            .expect("same identity should parse");
+        let different = from_serialized_documents(&different_front, &back, "[Audio]", "Answer")
+            .expect("different identity should parse");
+        database
+            .with_connection(|connection| {
+                assert!(has_exact_duplicate(
+                    connection, &deck_id, &hash, &same, None
+                )?);
+                assert!(!has_exact_duplicate(
+                    connection,
+                    &deck_id,
+                    &hash,
+                    &different,
+                    None
+                )?);
+                assert!(!has_exact_duplicate(
+                    connection,
+                    &deck_id,
+                    &hash,
+                    &same,
+                    Some(&note_id)
+                )?);
+                Ok(())
+            })
+            .expect("database duplicate identity query should succeed");
     }
 
     #[test]
