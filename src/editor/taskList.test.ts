@@ -54,10 +54,6 @@ function setCursorAfterText(current: Editor, text: string): void {
   current.commands.setTextSelection(cursor);
 }
 
-function checkboxList(current: Editor) {
-  return current.getJSON().content?.find((node) => node.type === "taskList");
-}
-
 describe("ordinary checkbox list editing", () => {
   it("creates a sibling checkbox when Enter is pressed and keeps later text in that item", () => {
     const current = createCheckboxEditor();
@@ -65,16 +61,14 @@ describe("ordinary checkbox list editing", () => {
     expect(current.commands.keyboardShortcut("Enter")).toBe(true);
     expect(current.commands.insertContent("cats")).toBe(true);
 
-    const list = checkboxList(current);
-    expect(list?.attrs).toMatchObject({ mode: "ordinary" });
-    expect(list?.content).toHaveLength(2);
-    expect(list?.content?.map((item) => item.attrs)).toEqual([
-      { checked: false, itemId: null },
-      { checked: false, itemId: null },
-    ]);
-    expect(
-      list?.content?.map((item) => item.content?.[0]?.content?.[0]?.text),
-    ).toEqual(["dogs", "cats"]);
+    const list = current.state.doc.child(0);
+    expect(list.type.name).toBe("taskList");
+    expect(list.attrs).toMatchObject({ mode: "ordinary" });
+    expect(list.childCount).toBe(2);
+    expect(list.child(0).attrs).toMatchObject({ checked: false, itemId: null });
+    expect(list.child(1).attrs).toMatchObject({ checked: false, itemId: null });
+    expect(list.child(0).textContent).toBe("dogs");
+    expect(list.child(1).textContent).toBe("cats");
   });
 
   it("exits the checkbox list when Enter is pressed again on an empty checkbox", () => {
@@ -83,9 +77,10 @@ describe("ordinary checkbox list editing", () => {
     expect(current.commands.keyboardShortcut("Enter")).toBe(true);
     expect(current.commands.keyboardShortcut("Enter")).toBe(true);
 
-    const list = checkboxList(current);
-    expect(list?.content).toHaveLength(1);
-    expect(list?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe("dogs");
+    const list = current.state.doc.child(0);
+    expect(list.type.name).toBe("taskList");
+    expect(list.childCount).toBe(1);
+    expect(list.child(0).textContent).toBe("dogs");
 
     const { $from } = current.state.selection;
     const ancestors = Array.from(
