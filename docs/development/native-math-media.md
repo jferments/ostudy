@@ -113,11 +113,11 @@ formula selection. The keyboard container is immediately below the field and
 above the Structures/Symbols/Relations/Greek/Calculus toolbox, so the expression
 being edited remains adjacent to the keyboard on compact screens. On Android the
 full MathLive keyboard is shown automatically when the editor becomes ready; it
-can still be collapsed/reopened from the field icon. Desktop-only keyboard
-shortcut help is suppressed on mobile runtimes, where those shortcuts are not an
-appropriate primary interaction model. Formula placement (`Inline with text` /
-`On its own line`) is intentionally the final authoring control before the dialog
-actions.
+can still be collapsed/reopened from the field icon. The desktop-specific
+**Shortcuts & help** affordance is not rendered on mobile runtimes, where the
+listed physical-key combinations are not the expected interaction model. Formula
+placement (`Inline with text` / `On its own line`) is intentionally the final
+authoring control before Cancel/Save.
 
 `src/math/mathlive.ts` loads the bundled MathLive module only on authoring intent.
 It owns an abortable, exclusive keyboard lifecycle inside the shared Dialog.
