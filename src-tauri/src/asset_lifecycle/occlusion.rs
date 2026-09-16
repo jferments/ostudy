@@ -101,7 +101,12 @@ fn preview(
     let question = ValidatedQuestion::parse(&input.definition_json)?;
     let plan = question.occlusion_mask_plan(&input.presentation_key)?;
     let file = database.with_connection(|connection| {
-        open_managed_image(connection, paths, &plan.image_asset_id, input.asset_draft_id.as_deref())
+        open_managed_image(
+            connection,
+            paths,
+            &plan.image_asset_id,
+            input.asset_draft_id.as_deref(),
+        )
     })?;
     let image = CanonicalImage::decode(&read_image(file)?)?;
     let phase = if input.revealed {
@@ -109,7 +114,14 @@ fn preview(
     } else {
         RenderPhase::Hidden
     };
-    Ok(image.render(&question, &input.presentation_key, phase, input.maximum_edge)?.png)
+    Ok(image
+        .render(
+            &question,
+            &input.presentation_key,
+            phase,
+            input.maximum_edge,
+        )?
+        .png)
 }
 
 /// Resolve and open under the ledger lock; pixel bytes are read after releasing
@@ -127,13 +139,19 @@ pub(crate) fn open_managed_image(
     let relative = match asset.lifecycle_state.as_str() {
         "ready" => asset.relative_path,
         "staged" if asset.draft_id.as_deref() == draft_id && draft_id.is_some() => {
-            ensure_active_draft(connection, draft_id.unwrap_or_default(), unix_time_millis()?)?;
+            ensure_active_draft(
+                connection,
+                draft_id.unwrap_or_default(),
+                unix_time_millis()?,
+            )?;
             asset.staged_relative_path.ok_or_else(unavailable)?
         }
         _ => return Err(unavailable()),
     };
     if !relative.starts_with("assets/")
-        || !Path::new(&relative).components().all(|part| matches!(part, Component::Normal(_)))
+        || !Path::new(&relative)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_)))
     {
         return Err(unavailable());
     }
@@ -155,7 +173,9 @@ pub(crate) fn read_image(file: File) -> Result<Vec<u8>, CommandError> {
         return Err(unavailable());
     }
     let mut bytes = Vec::new();
-    file.take(MAX_IMAGE_BYTES + 1).read_to_end(&mut bytes).map_err(CommandError::io)?;
+    file.take(MAX_IMAGE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(CommandError::io)?;
     if u64::try_from(bytes.len()).ok() != Some(expected) {
         return Err(unavailable());
     }

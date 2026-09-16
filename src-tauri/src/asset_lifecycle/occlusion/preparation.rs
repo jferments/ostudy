@@ -29,12 +29,23 @@ pub(super) fn prepare(
             paths,
             &input.staged_file_id,
             ExternalImportPurpose::Image,
-            &[ExternalFileKind::Png, ExternalFileKind::Jpeg, ExternalFileKind::Webp],
+            &[
+                ExternalFileKind::Png,
+                ExternalFileKind::Jpeg,
+                ExternalFileKind::Webp,
+            ],
         )?;
         let fingerprint: String = connection
-            .query_row("SELECT sha256 FROM staged_external_imports WHERE id = ?1", [&input.staged_file_id], |row| row.get(0))
+            .query_row(
+                "SELECT sha256 FROM staged_external_imports WHERE id = ?1",
+                [&input.staged_file_id],
+                |row| row.get(0),
+            )
             .map_err(CommandError::database)?;
-        Ok(Err((File::open(staged.path).map_err(CommandError::io)?, fingerprint)))
+        Ok(Err((
+            File::open(staged.path).map_err(CommandError::io)?,
+            fingerprint,
+        )))
     })?;
     let (file, source_fingerprint) = match initial {
         Ok(receipt) => return Ok(receipt),
@@ -52,8 +63,13 @@ pub(super) fn prepare(
     // Avoid retaining decoded pixels while copying the canonical staged file.
     drop(image);
     let scratch_id = database.with_connection(|connection| generate_id(connection))?;
-    let scratch_path = paths.asset_staging_dir().join(format!("{scratch_id}.occlusion-partial"));
-    let mut output = OpenOptions::new().write(true).create_new(true).open(&scratch_path)
+    let scratch_path = paths
+        .asset_staging_dir()
+        .join(format!("{scratch_id}.occlusion-partial"));
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&scratch_path)
         .map_err(CommandError::io)?;
     let scratch = RemoveOnDrop(scratch_path);
     output.write_all(&png).map_err(CommandError::io)?;
@@ -61,7 +77,8 @@ pub(super) fn prepare(
     drop(output);
     drop(png);
     database.with_connection(|connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         // Another successful retry or a cancellation may have won during decode.
         if let Some(receipt) = receipt(&transaction, &input)? {
@@ -73,7 +90,11 @@ pub(super) fn prepare(
             paths,
             &input.staged_file_id,
             ExternalImportPurpose::Image,
-            &[ExternalFileKind::Png, ExternalFileKind::Jpeg, ExternalFileKind::Webp],
+            &[
+                ExternalFileKind::Png,
+                ExternalFileKind::Jpeg,
+                ExternalFileKind::Webp,
+            ],
         )?;
         let asset = stage_source_named_in_connection(
             &transaction,
@@ -83,9 +104,9 @@ pub(super) fn prepare(
             Some("occlusion-source.png"),
             IngestFaults::default(),
         )?;
-        let mut staged = RemoveOnDrop(paths.resolve_relative(&AppPaths::staged_asset_relative_path(
-            &input.draft_id, &asset.id, "png",
-        )));
+        let mut staged = RemoveOnDrop(paths.resolve_relative(
+            &AppPaths::staged_asset_relative_path(&input.draft_id, &asset.id, "png"),
+        ));
         let prepared = PreparedOcclusionImage {
             asset,
             width,
@@ -98,7 +119,10 @@ pub(super) fn prepare(
             prepared,
         };
         external_files::mark_import_consumed(
-            &transaction, &input.staged_file_id, &stored, unix_time_millis()?,
+            &transaction,
+            &input.staged_file_id,
+            &stored,
+            unix_time_millis()?,
         )?;
         transaction.commit().map_err(CommandError::database)?;
         // No fallible read follows committed success. Replaying a lost response
@@ -113,8 +137,10 @@ fn receipt(
     input: &ImportImageInput,
 ) -> Result<Option<PreparedOcclusionImage>, CommandError> {
     let Some(value) = external_files::consumed_import_result::<serde_json::Value>(
-        connection, &input.staged_file_id,
-    )? else {
+        connection,
+        &input.staged_file_id,
+    )?
+    else {
         return Ok(None);
     };
     let stored: ImportReceipt = serde_json::from_value(value).map_err(|_| conflict())?;
