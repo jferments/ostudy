@@ -27,15 +27,10 @@ export interface RecallPracticePresentation extends PracticePresentationBase {
   backDoc: RichDocument;
   backText: string;
   assets: Asset[];
-  question?: never;
 }
 
 export interface InteractivePracticePresentation extends PracticePresentationBase {
   question: PracticeQuestion;
-  frontDoc?: never;
-  backDoc?: never;
-  backText?: never;
-  assets?: never;
 }
 
 export type PracticePresentation = RecallPracticePresentation | InteractivePracticePresentation;
@@ -43,7 +38,7 @@ export type PracticePresentation = RecallPracticePresentation | InteractivePract
 export function isInteractivePracticePresentation(
   presentation: PracticePresentation,
 ): presentation is InteractivePracticePresentation {
-  return "question" in presentation && presentation.question !== undefined;
+  return "question" in presentation;
 }
 
 export interface PracticeCard {

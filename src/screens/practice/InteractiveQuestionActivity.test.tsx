@@ -122,7 +122,10 @@ describe("InteractiveQuestionActivity", () => {
       disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
     const handle = screen.getByRole("button", { name: "Drag / select item 1" });
     const target = screen.getAllByText("Right")[0].closest("[data-match-target-id]") as HTMLElement;
-    vi.spyOn(document, "elementFromPoint").mockReturnValue(target);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => target),
+    });
     if (!("setPointerCapture" in handle)) Object.defineProperty(handle, "setPointerCapture", { value: vi.fn() });
     if (!("releasePointerCapture" in handle)) Object.defineProperty(handle, "releasePointerCapture", { value: vi.fn() });
     if (!("hasPointerCapture" in handle)) Object.defineProperty(handle, "hasPointerCapture", { value: vi.fn().mockReturnValue(true) });

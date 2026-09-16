@@ -3,7 +3,6 @@ import {
   listMatchingCards,
   listTags,
   searchCards,
-  type CardNote,
   type CardSearchInput,
   type CardSearchPage,
   type SelectionCard,
@@ -33,9 +32,9 @@ export class CardsController {
   }
 
   note(noteId: string, cardType: string): Promise<AuthoringNote | undefined> {
-    return latestResult(this.#note, () => isInteractiveType(cardType)
-      ? getQuestionNote(noteId)
-      : getCardNote(noteId));
+    return latestResult<AuthoringNote>(this.#note, async () => (
+      isInteractiveType(cardType) ? getQuestionNote(noteId) : getCardNote(noteId)
+    ));
   }
 
   matching(input: CardSearchInput): Promise<SelectionCard[] | undefined> {

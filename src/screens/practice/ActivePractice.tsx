@@ -47,10 +47,10 @@ interface ActivePracticeProps {
   onScheduleAction: (action: ScheduleAction, intent?: RescheduleIntent) => void;
   onEnd: () => void;
   onLinkError: (message: string) => void;
-  onSaveQuestionAnswer: (input: SavePracticeAnswerInput) => Promise<QuestionAttemptView>;
-  onCheckQuestionAnswer: (input: CheckPracticeAnswerInput) => Promise<QuestionAttemptView>;
-  onQuestionAttempt: (attempt: QuestionAttemptView) => void;
-  onQuestionChecked: (attempt: QuestionAttemptView) => void | Promise<void>;
+  onSaveQuestionAnswer?: (input: SavePracticeAnswerInput) => Promise<QuestionAttemptView>;
+  onCheckQuestionAnswer?: (input: CheckPracticeAnswerInput) => Promise<QuestionAttemptView>;
+  onQuestionAttempt?: (attempt: QuestionAttemptView) => void;
+  onQuestionChecked?: (attempt: QuestionAttemptView) => void | Promise<void>;
 }
 
 export function ActivePractice({
@@ -73,10 +73,10 @@ export function ActivePractice({
   onScheduleAction,
   onEnd,
   onLinkError,
-  onSaveQuestionAnswer,
-  onCheckQuestionAnswer,
-  onQuestionAttempt,
-  onQuestionChecked,
+  onSaveQuestionAnswer = unavailableSave,
+  onCheckQuestionAnswer = unavailableCheck,
+  onQuestionAttempt = ignoreAttempt,
+  onQuestionChecked = ignoreAttempt,
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
   const wasRevealed = useRef(revealed);
@@ -92,14 +92,20 @@ export function ActivePractice({
   const percentComplete = cardCount > 0 ? Math.round((studiedCount / cardCount) * 100) : 0;
   const currentPosition = cardCount > 0 ? Math.min(Math.max(1, position + 1), cardCount) : 0;
   const stackLayers = remainingCount > 3 ? 2 : remainingCount > 1 ? 1 : 0;
-  const interactive = isInteractivePracticePresentation(current.presentation);
+  const interactivePresentation = isInteractivePracticePresentation(current.presentation)
+    ? current.presentation
+    : null;
+  const recallPresentation = interactivePresentation ? null : current.presentation;
+  const interactive = interactivePresentation !== null;
   const normalizedQuestion = current.presentation.frontText.trim();
-  const backAlreadyIncludesQuestion = !interactive
+  const backAlreadyIncludesQuestion = recallPresentation !== null
     && normalizedQuestion.length > 0
-    && current.presentation.backText.includes(normalizedQuestion);
-  const combineQuestionAndAnswer = !interactive && displayQuestionOnAnswer && !backAlreadyIncludesQuestion;
-  const checkedProgress = interactive && current.presentation.question.attempt.progress.phase === "checked"
-    ? current.presentation.question.attempt.progress
+    && recallPresentation.backText.includes(normalizedQuestion);
+  const combineQuestionAndAnswer = recallPresentation !== null
+    && displayQuestionOnAnswer
+    && !backAlreadyIncludesQuestion;
+  const checkedProgress = interactivePresentation?.question.attempt.progress.phase === "checked"
+    ? interactivePresentation.question.attempt.progress
     : null;
   const objectiveCorrect = checkedProgress
     ? checkedProgress.evaluation.verdict === "correct"
@@ -148,30 +154,30 @@ export function ActivePractice({
   }
 
   function questionContent(mediaPlaybackActive: boolean) {
-    if (interactive) return null;
+    if (!recallPresentation) return null;
     return <>
       <span className={view.practiceSideLabel}>Question</span>
-      <RichTextView document={current.presentation.frontDoc} assets={current.presentation.assets}
+      <RichTextView document={recallPresentation.frontDoc} assets={recallPresentation.assets}
         mediaPlaybackActive={mediaPlaybackActive} onLinkError={onLinkError} />
     </>;
   }
 
   function answerContent(mediaPlaybackActive: boolean) {
-    if (interactive) return null;
+    if (!recallPresentation) return null;
     return <>
       <span className={view.practiceSideLabel}>Answer</span>
-      <RichTextView document={current.presentation.backDoc} assets={current.presentation.assets}
+      <RichTextView document={recallPresentation.backDoc} assets={recallPresentation.assets}
         mediaPlaybackActive={mediaPlaybackActive} onLinkError={onLinkError} />
     </>;
   }
 
-  const cardSurface = interactive ? (
+  const cardSurface = interactivePresentation ? (
     <InteractiveQuestionActivity
-      key={current.presentation.question.attempt.instanceId}
+      key={interactivePresentation.question.attempt.instanceId}
       sessionId={session.id}
-      cardId={current.presentation.cardId}
-      attempt={current.presentation.question.attempt}
-      assets={current.presentation.question.assets}
+      cardId={interactivePresentation.cardId}
+      attempt={interactivePresentation.question.attempt}
+      assets={interactivePresentation.question.assets}
       disabled={busy}
       onSave={onSaveQuestionAnswer}
       onCheck={onCheckQuestionAnswer}
@@ -276,3 +282,13 @@ function ConfidenceButton({ score, label, disabled, onClick }: {
     </span>
   </Button>;
 }
+
+function unavailableSave(_input: SavePracticeAnswerInput): Promise<QuestionAttemptView> {
+  return Promise.reject(new Error("Interactive answer saving is unavailable in this host."));
+}
+
+function unavailableCheck(_input: CheckPracticeAnswerInput): Promise<QuestionAttemptView> {
+  return Promise.reject(new Error("Interactive answer checking is unavailable in this host."));
+}
+
+function ignoreAttempt(_attempt: QuestionAttemptView): void {}

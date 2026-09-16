@@ -10,6 +10,8 @@ import {
   type QuestionEditorDraft,
 } from "./questionDraft";
 
+type ChoiceDraft = Extract<QuestionEditorDraft, { kind: "single_choice" | "select_all" }>;
+
 let nextId = 0;
 
 beforeEach(() => {
@@ -22,25 +24,25 @@ beforeEach(() => {
 
 describe("interactive question drafts", () => {
   it("keeps option identity and the answer key attached while rows move", () => {
-    const original = newQuestionDraft("single_choice") as Extract<QuestionEditorDraft, { kind: "single_choice" }>;
-    const expanded = addChoiceOption(original) as typeof original;
-    const keyed = { ...expanded, correctOptionIds: [expanded.options[1].id] };
-    const moved = moveChoiceOption(keyed, expanded.options[1].id, -1) as typeof original;
+    const original = newQuestionDraft("single_choice") as ChoiceDraft;
+    const expanded = addChoiceOption(original) as ChoiceDraft;
+    const keyed: ChoiceDraft = { ...expanded, correctOptionIds: [expanded.options[1].id] };
+    const moved = moveChoiceOption(keyed, expanded.options[1].id, -1) as ChoiceDraft;
     expect(moved.options[0].id).toBe(expanded.options[1].id);
     expect(moved.correctOptionIds).toEqual([expanded.options[1].id]);
-    const removed = removeChoiceOption(moved, expanded.options[2].id) as typeof original;
+    const removed = removeChoiceOption(moved, expanded.options[2].id) as ChoiceDraft;
     expect(removed.correctOptionIds).toEqual([expanded.options[1].id]);
   });
 
   it("distinguishes an unfinished select-all key from an intentionally empty key", () => {
-    const draft = newQuestionDraft("select_all") as Extract<QuestionEditorDraft, { kind: "select_all" }>;
-    const filled = {
+    const draft = newQuestionDraft("select_all") as ChoiceDraft;
+    const filled: ChoiceDraft = {
       ...draft,
       promptText: "Select all that apply",
       options: draft.options.map((option, index) => ({ ...option, text: `Option ${index + 1}` })),
     };
     expect(questionDraftReady(filled)).toBe(false);
-    const confirmed = { ...filled, emptySetConfirmed: true };
+    const confirmed: ChoiceDraft = { ...filled, emptySetConfirmed: true };
     expect(questionDraftReady(confirmed)).toBe(true);
     const definition = definitionFromDraft(confirmed);
     expect(definition.question.kind).toBe("select_all");
