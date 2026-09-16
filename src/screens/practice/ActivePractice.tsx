@@ -95,7 +95,9 @@ export function ActivePractice({
   const interactivePresentation = isInteractivePracticePresentation(current.presentation)
     ? current.presentation
     : null;
-  const recallPresentation = interactivePresentation ? null : current.presentation;
+  const recallPresentation = isInteractivePracticePresentation(current.presentation)
+    ? null
+    : current.presentation;
   const interactive = interactivePresentation !== null;
   const normalizedQuestion = current.presentation.frontText.trim();
   const backAlreadyIncludesQuestion = recallPresentation !== null
