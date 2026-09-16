@@ -67,7 +67,7 @@ describe("interactive question editor entry point", () => {
 
     fireEvent.change(template, { target: { value: "grouping" } });
     expect(await screen.findByRole("heading", { name: "Grouping" })).toBeTruthy();
-    expect(screen.getByText("Category 1")).toBeTruthy();
+    expect(screen.getAllByText("Category 1").length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("Item 1")).toBeTruthy();
     expect(screen.getAllByText("Correct category")).toHaveLength(2);
 
