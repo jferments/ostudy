@@ -391,9 +391,11 @@ export function PracticeScreen({
 
   async function submitScore(score: ConfidenceScore): Promise<void> {
     if (!session || !current || !revealed || !previewSet || ratingRef.current) return;
-    const interactive = isInteractivePracticePresentation(current.presentation);
-    const progress = interactive ? current.presentation.question.attempt.progress : null;
-    if (interactive && progress?.phase !== "checked") {
+    const interactivePresentation = isInteractivePracticePresentation(current.presentation)
+      ? current.presentation
+      : null;
+    const progress = interactivePresentation?.question.attempt.progress ?? null;
+    if (interactivePresentation && progress?.phase !== "checked") {
       setErrorMessage("Check the answer before choosing its difficulty.");
       return;
     }
@@ -415,7 +417,7 @@ export function PracticeScreen({
       responseTimeMs,
       scheduleRevision: previewSet.scheduleRevision,
     };
-    const questionRevision = interactive ? current.presentation.question.attempt.revision : null;
+    const questionRevision = interactivePresentation?.question.attempt.revision ?? null;
     if (!pending) {
       pendingReviewRef.current = {
         sessionId: session.id,
@@ -429,11 +431,11 @@ export function PracticeScreen({
     setIsRating(true);
     setErrorMessage(null);
     try {
-      const result = interactive
+      const result = interactivePresentation
         ? await controller.reviewQuestion({
             review: input,
             question: {
-              instanceId: current.presentation.question.attempt.instanceId,
+              instanceId: interactivePresentation.question.attempt.instanceId,
               attemptRevision: pending?.questionRevision ?? questionRevision ?? 0,
               overrideReason: null,
             },
@@ -462,7 +464,7 @@ export function PracticeScreen({
             setPreviewSet(null);
             setErrorMessage(`${getErrorMessage(error)} ${getErrorMessage(previewError)}`);
           }
-        } else if (code === "idempotency_conflict" && !interactive) {
+        } else if (code === "idempotency_conflict" && !interactivePresentation) {
           setRevealed(false);
           setPreviewSet(null);
         }
