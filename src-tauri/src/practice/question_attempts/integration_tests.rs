@@ -60,7 +60,10 @@ impl Fixture {
             connection
                 .execute(
                     "UPDATE notes SET question_definition = ?1 WHERE id = ?2",
-                    params![json!({"schemaVersion":1,"question":body}).to_string(), id(2)],
+                    params![
+                        json!({"schemaVersion":1,"question":body}).to_string(),
+                        id(2)
+                    ],
                 )
                 .map_err(CommandError::database)?;
             Ok(())
@@ -190,10 +193,12 @@ fn automatic_capture_has_no_fake_front_back_and_retries_keep_the_same_instance()
     assert!(!public.to_string().contains("Private"));
     assert_eq!(initial, serde_json::to_value(fixture.start()).unwrap());
     let target = target(&session);
-    let reloaded = fixture.run(|connection| {
-        load_practice_window(connection, &fixture.paths, &session.id, 0, 50)
-    });
-    assert_eq!(initial["firstWindow"], serde_json::to_value(reloaded).unwrap());
+    let reloaded = fixture
+        .run(|connection| load_practice_window(connection, &fixture.paths, &session.id, 0, 50));
+    assert_eq!(
+        initial["firstWindow"],
+        serde_json::to_value(reloaded).unwrap()
+    );
     assert_eq!(fixture.view(&target)["attempt"]["revision"], 1);
 }
 
@@ -425,7 +430,10 @@ fn an_explicit_scheduling_override_does_not_rewrite_objective_correctness() {
         let result = crate::practice::submit_review_with_question(
             connection,
             input,
-            Some(context(&checked, Some("The authored key needs correction."))),
+            Some(context(
+                &checked,
+                Some("The authored key needs correction."),
+            )),
         )?;
         assert_eq!(result.correct_count, 0);
         let evidence: (i64, String, String) = connection
@@ -460,12 +468,9 @@ fn stale_schedule_or_attempt_and_changed_elapsed_time_leave_the_check_unrated() 
     fixture.run(|connection| {
         let mut stale = context(&checked, None);
         stale.attempt_revision -= 1;
-        let error = crate::practice::submit_review_with_question(
-            connection,
-            original.clone(),
-            Some(stale),
-        )
-        .unwrap_err();
+        let error =
+            crate::practice::submit_review_with_question(connection, original.clone(), Some(stale))
+                .unwrap_err();
         assert_eq!(error.code, "question_attempt_conflict");
         let mut changed_time = original.clone();
         changed_time.response_time_ms += 1;

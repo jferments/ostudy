@@ -3,8 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Asset } from "./assets";
 import type { DeletionResult, RichDocument, UndoDeletionResult } from "./common";
 import type { EditorDraftCommitRef } from "./drafts";
+import type { QuestionKind } from "./questions";
 
 export type BuiltInCardType = "basic" | "cloze";
+export type CardType = BuiltInCardType | QuestionKind;
 export type ClozeMode = "one_at_a_time" | "all_together";
 
 interface CardNoteCommon {
@@ -115,7 +117,7 @@ export interface CardBrowserRow {
   noteId: string;
   deckId: string;
   deckName: string;
-  cardType: BuiltInCardType;
+  cardType: CardType;
   cardLabel: string;
   frontText: string;
   backText: string;

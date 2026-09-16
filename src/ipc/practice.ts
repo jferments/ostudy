@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { CardPresentation } from "./cards";
+import type { Asset } from "./assets";
+import type { RichDocument } from "./common";
+import type { PracticeQuestion } from "./questionAttempts";
 
 export type PracticeMode = "scheduled" | "extra" | "custom";
 export type ReviewOutcome =
@@ -9,8 +11,43 @@ export type ReviewOutcome =
   | "somewhat_confident"
   | "very_confident";
 
+interface PracticePresentationBase {
+  cardId: string;
+  noteId: string;
+  deckId: string;
+  direction: string;
+  frontText: string;
+  createdAt: number;
+  updatedAt: number;
+  noteRevision: number;
+}
+
+export interface RecallPracticePresentation extends PracticePresentationBase {
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
+  backText: string;
+  assets: Asset[];
+  question?: never;
+}
+
+export interface InteractivePracticePresentation extends PracticePresentationBase {
+  question: PracticeQuestion;
+  frontDoc?: never;
+  backDoc?: never;
+  backText?: never;
+  assets?: never;
+}
+
+export type PracticePresentation = RecallPracticePresentation | InteractivePracticePresentation;
+
+export function isInteractivePracticePresentation(
+  presentation: PracticePresentation,
+): presentation is InteractivePracticePresentation {
+  return "question" in presentation && presentation.question !== undefined;
+}
+
 export interface PracticeCard {
-  presentation: CardPresentation;
+  presentation: PracticePresentation;
   deckName: string;
   dueAt: number;
   scheduleState: number;

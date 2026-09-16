@@ -18,6 +18,13 @@ import {
 } from "../ipc/cards";
 import { listDecks, type DeckSummary } from "../ipc/decks";
 import {
+  getQuestionNote,
+  saveQuestionNote,
+  type QuestionNote,
+  type QuestionWriteReceipt,
+  type SaveQuestionNoteInput,
+} from "../ipc/questions";
+import {
   generateCardsFromTemplate,
   getCardTemplate,
   listCardTemplateSummaries,
@@ -37,6 +44,7 @@ export class CardEditorController {
   readonly #template = new RequestLane();
   readonly #tags = new RequestLane();
   readonly #preview = new RequestLane();
+  readonly #question = new RequestLane();
 
   decks(): Promise<DeckSummary[] | undefined> {
     return latestResult(this.#decks, listDecks);
@@ -56,6 +64,10 @@ export class CardEditorController {
 
   preview(input: PreviewTemplateCardsInput): Promise<TemplateCardPreview[] | undefined> {
     return latestResult(this.#preview, () => previewTemplateCards(input));
+  }
+
+  question(noteId: string): Promise<QuestionNote | undefined> {
+    return latestResult(this.#question, () => getQuestionNote(noteId));
   }
 
   beginDraft(ownerId?: string): Promise<AssetDraft> {
@@ -78,6 +90,10 @@ export class CardEditorController {
     return updateCardNote(input);
   }
 
+  saveQuestion(input: SaveQuestionNoteInput): Promise<QuestionWriteReceipt> {
+    return saveQuestionNote(input);
+  }
+
   duplicates(input: DuplicateCheckInput): Promise<DuplicateCard[]> {
     return findDuplicateCards(input);
   }
@@ -97,5 +113,6 @@ export class CardEditorController {
     this.#template.invalidate();
     this.#tags.invalidate();
     this.#preview.invalidate();
+    this.#question.invalidate();
   }
 }

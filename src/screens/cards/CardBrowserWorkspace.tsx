@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import type { ShowToast } from "../../components/Toast";
 import { CardsController } from "../../controllers/cardsController";
 import { reconcileCommitted } from "../../controllers/reconciliation";
+import { isQuestionNote, type AuthoringNote } from "../../ipc/authoringNotes";
 import {
-  type AvailabilityFilter, type CardBrowserRow, type CardNote, type CardSearchInput,
+  type AvailabilityFilter, type CardBrowserRow, type CardSearchInput,
   type CardSearchPage, type CardSort, type CardStatusFilter, type ReviewedFilter,
   type SelectionCard, type TagSummary,
 } from "../../ipc/cards";
@@ -82,7 +83,7 @@ export function CardBrowserWorkspace({
   const [isApplyingSchedule, setIsApplyingSchedule] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedCards, setSelectedCards] = useState<Map<string, SelectionCard>>(new Map());
-  const [editingCard, setEditingCard] = useState<CardNote | null>(null);
+  const [editingCard, setEditingCard] = useState<AuthoringNote | null>(null);
   const [creatingDeckId, setCreatingDeckId] = useState<string | null>(null);
   const [isOpeningCard, setIsOpeningCard] = useState(false);
   const [bulkEntryOpen, setBulkEntryOpen] = useState(false);
@@ -220,11 +221,11 @@ export function CardBrowserWorkspace({
     }
     await refreshAfterMutation();
   }
-  async function openCard(noteId: string): Promise<void> {
+  async function openCard(noteId: string, cardType: string): Promise<void> {
     setIsOpeningCard(true);
     setErrorMessage(null);
     try {
-      const card = await controller.note(noteId);
+      const card = await controller.note(noteId, cardType);
       if (!card) return;
       setEditingCard(card);
     } catch (error: unknown) { setErrorMessage(getErrorMessage(error)); }
@@ -331,7 +332,9 @@ export function CardBrowserWorkspace({
       <>
         <CardEditorScreen deck={deck} decks={activeDecks} card={editingCard} onDirtyChange={onDirtyChange}
           onCancel={() => { onDirtyChange(false); setEditingCard(null); setCreatingDeckId(null); }}
-          onMoveCopy={editingCard ? () => beginMoveCopy([{ noteId: editingCard.noteId, deckId: editingCard.deckId }]) : undefined}
+          onMoveCopy={editingCard && !isQuestionNote(editingCard)
+            ? () => beginMoveCopy([{ noteId: editingCard.noteId, deckId: editingCard.deckId }])
+            : undefined}
           onSaved={async (saved, continueAdding) => {
             onDirtyChange(false);
             const wasEditing = editingCard !== null;
@@ -339,6 +342,13 @@ export function CardBrowserWorkspace({
             showToast("success", wasEditing ? "Flashcard updated." : "Flashcard saved.");
             if (saved.deckId !== deck.id) showToast("info", "The card is now in a different deck.");
             await reconcileAfterCommit("The flashcard");
+          }}
+          onQuestionSaved={async (_noteId, continueAdding) => {
+            onDirtyChange(false);
+            const wasEditing = editingCard !== null;
+            if (!continueAdding) { setEditingCard(null); setCreatingDeckId(null); }
+            showToast("success", wasEditing ? "Interactive question updated." : "Interactive question saved.");
+            await reconcileAfterCommit("The interactive question");
           }}
           onTemplateGenerated={async (result: GenerateTemplateCardsResult, continueAdding: boolean, template: CardTemplate) => {
             onDirtyChange(false);
@@ -432,7 +442,7 @@ export function CardBrowserWorkspace({
           <div className={styles.organizedCardList} role="table" aria-label="Matching cards">
             {page.cards.map((card) => <CardBrowserListRow key={card.cardId} card={card}
               selected={selectedCards.has(card.cardId)} onToggleSelected={() => toggleSelected(selectionFromRow(card))}
-              onOpen={() => void openCard(card.noteId)} />)}
+              onOpen={() => void openCard(card.noteId, card.cardType)} />)}
           </div>
         ) : null}
         {page.cards.length < page.totalCount ? (

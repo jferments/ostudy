@@ -21,6 +21,20 @@ import {
   type SubmitReviewInput,
 } from "../ipc/practice";
 import {
+  checkPracticeQuestionAnswer,
+  getPracticeQuestionAttempt,
+  remediatePracticeQuestion,
+  savePracticeQuestionAnswer,
+  submitPracticeQuestionReview,
+  type CheckPracticeAnswerInput,
+  type PracticeQuestion,
+  type QuestionAttemptTarget,
+  type QuestionAttemptView,
+  type QuestionRemediationReceipt,
+  type QuestionReviewContext,
+  type SavePracticeAnswerInput,
+} from "../ipc/questionAttempts";
+import {
   applyScheduleAction,
   type ScheduleActionInput,
   type ScheduleActionResult,
@@ -33,6 +47,7 @@ export type PracticeStartRequest =
 
 export class PracticeController {
   readonly #window = new RequestLane();
+  readonly #question = new RequestLane();
 
   window(input: PracticeCardWindowInput): Promise<PracticeCardWindow | undefined> {
     return latestResult(this.#window, () => getPracticeCardWindow(input));
@@ -63,6 +78,29 @@ export class PracticeController {
     return markPracticeCardRevealed(sessionId, cardId);
   }
 
+  question(target: QuestionAttemptTarget): Promise<PracticeQuestion | undefined> {
+    return latestResult(this.#question, () => getPracticeQuestionAttempt(target));
+  }
+
+  saveQuestionAnswer(input: SavePracticeAnswerInput): Promise<QuestionAttemptView> {
+    return savePracticeQuestionAnswer(input);
+  }
+
+  checkQuestionAnswer(input: CheckPracticeAnswerInput): Promise<QuestionAttemptView> {
+    return checkPracticeQuestionAnswer(input);
+  }
+
+  reviewQuestion(input: {
+    review: SubmitReviewInput;
+    question: QuestionReviewContext;
+  }): Promise<ReviewResult> {
+    return submitPracticeQuestionReview(input);
+  }
+
+  remediateQuestion(input: Parameters<typeof remediatePracticeQuestion>[0]): Promise<QuestionRemediationReceipt> {
+    return remediatePracticeQuestion(input);
+  }
+
   review(input: SubmitReviewInput): Promise<ReviewResult> {
     return submitPracticeReview(input);
   }
@@ -81,5 +119,6 @@ export class PracticeController {
 
   invalidate(): void {
     this.#window.invalidate();
+    this.#question.invalidate();
   }
 }
