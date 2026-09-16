@@ -11,13 +11,9 @@ use crate::{assets::AssetDto, cards::CardPresentationDto};
 #[derive(Clone)]
 pub enum PracticeContentDto {
     Recall {
-        #[allow(dead_code)]
         front_doc: Value,
-        #[allow(dead_code)]
         back_doc: Value,
-        #[allow(dead_code)]
         back_text: String,
-        #[allow(dead_code)]
         assets: Vec<AssetDto>,
     },
     Interactive {
