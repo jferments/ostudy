@@ -1,4 +1,4 @@
-//! Retry-safe objective-attempt state. The session repository must persist each
+//! Retry-safe objective and self-assessed attempt state. The session repository must persist each
 //! accepted transition in its transaction before acknowledging it. This value
 //! does not open a database, update a schedule, or count a review.
 
@@ -11,6 +11,11 @@ use super::{
     QuestionError, QuestionInstance, QuestionResponse, MAX_DEFINITION_BYTES, MAX_RESPONSE_BYTES,
 };
 use crate::{cards::collect_asset_ids, util::validate_entity_id};
+
+#[path = "reveal.rs"]
+mod reveal;
+pub use reveal::RevealAnswerRequest;
+use reveal::RevealedAnswer;
 
 const ATTEMPT_VERSION: u32 = 1;
 const MAX_ATTEMPT_BYTES: usize = 4 * MAX_DEFINITION_BYTES;
@@ -46,6 +51,7 @@ struct CheckedAnswer {
 enum AttemptState {
     Answering { saved: Option<SaveAnswerRequest> },
     Checked { record: Box<CheckedAnswer> },
+    Revealed { record: RevealedAnswer },
 }
 
 #[derive(Deserialize, Serialize)]
@@ -96,6 +102,15 @@ impl AttemptView {
                 ids.extend(collect_asset_ids(document)?);
             }
         }
+        if let AttemptProgress::Revealed {
+            answer, explanation, ..
+        } = &self.progress
+        {
+            ids.extend(collect_asset_ids(answer)?);
+            if let Some(explanation) = explanation {
+                ids.extend(collect_asset_ids(explanation)?);
+            }
+        }
         Ok(ids.into_iter().collect())
     }
 }
@@ -117,6 +132,13 @@ pub enum AttemptProgress {
         checked_at_ms: i64,
         evaluation: Evaluation,
     },
+    Revealed {
+        reveal_id: String,
+        response_time_ms: i64,
+        revealed_at_ms: i64,
+        answer: serde_json::Value,
+        explanation: Option<serde_json::Value>,
+    },
 }
 
 #[derive(Clone)]
@@ -129,9 +151,8 @@ pub struct QuestionAttempt {
 
 impl QuestionAttempt {
     pub fn start(instance: QuestionInstance) -> Result<Self, QuestionError> {
-        // Do not turn image-occlusion's self-rating flow into objective grading
-        // or expose its source image while masked derivatives are unfinished.
-        instance.public_question()?;
+        // Image questions expose metadata only; the raster service authorizes pixels.
+        instance.question_for_attempt()?;
         Ok(Self {
             instance,
             revision: 1,
@@ -160,12 +181,13 @@ impl QuestionAttempt {
                 checked_at_ms: record.checked_at_ms,
                 evaluation: record.evaluation.clone(),
             },
+            AttemptState::Revealed { record } => record.view(&self.instance)?,
         };
         Ok(AttemptView {
             instance_id: self.instance.identity().instance_id.clone(),
             revision: self.revision,
             assisted: self.assisted,
-            question: self.instance.public_question()?,
+            question: self.instance.question_for_attempt()?,
             progress,
         })
     }
@@ -198,7 +220,7 @@ impl QuestionAttempt {
     /// Call only when assistance was actually exposed. Merely opening a Tutor
     /// or starting a failed hint request is not evidence of assisted study.
     pub fn mark_assisted(&mut self) -> Result<i64, QuestionError> {
-        if matches!(self.state, AttemptState::Checked { .. }) {
+        if !matches!(self.state, AttemptState::Answering { .. }) {
             return Err(already_checked());
         }
         if !self.assisted {
@@ -335,6 +357,9 @@ impl QuestionAttempt {
                         "The checked answer does not match its frozen evidence.",
                     ));
                 }
+            }
+            AttemptState::Revealed { record } => {
+                record.validate(&self.instance, self.revision, self.assisted)?;
             }
         }
         Ok(())

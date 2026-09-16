@@ -7,6 +7,9 @@ use super::{
 };
 use crate::util::validate_entity_id;
 
+#[path = "occlusion_snapshot.rs"]
+mod occlusion_snapshot;
+
 const SNAPSHOT_VERSION: u32 = 1;
 const MAX_SNAPSHOT_BYTES: usize = MAX_DEFINITION_BYTES + 16_384;
 

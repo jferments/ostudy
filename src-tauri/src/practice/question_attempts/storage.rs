@@ -119,14 +119,7 @@ pub(super) fn load(
     let identity = attempt.instance().identity();
     let view = attempt.view()?;
     let summary = summary(&view);
-    let kind = match &view.question {
-        crate::cards::questions::PublicQuestion::SingleChoice { .. } => "single_choice",
-        crate::cards::questions::PublicQuestion::SelectAll { .. } => "select_all",
-        crate::cards::questions::PublicQuestion::TrueFalse { .. } => "true_false",
-        crate::cards::questions::PublicQuestion::Matching { .. } => "matching",
-        crate::cards::questions::PublicQuestion::Grouping { .. } => "grouping",
-        crate::cards::questions::PublicQuestion::Ordering { .. } => "ordering",
-    };
+    let kind = attempt.instance().kind().as_str();
     if identity.instance_id != target.instance_id
         || identity.card_id != target.card_id
         || identity.note_id != row.note_id
@@ -165,6 +158,11 @@ fn summary(view: &AttemptView) -> Summary {
         AttemptProgress::Answering { .. } => Summary {
             phase: "answering",
             checked_at: None,
+            verdict: None,
+        },
+        AttemptProgress::Revealed { revealed_at_ms, .. } => Summary {
+            phase: "revealed",
+            checked_at: Some(*revealed_at_ms),
             verdict: None,
         },
         AttemptProgress::Checked {

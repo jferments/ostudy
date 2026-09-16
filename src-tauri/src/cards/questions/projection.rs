@@ -142,6 +142,7 @@ impl PublicQuestion {
                 documents.extend(options.iter().map(|option| &option.content));
             }
             Self::TrueFalse { statement } => documents.push(statement),
+            Self::ImageOcclusion { prompt, .. } => documents.push(prompt),
             Self::Matching {
                 prompt,
                 items,

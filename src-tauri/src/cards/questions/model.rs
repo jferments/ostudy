@@ -191,7 +191,8 @@ pub struct Assignment {
 }
 
 /// Pre-answer output has no answer key, correction, rationale, or authored pair.
-/// Occlusion is intentionally absent until a managed masked derivative exists.
+/// Occlusion carries only its prompt and target outlines; pixels use a separate
+/// session-authorized native raster route, never the original source asset URL.
 #[derive(Clone, Serialize, PartialEq)]
 #[serde(
     tag = "kind",
@@ -223,6 +224,10 @@ pub enum PublicQuestion {
     Ordering {
         prompt: Value,
         items: Vec<RichItem>,
+    },
+    ImageOcclusion {
+        prompt: Value,
+        target_rectangles: Vec<NormalizedRect>,
     },
 }
 

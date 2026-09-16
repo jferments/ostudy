@@ -13,7 +13,8 @@ mod validation;
 
 pub use crate::error::CommandError as QuestionError;
 pub use attempt::{
-    AttemptProgress, AttemptView, CheckAnswerRequest, QuestionAttempt, SaveAnswerRequest,
+    AttemptProgress, AttemptView, CheckAnswerRequest, QuestionAttempt, RevealAnswerRequest,
+    SaveAnswerRequest,
 };
 pub use metadata::QuestionSearchText;
 pub use model::*;
