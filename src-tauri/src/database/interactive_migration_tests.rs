@@ -134,9 +134,24 @@ fn populate_legacy_graph(connection: &Connection) {
             [id(9)],
         )
         .unwrap();
-    connection.execute("INSERT INTO note_tags VALUES (?1, ?2)", params![id(2), id(9)]).unwrap();
-    connection.execute("INSERT INTO practice_session_card_tag_snapshots VALUES (?1, ?2, ?3, 'Old tag name')", params![id(4), id(3), id(9)]).unwrap();
-    connection.execute("INSERT INTO review_event_tag_attributions VALUES (?1, ?2, 'Old tag name')", params![id(5), id(9)]).unwrap();
+    connection
+        .execute(
+            "INSERT INTO note_tags VALUES (?1, ?2)",
+            params![id(2), id(9)],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO practice_session_card_tag_snapshots VALUES (?1, ?2, ?3, 'Old tag name')",
+            params![id(4), id(3), id(9)],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO review_event_tag_attributions VALUES (?1, ?2, 'Old tag name')",
+            params![id(5), id(9)],
+        )
+        .unwrap();
     connection
         .execute(
             "INSERT INTO assets(id, original_filename, mime_type, byte_size, relative_path, created_at)
@@ -144,7 +159,12 @@ fn populate_legacy_graph(connection: &Connection) {
             [id(40)],
         )
         .unwrap();
-    connection.execute("INSERT INTO note_assets VALUES (?1, ?2, 'back')", params![id(2), id(40)]).unwrap();
+    connection
+        .execute(
+            "INSERT INTO note_assets VALUES (?1, ?2, 'back')",
+            params![id(2), id(40)],
+        )
+        .unwrap();
     connection
         .execute(
             "INSERT INTO editor_drafts (
@@ -155,7 +175,12 @@ fn populate_legacy_graph(connection: &Connection) {
             params![id(42), id(41), id(2), id(1), "b".repeat(64)],
         )
         .unwrap();
-    connection.execute("INSERT INTO editor_draft_assets VALUES (?1, ?2)", params![id(42), id(40)]).unwrap();
+    connection
+        .execute(
+            "INSERT INTO editor_draft_assets VALUES (?1, ?2)",
+            params![id(42), id(40)],
+        )
+        .unwrap();
     connection
         .execute(
             "INSERT INTO knowledge_sources (
@@ -178,7 +203,9 @@ fn populate_legacy_graph(connection: &Connection) {
 
 fn rows(connection: &Connection, table: &str) -> Vec<Vec<SqlValue>> {
     // This helper is private to fixed test fixtures; no runtime query input.
-    let mut statement = connection.prepare(&format!("SELECT * FROM {table} ORDER BY 1")).unwrap();
+    let mut statement = connection
+        .prepare(&format!("SELECT * FROM {table} ORDER BY 1"))
+        .unwrap();
     let columns = statement.column_count();
     let result = statement
         .query_map([], |row| (0..columns).map(|index| row.get(index)).collect())
@@ -199,11 +226,24 @@ fn question_migration_preserves_note_rowids_schedules_history_drafts_and_semanti
     let mut connection = previous_database();
     populate_legacy_graph(&connection);
     let tables = [
-        "notes", "cards", "card_schedules", "practice_sessions", "practice_session_cards",
-        "practice_session_card_snapshots", "practice_session_card_tag_snapshots",
-        "review_events", "review_event_attributions", "review_event_tag_attributions",
-        "note_tags", "note_assets", "assets", "editor_drafts", "editor_draft_assets",
-        "knowledge_sources", "knowledge_units", "card_search_fts",
+        "notes",
+        "cards",
+        "card_schedules",
+        "practice_sessions",
+        "practice_session_cards",
+        "practice_session_card_snapshots",
+        "practice_session_card_tag_snapshots",
+        "review_events",
+        "review_event_attributions",
+        "review_event_tag_attributions",
+        "note_tags",
+        "note_assets",
+        "assets",
+        "editor_drafts",
+        "editor_draft_assets",
+        "knowledge_sources",
+        "knowledge_units",
+        "card_search_fts",
     ];
     let before: Vec<_> = tables.iter().map(|name| rows(&connection, name)).collect();
     apply_question_migration(&mut connection);
@@ -216,11 +256,23 @@ fn question_migration_preserves_note_rowids_schedules_history_drafts_and_semanti
         }
         assert_eq!(after, before[index], "migration changed retained {table}");
     }
-    let rowid: i64 = connection.query_row("SELECT rowid FROM notes WHERE id = ?1", [id(2)], |row| row.get(0)).unwrap();
+    let rowid: i64 = connection
+        .query_row("SELECT rowid FROM notes WHERE id = ?1", [id(2)], |row| {
+            row.get(0)
+        })
+        .unwrap();
     assert_eq!(rowid, 97);
-    let indexed: i64 = connection.query_row("SELECT rowid FROM card_search_fts WHERE note_id = ?1", [id(2)], |row| row.get(0)).unwrap();
+    let indexed: i64 = connection
+        .query_row(
+            "SELECT rowid FROM card_search_fts WHERE note_id = ?1",
+            [id(2)],
+            |row| row.get(0),
+        )
+        .unwrap();
     assert_eq!(indexed, rowid);
-    let foreign_keys: bool = connection.query_row("PRAGMA foreign_keys", [], |row| row.get(0)).unwrap();
+    let foreign_keys: bool = connection
+        .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+        .unwrap();
     assert!(foreign_keys);
     let before_reopen = connection.total_changes();
     assert!(!apply_migrations(&mut connection, false).unwrap());
@@ -238,7 +290,8 @@ fn insert_interactive_note(connection: &Connection) {
             "correctedStatement": null
         }
     });
-    let validated = crate::cards::questions::ValidatedQuestion::parse(&definition.to_string()).unwrap();
+    let validated =
+        crate::cards::questions::ValidatedQuestion::parse(&definition.to_string()).unwrap();
     connection
         .execute(
             "INSERT INTO notes (
@@ -265,7 +318,10 @@ fn typed_notes_have_one_content_owner_and_cannot_be_saved_as_basic_front_back() 
         "UPDATE notes SET question_definition = '{}' WHERE note_type = 'basic'",
         "UPDATE notes SET note_type = 'unknown' WHERE note_type = 'interactive'",
     ] {
-        assert!(connection.execute(update, []).is_err(), "invalid owner shape was accepted");
+        assert!(
+            connection.execute(update, []).is_err(),
+            "invalid owner shape was accepted"
+        );
     }
     verify_integrity(&connection).unwrap();
 }
@@ -276,20 +332,37 @@ fn migration_failure_restores_old_schema_ledger_and_foreign_key_enforcement() {
     populate_legacy_graph(&connection);
     // A deliberately corrupt inherited relationship forces the pre-commit
     // integrity check to reject AFTER the table-copy work has executed.
-    connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
-    connection.execute("INSERT INTO note_tags VALUES (?1, ?2)", params![id(99), id(9)]).unwrap();
-    connection.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    connection
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO note_tags VALUES (?1, ?2)",
+            params![id(99), id(9)],
+        )
+        .unwrap();
+    connection
+        .execute_batch("PRAGMA foreign_keys = ON;")
+        .unwrap();
     let before_notes = rows(&connection, "notes");
     let before_schema = schema_objects(&connection).unwrap();
     let result = apply_transactional_migration(&mut connection, &MIGRATIONS[14]);
     assert!(result.is_err());
     assert_eq!(rows(&connection, "notes"), before_notes);
     assert_eq!(schema_objects(&connection).unwrap(), before_schema);
-    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap();
+    let version: i64 = connection
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
     assert_eq!(version, 14);
-    let newest: i64 = connection.query_row("SELECT max(version) FROM schema_migrations", [], |row| row.get(0)).unwrap();
+    let newest: i64 = connection
+        .query_row("SELECT max(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
     assert_eq!(newest, 14);
-    let enabled: bool = connection.query_row("PRAGMA foreign_keys", [], |row| row.get(0)).unwrap();
+    let enabled: bool = connection
+        .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+        .unwrap();
     assert!(enabled);
     assert!(connection.is_autocommit());
 }
@@ -301,9 +374,24 @@ fn question_keys_cannot_transfer_an_existing_schedule_to_another_target() {
     apply_question_migration(&mut connection);
     insert_interactive_note(&connection);
     connection.execute("INSERT INTO cards(id, note_id, deck_id, created_at, updated_at) VALUES (?1, ?2, ?3, 1, 1)", params![id(21), id(20), id(1)]).unwrap();
-    connection.execute("INSERT INTO card_question_presentations VALUES (?1, ?2, 'main')", params![id(21), id(20)]).unwrap();
-    assert!(connection.execute("UPDATE card_question_presentations SET question_key = 'other'", []).is_err());
-    assert!(connection.execute("INSERT INTO card_question_presentations VALUES (?1, ?2, 'main')", params![id(3), id(2)]).is_err());
+    connection
+        .execute(
+            "INSERT INTO card_question_presentations VALUES (?1, ?2, 'main')",
+            params![id(21), id(20)],
+        )
+        .unwrap();
+    assert!(connection
+        .execute(
+            "UPDATE card_question_presentations SET question_key = 'other'",
+            []
+        )
+        .is_err());
+    assert!(connection
+        .execute(
+            "INSERT INTO card_question_presentations VALUES (?1, ?2, 'main')",
+            params![id(3), id(2)]
+        )
+        .is_err());
     verify_integrity(&connection).unwrap();
 }
 

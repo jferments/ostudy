@@ -125,14 +125,18 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert!(foreign_keys_enabled(&connection).unwrap());
-        assert!(connection.execute("INSERT INTO child VALUES (3, 99)", []).is_err());
+        assert!(connection
+            .execute("INSERT INTO child VALUES (3, 99)", [])
+            .is_err());
     }
 
     #[test]
     fn failed_rebuild_rolls_back_ddl_data_and_connection_settings() {
         let mut connection = fixture();
         let result = run(&mut connection, |connection| {
-            let transaction = connection.transaction().map_err(|error| error.to_string())?;
+            let transaction = connection
+                .transaction()
+                .map_err(|error| error.to_string())?;
             transaction
                 .execute_batch("DROP TABLE parent; CREATE TABLE parent (id INTEGER PRIMARY KEY);")
                 .map_err(|error| error.to_string())?;
@@ -174,7 +178,9 @@ mod tests {
         })
         .is_err());
         assert!(!connection.is_autocommit());
-        connection.execute_batch("ROLLBACK; PRAGMA foreign_keys = OFF;").unwrap();
+        connection
+            .execute_batch("ROLLBACK; PRAGMA foreign_keys = OFF;")
+            .unwrap();
         assert!(run(&mut connection, |_| -> Result<(), String> {
             panic!("an unprotected callback must not run")
         })
