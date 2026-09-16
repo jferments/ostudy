@@ -952,7 +952,7 @@ fn validate_backup_assets(
     Ok(())
 }
 
-fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandError> {
+pub(crate) fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandError> {
     let integrity: String = connection
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(CommandError::database)?;
@@ -964,7 +964,9 @@ fn validate_snapshot_database(connection: &Connection) -> Result<(), CommandErro
     }
     crate::database::validate_backup_lineage(connection)?;
     let version = snapshot_schema_version(connection)?;
-    if version != LATEST_SCHEMA_VERSION && !matches!(version, 10 | 11) {
+    // Keep every supported public backup readable as new migrations are added.
+    // The immutable lineage/checksum check above still rejects forged or future ledgers.
+    if !(10..=LATEST_SCHEMA_VERSION).contains(&version) {
         return Err(CommandError::new(
             "unsupported_backup_schema",
             format!("This backup uses unsupported database schema {version}."),

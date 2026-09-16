@@ -19,11 +19,15 @@ use crate::{
 const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
 pub(crate) const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
 
+#[path = "database/table_rebuild.rs"]
+mod table_rebuild;
+
 struct Migration {
     version: i64,
     name: &'static str,
     checksum: &'static str,
     sql: &'static str,
+    rebuilds_tables: bool,
 }
 
 const MIGRATIONS: &[Migration] = &[
@@ -32,88 +36,109 @@ const MIGRATIONS: &[Migration] = &[
         name: "public_baseline",
         checksum: "2d978f8be026ecb820e71ba77a8585e1de51cb08fc2820714526a33284167f85",
         sql: include_str!("../migrations/0001_public_baseline.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 2,
         name: "canonical_documents",
         checksum: "dba2a5fd43b9544c1a4da9e060106f157ca5ac839a5c87ca831d7ceef8bb7733",
         sql: include_str!("../migrations/0002_canonical_documents.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 3,
         name: "anydoc_document_adapters",
         checksum: "3fffc105e52e531e6907a480d3479dff02b1426a4f6fa4906253e016c6052ba9",
         sql: include_str!("../migrations/0003_anydoc_document_adapters.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 4,
         name: "study_guides_and_learning_topics",
         checksum: "b0ce6fc9cfb1d32954b41526c4c60ab143a4397a9d900de3e34d4da7cf8629dc",
         sql: include_str!("../migrations/0004_study_guides_and_learning_topics.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 5,
         name: "study_guide_pdf_exports",
         checksum: "a8736b2a4e8bd0a8fcf3455b8bb20058d7531653964662496271140d7e716f33",
         sql: include_str!("../migrations/0005_study_guide_pdf_exports.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 6,
         name: "document_citations",
         checksum: "51507730f9b56e34ca6964cbf2bc1b7a0d74232b04d4ba1bcc2252b4998c5685",
         sql: include_str!("../migrations/0006_document_citations.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 7,
         name: "document_artifact_metadata",
         checksum: "285343736d2a69d4351093555485b8e37970901237e88de6cfd96e8843b51616",
         sql: include_str!("../migrations/0007_document_artifact_metadata.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 8,
         name: "ai_profile_reasoning",
         checksum: "2f0f9e010842ab62f1f9896441974f792fd621bf152d38ad11b129aa848ecc9d",
         sql: include_str!("../migrations/0008_ai_profile_reasoning.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 9,
         name: "anki_apkg_staging",
         checksum: "a1dfeff574e2d6da17420e0544d0b363de3e232a7793d393024bb4a3432a1019",
         sql: include_str!("../migrations/0009_anki_apkg_staging.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 10,
         name: "semantic_tutor",
         checksum: "9d91e43de57c9917444fff479c79a6040d9ee80b1a8a48c8687ea538861b7377",
         sql: include_str!("../migrations/0010_semantic_tutor.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 11,
         name: "semantic_lifecycle",
         checksum: "dea76f0b89417bea0dc9d34d4f4780a9edea3690c5b4146b391db83ba408bf73",
         sql: include_str!("../migrations/0011_semantic_lifecycle.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 12,
         name: "semantic_eviction_queue",
         checksum: "b3e26dbd5a7e2e617bc24ae15377dacf046950432256083ba76be8598a52e8fb",
         sql: include_str!("../migrations/0012_semantic_eviction_queue.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 13,
         name: "provider_multi_model",
         checksum: "3c34380a8312f07646f245351e5edcfd41f80e397442c826a275e70e78d059f1",
         sql: include_str!("../migrations/0013_provider_multi_model.sql"),
+        rebuilds_tables: false,
     },
     Migration {
         version: 14,
         name: "native_knowledge_evidence",
         checksum: "0207be07db12537a618c2b2a97652a623c5461c553533e7f3ca173788e3dff95",
         sql: include_str!("../migrations/0014_native_knowledge_evidence.sql"),
+        rebuilds_tables: false,
+    },
+    Migration {
+        version: 15,
+        name: "interactive_questions",
+        checksum: "9fcdcf5e1ef65a3500ca8f94b695a6c04d36cb33dfaa2f1306dd9d466020ab41",
+        sql: include_str!("../migrations/0015_interactive_questions.sql"),
+        rebuilds_tables: true,
     },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 14;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 15;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -331,6 +356,19 @@ fn apply_transactional_migration(
     connection: &mut Connection,
     migration: &Migration,
 ) -> Result<(), String> {
+    if migration.rebuilds_tables {
+        table_rebuild::run(connection, |connection| {
+            apply_migration_transaction(connection, migration)
+        })
+    } else {
+        apply_migration_transaction(connection, migration)
+    }
+}
+
+fn apply_migration_transaction(
+    connection: &mut Connection,
+    migration: &Migration,
+) -> Result<(), String> {
     let started = Instant::now();
     crate::logging::info_target(
         "database.migration",
@@ -364,6 +402,11 @@ fn apply_transactional_migration(
     transaction
         .execute_batch(&format!("PRAGMA user_version = {};", migration.version))
         .map_err(|error| format!("Could not set SQLite user_version: {error}"))?;
+    if migration.rebuilds_tables {
+        // Check before COMMIT so a broken relationship rolls back both data and
+        // DDL, including the ledger and user_version, not just a later open.
+        verify_integrity(&transaction)?;
+    }
     transaction
         .commit()
         .map_err(|error| format!("Could not commit migration {}: {error}", migration.version))?;
@@ -827,3 +870,7 @@ mod tests {
             .expect("OpenRouter profile should satisfy the public baseline");
     }
 }
+
+#[cfg(test)]
+#[path = "database/interactive_migration_tests.rs"]
+mod interactive_migration_tests;
