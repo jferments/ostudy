@@ -43,7 +43,9 @@ const view: QuestionAttemptView = {
   progress: { phase: "answering", savedAnswer: answer },
 };
 
-beforeEach(() => invoke.mockReset());
+beforeEach(() => {
+  invoke.mockReset();
+});
 
 describe("Practice question gateways", () => {
   it("preserves an explicit empty selection and the caller's mutation identity", async () => {
