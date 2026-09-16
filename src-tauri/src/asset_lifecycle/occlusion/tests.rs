@@ -249,7 +249,7 @@ fn malformed_image_and_canceled_draft_cannot_leave_a_normalized_asset() {
     fixture.run(|connection| {
         connection
             .execute(
-                "UPDATE asset_drafts SET canceled_at = 1 WHERE id = ?1",
+                "UPDATE asset_drafts SET canceled_at = created_at WHERE id = ?1",
                 [&fixture.draft_id],
             )
             .map_err(CommandError::database)?;
