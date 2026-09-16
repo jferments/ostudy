@@ -155,7 +155,10 @@ impl ValidatedQuestion {
                 for question in questions {
                     fields.id(&question.id)?;
                     cardinality(question.mask_ids.len(), 1, masks.len())?;
-                    subset(&question.mask_ids, masks.iter().map(|mask| mask.id.as_str()))?;
+                    subset(
+                        &question.mask_ids,
+                        masks.iter().map(|mask| mask.id.as_str()),
+                    )?;
                     fields.rich(&question.prompt, true)?;
                     fields.rich(&question.answer, true)?;
                     fields.optional(&question.explanation)?;
@@ -189,9 +192,10 @@ impl ValidatedQuestion {
 
     pub fn presentation_keys(&self) -> Vec<String> {
         match &self.definition.question {
-            QuestionBody::ImageOcclusion { questions, .. } => {
-                questions.iter().map(|question| question.id.clone()).collect()
-            }
+            QuestionBody::ImageOcclusion { questions, .. } => questions
+                .iter()
+                .map(|question| question.id.clone())
+                .collect(),
             _ => vec!["main".to_string()],
         }
     }
@@ -318,7 +322,11 @@ fn distinct_content<'a>(documents: impl Iterator<Item = &'a Value>) -> Result<()
     Ok(())
 }
 
-pub(super) fn cardinality(count: usize, minimum: usize, maximum: usize) -> Result<(), QuestionError> {
+pub(super) fn cardinality(
+    count: usize,
+    minimum: usize,
+    maximum: usize,
+) -> Result<(), QuestionError> {
     if count < minimum || count > maximum {
         return Err(invalid("The question has an unsupported number of items."));
     }
