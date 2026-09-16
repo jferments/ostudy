@@ -3,6 +3,9 @@
 //! The implementation is private so callers depend on this narrow facade rather
 //! than on editor-specific validation details.
 
+// Temporary while the retired pre-interactive presentation DTO is removed from
+// the large validator source in an isolated cleanup before final qualification.
+#[allow(dead_code)]
 #[path = "cards/content.rs"]
 mod content;
 pub(crate) mod math;
