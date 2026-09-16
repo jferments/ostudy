@@ -46,11 +46,9 @@ import { NativeSelect } from "../ui/primitives/NativeSelect";
 import { Surface } from "../ui/primitives/Surface";
 import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { BasicCardFields } from "./card-editor/BasicCardFields";
-import { ChoiceQuestionEditor } from "./card-editor/ChoiceQuestionEditor";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
-import { MatchingQuestionEditor } from "./card-editor/MatchingQuestionEditor";
+import { InteractiveQuestionEditor } from "./card-editor/InteractiveQuestionEditor";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
-import { TrueFalseQuestionEditor } from "./card-editor/TrueFalseQuestionEditor";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { presentation } from "./card-editor/presentation";
 import {
@@ -744,6 +742,8 @@ export function CardEditorScreen({
                   <option value="select_all">Select all that apply</option>
                   <option value="true_false">True / false</option>
                   <option value="matching">Matching</option>
+                  <option value="grouping">Grouping</option>
+                  <option value="ordering">Ordering</option>
                 </optgroup>
                 {templateSummaries.length > 0 ? <optgroup label="Reusable templates">{templateSummaries.map((template) => (
                   <option key={template.id} value={template.id}>{template.name}</option>
@@ -760,16 +760,8 @@ export function CardEditorScreen({
             </FormField>
           </Surface>
           {isLoadingTemplate ? <InlineProgress>Loading template…</InlineProgress> : null}
-          {activeQuestionDraft?.kind === "single_choice" || activeQuestionDraft?.kind === "select_all" ? (
-            <ChoiceQuestionEditor key={`${activeQuestionDraft.kind}-${editorGeneration}`} draft={activeQuestionDraft}
-              assets={assets} assetDraftId={assetDraftId} disabled={isSaving} onAssetImported={addAsset}
-              onChange={updateQuestionDraft} />
-          ) : activeQuestionDraft?.kind === "true_false" ? (
-            <TrueFalseQuestionEditor key={`true-false-${editorGeneration}`} draft={activeQuestionDraft}
-              assets={assets} assetDraftId={assetDraftId} disabled={isSaving} onAssetImported={addAsset}
-              onChange={updateQuestionDraft} />
-          ) : activeQuestionDraft?.kind === "matching" ? (
-            <MatchingQuestionEditor key={`matching-${editorGeneration}`} draft={activeQuestionDraft}
+          {activeQuestionDraft ? (
+            <InteractiveQuestionEditor key={`${activeQuestionDraft.kind}-${editorGeneration}`} draft={activeQuestionDraft}
               assets={assets} assetDraftId={assetDraftId} disabled={isSaving} onAssetImported={addAsset}
               onChange={updateQuestionDraft} />
           ) : selectedCustomTemplate ? (
