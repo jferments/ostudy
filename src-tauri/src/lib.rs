@@ -234,6 +234,8 @@ pub fn run() {
             asset_lifecycle::cancel_asset_draft,
             asset_lifecycle::sync_asset_draft,
             assets::import_image,
+            asset_lifecycle::occlusion::prepare_occlusion_image,
+            asset_lifecycle::occlusion::preview_occlusion_image,
             media_assets::import_media,
             media_assets::read_media_asset,
             deletion::undo_deletion,

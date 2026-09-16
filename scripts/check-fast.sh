@@ -130,7 +130,7 @@ cargo test \
   cards::
 
 step "Interactive question authoring and migration preservation"
-for test_filter in authoring::card_commands::interactive:: database::interactive_migration_tests:: practice::question_attempts:: asset_lifecycle::question_attempt_assets_keep_images_referenced; do
+for test_filter in authoring::card_commands::interactive:: database::interactive_migration_tests:: practice::question_attempts:: asset_lifecycle::question_attempt_assets_keep_images_referenced asset_lifecycle::occlusion::; do
   cargo test \
     --manifest-path src-tauri/Cargo.toml \
     --locked \
