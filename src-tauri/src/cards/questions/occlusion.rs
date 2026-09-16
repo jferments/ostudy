@@ -79,10 +79,16 @@ impl CanonicalImage {
         maximum_edge: u32,
     ) -> Result<RenderedOcclusion, QuestionError> {
         if !(1..=MAX_RENDER_EDGE).contains(&maximum_edge) {
-            return Err(image_error("Choose a supported occlusion image resolution."));
+            return Err(image_error(
+                "Choose a supported occlusion image resolution.",
+            ));
         }
         let plan = question.occlusion_mask_plan(presentation_key)?;
-        let targets = plan.target_mask_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
+        let targets = plan
+            .target_mask_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
         let target_rectangles = plan
             .hidden_masks
             .iter()
@@ -104,12 +110,10 @@ impl CanonicalImage {
         // filter can mix hidden label pixels into adjacent, visible pixels.
         let largest = width.max(height);
         if largest > maximum_edge {
-            let output_width = ((u64::from(width) * u64::from(maximum_edge))
-                / u64::from(largest))
-            .max(1) as u32;
-            let output_height = ((u64::from(height) * u64::from(maximum_edge))
-                / u64::from(largest))
-            .max(1) as u32;
+            let output_width =
+                ((u64::from(width) * u64::from(maximum_edge)) / u64::from(largest)).max(1) as u32;
+            let output_height =
+                ((u64::from(height) * u64::from(maximum_edge)) / u64::from(largest)).max(1) as u32;
             pixels = resize(&pixels, output_width, output_height, FilterType::Triangle);
         }
         let mut hash = Sha256::new();
@@ -156,7 +160,9 @@ fn decode_still(bytes: &[u8]) -> Result<CanonicalImage, QuestionError> {
             }
             decode_pixels(decoder)
         }
-        _ => Err(image_error("Use a still PNG, JPEG or WebP image for image occlusion.")),
+        _ => Err(image_error(
+            "Use a still PNG, JPEG or WebP image for image occlusion.",
+        )),
     }
 }
 
@@ -170,7 +176,9 @@ fn decode_pixels(mut decoder: impl ImageDecoder) -> Result<CanonicalImage, Quest
         || u64::from(width) * u64::from(height) > MAX_IMAGE_PIXELS
         || decoder.total_bytes() > MAX_DECODE_BYTES
     {
-        return Err(image_error("The image exceeds the supported decoded size. Use a smaller image."));
+        return Err(image_error(
+            "The image exceeds the supported decoded size. Use a smaller image.",
+        ));
     }
     let orientation = decoder.orientation().map_err(codec_error)?;
     let mut image = DynamicImage::from_decoder(decoder).map_err(codec_error)?;

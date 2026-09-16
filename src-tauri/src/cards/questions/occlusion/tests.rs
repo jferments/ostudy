@@ -13,19 +13,23 @@ fn rich(text: &str) -> serde_json::Value {
 }
 
 fn question(mode: &str) -> ValidatedQuestion {
-    ValidatedQuestion::parse(&json!({
-        "schemaVersion":1,
-        "question":{
-            "kind":"image_occlusion","imageAssetId":id(1),
-            "masks":[
-                {"id":id(2),"rect":{"x":0.1,"y":0.1,"width":0.2,"height":0.2}},
-                {"id":id(3),"rect":{"x":0.6,"y":0.6,"width":0.2,"height":0.2}}
-            ],
-            "questions":[{"id":id(4),"prompt":rich("Identify the region."),
-                "answer":rich("Private answer"),"explanation":null,
-                "maskIds":[id(2)],"mode":mode}]
-        }
-    }).to_string()).unwrap()
+    ValidatedQuestion::parse(
+        &json!({
+            "schemaVersion":1,
+            "question":{
+                "kind":"image_occlusion","imageAssetId":id(1),
+                "masks":[
+                    {"id":id(2),"rect":{"x":0.1,"y":0.1,"width":0.2,"height":0.2}},
+                    {"id":id(3),"rect":{"x":0.6,"y":0.6,"width":0.2,"height":0.2}}
+                ],
+                "questions":[{"id":id(4),"prompt":rich("Identify the region."),
+                    "answer":rich("Private answer"),"explanation":null,
+                    "maskIds":[id(2)],"mode":mode}]
+            }
+        })
+        .to_string(),
+    )
+    .unwrap()
 }
 
 fn source() -> RgbaImage {
@@ -37,7 +41,9 @@ fn image(pixels: &RgbaImage) -> CanonicalImage {
 }
 
 fn render(pixels: &RgbaImage, mode: &str, phase: RenderPhase) -> RgbaImage {
-    let rendered = image(pixels).render(&question(mode), &id(4), phase, 100).unwrap();
+    let rendered = image(pixels)
+        .render(&question(mode), &id(4), phase, 100)
+        .unwrap();
     CanonicalImage::decode(&rendered.png).unwrap().pixels
 }
 
@@ -91,8 +97,12 @@ fn hidden_pixels_cannot_affect_a_downsampled_derivative() {
         }
     }
     let q = question("hide_target");
-    let a = image(&a).render(&q, &id(4), RenderPhase::Hidden, 19).unwrap();
-    let b = image(&b).render(&q, &id(4), RenderPhase::Hidden, 19).unwrap();
+    let a = image(&a)
+        .render(&q, &id(4), RenderPhase::Hidden, 19)
+        .unwrap();
+    let b = image(&b)
+        .render(&q, &id(4), RenderPhase::Hidden, 19)
+        .unwrap();
     assert_eq!(a.png, b.png);
     assert_eq!((a.width, a.height), (19, 19));
 }
@@ -100,10 +110,11 @@ fn hidden_pixels_cannot_affect_a_downsampled_derivative() {
 #[test]
 fn unrelated_overlapping_mask_keeps_its_pixels_covered_after_reveal() {
     let mut definition = serde_json::to_value(question("hide_all").definition()).unwrap();
-    definition["question"]["masks"][1]["rect"] =
-        json!({"x":0.2,"y":0.2,"width":0.2,"height":0.2});
+    definition["question"]["masks"][1]["rect"] = json!({"x":0.2,"y":0.2,"width":0.2,"height":0.2});
     let q = ValidatedQuestion::parse(&definition.to_string()).unwrap();
-    let output = image(&source()).render(&q, &id(4), RenderPhase::Revealed, 100).unwrap();
+    let output = image(&source())
+        .render(&q, &id(4), RenderPhase::Revealed, 100)
+        .unwrap();
     let pixels = CanonicalImage::decode(&output.png).unwrap().pixels;
     assert_eq!(*pixels.get_pixel(15, 15), Rgba([231, 117, 43, 255]));
     assert_eq!(*pixels.get_pixel(25, 25), MASK_PIXEL);
@@ -116,7 +127,9 @@ fn multi_region_question_reveals_all_its_targets() {
     let q = ValidatedQuestion::parse(&definition.to_string()).unwrap();
     let source = source();
     let image = image(&source);
-    let output = image.render(&q, &id(4), RenderPhase::Revealed, 100).unwrap();
+    let output = image
+        .render(&q, &id(4), RenderPhase::Revealed, 100)
+        .unwrap();
     assert_eq!(output.target_rectangles.len(), 2);
     assert_eq!(CanonicalImage::decode(&output.png).unwrap().pixels, source);
 }
@@ -153,10 +166,16 @@ fn jpeg_and_webp_use_the_same_shared_native_normalization_path() {
     WebPEncoder::new_lossless(&mut webp)
         .write_image(pixels.as_raw(), 100, 100, ExtendedColorType::Rgba8)
         .unwrap();
-    assert_eq!(CanonicalImage::decode(&jpeg).unwrap().dimensions(), (100, 100));
+    assert_eq!(
+        CanonicalImage::decode(&jpeg).unwrap().dimensions(),
+        (100, 100)
+    );
     let webp = CanonicalImage::decode(&webp).unwrap();
     assert_eq!(webp.pixels, pixels);
-    assert!(webp.canonical_png().unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert!(webp
+        .canonical_png()
+        .unwrap()
+        .starts_with(b"\x89PNG\r\n\x1a\n"));
 }
 
 #[test]
@@ -186,18 +205,24 @@ fn cache_identity_tracks_source_geometry_phase_and_resolution_not_question_prose
     let image = image(&source());
     let q = question("hide_all");
     let initial = image.render(&q, &id(4), RenderPhase::Hidden, 100).unwrap();
-    let revealed = image.render(&q, &id(4), RenderPhase::Revealed, 100).unwrap();
+    let revealed = image
+        .render(&q, &id(4), RenderPhase::Revealed, 100)
+        .unwrap();
     let smaller = image.render(&q, &id(4), RenderPhase::Hidden, 50).unwrap();
     assert_ne!(initial.cache_key, revealed.cache_key);
     assert_ne!(initial.cache_key, smaller.cache_key);
     let mut definition = serde_json::to_value(q.definition()).unwrap();
     definition["question"]["questions"][0]["answer"] = rich("Another private answer");
     let same = ValidatedQuestion::parse(&definition.to_string()).unwrap();
-    let same = image.render(&same, &id(4), RenderPhase::Hidden, 100).unwrap();
+    let same = image
+        .render(&same, &id(4), RenderPhase::Hidden, 100)
+        .unwrap();
     assert_eq!(initial.cache_key, same.cache_key);
     definition["question"]["masks"][0]["rect"]["x"] = json!(0.11);
     let moved = ValidatedQuestion::parse(&definition.to_string()).unwrap();
-    let moved = image.render(&moved, &id(4), RenderPhase::Hidden, 100).unwrap();
+    let moved = image
+        .render(&moved, &id(4), RenderPhase::Hidden, 100)
+        .unwrap();
     assert_ne!(initial.cache_key, moved.cache_key);
 }
 
@@ -214,7 +239,15 @@ fn bounded_png_writer_refuses_growth_past_the_limit() {
 fn tiny_images_remain_native_size_instead_of_being_upscaled() {
     let pixels = RgbaImage::from_pixel(1, 1, Rgba([1, 2, 3, 4]));
     let image = image(&pixels);
-    let output = image.render(&question("hide_target"), &id(4), RenderPhase::Hidden, 4096).unwrap();
+    let output = image
+        .render(&question("hide_target"), &id(4), RenderPhase::Hidden, 4096)
+        .unwrap();
     assert_eq!((output.width, output.height), (1, 1));
-    assert_eq!(*CanonicalImage::decode(&output.png).unwrap().pixels.get_pixel(0, 0), MASK_PIXEL);
+    assert_eq!(
+        *CanonicalImage::decode(&output.png)
+            .unwrap()
+            .pixels
+            .get_pixel(0, 0),
+        MASK_PIXEL
+    );
 }
