@@ -10,6 +10,9 @@ import {
 import type {
   CheckPracticeAnswerInput,
   QuestionAttemptView,
+  PracticeAttemptView,
+  ImageOcclusionAttemptView,
+  RevealPracticeQuestionInput,
   SavePracticeAnswerInput,
 } from "../../ipc/questionAttempts";
 import type { RescheduleIntent, ScheduleAction } from "../../ipc/scheduling";
@@ -49,8 +52,9 @@ interface ActivePracticeProps {
   onLinkError: (message: string) => void;
   onSaveQuestionAnswer?: (input: SavePracticeAnswerInput) => Promise<QuestionAttemptView>;
   onCheckQuestionAnswer?: (input: CheckPracticeAnswerInput) => Promise<QuestionAttemptView>;
-  onQuestionAttempt?: (attempt: QuestionAttemptView) => void;
-  onQuestionChecked?: (attempt: QuestionAttemptView) => void | Promise<void>;
+  onRevealQuestionAnswer?: (input: RevealPracticeQuestionInput) => Promise<ImageOcclusionAttemptView>;
+  onQuestionAttempt?: (attempt: PracticeAttemptView) => void;
+  onQuestionChecked?: (attempt: PracticeAttemptView) => void | Promise<void>;
 }
 
 export function ActivePractice({
@@ -75,6 +79,7 @@ export function ActivePractice({
   onLinkError,
   onSaveQuestionAnswer = unavailableSave,
   onCheckQuestionAnswer = unavailableCheck,
+  onRevealQuestionAnswer,
   onQuestionAttempt = ignoreAttempt,
   onQuestionChecked = ignoreAttempt,
 }: ActivePracticeProps) {
@@ -125,8 +130,9 @@ export function ActivePractice({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if (busy || event.repeat || topId !== null) return;
+      if (busy || event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || topId !== null) return;
       const target = event.target;
+      if (target instanceof Element && target.closest("[data-occlusion-viewport]")) return;
       if (target instanceof HTMLElement && (target.isContentEditable
         || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "SUMMARY", "AUDIO", "VIDEO"].includes(target.tagName))) return;
       if (!interactive && !revealed && (event.key === " " || event.key === "Enter")) {
@@ -183,6 +189,7 @@ export function ActivePractice({
       disabled={busy}
       onSave={onSaveQuestionAnswer}
       onCheck={onCheckQuestionAnswer}
+      onReveal={onRevealQuestionAnswer}
       onAttempt={onQuestionAttempt}
       onChecked={onQuestionChecked}
       onError={onLinkError}
@@ -260,6 +267,9 @@ export function ActivePractice({
           ? "Continue with Wrong. The checked result remains immutable even if you practice the item again."
           : "Choose the result that best matches your recall."}</p>
       </div>
+      {!previewSet ? <div className="tw:mb-3">
+        <Button disabled={busy} onClick={onReveal}>{isRevealing ? "Calculating intervals…" : "Retry interval preview"}</Button>
+      </div> : null}
       <div className={view.confidenceScoreActions}>
         <ConfidenceButton score={0} label="Wrong" disabled={busy || !previewSet || objectiveCorrect === true} onClick={() => onScore(0)} />
         <ConfidenceButton score={1} label="Hard" disabled={busy || !previewSet || objectiveCorrect === false} onClick={() => onScore(1)} />
@@ -293,4 +303,4 @@ function unavailableCheck(_input: CheckPracticeAnswerInput): Promise<QuestionAtt
   return Promise.reject(new Error("Interactive answer checking is unavailable in this host."));
 }
 
-function ignoreAttempt(_attempt: QuestionAttemptView): void {}
+function ignoreAttempt(_attempt: PracticeAttemptView): void {}

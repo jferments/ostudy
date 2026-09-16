@@ -1,5 +1,5 @@
 //! The single authoritative FSRS write remains in practice.rs. This adapter
-//! admits the checked evidence and records its link inside that same transaction.
+//! admits objective checks or self-assessed reveals inside that same transaction.
 
 use super::*;
 use crate::practice::{ReviewResultDto, SubmitReviewInput};
@@ -63,7 +63,7 @@ pub(crate) fn authorize_review(
     let context = context.ok_or_else(|| {
         CommandError::new(
             "question_review_required",
-            "Interactive questions require their checked attempt when recording a review.",
+            "Interactive questions require their captured attempt when recording a review.",
         )
     })?;
     validate_entity_id(&context.instance_id, "question instance")?;
@@ -76,18 +76,21 @@ pub(crate) fn authorize_review(
         return Err(conflict());
     }
     let view = stored.attempt.view()?;
-    let AttemptProgress::Checked {
-        evaluation,
-        response_time_ms,
-        ..
-    } = view.progress
-    else {
-        return Err(not_checked());
+    let (objective_correct, response_time_ms) = match view.progress {
+        AttemptProgress::Checked {
+            evaluation,
+            response_time_ms,
+            ..
+        } => (Some(evaluation.verdict == Verdict::Correct), response_time_ms),
+        AttemptProgress::Revealed {
+            response_time_ms, ..
+        } => (None, response_time_ms),
+        AttemptProgress::Answering { .. } => return Err(not_exposed(&stored.attempt)),
     };
     if input.response_time_ms != response_time_ms {
         return Err(CommandError::new(
             "question_response_time_changed",
-            "Use the response time captured by the first answer check.",
+            "Use the response time captured by the first answer check or reveal.",
         ));
     }
     let reason = context.override_reason.as_deref().map(str::trim);
@@ -97,8 +100,16 @@ pub(crate) fn authorize_review(
             "Provide an override explanation between 1 and 2000 characters.",
         ));
     }
-    let correct = evaluation.verdict == Verdict::Correct;
     let rating_correct = crate::scheduler::ReviewOutcome::parse(&input.outcome)?.answer_correct();
+    // Image questions have a self-report, not an evaluator verdict. Its origin
+    // stays explicit in the linked attempt (revealed phase, NULL verdict).
+    let correct = objective_correct.unwrap_or(rating_correct);
+    if objective_correct.is_none() && reason.is_some() {
+        return Err(CommandError::new(
+            "invalid_question_override",
+            "A self-assessed image question has no objective result to override.",
+        ));
+    }
     if correct != rating_correct && reason.is_none() {
         return Err(CommandError::new(
             "question_rating_override_required",
@@ -121,9 +132,9 @@ pub(crate) fn require_checked_for_reveal(
         let stored = storage::load(connection, &target)?;
         if !matches!(
             stored.attempt.view()?.progress,
-            AttemptProgress::Checked { .. }
+            AttemptProgress::Checked { .. } | AttemptProgress::Revealed { .. }
         ) {
-            return Err(not_checked());
+            return Err(not_exposed(&stored.attempt));
         }
     }
     Ok(())
@@ -159,7 +170,13 @@ fn target_for_card(
     }
 }
 
-fn not_checked() -> CommandError {
+fn not_exposed(attempt: &QuestionAttempt) -> CommandError {
+    if attempt.instance().kind() == crate::cards::questions::QuestionKind::ImageOcclusion {
+        return CommandError::new(
+            "question_not_revealed",
+            "Reveal the image answer before choosing its difficulty.",
+        );
+    }
     CommandError::new(
         "question_not_checked",
         "Check your answer before choosing its difficulty.",

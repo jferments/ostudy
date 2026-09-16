@@ -24,9 +24,12 @@ import {
   checkPracticeQuestionAnswer,
   getPracticeQuestionAttempt,
   remediatePracticeQuestion,
+  revealPracticeQuestionAnswer,
   savePracticeQuestionAnswer,
   submitPracticeQuestionReview,
   type CheckPracticeAnswerInput,
+  type ImageOcclusionAttemptView,
+  type RevealPracticeQuestionInput,
   type PracticeQuestion,
   type QuestionAttemptTarget,
   type QuestionAttemptView,
@@ -88,6 +91,10 @@ export class PracticeController {
 
   checkQuestionAnswer(input: CheckPracticeAnswerInput): Promise<QuestionAttemptView> {
     return checkPracticeQuestionAnswer(input);
+  }
+
+  revealQuestionAnswer(input: RevealPracticeQuestionInput): Promise<ImageOcclusionAttemptView> {
+    return revealPracticeQuestionAnswer(input);
   }
 
   reviewQuestion(input: {

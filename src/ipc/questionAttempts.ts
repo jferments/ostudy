@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { Asset } from "./assets";
 import type { RichDocument } from "./common";
-import type { QuestionItem } from "./questions";
+import type { NormalizedRect, QuestionItem } from "./questions";
 import type { ReviewResult, SubmitReviewInput } from "./practice";
 
 /** Public study data is deliberately distinct from authored definitions/keys. */
@@ -60,6 +60,50 @@ export interface QuestionAttemptView {
       };
 }
 
+/** Self-assessed targets have reveal evidence, never a made-up objective response. */
+export interface ImageOcclusionAttemptView {
+  instanceId: string;
+  revision: number;
+  assisted: boolean;
+  question: { kind: "image_occlusion"; prompt: RichDocument; targetRectangles: NormalizedRect[] };
+  progress:
+    | { phase: "answering"; savedAnswer: null }
+    | {
+        phase: "revealed";
+        revealId: string;
+        responseTimeMs: number;
+        revealedAtMs: number;
+        answer: RichDocument;
+        explanation: RichDocument | null;
+      };
+}
+
+export type PracticeAttemptView = QuestionAttemptView | ImageOcclusionAttemptView;
+
+export function isImageOcclusionAttempt(attempt: PracticeAttemptView): attempt is ImageOcclusionAttemptView {
+  return attempt.question.kind === "image_occlusion";
+}
+
+export interface RevealPracticeQuestionInput {
+  target: QuestionAttemptTarget;
+  request: { revealId: string; expectedRevision: number; responseTimeMs: number };
+}
+
+export interface ReadPracticeOcclusionInput {
+  target: QuestionAttemptTarget;
+  expectedRevision: number;
+  maximumEdge: number;
+}
+
+export function revealPracticeQuestionAnswer(input: RevealPracticeQuestionInput): Promise<ImageOcclusionAttemptView> {
+  return invoke<ImageOcclusionAttemptView>("reveal_practice_question_answer", { input });
+}
+
+/** Only native-authorized PNG bytes cross this route; no source path or phase Boolean. */
+export function readPracticeOcclusionImage(input: ReadPracticeOcclusionInput): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("read_practice_occlusion_image", { input });
+}
+
 export interface QuestionAttemptTarget {
   sessionId: string;
   cardId: string;
@@ -82,7 +126,7 @@ export interface CheckPracticeAnswerInput {
 }
 
 export interface PracticeQuestion {
-  attempt: QuestionAttemptView;
+  attempt: PracticeAttemptView;
   assets: Asset[];
 }
 

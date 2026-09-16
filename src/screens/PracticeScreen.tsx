@@ -25,6 +25,9 @@ import {
 import type {
   CheckPracticeAnswerInput,
   QuestionAttemptView,
+  PracticeAttemptView,
+  ImageOcclusionAttemptView,
+  RevealPracticeQuestionInput,
   SavePracticeAnswerInput,
 } from "../ipc/questionAttempts";
 import { getQuestionNote } from "../ipc/questions";
@@ -41,6 +44,7 @@ import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { CardEditorScreen } from "./CardEditorScreen";
 import { PracticeComplete } from "./practice/PracticeComplete";
 import { ActivePractice } from "./practice/ActivePractice";
+import { mergePracticeQuestion, mergeQuestionAttempt } from "./practice/questionSession";
 import {
   outcomeForScore,
   type ConfidenceCounts,
@@ -135,6 +139,14 @@ export function PracticeScreen({
   if (controllerRef.current === null) controllerRef.current = new PracticeController();
   const controller = controllerRef.current;
   const current = sessionCards[position] ?? null;
+  const currentCardId = current?.presentation.cardId ?? null;
+  const currentSessionId = session?.id ?? null;
+  const currentKeyRef = useRef("");
+  currentKeyRef.current = `${currentSessionId ?? ""}:${currentCardId ?? ""}`;
+  const currentAttemptRef = useRef<PracticeAttemptView | null>(null);
+  currentAttemptRef.current = current && isInteractivePracticePresentation(current.presentation)
+    ? current.presentation.question.attempt : null;
+  const previewRequestRef = useRef(0);
   const confirm = useConfirm();
   const experience = useExperience();
 
@@ -143,6 +155,7 @@ export function PracticeScreen({
     if (!session || completed) return registerPracticeExitHandler(null);
     const activeSessionId = session.id;
     return registerPracticeExitHandler(async () => {
+      if (revealingRef.current) return false;
       if (pendingReviewRef.current) {
         setErrorMessage("Finish or safely retry the pending rating before leaving this practice session.");
         return false;
@@ -194,6 +207,9 @@ export function PracticeScreen({
   }, [controller]);
 
   function initializeSession(started: PracticeSession): void {
+    previewRequestRef.current += 1;
+    revealingRef.current = false;
+    setIsRevealing(false);
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
     setSession(started);
@@ -256,6 +272,9 @@ export function PracticeScreen({
   const resumeCheckpoint = useCallback(async (checkpoint: PracticeCheckpoint): Promise<void> => {
     if (startingRef.current) return;
     startingRef.current = true;
+    previewRequestRef.current += 1;
+    revealingRef.current = false;
+    setIsRevealing(false);
     pendingStartRef.current = null;
     pendingReviewRef.current = null;
     setPracticeRequest(null);
@@ -311,81 +330,114 @@ export function PracticeScreen({
   }, [completed, isStarting, onCheckpointChange, position, restoreCheckpoint, revealed, session, sessionWindowStart]);
 
   useEffect(() => {
-    if (!session || !current || completed) return;
+    if (!currentSessionId || !currentCardId || completed) return;
+    let currentView = true;
     questionShownAtRef.current = Date.now();
-    void controller.markViewed(session.id, current.presentation.cardId).catch((error: unknown) => {
-      showToast("error", getErrorMessage(error));
+    void controller.markViewed(currentSessionId, currentCardId).catch((error: unknown) => {
+      if (currentView) showToast("error", getErrorMessage(error));
     });
-  }, [completed, controller, current, session, showToast]);
+    return () => { currentView = false; };
+  }, [completed, controller, currentCardId, currentSessionId, showToast]);
 
   async function revealAnswer(): Promise<void> {
-    if (!session || !current || revealed || revealingRef.current) return;
+    if (!session || !current || (revealed && previewSet) || revealingRef.current) return;
     if (pendingReviewRef.current) {
       setErrorMessage("Retry the pending rating before revealing another answer.");
       return;
     }
+    const key = currentKeyRef.current;
+    const request = ++previewRequestRef.current;
     revealingRef.current = true;
     setIsRevealing(true);
     setErrorMessage(null);
     try {
-      setPreviewSet(await controller.reveal(session.id, current.presentation.cardId));
+      const preview = await controller.reveal(session.id, current.presentation.cardId);
+      if (key !== currentKeyRef.current || request !== previewRequestRef.current) return;
+      setPreviewSet(preview);
       setRevealed(true);
     } catch (error: unknown) {
-      setErrorMessage(getErrorMessage(error));
+      if (key === currentKeyRef.current && request === previewRequestRef.current) setErrorMessage(getErrorMessage(error));
     } finally {
-      revealingRef.current = false;
-      setIsRevealing(false);
+      if (request === previewRequestRef.current) {
+        revealingRef.current = false;
+        setIsRevealing(false);
+      }
     }
   }
 
-  function replaceCurrentQuestionAttempt(attempt: QuestionAttemptView): void {
-    setSessionCards((cards) => cards.map((card, index) => {
-      if (index !== position || !isInteractivePracticePresentation(card.presentation)) return card;
-      return {
-        ...card,
-        presentation: {
-          ...card.presentation,
-          question: { ...card.presentation.question, attempt },
-        },
-      };
-    }));
+  function acceptQuestionAttempt(attempt: PracticeAttemptView): void {
+    setSessionCards((cards) => mergeQuestionAttempt(cards, attempt));
   }
 
   async function saveQuestionAnswer(input: SavePracticeAnswerInput): Promise<QuestionAttemptView> {
     const saved = await controller.saveQuestionAnswer(input);
-    replaceCurrentQuestionAttempt(saved);
+    acceptQuestionAttempt(saved);
     return saved;
   }
 
   async function checkQuestionAnswer(input: CheckPracticeAnswerInput): Promise<QuestionAttemptView> {
     const checked = await controller.checkQuestionAnswer(input);
-    replaceCurrentQuestionAttempt(checked);
+    acceptQuestionAttempt(checked);
     return checked;
   }
 
-  async function finishQuestionCheck(attempt: QuestionAttemptView): Promise<void> {
-    if (!session || !current || !isInteractivePracticePresentation(current.presentation)) return;
-    replaceCurrentQuestionAttempt(attempt);
+  async function revealQuestionAnswer(input: RevealPracticeQuestionInput): Promise<ImageOcclusionAttemptView> {
+    const key = `${input.target.sessionId}:${input.target.cardId}`;
+    if (key !== currentKeyRef.current) throw new Error("The active question changed. Reload its saved state.");
+    if (revealingRef.current || pendingReviewRef.current) throw new Error("Finish the pending review operation first.");
+    const request = ++previewRequestRef.current;
+    revealingRef.current = true;
+    setIsRevealing(true);
+    try {
+      return await controller.revealQuestionAnswer(input);
+    } finally {
+      if (currentKeyRef.current === key && previewRequestRef.current === request) {
+        revealingRef.current = false;
+        setIsRevealing(false);
+      }
+    }
+  }
+
+  async function finishQuestionExposure(attempt: PracticeAttemptView): Promise<void> {
+    const activeAttempt = currentAttemptRef.current;
+    if (!session || !current || !activeAttempt || !isInteractivePracticePresentation(current.presentation)
+      || attempt.progress.phase === "answering"
+      || attempt.instanceId !== activeAttempt.instanceId
+      || attempt.question.kind !== activeAttempt.question.kind
+      || attempt.revision < activeAttempt.revision) return;
+    acceptQuestionAttempt(attempt);
+    const key = currentKeyRef.current;
+    const request = ++previewRequestRef.current;
     setErrorMessage(null);
-    const preview = await controller.reveal(session.id, current.presentation.cardId);
-    setPreviewSet(preview);
     setRevealed(true);
+    setPreviewSet(null);
+    revealingRef.current = true;
+    setIsRevealing(true);
+    try {
+      const preview = await controller.reveal(session.id, current.presentation.cardId);
+      if (key !== currentKeyRef.current || request !== previewRequestRef.current) return;
+      setPreviewSet(preview);
+    } catch (error: unknown) {
+      if (key === currentKeyRef.current && request === previewRequestRef.current) {
+        setErrorMessage(`Your answer was saved, but its review intervals could not refresh: ${getErrorMessage(error)}`);
+      }
+    } finally {
+      if (request === previewRequestRef.current) {
+        revealingRef.current = false;
+        setIsRevealing(false);
+      }
+    }
     try {
       const refreshed = await controller.question({
         sessionId: session.id,
         cardId: current.presentation.cardId,
         instanceId: attempt.instanceId,
       });
-      if (!refreshed) return;
-      setSessionCards((cards) => cards.map((card, index) => {
-        if (index !== position || !isInteractivePracticePresentation(card.presentation)) return card;
-        return {
-          ...card,
-          presentation: { ...card.presentation, question: refreshed },
-        };
-      }));
+      if (refreshed) setSessionCards((cards) => mergePracticeQuestion(cards, refreshed));
     } catch (error: unknown) {
-      setErrorMessage(`Your answer was checked and saved, but its feedback media could not refresh: ${getErrorMessage(error)}`);
+      if (key === currentKeyRef.current && request === previewRequestRef.current) {
+        setErrorMessage(`Your answer was saved, but its feedback media could not refresh: ${getErrorMessage(error)}`);
+      }
     }
   }
 
@@ -395,8 +447,8 @@ export function PracticeScreen({
       ? current.presentation
       : null;
     const progress = interactivePresentation?.question.attempt.progress ?? null;
-    if (interactivePresentation && progress?.phase !== "checked") {
-      setErrorMessage("Check the answer before choosing its difficulty.");
+    if (interactivePresentation && (!progress || progress.phase === "answering")) {
+      setErrorMessage("Check or reveal the answer before choosing its difficulty.");
       return;
     }
     const pending = pendingReviewRef.current;
@@ -406,7 +458,7 @@ export function PracticeScreen({
       setErrorMessage(`The result of rating ${pending.score} is still unknown. Choose ${pending.score} again to safely retry that exact review.`);
       return;
     }
-    const responseTimeMs = progress?.phase === "checked"
+    const responseTimeMs = progress && progress.phase !== "answering"
       ? progress.responseTimeMs
       : Math.max(0, Math.min(86_400_000, Date.now() - questionShownAtRef.current));
     const input: SubmitReviewInput = pending?.input ?? {
@@ -476,7 +528,7 @@ export function PracticeScreen({
   }
 
   async function editCurrentCard(): Promise<void> {
-    if (!session || !current || isLoadingEditor || pendingReviewRef.current) return;
+    if (!session || !current || isLoadingEditor || revealingRef.current || pendingReviewRef.current) return;
     setIsLoadingEditor(true);
     setErrorMessage(null);
     try {
@@ -504,12 +556,16 @@ export function PracticeScreen({
     setPosition(0);
     setSessionCards(refreshed.window.cards);
     const first = refreshed.window.cards[0];
-    const firstChecked = first && isInteractivePracticePresentation(first.presentation)
-      && first.presentation.question.attempt.progress.phase === "checked";
-    setRevealed(Boolean(firstChecked));
-    setPreviewSet(firstChecked && first
-      ? await controller.reveal(session.id, first.presentation.cardId)
-      : null);
+    const firstExposed = first && isInteractivePracticePresentation(first.presentation)
+      && first.presentation.question.attempt.progress.phase !== "answering";
+    setRevealed(Boolean(firstExposed));
+    setPreviewSet(null);
+    if (firstExposed && first && !refreshed.completed) {
+      try { setPreviewSet(await controller.reveal(session.id, first.presentation.cardId)); }
+      catch (error: unknown) {
+        setErrorMessage(`The card was saved and its captured answer preserved, but review intervals could not refresh: ${getErrorMessage(error)}`);
+      }
+    }
     questionShownAtRef.current = Date.now();
     if (refreshed.completed) {
       setCompleted(true);
@@ -519,7 +575,7 @@ export function PracticeScreen({
   }
 
   async function manageCurrent(action: ScheduleAction, rescheduleIntent?: RescheduleIntent): Promise<void> {
-    if (!session || !current || managingRef.current) return;
+    if (!session || !current || managingRef.current || revealingRef.current) return;
     if (pendingReviewRef.current) {
       setErrorMessage("Retry the pending rating before changing this card's schedule.");
       return;
@@ -587,7 +643,7 @@ export function PracticeScreen({
   }
 
   async function endSession(): Promise<void> {
-    if (!session || endingRef.current) return;
+    if (!session || endingRef.current || revealingRef.current) return;
     if (pendingReviewRef.current) {
       setErrorMessage("Retry the pending rating before ending this session.");
       return;
@@ -634,14 +690,14 @@ export function PracticeScreen({
   if (session && current) return <PerformanceProfiler id="active-practice">
     <ActivePractice session={session} current={current} position={sessionWindowStart + position} revealed={revealed}
       ratedCount={ratedCount} previewSet={previewSet} isRevealing={isRevealing} isRating={isRating} isEnding={isEnding}
-      isManaging={isManaging || isLoadingWindow || isLoadingEditor}
+      isManaging={isStarting || isManaging || isLoadingWindow || isLoadingEditor}
       flipAnimationEnabled={settings.animationsEnabled && !settings.reduceMotion}
       displayQuestionOnAnswer={settings.displayQuestionOnAnswer ?? false} errorMessage={errorMessage}
       onReveal={() => void revealAnswer()} onScore={(score) => void submitScore(score)} onEdit={() => void editCurrentCard()}
       onScheduleAction={(action, intent) => void manageCurrent(action, intent)} onEnd={() => void endSession()}
       onLinkError={setErrorMessage} onSaveQuestionAnswer={saveQuestionAnswer}
-      onCheckQuestionAnswer={checkQuestionAnswer} onQuestionAttempt={replaceCurrentQuestionAttempt}
-      onQuestionChecked={finishQuestionCheck} />
+      onCheckQuestionAnswer={checkQuestionAnswer} onRevealQuestionAnswer={revealQuestionAnswer} onQuestionAttempt={acceptQuestionAttempt}
+      onQuestionChecked={finishQuestionExposure} />
   </PerformanceProfiler>;
 
   if (isStarting && !session) {

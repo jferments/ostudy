@@ -42,13 +42,9 @@ pub(crate) fn prepare(
         QuestionBody::Ordering { items, .. } => {
             order.item_ids = items.iter().map(|item| item.id.clone()).collect();
         }
-        QuestionBody::TrueFalse { .. } => {}
-        QuestionBody::ImageOcclusion { .. } => {
-            return Err(CommandError::new(
-                "question_image_not_prepared",
-                "Prepare a managed masked image before studying this question.",
-            ));
-        }
+        // Image geometry/target identity is frozen here; raster bytes are
+        // prepared lazily by the session-authorized image route.
+        QuestionBody::TrueFalse { .. } | QuestionBody::ImageOcclusion { .. } => {}
     }
     shuffle(&mut order.item_ids, shuffle_seed, b"items");
     shuffle(&mut order.target_ids, shuffle_seed, b"targets");

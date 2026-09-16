@@ -1,4 +1,4 @@
-//! Transactional save/check/recovery for an already captured Practice question.
+//! Transactional save/check/reveal/recovery for an already captured Practice question.
 //!
 //! The session capture owner inserts the private snapshot and retained assets.
 //! This boundary never rebuilds an attempt from a subsequently edited note, and
@@ -20,6 +20,7 @@ use crate::{
 };
 
 pub(crate) mod capture;
+pub(crate) mod occlusion;
 pub(crate) mod remediation;
 pub(crate) mod review;
 mod storage;
@@ -144,23 +145,33 @@ pub(crate) fn check(
     if attempt.revision() != stored.attempt.revision() {
         stored.require_mutable()?;
         storage::persist(&transaction, &stored, &attempt, now)?;
-        let changed = transaction
-            .execute(
-                "UPDATE practice_session_cards
-                 SET viewed_at = COALESCE(viewed_at, ?1),
-                     revealed_at = COALESCE(revealed_at, ?1)
-                 WHERE session_id = ?2 AND card_id = ?3
-                   AND rated_at IS NULL AND dismissed_at IS NULL",
-                params![now, input.target.session_id, input.target.card_id],
-            )
-            .map_err(CommandError::database)?;
-        if changed != 1 {
-            return Err(conflict());
-        }
-        super::refresh_session_counters(&transaction, &input.target.session_id, now)?;
+        mark_question_exposed(&transaction, &input.target, now)?;
     }
     transaction.commit().map_err(CommandError::database)?;
     Ok(view)
+}
+
+/// Both an objective check and a self-assessed reveal expose an answer exactly
+/// once. The caller owns the same Immediate transaction as its attempt receipt.
+fn mark_question_exposed(
+    connection: &Connection,
+    target: &AttemptIdentityInput,
+    now: i64,
+) -> Result<(), CommandError> {
+    let changed = connection
+        .execute(
+            "UPDATE practice_session_cards
+             SET viewed_at = COALESCE(viewed_at, ?1),
+                 revealed_at = COALESCE(revealed_at, ?1)
+             WHERE session_id = ?2 AND card_id = ?3
+               AND rated_at IS NULL AND dismissed_at IS NULL",
+            params![now, target.session_id, target.card_id],
+        )
+        .map_err(CommandError::database)?;
+    if changed != 1 {
+        return Err(conflict());
+    }
+    super::refresh_session_counters(connection, &target.session_id, now)
 }
 
 fn validate_target(input: &AttemptIdentityInput) -> Result<(), CommandError> {

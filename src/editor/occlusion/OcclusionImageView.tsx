@@ -1,8 +1,9 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import type { NormalizedRect } from "../../ipc/questions";
 import { Button } from "../../ui/primitives/Button";
-import { toScreenPoint, type Size } from "./geometry";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { toScreenPoint, type ImageViewport, type Size } from "./geometry";
 import { useOcclusionWorkspace } from "./useOcclusionWorkspace";
 
 interface OcclusionImageViewProps {
@@ -11,16 +12,19 @@ interface OcclusionImageViewProps {
   imageSize: Size;
   targets: readonly NormalizedRect[];
   label: string;
+  initialViewport?: ImageViewport;
+  onViewportChange?: (viewport: ImageViewport) => void;
 }
 const noSelection = () => undefined;
 
 /** A navigation-only view. Practice supplies raster bytes from its authorized native
  * renderer, never a source-asset URL with overlay-only masking.
  */
-export function OcclusionImageView({ imageUrl, imageKey, imageSize, targets, label }: OcclusionImageViewProps) {
+export function OcclusionImageView({ imageUrl, imageKey, imageSize, targets, label, initialViewport, onViewportChange }: OcclusionImageViewProps) {
   const helpId = useId();
+  const [selectedTarget, setSelectedTarget] = useState(0);
   const viewport = useOcclusionWorkspace({
-    imageKey, imageSize, masks: [], selectedMaskId: null, navigationOnly: true,
+    imageKey, imageSize, masks: [], selectedMaskId: null, navigationOnly: true, initialViewport, onViewportChange,
     onSelect: noSelection, onMutation: noSelection, onDelete: noSelection,
     onUndo: noSelection, onRedo: noSelection,
   });
@@ -31,7 +35,11 @@ export function OcclusionImageView({ imageUrl, imageKey, imageSize, targets, lab
         <Button disabled={viewport.viewport.zoom <= 1} onClick={() => viewport.zoom(1 / 1.5)}>Zoom out</Button>
         <Button disabled={viewport.viewport.zoom >= 32} onClick={() => viewport.zoom(1.5)}>Zoom in</Button>
         <Button onClick={viewport.fit}>Fit image</Button>
-        {targets.length === 1 ? <Button onClick={() => viewport.focusRegion(targets[0])}>Zoom to target</Button> : null}
+        {targets.length > 1 ? <NativeSelect aria-label="Target to enlarge" value={String(selectedTarget)}
+          className="tw:w-auto tw:min-w-32" onChange={(event) => setSelectedTarget(Number(event.currentTarget.value))}>
+          {targets.map((_, index) => <option key={index} value={String(index)}>Target {index + 1}</option>)}
+        </NativeSelect> : null}
+        {targets.length > 0 ? <Button onClick={() => viewport.focusRegion(targets[selectedTarget] ?? targets[0])}>Zoom to target</Button> : null}
         <span className="tw:text-sm tw:text-muted-foreground">{Math.round(viewport.viewport.zoom * 100)}% of Fit</span>
       </div>
       <p id={helpId} className="tw:text-sm tw:text-muted-foreground">
@@ -40,7 +48,7 @@ export function OcclusionImageView({ imageUrl, imageKey, imageSize, targets, lab
       </p>
       <div className="tw:h-[min(65dvh,36rem)] tw:min-h-56 tw:overflow-hidden tw:rounded-lg tw:border tw:border-solid tw:border-border tw:bg-muted">
         <svg ref={viewport.svgRef} viewBox={`0 0 ${frame.width} ${frame.height}`}
-          role="group" tabIndex={0} aria-label={label} aria-describedby={helpId}
+          data-occlusion-viewport="true" role="group" tabIndex={0} aria-label={label} aria-describedby={helpId}
           className="tw:block tw:h-full tw:w-full tw:touch-none tw:select-none tw:focus-visible:outline-2 tw:focus-visible:outline-primary"
           onPointerDown={viewport.pointerDown} onPointerMove={viewport.pointerMove} onPointerUp={viewport.pointerUp}
           onPointerCancel={viewport.pointerCancel} onLostPointerCapture={viewport.pointerCancel} onKeyDown={viewport.keyDown}>

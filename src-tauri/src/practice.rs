@@ -436,7 +436,7 @@ fn insert_review_event(
     transition: &ScheduleTransition,
     result: &ReviewResultDto,
     created_at: i64,
-    objective_correct: Option<bool>,
+    recorded_correct: Option<bool>,
 ) -> Result<String, CommandError> {
     let event_id = generate_id(connection)?;
     connection
@@ -463,7 +463,7 @@ fn insert_review_event(
                 transition.reviewed_at,
                 transition.outcome.rating_number(),
                 bool_to_integer(
-                    objective_correct.unwrap_or_else(|| transition.outcome.answer_correct())
+                    recorded_correct.unwrap_or_else(|| transition.outcome.answer_correct())
                 ),
                 transition.outcome.as_str(),
                 input.response_time_ms,
@@ -567,6 +567,8 @@ pub(crate) fn refresh_session_counters(
                        ON qa.session_id = p.session_id AND qa.card_id = p.card_id
                      WHERE p.session_id = ?1 AND p.rated_at IS NOT NULL
                        AND ((qa.instance_id IS NULL AND p.rating BETWEEN 2 AND 4)
+                            OR (qa.question_kind = 'image_occlusion'
+                                AND qa.phase = 'revealed' AND p.rating BETWEEN 2 AND 4)
                             OR qa.verdict = 'correct')
                  ),
                  completed_at = CASE

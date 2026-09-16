@@ -14,6 +14,8 @@ export interface OcclusionWorkspaceOptions {
   selectedMaskId: string | null;
   disabled?: boolean;
   navigationOnly?: boolean;
+  initialViewport?: ImageViewport;
+  onViewportChange?: (viewport: ImageViewport) => void;
   onSelect: (id: string | null) => void;
   onMutation: (mutation: RegionMutation) => void;
   onDelete: (id: string) => void;
@@ -29,7 +31,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   const captures = useRef(new Set<number>());
   const [frame, setFrame] = useState<Size>({ width: 1, height: 1 });
   const frameRef = useRef(frame);
-  const [viewport, setViewport] = useState<ImageViewport>(FIT_VIEWPORT);
+  const [viewport, setViewport] = useState<ImageViewport>(options.initialViewport ?? FIT_VIEWPORT);
   const viewportRef = useRef(viewport);
   const [tool, setToolState] = useState<OcclusionTool>(options.navigationOnly ? "pan" : "select");
   const [interaction, setInteraction] = useState<GestureResult>(gestures.snapshot());
@@ -49,6 +51,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   function changeViewport(next: ImageViewport): void {
     viewportRef.current = next;
     setViewport(next);
+    latest.current.onViewportChange?.(next);
   }
   function accept(result: GestureResult): void {
     setInteraction(result);
@@ -89,7 +92,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   }, [gestures]);
 
   useEffect(() => {
-    changeViewport(FIT_VIEWPORT);
+    changeViewport(latest.current.initialViewport ?? FIT_VIEWPORT);
     setToolState(latest.current.navigationOnly ? "pan" : "select");
     setInteraction(gestures.cancel());
     setStatus("");
@@ -194,7 +197,10 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   function keyDown(event: KeyboardEvent<SVGSVGElement>): void {
     if (latest.current.disabled || event.nativeEvent.isComposing || event.altKey) return;
     const key = event.key.toLowerCase();
-    if (key === "escape") { event.preventDefault(); cancel(); return; }
+    if (key === "escape") {
+      if (!latest.current.navigationOnly || gestures.isActive()) { event.preventDefault(); cancel(); }
+      return;
+    }
     if (event.ctrlKey || event.metaKey) {
       if (key === "z" && !latest.current.navigationOnly) {
         event.preventDefault(); cancel();
