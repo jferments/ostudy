@@ -9,7 +9,6 @@ pub(crate) mod math;
 pub mod questions;
 mod rich_content;
 
-pub use content::CardPresentationDto;
 pub(crate) use rich_content::{
     collect_asset_ids, validate_content, validate_document, ValidatedContent,
 };

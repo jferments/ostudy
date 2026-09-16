@@ -9,10 +9,9 @@ use std::collections::BTreeSet;
 
 #[cfg(test)]
 use rusqlite::params;
-use serde::Serialize;
 use serde_json::Value;
 
-use crate::{assets::AssetDto, error::CommandError, util::validate_entity_id};
+use crate::{error::CommandError, util::validate_entity_id};
 
 #[cfg(test)]
 use crate::{database::Database, util::unix_time_millis};
@@ -21,25 +20,6 @@ const MAX_DOCUMENT_BYTES: usize = 1_000_000;
 const MAX_PLAIN_TEXT_CHARS: usize = 200_000;
 const MAX_DOCUMENT_DEPTH: usize = 128;
 const MAX_RICH_SCHEMA_VERSION: i64 = 2;
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CardPresentationDto {
-    #[serde(rename = "cardId")]
-    pub id: String,
-    pub note_id: String,
-    pub deck_id: String,
-    pub direction: String,
-    pub front_doc: Value,
-    pub back_doc: Value,
-    pub front_text: String,
-    pub back_text: String,
-    pub assets: Vec<AssetDto>,
-    pub created_at: i64,
-    pub updated_at: i64,
-    #[serde(rename = "noteRevision")]
-    pub revision: i64,
-}
 
 pub(crate) struct ValidatedContent {
     pub(crate) front_doc_json: String,
@@ -1177,7 +1157,7 @@ mod tests {
                         "type": "taskItem",
                         "attrs": {"checked": true, "itemId": null},
                         "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Review"}]}]
-                    }]
+                    ]
                 }
             ]
         });

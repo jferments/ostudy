@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "card_search_projection.rs"]
 mod card_search_projection;
+#[cfg(test)]
+pub(super) use card_search_projection::search_cards_in_connection as search_cards_in_connection_for_tests;
 #[path = "interactive/mod.rs"]
 pub(crate) mod interactive;
 
