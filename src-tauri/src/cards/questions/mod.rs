@@ -4,6 +4,7 @@
 
 mod attempt;
 mod evaluation;
+mod metadata;
 mod model;
 mod projection;
 mod snapshot;
@@ -13,6 +14,7 @@ pub use crate::error::CommandError as QuestionError;
 pub use attempt::{
     AttemptProgress, AttemptView, CheckAnswerRequest, QuestionAttempt, SaveAnswerRequest,
 };
+pub use metadata::QuestionSearchText;
 pub use model::*;
 pub use projection::OcclusionMaskPlan;
 pub use snapshot::{InstanceIdentity, QuestionInstance};

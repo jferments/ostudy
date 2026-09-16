@@ -24,6 +24,30 @@ No approval prompt does not mean no write access. A missing loaded action does n
 
 At the first intended mutation, invoke that real operation and let the Connector handle authorization. Do not create a throwaway access-test commit or ask for broader permissions without a concrete rejection.
 
+## Do not confuse the reader with the writer
+
+The `fetch` action accepts GET requests only. That describes **one action**, not
+the Connector's repository permissions. Source publication uses `create_blob`,
+`create_tree`, `create_commit` and non-force `update_ref`; PR metadata uses
+`update_pull_request`. Load each required action once, retain its exact schema,
+and call the actual implementation operation. Never attempt a write through
+`fetch` and then diagnose the whole connection as read-only.
+
+Keep the active parent/tree and acknowledged path/blob manifest through a repair
+or interruption. A previously successful publication is evidence of write
+capability, not proof that the next operation succeeded. Conversely, a missing
+loaded schema, truncated read, formatter failure or stale PR body is not evidence
+that write authorization disappeared. Classify only a concrete action result.
+
+On resumption compare the PR body's `headSha` with the actual remote head before
+using its failure or acceptance claims. When they differ, current source and its
+exact-head runs take precedence. Reconcile the stale snapshot rather than replay
+a repaired failure. Do not restart capability discovery or repository inventory
+after this comparison; proceed from the known next implementation boundary.
+
+These checks prevent specific routing and stale-state errors. They do not prove
+that platform-level interrupted responses have been fixed.
+
 ## Publication evidence
 
 Read the exact current head, prepare complete source files from that ref, create blobs and a parent-based tree, create a commit naming the expected parent, re-check the remote ref, update without force, and re-read the resulting head. See the canonical protocol for details, deletions, and drift handling.

@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "interactive/mod.rs"]
+pub(crate) mod interactive;
+
 #[tauri::command]
 pub fn list_tags(
     database: State<'_, Database>,

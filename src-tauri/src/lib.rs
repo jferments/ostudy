@@ -212,6 +212,8 @@ pub fn run() {
             authoring::card_commands::search_cards,
             authoring::card_commands::list_matching_cards,
             authoring::card_commands::get_card_note,
+            authoring::card_commands::interactive::save_question_note,
+            authoring::card_commands::interactive::get_question_note,
             authoring::card_commands::find_duplicate_cards,
             authoring::card_commands::analyze_bulk_cards,
             authoring::card_commands::bulk_create_cards,
