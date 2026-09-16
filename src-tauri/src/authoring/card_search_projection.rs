@@ -75,10 +75,16 @@ pub(super) fn search_cards_in_connection(
                 let definition_json: Option<String> = row.get(22)?;
                 let presentation_key: Option<String> = row.get(23)?;
                 let definition_json = definition_json.ok_or_else(|| {
-                    projection_error(22, "An interactive question is missing its canonical definition.")
+                    projection_error(
+                        22,
+                        "An interactive question is missing its canonical definition.",
+                    )
                 })?;
                 let presentation_key = presentation_key.ok_or_else(|| {
-                    projection_error(23, "An interactive question is missing its presentation identity.")
+                    projection_error(
+                        23,
+                        "An interactive question is missing its presentation identity.",
+                    )
                 })?;
                 let question = ValidatedQuestion::parse(&definition_json)
                     .map_err(|error| projection_error(22, &error.message))?;
@@ -175,10 +181,12 @@ mod tests {
         let database = Database::open_in_memory().unwrap();
         database
             .with_connection(|connection| {
-                connection.execute(
-                    "INSERT INTO decks (id, name, created_at, updated_at) VALUES (?1, 'Questions', 1, 1)",
-                    [id(1)],
-                ).map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO decks (id, name, created_at, updated_at) VALUES (?1, 'Questions', 1, 1)",
+                        [id(1)],
+                    )
+                    .map_err(CommandError::database)?;
                 let definition = json!({
                     "schemaVersion":1,
                     "question":{
@@ -192,36 +200,51 @@ mod tests {
                         "explanation":null
                     }
                 });
-                connection.execute(
-                    "INSERT INTO notes (
+                connection
+                    .execute(
+                        "INSERT INTO notes (
                         id, deck_id, note_type, content_format, content_schema_version,
                         question_definition, front_text, back_text, duplicate_hash,
                         created_at, updated_at, revision
                      ) VALUES (?1, ?2, 'interactive', 'question-json', 1, ?3, ?4, ?5, '', 1, 1, 1)",
-                    params![id(2), id(1), definition.to_string(), "Which ion is extracellular?", "Sodium"],
-                ).map_err(CommandError::database)?;
-                connection.execute(
-                    "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
+                        params![
+                            id(2),
+                            id(1),
+                            definition.to_string(),
+                            "Which ion is extracellular?",
+                            "Sodium"
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO cards (id, note_id, deck_id, direction, template_ordinal, created_at, updated_at)
                      VALUES (?1, ?2, ?3, 'forward', 0, 1, 1)",
-                    params![id(3), id(2), id(1)],
-                ).map_err(CommandError::database)?;
+                        params![id(3), id(2), id(1)],
+                    )
+                    .map_err(CommandError::database)?;
                 insert_new_schedule(connection, &id(3), 1)?;
-                connection.execute(
-                    "INSERT INTO card_question_presentations (card_id, note_id, question_key)
+                connection
+                    .execute(
+                        "INSERT INTO card_question_presentations (card_id, note_id, question_key)
                      VALUES (?1, ?2, 'main')",
-                    params![id(3), id(2)],
-                ).map_err(CommandError::database)?;
-                let page = search_cards_in_connection(connection, SearchCardsInput {
-                    deck_ids: vec![id(1)],
-                    query: String::new(),
-                    tag_ids: vec![],
-                    availability_filter: "all".to_string(),
-                    status_filter: "active".to_string(),
-                    reviewed_filter: "all".to_string(),
-                    sort: "updated_desc".to_string(),
-                    limit: 20,
-                    offset: 0,
-                })?;
+                        params![id(3), id(2)],
+                    )
+                    .map_err(CommandError::database)?;
+                let page = search_cards_in_connection(
+                    connection,
+                    SearchCardsInput {
+                        deck_ids: vec![id(1)],
+                        query: String::new(),
+                        tag_ids: vec![],
+                        availability_filter: "all".to_string(),
+                        status_filter: "active".to_string(),
+                        reviewed_filter: "all".to_string(),
+                        sort: "updated_desc".to_string(),
+                        limit: 20,
+                        offset: 0,
+                    },
+                )?;
                 assert_eq!(page.total_count, 1);
                 assert_eq!(page.cards[0].card_type, "single_choice");
                 assert_eq!(page.cards[0].card_label, "Single-best-answer");
