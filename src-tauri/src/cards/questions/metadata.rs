@@ -306,7 +306,13 @@ fn rich_text(document: &Value) -> String {
         }
         if matches!(
             kind,
-            "paragraph" | "heading" | "listItem" | "taskItem" | "tableCell" | "tableHeader" | "codeBlock"
+            "paragraph"
+                | "heading"
+                | "listItem"
+                | "taskItem"
+                | "tableCell"
+                | "tableHeader"
+                | "codeBlock"
         ) {
             output.push(' ');
         }

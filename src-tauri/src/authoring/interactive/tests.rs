@@ -59,7 +59,9 @@ impl Fixture {
         self.database
             .with_connection(|connection| {
                 connection
-                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                        row.get(0)
+                    })
                     .map_err(CommandError::database)
             })
             .unwrap()
