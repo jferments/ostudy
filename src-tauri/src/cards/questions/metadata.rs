@@ -41,6 +41,28 @@ pub struct QuestionSearchText {
 }
 
 impl ValidatedQuestion {
+    /// Study metadata contains only the stem, not ordered answers, pairs,
+    /// rationales or other targets from the author's private search projection.
+    pub fn prompt_text(&self, presentation_key: &str) -> Result<String, QuestionError> {
+        if !self.presentation_keys().iter().any(|key| key == presentation_key) {
+            return Err(invalid("The question presentation does not exist."));
+        }
+        let stem = match &self.definition().question {
+            QuestionBody::SingleChoice { prompt, .. }
+            | QuestionBody::SelectAll { prompt, .. }
+            | QuestionBody::Matching { prompt, .. }
+            | QuestionBody::Grouping { prompt, .. }
+            | QuestionBody::Ordering { prompt, .. } => prompt,
+            QuestionBody::TrueFalse { statement, .. } => statement,
+            QuestionBody::ImageOcclusion { questions, .. } => &questions
+                .iter()
+                .find(|question| question.id == presentation_key)
+                .ok_or_else(|| invalid("The image-occlusion target does not exist."))?
+                .prompt,
+        };
+        bounded_join(vec![rich_text(stem)])
+    }
+
     /// Includes private fields for authoring search. Never expose this as a hint.
     pub fn search_text(&self) -> Result<QuestionSearchText, QuestionError> {
         let mut prompt = Vec::new();

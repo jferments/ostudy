@@ -1,13 +1,16 @@
 //! Practice-session events and atomic FSRS review submission.
 
 pub(crate) mod question_attempts;
+pub(crate) mod presentation;
+
+use presentation::PracticePresentationDto;
+use question_attempts::QuestionReviewContext;
 
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    cards::CardPresentationDto,
     database::Database,
     error::CommandError,
     projections::practice as practice_projection,
@@ -26,7 +29,7 @@ type PracticeSessionState = (Option<i64>, Option<i64>, Option<i64>, Option<i64>)
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeCardDto {
-    pub presentation: CardPresentationDto,
+    pub presentation: PracticePresentationDto,
     pub deck_name: String,
     pub due_at: i64,
     pub schedule_state: i64,
@@ -178,6 +181,9 @@ pub(crate) fn record_practice_event(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(CommandError::database)?;
+    if revealed {
+        question_attempts::require_checked_for_reveal(&transaction, session_id, card_id)?;
+    }
     let sql = if revealed {
         "UPDATE practice_session_cards
          SET viewed_at = COALESCE(viewed_at, ?1), revealed_at = COALESCE(revealed_at, ?1)
@@ -239,8 +245,24 @@ pub(crate) fn submit_review_in_connection(
     connection: &mut Connection,
     input: SubmitReviewInput,
 ) -> Result<ReviewResultDto, CommandError> {
+    submit_review_with_question(connection, input, None)
+}
+
+pub(crate) fn submit_review_with_question(
+    connection: &mut Connection,
+    input: SubmitReviewInput,
+    question: Option<QuestionReviewContext>,
+) -> Result<ReviewResultDto, CommandError> {
+    validate_review_input(&input)?;
     let outcome = ReviewOutcome::parse(&input.outcome)?;
-    let request_fingerprint = review_request_fingerprint(&input)?;
+    let request_fingerprint = match &question {
+        Some(context) => format!(
+            "question-review:v1:{}",
+            serde_json::to_string(&(review_request_fingerprint(&input)?, context))
+                .map_err(CommandError::serialization)?
+        ),
+        None => review_request_fingerprint(&input)?,
+    };
     let time = StudyTimeContext::capture()?;
     let desired_retention = load_settings(connection)?.desired_retention;
     let transaction = connection
@@ -295,6 +317,9 @@ pub(crate) fn submit_review_in_connection(
         ));
     }
 
+    let question_evidence = question_attempts::authorize_review(
+        &transaction, &input, question.as_ref(),
+    )?;
     let current = load_schedule(&transaction, &input.card_id)?;
     if current.revision != input.schedule_revision {
         return Err(CommandError::new(
@@ -353,7 +378,11 @@ pub(crate) fn submit_review_in_connection(
         &transition,
         &result,
         time.now_utc_millis,
+        question_evidence.as_ref().map(|evidence| evidence.correct),
     )?;
+    if let Some(evidence) = &question_evidence {
+        evidence.link(&transaction, &event_id)?;
+    }
     practice_projection::insert_review_attribution(
         &transaction,
         &event_id,
@@ -408,6 +437,7 @@ fn insert_review_event(
     transition: &ScheduleTransition,
     result: &ReviewResultDto,
     created_at: i64,
+    objective_correct: Option<bool>,
 ) -> Result<String, CommandError> {
     let event_id = generate_id(connection)?;
     connection
@@ -433,7 +463,7 @@ fn insert_review_event(
                 input.card_id,
                 transition.reviewed_at,
                 transition.outcome.rating_number(),
-                bool_to_integer(transition.outcome.answer_correct()),
+                bool_to_integer(objective_correct.unwrap_or_else(|| transition.outcome.answer_correct())),
                 transition.outcome.as_str(),
                 input.response_time_ms,
                 transition.before.state,
@@ -531,8 +561,12 @@ pub(crate) fn refresh_session_counters(
                      WHERE session_id = ?1 AND rated_at IS NOT NULL
                  ),
                  correct_count = (
-                     SELECT COUNT(*) FROM practice_session_cards
-                     WHERE session_id = ?1 AND rating BETWEEN 2 AND 4
+                     SELECT COUNT(*) FROM practice_session_cards p
+                     LEFT JOIN question_attempts qa
+                       ON qa.session_id = p.session_id AND qa.card_id = p.card_id
+                     WHERE p.session_id = ?1 AND p.rated_at IS NOT NULL
+                       AND ((qa.instance_id IS NULL AND p.rating BETWEEN 2 AND 4)
+                            OR qa.verdict = 'correct')
                  ),
                  completed_at = CASE
                      WHEN (SELECT COUNT(*) FROM practice_session_cards

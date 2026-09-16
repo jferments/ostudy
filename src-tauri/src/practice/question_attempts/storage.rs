@@ -13,6 +13,16 @@ pub(super) struct StoredAttempt {
 }
 
 impl StoredAttempt {
+    pub fn require_available(&self) -> Result<(), CommandError> {
+        if self.material_unavailable {
+            return Err(CommandError::new(
+                "practice_question_unavailable",
+                "This question is no longer available for practice.",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn require_mutable(&self) -> Result<(), CommandError> {
         if self.rated_at.is_some()
             || self.dismissed_at.is_some()

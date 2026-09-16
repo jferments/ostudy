@@ -340,6 +340,8 @@ pub fn run() {
             practice::question_attempts::get_practice_question_attempt,
             practice::question_attempts::save_practice_question_answer,
             practice::question_attempts::check_practice_question_answer,
+            practice::question_attempts::review::submit_practice_question_review,
+            practice::question_attempts::remediation::remediate_practice_question,
             practice::mark_practice_card_viewed,
             practice::mark_practice_card_revealed,
             practice::submit_practice_review,

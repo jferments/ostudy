@@ -63,7 +63,7 @@ impl Fixture {
     }
 }
 
-fn populate(
+pub(super) fn populate(
     connection: &Connection,
     target: &AttemptIdentityInput,
     with_explanation_image: bool,
@@ -179,15 +179,15 @@ fn populate(
     Ok(())
 }
 
-fn id(value: u32) -> String {
+pub(super) fn id(value: u32) -> String {
     format!("{value:032x}")
 }
 
-fn rich(text: &str) -> Value {
+pub(super) fn rich(text: &str) -> Value {
     json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":text}]}]})
 }
 
-fn definition(correct: bool, image: bool) -> Value {
+pub(super) fn definition(correct: bool, image: bool) -> Value {
     let explanation = if image {
         json!({"type":"doc","content":[{"type":"image","attrs":{
             "assetId":id(8),"src":format!("study-asset://{}",id(8))}}]})

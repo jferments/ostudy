@@ -19,7 +19,14 @@ use crate::{
     util::{unix_time_millis, validate_entity_id},
 };
 
+pub(crate) mod capture;
+pub(crate) mod remediation;
+pub(crate) mod review;
 mod storage;
+
+pub(crate) use review::{authorize_review, require_checked_for_reveal, QuestionReviewContext};
+#[cfg(test)]
+mod integration_tests;
 #[cfg(test)]
 mod tests;
 
@@ -45,7 +52,7 @@ pub struct CheckPracticeAnswerInput {
     pub request: CheckAnswerRequest,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PracticeQuestionDto {
     pub attempt: AttemptView,
@@ -79,7 +86,7 @@ pub fn check_practice_question_answer(
     database.with_connection(|connection| check(connection, input))
 }
 
-fn read(
+pub(crate) fn read(
     connection: &Connection,
     target: &AttemptIdentityInput,
 ) -> Result<PracticeQuestionDto, CommandError> {
@@ -95,7 +102,7 @@ fn read(
     })
 }
 
-fn save(
+pub(crate) fn save(
     connection: &mut Connection,
     input: SavePracticeAnswerInput,
 ) -> Result<AttemptView, CommandError> {
@@ -118,7 +125,7 @@ fn save(
     Ok(view)
 }
 
-fn check(
+pub(crate) fn check(
     connection: &mut Connection,
     input: CheckPracticeAnswerInput,
 ) -> Result<AttemptView, CommandError> {
@@ -187,4 +194,17 @@ fn invalid_storage() -> CommandError {
         "invalid_question_checkpoint",
         "The saved question attempt does not match its captured evidence.",
     )
+}
+
+/// Build a public window entry before commit without consulting current note assets.
+pub(crate) fn captured_view(
+    connection: &Connection,
+    attempt: &QuestionAttempt,
+) -> Result<PracticeQuestionDto, CommandError> {
+    let view = attempt.view()?;
+    let assets = storage::visible_assets(connection, &view.instance_id, &view)?;
+    Ok(PracticeQuestionDto {
+        attempt: view,
+        assets,
+    })
 }

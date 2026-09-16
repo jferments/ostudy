@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Asset } from "./assets";
 import type { RichDocument } from "./common";
 import type { QuestionItem } from "./questions";
+import type { ReviewResult, SubmitReviewInput } from "./practice";
 
 /** Public study data is deliberately distinct from authored definitions/keys. */
 export type PublicQuestion =
@@ -96,4 +97,32 @@ export function savePracticeQuestionAnswer(input: SavePracticeAnswerInput): Prom
 
 export function checkPracticeQuestionAnswer(input: CheckPracticeAnswerInput): Promise<QuestionAttemptView> {
   return invoke<QuestionAttemptView>("check_practice_question_answer", { input });
+}
+
+export interface QuestionReviewContext {
+  instanceId: string;
+  attemptRevision: number;
+  overrideReason: string | null;
+}
+
+export function submitPracticeQuestionReview(input: {
+  review: SubmitReviewInput;
+  question: QuestionReviewContext;
+}): Promise<ReviewResult> {
+  return invoke<ReviewResult>("submit_practice_question_review", { input });
+}
+
+export interface QuestionRemediationReceipt {
+  operationId: string;
+  instanceId: string;
+  evaluation: QuestionEvaluation;
+  createdAt: number;
+}
+
+export function remediatePracticeQuestion(input: {
+  target: QuestionAttemptTarget;
+  operationId: string;
+  answer: LearnerAnswer;
+}): Promise<QuestionRemediationReceipt> {
+  return invoke<QuestionRemediationReceipt>("remediate_practice_question", { input });
 }

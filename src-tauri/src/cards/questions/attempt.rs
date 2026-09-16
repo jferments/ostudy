@@ -60,7 +60,7 @@ struct StoredAttempt {
 
 /// Only this public projection may cross the pre-answer UI boundary. The
 /// private serialized attempt always includes the captured answer key.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttemptView {
     pub instance_id: String,
@@ -100,7 +100,7 @@ impl AttemptView {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(
     tag = "phase",
     rename_all = "snake_case",
@@ -174,7 +174,7 @@ impl QuestionAttempt {
     /// older autosave to overwrite a newer response or an already checked one.
     pub fn save_answer(&mut self, mut request: SaveAnswerRequest) -> Result<i64, QuestionError> {
         validate_entity_id(&request.mutation_id, "answer mutation")?;
-        request.answer = self.valid_answer(request.answer)?;
+        request.answer = self.admit_answer(request.answer)?;
         let AttemptState::Answering { saved } = &self.state else {
             return Err(already_checked());
         };
@@ -216,7 +216,7 @@ impl QuestionAttempt {
         now_ms: i64,
     ) -> Result<AttemptView, QuestionError> {
         validate_entity_id(&request.check_id, "answer check")?;
-        request.answer = self.valid_answer(request.answer)?;
+        request.answer = self.admit_answer(request.answer)?;
         validate_elapsed(request.response_time_ms)?;
         if let AttemptState::Checked { record } = &self.state {
             if record.request.check_id != request.check_id {
@@ -279,7 +279,8 @@ impl QuestionAttempt {
         Ok(attempt)
     }
 
-    fn valid_answer(&self, answer: LearnerAnswer) -> Result<LearnerAnswer, QuestionError> {
+    /// Validate and normalize a response without exposing feedback or changing the first attempt.
+    pub fn admit_answer(&self, answer: LearnerAnswer) -> Result<LearnerAnswer, QuestionError> {
         bounded_size(&answer, MAX_RESPONSE_BYTES)?;
         // Validation does not expose feedback. Duplicate/unknown members fail
         // BEFORE normalization; set ordering is not a new logical answer.
@@ -310,7 +311,7 @@ impl QuestionAttempt {
             }
             AttemptState::Answering { saved: Some(saved) } => {
                 validate_entity_id(&saved.mutation_id, "answer mutation")?;
-                let normalized = self.valid_answer(saved.answer.clone())?;
+                let normalized = self.admit_answer(saved.answer.clone())?;
                 let accepted = next_revision(saved.expected_revision)?;
                 if normalized != saved.answer
                     || accepted > self.revision
@@ -323,7 +324,7 @@ impl QuestionAttempt {
             AttemptState::Checked { record } => {
                 validate_entity_id(&record.request.check_id, "answer check")?;
                 validate_elapsed(record.request.response_time_ms)?;
-                let normalized = self.valid_answer(record.request.answer.clone())?;
+                let normalized = self.admit_answer(record.request.answer.clone())?;
                 let evaluation = self.instance.evaluate(&normalized)?;
                 if normalized != record.request.answer
                     || record.evaluation != evaluation
