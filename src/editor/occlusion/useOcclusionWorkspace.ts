@@ -13,6 +13,7 @@ export interface OcclusionWorkspaceOptions {
   masks: readonly ImageMask[];
   selectedMaskId: string | null;
   disabled?: boolean;
+  navigationOnly?: boolean;
   onSelect: (id: string | null) => void;
   onMutation: (mutation: RegionMutation) => void;
   onDelete: (id: string) => void;
@@ -30,7 +31,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   const frameRef = useRef(frame);
   const [viewport, setViewport] = useState<ImageViewport>(FIT_VIEWPORT);
   const viewportRef = useRef(viewport);
-  const [tool, setToolState] = useState<OcclusionTool>("select");
+  const [tool, setToolState] = useState<OcclusionTool>(options.navigationOnly ? "pan" : "select");
   const [interaction, setInteraction] = useState<GestureResult>(gestures.snapshot());
   const [status, setStatus] = useState("");
 
@@ -53,7 +54,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
     setInteraction(result);
     if (result.viewport) changeViewport(result.viewport);
     if (result.select !== undefined) latest.current.onSelect(result.select);
-    if (result.mutation && !latest.current.disabled) {
+    if (result.mutation && !latest.current.disabled && !latest.current.navigationOnly) {
       const mutation = result.mutation;
       if (mutation.kind === "change") {
         const current = latest.current.masks.find((mask) => mask.id === mutation.maskId);
@@ -89,7 +90,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
 
   useEffect(() => {
     changeViewport(FIT_VIEWPORT);
-    setToolState("select");
+    setToolState(latest.current.navigationOnly ? "pan" : "select");
     setInteraction(gestures.cancel());
     setStatus("");
     const interrupted = () => { setInteraction(gestures.cancel()); releaseCaptures(); };
@@ -149,7 +150,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
     accept(gestures.down(sample(event), hit, {
       image: latest.current.imageSize, frame: frameRef.current,
       viewport: clampViewport(viewportRef.current, latest.current.imageSize, frameRef.current),
-      masks: latest.current.masks, tool: event.button === 1 ? "pan" : tool,
+      masks: latest.current.masks, tool: latest.current.navigationOnly || event.button === 1 ? "pan" : tool,
     }));
   }
   function pointerMove(event: PointerEvent<SVGSVGElement>): void {
@@ -168,7 +169,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
   function pointerCancel(event: PointerEvent<SVGSVGElement>): void {
     if (gestures.owns(event.pointerId)) cancel();
   }
-  function setTool(next: OcclusionTool): void { cancel(); setToolState(next); }
+  function setTool(next: OcclusionTool): void { cancel(); setToolState(latest.current.navigationOnly ? "pan" : next); }
   function zoom(factor: number): void {
     cancel();
     const frame = frameRef.current;
@@ -181,7 +182,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
     changeViewport(zoomToRegion(rect, latest.current.imageSize, frameRef.current));
   }
   function addRegion(): void {
-    if (latest.current.disabled) return;
+    if (latest.current.disabled || latest.current.navigationOnly) return;
     cancel();
     const width = Math.min(1, Math.max(0.2, 1 / latest.current.imageSize.width));
     const height = Math.min(1, Math.max(0.15, 1 / latest.current.imageSize.height));
@@ -195,7 +196,7 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
     const key = event.key.toLowerCase();
     if (key === "escape") { event.preventDefault(); cancel(); return; }
     if (event.ctrlKey || event.metaKey) {
-      if (key === "z") {
+      if (key === "z" && !latest.current.navigationOnly) {
         event.preventDefault(); cancel();
         if (event.shiftKey) latest.current.onRedo(); else latest.current.onUndo();
       }
@@ -203,6 +204,18 @@ export function useOcclusionWorkspace(options: OcclusionWorkspaceOptions) {
     }
     if (key === "+" || key === "=") { event.preventDefault(); zoom(1.5); return; }
     if (key === "-") { event.preventDefault(); zoom(1 / 1.5); return; }
+    if (latest.current.navigationOnly) {
+      const step = event.shiftKey ? 80 : 24;
+      const directions: Record<string, Point> = {
+        arrowleft: { x: step, y: 0 }, arrowright: { x: -step, y: 0 },
+        arrowup: { x: 0, y: step }, arrowdown: { x: 0, y: -step },
+      };
+      if (directions[key]) {
+        event.preventDefault(); cancel();
+        changeViewport(panViewport(viewportRef.current, latest.current.imageSize, frameRef.current, directions[key]));
+      }
+      return;
+    }
     const selected = latest.current.masks.find((mask) => mask.id === latest.current.selectedMaskId);
     if (!selected) return;
     if (key === "delete" || key === "backspace") { event.preventDefault(); cancel(); latest.current.onDelete(selected.id); return; }

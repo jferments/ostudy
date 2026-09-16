@@ -58,6 +58,7 @@ import {
   isQuestionEditorKind,
   newQuestionDraft,
   questionDraftReady,
+  type QuestionDraftChange,
   type QuestionEditorDraft,
   type QuestionEditorKind,
 } from "./card-editor/questionDraft";
@@ -426,8 +427,15 @@ export function CardEditorScreen({
     setTemplatePreviews([]);
   }
 
-  function updateQuestionDraft(next: QuestionEditorDraft): void {
-    setQuestionDrafts((current) => ({ ...current, [next.kind]: next }));
+  function updateQuestionDraft(change: QuestionDraftChange): void {
+    if (savingRef.current || !isQuestionEditorKind(selectedTemplateKey)) return;
+    const kind = selectedTemplateKey;
+    setQuestionDrafts((current) => {
+      const previous = current[kind];
+      if (!previous) return current;
+      const next = typeof change === "function" ? change(previous) : change;
+      return next.kind === kind ? { ...current, [kind]: next } : current;
+    });
     markDirty();
   }
 
@@ -744,6 +752,7 @@ export function CardEditorScreen({
                   <option value="matching">Matching</option>
                   <option value="grouping">Grouping</option>
                   <option value="ordering">Ordering</option>
+                  <option value="image_occlusion">Image occlusion</option>
                 </optgroup>
                 {templateSummaries.length > 0 ? <optgroup label="Reusable templates">{templateSummaries.map((template) => (
                   <option key={template.id} value={template.id}>{template.name}</option>
@@ -763,7 +772,7 @@ export function CardEditorScreen({
           {activeQuestionDraft ? (
             <InteractiveQuestionEditor key={`${activeQuestionDraft.kind}-${editorGeneration}`} draft={activeQuestionDraft}
               assets={assets} assetDraftId={assetDraftId} disabled={isSaving} onAssetImported={addAsset}
-              onChange={updateQuestionDraft} />
+              onChange={updateQuestionDraft} flushDraft={durableDraft.flush} />
           ) : selectedCustomTemplate ? (
             <TemplateEntryForm key={`${selectedCustomTemplate.id}-${editorGeneration}`} template={selectedCustomTemplate}
               values={templateValues} previews={templatePreviews} assets={assets} assetDraftId={assetDraftId}
@@ -816,6 +825,7 @@ export function CardEditorScreen({
 }
 
 function questionSummary(draft: QuestionEditorDraft): string {
+  if (draft.kind === "image_occlusion") return `Image occlusion · ${draft.questions.length} questions`;
   if (draft.kind === "true_false") return draft.statementText;
   return draft.promptText;
 }

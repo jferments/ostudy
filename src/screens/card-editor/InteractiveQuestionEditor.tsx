@@ -1,10 +1,11 @@
 import type { Asset } from "../../ipc/assets";
 import { ChoiceQuestionEditor } from "./ChoiceQuestionEditor";
 import { GroupingQuestionEditor } from "./GroupingQuestionEditor";
+import { ImageOcclusionEditor } from "./ImageOcclusionEditor";
 import { MatchingQuestionEditor } from "./MatchingQuestionEditor";
 import { OrderingQuestionEditor } from "./OrderingQuestionEditor";
 import { TrueFalseQuestionEditor } from "./TrueFalseQuestionEditor";
-import type { QuestionEditorDraft } from "./questionDraft";
+import type { QuestionDraftChange, QuestionEditorDraft } from "./questionDraft";
 
 interface InteractiveQuestionEditorProps {
   draft: QuestionEditorDraft;
@@ -12,7 +13,8 @@ interface InteractiveQuestionEditorProps {
   assetDraftId: string | null;
   disabled: boolean;
   onAssetImported: (asset: Asset) => void;
-  onChange: (draft: QuestionEditorDraft) => void;
+  onChange: (change: QuestionDraftChange) => void;
+  flushDraft: () => Promise<void>;
 }
 
 export function InteractiveQuestionEditor({
@@ -22,6 +24,7 @@ export function InteractiveQuestionEditor({
   disabled,
   onAssetImported,
   onChange,
+  flushDraft,
 }: InteractiveQuestionEditorProps) {
   const shared = { assets, assetDraftId, disabled, onAssetImported };
   switch (draft.kind) {
@@ -36,5 +39,8 @@ export function InteractiveQuestionEditor({
       return <GroupingQuestionEditor {...shared} draft={draft} onChange={onChange} />;
     case "ordering":
       return <OrderingQuestionEditor {...shared} draft={draft} onChange={onChange} />;
+    case "image_occlusion":
+      return <ImageOcclusionEditor {...shared} draft={draft} flushDraft={flushDraft}
+        onUpdate={(update) => onChange((current) => current.kind === "image_occlusion" ? update(current) : current)} />;
   }
 }
