@@ -5,8 +5,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::assets::AssetDto;
 use super::question_attempts::PracticeQuestionDto;
+use crate::assets::AssetDto;
 
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
@@ -44,7 +44,8 @@ pub struct PracticePresentationDto {
 
 impl std::fmt::Debug for PracticePresentationDto {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("PracticePresentationDto")
+        formatter
+            .debug_struct("PracticePresentationDto")
             .field("card_id", &self.id)
             .field("note_id", &self.note_id)
             .field("note_revision", &self.revision)

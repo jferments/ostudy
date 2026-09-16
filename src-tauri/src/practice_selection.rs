@@ -612,22 +612,31 @@ pub(crate) fn refresh_practice_after_card_edit_in_connection(
         ));
     }
 
-    let has_captured_question: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM practice_session_card_snapshots
+    let has_captured_question: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM practice_session_card_snapshots
          WHERE session_id = ?1 AND note_id = ?2 AND question_instance_id IS NOT NULL)",
-        params![input.session_id, input.note_id],
-        |row| row.get(0),
-    ).map_err(CommandError::database)?;
+            params![input.session_id, input.note_id],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
     if has_captured_question {
         // Editing the source changes future sessions, never the frozen key,
         // first response, shuffle or historical labels of an existing attempt.
-        let start_position = input.start_position.min(existing_card_count.saturating_sub(1));
+        let start_position = input
+            .start_position
+            .min(existing_card_count.saturating_sub(1));
         return Ok(PracticeEditRefreshDto {
             card_count: existing_card_count,
             start_position,
             completed: false,
-            window: load_practice_window(connection, paths, &input.session_id,
-                start_position, PRACTICE_WINDOW_MAX)?,
+            window: load_practice_window(
+                connection,
+                paths,
+                &input.session_id,
+                start_position,
+                PRACTICE_WINDOW_MAX,
+            )?,
         });
     }
 
@@ -798,14 +807,23 @@ fn first_window_from_prepared(
     let first = prepared.iter().take(window_size).collect::<Vec<_>>();
     let note_ids = first
         .iter()
-        .filter(|card| matches!(&card.content,
-            crate::projections::practice::PreparedPracticeContent::Recall { .. }))
+        .filter(|card| {
+            matches!(
+                &card.content,
+                crate::projections::practice::PreparedPracticeContent::Recall { .. }
+            )
+        })
         .map(|card| card.note_id.clone())
         .collect::<Vec<_>>();
     let assets = load_assets_for_notes(connection, paths, &note_ids)?;
     let cards = first
         .into_iter()
-        .map(|card| card.to_dto(connection, assets.get(&card.note_id).cloned().unwrap_or_default()))
+        .map(|card| {
+            card.to_dto(
+                connection,
+                assets.get(&card.note_id).cloned().unwrap_or_default(),
+            )
+        })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(PracticeCardWindowDto {
         start_position: 0,

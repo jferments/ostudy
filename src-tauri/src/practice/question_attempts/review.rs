@@ -27,11 +27,13 @@ pub(crate) struct QuestionReviewEvidence {
 
 impl QuestionReviewEvidence {
     pub fn link(&self, connection: &Connection, event_id: &str) -> Result<(), CommandError> {
-        connection.execute(
-            "INSERT INTO question_review_links (review_event_id, instance_id, override_reason)
+        connection
+            .execute(
+                "INSERT INTO question_review_links (review_event_id, instance_id, override_reason)
              VALUES (?1, ?2, ?3)",
-            params![event_id, self.instance_id, self.override_reason],
-        ).map_err(CommandError::database)?;
+                params![event_id, self.instance_id, self.override_reason],
+            )
+            .map_err(CommandError::database)?;
         Ok(())
     }
 }
@@ -58,10 +60,12 @@ pub(crate) fn authorize_review(
         }
         return Ok(None);
     };
-    let context = context.ok_or_else(|| CommandError::new(
-        "question_review_required",
-        "Interactive questions require their checked attempt when recording a review.",
-    ))?;
+    let context = context.ok_or_else(|| {
+        CommandError::new(
+            "question_review_required",
+            "Interactive questions require their checked attempt when recording a review.",
+        )
+    })?;
     validate_entity_id(&context.instance_id, "question instance")?;
     if target.instance_id != context.instance_id || context.attempt_revision < 1 {
         return Err(conflict());
@@ -72,7 +76,12 @@ pub(crate) fn authorize_review(
         return Err(conflict());
     }
     let view = stored.attempt.view()?;
-    let AttemptProgress::Checked { evaluation, response_time_ms, .. } = view.progress else {
+    let AttemptProgress::Checked {
+        evaluation,
+        response_time_ms,
+        ..
+    } = view.progress
+    else {
         return Err(not_checked());
     };
     if input.response_time_ms != response_time_ms {
@@ -110,7 +119,10 @@ pub(crate) fn require_checked_for_reveal(
 ) -> Result<(), CommandError> {
     if let Some(target) = target_for_card(connection, session_id, card_id)? {
         let stored = storage::load(connection, &target)?;
-        if !matches!(stored.attempt.view()?.progress, AttemptProgress::Checked { .. }) {
+        if !matches!(
+            stored.attempt.view()?.progress,
+            AttemptProgress::Checked { .. }
+        ) {
             return Err(not_checked());
         }
     }
@@ -122,26 +134,34 @@ fn target_for_card(
     session_id: &str,
     card_id: &str,
 ) -> Result<Option<AttemptIdentityInput>, CommandError> {
-    let stored: Option<(String, Option<String>)> = connection.query_row(
-        "SELECT n.note_type, snap.question_instance_id
+    let stored: Option<(String, Option<String>)> = connection
+        .query_row(
+            "SELECT n.note_type, snap.question_instance_id
          FROM cards c JOIN notes n ON n.id = c.note_id
          LEFT JOIN practice_session_card_snapshots snap
            ON snap.card_id = c.id AND snap.session_id = ?1
          WHERE c.id = ?2",
-        params![session_id, card_id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).optional().map_err(CommandError::database)?;
+            params![session_id, card_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
     match stored {
-        Some((kind, Some(instance_id))) if kind == "interactive" => Ok(Some(AttemptIdentityInput {
-            session_id: session_id.to_string(),
-            card_id: card_id.to_string(),
-            instance_id,
-        })),
+        Some((kind, Some(instance_id))) if kind == "interactive" => {
+            Ok(Some(AttemptIdentityInput {
+                session_id: session_id.to_string(),
+                card_id: card_id.to_string(),
+                instance_id,
+            }))
+        }
         Some((kind, None)) if kind != "interactive" => Ok(None),
         _ => Err(invalid_storage()),
     }
 }
 
 fn not_checked() -> CommandError {
-    CommandError::new("question_not_checked", "Check your answer before choosing its difficulty.")
+    CommandError::new(
+        "question_not_checked",
+        "Check your answer before choosing its difficulty.",
+    )
 }

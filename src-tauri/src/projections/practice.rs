@@ -77,18 +77,23 @@ impl PreparedPracticeCard {
         assets: Vec<crate::assets::AssetDto>,
     ) -> Result<PracticeCardDto, CommandError> {
         let content = match &self.content {
-            PreparedPracticeContent::Recall { front_doc_json, back_doc_json, back_text } => {
-                PracticeContentDto::Recall {
-                    front_doc: serde_json::from_str(front_doc_json)
-                        .map_err(CommandError::serialization)?,
-                    back_doc: serde_json::from_str(back_doc_json)
-                        .map_err(CommandError::serialization)?,
-                    back_text: back_text.clone(),
-                    assets,
-                }
-            }
+            PreparedPracticeContent::Recall {
+                front_doc_json,
+                back_doc_json,
+                back_text,
+            } => PracticeContentDto::Recall {
+                front_doc: serde_json::from_str(front_doc_json)
+                    .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(back_doc_json)
+                    .map_err(CommandError::serialization)?,
+                back_text: back_text.clone(),
+                assets,
+            },
             PreparedPracticeContent::Interactive(captured) => PracticeContentDto::Interactive {
-                question: Box::new(question_attempts::captured_view(connection, &captured.attempt)?),
+                question: Box::new(question_attempts::captured_view(
+                    connection,
+                    &captured.attempt,
+                )?),
             },
         };
         Ok(PracticeCardDto {
@@ -161,8 +166,14 @@ pub fn prepare_new_session_cards(
             )
         })?;
         if row.note_type == "interactive" {
-            let definition = row.question_definition.as_deref().ok_or_else(invalid_question_row)?;
-            let key = row.question_key.as_deref().ok_or_else(invalid_question_row)?;
+            let definition = row
+                .question_definition
+                .as_deref()
+                .ok_or_else(invalid_question_row)?;
+            let key = row
+                .question_key
+                .as_deref()
+                .ok_or_else(invalid_question_row)?;
             let captured = question_attempts::capture::prepare(
                 InstanceIdentity {
                     instance_id: generate_id(connection)?,
@@ -175,7 +186,10 @@ pub fn prepare_new_session_cards(
                 &generate_id(connection)?,
             )?;
             prepared.push(prepared_from_question(
-                row, captured, tags.get(&row.note_id).cloned().unwrap_or_default(), time.now_utc_millis,
+                row,
+                captured,
+                tags.get(&row.note_id).cloned().unwrap_or_default(),
+                time.now_utc_millis,
             ));
             continue;
         }
@@ -400,7 +414,10 @@ fn prepared_from_question(
 }
 
 fn invalid_question_row() -> CommandError {
-    CommandError::new("invalid_practice_content", "This card has no valid study presentation.")
+    CommandError::new(
+        "invalid_practice_content",
+        "This card has no valid study presentation.",
+    )
 }
 
 fn bounded_excerpt(value: &str) -> (String, bool) {
@@ -417,12 +434,24 @@ pub fn insert_session_snapshot(
     captured_at: i64,
 ) -> Result<(), CommandError> {
     let (front, back, back_text, instance_id) = match &card.content {
-        PreparedPracticeContent::Recall { front_doc_json, back_doc_json, back_text } => (
-            Some(front_doc_json.as_str()), Some(back_doc_json.as_str()), back_text.as_str(), None,
+        PreparedPracticeContent::Recall {
+            front_doc_json,
+            back_doc_json,
+            back_text,
+        } => (
+            Some(front_doc_json.as_str()),
+            Some(back_doc_json.as_str()),
+            back_text.as_str(),
+            None,
         ),
         PreparedPracticeContent::Interactive(captured) => {
             question_attempts::capture::insert(connection, session_id, captured, captured_at)?;
-            (None, None, "", Some(captured.attempt.instance().identity().instance_id.as_str()))
+            (
+                None,
+                None,
+                "",
+                Some(captured.attempt.instance().identity().instance_id.as_str()),
+            )
         }
     };
     connection
@@ -549,8 +578,11 @@ pub fn load_practice_window(
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    let note_ids = rows.iter().filter(|row| row.15.is_none())
-        .map(|row| row.2.clone()).collect::<Vec<_>>();
+    let note_ids = rows
+        .iter()
+        .filter(|row| row.15.is_none())
+        .map(|row| row.2.clone())
+        .collect::<Vec<_>>();
     let assets = load_assets_for_notes(connection, paths, &note_ids)?;
     let mut cards = Vec::with_capacity(rows.len());
     let mut last_position = start_position.saturating_sub(1);
@@ -576,16 +608,25 @@ pub fn load_practice_window(
         last_position = position;
         let content = if let Some(instance_id) = instance_id {
             PracticeContentDto::Interactive {
-                question: Box::new(question_attempts::read(connection, &AttemptIdentityInput {
-                    session_id: session_id.to_string(), card_id: card_id.clone(), instance_id,
-                })?),
+                question: Box::new(question_attempts::read(
+                    connection,
+                    &AttemptIdentityInput {
+                        session_id: session_id.to_string(),
+                        card_id: card_id.clone(),
+                        instance_id,
+                    },
+                )?),
             }
         } else {
             PracticeContentDto::Recall {
-                front_doc: serde_json::from_str(front_doc_json.as_deref().ok_or_else(invalid_question_row)?)
-                    .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(back_doc_json.as_deref().ok_or_else(invalid_question_row)?)
-                    .map_err(CommandError::serialization)?,
+                front_doc: serde_json::from_str(
+                    front_doc_json.as_deref().ok_or_else(invalid_question_row)?,
+                )
+                .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(
+                    back_doc_json.as_deref().ok_or_else(invalid_question_row)?,
+                )
+                .map_err(CommandError::serialization)?,
                 back_text,
                 assets: assets.get(&note_id).cloned().unwrap_or_default(),
             }

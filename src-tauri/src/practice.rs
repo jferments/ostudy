@@ -1,7 +1,7 @@
 //! Practice-session events and atomic FSRS review submission.
 
-pub(crate) mod question_attempts;
 pub(crate) mod presentation;
+pub(crate) mod question_attempts;
 
 use presentation::PracticePresentationDto;
 use question_attempts::QuestionReviewContext;
@@ -317,9 +317,8 @@ pub(crate) fn submit_review_with_question(
         ));
     }
 
-    let question_evidence = question_attempts::authorize_review(
-        &transaction, &input, question.as_ref(),
-    )?;
+    let question_evidence =
+        question_attempts::authorize_review(&transaction, &input, question.as_ref())?;
     let current = load_schedule(&transaction, &input.card_id)?;
     if current.revision != input.schedule_revision {
         return Err(CommandError::new(
@@ -463,7 +462,9 @@ fn insert_review_event(
                 input.card_id,
                 transition.reviewed_at,
                 transition.outcome.rating_number(),
-                bool_to_integer(objective_correct.unwrap_or_else(|| transition.outcome.answer_correct())),
+                bool_to_integer(
+                    objective_correct.unwrap_or_else(|| transition.outcome.answer_correct())
+                ),
                 transition.outcome.as_str(),
                 input.response_time_ms,
                 transition.before.state,
