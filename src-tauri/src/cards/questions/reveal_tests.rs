@@ -73,13 +73,21 @@ fn hidden_image_attempt_exposes_only_target_geometry_and_prompt() {
     let value = serde_json::to_value(&view).unwrap();
     assert_eq!(value["question"]["kind"], "image_occlusion");
     assert_eq!(
-        value["question"]["targetRectangles"].as_array().unwrap().len(),
+        value["question"]["targetRectangles"]
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
     assert_eq!(value["progress"]["phase"], "answering");
     assert!(view.asset_ids().unwrap().is_empty());
     let serialized = value.to_string();
-    for hidden in [id(50), id(51), "PRIVATE".to_string(), "imageAssetId".to_string()] {
+    for hidden in [
+        id(50),
+        id(51),
+        "PRIVATE".to_string(),
+        "imageAssetId".to_string(),
+    ] {
         assert!(!serialized.contains(&hidden));
     }
     assert!(value["progress"].get("answer").is_none());
@@ -114,10 +122,16 @@ fn reveal_replays_the_original_receipt_after_checkpoint_restore() {
     assert_eq!(restored.to_json().unwrap(), checkpoint);
     let mut changed = request();
     changed.response_time_ms += 1;
-    assert_eq!(error_code(restored.reveal_answer(changed, 9000)), "question_operation_conflict");
+    assert_eq!(
+        error_code(restored.reveal_answer(changed, 9000)),
+        "question_operation_conflict"
+    );
     let mut another = request();
     another.reveal_id = id(111);
-    assert_eq!(error_code(restored.reveal_answer(another, 9000)), "question_already_revealed");
+    assert_eq!(
+        error_code(restored.reveal_answer(another, 9000)),
+        "question_already_revealed"
+    );
     assert_eq!(restored.to_json().unwrap(), checkpoint);
 }
 
@@ -127,7 +141,10 @@ fn a_stale_reveal_or_invalid_elapsed_time_never_changes_the_attempt() {
     let before = attempt.to_json().unwrap();
     let mut stale = request();
     stale.expected_revision = 2;
-    assert_eq!(error_code(attempt.reveal_answer(stale, 1000)), "question_attempt_conflict");
+    assert_eq!(
+        error_code(attempt.reveal_answer(stale, 1000)),
+        "question_attempt_conflict"
+    );
     let mut invalid = request();
     invalid.response_time_ms = -1;
     assert!(attempt.reveal_answer(invalid, 1000).is_err());
@@ -151,14 +168,20 @@ fn self_assessed_questions_cannot_be_saved_or_checked_as_an_objective_response()
         expected_revision: 1,
         answer: answer.clone(),
     };
-    assert_eq!(error_code(attempt.save_answer(save)), "question_requires_self_rating");
+    assert_eq!(
+        error_code(attempt.save_answer(save)),
+        "question_requires_self_rating"
+    );
     let check = CheckAnswerRequest {
         check_id: id(112),
         expected_revision: 1,
         answer,
         response_time_ms: 10,
     };
-    assert_eq!(error_code(attempt.check_answer(check, 100)), "question_requires_self_rating");
+    assert_eq!(
+        error_code(attempt.check_answer(check, 100)),
+        "question_requires_self_rating"
+    );
     assert_eq!(attempt.to_json().unwrap(), before);
 }
 
@@ -211,5 +234,8 @@ fn the_unmasked_source_cannot_be_smuggled_into_the_pre_answer_prompt() {
     let mut definition = definition();
     definition["question"]["questions"][0]["prompt"] = image(50);
     let instance = instance(definition, &id(10));
-    assert_eq!(error_code(QuestionAttempt::start(instance)), "occlusion_source_in_prompt");
+    assert_eq!(
+        error_code(QuestionAttempt::start(instance)),
+        "occlusion_source_in_prompt"
+    );
 }

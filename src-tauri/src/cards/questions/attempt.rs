@@ -103,7 +103,9 @@ impl AttemptView {
             }
         }
         if let AttemptProgress::Revealed {
-            answer, explanation, ..
+            answer,
+            explanation,
+            ..
         } = &self.progress
         {
             ids.extend(collect_asset_ids(answer)?);

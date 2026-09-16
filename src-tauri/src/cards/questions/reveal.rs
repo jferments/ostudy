@@ -74,7 +74,9 @@ impl QuestionAttempt {
             return self.view();
         }
         if !matches!(self.state, AttemptState::Answering { saved: None }) {
-            return Err(invalid("Only an unanswered image question can be revealed."));
+            return Err(invalid(
+                "Only an unanswered image question can be revealed.",
+            ));
         }
         self.require_revision(request.expected_revision)?;
         if now_ms < 0 {
