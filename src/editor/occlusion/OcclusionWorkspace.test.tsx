@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NativeInput } from "../../ui/primitives/FormControls";
+import { Textarea } from "../../ui/primitives/FormControls";
 import { OcclusionWorkspace, type OcclusionWorkspaceProps } from "./OcclusionWorkspace";
 
 const mask = { id: "mask-a", rect: { x: 0.2, y: 0.2, width: 0.2, height: 0.2 } };
@@ -132,7 +132,7 @@ describe("image occlusion workspace", () => {
 
   it("does not take text-editing keyboard shortcuts from a sibling rich-field control", () => {
     const options = props();
-    render(<><NativeInput aria-label="Question answer" /><OcclusionWorkspace {...options} /></>);
+    render(<><Textarea aria-label="Question answer" /><OcclusionWorkspace {...options} /></>);
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Question answer" }), { key: "z", ctrlKey: true });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Question answer" }), { key: "Delete" });
     expect(options.onUndo).not.toHaveBeenCalled();
