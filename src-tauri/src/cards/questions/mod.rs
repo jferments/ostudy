@@ -6,6 +6,7 @@ mod attempt;
 mod evaluation;
 mod metadata;
 mod model;
+pub mod occlusion;
 mod projection;
 mod snapshot;
 mod validation;
