@@ -11,7 +11,8 @@ use tauri::State;
 use crate::{
     assets::AssetDto,
     cards::questions::{
-        AttemptProgress, AttemptView, CheckAnswerRequest, QuestionAttempt, SaveAnswerRequest, Verdict,
+        AttemptProgress, AttemptView, CheckAnswerRequest, QuestionAttempt, SaveAnswerRequest,
+        Verdict,
     },
     database::Database,
     error::CommandError,
@@ -157,7 +158,7 @@ fn check(
 
 fn validate_target(input: &AttemptIdentityInput) -> Result<(), CommandError> {
     validate_entity_id(&input.session_id, "practice session")?;
-    validate_entity_id(&input.card_id, "question card")?;
+    validate_entity_id(&input.card_id, "card")?;
     validate_entity_id(&input.instance_id, "question instance")
 }
 

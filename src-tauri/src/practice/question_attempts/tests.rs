@@ -215,7 +215,10 @@ fn saved_answer_survives_rehydration_and_stale_autosaves_do_not_overwrite_it() {
         .unwrap();
     let restored = fixture.view();
     assert_eq!(restored["revision"], 2);
-    assert_eq!(restored["progress"]["savedAnswer"]["response"]["selected"], false);
+    assert_eq!(
+        restored["progress"]["savedAnswer"]["response"]["selected"],
+        false
+    );
     let stale = SavePracticeAnswerInput {
         target: fixture.target.clone(),
         request: SaveAnswerRequest {
@@ -237,7 +240,10 @@ fn saved_answer_survives_rehydration_and_stale_autosaves_do_not_overwrite_it() {
 fn checked_answer_and_session_reveal_are_one_transaction_without_a_review() {
     let fixture = Fixture::new(false);
     fixture.check(Some(false)).unwrap();
-    assert_eq!(fixture.view()["progress"]["evaluation"]["verdict"], "correct");
+    assert_eq!(
+        fixture.view()["progress"]["evaluation"]["verdict"],
+        "correct"
+    );
     fixture
         .database
         .with_connection(|connection| {
@@ -287,9 +293,11 @@ fn a_counter_failure_rolls_back_the_check_and_reveal_together() {
         .database
         .with_connection(|connection| {
             let revealed: Option<i64> = connection
-                .query_row("SELECT revealed_at FROM practice_session_cards", [], |row| {
-                    row.get(0)
-                })
+                .query_row(
+                    "SELECT revealed_at FROM practice_session_cards",
+                    [],
+                    |row| row.get(0),
+                )
                 .map_err(CommandError::database)?;
             assert!(revealed.is_none());
             Ok(())
@@ -339,7 +347,10 @@ fn changed_source_does_not_change_the_frozen_answer_key() {
             Ok(())
         })
         .unwrap();
-    assert_eq!(fixture.view()["progress"]["evaluation"]["verdict"], "correct");
+    assert_eq!(
+        fixture.view()["progress"]["evaluation"]["verdict"],
+        "correct"
+    );
 }
 
 #[test]
