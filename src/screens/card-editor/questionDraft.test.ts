@@ -2,15 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   addChoiceOption,
+  addGroupingCategory,
   definitionFromDraft,
   moveChoiceOption,
+  moveOrderingItem,
   newQuestionDraft,
   questionDraftReady,
   removeChoiceOption,
+  removeGroupingCategory,
   type QuestionEditorDraft,
 } from "./questionDraft";
 
 type ChoiceDraft = Extract<QuestionEditorDraft, { kind: "single_choice" | "select_all" }>;
+type GroupingDraft = Extract<QuestionEditorDraft, { kind: "grouping" }>;
+type OrderingDraft = Extract<QuestionEditorDraft, { kind: "ordering" }>;
 
 let nextId = 0;
 
@@ -61,5 +66,54 @@ describe("interactive question drafts", () => {
     expect(draft.pairs).toHaveLength(2);
     expect(new Set(draft.pairs.flatMap((pair) => [pair.left.id, pair.right.id])).size).toBe(4);
     expect(draft.pairs.every((pair) => pair.id === pair.left.id)).toBe(true);
+  });
+
+  it("requires every grouping item to target an authored category and preserves that relation", () => {
+    const draft = newQuestionDraft("grouping") as GroupingDraft;
+    const filled: GroupingDraft = {
+      ...draft,
+      promptText: "Sort the findings",
+      categories: draft.categories.map((category, index) => ({ ...category, text: `Group ${index + 1}` })),
+      items: draft.items.map((item, index) => ({
+        ...item,
+        text: `Finding ${index + 1}`,
+        categoryId: draft.categories[index % draft.categories.length].id,
+      })),
+    };
+    expect(questionDraftReady({ ...filled, items: filled.items.map((item) => ({ ...item, categoryId: "" })) })).toBe(false);
+    expect(questionDraftReady(filled)).toBe(true);
+    const definition = definitionFromDraft(filled);
+    expect(definition.question.kind).toBe("grouping");
+    if (definition.question.kind === "grouping") {
+      expect(definition.question.items.map((item) => item.categoryId)).toEqual(
+        filled.items.map((item) => item.categoryId),
+      );
+    }
+  });
+
+  it("clears grouping assignments when their category is removed rather than silently reassigning them", () => {
+    const draft = newQuestionDraft("grouping") as GroupingDraft;
+    const expanded = addGroupingCategory(draft) as GroupingDraft;
+    const removedId = expanded.categories[1].id;
+    const assigned: GroupingDraft = {
+      ...expanded,
+      items: expanded.items.map((item) => ({ ...item, categoryId: removedId })),
+    };
+    const removed = removeGroupingCategory(assigned, removedId) as GroupingDraft;
+    expect(removed.categories.some((category) => category.id === removedId)).toBe(false);
+    expect(removed.items.every((item) => item.categoryId === "")).toBe(true);
+  });
+
+  it("uses authored ordering row position as the total-order answer while preserving item identity", () => {
+    const draft = newQuestionDraft("ordering") as OrderingDraft;
+    const firstId = draft.items[0].id;
+    const secondId = draft.items[1].id;
+    const moved = moveOrderingItem(draft, secondId, -1) as OrderingDraft;
+    expect(moved.items.map((item) => item.id)).toEqual([secondId, firstId]);
+    const definition = definitionFromDraft(moved);
+    expect(definition.question.kind).toBe("ordering");
+    if (definition.question.kind === "ordering") {
+      expect(definition.question.items.map((item) => item.id)).toEqual([secondId, firstId]);
+    }
   });
 });

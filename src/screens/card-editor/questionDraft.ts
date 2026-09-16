@@ -10,7 +10,7 @@ import { EMPTY_RICH_DOCUMENT, cloneDocument, collectAssetIds, isDocumentEmpty } 
 
 export type QuestionEditorKind = Extract<
   QuestionKind,
-  "single_choice" | "select_all" | "true_false" | "matching"
+  "single_choice" | "select_all" | "true_false" | "matching" | "grouping" | "ordering"
 >;
 
 export interface DraftRichField {
@@ -20,6 +20,12 @@ export interface DraftRichField {
 }
 
 export interface DraftChoiceOption extends DraftRichField {
+  rationale: RichDocument;
+  rationaleText: string;
+}
+
+export interface DraftGroupingItem extends DraftRichField {
+  categoryId: string;
   rationale: RichDocument;
   rationaleText: string;
 }
@@ -58,10 +64,27 @@ export type QuestionEditorDraft =
         rationale: RichDocument;
         rationaleText: string;
       }>;
+    }
+  | {
+      kind: "grouping";
+      prompt: RichDocument;
+      promptText: string;
+      explanation: RichDocument;
+      explanationText: string;
+      categories: DraftRichField[];
+      items: DraftGroupingItem[];
+    }
+  | {
+      kind: "ordering";
+      prompt: RichDocument;
+      promptText: string;
+      explanation: RichDocument;
+      explanationText: string;
+      items: DraftRichField[];
     };
 
 export function isQuestionEditorKind(value: string): value is QuestionEditorKind {
-  return ["single_choice", "select_all", "true_false", "matching"].includes(value);
+  return ["single_choice", "select_all", "true_false", "matching", "grouping", "ordering"].includes(value);
 }
 
 export function questionKindForNote(note: QuestionNote): QuestionEditorKind | null {
@@ -90,6 +113,27 @@ export function newQuestionDraft(kind: QuestionEditorKind): QuestionEditorDraft 
       explanation: emptyDoc(),
       explanationText: "",
       pairs: [newPair(), newPair()],
+    };
+  }
+  if (kind === "grouping") {
+    return {
+      kind,
+      prompt: emptyDoc(),
+      promptText: "",
+      explanation: emptyDoc(),
+      explanationText: "",
+      categories: [newRichField(), newRichField()],
+      items: [newGroupingItem(), newGroupingItem()],
+    };
+  }
+  if (kind === "ordering") {
+    return {
+      kind,
+      prompt: emptyDoc(),
+      promptText: "",
+      explanation: emptyDoc(),
+      explanationText: "",
+      items: [newRichField(), newRichField()],
     };
   }
   return {
@@ -155,6 +199,42 @@ export function draftFromQuestionNote(note: QuestionNote): QuestionEditorDraft |
       })),
     };
   }
+  if (question.kind === "grouping") {
+    return {
+      kind: question.kind,
+      prompt: cloneDocument(question.prompt),
+      promptText: plainText(question.prompt),
+      explanation: cloneDocument(question.explanation ?? EMPTY_RICH_DOCUMENT),
+      explanationText: plainText(question.explanation),
+      categories: question.categories.map((category) => ({
+        id: category.id,
+        doc: cloneDocument(category.content),
+        text: plainText(category.content),
+      })),
+      items: question.items.map((grouped) => ({
+        id: grouped.item.id,
+        doc: cloneDocument(grouped.item.content),
+        text: plainText(grouped.item.content),
+        categoryId: grouped.categoryId,
+        rationale: cloneDocument(grouped.rationale ?? EMPTY_RICH_DOCUMENT),
+        rationaleText: plainText(grouped.rationale),
+      })),
+    };
+  }
+  if (question.kind === "ordering") {
+    return {
+      kind: question.kind,
+      prompt: cloneDocument(question.prompt),
+      promptText: plainText(question.prompt),
+      explanation: cloneDocument(question.explanation ?? EMPTY_RICH_DOCUMENT),
+      explanationText: plainText(question.explanation),
+      items: question.items.map((item) => ({
+        id: item.id,
+        doc: cloneDocument(item.content),
+        text: plainText(item.content),
+      })),
+    };
+  }
   return null;
 }
 
@@ -168,6 +248,21 @@ export function questionDraftReady(draft: QuestionEditorDraft): boolean {
       && draft.pairs.every((pair) =>
         !isDocumentEmpty(pair.left.text, pair.left.doc)
         && !isDocumentEmpty(pair.right.text, pair.right.doc));
+  }
+  if (draft.kind === "grouping") {
+    const categoryIds = new Set(draft.categories.map((category) => category.id));
+    return draft.categories.length >= 2 && draft.categories.length <= 8
+      && draft.items.length >= 2 && draft.items.length <= 32
+      && !isDocumentEmpty(draft.promptText, draft.prompt)
+      && draft.categories.every((category) => !isDocumentEmpty(category.text, category.doc))
+      && draft.items.every((item) =>
+        !isDocumentEmpty(item.text, item.doc)
+        && categoryIds.has(item.categoryId));
+  }
+  if (draft.kind === "ordering") {
+    return draft.items.length >= 2 && draft.items.length <= 32
+      && !isDocumentEmpty(draft.promptText, draft.prompt)
+      && draft.items.every((item) => !isDocumentEmpty(item.text, item.doc));
   }
   const keyReady = draft.kind === "single_choice"
     ? draft.correctOptionIds.length === 1
@@ -205,6 +300,33 @@ export function definitionFromDraft(draft: QuestionEditorDraft): QuestionDefinit
         kind: draft.kind,
         prompt: draft.prompt,
         pairs,
+        explanation: optionalDocument(draft.explanationText, draft.explanation),
+      },
+    };
+  }
+  if (draft.kind === "grouping") {
+    return {
+      schemaVersion: 1,
+      question: {
+        kind: draft.kind,
+        prompt: draft.prompt,
+        categories: draft.categories.map((category) => ({ id: category.id, content: category.doc })),
+        items: draft.items.map((item) => ({
+          item: { id: item.id, content: item.doc },
+          categoryId: item.categoryId,
+          rationale: optionalDocument(item.rationaleText, item.rationale),
+        })),
+        explanation: optionalDocument(draft.explanationText, draft.explanation),
+      },
+    };
+  }
+  if (draft.kind === "ordering") {
+    return {
+      schemaVersion: 1,
+      question: {
+        kind: draft.kind,
+        prompt: draft.prompt,
+        items: draft.items.map((item) => ({ id: item.id, content: item.doc })),
         explanation: optionalDocument(draft.explanationText, draft.explanation),
       },
     };
@@ -257,6 +379,18 @@ export function collectQuestionDraftAssetIds(draft: QuestionEditorDraft): string
       add(pair.right.doc);
       add(pair.rationale);
     }
+  } else if (draft.kind === "grouping") {
+    add(draft.prompt);
+    add(draft.explanation);
+    for (const category of draft.categories) add(category.doc);
+    for (const item of draft.items) {
+      add(item.doc);
+      add(item.rationale);
+    }
+  } else if (draft.kind === "ordering") {
+    add(draft.prompt);
+    add(draft.explanation);
+    for (const item of draft.items) add(item.doc);
   } else {
     add(draft.prompt);
     add(draft.explanation);
@@ -339,6 +473,79 @@ export function moveMatchingPair(
   return { ...draft, pairs };
 }
 
+export function addGroupingCategory(
+  draft: Extract<QuestionEditorDraft, { kind: "grouping" }>,
+): QuestionEditorDraft {
+  if (draft.categories.length >= 8) return draft;
+  return { ...draft, categories: [...draft.categories, newRichField()] };
+}
+
+export function removeGroupingCategory(
+  draft: Extract<QuestionEditorDraft, { kind: "grouping" }>,
+  categoryId: string,
+): QuestionEditorDraft {
+  if (draft.categories.length <= 2) return draft;
+  return {
+    ...draft,
+    categories: draft.categories.filter((category) => category.id !== categoryId),
+    items: draft.items.map((item) => item.categoryId === categoryId ? { ...item, categoryId: "" } : item),
+  };
+}
+
+export function moveGroupingCategory(
+  draft: Extract<QuestionEditorDraft, { kind: "grouping" }>,
+  categoryId: string,
+  delta: -1 | 1,
+): QuestionEditorDraft {
+  return { ...draft, categories: moveFields(draft.categories, categoryId, delta) };
+}
+
+export function addGroupingItem(
+  draft: Extract<QuestionEditorDraft, { kind: "grouping" }>,
+): QuestionEditorDraft {
+  if (draft.items.length >= 32) return draft;
+  return { ...draft, items: [...draft.items, newGroupingItem()] };
+}
+
+export function removeGroupingItem(
+  draft: Extract<QuestionEditorDraft, { kind: "grouping" }>,
+  itemId: string,
+): QuestionEditorDraft {
+  if (draft.items.length <= 2) return draft;
+  return { ...draft, items: draft.items.filter((item) => item.id !== itemId) };
+}
+
+export function moveGroupingItem(
+  draft: Extract<QuestionEditorDraft, { kind: "grouping" }>,
+  itemId: string,
+  delta: -1 | 1,
+): QuestionEditorDraft {
+  return { ...draft, items: moveFields(draft.items, itemId, delta) };
+}
+
+export function addOrderingItem(
+  draft: Extract<QuestionEditorDraft, { kind: "ordering" }>,
+): QuestionEditorDraft {
+  if (draft.items.length >= 32) return draft;
+  return { ...draft, items: [...draft.items, newRichField()] };
+}
+
+export function removeOrderingItem(
+  draft: Extract<QuestionEditorDraft, { kind: "ordering" }>,
+  itemId: string,
+): QuestionEditorDraft {
+  if (draft.items.length <= 2) return draft;
+  return { ...draft, items: draft.items.filter((item) => item.id !== itemId) };
+}
+
+export function moveOrderingItem(
+  draft: Extract<QuestionEditorDraft, { kind: "ordering" }>,
+  itemId: string,
+  delta: -1 | 1,
+): QuestionEditorDraft {
+  return { ...draft, items: moveFields(draft.items, itemId, delta) };
+}
+
 function newChoiceOption(): DraftChoiceOption {
   return {
     id: newEntityId(),
@@ -358,6 +565,28 @@ function newPair() {
     rationale: emptyDoc(),
     rationaleText: "",
   };
+}
+
+function newRichField(): DraftRichField {
+  return { id: newEntityId(), doc: emptyDoc(), text: "" };
+}
+
+function newGroupingItem(): DraftGroupingItem {
+  return {
+    ...newRichField(),
+    categoryId: "",
+    rationale: emptyDoc(),
+    rationaleText: "",
+  };
+}
+
+function moveFields<T extends { id: string }>(fields: T[], id: string, delta: -1 | 1): T[] {
+  const index = fields.findIndex((field) => field.id === id);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= fields.length) return fields;
+  const next = [...fields];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
 }
 
 function emptyDoc(): RichDocument {
