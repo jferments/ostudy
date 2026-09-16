@@ -96,7 +96,7 @@ cargo test \
   document_
 
 step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
-for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::privacy_tests device_sync::package::media_asset_tests library_backup::media_backup_tests library_backup::tutor_backup_tests; do
+for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::scope:: device_sync::package:: library_backup::media_backup_tests library_backup::tutor_backup_tests; do
   cargo test \
     --manifest-path src-tauri/Cargo.toml \
     --locked \

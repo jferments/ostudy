@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { occlusionRasterReads } from "../../editor/occlusion/rasterReadQueue";
 import { getErrorMessage } from "../../ipc/common";
 import { previewOcclusionImage } from "../../ipc/occlusion";
 import { occlusionDefinition, occlusionDraftReady, type OcclusionEditorDraft } from "./occlusionDraft";
@@ -11,13 +12,14 @@ export function useOcclusionPreview(draft: OcclusionEditorDraft, assetDraftId: s
   const definitionJson = ready ? JSON.stringify(occlusionDefinition(draft)) : "";
   const key = JSON.stringify([definitionJson, draft.selectedQuestionId, assetDraftId, revealed, retry]);
   useEffect(() => {
-    if (!definitionJson || !draft.selectedQuestionId) return;
+    const presentationKey = draft.selectedQuestionId;
+    if (!definitionJson || !presentationKey) return;
     let live = true;
     let objectUrl: string | null = null;
-    void previewOcclusionImage({
-      definitionJson, presentationKey: draft.selectedQuestionId, assetDraftId, revealed, maximumEdge: 1600,
-    }).then((bytes) => {
-      if (!live) return;
+    void occlusionRasterReads.read(() => live, () => previewOcclusionImage({
+      definitionJson, presentationKey, assetDraftId, revealed, maximumEdge: 1600,
+    })).then((bytes) => {
+      if (!live || bytes === undefined) return;
       objectUrl = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
       setState({ key, url: objectUrl, error: null });
     }).catch((cause: unknown) => {

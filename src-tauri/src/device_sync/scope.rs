@@ -144,6 +144,33 @@ pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
 pub(crate) const CROSS_DOCUMENT_FLASHCARD_TABLES: &[&str] =
     &["document_decks", "document_note_topics"];
 
+/// The current merge table list cannot preserve typed presentation/attempt
+/// ownership. Refuse this graph on both send and receive until the versioned
+/// sharing implementation carries it completely. Do not silently flatten it.
+pub(crate) fn require_supported_question_snapshot(
+    connection: &Connection,
+) -> Result<(), CommandError> {
+    let contains_questions: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM notes WHERE note_type = 'interactive')
+                OR EXISTS(SELECT 1 FROM card_question_presentations)
+                OR EXISTS(SELECT 1 FROM question_attempts)
+                OR EXISTS(SELECT 1 FROM question_attempt_assets)
+                OR EXISTS(SELECT 1 FROM question_review_links)
+                OR EXISTS(SELECT 1 FROM question_remediation_attempts)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if contains_questions {
+        return Err(CommandError::new(
+            "interactive_sync_not_supported",
+            "Interactive questions cannot be sent or received with this device-sync format yet. Your local library has not been changed.",
+        ));
+    }
+    Ok(())
+}
+
 /// Remove every unselected domain from a copied SQLite snapshot before the
 /// snapshot becomes transfer material. The copied database is deliberately
 /// sanitized even though the merge engine is also scope-aware: a category that
@@ -153,6 +180,9 @@ pub(crate) fn sanitize_snapshot(
     selection: SyncSelection,
 ) -> Result<(), CommandError> {
     let selection = selection.validate()?;
+    if selection.flashcards {
+        require_supported_question_snapshot(connection)?;
+    }
     // A sync package is not a complete-library backup. Remove private learning
     // state before deleting selected-domain parents, including serialized source
     // projections which can otherwise carry unselected material as plain text.
@@ -165,7 +195,11 @@ pub(crate) fn sanitize_snapshot(
         .execute_batch(
             "PRAGMA foreign_keys = OFF;
              DELETE FROM app_settings;
-             DELETE FROM card_search_fts;",
+             DELETE FROM card_search_fts;
+             DELETE FROM asset_reconciliation_events;
+             DELETE FROM editor_draft_assets;
+             DELETE FROM editor_drafts;
+             DELETE FROM question_note_writes;",
         )
         .map_err(CommandError::database)?;
 
@@ -198,7 +232,12 @@ pub(crate) fn sanitize_snapshot(
         }
         connection
             .execute_batch(
-                "DELETE FROM review_event_tag_attributions;
+                "DELETE FROM question_remediation_attempts;
+                 DELETE FROM question_review_links;
+                 DELETE FROM question_attempt_assets;
+                 DELETE FROM question_attempts;
+                 DELETE FROM card_question_presentations;
+                 DELETE FROM review_event_tag_attributions;
                  DELETE FROM review_event_attributions;
                  DELETE FROM review_events;
                  DELETE FROM practice_session_card_tag_snapshots;
@@ -304,6 +343,10 @@ pub(crate) fn sanitize_snapshot(
         .map_err(CommandError::database)?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "question_transfer_tests.rs"]
+mod question_transfer_tests;
 
 #[cfg(test)]
 #[path = "privacy_tests.rs"]

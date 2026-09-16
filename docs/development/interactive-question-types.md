@@ -1,7 +1,8 @@
 # Interactive question types: implementation contract
 
-Status: implementation in progress. This is the accepted scope and delivery
-contract, not a claim that the new question types are already available.
+Status: implementation in progress on PR #101. The seven manually authored types
+are integrated for a Stage 6 test drive; generation and final release acceptance
+remain open. This accepted contract is broader than the current qualified scope.
 
 Baseline: merged PR #98, main `9af5e204b9cbaa74e955fce8726ffd476f0f11d2`.
 Its final source includes schema-3 math/media, MathLive authoring, shared KaTeX,
@@ -262,59 +263,48 @@ matrix until implementation is complete; no incidental cleanup after the freeze.
 
 ### Current implementation boundary
 
-`src/editor/RichFieldList.tsx` now shares ID-keyed rich editors and resource props.
-`BasicCardFields.tsx` owns the Basic form body and reversal. The existing screen
-still owns durable drafts/saving. `TemplateEntryForm.tsx` uses the same field host
-and emits per-field deltas; the screen applies them with functional state updates
-so multiple edits in one batch do not lose sibling changes.
+Stages 0–5 provide strict native typed definitions, schema-15 ownership, stable
+presentation identities, captured first attempts, six objective evaluators,
+purpose-built editors and Practice activities. Basic/Cloze remain first-class.
+The existing transactional FSRS path owns scheduling; interactive activities do
+not maintain a second scheduler. Rich fields share the current editor/media/math
+infrastructure and apply updates by field identity.
 
-The native domain in `src-tauri/src/cards/questions/` is exposed through the
-application library's `questions` facade. It admits version-1 typed definitions
-for all seven new kinds and version-1 responses for the six objective kinds.
-Validated wrappers keep raw input out of public projection and evaluation. Fields
-reuse the schema-1/2/3 rich validator, with additional per-field/aggregate byte,
-JSON-depth and item limits. Managed-asset collection includes private rationales
-and occlusion images; public projections collect visible-field assets only.
+Stage 6 integrates manual image occlusion into the same Template selector, durable
+draft, save/reopen and Practice lifecycle. The pure geometry/gesture/history
+modules in `src/editor/occlusion/` are separate from the SVG workspace, the question
+inspector and the ordinary Card editor shell. A question may target several regions,
+and several questions may share a region. Geometry changes preserve question/card
+identity and undo does not overwrite newer question text.
 
-Single-choice, exact-set select-all, Boolean, bijection, category membership and
-complete total-order evaluation return correctness and component feedback, never
-FSRS ratings. Empty select-all keys/responses are valid; unanswered radio/Boolean
-responses are incomplete rather than false. Unknown/duplicate IDs, unexpected
-fields and unsupported versions fail explicitly. This proves structural validity,
-not factual correctness, semantic uniqueness, or a useful ordering criterion.
+Native source preparation normalizes supported still images. Practice requests
+masked PNG bytes using captured session/card/instance/revision, never a source
+asset URL or a client-selected reveal phase. The original image is not hidden
+behind CSS. The explicit revealed attempt state captures self-assessment without
+an objective response/verdict, and a retry-safe review uses the existing scheduler
+transaction. Fullscreen/zoom navigation, queued raster reads, Blob cleanup,
+process-local bounded caching and identity-based late-result reconciliation are
+shared rather than embedded as special cases in the scheduler.
 
-`QuestionInstance` freezes note/card/instance identity, note revision, definition,
-presentation key, display permutation and grading-policy version. Its bounded
-private serialization restores without consulting a current note or reshuffling.
-A SHA-256 fingerprint identifies the captured content. Incoming answers bind to
-the instance ID. This is an immutable native value, NOT yet a SQLite session
-write, first-attempt receipt, idempotent check, or scheduler integration.
+The source tree includes editor-shell create/save/reopen/Save + another tests;
+mouse/touch/pen and non-drag workspace regressions; native pixel, ownership,
+reveal/review rollback and file-backed recovery tests; and frontend stale-raster,
+retry-identity and fullscreen/viewport tests. Exact pass/fail evidence belongs to
+the PR/Actions record, not a claim inferred from the presence of tests.
 
-Occlusion validates finite normalized rectangles and independent question targets.
-Native mask plans support both modes and multi-region targets, but have no
-serialization implementation that would casually expose the original image to
-Practice. Public projection refuses occlusion until a managed masked derivative
-is prepared. Rendering/editor integration and image ownership checks remain open.
+Typed `.studydeck` exchange remains incompatible with the old package format.
+Device sync explicitly rejects an unsupported typed graph before publication or
+merge; it does not silently omit its presentation/attempt tables. Unselected
+question records and private editor drafts are removed from copied transfer
+snapshots, including their deleted SQLite bytes. Full typed sharing and the
+release-wide compatibility matrix remain open. The inherited Android dependency
+license gap remains AC-22; Stage 6 adds no proprietary study service.
 
-There is no new IPC command, database migration, transfer/schema activation,
-provider/dependency/workflow change, or enabled question type in this increment.
-Current Basic/Cloze authoring and Practice remain unchanged. Next complete the
-native storage/asset/session/transfer contracts, then integrate the shared choice
-forms and full create/save/reopen/study/check flow. Generation, drag interaction,
-occlusion rendering, analytics and platform acceptance are still unfinished.
-
-Focused regressions:
-
-```bash
-pnpm exec vitest run src/editor/RichFieldList.test.tsx src/screens/CardEditorFields.test.tsx src/screens/CardEditorScreen.test.tsx
-cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib cards::questions::
-```
-
-Native tests exercise actual rich validation, all graders, bounded malformed
-input, asset visibility, frozen snapshots/order and occlusion geometry/identity.
-The existing fast gate's `cards::` filter includes them. They do not establish
-file-backed attempts, import/backup/sync round trips, real UI interaction or
-physical-device acceptance. Exact qualification belongs to the PR/Actions record.
+See [Stage 6 build, test and manual acceptance](image-occlusion.md). Stop at that
+test-drive checkpoint before automatic generation and final integration in
+Stages 7–9. Desktop/Android visual and physical-touch acceptance must be recorded
+separately from static/fast checks; no full release qualification or merge is
+implied by completing this implementation slice.
 
 ## Stable acceptance criteria
 
