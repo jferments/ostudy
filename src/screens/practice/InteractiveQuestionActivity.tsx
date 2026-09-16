@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { RichTextView } from "../../editor/RichTextView";
 import type { Asset } from "../../ipc/assets";
@@ -16,6 +16,7 @@ import { Button } from "../../ui/primitives/Button";
 import { Checkbox, RadioGroup } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Surface } from "../../ui/primitives/Surface";
+import { usePracticePointerDrop } from "./usePracticePointerDrop";
 
 interface InteractiveQuestionActivityProps {
   sessionId: string;
@@ -227,15 +228,19 @@ function QuestionBody({ attempt, response, assets, disabled, onChange, onError }
     return <MatchingBoard question={question} assignments={assignments} assets={assets} disabled={disabled}
       onChange={(next) => onChange({ kind: "matching", assignments: next })} onError={onError} />;
   }
+  if (question.kind === "grouping") {
+    const assignments = response.kind === "grouping" ? response.assignments : [];
+    return <GroupingBoard question={question} assignments={assignments} assets={assets} disabled={disabled}
+      onChange={(next) => onChange({ kind: "grouping", assignments: next })} onError={onError} />;
+  }
+  if (question.kind === "ordering") {
+    const orderedItemIds = response.kind === "ordering"
+      ? response.orderedItemIds
+      : question.items.map((item) => item.id);
+    return <OrderingBoard question={question} orderedItemIds={orderedItemIds} assets={assets} disabled={disabled}
+      onChange={(next) => onChange({ kind: "ordering", orderedItemIds: next })} onError={onError} />;
+  }
   return <InlineNotice kind="error">This interactive question is not available in this practice view yet.</InlineNotice>;
-}
-
-interface PointerDrag {
-  pointerId: number;
-  itemId: string;
-  startX: number;
-  startY: number;
-  active: boolean;
 }
 
 function MatchingBoard({ question, assignments, assets, disabled, onChange, onError }: {
@@ -247,9 +252,6 @@ function MatchingBoard({ question, assignments, assets, disabled, onChange, onEr
   onError: (message: string) => void;
 }) {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
-  const pointerRef = useRef<PointerDrag | null>(null);
-  const suppressClickRef = useRef(false);
   const assignedByItem = new Map(assignments.map((entry) => [entry.itemId, entry.targetId]));
   const itemByTarget = new Map(assignments.map((entry) => [entry.targetId, entry.itemId]));
 
@@ -261,46 +263,7 @@ function MatchingBoard({ question, assignments, assets, disabled, onChange, onEr
     setSelectedItemId(null);
   }
 
-  function pointerDown(event: ReactPointerEvent<HTMLElement>, itemId: string): void {
-    if (disabled || event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    pointerRef.current = {
-      pointerId: event.pointerId,
-      itemId,
-      startX: event.clientX,
-      startY: event.clientY,
-      active: false,
-    };
-  }
-
-  function pointerMove(event: ReactPointerEvent<HTMLElement>): void {
-    const drag = pointerRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-    if (!drag.active && distance >= 8) {
-      drag.active = true;
-      suppressClickRef.current = true;
-      setDraggingItemId(drag.itemId);
-    }
-    if (drag.active) event.preventDefault();
-  }
-
-  function pointerEnd(event: ReactPointerEvent<HTMLElement>): void {
-    const drag = pointerRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    pointerRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (drag.active) {
-      const target = document.elementFromPoint(event.clientX, event.clientY)
-        ?.closest<HTMLElement>("[data-match-target-id]");
-      const targetId = target?.dataset.matchTargetId;
-      if (targetId) assign(drag.itemId, targetId);
-    }
-    setDraggingItemId(null);
-    window.setTimeout(() => { suppressClickRef.current = false; }, 0);
-  }
+  const pointer = usePracticePointerDrop({ disabled, onDrop: assign });
 
   return <Surface className="tw:grid tw:gap-5 tw:p-5">
     <RichTextView document={question.prompt} assets={assets} onLinkError={onError} />
@@ -315,21 +278,21 @@ function MatchingBoard({ question, assignments, assets, disabled, onChange, onEr
           <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
             <Button variant={selectedItemId === item.id ? "primary" : "secondary"} size="small"
               className="tw:touch-none" disabled={disabled}
-              onPointerDown={(event) => pointerDown(event, item.id)} onPointerMove={pointerMove}
-              onPointerUp={pointerEnd} onPointerCancel={pointerEnd}
+              onPointerDown={(event) => pointer.pointerDown(event, item.id)} onPointerMove={pointer.pointerMove}
+              onPointerUp={pointer.pointerUp} onPointerCancel={pointer.pointerCancel}
               onClick={() => {
-                if (suppressClickRef.current) return;
+                if (pointer.shouldSuppressClick()) return;
                 setSelectedItemId((current) => current === item.id ? null : item.id);
               }}>
-              {draggingItemId === item.id ? "Dragging…" : selectedItemId === item.id ? "Selected" : `Drag / select item ${index + 1}`}
+              {pointer.draggingItemId === item.id ? "Dragging…" : selectedItemId === item.id ? "Selected" : `Drag / select item ${index + 1}`}
             </Button>
             {assignedByItem.has(item.id) ? <small className="tw:text-muted-foreground">Matched</small> : null}
           </div>
         </div>)}
       </div>
       <div className="tw:grid tw:gap-3" aria-label="Matching targets">
-        {question.targets.map((target, index) => <div key={target.id} data-match-target-id={target.id}
-          className={draggingItemId
+        {question.targets.map((target, index) => <div key={target.id} data-practice-drop-target-id={target.id}
+          className={pointer.draggingItemId
             ? "tw:grid tw:gap-2 tw:rounded-xl tw:border tw:border-solid tw:border-primary tw:bg-accent tw:p-4"
             : "tw:grid tw:gap-2 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4"}>
           <RichTextView document={target.content} assets={assets} onLinkError={onError} />
@@ -343,6 +306,139 @@ function MatchingBoard({ question, assignments, assets, disabled, onChange, onEr
         </div>)}
       </div>
     </div>
+  </Surface>;
+}
+
+function GroupingBoard({ question, assignments, assets, disabled, onChange, onError }: {
+  question: Extract<QuestionAttemptView["question"], { kind: "grouping" }>;
+  assignments: Array<{ itemId: string; targetId: string }>;
+  assets: Asset[];
+  disabled: boolean;
+  onChange: (assignments: Array<{ itemId: string; targetId: string }>) => void;
+  onError: (message: string) => void;
+}) {
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const assignedByItem = new Map(assignments.map((entry) => [entry.itemId, entry.targetId]));
+  const categoryIndex = new Map(question.categories.map((category, index) => [category.id, index]));
+
+  function assign(itemId: string, targetId: string): void {
+    if (disabled) return;
+    const next = assignments.filter((entry) => entry.itemId !== itemId);
+    next.push({ itemId, targetId });
+    onChange(next);
+    setSelectedItemId(null);
+  }
+
+  const pointer = usePracticePointerDrop({ disabled, onDrop: assign });
+
+  return <Surface className="tw:grid tw:gap-5 tw:p-5">
+    <RichTextView document={question.prompt} assets={assets} onLinkError={onError} />
+    <p className="tw:text-sm tw:text-muted-foreground">
+      Drag each item into a category, or select an item and place it with the category button. Correctness is shown only after Check answer.
+    </p>
+    <div className="tw:grid tw:gap-3 tw:sm:grid-cols-2" aria-label="Grouping categories">
+      {question.categories.map((category, index) => <div key={category.id} data-practice-drop-target-id={category.id}
+        className={pointer.draggingItemId
+          ? "tw:grid tw:min-h-28 tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-primary tw:bg-accent tw:p-4"
+          : "tw:grid tw:min-h-28 tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4"}>
+        <div className="tw:flex tw:items-start tw:gap-2">
+          <strong className="tw:shrink-0">Group {index + 1}</strong>
+          <div className="tw:min-w-0 tw:flex-1"><RichTextView document={category.content} assets={assets} onLinkError={onError} /></div>
+        </div>
+        <Button variant="secondary" size="small" disabled={disabled || selectedItemId === null}
+          onClick={() => { if (selectedItemId) assign(selectedItemId, category.id); }}>
+          Place selected item here
+        </Button>
+      </div>)}
+    </div>
+    <div className="tw:grid tw:gap-3" aria-label="Items to group">
+      {question.items.map((item, index) => {
+        const assignedTarget = assignedByItem.get(item.id);
+        const assignedIndex = assignedTarget ? categoryIndex.get(assignedTarget) : undefined;
+        return <div key={item.id}
+          className="tw:grid tw:gap-2 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4">
+          <RichTextView document={item.content} assets={assets} onLinkError={onError} />
+          <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+            <Button variant={selectedItemId === item.id ? "primary" : "secondary"} size="small"
+              className="tw:touch-none" disabled={disabled}
+              onPointerDown={(event) => pointer.pointerDown(event, item.id)} onPointerMove={pointer.pointerMove}
+              onPointerUp={pointer.pointerUp} onPointerCancel={pointer.pointerCancel}
+              onClick={() => {
+                if (pointer.shouldSuppressClick()) return;
+                setSelectedItemId((current) => current === item.id ? null : item.id);
+              }}>
+              {pointer.draggingItemId === item.id ? "Dragging…" : selectedItemId === item.id ? "Selected" : `Drag / select item ${index + 1}`}
+            </Button>
+            {assignedIndex !== undefined ? <small className="tw:text-muted-foreground">Assigned to group {assignedIndex + 1}</small> : null}
+          </div>
+        </div>;
+      })}
+    </div>
+  </Surface>;
+}
+
+function OrderingBoard({ question, orderedItemIds, assets, disabled, onChange, onError }: {
+  question: Extract<QuestionAttemptView["question"], { kind: "ordering" }>;
+  orderedItemIds: string[];
+  assets: Asset[];
+  disabled: boolean;
+  onChange: (orderedItemIds: string[]) => void;
+  onError: (message: string) => void;
+}) {
+  const itemById = new Map(question.items.map((item) => [item.id, item]));
+  const orderedItems = orderedItemIds.flatMap((itemId) => {
+    const item = itemById.get(itemId);
+    return item ? [item] : [];
+  });
+
+  function move(itemId: string, delta: -1 | 1): void {
+    if (disabled) return;
+    const index = orderedItemIds.indexOf(itemId);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= orderedItemIds.length) return;
+    const next = [...orderedItemIds];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  }
+
+  function moveBefore(itemId: string, targetId: string): void {
+    if (disabled || itemId === targetId) return;
+    const next = orderedItemIds.filter((id) => id !== itemId);
+    const targetIndex = next.indexOf(targetId);
+    if (targetIndex < 0) return;
+    next.splice(targetIndex, 0, itemId);
+    onChange(next);
+  }
+
+  const pointer = usePracticePointerDrop({ disabled, onDrop: moveBefore });
+
+  return <Surface className="tw:grid tw:gap-5 tw:p-5">
+    <RichTextView document={question.prompt} assets={assets} onLinkError={onError} />
+    <p className="tw:text-sm tw:text-muted-foreground">
+      Put the items in order. Drag an item onto another row to move it before that row, or use Move up / Move down.
+    </p>
+    <ol className="tw:grid tw:list-none tw:gap-3 tw:p-0" aria-label="Current item order">
+      {orderedItems.map((item, index) => <li key={item.id} data-practice-drop-target-id={item.id}
+        className={pointer.draggingItemId && pointer.draggingItemId !== item.id
+          ? "tw:grid tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-primary tw:bg-accent tw:p-4"
+          : "tw:grid tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:p-4"}>
+        <div className="tw:flex tw:items-start tw:gap-3">
+          <strong className="tw:shrink-0">{index + 1}.</strong>
+          <div className="tw:min-w-0 tw:flex-1"><RichTextView document={item.content} assets={assets} onLinkError={onError} /></div>
+        </div>
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+          <span className="tw:touch-none tw:rounded-md tw:border tw:border-solid tw:border-border tw:px-3 tw:py-2 tw:text-sm"
+            onPointerDown={(event) => pointer.pointerDown(event, item.id)} onPointerMove={pointer.pointerMove}
+            onPointerUp={pointer.pointerUp} onPointerCancel={pointer.pointerCancel}>
+            {pointer.draggingItemId === item.id ? "Dragging…" : `Drag item ${index + 1}`}
+          </span>
+          <Button variant="secondary" size="small" disabled={disabled || index === 0}
+            onClick={() => move(item.id, -1)}>Move up</Button>
+          <Button variant="secondary" size="small" disabled={disabled || index === orderedItems.length - 1}
+            onClick={() => move(item.id, 1)}>Move down</Button>
+        </div>
+      </li>)}
+    </ol>
   </Surface>;
 }
 
@@ -380,7 +476,7 @@ function componentSummary(component: ComponentFeedback): string {
     return component.selected === component.expected ? "Correct true/false choice" : "True/false choice was incorrect";
   }
   if (component.kind === "placement") {
-    return component.selectedTargetId === component.expectedTargetId ? "Correct match" : "Incorrect match";
+    return component.selectedTargetId === component.expectedTargetId ? "Correct placement" : "Incorrect placement";
   }
   return component.selectedPosition === component.expectedPosition ? "Correct position" : "Incorrect position";
 }

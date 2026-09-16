@@ -23,6 +23,23 @@ function baseAttempt(question: QuestionAttemptView["question"]): QuestionAttempt
   };
 }
 
+function savedFrom(attempt: QuestionAttemptView, input: { request: { answer: unknown } }): QuestionAttemptView {
+  return {
+    ...attempt,
+    revision: 2,
+    progress: {
+      phase: "answering",
+      savedAnswer: input.request.answer as Extract<QuestionAttemptView["progress"], { phase: "answering" }>["savedAnswer"],
+    },
+  };
+}
+
+function supportPointerCapture(handle: HTMLElement): void {
+  if (!("setPointerCapture" in handle)) Object.defineProperty(handle, "setPointerCapture", { value: vi.fn() });
+  if (!("releasePointerCapture" in handle)) Object.defineProperty(handle, "releasePointerCapture", { value: vi.fn() });
+  if (!("hasPointerCapture" in handle)) Object.defineProperty(handle, "hasPointerCapture", { value: vi.fn().mockReturnValue(true) });
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
 });
@@ -90,11 +107,7 @@ describe("InteractiveQuestionActivity", () => {
         { id: id("y"), content: rich("Right Y") },
       ],
     });
-    const onSave = vi.fn().mockImplementation(async (input) => ({
-      ...attempt,
-      revision: 2,
-      progress: { phase: "answering", savedAnswer: input.request.answer },
-    }));
+    const onSave = vi.fn().mockImplementation(async (input) => savedFrom(attempt, input));
     render(<InteractiveQuestionActivity sessionId={id("s")} cardId={id("d")} attempt={attempt} assets={[]}
       disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Drag / select item 1" }));
@@ -106,29 +119,20 @@ describe("InteractiveQuestionActivity", () => {
     });
   });
 
-  it("uses Pointer Events for drag placement so touch and pen do not depend on HTML drag events", async () => {
+  it("uses the shared Pointer Events adapter for matching touch and pen placement", async () => {
     const attempt = baseAttempt({
       kind: "matching",
       prompt: rich("Match"),
       items: [{ id: id("a"), content: rich("Left") }, { id: id("b"), content: rich("Other") }],
       targets: [{ id: id("x"), content: rich("Right") }, { id: id("y"), content: rich("Other right") }],
     });
-    const onSave = vi.fn().mockImplementation(async (input) => ({
-      ...attempt,
-      revision: 2,
-      progress: { phase: "answering", savedAnswer: input.request.answer },
-    }));
+    const onSave = vi.fn().mockImplementation(async (input) => savedFrom(attempt, input));
     render(<InteractiveQuestionActivity sessionId={id("s")} cardId={id("d")} attempt={attempt} assets={[]}
       disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
     const handle = screen.getByRole("button", { name: "Drag / select item 1" });
-    const target = screen.getAllByText("Right")[0].closest("[data-match-target-id]") as HTMLElement;
-    Object.defineProperty(document, "elementFromPoint", {
-      configurable: true,
-      value: vi.fn(() => target),
-    });
-    if (!("setPointerCapture" in handle)) Object.defineProperty(handle, "setPointerCapture", { value: vi.fn() });
-    if (!("releasePointerCapture" in handle)) Object.defineProperty(handle, "releasePointerCapture", { value: vi.fn() });
-    if (!("hasPointerCapture" in handle)) Object.defineProperty(handle, "hasPointerCapture", { value: vi.fn().mockReturnValue(true) });
+    const target = screen.getAllByText("Right")[0].closest("[data-practice-drop-target-id]") as HTMLElement;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: vi.fn(() => target) });
+    supportPointerCapture(handle);
     fireEvent.pointerDown(handle, { pointerId: 7, button: 0, clientX: 1, clientY: 1, pointerType: "touch" });
     fireEvent.pointerMove(handle, { pointerId: 7, clientX: 20, clientY: 20, pointerType: "touch" });
     fireEvent.pointerUp(handle, { pointerId: 7, clientX: 20, clientY: 20, pointerType: "touch" });
@@ -136,6 +140,97 @@ describe("InteractiveQuestionActivity", () => {
     expect(onSave.mock.calls.at(-1)?.[0].request.answer.response).toEqual({
       kind: "matching",
       assignments: [{ itemId: id("a"), targetId: id("x") }],
+    });
+  });
+
+  it("offers grouping without dragging by selecting an item and a category", async () => {
+    const attempt = baseAttempt({
+      kind: "grouping",
+      prompt: rich("Sort the findings"),
+      items: [{ id: id("a"), content: rich("Shivering") }, { id: id("b"), content: rich("Sweating") }],
+      categories: [{ id: id("x"), content: rich("Cold") }, { id: id("y"), content: rich("Hot") }],
+    });
+    const onSave = vi.fn().mockImplementation(async (input) => savedFrom(attempt, input));
+    render(<InteractiveQuestionActivity sessionId={id("s")} cardId={id("d")} attempt={attempt} assets={[]}
+      disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Drag / select item 1" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Place selected item here" })[0]);
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].request.answer.response).toEqual({
+      kind: "grouping",
+      assignments: [{ itemId: id("a"), targetId: id("x") }],
+    });
+  });
+
+  it("uses the same Pointer Events drop adapter for grouping", async () => {
+    const attempt = baseAttempt({
+      kind: "grouping",
+      prompt: rich("Group"),
+      items: [{ id: id("a"), content: rich("Item A") }, { id: id("b"), content: rich("Item B") }],
+      categories: [{ id: id("x"), content: rich("Group X") }, { id: id("y"), content: rich("Group Y") }],
+    });
+    const onSave = vi.fn().mockImplementation(async (input) => savedFrom(attempt, input));
+    render(<InteractiveQuestionActivity sessionId={id("s")} cardId={id("d")} attempt={attempt} assets={[]}
+      disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
+    const handle = screen.getByRole("button", { name: "Drag / select item 1" });
+    const target = screen.getByText("Group X").closest("[data-practice-drop-target-id]") as HTMLElement;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: vi.fn(() => target) });
+    supportPointerCapture(handle);
+    fireEvent.pointerDown(handle, { pointerId: 8, button: 0, clientX: 1, clientY: 1, pointerType: "pen" });
+    fireEvent.pointerMove(handle, { pointerId: 8, clientX: 20, clientY: 20, pointerType: "pen" });
+    fireEvent.pointerUp(handle, { pointerId: 8, clientX: 20, clientY: 20, pointerType: "pen" });
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls.at(-1)?.[0].request.answer.response).toEqual({
+      kind: "grouping",
+      assignments: [{ itemId: id("a"), targetId: id("x") }],
+    });
+  });
+
+  it("orders without dragging through explicit move controls while preserving a full permutation", async () => {
+    const attempt = baseAttempt({
+      kind: "ordering",
+      prompt: rich("Order the steps"),
+      items: [
+        { id: id("a"), content: rich("First") },
+        { id: id("b"), content: rich("Second") },
+        { id: id("c"), content: rich("Third") },
+      ],
+    });
+    const onSave = vi.fn().mockImplementation(async (input) => savedFrom(attempt, input));
+    render(<InteractiveQuestionActivity sessionId={id("s")} cardId={id("d")} attempt={attempt} assets={[]}
+      disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Move down" })[0]);
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0].request.answer.response).toEqual({
+      kind: "ordering",
+      orderedItemIds: [id("b"), id("a"), id("c")],
+    });
+  });
+
+  it("reorders by Pointer Events drag without revealing the canonical answer", async () => {
+    const attempt = baseAttempt({
+      kind: "ordering",
+      prompt: rich("Order"),
+      items: [
+        { id: id("a"), content: rich("First") },
+        { id: id("b"), content: rich("Second") },
+        { id: id("c"), content: rich("Third") },
+      ],
+    });
+    const onSave = vi.fn().mockImplementation(async (input) => savedFrom(attempt, input));
+    render(<InteractiveQuestionActivity sessionId={id("s")} cardId={id("d")} attempt={attempt} assets={[]}
+      disabled={false} onSave={onSave} onCheck={vi.fn()} onAttempt={vi.fn()} onChecked={vi.fn()} onError={vi.fn()} />);
+    const handle = screen.getByText("Drag item 3");
+    const target = screen.getByText("First").closest("[data-practice-drop-target-id]") as HTMLElement;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: vi.fn(() => target) });
+    supportPointerCapture(handle);
+    fireEvent.pointerDown(handle, { pointerId: 9, button: 0, clientX: 1, clientY: 1, pointerType: "touch" });
+    fireEvent.pointerMove(handle, { pointerId: 9, clientX: 20, clientY: 20, pointerType: "touch" });
+    fireEvent.pointerUp(handle, { pointerId: 9, clientX: 20, clientY: 20, pointerType: "touch" });
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls.at(-1)?.[0].request.answer.response).toEqual({
+      kind: "ordering",
+      orderedItemIds: [id("c"), id("a"), id("b")],
     });
   });
 });
