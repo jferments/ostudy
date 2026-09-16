@@ -1,7 +1,7 @@
 use super::*;
 use crate::cards::questions::ValidatedQuestion;
 
-pub(super) fn search_cards_in_connection(
+pub(crate) fn search_cards_in_connection(
     connection: &Connection,
     input: SearchCardsInput,
 ) -> Result<CardSearchPageDto, CommandError> {
