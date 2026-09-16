@@ -1,5 +1,7 @@
 //! Practice-session events and atomic FSRS review submission.
 
+pub(crate) mod question_attempts;
+
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use tauri::State;

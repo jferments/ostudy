@@ -129,6 +129,16 @@ cargo test \
   --lib \
   cards::
 
+step "Interactive question authoring and migration preservation"
+for test_filter in authoring::card_commands::interactive:: database::interactive_migration_tests:: practice::question_attempts:: asset_lifecycle::question_attempt_assets_keep_images_referenced; do
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    "$test_filter"
+done
+
 step "Document metadata migration regression"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \

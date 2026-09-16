@@ -132,11 +132,41 @@ fn reference_count(connection: &Connection, asset_id: &str) -> Result<i64, Comma
         .query_row(
             "SELECT
                  (SELECT COUNT(*) FROM note_assets WHERE asset_id = ?1) +
-                 (SELECT COUNT(*) FROM card_template_assets WHERE asset_id = ?1)",
+                 (SELECT COUNT(*) FROM card_template_assets WHERE asset_id = ?1) +
+                 (SELECT COUNT(*) FROM question_attempt_assets WHERE asset_id = ?1)",
             [asset_id],
             |row| row.get(0),
         )
         .map_err(CommandError::database)
+}
+
+#[cfg(test)]
+#[test]
+fn question_attempt_assets_keep_images_referenced() {
+    // Exercise the production reference query. Full graph/cascade coverage
+    // belongs to the schema and question-store integration tests.
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE note_assets (asset_id TEXT);
+             CREATE TABLE card_template_assets (asset_id TEXT);
+             CREATE TABLE question_attempt_assets (asset_id TEXT);",
+        )
+        .unwrap();
+    let asset_id = "a".repeat(32);
+    assert_eq!(reference_count(&connection, &asset_id).unwrap(), 0);
+    connection
+        .execute("INSERT INTO question_attempt_assets VALUES (?1)", [&asset_id])
+        .unwrap();
+    assert_eq!(reference_count(&connection, &asset_id).unwrap(), 1);
+    connection
+        .execute("INSERT INTO note_assets VALUES (?1)", [&asset_id])
+        .unwrap();
+    assert_eq!(reference_count(&connection, &asset_id).unwrap(), 2);
+    connection.execute("DELETE FROM note_assets", []).unwrap();
+    assert_eq!(reference_count(&connection, &asset_id).unwrap(), 1);
+    connection.execute("DELETE FROM question_attempt_assets", []).unwrap();
+    assert_eq!(reference_count(&connection, &asset_id).unwrap(), 0);
 }
 
 fn normalize_asset_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {
