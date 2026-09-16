@@ -99,11 +99,8 @@ fn self_rating_updates_fsrs_once_and_does_not_invent_an_objective_verdict() {
             )?;
             assert_eq!(result.correct_count, correct);
             let before = connection.total_changes();
-            let replay = submit_review_with_question(
-                connection,
-                input,
-                Some(review_context(&revealed)),
-            )?;
+            let replay =
+                submit_review_with_question(connection, input, Some(review_context(&revealed)))?;
             assert_eq!(connection.total_changes(), before);
             assert_eq!(
                 serde_json::to_value(result).unwrap(),
@@ -169,16 +166,16 @@ fn image_review_link_failure_rolls_back_schedule_but_keeps_the_committed_reveal(
                  BEGIN SELECT RAISE(ABORT, 'injected link failure'); END;",
             )
             .map_err(CommandError::database)?;
-        let failed = submit_review_with_question(
-            connection,
-            input.clone(),
-            Some(review_context(&revealed)),
-        );
+        let failed =
+            submit_review_with_question(connection, input.clone(), Some(review_context(&revealed)));
         assert!(failed.is_err());
         Ok(())
     });
     assert_eq!(fixture.counts(), (0, 0, 0));
-    assert_eq!(fixture.view(&target)["attempt"]["progress"]["phase"], "revealed");
+    assert_eq!(
+        fixture.view(&target)["attempt"]["progress"]["phase"],
+        "revealed"
+    );
     fixture.run(|connection| {
         connection
             .execute_batch("DROP TRIGGER reject_image_review_link;")
@@ -211,7 +208,9 @@ fn source_edits_and_database_reopen_preserve_captured_geometry_and_reveal() {
             .execute("DELETE FROM note_assets WHERE note_id = ?1", [id(2)])
             .map_err(CommandError::database)?;
         // The captured owner must prevent deleting its source even after note edits.
-        assert!(connection.execute("DELETE FROM assets WHERE id = ?1", [id(8)]).is_err());
+        assert!(connection
+            .execute("DELETE FROM assets WHERE id = ?1", [id(8)])
+            .is_err());
         Ok(())
     });
     let reopened = Database::open(fixture.paths.database_path()).unwrap();
@@ -222,7 +221,10 @@ fn source_edits_and_database_reopen_preserve_captured_geometry_and_reveal() {
         .unwrap();
     assert_eq!(restored, before);
     let bytes = render(&reopened, &fixture.paths, &fixture.image_input(&target, 2)).unwrap();
-    assert_eq!(image::load_from_memory(&bytes).unwrap().into_rgba8(), pixels);
+    assert_eq!(
+        image::load_from_memory(&bytes).unwrap().into_rgba8(),
+        pixels
+    );
 }
 
 #[test]
@@ -233,14 +235,23 @@ fn cached_pixels_cannot_bypass_material_availability_source_ownership_or_missing
     fixture.image(&target, 1);
     fixture.run(|connection| {
         connection
-            .execute("UPDATE cards SET deleted_at = 100 WHERE id = ?1", [&target.card_id])
+            .execute(
+                "UPDATE cards SET deleted_at = 100 WHERE id = ?1",
+                [&target.card_id],
+            )
             .map_err(CommandError::database)?;
         Ok(())
     });
-    assert_eq!(error_code(fixture.raster(&target, 1)), "practice_question_unavailable");
+    assert_eq!(
+        error_code(fixture.raster(&target, 1)),
+        "practice_question_unavailable"
+    );
     fixture.run(|connection| {
         connection
-            .execute("UPDATE cards SET deleted_at = NULL WHERE id = ?1", [&target.card_id])
+            .execute(
+                "UPDATE cards SET deleted_at = NULL WHERE id = ?1",
+                [&target.card_id],
+            )
             .map_err(CommandError::database)?;
         connection
             .execute(
@@ -250,7 +261,10 @@ fn cached_pixels_cannot_bypass_material_availability_source_ownership_or_missing
             .map_err(CommandError::database)?;
         Ok(())
     });
-    assert_eq!(error_code(fixture.raster(&target, 1)), "invalid_question_checkpoint");
+    assert_eq!(
+        error_code(fixture.raster(&target, 1)),
+        "invalid_question_checkpoint"
+    );
     fixture.run(|connection| {
         connection
             .execute(
@@ -277,11 +291,16 @@ fn callers_cannot_request_revealed_pixels_or_use_a_foreign_or_stale_instance() {
     other.target.instance_id = id(999);
     assert!(render(&fixture.database, &fixture.paths, &other).is_err());
     fixture.run(|connection| {
-        assert!(record_practice_event(connection, &target.session_id, &target.card_id, true).is_err());
+        assert!(
+            record_practice_event(connection, &target.session_id, &target.card_id, true).is_err()
+        );
         Ok(())
     });
     fixture.reveal(&target);
-    assert_eq!(error_code(fixture.raster(&target, 1)), "question_attempt_conflict");
+    assert_eq!(
+        error_code(fixture.raster(&target, 1)),
+        "question_attempt_conflict"
+    );
     let mut invalid = fixture.image_input(&target, 2);
     invalid.maximum_edge = MAX_RENDER_EDGE + 1;
     assert_eq!(

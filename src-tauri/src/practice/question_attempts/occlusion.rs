@@ -128,8 +128,8 @@ pub(super) fn render(
     input: &OcclusionImageInput,
 ) -> Result<Vec<u8>, CommandError> {
     validate_image_input(input)?;
-    let (instance, phase, file) = database
-        .with_connection(|connection| authorized_source(connection, paths, input))?;
+    let (instance, phase, file) =
+        database.with_connection(|connection| authorized_source(connection, paths, input))?;
     // Do not hold SQLite's mutex while reading/decoding/encoding large images.
     let source = read_image(file)?;
     let key = cache::key(&instance, &source, phase, input.maximum_edge);
@@ -137,7 +137,11 @@ pub(super) fn render(
         bytes
     } else {
         let image = CanonicalImage::decode(&source)?;
-        std::sync::Arc::new(instance.render_occlusion(&image, phase, input.maximum_edge)?.png)
+        std::sync::Arc::new(
+            instance
+                .render_occlusion(&image, phase, input.maximum_edge)?
+                .png,
+        )
     };
     // A reveal, deletion or library change while rendering must not acknowledge
     // pixels under an obsolete revision. Cache hits need the same authorization.

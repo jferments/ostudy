@@ -81,7 +81,10 @@ pub(crate) fn authorize_review(
             evaluation,
             response_time_ms,
             ..
-        } => (Some(evaluation.verdict == Verdict::Correct), response_time_ms),
+        } => (
+            Some(evaluation.verdict == Verdict::Correct),
+            response_time_ms,
+        ),
         AttemptProgress::Revealed {
             response_time_ms, ..
         } => (None, response_time_ms),

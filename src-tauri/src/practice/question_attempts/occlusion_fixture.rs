@@ -152,7 +152,11 @@ impl Fixture {
                 connection,
                 &self.paths,
                 id(90),
-                if both { vec![id(3), id(4)] } else { vec![id(3)] },
+                if both {
+                    vec![id(3), id(4)]
+                } else {
+                    vec![id(3)]
+                },
                 false,
             )
         })
