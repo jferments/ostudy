@@ -122,8 +122,8 @@ impl Fixture {
                 .map_err(CommandError::database)?;
             connection
                 .execute(
-                    "INSERT INTO cards (id, note_id, deck_id, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, 1, 1)",
+                    "INSERT INTO cards (id, note_id, deck_id, template_ordinal, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, 1, 1, 1)",
                     params![id(4), id(2), id(1)],
                 )
                 .map_err(CommandError::database)?;
