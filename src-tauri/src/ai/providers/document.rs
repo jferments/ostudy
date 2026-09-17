@@ -64,14 +64,39 @@ pub(crate) fn prepare_document_request(
         ProviderDialect::Deepseek => {
             let mut body = base;
             deepseek::disable_thinking(&mut body);
-            deepseek::apply_strict_document_tool(&mut body, schema);
-            Ok(PreparedDocumentRequest {
-                url: deepseek::completion_endpoint(profile, true)?,
-                body,
-                compatibility_body: None,
-                decoder: DocumentOutputDecoder::StrictTool(deepseek::DOCUMENT_TOOL_NAME),
-                schema: schema.clone(),
-            })
+            if schema_support::deepseek_strict_schema_compatible(schema) {
+                deepseek::apply_strict_document_tool(&mut body, schema);
+                Ok(PreparedDocumentRequest {
+                    url: deepseek::completion_endpoint(profile, true)?,
+                    body,
+                    compatibility_body: None,
+                    decoder: DocumentOutputDecoder::StrictTool(deepseek::DOCUMENT_TOOL_NAME),
+                    schema: schema.clone(),
+                })
+            } else {
+                // DeepSeek strict tools reject schemas containing nullable union
+                // types and other unsupported JSON-Schema constructs before the
+                // model runs. JSON-object mode is a supported provider contract;
+                // the full schema remains in the prompt and native admission is
+                // still authoritative after the response is parsed.
+                openai_compatible::set_json_object(&mut body);
+                crate::logging::debug_target(
+                    "ai.contract",
+                    "deepseek_structured_output_json_fallback",
+                    "Used DeepSeek JSON-object mode because the task schema is outside the provider's strict-tool subset.",
+                    json!({
+                        "model": profile.model_id,
+                        "schemaFingerprint": crate::ai::structured_output::fingerprint(schema),
+                    }),
+                );
+                Ok(PreparedDocumentRequest {
+                    url: deepseek::completion_endpoint(profile, false)?,
+                    body,
+                    compatibility_body: None,
+                    decoder: DocumentOutputDecoder::ContentJson,
+                    schema: schema.clone(),
+                })
+            }
         }
         ProviderDialect::Openrouter => {
             let mut body = base;
@@ -253,6 +278,38 @@ mod tests {
             openrouter.body.pointer("/provider/require_parameters"),
             Some(&json!(true))
         );
+    }
+
+    #[test]
+    fn deepseek_nullable_contract_uses_supported_json_object_mode() {
+        let schema = json!({
+            "type":"object",
+            "properties":{
+                "prompt":{"type":"string"},
+                "explanation":{"type":["string","null"]}
+            },
+            "required":["prompt","explanation"]
+        });
+        let request = prepare_document_request(
+            &profile(
+                ProviderKind::Deepseek,
+                "https://api.deepseek.com/",
+                "deepseek-flash",
+            ),
+            "system",
+            Value::String("user".to_string()),
+            &schema,
+            100,
+            "none",
+        )
+        .unwrap();
+        assert_eq!(request.url.as_str(), "https://api.deepseek.com/chat/completions");
+        assert_eq!(
+            request.body.pointer("/response_format/type"),
+            Some(&json!("json_object"))
+        );
+        assert!(request.body.get("tools").is_none());
+        assert_eq!(request.decoder, DocumentOutputDecoder::ContentJson);
     }
 }
 
