@@ -14,6 +14,7 @@ import {
   sourceUnitHeading, formatSourceUnitMetric, formatBytes, formatProcessingDuration,
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
+import { GenerationSummary } from "./documents/GenerationSummary";
 import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
@@ -126,6 +127,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                           <MetadataItem label="Created" value={formatDate(document.createdAt)} />
                           <MetadataItem label="SHA-256" value={document.sha256} />
                         </MetadataList>
+                        <GenerationSummary report={document.generationSummary} />
                       </InfoButton>
                     ) : null}
                   </div>

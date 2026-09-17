@@ -12,6 +12,7 @@ use serde_json::Value;
 use crate::{
     ai::{document_intelligence, AiRuntimeState},
     database::Database,
+    document_card_topics::report,
     document_checkpoints,
     document_scale::DocumentScalePlan,
     document_semantics::SemanticWindow,
@@ -121,6 +122,18 @@ pub(crate) async fn execute_generation_windows(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let available_knowledge_units = catalogs
+        .iter()
+        .flat_map(|catalog| catalog.units.iter().map(|unit| &unit.id))
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
+    report::begin(
+        input.database,
+        input.document_id,
+        input.job_id,
+        &input.task.question_policy,
+        available_knowledge_units,
+    )?;
     let mut by_window = vec![None; input.windows.len()];
     let mut missing = Vec::new();
     let mut completed = 0_usize;
@@ -279,6 +292,7 @@ pub(crate) async fn execute_generation_windows(
         }
         generated.extend(cards);
     }
+    report::record_candidates(input.database, input.job_id, generated.len())?;
     set_current_task_phase(
         "curating",
         None,

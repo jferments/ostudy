@@ -36,6 +36,7 @@ pub struct DocumentDto {
     pub generated_card_count: i64,
     pub generated_deck_id: Option<String>,
     pub analysis_pending_items: i64,
+    pub generation_summary: Option<crate::document_card_topics::report::GenerationReport>,
     pub safe_error_code: String,
     pub safe_error_message: String,
     pub created_at: i64,

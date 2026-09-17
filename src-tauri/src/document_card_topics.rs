@@ -27,6 +27,8 @@ use crate::{
     },
 };
 
+pub(crate) mod report;
+
 #[derive(Clone, Debug)]
 pub(crate) struct SourceGroundedGeneratedCard {
     pub card: Value,
@@ -261,7 +263,14 @@ pub(crate) fn link_imported_notes_to_topics(
             )?;
         }
     }
-    Ok(())
+    report::publish(
+        connection,
+        document_id,
+        generation_job_id,
+        cards,
+        commit_context,
+        imported_at,
+    )
 }
 
 fn card_identity(card: &Value, support: &[UnitSupport]) -> Result<String, CommandError> {

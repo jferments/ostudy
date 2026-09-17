@@ -143,9 +143,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0016_assessment_generation.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 17,
+        name: "generation_reports",
+        checksum: "6d474e209e201784f858bf75d64eeb8bef34c3473ed478fa0a577dede88386d3",
+        sql: include_str!("../migrations/0017_generation_reports.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 16;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 17;
 
 pub struct Database {
     connection: Mutex<Connection>,
