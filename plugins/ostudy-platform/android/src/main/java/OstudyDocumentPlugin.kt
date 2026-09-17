@@ -346,7 +346,13 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             val executor = Executors.newSingleThreadExecutor { runnable ->
                 Thread(runnable, "ostudy-tesseract").apply { isDaemon = true }
             }
-            val future = executor.submit<String> { tess.getUTF8Text() ?: "" }
+            // `stop()` only interrupts recognition started by getHOCRText(). Run
+            // that interruptible recognition step first; getUTF8Text() then reads
+            // the already-computed plain-text result instead of owning the timeout.
+            val future = executor.submit<String> {
+                tess.getHOCRText(0)
+                tess.getUTF8Text() ?: ""
+            }
             val text = try {
                 future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)
             } catch (_: TimeoutException) {
