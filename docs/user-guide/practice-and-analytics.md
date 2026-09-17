@@ -18,9 +18,9 @@ A large selected session does not send the whole deck's rich card content to Rea
 
 Starting a very large session is still linear work because durable snapshot rows must be created for the selected cards; it is not intended to pretend that 50,000 cards cost the same as 50. The important boundary is that rich card documents and managed-asset references are processed in bounded batches rather than materialized as one giant in-memory deck payload.
 
-## Reveal, rate, and continue
+## Reveal, check, rate, and continue
 
-Try recalling the answer before revealing it. Choose the outcome that reflects what happened:
+Basic and Fill in the blank cards retain the ordinary recall/reveal flow. Try recalling the answer before revealing it, then choose the outcome that reflects what happened:
 
 | Choice | Meaning in this session | Keyboard |
 | --- | --- | --- |
@@ -33,9 +33,17 @@ Space or Enter reveals the answer when the practice controls own the interaction
 
 By default, a Basic card shows the **question on the front and the answer on the revealed back**. Enable **Settings → Review/Scheduling → Display both question and answer when card is flipped** if you prefer to keep the Basic question visible beside the answer. Fill in the blank content keeps the blank/context as part of its revealed content so multi-blank questions remain understandable without requiring that global preference.
 
+Single-best-answer, select-all, true/false, matching, grouping, and ordering use **answer → Check answer → feedback → difficulty/continue** instead of click-to-flip. Correctness is evaluated locally from the captured immutable question instance. The first checked answer is frozen; later remediation does not rewrite it. Wrong/incomplete objective answers default to Wrong, while a correct answer permits Hard/Medium/Easy. A deliberate override retains the original objective result and its override reason.
+
+Matching, grouping, and ordering do not auto-submit when the last item moves, and movement never reveals correctness before Check. Dragging is optional: keyboard/non-drag controls support the same logical answer. A compound board still produces one scheduling review rather than one review per tile.
+
+Image occlusion uses a native masked derivative before reveal and is self-assessed. Each occlusion question presentation has its own schedule. Revealing the answer records assistance/self-assessment state appropriately; oStudy does not pretend that an ungraded free-form thought was objectively correct.
+
+Opening Tutor is not itself an assisted attempt. Assistance is recorded only when useful help is actually exposed. A failed/cancelled hint or a response that arrives after the first check cannot change the frozen first-attempt evidence.
+
 The stored confidence choices map to the scheduler's Again, Hard, Good, and Easy ratings. Rating is a durable review, not a cosmetic button response. oStudy validates the previewed schedule revision, appends the review event, updates the current schedule, and advances the session transactionally. Supported retry identities prevent the same submission from counting twice.
 
-A Basic note's forward and reverse presentations have separate schedules even though their editable content and tags are shared. A Fill in the blank note has one scheduled presentation; the hidden group selected for a session remains stable through reveal and resume.
+A Basic note's forward and reverse presentations have separate schedules even though their editable content and tags are shared. A Fill in the blank note has one scheduled presentation; the hidden group selected for a session remains stable through reveal and resume. An interactive presentation likewise keeps stable identity even if visible item order is permuted for a captured attempt.
 
 ## Progress and completion
 
@@ -51,6 +59,8 @@ Ending early asks for confirmation and returns to the logical launch context, su
 
 Restart recovery uses a saved hint to ask the native library for an actual resumable session. A saved practice-setup screen without a session is not restored as active practice. If a prior deck was removed, a valid session's return destination can fall back safely to the library.
 
+Interactive sessions restore the captured question revision, stable presentation key, item permutation, acknowledged answer draft, first check/reveal state, and feedback boundary from native state. Editing the current source note does not retroactively replace the key for an already captured attempt. A crash after Check but before rating therefore resumes feedback rather than creating a blank question or a duplicate first result.
+
 Unsaved authoring changes opened during a workflow still need to be saved or deliberately discarded. A display refresh error after a committed review is not evidence that the review should be submitted as a new operation.
 
 ## Scheduling controls
@@ -65,7 +75,11 @@ Configure defaults in **Settings → Review/Scheduling**. Daily limits and due c
 
 ## Read Analytics
 
-Analytics presents stored learning activity, confidence/review outcomes, workload, time, and scoped summaries. Use the available date, deck, and tag controls to identify the question a chart answers. An empty scope means no matching evidence, not necessarily no material in the whole library.
+Analytics presents stored learning activity, confidence/review outcomes, workload, time, and scoped summaries. Use the available date, deck, tag, and question-type controls to identify the question a chart answers. An empty scope means no matching evidence, not necessarily no material in the whole library.
+
+Basic/Fill in the blank recall ratings are **self-assessment**. Objective interactive kinds have a distinct **first-attempt correctness** signal (correct, incorrect, or incomplete). Analytics does not collapse those into one pretend accuracy metric. It also keeps **assistance**, **rating overrides**, and **remediation attempts** separate: an assisted correct response, a learner override, and a post-feedback retry are different evidence.
+
+Per-item choice/pair/group/order feedback is diagnostic detail for the compound question. It does not become multiple successful reviews or a separate mastery score. Image occlusion remains self-assessed and is not counted as objective correctness simply because the learner later rated the review Easy.
 
 Recent reviews retain historical content and classification evidence while applicable records remain in the library. Renaming a deck does not rewrite what a prior review recorded. Moving a card preserves its identity and review evidence under the app's current ownership rules. Archived material remains available for historical analysis; finalized deletion removes the analytics owned by the deleted material.
 
