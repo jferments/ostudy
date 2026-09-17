@@ -1,60 +1,73 @@
 # Manual image occlusion: Stage 6 test drive
 
-Scope: PR #101, `agent/interactive-question-types`. This guide covers manual image
-question authoring and Practice, not automatic image extraction, automatic label
-grading, typed deck exchange, or final release qualification. The accepted
-[interactive-question contract](interactive-question-types.md) remains the roadmap.
-The exact reviewed SHA and qualification results belong in the PR handoff.
+Scope: PR #101, `agent/interactive-question-types`. This guide covers the manual
+interactive-question/editor/Practice checkpoint before automatic generation and
+final integration in Stages 7–9. It does not claim automatic occlusion extraction,
+typed deck exchange, release qualification, or physical-device acceptance.
 
-## Implementation and ownership
+## Current image-occlusion behavior
 
 The ordinary Create/Edit Card screen owns the Template selector, deck/tags,
-per-type durable drafts, asset draft, Save, and Save + another. Selecting **Image
-occlusion** mounts a purpose-built editor; changing an unsaved type preserves its
-own draft rather than translating its content into a Basic card.
+durable draft recovery, managed assets, Save/Save + another and the shared
+**Preview card** action. Selecting **Image occlusion** mounts a purpose-built
+rectangle editor without creating a separate save workflow.
 
 `src/editor/occlusion/` owns normalized geometry, pointer gestures, region history,
-the SVG authoring workspace, and the shared read-only image viewport. The editor
-supports mouse, touch, pen, keyboard adjustment, and non-drag buttons. The SVG is
-an authoring surface with access to the managed source, not a secure redaction
-system or the pre-answer Practice image.
+the authoring SVG workspace and the read-only study viewport. The authoring editor
+supports mouse/touch/pen drawing, tap-two-corners, selection, move/resize/delete,
+undo/redo, zoom, pan, fit and zoom-to-region. Those authoring controls are distinct
+from the deliberately minimal Practice controls.
 
-`src/screens/card-editor/` owns image import/recovery, question-region assignments,
-rich Question/Answer/Explanation fields and author preview. Image imports use the
-existing managed file/draft boundary. Preview and Practice raster reads share a
-serialized queue: obsolete pending reads are skipped and late results cannot
-replace the current target. URLs are released on replacement or unmount.
+Each occlusion question owns rich Question and Answer fields plus an optional
+Explanation exposed through **Add explanation**. One question can target several
+regions and several questions can share a region. Moving/resizing geometry
+preserves the scheduled question identity. Both **hide all / reveal this target**
+and **hide target only** modes are supported.
 
-Native code in `src-tauri/src/cards/questions/occlusion.rs` owns bounded decoding,
-upright image normalization, metadata-free PNG output, and mask painting before
-resampling. Accepted input is a still PNG, JPEG or WebP, at most 25 MiB, at most
-8192 pixels on either edge and at most 16 million decoded pixels. Animated inputs
-and unsupported formats fail admission rather than becoming partial questions.
-The editor permits at most 128 rectangles and 64 questions per image note.
+The editor no longer carries a second inline study preview. **Preview card** in
+the page header opens the same read-only study presentation used by the other
+interactive question editors. Image preview uses the native masked renderer;
+Reveal answer in preview is local only and does not create an attempt, review or
+schedule update.
 
-`src-tauri/src/practice/question_attempts/` owns captured source/target identity,
-asset retention, authorized masked pixels, reveal receipts and the review link.
-Before reveal, the WebView receives masked PNG bytes, not the original image
-covered by CSS. A client cannot select the reveal phase; native saved attempt
-state chooses it. The bounded process-local cache contains rebuildable derivatives
-and does not bypass source availability, ownership or revision checks.
+## Practice image security and loading
 
-One question may target several regions. Several questions may share a region.
-Each question owns an independent scheduled presentation; moving or resizing a
-region does not create a new question identity or transfer its review history.
-Hide-all reveals only the current question's targets, keeping unrelated regions
-covered. Overlapping unrelated masks remain covered and trigger an editor warning.
+Before reveal, the WebView receives a native-generated masked PNG, never the
+original source image hidden underneath CSS. The request is authorized from the
+captured session/card/instance/revision and native saved attempt state chooses the
+hidden or revealed phase. Cache hits still recheck source ownership, availability
+and revision.
 
-Image Practice is **recall -> Reveal answer -> self-rate**. It does not compare a
-typed label or manufacture an objective verdict. Reveal and review retries retain
-their original mutation identities. A committed reveal remains committed even if
-image loading or interval refresh subsequently fails. The existing transactional
-FSRS path remains the only scheduler.
+Practice now requests a **1024 px initial masked raster** for faster first display.
+As the learner zooms, it automatically refines to 2048 px and then 4096 px. A
+usable same-revision raster remains visible while the sharper version is prepared;
+a revision/target change invalidates the old pixels immediately. Native rendering
+also keeps one short-lived, bounded decoded-source cache keyed by the actual source
+bytes and uses a faster lossless PNG path for interactive-size derivatives. These
+changes reduce repeated decode/encode work without weakening masking or asset
+authorization.
 
-## Obtain and build the intended source
+Practice exposes only three small image controls:
 
-From an existing configured checkout, first inspect local edits. Do not discard
-unrelated work or use a destructive reset to switch branches.
+- zoom out icon
+- zoom in icon
+- drag-to-pan icon
+
+Dragging the image pans it, pinch gestures zoom it and focused-image arrow keys
+pan it. There is no Practice **Enlarge image**, **Load sharper image**, **Fit image**,
+**Zoom to target**, target dropdown or visible instructional paragraph. Sharpening
+is automatic. The authoring workspace still has its richer geometry/navigation
+controls because they are required for precise mask editing.
+
+Image Practice remains **recall -> Reveal answer -> self-rate**. It does not invent
+an objective correctness verdict. Reveal and review retries preserve their
+operation identities, and a committed reveal stays committed if a later raster or
+interval refresh fails.
+
+## Build the intended source
+
+From an existing configured checkout, inspect local edits first. Do not discard or
+reset unrelated work.
 
 ```bash
 git status --short
@@ -64,24 +77,16 @@ git pull --ff-only
 git rev-parse HEAD
 ```
 
-Compare the printed SHA with the full SHA in the handoff. Stop on a mismatch.
-For a separate detached review checkout, follow
-[Local testing and handoff](local-testing-and-handoff.md#obtain-the-exact-source-safely).
-A new checkout does not create a separate application library.
-
-On the configured Linux workstation:
+Compare the SHA with the exact handoff SHA. Stop on a mismatch or failed
+fast-forward. Then build and launch through the maintained wrappers:
 
 ```bash
 ./scripts/build.sh
 ./run-app.sh
 ```
 
-The wrapper creates a standalone debug application and the launcher verifies its
-source/build stamp. Do not bypass a stale-build error with Cargo's mutable debug
-binary. Machine provisioning is not required for each PR.
-
-Back up the ordinary library before testing migrations. For disposable content,
-launch with isolated file-backed state instead:
+Back up a valuable library before testing migrations. For disposable file-backed
+state, use one isolated XDG root and reuse it for restart/resume tests:
 
 ```bash
 TEST_ROOT="$(mktemp -d -t ostudy-occlusion.XXXXXX)"
@@ -94,36 +99,33 @@ XDG_STATE_HOME="$TEST_ROOT/state" \
   ./run-app.sh
 ```
 
-Reuse that same directory and all four overrides for restart tests. This does not
-isolate the operating-system credential store. No real API key or provider is
-needed for any manual image question or Practice test.
+No API provider or credential is needed for these tests.
 
-## Desktop acceptance
+## Desktop acceptance checklist
 
-Create a disposable deck and use a synthetic labeled diagram or another image you
-may freely share. Avoid private source documents in diagnostic reports.
+Use a disposable deck and a synthetic/non-private labeled image.
 
-| Test | Actions and expected result |
+| Test | Expected result |
 | --- | --- |
-| Entry and image import | Create a card, choose Image occlusion in Card template, then Choose image. Try still PNG/JPEG/WebP. Canceling the picker preserves the draft; invalid or oversized input produces an error without a partial saved note. |
-| Region creation | Use Draw rectangle, Tap two corners, and Add rectangle. Try all draw directions and a letterboxed image. Shapes stay aligned with image coordinates, including after resizing the window. |
-| Adjustment and history | Select a region; drag/move/resize it, then use Move left/right/up/down and Wider/Narrower/Taller/Shorter. Undo region edit and Redo region edit restore geometry without replacing later question text. Escape cancels an unfinished gesture. |
-| Many-to-many targets | Make one question target two checked regions. Use Add question to ask a different question about an existing region. Complete each Question and Answer. The displayed study-card count follows questions, not the number of rectangles. |
-| Mask modes | Preview current question before and after reveal. Compare Hide all regions; reveal this question's targets with Hide only this question's targets. Unrelated masks stay covered in hide-all mode. Test an overlap and its warning. |
-| Editing safety | Remove a referenced region and inspect the confirmation. A question left with no target remains in the draft but cannot be saved until retargeted. Undo restores its associations. Replace image requires confirmation and starts new targets only after successful import. |
-| Save/reopen | Save question, reopen, and inspect text, masks and assignments. Move a region and save again: existing question schedules must remain associated with the same questions. Save + another starts an empty image draft. |
-| Recovery | Switch to Basic and back without saving; the image draft remains. Close/reopen after the draft is saved and confirm recovery. Cancel a recovered import or resume it using its explicit controls. |
-| Practice | Start Practice from the deck. The source labels are covered immediately, including during image loading and zoom. Reveal answer shows the target and authored answer, then permits Wrong/Hard/Medium/Easy. One rating advances once. |
-| Resume and navigation | Restart after reveal but before rating; resume feedback rather than a new unanswered card. Use zoom/fullscreen and close it; viewport interaction must not flip or rate the card. Editing during Practice must not rewrite the captured attempt's answer key. |
-| Existing types | Study a Basic, Cloze and objective question in the same deck. Their reveal/check/rating controls and normal session return still work. |
+| Image import | PNG/JPEG/WebP imports locally. Cancel/failure preserves the draft and never creates a partial saved note. |
+| Region creation | Draw rectangle, Tap two corners and Add rectangle all create image-relative regions; resize/window changes do not move them off the source. |
+| Geometry/history | Drag/move/resize and explicit adjustment controls work. Undo/redo changes geometry without rolling back newer question text. |
+| Multi-target identity | One question can target multiple regions and another can reuse a region. Study-card count follows questions, not rectangles. |
+| Mask modes | Preview card shows both mask modes correctly. In hide-all mode unrelated masks remain hidden when the current target reveals. |
+| Optional explanation | Explanation controls start collapsed; Add explanation opens them and collapse/reopen preserves entered content. |
+| Save/reopen | Save, reopen and edit geometry without changing the question's schedule identity. Save + another starts a clean image draft. |
+| Preview card | The header Preview card shows the masked presentation and authored answer without creating a Practice review. |
+| Practice first paint | A masked image appears without exposing the original. Initial display uses the smaller derivative; zooming automatically refines it without blanking the already usable image. |
+| Practice controls | Only zoom-out, zoom-in and pan icon controls appear. Drag/pinch/keyboard image navigation never reveals or rates the answer. |
+| Reveal/resume | Reveal shows only the current authorized target/answer. Restart before rating and resume to the already revealed state rather than a fresh attempt. |
+| Existing cards | Basic, Cloze and objective interactive questions still use their normal study/review behavior in the same deck. |
 
-Repeat the main editor and Practice paths offline, in the console/light/dark themes,
-and at compact window width. Physical visual acceptance is not established by a
-unit-test pass.
+Repeat the main flow offline, in supported themes, and at compact desktop width.
+A green automated check does not establish visual or physical-touch acceptance.
 
 ## Android physical-device test
 
-Use the same source checkout and the existing configured Android toolchain:
+From the same exact source checkout:
 
 ```bash
 adb devices -l
@@ -131,62 +133,53 @@ pnpm android:doctor
 pnpm android:install
 ```
 
-The normal wrapper builds, installs with replacement and launches the ARM64 debug
-app `io.github.jferments.ostudy.dev`. With several connected devices:
+With multiple authorized devices:
 
 ```bash
-bash ./scripts/android-install.sh --serial 'REPLACE_WITH_ADB_SERIAL'
+bash ./scripts/android-install.sh --serial "REPLACE_WITH_ADB_SERIAL"
 ```
 
-Do not uninstall or clear app storage as routine setup. Replacement installation
-preserves the debug library; debug and release have separate application IDs.
-Create a small image note directly on the phone for this checkpoint rather than
-using the still-incompatible interactive transfer format.
+The wrapper builds/installs the ARM64 debug app with replacement. Do not uninstall
+or clear app data as routine setup. Create the image question directly on the phone
+while typed interactive transfer remains incompatible.
 
-Test Tap two corners, touch drawing, corner resizing, two-finger pan/pinch, Fit
-image, text entry, portrait/landscape changes and the software keyboard. A second
-finger should switch to viewport manipulation without committing a stray region.
-Check Android Back closes an overlay before leaving the editor/session, unsaved
-changes remain protected, and the Practice image stays masked through fullscreen
-and orientation changes. Repeat one complete create/save/study cycle offline.
+Test touch drawing and corner resizing in the **editor**, two-finger pan/pinch,
+portrait/landscape changes, software-keyboard interaction and Android Back. In
+**Practice**, confirm only the three compact image controls appear, initial masked
+loading is acceptable, zoom refinement does not blank the image, and reveal/rating
+still work offline.
 
 ## Automated checks and remaining boundaries
 
-The normal iteration gate is:
+Normal iteration qualification is:
 
 ```bash
 ./scripts/check-fast.sh
 ```
 
-Focused frontend checks after dependencies have been installed:
+Focused frontend checks for this area include the existing occlusion/editor and
+Practice tests, notably:
 
 ```bash
 pnpm exec vitest run \
   src/editor/occlusion \
-  src/screens/card-editor/occlusionDraft.test.ts \
-  src/screens/card-editor/useOcclusionImage.test.tsx \
-  src/screens/card-editor/useOcclusionPreview.test.tsx \
   src/screens/CardEditorOcclusion.test.tsx \
+  src/screens/CardEditorQuestionPreview.test.tsx \
   src/screens/practice/ImageOcclusionActivity.test.tsx \
   src/screens/practice/useOcclusionReveal.test.tsx \
   src/screens/practice/usePracticeOcclusionImage.test.tsx
 ```
 
-Fast qualification includes native image decode/masking, authoring, captured
-attempt/review, migration and transfer-guard tests. Full Linux qualification is
-`./scripts/check.sh`; Android compile/package and emulator gates are
-`pnpm android:test` and `pnpm android:smoke`. These are separate from physical-device
-acceptance and are not required merely to inspect this Stage 6 test drive. Terminal
-release qualification stays at the frozen final PR candidate after Stages 7–9.
+Full Linux qualification is `./scripts/check.sh`; Android compile/package and
+emulator gates are `pnpm android:test` and `pnpm android:smoke`. They remain final
+candidate gates rather than requirements for this Stage 6 hands-on checkpoint.
 
-Typed .studydeck/.ostudy.json exchange and complete device synchronization remain
-unfinished. The current sync path rejects typed question graphs before sending or
-merging instead of dropping their presentation/attempt ownership. Documents-only
-transfers omit unselected questions and private editor draft payloads. Do not use
-typed export/sync as a backup workaround. Whole-library backup is a different
-contract; retain a pre-upgrade backup before upgrading a valuable library to
-schema 15. An older executable cannot be assumed to open that upgraded library.
+Typed `.studydeck`/`.ostudy.json` exchange and complete interactive device sync are
+still unfinished. Current device sync rejects an unsupported typed graph before
+send/merge instead of silently flattening it. Whole-library backup is a different
+contract. Retain a pre-upgrade backup before upgrading a valuable library to the
+schema used by this branch.
 
-Report the exact Git SHA, Linux/Android build mode, device/WebView environment,
-smallest reproduction and expected/actual behavior. Use `pnpm android:diagnostics`
-for bounded debug diagnostics. Do not attach a live library or API credentials.
+When reporting acceptance issues, include the exact Git SHA, desktop/Android build
+mode, device/WebView environment, smallest reproduction and expected versus actual
+behavior. Do not attach a live library, private source image or API credentials.
