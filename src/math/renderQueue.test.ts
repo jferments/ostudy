@@ -45,15 +45,25 @@ describe("bounded mathematical presentation queue", () => {
   });
 
   it("does no typesetting for an offscreen equation until it approaches the viewport", () => {
-    vi.stubGlobal("IntersectionObserver", class {
-      constructor(callback: IntersectionObserverCallback) { visible = callback; }
+    let instance: IntersectionObserver | null = null;
+    vi.stubGlobal("IntersectionObserver", class implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = "300px";
+      readonly thresholds = [0];
+      takeRecords = () => [];
+      constructor(callback: IntersectionObserverCallback) { visible = callback; instance = this; }
       observe = observe; unobserve = unobserve; disconnect = disconnect;
     });
     const element = host();
     tick();
     expect(renderFormula).not.toHaveBeenCalled();
     expect(element.textContent).toBe(String.raw`\(x\)`);
-    visible!([{ target: element, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    const bounds = element.getBoundingClientRect();
+    const entry: IntersectionObserverEntry = {
+      target: element, isIntersecting: true, intersectionRatio: 1, time: 0,
+      boundingClientRect: bounds, intersectionRect: bounds, rootBounds: null,
+    };
+    visible!([entry], instance!);
     tick();
     expect(renderFormula).toHaveBeenCalledExactlyOnceWith(element, "x", false);
     expect(disconnect).toHaveBeenCalled();
