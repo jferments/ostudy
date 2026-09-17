@@ -1,8 +1,10 @@
 # Interactive question types: implementation contract
 
-Status: implementation in progress on PR #101. The seven manually authored types
-are integrated for a Stage 6 test drive; generation and final release acceptance
-remain open. This accepted contract is broader than the current qualified scope.
+Status: implementation complete on PR #101 through Stages 7–9, pending terminal
+exact-head full-platform qualification and the explicitly human visual/physical-device
+acceptance items that automation cannot perform. The source implementation,
+compatibility paths and maintained documentation are no longer at the Stage 6
+test-drive boundary.
 
 Baseline: merged PR #98, main `9af5e204b9cbaa74e955fce8726ffd476f0f11d2`.
 Its final source includes schema-3 math/media, MathLive authoring, shared KaTeX,
@@ -32,10 +34,11 @@ Quizlet, RemNote, Duolingo and other proprietary products are design references
 only. Do not embed their services or copy proprietary implementation/assets.
 Evaluate any new dependency for need, open-source license compatibility, exact
 pin, local packaging, platform behavior and offline operation before adoption.
-The authoring/native-foundation increments add no dependency or provider change.
-The inherited Android ML Kit OCR and Play-services scanner do not establish
-compliance with this requirement. Their replacement and full dependency review
-remain open under AC-22; on-device operation is not an open-source license.
+For AC-22, Android document OCR now uses Tesseract4Android/Tesseract with an
+immutably pinned packaged `tessdata_fast` model, and Android pairing uses local
+JourneyApps ZXing Embedded/ZXing core. Google ML Kit text recognition and Google
+Code Scanner are removed from the runtime dependency graph. See
+[ADR 0052](../decisions/0052-open-source-android-imaging.md).
 
 Non-goals: automatic occlusion extraction; dedicated formula OCR; rich-cloze
 redesign; arbitrary HTML/JavaScript templates; a plugin/form-builder platform;
@@ -263,48 +266,66 @@ matrix until implementation is complete; no incidental cleanup after the freeze.
 
 ### Current implementation boundary
 
-Stages 0–5 provide strict native typed definitions, schema-15 ownership, stable
-presentation identities, captured first attempts, six objective evaluators,
-purpose-built editors and Practice activities. Basic/Cloze remain first-class.
-The existing transactional FSRS path owns scheduling; interactive activities do
-not maintain a second scheduler. Rich fields share the current editor/media/math
-infrastructure and apply updates by field identity.
+Stages 0–6 remain as described by the native/editor/Practice/occlusion design
+above: all seven manual question types share the editor shell, canonical Rust
+validation, stable presentations, captured first attempts and the existing
+transactional scheduler. Image occlusion keeps the source raster behind the
+native masked-derivative authorization boundary and uses stable child schedules.
 
-Stage 6 integrates manual image occlusion into the same Template selector, durable
-draft, save/reopen and Practice lifecycle. The pure geometry/gesture/history
-modules in `src/editor/occlusion/` are separate from the SVG workspace, the question
-inspector and the ordinary Card editor shell. A question may target several regions,
-and several questions may share a region. Geometry changes preserve question/card
-identity and undo does not overwrite newer question text.
+**Stage 7 is implemented.** The knowledge-first generator publishes bounded
+assessment opportunities instead of doing a second extraction traversal for each
+format. Native opportunity/evidence contracts model supports/contradicts
+components, evidence roles, partitions, ordered relations, contrast pairs and
+other type-fit cues. Generated single-choice, select-all, true/false, matching,
+grouping and ordering definitions pass type-specific schemas and semantic
+admission before publication. Evidence records retain revision/policy/opportunity
+identity, and generation checkpoints remain retry-safe. Image occlusion stays
+manual-only. DeepSeek schemas that fit its strict beta tool subset still use that
+path; nullable/composed generated-question schemas use the provider's JSON-object
+mode and then the same authoritative Rust admission, preventing strict-schema HTTP
+400 failures without weakening validation.
 
-Native source preparation normalizes supported still images. Practice requests
-masked PNG bytes using captured session/card/instance/revision, never a source
-asset URL or a client-selected reveal phase. The original image is not hidden
-behind CSS. The explicit revealed attempt state captures self-assessment without
-an objective response/verdict, and a retry-safe review uses the existing scheduler
-transaction. Fullscreen/zoom navigation, queued raster reads, Blob cleanup,
-process-local bounded caching and identity-based late-result reconciliation are
-shared rather than embedded as special cases in the scheduler.
+**Stage 8 is implemented.** Generation policy persists an allowed-type set,
+requested workload, maximum compound size and scarce-evidence threshold. The
+planner scores evidence fit and topic/component coverage, applies the proposed mix
+as a soft target rather than a quota, reallocates unsuitable opportunities to
+supported recall or returns fewer cards, and records immutable generation reports.
+No filler question is manufactured just to hit a percentage. Tutor focused-attempt
+context reuses the canonical question/knowledge projection: pre-answer prompts do
+not expose private keys/rationales; assistance is marked only when usable help is
+actually exposed; failed/cancelled/late hints cannot replace first-attempt evidence.
+Study-guide/Tutor relations use the shared knowledge graph rather than repeating
+source extraction.
 
-The source tree includes editor-shell create/save/reopen/Save + another tests;
-mouse/touch/pen and non-drag workspace regressions; native pixel, ownership,
-reveal/review rollback and file-backed recovery tests; and frontend stale-raster,
-retry-identity and fullscreen/viewport tests. Exact pass/fail evidence belongs to
-the PR/Actions record, not a claim inferred from the presence of tests.
+**Stage 9 source integration is implemented.** Native analytics and the Analytics
+UI separate Basic/Cloze self-assessment from per-type objective first checks and
+report assistance, overrides and remediation as distinct evidence. `.studydeck`
+version 3 round-trips all seven typed kinds, presentation keys and managed assets
+with fresh recipient schedules/no donor history. Trusted-device synchronization
+now transfers the admitted typed graph, attempts/evidence and managed assets under
+its explicit scope; checkpoint/evidence rows merge atomically and malformed graphs
+fail before file installation or merge commit. Full `.ostudybackup` has an explicit
+typed-definition/presentation/attempt/generation-evidence round-trip regression.
+Editor drafts/write receipts remain excluded from sync while complete backup keeps
+its documented recovery scope.
 
-Typed `.studydeck` exchange remains incompatible with the old package format.
-Device sync explicitly rejects an unsupported typed graph before publication or
-merge; it does not silently omit its presentation/attempt tables. Unselected
-question records and private editor drafts are removed from copied transfer
-snapshots, including their deleted SQLite bytes. Full typed sharing and the
-release-wide compatibility matrix remain open. The inherited Android dependency
-license gap remains AC-22; Stage 6 adds no proprietary study service.
+AC-22 is implemented through [ADR 0052](../decisions/0052-open-source-android-imaging.md):
+Android QR pairing uses local ZXing Embedded/core and document OCR uses
+Tesseract4Android/Tesseract with an immutable packaged English `tessdata_fast`
+model. The Android verification scripts reject reintroduction of Google Code
+Scanner/ML Kit text recognition, verify dependency/model pins, require the model
+inside the APK and retain bounded permission/native-library checks.
 
-See [Stage 6 build, test and manual acceptance](image-occlusion.md). Stop at that
-test-drive checkpoint before automatic generation and final integration in
-Stages 7–9. Desktop/Android visual and physical-touch acceptance must be recorded
-separately from static/fast checks; no full release qualification or merge is
-implied by completing this implementation slice.
+Automated exact-head qualification evidence belongs to Actions. The implementation
+is not declared release-accepted until the ready-PR `all-full` run completes on
+the self-hosted runner. Physical camera decoding, USB accessory re-enumeration,
+real-touch occlusion/drag ergonomics and final desktop/Android visual inspection
+remain explicit human acceptance items because CI cannot truthfully substitute
+for those physical observations.
+
+See [Stage 6 build, test and manual acceptance](image-occlusion.md) for the
+occlusion-specific physical checklist and [Android development architecture](android.md)
+for the local ZXing/Tesseract packaging and emulator boundary.
 
 ## Stable acceptance criteria
 
