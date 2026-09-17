@@ -109,10 +109,20 @@ requireText(
 );
 requireText(
   document,
+  "tess.getHOCRText(0)",
+  "Android OCR recognition must use Tesseract's interruptible recognition entrypoint.",
+);
+requireText(
+  document,
   "future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)",
   "Android OCR must retain a bounded native recognition timeout.",
 );
+requireText(
+  document,
+  "tess.stop()",
+  "Android OCR timeout must interrupt the active Tesseract recognition operation.",
+);
 
 console.log(
-  "OK   Android QR and OCR use bounded local open-source ZXing/Tesseract runtimes with packaged model data.",
+  "OK   Android QR and OCR use bounded local open-source ZXing/Tesseract runtimes with packaged model data and interruptible recognition.",
 );
