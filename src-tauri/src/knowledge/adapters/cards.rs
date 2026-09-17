@@ -10,6 +10,8 @@ use super::{
     blank_record, segment_record, SourceSeed,
 };
 
+mod interactive;
+
 struct CardSourceRow {
     note_id: String,
     deck_name: String,
@@ -33,7 +35,7 @@ pub(super) fn read(
     let row = connection
         .query_row(
             "SELECT n.id, d.name, c.direction, c.template_ordinal, n.note_type,
-                    n.front_doc, n.back_doc, n.front_text, n.back_text,
+                    COALESCE(n.front_doc, ''), COALESCE(n.back_doc, ''), n.front_text, n.back_text,
                     n.cloze_source, n.cloze_mode, n.revision,
                     EXISTS(SELECT 1 FROM document_note_topics nt WHERE nt.note_id = n.id)
              FROM cards c JOIN notes n ON n.id = c.note_id JOIN decks d ON d.id = n.deck_id
@@ -62,6 +64,9 @@ pub(super) fn read(
     let Some(row) = row else {
         return Ok(Vec::new());
     };
+    if row.note_type == "interactive" {
+        return interactive::read(connection, seed, &row);
+    }
     // Index a stable content presentation, never a schedule-derived rotating
     // variant. The tutor's focused session context supplies the exact currently
     // displayed cloze/reverse question separately from this retrieval record.

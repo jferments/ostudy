@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 
 use super::{invalid, QuestionBody, QuestionError, QuestionKind, ValidatedQuestion};
 
+mod knowledge;
+
 const MAX_SEARCH_CHARS: usize = 200_000;
 
 impl QuestionKind {
