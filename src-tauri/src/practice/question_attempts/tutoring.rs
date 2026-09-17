@@ -83,7 +83,7 @@ pub(crate) fn expose_hint(
         return Err(conflict());
     }
     let mut attempt = stored.attempt.clone();
-    attempt.mark_hint_exposed()?;
+    attempt.mark_assisted()?;
     if attempt.revision() != stored.attempt.revision() {
         storage::persist(connection, &stored, &attempt, now)?;
     }
