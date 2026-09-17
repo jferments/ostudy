@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
-import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.webkit.WebView
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -16,11 +15,7 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.googlecode.tesseract.android.TessBaseAPI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,11 +26,15 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.math.ceil
 
 private const val PDF_RENDER_ENGINE = "android-pdf-renderer-v1"
-private const val OCR_ENGINE = "ml-kit-text-recognition-v2-bundled-latin-16.0.1"
+private const val OCR_ENGINE = "tesseract-5.5.1-tessdata-fast-eng-87416418"
+private const val TESSDATA_ASSET = "tessdata/eng.traineddata"
+private const val TESSDATA_BYTES = 4_113_088L
 private const val MAX_PDF_PAGES = 500
 private const val MIN_RENDER_DPI = 72
 private const val MAX_RENDER_DPI = 300
@@ -97,6 +96,7 @@ class EndBackgroundExecutionArgs {
 class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, PdfSession>()
+    private val tesseractDataLock = Any()
 
     override fun load(webView: WebView) {
         val owner = activity as? LifecycleOwner ?: return
@@ -304,7 +304,7 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
                 }
 
                 val started = System.nanoTime()
-                val result = recognizeWithMlKit(source, args.language, args.timeoutSeconds)
+                val result = recognizeWithTesseract(source, args.language, args.timeoutSeconds)
                 val response = JSObject().apply {
                     put("text", result.text)
                     put("confidence", result.confidence)
@@ -326,27 +326,84 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    private fun recognizeWithMlKit(
+    private fun recognizeWithTesseract(
         source: File,
         requestedLanguage: String,
         timeoutSeconds: Int,
     ): NativeOcrResult {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val recognized = try {
-            Tasks.await(
-                recognizer.process(InputImage.fromFilePath(activity, Uri.fromFile(source))),
-                timeoutSeconds.toLong(),
-                TimeUnit.SECONDS,
+        val language = tesseractLanguage(requestedLanguage)
+        val dataRoot = ensureTesseractData()
+        val bitmap = BitmapFactory.decodeFile(source.path)
+            ?: throw IllegalArgumentException("The selected OCR image is not a readable bitmap.")
+        val tess = TessBaseAPI()
+        var canRecycle = true
+        try {
+            require(tess.init(dataRoot.path, language, TessBaseAPI.OEM_LSTM_ONLY)) {
+                "The bundled Tesseract language data could not be initialized."
+            }
+            tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
+            tess.setImage(bitmap)
+            val executor = Executors.newSingleThreadExecutor { runnable ->
+                Thread(runnable, "ostudy-tesseract").apply { isDaemon = true }
+            }
+            val future = executor.submit<String> { tess.getUTF8Text() ?: "" }
+            val text = try {
+                future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+            } catch (_: TimeoutException) {
+                tess.stop()
+                future.cancel(true)
+                executor.shutdownNow()
+                canRecycle = executor.awaitTermination(5, TimeUnit.SECONDS)
+                throw IllegalStateException("Tesseract exceeded the requested OCR timeout.")
+            } finally {
+                executor.shutdownNow()
+            }
+            val confidence = (tess.meanConfidence().coerceIn(0, 100) / 100.0)
+            return NativeOcrResult(
+                text = text,
+                confidence = confidence,
+                engine = OCR_ENGINE,
+                language = "en",
             )
         } finally {
-            recognizer.close()
+            if (canRecycle) tess.recycle()
+            bitmap.recycle()
         }
-        return NativeOcrResult(
-            text = recognized.text,
-            confidence = meanConfidence(recognized),
-            engine = OCR_ENGINE,
-            language = dominantLanguage(recognized, requestedLanguage),
-        )
+    }
+
+    private fun ensureTesseractData(): File = synchronized(tesseractDataLock) {
+        val root = File(activity.filesDir, "tesseract")
+        val target = File(root, TESSDATA_ASSET)
+        if (target.isFile && target.length() == TESSDATA_BYTES) return@synchronized root
+        target.parentFile?.mkdirs()
+        val temporary = File(target.parentFile, "${target.name}.copy")
+        temporary.delete()
+        activity.assets.open(TESSDATA_ASSET).use { input ->
+            FileOutputStream(temporary, false).use { output ->
+                input.copyTo(output)
+                output.fd.sync()
+            }
+        }
+        require(temporary.length() == TESSDATA_BYTES) {
+            "The bundled English Tesseract data is invalid."
+        }
+        if (target.exists() && !target.delete()) {
+            temporary.delete()
+            throw IllegalStateException("The stale Tesseract data could not be replaced.")
+        }
+        require(temporary.renameTo(target)) {
+            temporary.delete()
+            "The Tesseract language data could not be installed in private storage."
+        }
+        root
+    }
+
+    private fun tesseractLanguage(requested: String): String {
+        val normalized = requested.trim().lowercase().replace('_', '-')
+        require(normalized.isEmpty() || normalized == "en" || normalized == "eng" || normalized.startsWith("en-")) {
+            "This Android build currently bundles English OCR data only."
+        }
+        return "eng"
     }
 
     private fun scaledDimension(points: Int, dpi: Int): Int {
@@ -364,29 +421,6 @@ class OstudyDocumentPlugin(private val activity: Activity) : Plugin(activity) {
             "The selected OCR image is not a readable bitmap."
         }
         return options.outWidth to options.outHeight
-    }
-
-    private fun meanConfidence(text: Text): Double {
-        val values = text.textBlocks
-            .flatMap { it.lines }
-            .flatMap { it.elements }
-            .map { it.confidence.toDouble() }
-            .filter { it.isFinite() && it > 0.0 }
-        if (values.isNotEmpty()) return values.average().coerceIn(0.0, 1.0)
-        return if (text.text.isBlank()) 0.0 else 0.5
-    }
-
-    private fun dominantLanguage(text: Text, requested: String): String {
-        val counts = linkedMapOf<String, Int>()
-        for (element in text.textBlocks.flatMap { it.lines }.flatMap { it.elements }) {
-            val language = element.recognizedLanguage
-            if (language.isNotBlank() && language != "und") {
-                counts[language] = (counts[language] ?: 0) + 1
-            }
-        }
-        return counts.maxByOrNull { it.value }?.key
-            ?: requested.takeIf(String::isNotBlank)
-            ?: "und"
     }
 
     private fun validatePrivateFile(raw: String, label: String): File {
