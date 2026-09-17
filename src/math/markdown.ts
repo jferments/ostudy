@@ -2,8 +2,6 @@ import { Lexer, Marked, Tokenizer, type Token } from "marked";
 import { inlineDollarEnd } from "./dollar";
 
 export const MAX_STUDY_MARKDOWN_CHARS = 24_000;
-export const MAX_MARKDOWN_FORMULAS = 64;
-const MAX_TOTAL_FORMULA_BYTES = 32_768;
 const FORMULA_TOKEN = "ostudyFormula";
 
 export interface MarkdownFormula {
@@ -23,19 +21,12 @@ export function isMarkdownFormula(token: Token): token is MarkdownFormula {
  * share work budgets. No Marked-generated HTML enters the application DOM.
  */
 export function lexStudyMarkdown(text: string, inline = false): Token[] | null {
-  if (text.length > MAX_STUDY_MARKDOWN_CHARS) return null;
-  let formulas = 0;
-  let formulaBytes = 0;
-  function admit(token: MarkdownFormula): MarkdownFormula {
-    if (token.complete) {
-      formulas += 1;
-      formulaBytes += new TextEncoder().encode(token.source).byteLength;
-      if (formulas > MAX_MARKDOWN_FORMULAS || formulaBytes > MAX_TOTAL_FORMULA_BYTES) {
-        throw new Error("Mathematical presentation budget exceeded.");
-      }
-    }
-    return token;
-  }
+  // Match the native 24,000 Unicode-scalar message bound, not UTF-16 code units.
+  if (text.length > MAX_STUDY_MARKDOWN_CHARS * 2
+    || (text.length > MAX_STUDY_MARKDOWN_CHARS && [...text].length > MAX_STUDY_MARKDOWN_CHARS)) return null;
+  // Formula count is not an admission error for the surrounding Markdown.
+  // Viewport-aware, frame-budgeted rendering and per-equation KaTeX limits own
+  // expensive work. One long mathematical answer must not become literal text.
   const marked = new Marked({
     gfm: true, breaks: true,
     extensions: [
@@ -48,7 +39,7 @@ export function lexStudyMarkdown(text: string, inline = false): Token[] | null {
           if (prefix === undefined) return;
           const token = formulaAtStart(src.slice(prefix.length));
           if (!token?.complete || !/^(?:[ \t]*(?:\n|$))/u.test(src.slice(prefix.length + token.raw.length))) return;
-          return admit({ ...token, raw: prefix + token.raw });
+          return { ...token, raw: prefix + token.raw };
         },
       },
       {
@@ -57,7 +48,7 @@ export function lexStudyMarkdown(text: string, inline = false): Token[] | null {
         tokenizer(src) {
           if (this.lexer.state.inRawBlock) return;
           const token = formulaAtStart(src);
-          return token ? admit(token) : undefined;
+          return token;
         },
       },
     ],

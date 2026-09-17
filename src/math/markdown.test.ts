@@ -1,6 +1,6 @@
 import { Lexer, Marked } from "marked";
 import { describe, expect, it } from "vitest";
-import { isMarkdownFormula, lexStudyMarkdown, MAX_MARKDOWN_FORMULAS, type MarkdownFormula } from "./markdown";
+import { isMarkdownFormula, lexStudyMarkdown, type MarkdownFormula } from "./markdown";
 
 function formulas(text: string, inline = false): MarkdownFormula[] {
   const result: MarkdownFormula[] = [];
@@ -47,7 +47,7 @@ describe("bounded mathematical Markdown tokens", () => {
     expect(formulas("Prices $5 and $10; literal `$x$`, then $y$. ").map((token) => token.source)).toEqual(["y"]);
     expect(formulas(String.raw`<code>$x$</code> and <pre>$y$</pre>`)).toEqual([]);
     expect(formulas('[Link](https://example.org/$path$ "$title$")')).toEqual([]);
-    expect(lexStudyMarkdown("$x$ ".repeat(65))).toBeNull();
+    expect(formulas("$x$ ".repeat(65))).toHaveLength(65);
   });
 
   it("does not tokenize raw HTML code or script content", () => {
@@ -75,12 +75,13 @@ describe("bounded mathematical Markdown tokens", () => {
     expect(formulas(String.raw`\(x\\) + y\)`)).toMatchObject([{ source: String.raw`x\\) + y` }]);
   });
 
-  it("bounds count and total UTF-8 work, with independent budgets and no global registration", () => {
-    const atLimit = String.raw`\(x\) `.repeat(MAX_MARKDOWN_FORMULAS);
-    expect(formulas(atLimit)).toHaveLength(MAX_MARKDOWN_FORMULAS);
-    expect(lexStudyMarkdown(atLimit + String.raw`\(y\)`)).toBeNull();
-    expect(lexStudyMarkdown(`\\(${'α'.repeat(6000)}\\) `.repeat(3))).toBeNull();
+  it("admits dense replies without a whole-message formula budget and keeps Unicode bounds", () => {
+    const dense = String.raw`\(x\) `.repeat(160);
+    expect(formulas(dense)).toHaveLength(160);
+    expect(formulas(`\\(${'α'.repeat(6000)}\\) `.repeat(3))).toHaveLength(3);
     expect(lexStudyMarkdown("x".repeat(24_001))).toBeNull();
+    expect(lexStudyMarkdown("😀".repeat(24_000))).not.toBeNull();
+    expect(lexStudyMarkdown("😀".repeat(24_001))).toBeNull();
     expect(formulas(String.raw`\(x\)`)).toHaveLength(1);
     expect(JSON.stringify(Lexer.lex(String.raw`\(x\)`))).not.toContain("ostudyFormula");
   });

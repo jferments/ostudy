@@ -67,7 +67,7 @@ describe("Tutor Markdown", () => {
 // Exercise the shared renderer through the unchanged Tutor entry point, with
 // real KaTeX rather than a renderer stub.
 describe("Tutor mathematical Markdown", () => {
-  it("typesets saved formulas, preserves surrounding formatting and uses MathML", () => {
+  it("typesets saved formulas, preserves surrounding formatting and uses MathML", async () => {
     const { container } = render(<TutorMarkdown text={String.raw`**Before** \(\frac{a}{b}\) after.
 
 \[x^2+y^2=z^2\]
@@ -76,36 +76,36 @@ describe("Tutor mathematical Markdown", () => {
 | --- | --- |
 | x | \(\sqrt{2}\) |`} />);
     expect(screen.getByText("Before").tagName).toBe("STRONG");
-    expect(Array.from(container.querySelectorAll("math annotation"), (node) => node.textContent))
-      .toEqual([String.raw`\frac{a}{b}`, "x^2+y^2=z^2", String.raw`\sqrt{2}`]);
+    await waitFor(() => expect(Array.from(container.querySelectorAll("math annotation"), (node) => node.textContent))
+      .toEqual([String.raw`\frac{a}{b}`, "x^2+y^2=z^2", String.raw`\sqrt{2}`]));
     expect(container.querySelectorAll(".katex-display")).toHaveLength(1);
     expect(container.querySelector("p div")).toBeNull();
     expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
-  it("keeps code and prices literal even when neighboring text contains math", () => {
+  it("keeps code and prices literal even when neighboring text contains math", async () => {
     const { container } = render(<TutorMarkdown text={'`\\(code\\)` and $5 or $10.\n\n```tex\n$$code$$\n```\n\n\\(x\\)'} />);
-    expect(container.querySelectorAll("math")).toHaveLength(1);
+    await waitFor(() => expect(container.querySelectorAll("math")).toHaveLength(1));
     expect(container.querySelector("code")?.textContent).toBe(String.raw`\(code\)`);
     expect(container.querySelector("pre code")?.textContent).toBe("$$code$$");
     expect(container.textContent).toContain("$5 or $10.");
   });
 
-  it("updates unfinished and completed replies without retaining stale typesetting", () => {
+  it("updates unfinished and completed replies without retaining stale typesetting", async () => {
     const { container, rerender } = render(<TutorMarkdown text={String.raw`Before \(x_`} />);
     expect(container.textContent).toBe(String.raw`Before \(x_`);
     expect(container.querySelector("math")).toBeNull();
     rerender(<TutorMarkdown text={String.raw`Before \(x_1\) after.`} />);
-    expect(container.querySelector("math annotation")?.textContent).toBe("x_1");
+    await waitFor(() => expect(container.querySelector("math annotation")?.textContent).toBe("x_1"));
     rerender(<TutorMarkdown text={String.raw`Before \(\unknown{x}\) after.`} />);
     expect(container.querySelector("math")).toBeNull();
-    expect(container.querySelector("[data-formula-error]")).not.toBeNull();
+    await waitFor(() => expect(container.querySelector("[data-formula-error]")).not.toBeNull());
     rerender(<TutorMarkdown text="Replacement reply" />);
     expect(container.querySelector("[data-study-math]")).toBeNull();
     expect(container.textContent).toBe("Replacement reply");
   });
 
-  it("does not turn TeX into network resources, active HTML or cross-message macros", () => {
+  it("does not turn TeX into network resources, active HTML or cross-message macros", async () => {
     const { container, rerender } = render(<TutorMarkdown text={String.raw`\(\href{https://example.org/leak}{click}\)
 
 \(\includegraphics{https://example.org/image}\)
@@ -113,7 +113,7 @@ describe("Tutor mathematical Markdown", () => {
 \(<img src=x onerror=alert(1)>\)
 
 \(\gdef\secret{42}\)`} />);
-    expect(container.querySelectorAll("[data-formula-error]")).toHaveLength(4);
+    await waitFor(() => expect(container.querySelectorAll("[data-formula-error]")).toHaveLength(4));
     expect(container.querySelector("a,img,iframe,script,style,math")).toBeNull();
     expect(openExternalUrl).not.toHaveBeenCalled();
     rerender(<TutorMarkdown text={String.raw`\(\secret\)`} />);
@@ -121,10 +121,11 @@ describe("Tutor mathematical Markdown", () => {
     expect(container.textContent).toBe(String.raw`\(\secret\)`);
   });
 
-  it("keeps the complete source visible when an aggregate rendering budget is exceeded", () => {
+  it("preserves Markdown and renders all equations beyond the old 64-formula cliff", async () => {
     const text = "**Dense** " + String.raw`\(x\) `.repeat(65);
     const { container } = render(<TutorMarkdown text={text} />);
-    expect(container.textContent).toBe(text);
-    expect(container.querySelector("math,strong")).toBeNull();
+    expect(container.querySelector("strong")?.textContent).toBe("Dense");
+    await waitFor(() => expect(container.querySelectorAll("math")).toHaveLength(65));
+    expect(container.querySelectorAll("math annotation")).toHaveLength(65);
   });
 });
