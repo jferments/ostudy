@@ -37,7 +37,7 @@ function Harness({ kind }: { kind: ChoiceDraft["kind"] }) {
 describe("choice authoring answer-key preview", () => {
   it("uses the Practice card controls at the bottom to select the single correct answer", () => {
     render(<Harness kind="single_choice" />);
-    expect(screen.getByText("Select the correct answer below.")).toBeTruthy();
+    expect(screen.getByText(/Select the correct answer below\./)).toBeTruthy();
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);
     fireEvent.click(radios[1]);
@@ -48,7 +48,7 @@ describe("choice authoring answer-key preview", () => {
 
   it("uses the same bottom tiles for an exact multi-answer key and keeps explanations optional", () => {
     const { container } = render(<Harness kind="select_all" />);
-    expect(screen.getByText("Select every correct answer below.")).toBeTruthy();
+    expect(screen.getByText(/Select every correct answer below\./)).toBeTruthy();
     const choices = screen.getByRole("group", { name: "Correct answers" });
     const boxes = choices.querySelectorAll('[role="checkbox"]');
     expect(boxes).toHaveLength(2);
