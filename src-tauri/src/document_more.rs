@@ -259,12 +259,8 @@ async fn generate_more_impl(
             "The second pass did not find important material that was not already tested by the existing deck.",
         ));
     }
-    let grounded_candidates = attach_generated_card_source_windows(
-        database,
-        &job_id,
-        &windows,
-        generated_values,
-    )?;
+    let grounded_candidates =
+        attach_generated_card_source_windows(database, &job_id, &windows, generated_values)?;
     let generated_values = grounded_candidates
         .iter()
         .map(|card| card.generation_value())

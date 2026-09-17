@@ -247,5 +247,9 @@ pub(crate) fn checkpoint_contract(
     policy: &GenerationPolicy,
 ) -> Result<Option<String>, CommandError> {
     let fingerprint = policy.fingerprint()?;
-    Ok(contract.map(|contract| hash(&format!("assessment-candidates-v1|{contract}|{fingerprint}"))))
+    Ok(contract.map(|contract| {
+        hash(&format!(
+            "assessment-candidates-v1|{contract}|{fingerprint}"
+        ))
+    }))
 }

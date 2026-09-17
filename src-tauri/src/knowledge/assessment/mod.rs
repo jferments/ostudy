@@ -94,7 +94,9 @@ pub(crate) fn admit_card(
     let input: TypedCard = serde_json::from_value(raw)
         .map_err(|_| invalid("The generated interactive card has an invalid shape."))?;
     if input.kind != "interactive" || proposal.ambiguous {
-        return Err(invalid("Ambiguous assessment opportunities must be omitted."));
+        return Err(invalid(
+            "Ambiguous assessment opportunities must be omitted.",
+        ));
     }
     validate_criterion(&proposal.criterion)?;
     validate_tags(&input.tags)?;
@@ -125,7 +127,9 @@ pub(crate) fn admit_card(
             units,
         };
         if components.insert(key, binding).is_some() {
-            return Err(invalid("An assessment repeats a component evidence binding."));
+            return Err(invalid(
+                "An assessment repeats a component evidence binding.",
+            ));
         }
     }
     let question_hash = hash(&question.to_json()?);
@@ -151,8 +155,10 @@ pub(crate) fn admit_card(
             )
         })
         .collect::<Vec<_>>();
-    Ok(json!({"type":"interactive", "question":input.question, "tags":tags,
-        CARD_SUPPORT_KEY:support, CARD_POLICY_KEY:record.policy_hash, ASSESSMENT_KEY:record}))
+    Ok(
+        json!({"type":"interactive", "question":input.question, "tags":tags,
+        CARD_SUPPORT_KEY:support, CARD_POLICY_KEY:record.policy_hash, ASSESSMENT_KEY:record}),
+    )
 }
 
 impl AssessmentRecord {
@@ -212,7 +218,10 @@ impl AssessmentRecord {
             || wrong_role
             || self.opportunity_id != opportunity
             || self.policy_hash.len() != 64
-            || !self.policy_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !self
+                .policy_hash
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(invalid(
                 "Assessment evidence does not match the captured question.",
@@ -272,13 +281,15 @@ fn opportunity_id(
     criterion: &str,
     components: &[ComponentSupport],
 ) -> Result<String, CommandError> {
-    let encoded = serde_json::to_string(&(ASSESSMENT_VERSION, question_hash, criterion, components))
-        .map_err(CommandError::serialization)?;
+    let encoded =
+        serde_json::to_string(&(ASSESSMENT_VERSION, question_hash, criterion, components))
+            .map_err(CommandError::serialization)?;
     Ok(hash(&encoded))
 }
 
 fn validate_criterion(value: &str) -> Result<(), CommandError> {
-    if value.trim().is_empty() || value.chars().count() > 500 || value.chars().any(char::is_control) {
+    if value.trim().is_empty() || value.chars().count() > 500 || value.chars().any(char::is_control)
+    {
         return Err(invalid(
             "An assessment needs one explicit, bounded relation or ordering criterion.",
         ));

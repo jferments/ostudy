@@ -192,12 +192,16 @@ mod tests {
                         },
                     },
                 )?;
-                let before = storage::load(connection, &target.target)?.attempt.to_json()?;
+                let before = storage::load(connection, &target.target)?
+                    .attempt
+                    .to_json()?;
                 {
                     let transaction = connection.transaction().map_err(CommandError::database)?;
                     assert!(expose_hint(&transaction, &target, 100).is_err());
                 }
-                let after = storage::load(connection, &target.target)?.attempt.to_json()?;
+                let after = storage::load(connection, &target.target)?
+                    .attempt
+                    .to_json()?;
                 assert_eq!(before, after);
                 let projection = focus(
                     connection,
@@ -207,7 +211,10 @@ mod tests {
                 )?
                 .unwrap();
                 assert!(!projection.hidden);
-                assert!(projection.answer.unwrap().contains("Authored verdict: False"));
+                assert!(projection
+                    .answer
+                    .unwrap()
+                    .contains("Authored verdict: False"));
                 Ok(())
             })
             .unwrap();

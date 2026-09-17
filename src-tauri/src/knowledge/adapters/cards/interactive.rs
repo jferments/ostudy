@@ -33,7 +33,8 @@ pub(super) fn read(
         projection.prompt.chars().take(160).collect::<String>(),
     );
     let mut source = blank_record(seed, &title, &row.revision.to_string());
-    source.text = format!(
+    source.text =
+        format!(
         "Authored {} question:\n{}\n\nAuthored answer relation (not independently verified):\n{}",
         question.kind().label(), projection.prompt, projection.answer,
     );
@@ -47,8 +48,8 @@ pub(super) fn read(
     // An occlusion's source image contains answers to other presentations. It
     // never enters the semantic image route, even after this target is revealed.
     if question.kind() != QuestionKind::ImageOcclusion {
-        let ids = serde_json::to_string(&question.asset_ids())
-            .map_err(CommandError::serialization)?;
+        let ids =
+            serde_json::to_string(&question.asset_ids()).map_err(CommandError::serialization)?;
         let mut statement = connection
             .prepare(
                 "SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?1))
@@ -81,33 +82,45 @@ mod tests {
     fn typed_source_publication_keeps_the_answer_relation_and_nullable_recall_columns() {
         let database = Database::open_in_memory().unwrap();
         let payload = json!({"format":"ostudy-flashcards","formatVersion":2,
-            "deck":{"mode":"create","name":"Typed material"},"cards":[
-                {"type":"interactive","question":{"kind":"true_false",
-                    "statement":"A triangle has four sides.","correct":false,
-                    "correctedStatement":"A triangle has three sides."}},
-                {"type":"interactive","question":{"kind":"matching","prompt":"Match side counts.",
-                    "pairs":[{"id":"a","left":"Triangle","right":"Three"},
-                        {"id":"b","left":"Square","right":"Four"}]}}
-            ]}).to_string();
+        "deck":{"mode":"create","name":"Typed material"},"cards":[
+            {"type":"interactive","question":{"kind":"true_false",
+                "statement":"A triangle has four sides.","correct":false,
+                "correctedStatement":"A triangle has three sides."}},
+            {"type":"interactive","question":{"kind":"matching","prompt":"Match side counts.",
+                "pairs":[{"id":"a","left":"Triangle","right":"Three"},
+                    {"id":"b","left":"Square","right":"Four"}]}}
+        ]})
+        .to_string();
         import_generated_flashcards_bytes_with_commit_context(
             &database,
             payload.as_bytes(),
             |_, _, _, _| Ok(()),
         )
         .unwrap();
-        let ids = database.with_connection(|connection| {
-            let mut statement = connection.prepare("SELECT id FROM cards ORDER BY id")
-                .map_err(CommandError::database)?;
-            let result = statement.query_map([], |row| row.get::<_, String>(0))
-                .map_err(CommandError::database)?
-                .collect::<Result<Vec<_>, _>>().map_err(CommandError::database)?;
-            Ok(result)
-        }).unwrap();
+        let ids = database
+            .with_connection(|connection| {
+                let mut statement = connection
+                    .prepare("SELECT id FROM cards ORDER BY id")
+                    .map_err(CommandError::database)?;
+                let result = statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(CommandError::database)?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(CommandError::database)?;
+                Ok(result)
+            })
+            .unwrap();
         let mut text = String::new();
         for id in ids {
-            let sources = adapters::materialize_source(&database, &SourceSeed {
-                kind: SourceKind::Card, owner_id: id, parent_key: "presentation".to_string(),
-            }).unwrap();
+            let sources = adapters::materialize_source(
+                &database,
+                &SourceSeed {
+                    kind: SourceKind::Card,
+                    owner_id: id,
+                    parent_key: "presentation".to_string(),
+                },
+            )
+            .unwrap();
             assert!(!sources.is_empty());
             for source in sources {
                 source.validate().unwrap();

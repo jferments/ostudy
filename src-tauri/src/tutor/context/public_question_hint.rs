@@ -36,7 +36,11 @@ pub(super) fn build(
     })
 }
 
-fn request_text(mode: TutorMode, text: &str, focus: &FocusedContent) -> Result<String, CommandError> {
+fn request_text(
+    mode: TutorMode,
+    text: &str,
+    focus: &FocusedContent,
+) -> Result<String, CommandError> {
     if mode != TutorMode::Hint
         || !focus.hidden
         || focus.question_hint.is_none()

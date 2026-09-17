@@ -60,7 +60,10 @@ impl ValidatedQuestion {
                 corrected_statement,
                 ..
             } => {
-                answer.push(format!("Authored verdict: {}", if *correct { "True" } else { "False" }));
+                answer.push(format!(
+                    "Authored verdict: {}",
+                    if *correct { "True" } else { "False" }
+                ));
                 if let Some(correction) = corrected_statement {
                     answer.push(format!("Corrected statement: {}", rich_text(correction)));
                 }
@@ -133,20 +136,36 @@ impl PublicQuestion {
             Self::SingleChoice { prompt, options } | Self::SelectAll { prompt, options } => {
                 parts.push(rich_text(prompt));
                 for (index, option) in options.iter().enumerate() {
-                    parts.push(format!("Option {}: {}", index + 1, rich_text(&option.content)));
+                    parts.push(format!(
+                        "Option {}: {}",
+                        index + 1,
+                        rich_text(&option.content)
+                    ));
                 }
             }
             Self::TrueFalse { statement } => parts.push(rich_text(statement)),
-            Self::Matching { prompt, items, targets } => {
+            Self::Matching {
+                prompt,
+                items,
+                targets,
+            } => {
                 parts.push(rich_text(prompt));
                 for (index, item) in items.iter().enumerate() {
                     parts.push(format!("Item {}: {}", index + 1, rich_text(&item.content)));
                 }
                 for (index, item) in targets.iter().enumerate() {
-                    parts.push(format!("Target {}: {}", index + 1, rich_text(&item.content)));
+                    parts.push(format!(
+                        "Target {}: {}",
+                        index + 1,
+                        rich_text(&item.content)
+                    ));
                 }
             }
-            Self::Grouping { prompt, items, categories } => {
+            Self::Grouping {
+                prompt,
+                items,
+                categories,
+            } => {
                 parts.push(rich_text(prompt));
                 for (index, item) in items.iter().enumerate() {
                     parts.push(format!("Item {}: {}", index + 1, rich_text(&item.content)));
@@ -158,7 +177,11 @@ impl PublicQuestion {
             Self::Ordering { prompt, items } => {
                 parts.push(rich_text(prompt));
                 for (index, item) in items.iter().enumerate() {
-                    parts.push(format!("Displayed item {}: {}", index + 1, rich_text(&item.content)));
+                    parts.push(format!(
+                        "Displayed item {}: {}",
+                        index + 1,
+                        rich_text(&item.content)
+                    ));
                 }
             }
             Self::ImageOcclusion { prompt, .. } => {
@@ -193,26 +216,48 @@ mod tests {
         let options = json!([{"id":a,"content":rich("two")},
             {"id":b,"content":rich("three"),"rationale":rich("Not even.")}]);
         let fixtures = vec![
-            (json!({"kind":"single_choice","prompt":rich("Which is even?"),
-                "options":options,"correctOptionId":a}), "Correct option: two"),
-            (json!({"kind":"select_all","prompt":rich("Which are negative?"),
-                "options":options,"correctOptionIds":[]}), "Correct selection: none"),
-            (json!({"kind":"true_false","statement":rich("Two is odd."),"correct":false,
-                "correctedStatement":rich("Two is even.")}), "Corrected statement: Two is even."),
-            (json!({"kind":"matching","prompt":rich("Match terms."),"pairs":[
+            (
+                json!({"kind":"single_choice","prompt":rich("Which is even?"),
+                "options":options,"correctOptionId":a}),
+                "Correct option: two",
+            ),
+            (
+                json!({"kind":"select_all","prompt":rich("Which are negative?"),
+                "options":options,"correctOptionIds":[]}),
+                "Correct selection: none",
+            ),
+            (
+                json!({"kind":"true_false","statement":rich("Two is odd."),"correct":false,
+                "correctedStatement":rich("Two is even.")}),
+                "Corrected statement: Two is even.",
+            ),
+            (
+                json!({"kind":"matching","prompt":rich("Match terms."),"pairs":[
                 {"left":{"id":a,"content":rich("cat")},"right":{"id":c,"content":rich("mammal")}},
-                {"left":{"id":b,"content":rich("robin")},"right":{"id":d,"content":rich("bird")}}]}), "Match: cat => mammal"),
-            (json!({"kind":"grouping","prompt":rich("Group numbers."),
+                {"left":{"id":b,"content":rich("robin")},"right":{"id":d,"content":rich("bird")}}]}),
+                "Match: cat => mammal",
+            ),
+            (
+                json!({"kind":"grouping","prompt":rich("Group numbers."),
                 "categories":[{"id":a,"content":rich("even")},{"id":b,"content":rich("odd")}],
                 "items":[{"item":{"id":c,"content":rich("two")},"categoryId":a},
-                    {"item":{"id":d,"content":rich("three")},"categoryId":b}]}), "Group: two => even"),
-            (json!({"kind":"ordering","prompt":rich("Increasing order."),
-                "items":[{"id":a,"content":rich("two")},{"id":b,"content":rich("three")}]}), "1. two\n2. three"),
+                    {"item":{"id":d,"content":rich("three")},"categoryId":b}]}),
+                "Group: two => even",
+            ),
+            (
+                json!({"kind":"ordering","prompt":rich("Increasing order."),
+                "items":[{"id":a,"content":rich("two")},{"id":b,"content":rich("three")}]}),
+                "1. two\n2. three",
+            ),
         ];
         for (body, expected) in fixtures {
             let question = admit(body);
             let projection = question.knowledge_text("main").unwrap();
-            assert!(projection.answer.contains(expected), "{}", projection.answer);
+            assert!(
+                projection.answer.contains(expected),
+                "{}",
+                projection.answer
+            );
             assert!(!projection.answer.contains(&a));
             assert!(question.knowledge_text("missing").is_err());
         }
@@ -245,8 +290,14 @@ mod tests {
         let public = PublicQuestion::Ordering {
             prompt: rich("Increasing order."),
             items: vec![
-                RichItem { id: "b".repeat(32), content: rich("three") },
-                RichItem { id: "a".repeat(32), content: rich("two") },
+                RichItem {
+                    id: "b".repeat(32),
+                    content: rich("three"),
+                },
+                RichItem {
+                    id: "a".repeat(32),
+                    content: rich("two"),
+                },
             ],
         };
         let text = public.knowledge_prompt_text().unwrap();
