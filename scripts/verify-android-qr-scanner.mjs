@@ -37,7 +37,7 @@ requireText(
 );
 requireText(
   gradle,
-  'implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android:4.9.0")',
+  'implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")',
   "The audited Apache-2.0 Tesseract4Android dependency is missing or changed.",
 );
 requireText(
