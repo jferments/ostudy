@@ -123,7 +123,7 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.19.2")
 
     // Apache-2.0 OCR wrapper around Tesseract 5.5.1 / Leptonica 1.85.0.
-    implementation("com.github.adaptech-cz.Tesseract4Android:tesseract4android:4.9.0")
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
 
     // Apache-2.0 local QR scanner. Pin ZXing core explicitly rather than accepting
     // the older transitive version declared by the embedded scanner artifact.
