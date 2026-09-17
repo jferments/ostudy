@@ -41,10 +41,12 @@ export function MatchingQuestionEditor({
           { id: "prompt", label: "Instructions", document: draft.prompt, minHeight: 100 },
           {
             id: "explanation",
-            label: "Overall explanation (optional)",
+            label: "Overall explanation",
             description: "Shown after the first submitted arrangement is checked.",
             document: draft.explanation,
             minHeight: 80,
+            optional: true,
+            optionalLabel: "overall explanation",
           },
         ]}
         assets={assets}
@@ -84,9 +86,12 @@ export function MatchingQuestionEditor({
                 { id: `right:${pair.id}`, label: "Matching right item", document: pair.right.doc, minHeight: 80 },
                 {
                   id: `rationale:${pair.id}`,
-                  label: "Why this pair matches (optional)",
+                  label: "Pair explanation",
+                  description: "Explain why these two items belong together after checking.",
                   document: pair.rationale,
                   minHeight: 70,
+                  optional: true,
+                  optionalLabel: "pair explanation",
                 },
               ]}
               assets={assets}

@@ -47,10 +47,12 @@ export function GroupingQuestionEditor({
           { id: "prompt", label: "Instructions / grouping criterion", document: draft.prompt, minHeight: 100 },
           {
             id: "explanation",
-            label: "Overall explanation (optional)",
+            label: "Overall explanation",
             description: "Shown after the first submitted grouping is checked.",
             document: draft.explanation,
             minHeight: 80,
+            optional: true,
+            optionalLabel: "overall explanation",
           },
         ]}
         assets={assets}
@@ -146,9 +148,12 @@ export function GroupingQuestionEditor({
                 { id: `item:${item.id}`, label: "Item", document: item.doc, minHeight: 80 },
                 {
                   id: `rationale:${item.id}`,
-                  label: "Why it belongs there (optional)",
+                  label: "Item explanation",
+                  description: "Explain why this item belongs in its category after checking.",
                   document: item.rationale,
                   minHeight: 70,
+                  optional: true,
+                  optionalLabel: "item explanation",
                 },
               ]}
               assets={assets}

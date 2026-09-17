@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { Asset } from "../../ipc/assets";
 import { OcclusionWorkspace } from "../../editor/occlusion/OcclusionWorkspace";
-import { OcclusionImageView } from "../../editor/occlusion/OcclusionImageView";
 import { Button } from "../../ui/primitives/Button";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
@@ -10,11 +9,10 @@ import { Surface } from "../../ui/primitives/Surface";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { OcclusionQuestionInspector } from "./OcclusionQuestionInspector";
 import {
-  mutateOcclusionRegion, occlusionDraftReady, removeOcclusionRegion, undoOcclusionGeometry,
+  mutateOcclusionRegion, removeOcclusionRegion, undoOcclusionGeometry,
   type OcclusionDraftUpdate, type OcclusionEditorDraft,
 } from "./occlusionDraft";
 import { useOcclusionImport, useOcclusionSource } from "./useOcclusionImage";
-import { useOcclusionPreview } from "./useOcclusionPreview";
 
 interface ImageOcclusionEditorProps {
   draft: OcclusionEditorDraft;
@@ -32,16 +30,8 @@ export function ImageOcclusionEditor(props: ImageOcclusionEditorProps) {
   const source = useOcclusionSource(draft.imageAssetId);
   const confirm = useConfirm();
   const [addToCurrent, setAddToCurrent] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-  const [previewRevealed, setPreviewRevealed] = useState(false);
-  const preview = useOcclusionPreview(draft, assetDraftId, previewing, previewRevealed);
   const question = draft.questions.find((item) => item.id === draft.selectedQuestionId);
   const disabled = props.disabled || importing.busy || !!draft.pendingImport;
-  const targets = draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
-
-  useEffect(() => {
-    setPreviewRevealed(false);
-  }, [draft.selectedQuestionId, draft.imageAssetId]);
 
   async function chooseImage(): Promise<void> {
     if (props.disabled || importing.busy || draft.pendingImport) return;
@@ -79,7 +69,7 @@ export function ImageOcclusionEditor(props: ImageOcclusionEditorProps) {
         {draft.imageAssetId ? "Replace image" : "Choose image"}
       </Button>
     </div>
-    <p className="tw:text-sm tw:text-muted-foreground">Use a still PNG, JPEG or WebP image. Hide labels or regions, then write what you need to recall. Each question gets its own study schedule.</p>
+    <p className="tw:text-sm tw:text-muted-foreground">Use a still PNG, JPEG or WebP image. Hide labels or regions, then write what you need to recall. Each question gets its own study schedule. Use Preview card above to see the masked study presentation.</p>
     {importing.busy ? <InlineProgress>Preparing the image…</InlineProgress> : null}
     {importing.error ? <InlineNotice kind="error">{importing.error}</InlineNotice> : null}
     {draft.pendingImport && !importing.busy ? <div className="tw:flex tw:flex-wrap tw:gap-2">
@@ -105,20 +95,6 @@ export function ImageOcclusionEditor(props: ImageOcclusionEditorProps) {
         <OcclusionQuestionInspector draft={draft} assets={assets} assetDraftId={assetDraftId} disabled={disabled}
           onUpdate={onUpdate} onAssetImported={onAssetImported} />
       </div>
-      <div className="tw:flex tw:flex-wrap tw:gap-2">
-        <Button disabled={disabled || !occlusionDraftReady(draft)} aria-pressed={previewing}
-          onClick={() => { setPreviewRevealed(false); setPreviewing((value) => !value); }}>
-          {previewing ? "Close preview" : "Preview current question"}
-        </Button>
-        {previewing ? <Button disabled={disabled} onClick={() => setPreviewRevealed((value) => !value)}>
-          {previewRevealed ? "Preview before reveal" : "Preview after reveal"}
-        </Button> : null}
-      </div>
-      {previewing && !preview.ready ? <InlineNotice>Complete the questions and region assignments to preview the saved presentation.</InlineNotice> : null}
-      {preview.ready && !preview.url && !preview.error ? <InlineProgress>Rendering the masked preview…</InlineProgress> : null}
-      {preview.error ? <InlineNotice kind="error">{preview.error} <Button onClick={preview.retry}>Retry preview</Button></InlineNotice> : null}
-      {preview.url ? <OcclusionImageView imageUrl={preview.url} imageKey={`${draft.imageAssetId}:${question?.id}`}
-        imageSize={source.size} targets={targets} label={previewRevealed ? "Revealed image preview" : "Masked image preview"} /> : null}
     </> : null}
   </Surface>;
 }

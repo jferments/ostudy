@@ -42,10 +42,12 @@ export function OrderingQuestionEditor({
           { id: "prompt", label: "Ordering criterion / instructions", document: draft.prompt, minHeight: 100 },
           {
             id: "explanation",
-            label: "Overall explanation (optional)",
+            label: "Overall explanation",
             description: "Shown after the submitted order is checked.",
             document: draft.explanation,
             minHeight: 80,
+            optional: true,
+            optionalLabel: "overall explanation",
           },
         ]}
         assets={assets}

@@ -48,6 +48,7 @@ import { MoveCopyModal } from "./cards/MoveCopyModal";
 import { BasicCardFields } from "./card-editor/BasicCardFields";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { InteractiveQuestionEditor } from "./card-editor/InteractiveQuestionEditor";
+import { QuestionDraftPreview } from "./card-editor/QuestionDraftPreview";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { presentation } from "./card-editor/presentation";
@@ -204,6 +205,7 @@ export function CardEditorScreen({
         ? clozeSource.trim() !== "" && clozeGroups.length > 0
         : builtInCardType === "basic" && hasFront && hasBack;
   const canSave = contentReady && selectedDeckId !== "" && !isSaving && !isLoadingTemplate;
+  const canPreview = !selectedCustomTemplate && (builtInCardType === "basic" || activeQuestionDraft !== null);
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
   const usedAssetIds = useMemo(() => {
     const ids = new Set<string>();
@@ -704,7 +706,7 @@ export function CardEditorScreen({
         <Button variant="back" disabled={isSaving} onClick={() => void cancel()}>← {deck.name}</Button>
         {existing && recallNote ? <Button variant="secondary" disabled={isSaving || dirty}
           title={dirty ? "Save or discard edits before moving this card" : undefined} onClick={openMoveCopy}>Move / copy</Button> : null}
-        {!selectedCustomTemplate && builtInCardType === "basic" ? <Button variant="secondary" disabled={isSaving}
+        {canPreview ? <Button variant="secondary" disabled={isSaving}
           onClick={() => { setPreviewOpen((value) => !value); setPreviewAnswer(false); }}>{previewOpen ? "Hide preview" : "Preview card"}</Button> : null}
         <Button variant="secondary" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>
         {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>
@@ -729,7 +731,7 @@ export function CardEditorScreen({
           </div>
         </InlineNotice>
       ) : null}
-      <div className={cn(presentation["card-editor-layout"], previewOpen && presentation["with-preview"])}>
+      <div className={cn(presentation["card-editor-layout"], previewOpen && canPreview && presentation["with-preview"])}>
         <div className={presentation["card-editor-fields"]}>
           <Surface className="tw:grid tw:gap-5 tw:p-5 tw:lg:grid-cols-2">
             <FormField label="Card template" description={existing
@@ -798,7 +800,10 @@ export function CardEditorScreen({
           <TagInput tags={tags} suggestions={tagSuggestions} disabled={isSaving}
             onChange={(nextTags) => { setTags(nextTags); markDirty(); }} />
         </div>
-        {previewOpen && builtInCardType === "basic" && !selectedCustomTemplate ? (
+        {previewOpen && activeQuestionDraft ? (
+          <QuestionDraftPreview draft={activeQuestionDraft} assets={assets} assetDraftId={assetDraftId}
+            disabled={isSaving} onError={setErrorMessage} />
+        ) : previewOpen && builtInCardType === "basic" && !selectedCustomTemplate ? (
           <Surface as="aside" className={presentation["editor-preview-panel"]}>
             <div className={presentation["preview-panel-heading"]}>
               <div><span className={presentation["eyebrow"]}>LIVE PREVIEW</span><h2>{previewAnswer ? "Answer" : "Question"}</h2></div>

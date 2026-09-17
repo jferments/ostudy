@@ -58,7 +58,14 @@ export function OcclusionQuestionInspector({ draft, assets, assetDraftId, disabl
         fields={[
           { id: "prompt", label: "Question", document: question.prompt, minHeight: 90 },
           { id: "answer", label: "Answer", document: question.answer, minHeight: 100 },
-          { id: "explanation", label: "Explanation (optional)", document: question.explanation ?? EMPTY_RICH_DOCUMENT, minHeight: 80 },
+          {
+            id: "explanation",
+            label: "Explanation",
+            document: question.explanation ?? EMPTY_RICH_DOCUMENT,
+            minHeight: 80,
+            optional: true,
+            optionalLabel: "explanation",
+          },
         ]}
         onFieldChange={(field, document) => onUpdate((current) => updateOcclusionQuestion(current, question.id,
           field === "explanation" ? { explanation: optionalOcclusionField(document) }

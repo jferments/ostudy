@@ -36,17 +36,21 @@ export function TrueFalseQuestionEditor({
           { id: "statement", label: "Statement", document: draft.statement, minHeight: 120 },
           {
             id: "explanation",
-            label: "Explanation (optional)",
+            label: "Explanation",
             description: "Shown after Check answer.",
             document: draft.explanation,
             minHeight: 90,
+            optional: true,
+            optionalLabel: "explanation",
           },
           {
             id: "corrected",
-            label: "Corrected statement when false (optional)",
-            description: "Useful when the false statement should be repaired rather than merely rejected.",
+            label: "Corrected statement",
+            description: "Useful when a false statement should be repaired rather than merely rejected.",
             document: draft.correctedStatement,
             minHeight: 90,
+            optional: true,
+            optionalLabel: "corrected statement",
           },
         ]}
         assets={assets}
