@@ -89,7 +89,10 @@ fn commit(
                 )
                 .map_err(CommandError::database)?;
             if rollback {
-                return Err(CommandError::new("fixture_rollback", "Reject this publication."));
+                return Err(CommandError::new(
+                    "fixture_rollback",
+                    "Reject this publication.",
+                ));
             }
             Ok(())
         },
@@ -125,7 +128,11 @@ fn counts_committed_notes_presentations_items_and_unique_source_support() {
                 .find(|row| row.family == QuestionFamily::Matching)
                 .unwrap();
             assert_eq!(
-                (matching.note_count, matching.card_count, matching.item_count),
+                (
+                    matching.note_count,
+                    matching.card_count,
+                    matching.item_count
+                ),
                 (1, 1, 2)
             );
             let json = serde_json::to_string(&report).unwrap();
@@ -146,7 +153,10 @@ fn failed_publication_rolls_back_the_summary_and_retry_keeps_one_completion() {
     let (database, document, job) = fixture();
     begin(&database, &document, &job, &GenerationPolicy::default(), 2).unwrap();
     record_candidates(&database, &job, 3).unwrap();
-    assert_eq!(commit(&database, &document, &job, true).unwrap_err().code, "fixture_rollback");
+    assert_eq!(
+        commit(&database, &document, &job, true).unwrap_err().code,
+        "fixture_rollback"
+    );
     database
         .with_connection(|connection| {
             assert!(load_latest(connection, &document)?.is_none());
@@ -160,9 +170,17 @@ fn failed_publication_rolls_back_the_summary_and_retry_keeps_one_completion() {
     commit(&database, &document, &job, false).unwrap();
     database
         .with_connection(|connection| {
-            assert_eq!(load_latest(connection, &document)?.unwrap().saved_card_count, 3);
+            assert_eq!(
+                load_latest(connection, &document)?
+                    .unwrap()
+                    .saved_card_count,
+                3
+            );
             assert!(connection
-                .execute("UPDATE question_generation_reports SET candidate_count = 100", [])
+                .execute(
+                    "UPDATE question_generation_reports SET candidate_count = 100",
+                    []
+                )
                 .is_err());
             Ok(())
         })
@@ -176,7 +194,9 @@ fn pending_or_failed_jobs_do_not_replace_a_successful_summary() {
     record_candidates(&database, &job, 3).unwrap();
     commit(&database, &document, &job, false).unwrap();
     let next = "d".repeat(32);
-    database.with_connection(|connection| add_job(connection, &document, &next)).unwrap();
+    database
+        .with_connection(|connection| add_job(connection, &document, &next))
+        .unwrap();
     begin(&database, &document, &next, &GenerationPolicy::default(), 4).unwrap();
     record_candidates(&database, &next, 10).unwrap();
     database
@@ -191,7 +211,12 @@ fn pending_or_failed_jobs_do_not_replace_a_successful_summary() {
                     [&next],
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(load_latest(connection, &document)?.unwrap().candidate_note_count, 3);
+            assert_eq!(
+                load_latest(connection, &document)?
+                    .unwrap()
+                    .candidate_note_count,
+                3
+            );
             Ok(())
         })
         .unwrap();
