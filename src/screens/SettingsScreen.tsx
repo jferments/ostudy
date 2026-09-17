@@ -14,6 +14,7 @@ import { AiLlmSettings } from "./settings/AiLlmSettings";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
+import { QuestionGenerationSettings } from "./settings/QuestionGenerationSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
 
@@ -63,6 +64,8 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialSection);
   const [templatesMounted, setTemplatesMounted] = useState(initialSection === "templates");
+  const [generationMounted, setGenerationMounted] = useState(initialSection === "ai");
+  const [questionDirty, setQuestionDirty] = useState(false);
   const [draft, setDraft] = useState(settings);
   const [savedBaseline, setSavedBaseline] = useState(settings);
   const [templateDirty, setTemplateDirty] = useState(false);
@@ -71,7 +74,7 @@ export function SettingsScreen({
   const savingRef = useRef(false);
   const aiController = useAiProfilesController(showToast);
   const preferencesDirty = JSON.stringify(draft) !== JSON.stringify(savedBaseline);
-  const dirty = preferencesDirty || aiController.dirty || templateDirty;
+  const dirty = preferencesDirty || aiController.dirty || templateDirty || questionDirty;
 
   useEffect(() => {
     setActiveTab(initialSection);
@@ -79,6 +82,7 @@ export function SettingsScreen({
 
   useEffect(() => {
     if (activeTab === "templates") setTemplatesMounted(true);
+    if (activeTab === "ai") setGenerationMounted(true);
   }, [activeTab]);
 
   useEffect(() => {
@@ -161,7 +165,13 @@ export function SettingsScreen({
       panel: (
         <AiLlmSettings
           controller={aiController}
-          defaultBlock={<DefaultAiModelSettings controller={aiController} />}
+          defaultBlock={<>
+            <DefaultAiModelSettings controller={aiController} />
+            {generationMounted ? <QuestionGenerationSettings
+              showToast={showToast}
+              onDirtyChange={setQuestionDirty}
+            /> : null}
+          </>}
         />
       ),
     },
