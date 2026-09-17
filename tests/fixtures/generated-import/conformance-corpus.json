@@ -6,7 +6,7 @@
     },
     {
       "name": "unsupported format version",
-      "document": {"format":"ostudy-flashcards","formatVersion":2,"deck":{"mode":"create","name":"Invalid"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
+      "document": {"format":"ostudy-flashcards","formatVersion":3,"deck":{"mode":"create","name":"Invalid"},"cards":[{"type":"basic","front":"Q","back":"A"}]}
     },
     {
       "name": "missing deck",
