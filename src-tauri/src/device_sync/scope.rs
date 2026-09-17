@@ -1,7 +1,12 @@
+use std::collections::BTreeSet;
+
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::error::CommandError;
+use crate::{
+    cards::questions::{AttemptProgress, QuestionAttempt, ValidatedQuestion, Verdict},
+    error::CommandError,
+};
 
 /// Sender-selected synchronization domains.
 ///
@@ -93,7 +98,9 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
     "card_template_fields",
     "assets",
     "notes",
+    "question_generation_evidence",
     "cards",
+    "card_question_presentations",
     "card_template_rules",
     "note_tags",
     "note_assets",
@@ -101,11 +108,15 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
     "card_schedules",
     "practice_sessions",
     "practice_session_cards",
+    "question_attempts",
+    "question_attempt_assets",
     "practice_session_card_snapshots",
     "practice_session_card_tag_snapshots",
     "review_events",
     "review_event_attributions",
     "review_event_tag_attributions",
+    "question_review_links",
+    "question_remediation_attempts",
     "source_citation_snapshots",
     "deck_source_citations",
     "note_source_citations",
@@ -119,6 +130,7 @@ pub(crate) const DOCUMENT_TABLES: &[&str] = &[
     "document_outlines",
     "document_outline_checkpoints",
     "document_generation_jobs",
+    "question_generation_reports",
     "document_generation_units",
     "document_generation_windows",
     "document_generation_checkpoints",
@@ -144,31 +156,224 @@ pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
 pub(crate) const CROSS_DOCUMENT_FLASHCARD_TABLES: &[&str] =
     &["document_decks", "document_note_topics"];
 
-/// The current merge table list cannot preserve typed presentation/attempt
-/// ownership. Refuse this graph on both send and receive until the versioned
-/// sharing implementation carries it completely. Do not silently flatten it.
+/// Native semantic admission for a copied/received question graph. The SQLite
+/// constraints prove relational shape; this additionally proves that active
+/// presentation keys still belong to the canonical typed definition and that
+/// private attempt checkpoints restore to their recorded owner and first result.
 pub(crate) fn require_supported_question_snapshot(
     connection: &Connection,
 ) -> Result<(), CommandError> {
-    let contains_questions: bool = connection
+    let mut note_statement = connection
+        .prepare(
+            "SELECT id, question_definition FROM notes
+             WHERE note_type = 'interactive' AND deleted_at IS NULL ORDER BY id",
+        )
+        .map_err(CommandError::database)?;
+    let notes = note_statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    drop(note_statement);
+
+    for (note_id, definition) in notes {
+        let question = ValidatedQuestion::parse(&definition).map_err(question_invalid)?;
+        let expected = question
+            .presentation_keys()
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let mut presentation_statement = connection
+            .prepare(
+                "SELECT qp.question_key FROM card_question_presentations qp
+                 JOIN cards c ON c.id = qp.card_id
+                 WHERE qp.note_id = ?1 AND c.deleted_at IS NULL
+                 ORDER BY qp.question_key",
+            )
+            .map_err(CommandError::database)?;
+        let actual = presentation_statement
+            .query_map([&note_id], |row| row.get::<_, String>(0))
+            .map_err(CommandError::database)?
+            .collect::<Result<BTreeSet<_>, _>>()
+            .map_err(CommandError::database)?;
+        if actual != expected {
+            return Err(question_invalid_message(
+                "An interactive note's active presentation keys do not match its canonical definition.",
+            ));
+        }
+        let active_cards: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM cards WHERE note_id = ?1 AND deleted_at IS NULL",
+                [&note_id],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        if usize::try_from(active_cards).ok() != Some(expected.len()) {
+            return Err(question_invalid_message(
+                "An interactive note has an active card without a canonical presentation.",
+            ));
+        }
+        let linked_assets = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT asset_id FROM note_assets WHERE note_id = ?1 AND side = 'content' ORDER BY asset_id",
+                )
+                .map_err(CommandError::database)?;
+            statement
+                .query_map([&note_id], |row| row.get::<_, String>(0))
+                .map_err(CommandError::database)?
+                .collect::<Result<BTreeSet<_>, _>>()
+                .map_err(CommandError::database)?
+        };
+        let expected_assets = question.asset_ids().iter().cloned().collect::<BTreeSet<_>>();
+        if linked_assets != expected_assets {
+            return Err(question_invalid_message(
+                "An interactive note's managed-asset links do not match its canonical definition.",
+            ));
+        }
+    }
+
+    let invalid_recall_presentation: bool = connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM notes WHERE note_type = 'interactive')
-                OR EXISTS(SELECT 1 FROM card_question_presentations)
-                OR EXISTS(SELECT 1 FROM question_attempts)
-                OR EXISTS(SELECT 1 FROM question_attempt_assets)
-                OR EXISTS(SELECT 1 FROM question_review_links)
-                OR EXISTS(SELECT 1 FROM question_remediation_attempts)",
+            "SELECT EXISTS(
+                 SELECT 1 FROM card_question_presentations qp
+                 JOIN cards c ON c.id = qp.card_id
+                 JOIN notes n ON n.id = qp.note_id
+                 WHERE c.deleted_at IS NULL AND n.note_type <> 'interactive')",
             [],
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
-    if contains_questions {
-        return Err(CommandError::new(
-            "interactive_sync_not_supported",
-            "Interactive questions cannot be sent or received with this device-sync format yet. Your local library has not been changed.",
+    if invalid_recall_presentation {
+        return Err(question_invalid_message(
+            "A recall card contains an interactive presentation identity.",
+        ));
+    }
+
+    let mut attempt_statement = connection
+        .prepare(
+            "SELECT q.instance_id, q.card_id, q.note_id, q.question_kind, q.instance_hash,
+                    q.revision, q.phase, q.assisted, q.checkpoint_json,
+                    q.first_checked_at, q.verdict, n.question_definition
+             FROM question_attempts q JOIN notes n ON n.id = q.note_id
+             ORDER BY q.instance_id",
+        )
+        .map_err(CommandError::database)?;
+    let attempts = attempt_statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, Option<i64>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<String>>(11)?,
+            ))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    drop(attempt_statement);
+
+    for row in attempts {
+        let definition = row.11.ok_or_else(|| {
+            question_invalid_message("A question attempt belongs to a non-interactive note.")
+        })?;
+        let current = ValidatedQuestion::parse(&definition).map_err(question_invalid)?;
+        if current.kind().as_str() != row.3 {
+            return Err(question_invalid_message(
+                "A question attempt's type does not match its retained note.",
+            ));
+        }
+        let attempt = QuestionAttempt::restore(&row.8).map_err(question_invalid)?;
+        let identity = attempt.instance().identity();
+        if identity.instance_id != row.0
+            || identity.card_id != row.1
+            || identity.note_id != row.2
+            || attempt.instance().fingerprint() != row.4
+            || attempt.revision() != row.5
+        {
+            return Err(question_invalid_message(
+                "A question attempt checkpoint does not match its stored identity.",
+            ));
+        }
+        let view = attempt.view().map_err(question_invalid)?;
+        if i64::from(view.assisted) != row.7 {
+            return Err(question_invalid_message(
+                "A question attempt checkpoint has inconsistent assistance evidence.",
+            ));
+        }
+        let (phase, checked_at, verdict) = match view.progress {
+            AttemptProgress::Answering { .. } => ("answering", None, None),
+            AttemptProgress::Checked {
+                checked_at_ms,
+                evaluation,
+                ..
+            } => (
+                "checked",
+                Some(checked_at_ms),
+                Some(match evaluation.verdict {
+                    Verdict::Correct => "correct",
+                    Verdict::Incorrect => "incorrect",
+                    Verdict::Incomplete => "incomplete",
+                }),
+            ),
+            AttemptProgress::Revealed { revealed_at_ms, .. } => {
+                ("revealed", Some(revealed_at_ms), None)
+            }
+        };
+        if row.6 != phase || row.9 != checked_at || row.10.as_deref() != verdict {
+            return Err(question_invalid_message(
+                "A question attempt's indexed first-result fields do not match its immutable checkpoint.",
+            ));
+        }
+    }
+
+    let mismatched_snapshot: bool = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM practice_session_card_snapshots snapshot
+                 JOIN question_attempts attempt ON attempt.instance_id = snapshot.question_instance_id
+                 WHERE snapshot.question_instance_id IS NOT NULL
+                   AND (snapshot.card_id <> attempt.card_id OR snapshot.note_id <> attempt.note_id))",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    let mismatched_review: bool = connection
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1 FROM question_review_links link
+                 JOIN question_attempts attempt ON attempt.instance_id = link.instance_id
+                 JOIN review_events review ON review.id = link.review_event_id
+                 WHERE review.card_id <> attempt.card_id)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    if mismatched_snapshot || mismatched_review {
+        return Err(question_invalid_message(
+            "Question evidence is linked to a different retained card or note.",
         ));
     }
     Ok(())
+}
+
+pub(crate) use require_supported_question_snapshot as validate_question_snapshot;
+
+fn question_invalid(error: crate::cards::questions::QuestionError) -> CommandError {
+    question_invalid_message(error.message)
+}
+
+fn question_invalid_message(message: impl Into<String>) -> CommandError {
+    CommandError::new("device_sync_question_invalid", message)
 }
 
 /// Remove every unselected domain from a copied SQLite snapshot before the
@@ -232,7 +437,8 @@ pub(crate) fn sanitize_snapshot(
         }
         connection
             .execute_batch(
-                "DELETE FROM question_remediation_attempts;
+                "DELETE FROM question_generation_evidence;
+                 DELETE FROM question_remediation_attempts;
                  DELETE FROM question_review_links;
                  DELETE FROM question_attempt_assets;
                  DELETE FROM question_attempts;
@@ -268,7 +474,8 @@ pub(crate) fn sanitize_snapshot(
         // cards can retain provenance without transferring the live document.
         connection
             .execute_batch(
-                "DELETE FROM document_decks;
+                "UPDATE question_generation_evidence SET document_id = NULL;
+                 DELETE FROM document_decks;
                  DELETE FROM document_note_topics;",
             )
             .map_err(CommandError::database)?;
@@ -299,6 +506,7 @@ pub(crate) fn sanitize_snapshot(
                  DELETE FROM document_generation_checkpoints;
                  DELETE FROM document_generation_windows;
                  DELETE FROM document_generation_units;
+                 DELETE FROM question_generation_reports;
                  DELETE FROM document_generation_jobs;
                  DELETE FROM document_outline_checkpoints;
                  DELETE FROM document_outlines;
@@ -334,6 +542,9 @@ pub(crate) fn sanitize_snapshot(
             "device_sync_snapshot_invalid",
             "The selected synchronization categories would produce an incomplete relational graph.",
         ));
+    }
+    if selection.flashcards {
+        require_supported_question_snapshot(connection)?;
     }
     // The package contains the SQLite file, not just live rows. Deleted private
     // text must not survive in free pages or an uncheckpointed WAL snapshot.
@@ -379,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn table_scope_keeps_cross_graph_links_only_when_both_sides_are_selected() {
+    fn table_scope_keeps_typed_evidence_and_cross_graph_links_explicit() {
         let documents_only = SyncSelection {
             flashcards: false,
             documents: true,
@@ -388,14 +599,19 @@ mod tests {
             api_credentials: false,
         };
         assert!(documents_only.includes_table("documents"));
+        assert!(documents_only.includes_table("question_generation_reports"));
         assert!(documents_only.includes_table("document_study_guides"));
         assert!(!documents_only.includes_table("document_decks"));
         assert!(!documents_only.includes_table("notes"));
+        assert!(!documents_only.includes_table("question_attempts"));
 
         let all_learning = SyncSelection {
             flashcards: true,
             ..documents_only
         };
+        assert!(all_learning.includes_table("card_question_presentations"));
+        assert!(all_learning.includes_table("question_attempts"));
+        assert!(all_learning.includes_table("question_generation_evidence"));
         assert!(all_learning.includes_table("document_decks"));
         assert!(all_learning.includes_table("document_note_topics"));
     }
