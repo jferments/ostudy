@@ -65,7 +65,7 @@ export function QuestionGenerationSettings({ showToast, onDirtyChange }: Props) 
   }, [dirty, onDirtyChange]);
 
   async function save(): Promise<void> {
-    if (!saved || !parsed || !dirty || savingRef.current) return;
+    if (!saved || !parsed || !dirty || savingRef.current || loading) return;
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -96,7 +96,6 @@ export function QuestionGenerationSettings({ showToast, onDirtyChange }: Props) 
       <div className="tw:grid tw:gap-3 tw:sm:grid-cols-2">
         {GENERATION_FAMILIES.map(({ value, label }) => <label key={value} className="tw:flex tw:min-h-11 tw:items-center tw:gap-3 tw:text-label">
           <Checkbox
-            aria-label={label}
             checked={draft.allowedTypes.includes(value)}
             disabled={saving || (draft.allowedTypes.length === 1 && draft.allowedTypes.includes(value))}
             onCheckedChange={(checked) => setDraft((previous) => previous === null ? null : ({
