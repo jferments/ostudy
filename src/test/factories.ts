@@ -203,6 +203,7 @@ export function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
       reviewsRemaining: 200,
     },
     ratingDistribution: { again: 0, hard: 0, good: 0, easy: 0 },
+    questionTypes: [],
     timeline: [],
     deckStats: [],
     tagStats: [],

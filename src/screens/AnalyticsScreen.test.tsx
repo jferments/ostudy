@@ -98,6 +98,7 @@ function analyticsForRange(
       reviewsRemaining: 190,
     },
     ratingDistribution: { again: 2, hard: 2, good: 4, easy: 2 },
+    questionTypes: [],
     timeline: [
       {
         startLocalDate: "2026-08-01",
@@ -373,6 +374,24 @@ describe("AnalyticsScreen", () => {
         }),
       );
     });
+  });
+
+  it("renders the native type breakdown without substituting remembered ratings", async () => {
+    const analytics = analyticsForRange("7d");
+    analytics.questionTypes = [{
+      questionType: "matching", reviewCount: 3, selfAssessedCount: 0,
+      objectiveCount: 3, correctCount: 1, incorrectCount: 1, incompleteCount: 1,
+      objectiveAccuracy: 1 / 3, unassistedObjectiveCount: 2,
+      unassistedCorrectCount: 1, unassistedAccuracy: 0.5,
+      assistanceTrackedCount: 3, assistedCount: 1, overrideCount: 1,
+      remediationCount: 2, unavailableEvidenceCount: 0,
+    }];
+    vi.mocked(analyticsIpc.getAnalytics).mockResolvedValue(analytics);
+    renderAnalytics();
+    expect(await screen.findByRole("region", { name: "Question types" })).toBeTruthy();
+    expect(screen.getByText("33%")).toBeTruthy();
+    expect(screen.getAllByText("80%").length).toBeGreaterThan(0);
+    expect(analyticsIpc.getAnalytics).toHaveBeenCalledTimes(1);
   });
 
   it("discards a slower response for an obsolete range", async () => {

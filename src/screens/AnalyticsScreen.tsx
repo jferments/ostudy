@@ -8,6 +8,7 @@ import type { ReviewOutcome } from "../ipc/practice";
 import type { AppSettings } from "../ipc/settings";
 import { AnalyticsFilters } from "./analytics/AnalyticsFilters";
 import { ProgressChart } from "./analytics/ProgressChart";
+import { QuestionTypeBreakdown } from "./analytics/QuestionTypeBreakdown";
 import { PageScaffold, PageHeader } from "../ui/patterns/WorkspacePatterns";
 import { MetricTile } from "../ui/patterns/Metrics";
 import { Button } from "../ui/primitives/Button";
@@ -182,6 +183,7 @@ export function AnalyticsScreen({ decks, settings, launchRequest, onLaunchConsum
             <span>{analytics.dailyLimits.newCompleted} / {analytics.dailyLimits.newLimit} new cards</span></div>
           <p>{workloadMessage(analytics)}</p>
         </section>
+        <QuestionTypeBreakdown rows={analytics.questionTypes} />
         <Surface as="section" className={styles.analyticsPanelTagInsightsPanel}>
           <div className={styles.panelHeadingRow}><div><h2>Topic insights</h2>
             <p className={styles.analyticsPanelNote}>Current counts use current tags. Review evidence uses captured tag identity and displays the current tag name after renames.</p>
