@@ -303,7 +303,10 @@ mod tests {
             "none",
         )
         .unwrap();
-        assert_eq!(request.url.as_str(), "https://api.deepseek.com/chat/completions");
+        assert_eq!(
+            request.url.as_str(),
+            "https://api.deepseek.com/chat/completions"
+        );
         assert_eq!(
             request.body.pointer("/response_format/type"),
             Some(&json!("json_object"))

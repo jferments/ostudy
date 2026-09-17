@@ -124,7 +124,11 @@ fn deepseek_node_compatible(value: &Value) -> bool {
         if object
             .get(group)
             .and_then(Value::as_object)
-            .is_some_and(|entries| entries.values().any(|child| !deepseek_node_compatible(child)))
+            .is_some_and(|entries| {
+                entries
+                    .values()
+                    .any(|child| !deepseek_node_compatible(child))
+            })
         {
             return false;
         }
@@ -138,7 +142,11 @@ fn deepseek_node_compatible(value: &Value) -> bool {
     if object
         .get("anyOf")
         .and_then(Value::as_array)
-        .is_some_and(|variants| variants.iter().any(|child| !deepseek_node_compatible(child)))
+        .is_some_and(|variants| {
+            variants
+                .iter()
+                .any(|child| !deepseek_node_compatible(child))
+        })
     {
         return false;
     }
