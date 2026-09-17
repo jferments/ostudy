@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ImageOcclusionAttemptView, RevealPracticeQuestionInput } from "../../ipc/questionAttempts";
@@ -14,11 +14,11 @@ vi.mock("../../editor/occlusion/OcclusionImageView", () => ({
   OcclusionImageView: (props: { imageUrl: string; initialViewport: ImageViewport; onViewportChange: (value: ImageViewport) => void }) => {
     mocks.view(props);
     return <section aria-label="Prepared raster viewer"><span>{props.imageUrl}</span>
-      <Button onClick={() => props.onViewportChange({ zoom: 2, center: { x: 0.3, y: 0.4 } })}>Zoom image</Button>
+      <Button onClick={() => props.onViewportChange({ zoom: 2, center: { x: 0.3, y: 0.4 } })}>Mock zoom 2x</Button>
+      <Button onClick={() => props.onViewportChange({ zoom: 4, center: { x: 0.3, y: 0.4 } })}>Mock zoom 4x</Button>
     </section>;
   },
 }));
-vi.mock("../../ui/overlays/Dialog", () => ({ Dialog: ({ title, children }: { title: string; children: ReactNode }) => <section role="dialog" aria-label={title}>{children}</section> }));
 const initial: ImageOcclusionAttemptView = {
   instanceId: "3".repeat(32), revision: 1, assisted: false,
   question: { kind: "image_occlusion", prompt: { text: "Identify the highlighted region" },
@@ -47,8 +47,9 @@ beforeEach(() => {
 });
 
 describe("image-occlusion Practice interaction", () => {
-  it("shows only a prepared image and uses Reveal instead of a fabricated objective Check", async () => {
+  it("starts with a small masked raster and uses Reveal instead of a fabricated objective Check", async () => {
     render(<Harness />);
+    expect(mocks.image.mock.calls[0][2]).toBe(1024);
     expect(screen.getByText("blob:prepared-1")).toBeTruthy();
     expect(screen.queryByText(/ANSWER_FROM_NATIVE/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Check answer" })).toBeNull();
@@ -58,31 +59,24 @@ describe("image-occlusion Practice interaction", () => {
     expect(screen.getByText("blob:prepared-2")).toBeTruthy();
     expect(mocks.reveal).toHaveBeenCalledTimes(1);
     expect(mocks.exposed).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "Reveal answer" })).toBeNull();
   });
 
-  it("enlarging and returning preserve the viewport and never reveal the answer", () => {
+  it("requests sharper native rasters automatically as the learner zooms and preserves the viewport", async () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "Zoom image" }));
-    fireEvent.click(screen.getByRole("button", { name: "Enlarge image" }));
-    expect(screen.getByRole("dialog", { name: "Study image" })).toBeTruthy();
-    expect(screen.getAllByRole("region", { name: "Prepared raster viewer" })).toHaveLength(1);
-    expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport.zoom).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: "Return to question" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport.zoom).toBe(2);
-    expect(mocks.reveal).not.toHaveBeenCalled();
-  });
-
-  it("reveal and sharper-image requests keep the selected image-relative viewport", async () => {
-    render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: "Zoom image" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load sharper image" }));
-    expect(mocks.image.mock.calls.at(-1)?.[2]).toBe(4096);
-    expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport.zoom).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "Mock zoom 2x" }));
+    await waitFor(() => expect(mocks.image.mock.calls.some((call) => call[2] === 2048)).toBe(true));
+    expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport).toEqual({ zoom: 2, center: { x: 0.3, y: 0.4 } });
+    fireEvent.click(screen.getByRole("button", { name: "Mock zoom 4x" }));
+    await waitFor(() => expect(mocks.image.mock.calls.some((call) => call[2] === 4096)).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "Reveal answer" }));
     await waitFor(() => expect(screen.getByText(/ANSWER_FROM_NATIVE/)).toBeTruthy());
-    expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport).toEqual({ zoom: 2, center: { x: 0.3, y: 0.4 } });
+    expect(mocks.view.mock.calls.at(-1)?.[0].initialViewport).toEqual({ zoom: 4, center: { x: 0.3, y: 0.4 } });
+  });
+
+  it("does not expose old enlarge or manual sharpness controls", () => {
+    render(<Harness />);
+    expect(screen.queryByRole("button", { name: "Enlarge image" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load sharper image" })).toBeNull();
   });
 
   it("does not reveal while the initial raster is loading or has failed", () => {

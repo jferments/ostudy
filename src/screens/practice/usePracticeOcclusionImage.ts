@@ -6,27 +6,33 @@ import { getErrorMessage } from "../../ipc/common";
 import { readPracticeOcclusionImage, type QuestionAttemptTarget } from "../../ipc/questionAttempts";
 
 interface RasterState {
-  key: string;
-  url: string | null;
-  size: Size | null;
-  error: string | null;
-  loadedAt: number | null;
+  identity: string;
+  url: string;
+  size: Size;
+  loadedAt: number;
 }
 
-/** This controller has no source asset ID, original URL, authored definition or
- * client-authorized reveal flag. The native captured revision owns those choices.
+/** Preserve an already visible raster while refining its resolution, but never
+ * reuse pixels across a captured target or reveal revision. Native state alone
+ * selects masking; the hook has no original asset URL or reveal override.
  */
 export function usePracticeOcclusionImage(target: QuestionAttemptTarget, revision: number, maximumEdge: number) {
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<RasterState | null>(null);
-  const key = JSON.stringify([target.sessionId, target.cardId, target.instanceId, revision, maximumEdge, retry]);
+  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
+  const identity = JSON.stringify([target.sessionId, target.cardId, target.instanceId, revision]);
+  const key = JSON.stringify([identity, maximumEdge, retry]);
+
+  useEffect(() => {
+    setState((current) => current?.identity === identity ? current : null);
+  }, [identity]);
+  useEffect(() => () => { if (state?.url) URL.revokeObjectURL(state.url); }, [state?.url]);
   useEffect(() => {
     let live = true;
     let objectUrl: string | null = null;
+    let adopted = false;
     const image = new Image();
-    const fail = (error: string) => {
-      if (live) setState({ key, url: null, size: null, error, loadedAt: null });
-    };
+    const fail = (message: string) => { if (live) setFailure({ key, message }); };
     image.onload = () => {
       if (!live || !objectUrl) return;
       const width = image.naturalWidth;
@@ -35,9 +41,17 @@ export function usePracticeOcclusionImage(target: QuestionAttemptTarget, revisio
         fail("The prepared image has invalid dimensions. Your saved question is unchanged.");
         return;
       }
-      setState({ key, url: objectUrl, size: { width, height }, error: null, loadedAt: Date.now() });
+      const url = objectUrl;
+      adopted = true;
+      setState((current) => ({
+        identity,
+        url,
+        size: { width, height },
+        loadedAt: current?.identity === identity ? current.loadedAt : Date.now(),
+      }));
+      setFailure(null);
     };
-    image.onerror = () => fail("The prepared study image could not be displayed. Retry the image; no answer or rating has been changed.");
+    image.onerror = () => fail("The study image could not be displayed. Retry the image; no answer or rating has been changed.");
     void occlusionRasterReads.read(() => live, () => readPracticeOcclusionImage({
       target, expectedRevision: revision, maximumEdge,
     })).then((bytes) => {
@@ -50,17 +64,19 @@ export function usePracticeOcclusionImage(target: QuestionAttemptTarget, revisio
       image.onload = null;
       image.onerror = null;
       image.src = "";
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      // Visible URLs are released after React replaces their DOM, not when a
+      // sharper request starts. Failed/canceled decode URLs have no visible owner.
+      if (objectUrl && !adopted) URL.revokeObjectURL(objectUrl);
     };
-  }, [key, target.sessionId, target.cardId, target.instanceId, revision, maximumEdge]);
+  }, [key, identity, target.sessionId, target.cardId, target.instanceId, revision, maximumEdge]);
 
-  const current = state?.key === key ? state : null;
+  const current = state?.identity === identity ? state : null;
   return {
     url: current?.url ?? null,
     size: current?.size ?? null,
-    error: current?.error ?? null,
+    error: failure?.key === key ? failure.message : null,
     loadedAt: current?.loadedAt ?? null,
-    ready: !!current?.url && !!current.size,
+    ready: !!current,
     retry: () => setRetry((value) => value + 1),
   };
 }

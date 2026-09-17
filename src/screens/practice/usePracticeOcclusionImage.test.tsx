@@ -38,9 +38,9 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("authorized Practice occlusion image loading", () => {
   it("requests only captured identity/revision and waits for decoded pixels before readiness", async () => {
-    const { result, unmount } = renderHook(() => usePracticeOcclusionImage(target, 1, 2048));
+    const { result, unmount } = renderHook(() => usePracticeOcclusionImage(target, 1, 1024));
     await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(1));
-    expect(mocks.read).toHaveBeenCalledExactlyOnceWith({ target, expectedRevision: 1, maximumEdge: 2048 });
+    expect(mocks.read).toHaveBeenCalledExactlyOnceWith({ target, expectedRevision: 1, maximumEdge: 1024 });
     expect(result.current.ready).toBe(false);
     expect(result.current.url).toBeNull();
     act(() => images[0].onload?.());
@@ -51,11 +51,33 @@ describe("authorized Practice occlusion image loading", () => {
     expect(mocks.revokeUrl).toHaveBeenCalledExactlyOnceWith("blob:prepared-1");
   });
 
+  it("keeps the visible raster while a sharper version is prepared and releases it only after replacement", async () => {
+    const sharper = deferred<ArrayBuffer>();
+    mocks.read.mockResolvedValueOnce(new ArrayBuffer(8)).mockImplementationOnce(() => sharper.promise);
+    const { result, rerender } = renderHook(({ edge }) => usePracticeOcclusionImage(target, 1, edge), { initialProps: { edge: 1024 } });
+    await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(1));
+    act(() => images[0].onload?.());
+    expect(result.current.url).toBe("blob:prepared-1");
+    const firstLoadedAt = result.current.loadedAt;
+    rerender({ edge: 2048 });
+    expect(result.current.url).toBe("blob:prepared-1");
+    expect(result.current.ready).toBe(true);
+    expect(mocks.revokeUrl).not.toHaveBeenCalled();
+    await act(async () => { sharper.resolve(new ArrayBuffer(9)); await sharper.promise; });
+    await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(2));
+    expect(result.current.url).toBe("blob:prepared-1");
+    act(() => images[1].onload?.());
+    expect(result.current.url).toBe("blob:prepared-2");
+    expect(result.current.loadedAt).toBe(firstLoadedAt);
+    await waitFor(() => expect(mocks.revokeUrl).toHaveBeenCalledWith("blob:prepared-1"));
+    expect(mocks.read.mock.calls.map(([input]) => input.maximumEdge)).toEqual([1024, 2048]);
+  });
+
   it("a late hidden raster cannot replace a newer revealed revision", async () => {
     const hidden = deferred<ArrayBuffer>();
     const revealed = deferred<ArrayBuffer>();
     mocks.read.mockImplementationOnce(() => hidden.promise).mockImplementationOnce(() => revealed.promise);
-    const { result, rerender } = renderHook(({ revision }) => usePracticeOcclusionImage(target, revision, 2048), { initialProps: { revision: 1 } });
+    const { result, rerender } = renderHook(({ revision }) => usePracticeOcclusionImage(target, revision, 1024), { initialProps: { revision: 1 } });
     await waitFor(() => expect(mocks.read).toHaveBeenCalledTimes(1));
     rerender({ revision: 2 });
     expect(result.current.url).toBeNull();
@@ -69,28 +91,24 @@ describe("authorized Practice occlusion image loading", () => {
     expect(mocks.read.mock.calls[1][0].expectedRevision).toBe(2);
   });
 
-  it("rerendering the viewport does not request another native raster", async () => {
-    const { result, rerender } = renderHook(() => usePracticeOcclusionImage({ ...target }, 1, 2048));
+  it("retries a refinement failure without hiding the already usable image", async () => {
+    mocks.read.mockResolvedValueOnce(new ArrayBuffer(8)).mockRejectedValueOnce(new Error("Source temporarily unavailable"));
+    const { result, rerender } = renderHook(({ edge }) => usePracticeOcclusionImage(target, 2, edge), { initialProps: { edge: 1024 } });
     await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(1));
     act(() => images[0].onload?.());
-    rerender();
-    expect(result.current.ready).toBe(true);
-    expect(mocks.read).toHaveBeenCalledTimes(1);
-  });
-
-  it("retries an image failure without changing its captured question revision", async () => {
-    mocks.read.mockRejectedValueOnce(new Error("Source temporarily unavailable"));
-    const { result } = renderHook(() => usePracticeOcclusionImage(target, 2, 2048));
+    rerender({ edge: 2048 });
     await waitFor(() => expect(result.current.error).toBe("Source temporarily unavailable"));
-    act(() => result.current.retry());
-    await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(1));
-    act(() => images[1].onload?.());
+    expect(result.current.url).toBe("blob:prepared-1");
     expect(result.current.ready).toBe(true);
-    expect(mocks.read.mock.calls.map(([input]) => input.expectedRevision)).toEqual([2, 2]);
+    act(() => result.current.retry());
+    await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(2));
+    act(() => images[2].onload?.());
+    expect(result.current.url).toBe("blob:prepared-2");
+    expect(mocks.read.mock.calls.map(([input]) => input.expectedRevision)).toEqual([2, 2, 2]);
   });
 
   it("rejects invalid decoded dimensions and never exposes the failed URL", async () => {
-    const { result, unmount } = renderHook(() => usePracticeOcclusionImage(target, 1, 2048));
+    const { result, unmount } = renderHook(() => usePracticeOcclusionImage(target, 1, 1024));
     await waitFor(() => expect(mocks.createUrl).toHaveBeenCalledTimes(1));
     images[0].naturalWidth = 10000;
     act(() => images[0].onload?.());

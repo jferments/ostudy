@@ -5,7 +5,6 @@ import { OcclusionImageView } from "../../editor/occlusion/OcclusionImageView";
 import { FIT_VIEWPORT, type ImageViewport } from "../../editor/occlusion/geometry";
 import type { Asset } from "../../ipc/assets";
 import type { ImageOcclusionAttemptView, QuestionAttemptTarget, RevealPracticeQuestionInput } from "../../ipc/questionAttempts";
-import { Dialog } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
 import { Surface } from "../../ui/primitives/Surface";
@@ -27,8 +26,7 @@ interface ImageOcclusionActivityProps {
 export function ImageOcclusionActivity({ sessionId, cardId, attempt, assets, disabled, onReveal, onAttempt, onRevealed, onError }: ImageOcclusionActivityProps) {
   const target = useMemo<QuestionAttemptTarget>(() => ({ sessionId, cardId, instanceId: attempt.instanceId }),
     [sessionId, cardId, attempt.instanceId]);
-  const [enlarged, setEnlarged] = useState(false);
-  const [maximumEdge, setMaximumEdge] = useState(2048);
+  const [maximumEdge, setMaximumEdge] = useState(1024);
   const viewport = useRef<ImageViewport>(FIT_VIEWPORT);
   const image = usePracticeOcclusionImage(target, attempt.revision, maximumEdge);
   const reveal = useOcclusionReveal({ target, attempt, disabled, imageReady: image.ready, loadedAt: image.loadedAt, onReveal, onAttempt, onRevealed });
@@ -36,25 +34,23 @@ export function ImageOcclusionActivity({ sessionId, cardId, attempt, assets, dis
   const revealed = progress.phase === "revealed";
   const busy = disabled || reveal.busy;
 
+  function updateViewport(next: ImageViewport): void {
+    viewport.current = next;
+    const requestedEdge = next.zoom >= 3 ? 4096 : next.zoom >= 1.5 ? 2048 : 1024;
+    setMaximumEdge((current) => Math.max(current, requestedEdge));
+  }
+
   const imageContent = image.url && image.size ? <OcclusionImageView imageUrl={image.url}
     imageKey={attempt.instanceId} imageSize={image.size} targets={attempt.question.targetRectangles}
-    initialViewport={viewport.current} onViewportChange={(next) => { viewport.current = next; }}
+    initialViewport={viewport.current} onViewportChange={updateViewport}
     label={revealed ? "Revealed study image" : "Masked study image"} />
     : image.error ? <InlineNotice kind="error">{image.error} <Button disabled={busy} onClick={image.retry}>Retry image</Button></InlineNotice>
       : <InlineProgress>Preparing the study image…</InlineProgress>;
 
   return <Surface className="tw:grid tw:min-w-0 tw:gap-5 tw:p-4 tw:md:p-5">
     <RichTextView document={attempt.question.prompt} assets={assets} onLinkError={onError} />
-    <div className="tw:flex tw:flex-wrap tw:gap-2">
-      <Button disabled={!image.ready} onClick={() => setEnlarged(true)}>Enlarge image</Button>
-      <Button disabled={busy || !image.ready || maximumEdge === 4096} onClick={() => setMaximumEdge(4096)}>Load sharper image</Button>
-    </div>
-    {!enlarged ? imageContent : <Dialog title="Study image" width="workspace" presentation="fullscreen"
-      onClose={() => setEnlarged(false)}>
-      <div className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">{imageContent}
-        <Button onClick={() => setEnlarged(false)}>Return to question</Button>
-      </div>
-    </Dialog>}
+    {imageContent}
+    {image.error && image.url ? <InlineNotice kind="warning">A sharper image could not be prepared. The current masked image remains available. <Button disabled={busy} onClick={image.retry}>Retry</Button></InlineNotice> : null}
     {reveal.error ? <InlineNotice kind="error">{reveal.error}
       <Button disabled={busy} onClick={() => void reveal.reload()}>Reload saved answer state</Button>
     </InlineNotice> : null}

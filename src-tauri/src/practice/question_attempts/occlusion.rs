@@ -8,7 +8,7 @@ use super::*;
 use crate::{
     asset_lifecycle::occlusion::{open_managed_image, read_image, run_image_worker},
     cards::questions::{
-        occlusion::{CanonicalImage, RenderPhase, MAX_RENDER_EDGE},
+        occlusion::{RenderPhase, MAX_RENDER_EDGE},
         QuestionInstance, RevealAnswerRequest,
     },
     paths::AppPaths,
@@ -16,6 +16,8 @@ use crate::{
 
 #[path = "occlusion_cache.rs"]
 mod cache;
+#[path = "occlusion_decoded_cache.rs"]
+mod decoded_cache;
 #[cfg(test)]
 #[path = "occlusion_tests.rs"]
 mod tests;
@@ -136,7 +138,7 @@ pub(super) fn render(
     let bytes = if let Some(bytes) = cache::get(&key) {
         bytes
     } else {
-        let image = CanonicalImage::decode(&source)?;
+        let image = decoded_cache::decode(&source)?;
         std::sync::Arc::new(
             instance
                 .render_occlusion(&image, phase, input.maximum_edge)?

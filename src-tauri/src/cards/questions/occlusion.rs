@@ -6,6 +6,7 @@
 
 use std::{collections::BTreeSet, io::Cursor, io::Write};
 
+use image::codecs::png::{CompressionType, FilterType as PngFilter};
 use image::{
     codecs::{jpeg::JpegDecoder, png::PngDecoder, png::PngEncoder, webp::WebPDecoder},
     imageops::{resize, FilterType},
@@ -16,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use super::{NormalizedRect, QuestionError, ValidatedQuestion};
 
-pub const RENDER_POLICY_VERSION: u32 = 1;
+pub const RENDER_POLICY_VERSION: u32 = 2;
 pub const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
 pub const MAX_IMAGE_EDGE: u32 = 8192;
 pub const MAX_IMAGE_PIXELS: u64 = 16_000_000;
@@ -68,7 +69,7 @@ impl CanonicalImage {
     }
 
     pub fn canonical_png(&self) -> Result<Vec<u8>, QuestionError> {
-        encode_png(&self.pixels)
+        encode_png(&self.pixels, CompressionType::Default, PngFilter::Adaptive)
     }
 
     pub fn render(
@@ -131,8 +132,13 @@ impl CanonicalImage {
                 hash.update(value.to_le_bytes());
             }
         }
+        let compression = if pixels.width().max(pixels.height()) <= 2048 {
+            CompressionType::Fast
+        } else {
+            CompressionType::Default
+        };
         Ok(RenderedOcclusion {
-            png: encode_png(&pixels)?,
+            png: encode_png(&pixels, compression, PngFilter::Sub)?,
             width: pixels.width(),
             height: pixels.height(),
             cache_key: format!("{:x}", hash.finalize()),
@@ -218,9 +224,13 @@ fn paint(pixels: &mut RgbaImage, rectangle: NormalizedRect) {
     }
 }
 
-fn encode_png(pixels: &RgbaImage) -> Result<Vec<u8>, QuestionError> {
+fn encode_png(
+    pixels: &RgbaImage,
+    compression: CompressionType,
+    filter: PngFilter,
+) -> Result<Vec<u8>, QuestionError> {
     let mut output = BoundedOutput(Vec::new());
-    PngEncoder::new(&mut output)
+    PngEncoder::new_with_quality(&mut output, compression, filter)
         .write_image(
             pixels.as_raw(),
             pixels.width(),
@@ -261,3 +271,23 @@ fn codec_error(_: image::ImageError) -> QuestionError {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod encoding_tests {
+    use super::*;
+
+    #[test]
+    fn interactive_png_filters_preserve_exact_pixels_and_alpha() {
+        let pixels = RgbaImage::from_fn(127, 93, |x, y| {
+            Rgba([x as u8, y as u8, (x ^ y) as u8, ((x + y) % 256) as u8])
+        });
+        for (compression, filter) in [
+            (CompressionType::Default, PngFilter::Adaptive),
+            (CompressionType::Fast, PngFilter::Sub),
+        ] {
+            let png = encode_png(&pixels, compression, filter).unwrap();
+            let decoded = image::load_from_memory(&png).unwrap().into_rgba8();
+            assert_eq!(decoded, pixels);
+        }
+    }
+}
