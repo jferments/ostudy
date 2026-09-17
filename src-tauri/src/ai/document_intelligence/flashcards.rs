@@ -7,9 +7,12 @@ use crate::{
     error::CommandError,
     knowledge::{
         assessment::{self, policy::GenerationPolicy, AssessmentProposal},
-        authoring::{self, KnowledgeCatalog, CARD_SUPPORT_KEY},
+        authoring::{KnowledgeCatalog, CARD_SUPPORT_KEY},
     },
 };
+
+#[cfg(test)]
+use crate::knowledge::authoring;
 
 use super::super::AiRuntimeState;
 use super::{
@@ -45,7 +48,11 @@ pub(crate) async fn generate_window_flashcards(
     }
     let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);
     let outline_json = outline_context_for_window(outline, window)?;
-    let system = format!("{}\n{}", flashcard_system_prompt(), task.question_policy.prompt()?);
+    let system = format!(
+        "{}\n{}",
+        flashcard_system_prompt(),
+        task.question_policy.prompt()?
+    );
     let locator = window.source_locator();
     let user = format!(
         "Document: {document_title}\nSemantic partition: {} (partition {})\nCanonical source bounds: {}–{}\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\nCreate at most {maximum_cards} high-value learning cards. Prefer core knowledge but preserve qualifications. Target one clear unit per recall card, or two for a necessary comparison. Ask a question whose missing knowledge belongs in the answer; do not condense a paragraph into a rambling question. Verify the complete question and answer against the native evidence supplied below. Omit unsupported cards. Headings alone are not factual answers. A source reference proves location, not entailment or truth. Return fewer cards, including zero, when warranted.",
@@ -82,7 +89,8 @@ async fn request_flashcards_with_retry(
 ) -> Result<Vec<Value>, CommandError> {
     let AuthoringEvidence { images, knowledge } = evidence;
     task.question_policy.validate()?;
-    let schema = assessment::generation_schema(flashcard_schema(maximum_cards), &task.question_policy);
+    let schema =
+        assessment::generation_schema(flashcard_schema(maximum_cards), &task.question_policy);
     let maximum_tokens =
         flashcard_completion_token_ceiling(task, maximum_cards).max(completion_token_floor);
     let first = request_json(
@@ -97,7 +105,9 @@ async fn request_flashcards_with_retry(
         },
     )
     .await
-    .and_then(|value| parse_knowledge_cards_with_policy(value, maximum_cards, knowledge, &task.question_policy));
+    .and_then(|value| {
+        parse_knowledge_cards_with_policy(value, maximum_cards, knowledge, &task.question_policy)
+    });
 
     match first {
         Ok(cards) => Ok(cards),
@@ -119,7 +129,14 @@ async fn request_flashcards_with_retry(
                 },
             )
             .await
-            .and_then(|value| parse_knowledge_cards_with_policy(value, maximum_cards, knowledge, &task.question_policy))
+            .and_then(|value| {
+                parse_knowledge_cards_with_policy(
+                    value,
+                    maximum_cards,
+                    knowledge,
+                    &task.question_policy,
+                )
+            })
             .map_err(|retry_error| collapse_contract_error(retry_error, "flashcards"))
         }
         Err(error) => Err(error),
@@ -173,16 +190,24 @@ fn parse_knowledge_cards_with_policy(
         .map(|item| {
             if item.card["type"] == "interactive" {
                 if !item.knowledge_unit_ids.is_empty() {
-                    return Err(assessment::invalid("Interactive cards use component evidence, not a separate flat target list."));
+                    return Err(assessment::invalid(
+                        "Interactive cards use component evidence, not a separate flat target list.",
+                    ));
                 }
-                let proposal = item.assessment.ok_or_else(|| assessment::invalid("Interactive cards require an assessment opportunity."))?;
+                let proposal = item.assessment.ok_or_else(|| {
+                    assessment::invalid("Interactive cards require an assessment opportunity.")
+                })?;
                 return assessment::admit_card(item.card, proposal, knowledge, policy);
             }
             if item.card["type"] == "multiple_choice" {
-                return Err(assessment::invalid("Generate single_choice as a typed question, not a legacy text-only multiple-choice card."));
+                return Err(assessment::invalid(
+                    "Generate single_choice as a typed question, not a legacy text-only multiple-choice card.",
+                ));
             }
             if item.assessment.is_some() {
-                return Err(assessment::invalid("Recall cards cannot carry unrelated component evidence."));
+                return Err(assessment::invalid(
+                    "Recall cards cannot carry unrelated component evidence.",
+                ));
             }
             let support = knowledge.select(&item.knowledge_unit_ids, 2)?;
             // Normalize one card at a time. Filtering invalid siblings must never

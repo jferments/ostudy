@@ -40,11 +40,11 @@ impl SourceGroundedGeneratedCard {
     /// input. Public import still receives only `card`, never these records.
     pub(crate) fn generation_value(&self) -> Result<Value, CommandError> {
         let mut value = self.card.clone();
-        value[authoring::CARD_SUPPORT_KEY] = serde_json::to_value(&self.knowledge_support)
-            .map_err(CommandError::serialization)?;
+        value[authoring::CARD_SUPPORT_KEY] =
+            serde_json::to_value(&self.knowledge_support).map_err(CommandError::serialization)?;
         if let Some(record) = &self.assessment {
-            value[assessment::ASSESSMENT_KEY] = serde_json::to_value(record)
-                .map_err(CommandError::serialization)?;
+            value[assessment::ASSESSMENT_KEY] =
+                serde_json::to_value(record).map_err(CommandError::serialization)?;
         }
         Ok(value)
     }
@@ -172,8 +172,10 @@ pub(crate) fn retain_curated_card_provenance(
                     )
                 })?;
             if candidate.assessment != assessment {
-                return Err(CommandError::new("document_card_curation_changed_content",
-                    "Curation changed a captured assessment's component evidence."));
+                return Err(CommandError::new(
+                    "document_card_curation_changed_content",
+                    "Curation changed a captured assessment's component evidence.",
+                ));
             }
             candidate.card = card;
             Ok(candidate)
@@ -221,10 +223,18 @@ pub(crate) fn link_imported_notes_to_topics(
         match &card.assessment {
             Some(record) => {
                 record.validate_card(&card.card)?;
-                assessment::store::publish(connection, &created.note_id, document_id, record, imported_at)?;
+                assessment::store::publish(
+                    connection,
+                    &created.note_id,
+                    document_id,
+                    record,
+                    imported_at,
+                )?;
             }
             None if card.card["type"] == "interactive" => {
-                return Err(assessment::invalid("A generated question lost its component evidence before publication."));
+                return Err(assessment::invalid(
+                    "A generated question lost its component evidence before publication.",
+                ));
             }
             None => {}
         }
@@ -293,7 +303,7 @@ mod tests {
     #[test]
     fn curation_cannot_introduce_new_card_content() {
         let candidate = SourceGroundedGeneratedCard {
-                assessment: None,
+            assessment: None,
             card: serde_json::json!({"type": "basic", "front": "Q", "back": "A"}),
             knowledge_support: Vec::new(),
             source_locator: locator(1),

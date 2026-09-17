@@ -1,6 +1,9 @@
 use serde_json::{json, Value};
 
-use super::{policy::{GenerationPolicy, QuestionFamily}, MAX_ASSESSMENT_UNITS, MAX_COMPONENTS};
+use super::{
+    policy::{GenerationPolicy, QuestionFamily},
+    MAX_ASSESSMENT_UNITS, MAX_COMPONENTS,
+};
 
 pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) -> Value {
     let mut alternatives = Vec::new();
@@ -15,7 +18,9 @@ pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) ->
     }
     let mut questions = Vec::new();
     for kind in &policy.allowed_types {
-        if let Some(schema) = question_schema(*kind, policy.max_compound_items) { questions.push(schema); }
+        if let Some(schema) = question_schema(*kind, policy.max_compound_items) {
+            questions.push(schema);
+        }
     }
     if !questions.is_empty() {
         alternatives.push(json!({"type":"object", "additionalProperties":false,
@@ -61,9 +66,12 @@ fn question_schema(family: QuestionFamily, maximum: usize) -> Option<Value> {
     }
     match family {
         SingleChoice | SelectAll => {
-            properties["options"] = array(json!({"type":"object","additionalProperties":false,
+            properties["options"] = array(
+                json!({"type":"object","additionalProperties":false,
                 "required":["id","content"],"properties":{
-                    "id":local_key(),"content":text(50_000),"rationale":optional_text()}}), maximum);
+                    "id":local_key(),"content":text(50_000),"rationale":optional_text()}}),
+                maximum,
+            );
             required.push("options");
             if family == SingleChoice {
                 properties["correctOptionId"] = local_key();
@@ -75,29 +83,52 @@ fn question_schema(family: QuestionFamily, maximum: usize) -> Option<Value> {
             }
         }
         Matching => {
-            properties["pairs"] = array(json!({"type":"object","additionalProperties":false,
+            properties["pairs"] = array(
+                json!({"type":"object","additionalProperties":false,
                 "required":["id","left","right"],"properties":{
-                    "id":local_key(),"left":text(50_000),"right":text(50_000),"rationale":optional_text()}}), maximum);
+                    "id":local_key(),"left":text(50_000),"right":text(50_000),"rationale":optional_text()}}),
+                maximum,
+            );
             required.push("pairs");
         }
         Grouping => {
             properties["categories"] = array(item(), maximum);
-            properties["items"] = array(json!({"type":"object","additionalProperties":false,
+            properties["items"] = array(
+                json!({"type":"object","additionalProperties":false,
                 "required":["id","content","categoryId"],"properties":{
-                    "id":local_key(),"content":text(50_000),"categoryId":local_key(),"rationale":optional_text()}}), maximum);
+                    "id":local_key(),"content":text(50_000),"categoryId":local_key(),"rationale":optional_text()}}),
+                maximum,
+            );
             required.extend(["categories", "items"]);
         }
-        Ordering => { properties["items"] = array(item(), maximum); required.push("items"); }
+        Ordering => {
+            properties["items"] = array(item(), maximum);
+            required.push("items");
+        }
         TrueFalse | Recall => {}
     }
-    Some(json!({"type":"object","additionalProperties":false,"required":required,"properties":properties}))
+    Some(
+        json!({"type":"object","additionalProperties":false,"required":required,"properties":properties}),
+    )
 }
 
-fn text(maximum: usize) -> Value { json!({"type":"string","minLength":1,"maxLength":maximum}) }
-fn optional_text() -> Value { json!({"type":["string","null"],"maxLength":50_000}) }
-fn local_key() -> Value { json!({"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9_-]+$"}) }
-fn item() -> Value { json!({"type":"object","additionalProperties":false,"required":["id","content"],
-    "properties":{"id":local_key(),"content":text(50_000)}}) }
-fn array(items: Value, maximum: usize) -> Value { json!({"type":"array","minItems":2,"maxItems":maximum,"items":items}) }
-fn unit_ids(maximum: usize) -> Value { json!({"type":"array","minItems":1,"maxItems":maximum.min(MAX_ASSESSMENT_UNITS),
-    "uniqueItems":true,"items":{"type":"string","minLength":32,"maxLength":32}}) }
+fn text(maximum: usize) -> Value {
+    json!({"type":"string","minLength":1,"maxLength":maximum})
+}
+fn optional_text() -> Value {
+    json!({"type":["string","null"],"maxLength":50_000})
+}
+fn local_key() -> Value {
+    json!({"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9_-]+$"})
+}
+fn item() -> Value {
+    json!({"type":"object","additionalProperties":false,"required":["id","content"],
+    "properties":{"id":local_key(),"content":text(50_000)}})
+}
+fn array(items: Value, maximum: usize) -> Value {
+    json!({"type":"array","minItems":2,"maxItems":maximum,"items":items})
+}
+fn unit_ids(maximum: usize) -> Value {
+    json!({"type":"array","minItems":1,"maxItems":maximum.min(MAX_ASSESSMENT_UNITS),
+    "uniqueItems":true,"items":{"type":"string","minLength":32,"maxLength":32}})
+}

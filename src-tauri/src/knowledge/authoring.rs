@@ -404,7 +404,9 @@ pub(crate) fn card_support(card: &Value) -> Result<Vec<UnitSupport>, CommandErro
     .map_err(|_| invalid("A generated card contains invalid knowledge support."))?;
     if let Some(record) = super::assessment::record_from_card(card)? {
         if record.support()? != support {
-            return Err(invalid("The card summary differs from its component evidence."));
+            return Err(invalid(
+                "The card summary differs from its component evidence.",
+            ));
         }
         return Ok(support);
     }

@@ -1,5 +1,5 @@
-use super::*;
 use super::policy::GenerationPolicy;
+use super::*;
 use crate::knowledge::authoring::{card_support, tests::catalog_fixture, without_card_support};
 
 fn examples() -> Vec<Value> {
@@ -33,25 +33,56 @@ fn proposal(index: usize) -> AssessmentProposal {
     use EvidenceStance::{Contradicts as C, Supports as S};
     let requirements = match index {
         0 => vec![("prompt", S), ("option:triangle", S), ("option:square", C)],
-        1 => vec![("prompt", S), ("option:triangle", S), ("option:square", S), ("option:circle", C)],
+        1 => vec![
+            ("prompt", S),
+            ("option:triangle", S),
+            ("option:square", S),
+            ("option:circle", C),
+        ],
         2 => vec![("prompt", S), ("statement", C), ("correction", S)],
         3 => vec![("prompt", S), ("pair:triangle", S), ("pair:square", S)],
-        4 => vec![("prompt", S), ("category:straight", S), ("category:curved", S), ("item:triangle", S), ("item:circle", S)],
-        5 => vec![("prompt", S), ("item:one", S), ("item:two", S), ("item:three", S), ("before:one:two", S), ("before:two:three", S)],
+        4 => vec![
+            ("prompt", S),
+            ("category:straight", S),
+            ("category:curved", S),
+            ("item:triangle", S),
+            ("item:circle", S),
+        ],
+        5 => vec![
+            ("prompt", S),
+            ("item:one", S),
+            ("item:two", S),
+            ("item:three", S),
+            ("before:one:two", S),
+            ("before:two:three", S),
+        ],
         _ => panic!("unknown fixture"),
     };
     AssessmentProposal {
         criterion: "Use the explicit relation stated by the question.".to_string(),
         ambiguous: false,
-        components: requirements.into_iter().map(|(key, stance)| ComponentProposal {
-            key: key.to_string(), stance, knowledge_unit_ids: vec!["a".repeat(32)],
-        }).collect(),
+        components: requirements
+            .into_iter()
+            .map(|(key, stance)| ComponentProposal {
+                key: key.to_string(),
+                stance,
+                knowledge_unit_ids: vec!["a".repeat(32)],
+            })
+            .collect(),
     }
 }
 
-fn raw(index: usize) -> Value { json!({"type":"interactive","question":examples()[index]}) }
+fn raw(index: usize) -> Value {
+    json!({"type":"interactive","question":examples()[index]})
+}
 fn admit(index: usize) -> Value {
-    admit_card(raw(index), proposal(index), &catalog_fixture(), &policy::GenerationPolicy::default()).unwrap()
+    admit_card(
+        raw(index),
+        proposal(index),
+        &catalog_fixture(),
+        &policy::GenerationPolicy::default(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -64,7 +95,11 @@ fn all_six_types_preserve_native_keys_and_component_addresses() {
         assert_eq!(record.components.len(), proposal(index).components.len());
         assert_eq!(card_support(&card).unwrap(), record.support().unwrap());
         record.validate_card(&card).unwrap();
-        assert!(validates_checkpoint(&card, &catalog_fixture(), &GenerationPolicy::default()));
+        assert!(validates_checkpoint(
+            &card,
+            &catalog_fixture(),
+            &GenerationPolicy::default()
+        ));
         let public = without_card_support(card);
         assert!(public.get(ASSESSMENT_KEY).is_none());
         assert!(public.get(CARD_SUPPORT_KEY).is_none());
@@ -82,7 +117,9 @@ fn no_relation_is_invented_to_fill_a_quota() {
     let mut missing_edge = proposal(5);
     missing_edge.components.pop();
     assert!(admit_card(raw(5), missing_edge, &catalog, &policy).is_err());
-    assert!(policy::select_cards(Vec::new(), 20, &catalog, &policy).unwrap().is_empty());
+    assert!(policy::select_cards(Vec::new(), 20, &catalog, &policy)
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -111,7 +148,11 @@ fn changed_keys_and_source_revisions_cannot_reuse_a_checkpoint() {
     assert!(record_from_card(&changed_key).is_err());
     let mut changed_catalog = catalog_fixture();
     changed_catalog.units[0].source_hash = "b".repeat(64);
-    assert!(!validates_checkpoint(&card, &changed_catalog, &GenerationPolicy::default()));
+    assert!(!validates_checkpoint(
+        &card,
+        &changed_catalog,
+        &GenerationPolicy::default()
+    ));
     let mut missing = card.clone();
     missing.as_object_mut().unwrap().remove(ASSESSMENT_KEY);
     assert!(card_support(&missing).is_err());
@@ -131,11 +172,22 @@ fn compound_support_can_cover_more_than_two_targets_but_recall_cannot() {
     let mut bindings = proposal(5);
     bindings.components[1].knowledge_unit_ids = vec!["b".repeat(32)];
     bindings.components[2].knowledge_unit_ids = vec!["c".repeat(32)];
-    let card = admit_card(raw(5), bindings, &catalog, &policy::GenerationPolicy::default()).unwrap();
+    let card = admit_card(
+        raw(5),
+        bindings,
+        &catalog,
+        &policy::GenerationPolicy::default(),
+    )
+    .unwrap();
     let support = card_support(&card).unwrap();
     assert_eq!(support.len(), 3);
-    assert!(validates_checkpoint(&card, &catalog, &GenerationPolicy::default()));
-    let recall = json!({"type":"basic","front":"Question","back":"Answer",CARD_SUPPORT_KEY:support});
+    assert!(validates_checkpoint(
+        &card,
+        &catalog,
+        &GenerationPolicy::default()
+    ));
+    let recall =
+        json!({"type":"basic","front":"Question","back":"Answer",CARD_SUPPORT_KEY:support});
     assert!(card_support(&recall).is_err());
 }
 
@@ -147,7 +199,8 @@ fn image_occlusion_remote_media_and_unexplained_distractors_are_not_generated() 
     image["question"]["kind"] = json!("image_occlusion");
     assert!(admit_card(image, proposal(0), &catalog, &policy).is_err());
     let mut remote = raw(0);
-    remote["question"]["options"][0]["content"] = json!("![answer](https://example.invalid/secret)");
+    remote["question"]["options"][0]["content"] =
+        json!("![answer](https://example.invalid/secret)");
     assert!(admit_card(remote, proposal(0), &catalog, &policy).is_err());
     let mut unexplained = raw(0);
     unexplained["question"]["options"][1]["rationale"] = Value::Null;
@@ -163,24 +216,44 @@ fn policy_is_bounded_canonical_and_enforced_without_filler() {
     assert_eq!(fingerprint, policy.fingerprint().unwrap());
     policy.allowed_types = vec![QuestionFamily::Recall];
     assert!(admit_card(raw(0), proposal(0), &catalog_fixture(), &policy).is_err());
-    assert!(!generation_schema(json!({"properties":{"cards":{"items":{"oneOf":[]}}}}), &policy).to_string().contains("single_choice"));
+    assert!(!generation_schema(
+        json!({"properties":{"cards":{"items":{"oneOf":[]}}}}),
+        &policy
+    )
+    .to_string()
+    .contains("single_choice"));
     policy.allowed_types.clear();
     assert!(policy.validate().is_err());
-    assert!(serde_json::from_value::<GenerationPolicy>(json!({"allowedTypes":["image_occlusion"]})).is_err());
+    assert!(serde_json::from_value::<GenerationPolicy>(
+        json!({"allowedTypes":["image_occlusion"]})
+    )
+    .is_err());
 }
 
 #[test]
 fn duplicate_questions_and_reverse_children_use_the_real_presentation_budget() {
     let catalog = catalog_fixture();
     let support = catalog.select(&["a".repeat(32)], 2).unwrap();
-    let basic = |front: &str, reverse: bool| json!({"type":"basic","front":front,"back":"Three",
-        "reverseEnabled":reverse,CARD_SUPPORT_KEY:support});
-    let chosen = policy::select_cards(vec![basic("First", true), basic("Second", false)],
-        1, &catalog, &policy::GenerationPolicy::default()).unwrap();
+    let basic = |front: &str, reverse: bool| {
+        json!({"type":"basic","front":front,"back":"Three",
+        "reverseEnabled":reverse,CARD_SUPPORT_KEY:support})
+    };
+    let chosen = policy::select_cards(
+        vec![basic("First", true), basic("Second", false)],
+        1,
+        &catalog,
+        &policy::GenerationPolicy::default(),
+    )
+    .unwrap();
     assert_eq!(chosen.len(), 1);
     assert_eq!(chosen[0]["front"], "Second");
-    let chosen = policy::select_cards(vec![admit(0), admit(0)], 20,
-        &catalog, &policy::GenerationPolicy::default()).unwrap();
+    let chosen = policy::select_cards(
+        vec![admit(0), admit(0)],
+        20,
+        &catalog,
+        &policy::GenerationPolicy::default(),
+    )
+    .unwrap();
     assert_eq!(chosen.len(), 1);
 }
 
@@ -188,14 +261,30 @@ fn duplicate_questions_and_reverse_children_use_the_real_presentation_budget() {
 fn native_preferences_reject_stale_writers_without_losing_the_saved_mix() {
     let database = crate::database::Database::open_in_memory().unwrap();
     let policy = policy::GenerationPolicy::default();
-    let saved = settings::save(&database, settings::SaveGenerationPolicyInput { revision: 0, policy: policy.clone() }).unwrap();
+    let saved = settings::save(
+        &database,
+        settings::SaveGenerationPolicyInput {
+            revision: 0,
+            policy: policy.clone(),
+        },
+    )
+    .unwrap();
     assert_eq!(saved.revision, 1);
-    let error = settings::save(&database, settings::SaveGenerationPolicyInput { revision: 0, policy: policy.clone() }).unwrap_err();
+    let error = settings::save(
+        &database,
+        settings::SaveGenerationPolicyInput {
+            revision: 0,
+            policy: policy.clone(),
+        },
+    )
+    .unwrap_err();
     assert_eq!(error.code, "generation_policy_changed");
-    database.with_connection(|connection| {
-        let restored = settings::load(connection)?;
-        assert_eq!(restored.revision, 1);
-        assert_eq!(restored.policy, policy);
-        Ok(())
-    }).unwrap();
+    database
+        .with_connection(|connection| {
+            let restored = settings::load(connection)?;
+            assert_eq!(restored.revision, 1);
+            assert_eq!(restored.policy, policy);
+            Ok(())
+        })
+        .unwrap();
 }
