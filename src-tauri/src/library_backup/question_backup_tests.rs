@@ -24,7 +24,8 @@ fn rich(text: &str) -> Value {
 }
 
 #[test]
-fn complete_backup_round_trip_preserves_typed_question_definition_attempt_and_generation_evidence() {
+fn complete_backup_round_trip_preserves_typed_question_definition_attempt_and_generation_evidence()
+{
     let paths = AppPaths::new(std::env::temp_dir().join(format!(
         "ostudy-backup-typed-question-{}-{}",
         std::process::id(),
@@ -61,7 +62,9 @@ fn complete_backup_round_trip_preserves_typed_question_definition_attempt_and_ge
     };
     let question = ValidatedQuestion::validate(definition).expect("question should validate");
     let definition_json = question.to_json().expect("question should serialize");
-    let search = question.search_text().expect("question should project search text");
+    let search = question
+        .search_text()
+        .expect("question should project search text");
     let instance = QuestionInstance::capture(
         InstanceIdentity {
             instance_id: instance_id.clone(),
@@ -169,9 +172,12 @@ fn complete_backup_round_trip_preserves_typed_question_definition_attempt_and_ge
             |row| row.get(0),
         )
         .expect("typed note should restore");
-    let restored_question =
-        ValidatedQuestion::parse(&restored_definition).expect("restored definition should validate");
-    assert_eq!(restored_question.presentation_keys(), vec!["main".to_string()]);
+    let restored_question = ValidatedQuestion::parse(&restored_definition)
+        .expect("restored definition should validate");
+    assert_eq!(
+        restored_question.presentation_keys(),
+        vec!["main".to_string()]
+    );
     let restored_checkpoint: String = restored
         .query_row(
             "SELECT checkpoint_json FROM question_attempts WHERE instance_id = ?1",
