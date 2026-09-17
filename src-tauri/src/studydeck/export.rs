@@ -86,11 +86,11 @@ pub(super) fn export_deck_from_connection(
                      content_format, content_schema_version,
                      front_doc, back_doc, front_text, back_text, duplicate_hash,
                      reverse_enabled, cloze_source, cloze_mode,
-                     created_at, updated_at, revision
+                     created_at, updated_at, revision, question_definition
                  ) VALUES (
                      ?1, ?2, ?3, ?4, ?5,
                      ?6, ?7, ?8, ?9, ?10,
-                     ?11, ?12, ?13, ?14, ?15, ?16
+                     ?11, ?12, ?13, ?14, ?15, ?16, ?17
                  )",
                 params![
                     note.source_id,
@@ -98,8 +98,8 @@ pub(super) fn export_deck_from_connection(
                     note.note_type,
                     note.content_format,
                     note.content_schema_version,
-                    serde_json::to_string(&note.front_doc).map_err(CommandError::serialization)?,
-                    serde_json::to_string(&note.back_doc).map_err(CommandError::serialization)?,
+                    questions::document_json(&note.front_doc)?,
+                    questions::document_json(&note.back_doc)?,
                     note.front_text,
                     note.back_text,
                     note.duplicate_hash,
@@ -109,6 +109,7 @@ pub(super) fn export_deck_from_connection(
                     note.created_at,
                     note.updated_at,
                     note.revision,
+                    note.question_definition,
                 ],
             )
             .map_err(CommandError::database)?;
@@ -119,8 +120,8 @@ pub(super) fn export_deck_from_connection(
             .execute(
                 "INSERT INTO cards (
                      source_id, source_note_id, direction, template_ordinal,
-                     created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                     created_at, updated_at, question_key
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     card.source_id,
                     card.source_note_id,
@@ -128,6 +129,7 @@ pub(super) fn export_deck_from_connection(
                     card.template_ordinal,
                     card.created_at,
                     card.updated_at,
+                    card.question_key,
                 ],
             )
             .map_err(CommandError::database)?;
@@ -246,10 +248,11 @@ fn load_snapshot(
         let mut statement = connection
             .prepare(
                 "SELECT id, deck_id, note_type, content_format,
-                        content_schema_version, front_doc, back_doc,
+                        content_schema_version, COALESCE(front_doc, 'null'),
+                        COALESCE(back_doc, 'null'),
                         front_text, back_text, duplicate_hash,
                         reverse_enabled, cloze_source, cloze_mode,
-                        created_at, updated_at, revision
+                        created_at, updated_at, revision, question_definition
                  FROM notes
                  WHERE deck_id = ?1 AND deleted_at IS NULL
                  ORDER BY created_at, id",
@@ -276,6 +279,7 @@ fn load_snapshot(
                     row.get::<_, i64>(13)?,
                     row.get::<_, i64>(14)?,
                     row.get::<_, i64>(15)?,
+                    row.get::<_, Option<String>>(16)?,
                 ))
             })
             .map_err(CommandError::database)?
@@ -283,7 +287,7 @@ fn load_snapshot(
             .map_err(CommandError::database)?
             .into_iter()
             .map(|row| {
-                Ok(PackageNote {
+                let mut note = PackageNote {
                     source_id: row.0,
                     source_deck_id: row.1,
                     note_type: row.2,
@@ -300,7 +304,10 @@ fn load_snapshot(
                     created_at: row.13,
                     updated_at: row.14,
                     revision: row.15,
-                })
+                    question_definition: row.16,
+                };
+                questions::normalize(&mut note)?;
+                Ok(note)
             })
             .collect::<Result<Vec<_>, CommandError>>()?;
         rows
@@ -310,9 +317,10 @@ fn load_snapshot(
         let mut statement = connection
             .prepare(
                 "SELECT c.id, c.note_id, c.direction, c.template_ordinal,
-                        c.created_at, c.updated_at
+                        c.created_at, c.updated_at, qp.question_key
                  FROM cards c
                  JOIN notes n ON n.id = c.note_id
+                 LEFT JOIN card_question_presentations qp ON qp.card_id = c.id
                  WHERE c.deck_id = ?1
                    AND c.deleted_at IS NULL
                    AND n.deleted_at IS NULL
@@ -326,6 +334,7 @@ fn load_snapshot(
                     source_note_id: row.get(1)?,
                     direction: row.get(2)?,
                     template_ordinal: row.get(3)?,
+                    question_key: row.get(6)?,
                     created_at: row.get(4)?,
                     updated_at: row.get(5)?,
                 })

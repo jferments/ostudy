@@ -303,50 +303,56 @@ fn apply_package_transaction(
     }
 
     let mut note_map = HashMap::new();
+    let mut interactive_source_notes = BTreeSet::new();
     for note in &package.notes {
         let note_id = choose_id(&transaction, "notes", &note.source_id)?;
-        let mut front_doc = note.front_doc.clone();
-        let mut back_doc = note.back_doc.clone();
-        rewrite_asset_ids(&mut front_doc, &asset_map)?;
-        rewrite_asset_ids(&mut back_doc, &asset_map)?;
-        let validated = validate_content(
-            front_doc,
-            back_doc,
-            note.front_text.clone(),
-            note.back_text.clone(),
-        )?;
-        let duplicate_hash = duplicate_fingerprint(&validated.front_text, &validated.back_text);
-        transaction
-            .execute(
-                "INSERT INTO notes (
-                     id, deck_id, note_type,
-                     content_format, content_schema_version,
-                     front_doc, back_doc, front_text, back_text, duplicate_hash,
-                     reverse_enabled, cloze_source, cloze_mode,
-                     created_at, updated_at, revision
-                 ) VALUES (
-                     ?1, ?2, ?3, 'tiptap-json', 1,
-                     ?4, ?5, ?6, ?7, ?8,
-                     ?9, ?10, ?11, ?12, ?13, ?14
-                 )",
-                params![
-                    note_id,
-                    deck_id,
-                    note.note_type,
-                    validated.front_doc_json,
-                    validated.back_doc_json,
-                    validated.front_text,
-                    validated.back_text,
-                    duplicate_hash,
-                    i64::from(note.reverse_enabled),
-                    note.cloze_source,
-                    note.cloze_mode,
-                    note.created_at,
-                    note.updated_at,
-                    note.revision.max(1),
-                ],
-            )
-            .map_err(CommandError::database)?;
+        if questions::insert_note(&transaction, note, &note_id, &deck_id, &asset_map)? {
+            interactive_source_notes.insert(note.source_id.clone());
+        } else {
+            let mut front_doc = note.front_doc.clone();
+            let mut back_doc = note.back_doc.clone();
+            rewrite_asset_ids(&mut front_doc, &asset_map)?;
+            rewrite_asset_ids(&mut back_doc, &asset_map)?;
+            let validated = validate_content(
+                front_doc,
+                back_doc,
+                note.front_text.clone(),
+                note.back_text.clone(),
+            )?;
+            let duplicate_hash =
+                duplicate_fingerprint(&validated.front_text, &validated.back_text);
+            transaction
+                .execute(
+                    "INSERT INTO notes (
+                         id, deck_id, note_type,
+                         content_format, content_schema_version,
+                         front_doc, back_doc, front_text, back_text, duplicate_hash,
+                         reverse_enabled, cloze_source, cloze_mode,
+                         created_at, updated_at, revision
+                     ) VALUES (
+                         ?1, ?2, ?3, 'tiptap-json', 1,
+                         ?4, ?5, ?6, ?7, ?8,
+                         ?9, ?10, ?11, ?12, ?13, ?14
+                     )",
+                    params![
+                        note_id,
+                        deck_id,
+                        note.note_type,
+                        validated.front_doc_json,
+                        validated.back_doc_json,
+                        validated.front_text,
+                        validated.back_text,
+                        duplicate_hash,
+                        i64::from(note.reverse_enabled),
+                        note.cloze_source,
+                        note.cloze_mode,
+                        note.created_at,
+                        note.updated_at,
+                        note.revision.max(1),
+                    ],
+                )
+                .map_err(CommandError::database)?;
+        }
         note_map.insert(note.source_id.clone(), note_id);
     }
 
@@ -386,6 +392,12 @@ fn apply_package_transaction(
         let note_id = note_map.get(&card.source_note_id).ok_or_else(|| {
             CommandError::invalid_package("A generated card refers to a missing note.")
         })?;
+        let interactive = interactive_source_notes.contains(&card.source_note_id);
+        if interactive != card.question_key.is_some() {
+            return Err(CommandError::invalid_package(
+                "A generated card has inconsistent interactive presentation metadata.",
+            ));
+        }
         let card_id = choose_id(&transaction, "cards", &card.source_id)?;
         transaction
             .execute(
@@ -404,6 +416,15 @@ fn apply_package_transaction(
                 ],
             )
             .map_err(CommandError::database)?;
+        if let Some(question_key) = &card.question_key {
+            transaction
+                .execute(
+                    "INSERT INTO card_question_presentations (card_id, note_id, question_key)
+                     VALUES (?1, ?2, ?3)",
+                    params![card_id, note_id, question_key],
+                )
+                .map_err(CommandError::database)?;
+        }
         insert_new_schedule(&transaction, &card_id, imported_at)?;
     }
 

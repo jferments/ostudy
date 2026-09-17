@@ -307,6 +307,7 @@ fn convert(
             reverse_enabled: false,
             cloze_source: converted.cloze_source,
             cloze_mode: "one_at_a_time".into(),
+            question_definition: None,
             created_at: now,
             updated_at: now,
             revision: 1,
@@ -316,6 +317,7 @@ fn convert(
             source_note_id: note_id,
             direction: "forward".into(),
             template_ordinal: 0,
+            question_key: None,
             created_at: now,
             updated_at: now,
         });
