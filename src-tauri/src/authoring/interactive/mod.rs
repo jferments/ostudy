@@ -18,8 +18,8 @@ use crate::{
 
 use super::super::{ensure_active_deck, load_tag_names, replace_note_tags, validate_tags};
 
-mod persistence;
 mod generated;
+mod persistence;
 pub(crate) use generated::insert_generated;
 
 #[cfg(test)]

@@ -60,9 +60,14 @@ where
 
         let note_id = generate_id(&transaction)?;
         let card_count = match prepared {
-            PreparedImportContent::Recall(note) => {
-                insert_recall(&transaction, &note_id, &deck_id, *note, &duplicate_hash, now)?
-            }
+            PreparedImportContent::Recall(note) => insert_recall(
+                &transaction,
+                &note_id,
+                &deck_id,
+                *note,
+                &duplicate_hash,
+                now,
+            )?,
             PreparedImportContent::Interactive(question) => {
                 crate::authoring::card_commands::interactive::insert_generated(
                     &transaction,

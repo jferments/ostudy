@@ -10,8 +10,8 @@ const MAX_GENERATED_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_GENERATED_IMPORT_CARDS: usize = 10_000;
 const MAX_GENERATED_IMPORT_ERROR_EXAMPLES: usize = 20;
 
-mod schema;
 pub(crate) mod question;
+mod schema;
 use schema::{GeneratedImportCard, GeneratedImportDeckMode, GeneratedImportFile};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

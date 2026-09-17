@@ -19,8 +19,7 @@ fn markdown_builds_supported_rich_document() {
         "cards[0].front",
     )
     .expect("Markdown should parse");
-    crate::cards::validate_document(&document)
-        .expect("document should pass canonical validation");
+    crate::cards::validate_document(&document).expect("document should pass canonical validation");
 }
 
 #[test]

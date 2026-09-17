@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     cards::questions::{
-        ChoiceOption, GroupedItem, MatchingPair, QuestionBody, QuestionDefinition,
-        RichItem, ValidatedQuestion, MAX_ITEMS, QUESTION_SCHEMA_VERSION,
+        ChoiceOption, GroupedItem, MatchingPair, QuestionBody, QuestionDefinition, RichItem,
+        ValidatedQuestion, MAX_ITEMS, QUESTION_SCHEMA_VERSION,
     },
     error::CommandError,
 };
@@ -112,7 +112,11 @@ impl GeneratedQuestion {
             Self::Grouping {
                 categories, items, ..
             } => {
-                keys.extend(categories.iter().map(|item| format!("category:{}", item.id)));
+                keys.extend(
+                    categories
+                        .iter()
+                        .map(|item| format!("category:{}", item.id)),
+                );
                 keys.extend(items.iter().map(|item| format!("item:{}", item.id)));
             }
             Self::Ordering { items, .. } => {
@@ -246,7 +250,9 @@ impl GeneratedQuestion {
         // Text generation cannot invent local media ownership or remotely fetch
         // a source. Manual managed-image authoring is a separate capability.
         if !admitted.asset_ids().is_empty() {
-            return Err(invalid("Generated text questions cannot introduce managed assets."));
+            return Err(invalid(
+                "Generated text questions cannot introduce managed assets.",
+            ));
         }
         let keys = self.evidence_keys();
         if keys.iter().collect::<BTreeSet<_>>().len() != keys.len() {
@@ -266,11 +272,18 @@ fn bounded(count: usize) -> Result<(), CommandError> {
 fn local_id(role: &str, key: &str) -> Result<String, CommandError> {
     if key.is_empty()
         || key.len() > 64
-        || !key.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        || !key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
     {
-        return Err(invalid("Component keys must be 1–64 ASCII letters, digits, '_' or '-'."));
+        return Err(invalid(
+            "Component keys must be 1–64 ASCII letters, digits, '_' or '-'.",
+        ));
     }
-    let hash = format!("{:x}", Sha256::digest(format!("generated-question:v1:{role}:{key}")));
+    let hash = format!(
+        "{:x}",
+        Sha256::digest(format!("generated-question:v1:{role}:{key}"))
+    );
     Ok(hash[..32].to_string())
 }
 

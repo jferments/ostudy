@@ -5,11 +5,7 @@
 use rusqlite::Transaction;
 
 use super::*;
-use crate::{
-    cards::questions::QuestionKind,
-    scheduler::insert_new_schedule,
-    util::generate_id,
-};
+use crate::{cards::questions::QuestionKind, scheduler::insert_new_schedule, util::generate_id};
 
 pub(crate) fn insert_generated(
     transaction: &Transaction<'_>,

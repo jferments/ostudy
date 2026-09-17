@@ -72,7 +72,10 @@ fn mixed_import_preserves_all_six_typed_keys_with_fresh_native_presentations() {
     assert_eq!(result.created_note_count, 8);
     assert_eq!(result.created_card_count, 8);
     assert_eq!(
-        identities.iter().map(|item| item.source_index).collect::<Vec<_>>(),
+        identities
+            .iter()
+            .map(|item| item.source_index)
+            .collect::<Vec<_>>(),
         (0..8).collect::<Vec<_>>()
     );
     database
@@ -113,7 +116,9 @@ fn mixed_import_preserves_all_six_typed_keys_with_fresh_native_presentations() {
                 .unwrap();
             assert_eq!(tags, 14);
             let invalid: i64 = connection
-                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| row.get(0))
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get(0)
+                })
                 .unwrap();
             assert_eq!(invalid, 0);
             Ok(())
@@ -130,18 +135,31 @@ fn any_invalid_component_rejects_the_whole_mixed_file_before_writing() {
     malformed[3]["pairs"][1]["id"] = json!("a");
     malformed[4]["items"][0]["categoryId"] = json!("missing");
     malformed[5]["items"][0]["content"] = json!("![remote](https://example.invalid/image)");
-    for invalid in malformed.into_iter().enumerate().filter(|(index, _)| *index != 2) {
-        let bytes = file(vec![
-            json!({"type":"basic","front":"Valid","back":"Valid answer"}),
-            wrap(invalid.1),
-        ], 2, "create");
+    for invalid in malformed
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| *index != 2)
+    {
+        let bytes = file(
+            vec![
+                json!({"type":"basic","front":"Valid","back":"Valid answer"}),
+                wrap(invalid.1),
+            ],
+            2,
+            "create",
+        );
         assert!(import_generated_flashcards_bytes_with_commit_context(
-            &database, &bytes, |_, _, _, _| Ok(())
-        ).is_err());
-        database.with_connection(|connection| {
-            assert_eq!(counts(connection), (0, 0, 0, 0));
-            Ok(())
-        }).unwrap();
+            &database,
+            &bytes,
+            |_, _, _, _| Ok(())
+        )
+        .is_err());
+        database
+            .with_connection(|connection| {
+                assert_eq!(counts(connection), (0, 0, 0, 0));
+                Ok(())
+            })
+            .unwrap();
     }
 }
 
@@ -149,8 +167,14 @@ fn any_invalid_component_rejects_the_whole_mixed_file_before_writing() {
 fn generated_occlusion_and_version_one_typed_payloads_fail_explicitly() {
     let unknown = wrap(json!({"kind":"image_occlusion","imageAssetId":"a".repeat(32)}));
     assert!(prepare_flashcard_import_bytes(&file(vec![unknown], 2, "create")).is_err());
-    assert!(prepare_flashcard_import_bytes(&file(vec![wrap(questions()[0].clone())], 1, "create")).is_err());
-    assert!(prepare_flashcard_import_bytes(&file(vec![wrap(questions()[0].clone())], 3, "create")).is_err());
+    assert!(
+        prepare_flashcard_import_bytes(&file(vec![wrap(questions()[0].clone())], 1, "create"))
+            .is_err()
+    );
+    assert!(
+        prepare_flashcard_import_bytes(&file(vec![wrap(questions()[0].clone())], 3, "create"))
+            .is_err()
+    );
 }
 
 #[test]
@@ -163,18 +187,28 @@ fn typed_duplicate_identity_includes_the_key_not_provider_local_ids() {
     renamed["correctOptionId"] = json!("new_a");
     let mut changed_key = renamed.clone();
     changed_key["correctOptionId"] = json!("new_b");
-    let result = database.with_connection(|connection| {
-        import_prepared_flashcards(connection, prepare_flashcard_import_bytes(
-            &file(vec![wrap(first), wrap(renamed.clone()), wrap(changed_key)], 2, "create")
-        )?)
-    }).unwrap();
+    let result = database
+        .with_connection(|connection| {
+            import_prepared_flashcards(
+                connection,
+                prepare_flashcard_import_bytes(&file(
+                    vec![wrap(first), wrap(renamed.clone()), wrap(changed_key)],
+                    2,
+                    "create",
+                ))?,
+            )
+        })
+        .unwrap();
     assert_eq!(result.created_note_count, 2);
     assert_eq!(result.skipped_duplicate_count, 1);
-    let appended = database.with_connection(|connection| {
-        import_prepared_flashcards(connection, prepare_flashcard_import_bytes(
-            &file(vec![wrap(renamed)], 2, "append")
-        )?)
-    }).unwrap();
+    let appended = database
+        .with_connection(|connection| {
+            import_prepared_flashcards(
+                connection,
+                prepare_flashcard_import_bytes(&file(vec![wrap(renamed)], 2, "append"))?,
+            )
+        })
+        .unwrap();
     assert_eq!(appended.created_note_count, 0);
     assert_eq!(appended.skipped_duplicate_count, 1);
 }
@@ -183,20 +217,28 @@ fn typed_duplicate_identity_includes_the_key_not_provider_local_ids() {
 fn typed_publication_and_provenance_roll_back_together() {
     let database = Database::open_in_memory().unwrap();
     let result = import_generated_flashcards_bytes_with_commit_context(
-        &database, &file(questions().into_iter().map(wrap).collect(), 2, "create"),
+        &database,
+        &file(questions().into_iter().map(wrap).collect(), 2, "create"),
         |connection, _, context, _| {
             assert_eq!(context.created_notes.len(), 6);
             assert_eq!(counts(connection), (6, 6, 6, 0));
-            Err(CommandError::new("injected_evidence_failure", "Stop before commit"))
+            Err(CommandError::new(
+                "injected_evidence_failure",
+                "Stop before commit",
+            ))
         },
     );
     assert_eq!(result.unwrap_err().code, "injected_evidence_failure");
-    database.with_connection(|connection| {
-        assert_eq!(counts(connection), (0, 0, 0, 0));
-        let decks: i64 = connection.query_row("SELECT COUNT(*) FROM decks", [], |row| row.get(0)).unwrap();
-        assert_eq!(decks, 0);
-        Ok(())
-    }).unwrap();
+    database
+        .with_connection(|connection| {
+            assert_eq!(counts(connection), (0, 0, 0, 0));
+            let decks: i64 = connection
+                .query_row("SELECT COUNT(*) FROM decks", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(decks, 0);
+            Ok(())
+        })
+        .unwrap();
 }
 
 #[test]
@@ -212,5 +254,10 @@ fn every_component_has_a_stable_grounding_address_and_canonical_math() {
     let mut math = questions()[0].clone();
     math["options"][0]["content"] = json!(r"\(x^2\)");
     let question: question::GeneratedQuestion = serde_json::from_value(math).unwrap();
-    assert!(question.admit().unwrap().to_json().unwrap().contains("inlineMath"));
+    assert!(question
+        .admit()
+        .unwrap()
+        .to_json()
+        .unwrap()
+        .contains("inlineMath"));
 }
