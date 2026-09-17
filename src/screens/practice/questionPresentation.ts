@@ -4,6 +4,7 @@ export type Placement = { itemId: string; targetId: string };
 export type PlacementFeedback = Extract<ComponentFeedback, { kind: "placement" }>;
 export const answerTile = "tw:min-w-0 tw:rounded-xl tw:border tw:border-solid tw:p-3 tw:text-foreground";
 export const neutralTile = "tw:border-border tw:bg-background";
+export const connectedTile = "tw:border-primary/60 tw:bg-accent";
 export const correctTile = "tw:border-success/60 tw:bg-success-soft";
 export const incorrectTile = "tw:border-destructive/60 tw:bg-destructive-soft";
 
@@ -31,10 +32,22 @@ export function matchingRows(itemIds: readonly string[], targetIds: readonly str
   return targetIds.map((id) => connected.get(id) ?? loose[cursor++]);
 }
 
-/** Sorting onto a row and dropping onto its opposite tile have identical meaning.
- * A connection cannot silently displace another connection: unlink it first.
- */
+/** New connections never displace another pair implicitly. */
 export function connectMatching(assignments: readonly Placement[], itemId: string, targetId: string): Placement[] | null {
   if (assignments.some((pair) => pair.itemId === itemId || pair.targetId === targetId)) return null;
   return [...assignments, { itemId, targetId }];
+}
+
+/** An explicit rematch changes only the two involved rows. When both are paired,
+ * swap their targets; when the dragged tile was loose, release the displaced tile.
+ * All unrelated connections keep their identities and positions.
+ */
+export function rematchMatching(assignments: readonly Placement[], itemId: string, targetId: string): Placement[] | null {
+  const previous = assignments.find((pair) => pair.itemId === itemId);
+  if (previous?.targetId === targetId) return null;
+  const displaced = assignments.find((pair) => pair.targetId === targetId);
+  const next = assignments.filter((pair) => pair.itemId !== itemId && pair.targetId !== targetId);
+  if (previous && displaced) next.push({ itemId: displaced.itemId, targetId: previous.targetId });
+  next.push({ itemId, targetId });
+  return next;
 }

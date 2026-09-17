@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import { cn } from "../../ui/internal/cn";
-import { answerTile, tileResult } from "./questionPresentation";
+import { answerTile, connectedTile, tileResult } from "./questionPresentation";
 import type { usePracticePointerDrop } from "./usePracticePointerDrop";
 
 type PointerDrop = ReturnType<typeof usePracticePointerDrop>;
 
 /** The entire tile is the handle. Embedded rich links and players keep their own input. */
-export function QuestionTile({ id, label, children, pointer, disabled, selected = false, correct, onSelect, dropTargetId }: {
+export function QuestionTile({ id, label, children, pointer, disabled, selected = false, connected = false, correct, onSelect, dropTargetId }: {
   id: string; label: string; children: ReactNode; pointer: PointerDrop; disabled: boolean;
-  selected?: boolean; correct?: boolean; onSelect?: () => void; dropTargetId?: string;
+  selected?: boolean; connected?: boolean; correct?: boolean; onSelect?: () => void; dropTargetId?: string;
 }) {
   const dragging = pointer.draggingItemId === id;
   function select(): void {
@@ -16,8 +16,9 @@ export function QuestionTile({ id, label, children, pointer, disabled, selected 
   }
   return <div role="button" tabIndex={disabled ? -1 : 0} aria-label={label} aria-disabled={disabled}
     aria-pressed={selected} data-question-item-id={id} data-practice-drop-target-id={dropTargetId}
+    data-connected={connected || undefined}
     data-result={correct === undefined ? undefined : correct ? "correct" : "incorrect"}
-    className={cn(answerTile, tileResult(correct), "tw:relative tw:grid tw:min-h-14 tw:gap-2 tw:outline-none tw:focus-visible:ring-2 tw:focus-visible:ring-primary",
+    className={cn(answerTile, correct === undefined && connected ? connectedTile : tileResult(correct), "tw:relative tw:grid tw:min-h-14 tw:gap-2 tw:outline-none tw:focus-visible:ring-2 tw:focus-visible:ring-primary",
       !disabled && "tw:touch-none tw:select-none tw:cursor-grab",
       selected && "tw:ring-2 tw:ring-primary", dragging && "tw:pointer-events-none tw:z-20 tw:opacity-70 tw:shadow-lg")}
     style={dragging ? { transform: `translate(${pointer.offset.x}px, ${pointer.offset.y}px)` } : undefined}

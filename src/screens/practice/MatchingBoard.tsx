@@ -7,7 +7,7 @@ import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
 import { QuestionTile } from "./QuestionTile";
-import { answerTile, connectMatching, matchingRows, tileResult, type Placement } from "./questionPresentation";
+import { answerTile, connectedTile, rematchMatching, matchingRows, tileResult, type Placement } from "./questionPresentation";
 import { usePracticePointerDrop } from "./usePracticePointerDrop";
 
 export function MatchingBoard({ question, assignments, assets, disabled, evaluation, onChange, onError }: {
@@ -23,15 +23,15 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
   const connected = new Set(assignments.map((entry) => entry.itemId));
   const results = new Map(evaluation?.components.flatMap((part) => part.kind === "placement" ? [[part.itemId, part] as const] : []) ?? []);
   function assign(itemId: string, targetId: string): void {
-    if (disabled || !items.has(itemId) || !targets.has(targetId)) return;
-    const next = connectMatching(assignments, itemId, targetId);
+    if (disabled || evaluation || !items.has(itemId) || !targets.has(targetId)) return;
+    const next = rematchMatching(assignments, itemId, targetId);
     if (next) { onChange(next); setSelected(null); }
   }
-  const pointer = usePracticePointerDrop({ disabled, onDrop: assign, scopeRef: root });
+  const pointer = usePracticePointerDrop({ disabled: disabled || evaluation !== null, onDrop: assign, scopeRef: root });
 
   return <div className="tw:grid tw:gap-3">
     {!evaluation ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
-      Drag a tile up or down to line up a pair, or onto its match. You can also select two tiles. Unlink a connected pair to change it.
+      Drag a tile up or down to line up a pair, or onto its match. You can also select two tiles. Drag a connected tile again to change its match; dropping onto another pair swaps them.
     </p> : null}
     <div ref={root} className="tw:relative tw:grid tw:gap-3" aria-label="Matching pairs">
       {question.targets.map((target, index) => {
@@ -43,9 +43,10 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
         const expected = result ? targets.get(result.expectedTargetId) : null;
         return <div key={target.id} className="tw:grid tw:grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] tw:items-stretch tw:gap-1">
           <QuestionTile id={item.id} label={`Select ${extractRichDocumentText(item.content) || `item ${index + 1}`}`}
-            dropTargetId={target.id} pointer={pointer} disabled={disabled || linked} selected={selected === item.id}
+            dropTargetId={target.id} pointer={pointer} disabled={disabled || evaluation !== null} connected={linked} selected={selected === item.id}
             correct={correct} onSelect={() => setSelected((value) => value === item.id ? null : item.id)}>
             <RichTextView document={item.content} assets={assets} onLinkError={onError} />
+            {linked && !evaluation ? <span className="tw:text-xs tw:font-medium tw:text-primary">Connected</span> : null}
             {result ? <div className={cn("tw:flex tw:items-center tw:gap-1 tw:text-sm", correct ? "tw:text-success" : "tw:text-destructive")}>
               <Icon name={correct ? "check" : "close"} size={18} /> {correct ? "Correct" : result.selectedTargetId ? "Incorrect match" : "Not matched"}
             </div> : null}
@@ -61,11 +62,11 @@ export function MatchingBoard({ question, assignments, assets, disabled, evaluat
               <Icon name="close" size={16} />
             </Button> : linked ? <span aria-label="Connected pair">↔</span> : null}
           </div>
-          <div data-match-target={target.id} data-practice-drop-target-id={target.id}
-            className={cn(answerTile, tileResult(correct), "tw:grid tw:content-center tw:gap-2",
-              pointer.overTargetId === target.id && !linked && "tw:ring-2 tw:ring-primary")}
-            role="button" tabIndex={disabled || linked ? -1 : 0} aria-label={`Match with ${extractRichDocumentText(target.content) || `target ${index + 1}`}`}
-            aria-disabled={disabled || linked}
+          <div data-match-target={target.id} data-practice-drop-target-id={target.id} data-connected={linked || undefined}
+            className={cn(answerTile, correct === undefined && linked ? connectedTile : tileResult(correct), "tw:grid tw:content-center tw:gap-2",
+              pointer.overTargetId === target.id && "tw:ring-2 tw:ring-primary")}
+            role="button" tabIndex={disabled || evaluation !== null ? -1 : 0} aria-label={`Match with ${extractRichDocumentText(target.content) || `target ${index + 1}`}`}
+            aria-disabled={disabled || evaluation !== null}
             onClick={(event) => {
               if (event.target instanceof Element && event.target.closest("a,button,audio,video,input")) return;
               if (selected) assign(selected, target.id);
