@@ -53,9 +53,6 @@ impl CanonicalImage {
         if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES {
             return Err(image_error("Use a nonempty image no larger than 25 MB."));
         }
-        // Decoder failures (including a caught malformed-input panic) stay
-        // ordinary admission failures. This cannot recover process-level OOM;
-        // dimensions/decoded bytes are checked BEFORE pixel allocation.
         std::panic::catch_unwind(|| decode_still(bytes))
             .map_err(|_| image_error("The image decoder could not read this file."))?
     }
@@ -69,7 +66,7 @@ impl CanonicalImage {
     }
 
     pub fn canonical_png(&self) -> Result<Vec<u8>, QuestionError> {
-        encode_png(&self.pixels, CompressionType::Default, PngFilter::Adaptive)
+        encode_png(&self.pixels)
     }
 
     pub fn render(
@@ -107,8 +104,6 @@ impl CanonicalImage {
         for mask in &hidden {
             paint(&mut pixels, mask.rect);
         }
-        // Mask at source resolution BEFORE resampling. Otherwise a reduction
-        // filter can mix hidden label pixels into adjacent, visible pixels.
         let largest = width.max(height);
         if largest > maximum_edge {
             let output_width =
@@ -123,8 +118,6 @@ impl CanonicalImage {
         hash.update(pixels.width().to_le_bytes());
         hash.update(pixels.height().to_le_bytes());
         hash.update([u8::from(phase == RenderPhase::Revealed)]);
-        // Exact admitted geometry, not note prose or the transient viewport.
-        // Include target identity/geometry since the cache also returns highlights.
         for mask in &plan.hidden_masks {
             hash.update(mask.id.as_bytes());
             hash.update([u8::from(targets.contains(mask.id.as_str()))]);
@@ -138,7 +131,7 @@ impl CanonicalImage {
             CompressionType::Default
         };
         Ok(RenderedOcclusion {
-            png: encode_png(&pixels, compression, PngFilter::Sub)?,
+            png: encode_png_with_quality(&pixels, compression, PngFilter::Sub)?,
             width: pixels.width(),
             height: pixels.height(),
             cache_key: format!("{:x}", hash.finalize()),
@@ -211,8 +204,6 @@ fn limits() -> Limits {
 fn paint(pixels: &mut RgbaImage, rectangle: NormalizedRect) {
     let width = f64::from(pixels.width());
     let height = f64::from(pixels.height());
-    // Outward rounding and a source-pixel guard cover fractional label edges.
-    // Validation has already established finite, in-bounds geometry.
     let left = (rectangle.x * width).floor() as u32;
     let top = (rectangle.y * height).floor() as u32;
     let right = ((rectangle.x + rectangle.width) * width).ceil() as u32;
@@ -224,7 +215,11 @@ fn paint(pixels: &mut RgbaImage, rectangle: NormalizedRect) {
     }
 }
 
-fn encode_png(
+fn encode_png(pixels: &RgbaImage) -> Result<Vec<u8>, QuestionError> {
+    encode_png_with_quality(pixels, CompressionType::Default, PngFilter::Adaptive)
+}
+
+fn encode_png_with_quality(
     pixels: &RgbaImage,
     compression: CompressionType,
     filter: PngFilter,
@@ -285,7 +280,7 @@ mod encoding_tests {
             (CompressionType::Default, PngFilter::Adaptive),
             (CompressionType::Fast, PngFilter::Sub),
         ] {
-            let png = encode_png(&pixels, compression, filter).unwrap();
+            let png = encode_png_with_quality(&pixels, compression, filter).unwrap();
             let decoded = image::load_from_memory(&png).unwrap().into_rgba8();
             assert_eq!(decoded, pixels);
         }
