@@ -5,9 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <title>ostudy</title>
+    <!-- Critical first-paint shell, before React, fonts or application CSS load.
+         Its opaque fallback matches the native window background. React replaces
+         only the root contents; these rules do not style the mounted application. -->
+    <style id="ostudy-boot-style">
+      html:has(#ostudy-boot), body:has(#ostudy-boot) { margin: 0; background: #0d1117; }
+      #ostudy-boot { box-sizing: border-box; min-height: 100vh; min-height: 100dvh;
+        display: grid; place-content: center; gap: 12px; padding: 32px;
+        background: #0d1117; color: #e6edf3; font: 16px system-ui, sans-serif;
+        text-align: center; }
+      #ostudy-boot h1 { margin: 0; font-size: 24px; font-weight: 600; }
+      #ostudy-boot p { margin: 0; color: #9ba9bd; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="ostudy-boot" role="status" aria-live="polite">
+        <h1>Opening ostudy</h1>
+        <p>Preparing your library…</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
