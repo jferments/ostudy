@@ -40,6 +40,10 @@ fn complete_backup_round_trip_preserves_typed_question_definition_attempt_and_ge
     let instance_id = id(4);
     let option_a = id(10);
     let option_b = id(11);
+    let display_order = DisplayOrder {
+        item_ids: vec![option_a.clone(), option_b.clone()],
+        target_ids: Vec::new(),
+    };
     let definition = QuestionDefinition {
         schema_version: QUESTION_SCHEMA_VERSION,
         question: QuestionBody::SingleChoice {
@@ -74,7 +78,7 @@ fn complete_backup_round_trip_preserves_typed_question_definition_attempt_and_ge
         },
         question,
         "main".to_string(),
-        DisplayOrder::default(),
+        display_order,
     )
     .expect("instance should capture");
     let attempt = QuestionAttempt::start(instance).expect("attempt should start");
