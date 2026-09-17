@@ -129,6 +129,7 @@ fn array(items: Value, maximum: usize) -> Value {
     json!({"type":"array","minItems":2,"maxItems":maximum,"items":items})
 }
 fn unit_ids(maximum: usize) -> Value {
-    json!({"type":"array","minItems":1,"maxItems":maximum.min(MAX_ASSESSMENT_UNITS),
-    "uniqueItems":true,"items":{"type":"string","minLength":32,"maxLength":32}})
+    let mut schema = crate::knowledge::authoring::support_schema(maximum.min(MAX_ASSESSMENT_UNITS));
+    schema["uniqueItems"] = json!(true);
+    schema
 }
