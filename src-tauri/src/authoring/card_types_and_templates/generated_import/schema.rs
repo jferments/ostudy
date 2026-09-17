@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use super::super::ClozeMode;
+use super::question::GeneratedQuestion;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -44,6 +45,11 @@ pub(super) enum GeneratedImportCard {
         text: String,
         #[serde(default)]
         mode: ClozeMode,
+        #[serde(default)]
+        tags: Vec<String>,
+    },
+    Interactive {
+        question: GeneratedQuestion,
         #[serde(default)]
         tags: Vec<String>,
     },

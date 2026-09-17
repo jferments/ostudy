@@ -58,44 +58,21 @@ where
             continue;
         }
 
-        let PreparedGeneratedNote {
-            note_type,
-            reverse_enabled,
-            cloze_source,
-            cloze_mode,
-            content,
-            cards,
-        } = prepared;
         let note_id = generate_id(&transaction)?;
-        transaction
-            .execute(
-                "INSERT INTO notes (
-                     id, deck_id, note_type, content_format, content_schema_version,
-                     front_doc, back_doc, front_text, back_text, duplicate_hash,
-                     reverse_enabled, cloze_source, cloze_mode,
-                     created_at, updated_at, revision
-                 ) VALUES (
-                     ?1, ?2, ?3, 'tiptap-json', 1,
-                     ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, 1
-                 )",
-                params![
-                    note_id,
-                    deck_id,
-                    note_type,
-                    content.front_doc_json,
-                    content.back_doc_json,
-                    content.front_text,
-                    content.back_text,
-                    duplicate_hash,
-                    crate::util::bool_to_integer(reverse_enabled),
-                    cloze_source,
-                    cloze_mode,
+        let card_count = match prepared {
+            PreparedImportContent::Recall(note) => {
+                insert_recall(&transaction, &note_id, &deck_id, *note, &duplicate_hash, now)?
+            }
+            PreparedImportContent::Interactive(question) => {
+                crate::authoring::card_commands::interactive::insert_generated(
+                    &transaction,
+                    &note_id,
+                    &deck_id,
+                    &question,
                     now,
-                ],
-            )
-            .map_err(CommandError::database)?;
-        sync_generated_cards(&transaction, &note_id, &deck_id, &cards, now)?;
-        replace_note_assets(&transaction, &note_id, &content)?;
+                )?
+            }
+        };
         replace_note_tags(&transaction, &note_id, &tags, now)?;
         commit_context
             .created_notes
@@ -104,7 +81,7 @@ where
                 note_id,
             });
         created_notes += 1;
-        created_cards += i64::try_from(cards.len()).unwrap_or(i64::MAX);
+        created_cards += i64::try_from(card_count).unwrap_or(i64::MAX);
     }
 
     if append_mode && created_notes > 0 {
@@ -129,24 +106,85 @@ where
     Ok(result)
 }
 
+fn insert_recall(
+    transaction: &rusqlite::Transaction<'_>,
+    note_id: &str,
+    deck_id: &str,
+    prepared: PreparedGeneratedNote,
+    duplicate_hash: &str,
+    now: i64,
+) -> Result<usize, CommandError> {
+    let PreparedGeneratedNote {
+        note_type,
+        reverse_enabled,
+        cloze_source,
+        cloze_mode,
+        content,
+        cards,
+    } = prepared;
+    transaction
+        .execute(
+            "INSERT INTO notes (
+                 id, deck_id, note_type, content_format, content_schema_version,
+                 front_doc, back_doc, front_text, back_text, duplicate_hash,
+                 reverse_enabled, cloze_source, cloze_mode,
+                 created_at, updated_at, revision
+             ) VALUES (
+                 ?1, ?2, ?3, 'tiptap-json', 1,
+                 ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, 1
+             )",
+            params![
+                note_id,
+                deck_id,
+                note_type,
+                content.front_doc_json,
+                content.back_doc_json,
+                content.front_text,
+                content.back_text,
+                duplicate_hash,
+                crate::util::bool_to_integer(reverse_enabled),
+                cloze_source,
+                cloze_mode,
+                now,
+            ],
+        )
+        .map_err(CommandError::database)?;
+    sync_generated_cards(transaction, note_id, deck_id, &cards, now)?;
+    replace_note_assets(transaction, note_id, &content)?;
+    Ok(cards.len())
+}
+
 fn load_destination_duplicate_pairs(
     connection: &Connection,
     deck_id: &str,
 ) -> Result<HashSet<(String, String)>, CommandError> {
     let mut statement = connection
         .prepare(
-            "SELECT front_text, back_text FROM notes WHERE deck_id = ?1 AND deleted_at IS NULL",
+            "SELECT front_text, back_text, note_type, question_definition
+             FROM notes WHERE deck_id = ?1 AND deleted_at IS NULL",
         )
         .map_err(CommandError::database)?;
     let rows = statement
         .query_map([deck_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
         })
         .map_err(CommandError::database)?;
     let mut duplicates = HashSet::new();
     for row in rows {
-        let (front, back) = row.map_err(CommandError::database)?;
-        duplicates.insert(normalized_pair(&front, &back));
+        let (front, back, kind, definition) = row.map_err(CommandError::database)?;
+        if kind == "interactive" {
+            let question = crate::cards::questions::ValidatedQuestion::parse(
+                definition.as_deref().unwrap_or(""),
+            )?;
+            duplicates.insert(("interactive:v1".to_string(), question.duplicate_identity()?));
+        } else {
+            duplicates.insert(normalized_pair(&front, &back));
+        }
     }
     Ok(duplicates)
 }

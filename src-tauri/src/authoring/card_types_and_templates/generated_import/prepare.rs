@@ -38,11 +38,12 @@ pub(super) fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImp
         )
     })?;
 
-    if parsed.format != GENERATED_IMPORT_FORMAT || parsed.format_version != GENERATED_IMPORT_VERSION
+    if parsed.format != GENERATED_IMPORT_FORMAT
+        || ![GENERATED_IMPORT_VERSION, 2].contains(&parsed.format_version)
     {
         return Err(CommandError::new(
             "unsupported_flashcard_import",
-            "This is not a supported ostudy generated-flashcard file (expected format `ostudy-flashcards`, version 1).",
+            "Expected ostudy-flashcards version 1 (Basic/Cloze) or 2 (mixed question types).",
         ));
     }
 
@@ -74,7 +75,7 @@ pub(super) fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImp
     let mut error_count = 0_usize;
     let mut error_examples = Vec::new();
     for (index, card) in parsed.cards.into_iter().enumerate() {
-        match prepare_import_card(index, &parsed.default_tags, card) {
+        match prepare_import_card(index, &parsed.default_tags, card, parsed.format_version) {
             Ok(note) => notes.push(note),
             Err(error) => {
                 error_count += 1;
@@ -123,9 +124,15 @@ fn prepare_import_card(
     index: usize,
     default_tags: &[String],
     card: GeneratedImportCard,
+    version: i64,
 ) -> Result<PreparedImportNote, CommandError> {
     let path = format!("cards[{index}]");
-    let (draft, card_tags) = match card {
+    let recall = |draft| {
+        prepare_card_note(draft)
+            .map(|note| PreparedImportContent::Recall(Box::new(note)))
+            .map_err(|error| CommandError::new(error.code, format!("{path}: {}", error.message)))
+    };
+    let (prepared, card_tags) = match card {
         GeneratedImportCard::Basic {
             front,
             back,
@@ -135,16 +142,28 @@ fn prepare_import_card(
             let front_doc = markdown_document(&front, &format!("{path}.front"))?;
             let back_doc = markdown_document(&back, &format!("{path}.back"))?;
             (
-                CardNoteDraft::Basic {
+                recall(CardNoteDraft::Basic {
                     reverse_enabled,
                     front_doc,
                     back_doc,
-                },
+                })?,
                 tags,
             )
         }
         GeneratedImportCard::Cloze { text, mode, tags } => {
-            (CardNoteDraft::Cloze { source: text, mode }, tags)
+            (recall(CardNoteDraft::Cloze { source: text, mode })?, tags)
+        }
+        GeneratedImportCard::Interactive { question, tags } => {
+            if version != 2 {
+                return Err(CommandError::new(
+                    "unsupported_flashcard_import",
+                    format!("{path}: interactive questions require formatVersion 2."),
+                ));
+            }
+            let question = question.admit().map_err(|error| {
+                CommandError::new(error.code, format!("{path}: {}", error.message))
+            })?;
+            (PreparedImportContent::Interactive(Box::new(question)), tags)
         }
     };
 
@@ -154,10 +173,17 @@ fn prepare_import_card(
     let tags = validate_tags(combined).map_err(|error| {
         CommandError::new(error.code, format!("{path}.tags: {}", error.message))
     })?;
-    let prepared = prepare_card_note(draft)
-        .map_err(|error| CommandError::new(error.code, format!("{path}: {}", error.message)))?;
-    let normalized = normalized_pair(&prepared.content.front_text, &prepared.content.back_text);
-    let duplicate_hash = duplicate_hash(&normalized.0, &normalized.1);
+    let (normalized, duplicate_hash) = match &prepared {
+        PreparedImportContent::Recall(note) => {
+            let normalized = normalized_pair(&note.content.front_text, &note.content.back_text);
+            let hash = duplicate_hash(&normalized.0, &normalized.1);
+            (normalized, hash)
+        }
+        PreparedImportContent::Interactive(question) => (
+            ("interactive:v1".to_string(), question.duplicate_identity()?),
+            question.duplicate_hash()?,
+        ),
+    };
 
     Ok(PreparedImportNote {
         source_index: index,
