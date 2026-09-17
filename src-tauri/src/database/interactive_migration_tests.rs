@@ -274,6 +274,17 @@ fn question_migration_preserves_note_rowids_schedules_history_drafts_and_semanti
         .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
         .unwrap();
     assert!(foreign_keys);
+    // The question migration is isolated above. Advance the remaining public
+    // migrations before checking that reopening the current schema is read-only.
+    let after_question: Vec<_> = tables.iter().map(|name| rows(&connection, name)).collect();
+    assert!(apply_migrations(&mut connection, false).unwrap());
+    for (index, table) in tables.iter().enumerate() {
+        assert_eq!(
+            rows(&connection, table),
+            after_question[index],
+            "later migration changed retained {table}"
+        );
+    }
     let before_reopen = connection.total_changes();
     assert!(!apply_migrations(&mut connection, false).unwrap());
     assert_eq!(connection.total_changes(), before_reopen);
