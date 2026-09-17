@@ -24,6 +24,7 @@ pub(crate) mod occlusion;
 pub(crate) mod remediation;
 pub(crate) mod review;
 mod storage;
+pub(crate) mod tutoring;
 
 pub(crate) use review::{authorize_review, require_checked_for_reveal, QuestionReviewContext};
 #[cfg(test)]

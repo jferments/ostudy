@@ -27,7 +27,11 @@ use super::{
     history::HistorySnapshot,
 };
 
+mod public_question_hint;
+pub(crate) use public_question_hint::guard_typed_hint;
+
 pub(crate) struct StudyContext {
+    pub question_hint: Option<crate::practice::question_attempts::tutoring::HintTarget>,
     pub sources: Vec<SourceRecord>,
     pub units: Vec<KnowledgeUnit>,
     pub history: HistorySnapshot,
@@ -61,6 +65,13 @@ pub(crate) async fn build(
         quiz,
         mut history,
     } = request;
+    if focus.question_hint.is_some() {
+        crate::knowledge::runtime::check_canceled(cancellation)?;
+        if quiz.is_some() {
+            return Err(super::focus::changed());
+        }
+        return public_question_hint::build(task, input.mode, &input.text, focus);
+    }
     let mut sources = focus.sources.iter().take(4).cloned().collect::<Vec<_>>();
     let mut notice = String::new();
     if focus.sources.len() > 4 {
@@ -241,6 +252,7 @@ pub(crate) async fn build(
         }
     };
     Ok(StudyContext {
+        question_hint: None,
         sources,
         units,
         history,

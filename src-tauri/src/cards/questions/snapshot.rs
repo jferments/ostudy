@@ -126,6 +126,12 @@ impl QuestionInstance {
         self.question.asset_ids()
     }
 
+    /// Private semantic projection of this captured revision. The native caller
+    /// must authorize check/reveal before exposing its answer to a provider.
+    pub(crate) fn knowledge_text(&self) -> Result<super::QuestionSearchText, QuestionError> {
+        self.question.knowledge_text(&self.presentation_key)
+    }
+
     pub fn public_question(&self) -> Result<PublicQuestion, QuestionError> {
         self.question.project(&self.display_order)
     }

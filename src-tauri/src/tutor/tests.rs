@@ -130,6 +130,7 @@ fn input(fixture: &Fixture, mode: TutorMode) -> TutorTurnInput {
 
 fn context() -> StudyContext {
     StudyContext {
+        question_hint: None,
         sources: Vec::new(),
         units: Vec::new(),
         history: history::HistorySnapshot::default(),

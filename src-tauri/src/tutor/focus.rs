@@ -15,6 +15,7 @@ use crate::{
 };
 
 use super::contracts::{TutorFocus, TutorMode};
+use crate::practice::question_attempts::tutoring::{self, HintTarget};
 
 #[derive(Default)]
 pub(crate) struct FocusedContent {
@@ -24,6 +25,7 @@ pub(crate) struct FocusedContent {
     pub hidden: bool,
     pub identity: String,
     pub hint_level: usize,
+    pub question_hint: Option<HintTarget>,
 }
 
 #[derive(Serialize)]
@@ -67,7 +69,7 @@ pub(crate) fn resolve(
             card_id,
             note_revision,
         } => {
-            let (question, answer, hidden, hint_level) = database.with_connection(|connection| {
+            let captured = database.with_connection(|connection| {
                 let deck_id: String = connection
                     .query_row(
                         "SELECT n.deck_id FROM cards c JOIN notes n ON n.id = c.note_id
@@ -98,7 +100,10 @@ pub(crate) fn resolve(
                     return Err(invalid("This card does not belong to the conversation's material selection."));
                 }
                 let Some(session_id) = session_id else {
-                    return Ok((None, None, false, 0));
+                    if mode == TutorMode::Hint {
+                        return Err(invalid("Open the current Practice question before asking for a hint."));
+                    }
+                    return Ok((None, None, false, 0, None));
                 };
                 let snapshot = connection
                     .query_row(
@@ -113,13 +118,29 @@ pub(crate) fn resolve(
                     .optional()
                     .map_err(CommandError::database)?
                     .ok_or_else(changed)?;
-                if snapshot.2 && mode != TutorMode::Hint {
+                let typed = tutoring::focus(connection, session_id, card_id, *note_revision)?;
+                let (question, answer, hidden, question_hint) = match typed {
+                    Some(projection) => {
+                        if projection.hidden != snapshot.2 {
+                            return Err(changed());
+                        }
+                        let target = projection.hidden.then_some(projection.target);
+                        (
+                            projection.prompt,
+                            projection.answer,
+                            projection.hidden,
+                            target,
+                        )
+                    }
+                    None => (snapshot.0, Some(snapshot.1), snapshot.2, None),
+                };
+                if hidden && mode != TutorMode::Hint {
                     return Err(CommandError::new(
                         "tutor_answer_not_revealed",
                         "Use a hint while the answer is hidden. Reveal the card in Practice before asking for an explanation or a quiz.",
                     ));
                 }
-                if mode == TutorMode::Hint && !snapshot.2 {
+                if mode == TutorMode::Hint && !hidden {
                     return Err(invalid("This card's answer is already revealed. Ask for an explanation instead."));
                 }
                 let prior: i64 = connection
@@ -131,19 +152,36 @@ pub(crate) fn resolve(
                         |row| row.get(0),
                     )
                     .map_err(CommandError::database)?;
-                Ok((Some(snapshot.0), Some(snapshot.1), snapshot.2, (prior as usize + 1).min(3)))
+                Ok((
+                    Some(question),
+                    answer,
+                    hidden,
+                    (prior as usize + 1).min(3),
+                    question_hint,
+                ))
             })?;
-            let sources = materialize_source(
-                database,
-                &SourceSeed {
-                    kind: SourceKind::Card,
-                    owner_id: card_id.clone(),
-                    parent_key: "presentation".to_string(),
-                },
-            )?;
+            let (question, answer, hidden, hint_level, question_hint) = captured;
+            let sources = if question_hint.is_some() {
+                Vec::new()
+            } else {
+                materialize_source(
+                    database,
+                    &SourceSeed {
+                        kind: SourceKind::Card,
+                        owner_id: card_id.clone(),
+                        parent_key: "presentation".to_string(),
+                    },
+                )?
+            };
             let identity = hash(
-                &serde_json::to_string(&(focus, &question, &answer, hidden))
-                    .map_err(CommandError::serialization)?,
+                &serde_json::to_string(&(
+                    focus,
+                    &question,
+                    &answer,
+                    hidden,
+                    question_hint.as_ref().map(|hint| &hint.target.instance_id),
+                ))
+                .map_err(CommandError::serialization)?,
             );
             Ok(FocusedContent {
                 sources,
@@ -152,6 +190,7 @@ pub(crate) fn resolve(
                 hidden,
                 identity,
                 hint_level,
+                question_hint,
             })
         }
         TutorFocus::Guide {
