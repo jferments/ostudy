@@ -220,10 +220,10 @@ pub(crate) fn require_supported_question_snapshot(
                     "SELECT asset_id FROM note_assets WHERE note_id = ?1 AND side = 'content' ORDER BY asset_id",
                 )
                 .map_err(CommandError::database)?;
-            statement
+            let rows = statement
                 .query_map([&note_id], |row| row.get::<_, String>(0))
-                .map_err(CommandError::database)?
-                .collect::<Result<BTreeSet<_>, _>>()
+                .map_err(CommandError::database)?;
+            rows.collect::<Result<BTreeSet<_>, _>>()
                 .map_err(CommandError::database)?
         };
         let expected_assets = question.asset_ids().iter().cloned().collect::<BTreeSet<_>>();
