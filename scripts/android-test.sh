@@ -117,7 +117,7 @@ verify_gradle_contracts() (
     exit 1
   fi
 
-  printf '\nVerifying Android Kotlin/coroutines dependency compatibility...\n'
+  printf '\nVerifying Android Kotlin/coroutines/open-source imaging dependency compatibility...\n'
   dependency_report="$(mktemp -t ostudy-android-dependencies.XXXXXXXX)"
   trap 'rm -f -- "$dependency_report"' EXIT
   (
@@ -136,15 +136,23 @@ verify_gradle_contracts() (
     printf 'Android dependency resolution did not select the pinned Kotlin stdlib 1.9.25 line.\n' >&2
     exit 1
   fi
-  if ! grep -Eq 'play-services-code-scanner:16\.1\.0' "$dependency_report"; then
-    printf 'Android dependency resolution did not include Google Code Scanner 16.1.0.\n' >&2
+  if ! grep -Eq 'zxing-android-embedded:4\.3\.0' "$dependency_report"; then
+    printf 'Android dependency resolution did not include audited ZXing Embedded 4.3.0.\n' >&2
     exit 1
   fi
-  if grep -Eqi 'journeyapps|zxing-android-embedded' "$dependency_report"; then
-    printf 'The removed ZXing Embedded scanner remains in the Android dependency graph.\n' >&2
+  if ! grep -Eq 'com\.google\.zxing:core:3\.5\.4' "$dependency_report"; then
+    printf 'Android dependency resolution did not select audited ZXing core 3.5.4.\n' >&2
     exit 1
   fi
-  printf 'OK   Android Kotlin, coroutines, and Google Code Scanner dependency contracts passed.\n'
+  if ! grep -Eq 'tesseract4android:4\.9\.0' "$dependency_report"; then
+    printf 'Android dependency resolution did not include audited Tesseract4Android 4.9.0.\n' >&2
+    exit 1
+  fi
+  if grep -Eqi 'play-services-code-scanner|com\.google\.mlkit:text-recognition' "$dependency_report"; then
+    printf 'A removed proprietary Android imaging dependency remains in the graph.\n' >&2
+    exit 1
+  fi
+  printf 'OK   Android Kotlin, coroutines, ZXing, and Tesseract dependency contracts passed.\n'
 
   printf '\nCompile-checking the private Android platform plugin...\n'
   (
