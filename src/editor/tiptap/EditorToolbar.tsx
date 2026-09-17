@@ -64,18 +64,18 @@ export function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, 
         Advanced editor <Icon name={advanced ? "chevron-down" : "chevron-right"} size={16} />
       </Button>
     </div>
-    {advanced ? <div id={advancedId} className="tw:grid tw:min-w-0 tw:gap-3 tw:pt-1">
+    {advanced ? <div id={advancedId} className="tw:grid tw:min-w-0 tw:gap-2 tw:pt-1">
     {/* Native pickers are outside roving command navigation: their arrows select values. */}
     <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2">
-      <NativeSelect className="tw:w-36" aria-label="Paragraph style" disabled={disabled} value={selection.blockStyle} onChange={(event) => run({ command: "set_block", value: event.currentTarget.value as EditorBlockStyle })}>
+      <div data-compact-picker="true" className="tw:w-36 tw:shrink-0"><NativeSelect aria-label="Paragraph style" disabled={disabled} value={selection.blockStyle} onChange={(event) => run({ command: "set_block", value: event.currentTarget.value as EditorBlockStyle })}>
         <option value="paragraph">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="h4">Heading 4</option>
-      </NativeSelect>
-      <NativeSelect className="tw:w-40" aria-label="Font family" disabled={disabled} value={typeof textStyle.fontFamily === "string" ? textStyle.fontFamily : ""} onChange={(event) => run({ command: "set_font_family", value: event.currentTarget.value || null })}>
+      </NativeSelect></div>
+      <div data-compact-picker="true" className="tw:w-40 tw:shrink-0"><NativeSelect aria-label="Font family" disabled={disabled} value={typeof textStyle.fontFamily === "string" ? textStyle.fontFamily : ""} onChange={(event) => run({ command: "set_font_family", value: event.currentTarget.value || null })}>
         <option value="">Default font</option><option value="Arial, sans-serif">Arial</option><option value="Georgia, serif">Georgia</option><option value="'Times New Roman', serif">Times New Roman</option><option value="'Courier New', monospace">Courier New</option><option value="monospace">Monospace</option>
-      </NativeSelect>
-      <NativeSelect className="tw:w-20" aria-label="Text size" disabled={disabled} value={typeof textStyle.fontSize === "string" ? textStyle.fontSize : ""} onChange={(event) => run({ command: "set_font_size", value: event.currentTarget.value || null })}>
+      </NativeSelect></div>
+      <div data-compact-picker="true" className="tw:w-20 tw:shrink-0"><NativeSelect aria-label="Text size" disabled={disabled} value={typeof textStyle.fontSize === "string" ? textStyle.fontSize : ""} onChange={(event) => run({ command: "set_font_size", value: event.currentTarget.value || null })}>
         <option value="">Size</option>{FONT_SIZES.map((size) => <option key={size} value={`${size}px`}>{size}</option>)}
-      </NativeSelect>
+      </NativeSelect></div>
       <OverflowMenu disabled={disabled} label="Lists" triggerPresentation="text" items={[
         { id: "bullet", label: "Bullet list", onSelect: () => run({ command: "toggle_bullet_list" }) },
         { id: "numbered", label: "Numbered list", onSelect: () => run({ command: "toggle_numbered_list" }) },
@@ -113,11 +113,22 @@ export function EditorToolbar({ adapter, onAddImage, onAddMedia, onOpenFormula, 
       <div className="tw:w-28"><NativeSelect disabled={disabled} aria-label="Insert symbol" defaultValue="" onChange={(event) => { const symbol = event.currentTarget.value; if (symbol !== "") { run({ command: "insert_text", value: symbol }); event.currentTarget.value = ""; } }}><option value="">Symbol</option>{SYMBOLS.map((symbol) => <option key={symbol} value={symbol}>{symbol}</option>)}</NativeSelect></div>
       <OverflowMenu disabled={disabled} label="Insert content" triggerPresentation="text" items={[{ id: "table", label: "Insert table", onSelect: onOpenTable }, { id: "answer-checklist", label: "Insert answer checklist", onSelect: onOpenChecklist }, { id: "divider", label: "Horizontal divider", onSelect: () => run({ command: "insert_horizontal_rule" }) }]} />
       <Button variant="text" size="small" disabled={disabled} onMouseDown={preserveSelection} onClick={() => run({ command: "reset_colors" })}>Reset color</Button>
-      <OverflowMenu disabled={disabled} label="Advanced formatting" triggerPresentation="text" items={advancedItems} />
+      <Toolbar label="History and additional formatting" disabled={disabled}>
+        <ToolbarGroup label="History and additional formatting">
+          {advancedItems.map((item) => <ToolbarAction key={item.id} label={item.label} disabled={item.disabled}
+            onMouseDown={preserveSelection} onClick={item.onSelect}>{formatGlyphs[item.id] ?? item.label}</ToolbarAction>)}
+          <ToolbarAction label="Clear formatting" onMouseDown={preserveSelection}
+            onClick={() => run({ command: "clear_formatting" })}>Tx</ToolbarAction>
+        </ToolbarGroup>
+      </Toolbar>
     </div>
     </div> : null}
   </fieldset>;
 }
+
+const formatGlyphs: Record<string, string> = {
+  undo: "↶", redo: "↷", strike: "S̶", "inline-code": "</>", quote: "❝", "code-block": "{ }",
+};
 
 function normalizeColor(value: unknown, fallback: string): string { return typeof value === "string" && /^#[0-9a-f]{6}$/iu.test(value) ? value : fallback; }
 
