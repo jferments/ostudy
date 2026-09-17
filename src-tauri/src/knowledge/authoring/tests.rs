@@ -219,6 +219,7 @@ fn card_import_links_actual_presentations_after_duplicate_filtering() {
     let grounded = [card.clone(), card.clone(), other.clone()]
         .into_iter()
         .map(|card| SourceGroundedGeneratedCard {
+            assessment: None,
             card,
             source_locator: source.locator.clone().unwrap(),
             knowledge_support: support.clone(),
@@ -277,6 +278,7 @@ fn stale_support_rolls_back_the_whole_generated_card_import() {
     support[0].source_hash = "f".repeat(64);
     let card = json!({"type":"basic","front":"How many sides?","back":"Three"});
     let grounded = vec![SourceGroundedGeneratedCard {
+        assessment: None,
         card: card.clone(),
         source_locator: source.locator.clone().unwrap(),
         knowledge_support: support,

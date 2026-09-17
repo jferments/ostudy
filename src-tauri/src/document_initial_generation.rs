@@ -289,6 +289,10 @@ pub(crate) async fn process_and_generate_initial_flashcards(
         &outline,
         scale_plan.max_cards_per_window,
     );
+    let generation_contract = crate::knowledge::assessment::policy::checkpoint_contract(
+        generation_contract,
+        &task.question_policy,
+    )?;
     let cached_generation = generation_windows
         .iter()
         .map(|window| {
@@ -341,8 +345,12 @@ pub(crate) async fn process_and_generate_initial_flashcards(
         database,
         &job_id,
         &generation_windows,
-        generated_values.clone(),
+        generated_values,
     )?;
+    let generated_values = grounded_candidates
+        .iter()
+        .map(|card| card.generation_value())
+        .collect::<Result<Vec<_>, _>>()?;
     let curated_values =
         document_intelligence::curate_document_cards(runtime, &task, &outline, generated_values)
             .await?;
@@ -518,7 +526,7 @@ fn build_generated_import_json(
 ) -> Result<String, CommandError> {
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
-        "formatVersion": 1,
+        "formatVersion": 2,
         "deck": {
             "mode": "create",
             "name": document.title,
@@ -555,6 +563,7 @@ mod tests {
             rendered_source_unit_count: 1,
         };
         let cards = vec![crate::document_card_topics::SourceGroundedGeneratedCard {
+            assessment: None,
             knowledge_support: Vec::new(),
             card: serde_json::json!({"type":"basic","front":"Q","back":"A","tags":[]}),
             source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),

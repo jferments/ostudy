@@ -7,6 +7,7 @@
 
 pub(crate) mod adapters;
 pub(crate) mod analysis_store;
+pub(crate) mod assessment;
 pub(crate) mod authoring;
 pub(crate) mod commands;
 pub(crate) mod contracts;
@@ -44,7 +45,9 @@ pub(crate) fn sanitize_for_device_transfer(
 ) -> Result<(), crate::error::CommandError> {
     connection
         .execute_batch(
-            "DELETE FROM knowledge_document_views;
+            "DELETE FROM question_generation_evidence;
+         DELETE FROM question_generation_settings;
+         DELETE FROM knowledge_document_views;
          DELETE FROM knowledge_analysis_windows;
          DELETE FROM knowledge_unit_evidence;
          DELETE FROM knowledge_artifact_links;

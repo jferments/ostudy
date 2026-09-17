@@ -402,6 +402,12 @@ pub(crate) fn card_support(card: &Value) -> Result<Vec<UnitSupport>, CommandErro
             .ok_or_else(|| invalid("A generated card is missing its knowledge targets."))?,
     )
     .map_err(|_| invalid("A generated card contains invalid knowledge support."))?;
+    if let Some(record) = super::assessment::record_from_card(card)? {
+        if record.support()? != support {
+            return Err(invalid("The card summary differs from its component evidence."));
+        }
+        return Ok(support);
+    }
     if support.is_empty() || support.len() > 2 {
         return Err(invalid(
             "A card requires one target, or two for a necessary comparison.",
@@ -413,6 +419,8 @@ pub(crate) fn card_support(card: &Value) -> Result<Vec<UnitSupport>, CommandErro
 pub(crate) fn without_card_support(mut card: Value) -> Value {
     if let Some(object) = card.as_object_mut() {
         object.remove(CARD_SUPPORT_KEY);
+        object.remove(super::assessment::ASSESSMENT_KEY);
+        object.remove(super::assessment::CARD_POLICY_KEY);
     }
     card
 }

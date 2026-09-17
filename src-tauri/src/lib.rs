@@ -292,6 +292,8 @@ pub fn run() {
             ai::probes::commands::list_ai_provider_models,
             ai::probes::commands::test_ai_provider_profile,
             ai::probes::commands::get_ai_provider_probe_result,
+            knowledge::assessment::settings::get_question_generation_policy,
+            knowledge::assessment::settings::save_question_generation_policy,
             knowledge::commands::list_semantic_scope_choices,
             knowledge::commands::preview_semantic_preparation,
             knowledge::commands::prepare_semantic_material,

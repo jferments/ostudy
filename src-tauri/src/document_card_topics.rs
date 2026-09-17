@@ -21,6 +21,7 @@ use crate::{
     error::CommandError,
     knowledge::{
         adapters::SourceSeed,
+        assessment::{self, AssessmentRecord},
         authoring::{self, UnitSupport},
         contracts::SourceKind,
     },
@@ -31,6 +32,22 @@ pub(crate) struct SourceGroundedGeneratedCard {
     pub card: Value,
     pub source_locator: SourceLocator,
     pub knowledge_support: Vec<UnitSupport>,
+    pub assessment: Option<AssessmentRecord>,
+}
+
+impl SourceGroundedGeneratedCard {
+    /// Selection-only curation keeps private native evidence in its captured
+    /// input. Public import still receives only `card`, never these records.
+    pub(crate) fn generation_value(&self) -> Result<Value, CommandError> {
+        let mut value = self.card.clone();
+        value[authoring::CARD_SUPPORT_KEY] = serde_json::to_value(&self.knowledge_support)
+            .map_err(CommandError::serialization)?;
+        if let Some(record) = &self.assessment {
+            value[assessment::ASSESSMENT_KEY] = serde_json::to_value(record)
+                .map_err(CommandError::serialization)?;
+        }
+        Ok(value)
+    }
 }
 
 /// Attach flat, deterministic generation output to the source-window card counts
@@ -105,6 +122,7 @@ pub(crate) fn attach_generated_card_source_windows(
             })?;
             grounded.push(SourceGroundedGeneratedCard {
                 knowledge_support: support,
+                assessment: assessment::record_from_card(card)?,
                 card: authoring::without_card_support(card.clone()),
                 source_locator,
             });
@@ -141,6 +159,7 @@ pub(crate) fn retain_curated_card_provenance(
         .into_iter()
         .map(|card| {
             let support = card.get(authoring::CARD_SUPPORT_KEY).map(|_| authoring::card_support(&card)).transpose()?.unwrap_or_default();
+            let assessment = assessment::record_from_card(&card)?;
             let card = authoring::without_card_support(card);
             let identity = card_identity(&card, &support)?;
             let mut candidate = by_identity
@@ -152,6 +171,10 @@ pub(crate) fn retain_curated_card_provenance(
                         "Document card curation returned content outside the validated candidate set.",
                     )
                 })?;
+            if candidate.assessment != assessment {
+                return Err(CommandError::new("document_card_curation_changed_content",
+                    "Curation changed a captured assessment's component evidence."));
+            }
             candidate.card = card;
             Ok(candidate)
         })
@@ -195,6 +218,16 @@ pub(crate) fn link_imported_notes_to_topics(
             imported_at,
         )?;
         authoring::validate_current_support(connection, document_id, &card.knowledge_support)?;
+        match &card.assessment {
+            Some(record) => {
+                record.validate_card(&card.card)?;
+                assessment::store::publish(connection, &created.note_id, document_id, record, imported_at)?;
+            }
+            None if card.card["type"] == "interactive" => {
+                return Err(assessment::invalid("A generated question lost its component evidence before publication."));
+            }
+            None => {}
+        }
         let mut statement = connection
             .prepare("SELECT id FROM cards WHERE note_id = ?1 AND deleted_at IS NULL ORDER BY id")
             .map_err(CommandError::database)?;
@@ -240,11 +273,13 @@ mod tests {
         let card = serde_json::json!({"type": "basic", "front": "Q", "back": "A"});
         let candidates = vec![
             SourceGroundedGeneratedCard {
+                assessment: None,
                 card: card.clone(),
                 knowledge_support: Vec::new(),
                 source_locator: locator(1),
             },
             SourceGroundedGeneratedCard {
+                assessment: None,
                 card: card.clone(),
                 knowledge_support: Vec::new(),
                 source_locator: locator(2),
@@ -258,6 +293,7 @@ mod tests {
     #[test]
     fn curation_cannot_introduce_new_card_content() {
         let candidate = SourceGroundedGeneratedCard {
+                assessment: None,
             card: serde_json::json!({"type": "basic", "front": "Q", "back": "A"}),
             knowledge_support: Vec::new(),
             source_locator: locator(1),
@@ -278,11 +314,13 @@ mod tests {
         let card = serde_json::json!({"type":"basic","front":"Q","back":"A"});
         let candidates = vec![
             SourceGroundedGeneratedCard {
+                assessment: None,
                 card: card.clone(),
                 source_locator: locator(1),
                 knowledge_support: first_support,
             },
             SourceGroundedGeneratedCard {
+                assessment: None,
                 card: card.clone(),
                 source_locator: locator(2),
                 knowledge_support: second_support.clone(),

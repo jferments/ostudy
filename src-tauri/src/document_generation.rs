@@ -131,8 +131,11 @@ pub(crate) async fn execute_generation_windows(
             .filter(|cards| {
                 (!cards.is_empty() || catalogs[position].units.is_empty())
                     && cards.iter().all(|card| {
-                        authoring::card_support(card)
-                            .is_ok_and(|support| catalogs[position].validates(&support, 2))
+                        crate::knowledge::assessment::validates_checkpoint(
+                            card,
+                            &catalogs[position],
+                            &input.task.question_policy,
+                        )
                     })
             })
         {
