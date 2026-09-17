@@ -87,7 +87,9 @@ pub(super) fn validate_presentations(
         ));
     }
     if let QuestionBody::ImageOcclusion { image_asset_id, .. } = &question.definition().question {
-        let image = assets.iter().find(|asset| &asset.source_id == image_asset_id);
+        let image = assets
+            .iter()
+            .find(|asset| &asset.source_id == image_asset_id);
         if !image.is_some_and(|asset| {
             matches!(
                 asset.mime_type.as_str(),

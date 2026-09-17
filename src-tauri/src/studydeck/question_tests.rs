@@ -137,7 +137,11 @@ fn verify_typed_library(database: &Database, expected_notes: i64, expected_cards
                 .map_err(CommandError::database)?;
             assert_eq!(typed_notes, expected_notes);
             let presentations: i64 = connection
-                .query_row("SELECT COUNT(*) FROM card_question_presentations", [], |row| row.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM card_question_presentations",
+                    [],
+                    |row| row.get(0),
+                )
                 .map_err(CommandError::database)?;
             assert_eq!(presentations, expected_cards);
             let schedule_state: (i64, i64, i64) = connection
@@ -207,7 +211,10 @@ fn every_interactive_kind_round_trips_through_version_three_with_fresh_schedules
             .unwrap();
         let package_connection =
             Connection::open_with_flags(&exported, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-        assert_eq!(metadata_value(&package_connection, "formatVersion").unwrap(), "3");
+        assert_eq!(
+            metadata_value(&package_connection, "formatVersion").unwrap(),
+            "3"
+        );
         drop(package_connection);
         let imported = read::read_package(&exported).unwrap();
         assert_eq!(imported.cards.len(), expected);
@@ -271,13 +278,7 @@ fn asset_identity_collision_is_remapped_inside_occlusion_definition() {
     let data = package(7);
     database
         .with_connection(|connection| {
-            import::import_package(
-                connection,
-                &paths,
-                &id(6007),
-                &"7".repeat(64),
-                data,
-            )?;
+            import::import_package(connection, &paths, &id(6007), &"7".repeat(64), data)?;
             let definition: String = connection
                 .query_row(
                     "SELECT question_definition FROM notes WHERE note_type='interactive'",

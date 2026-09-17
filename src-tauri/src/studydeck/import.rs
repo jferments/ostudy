@@ -319,8 +319,7 @@ fn apply_package_transaction(
                 note.front_text.clone(),
                 note.back_text.clone(),
             )?;
-            let duplicate_hash =
-                duplicate_fingerprint(&validated.front_text, &validated.back_text);
+            let duplicate_hash = duplicate_fingerprint(&validated.front_text, &validated.back_text);
             transaction
                 .execute(
                     "INSERT INTO notes (
