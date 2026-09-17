@@ -35,7 +35,7 @@ pub(crate) fn begin(
                     job_id,
                     document_id,
                     encoded,
-                    available_knowledge_units,
+                    i64::try_from(available_knowledge_units).map_err(|_| invalid())?,
                     unix_time_millis()?
                 ],
             )
@@ -55,6 +55,10 @@ pub(crate) fn record_candidates(
     job_id: &str,
     count: usize,
 ) -> Result<(), CommandError> {
+    if count > 10_000 {
+        return Err(invalid());
+    }
+    let count = i64::try_from(count).map_err(|_| invalid())?;
     database.with_connection(|connection| {
         let changed = connection
             .execute(
@@ -76,7 +80,7 @@ pub(super) fn pending(
     document_id: &str,
     job_id: &str,
 ) -> Result<Option<PendingReport>, CommandError> {
-    let row: Option<(String, usize, Option<usize>)> = connection
+    let row: Option<(String, i64, Option<i64>)> = connection
         .query_row(
             "SELECT policy_json, available_knowledge_units, candidate_count
              FROM question_generation_reports
@@ -89,8 +93,11 @@ pub(super) fn pending(
     row.map(|(policy, available_knowledge_units, candidate_count)| {
         Ok(PendingReport {
             policy: serde_json::from_str(&policy).map_err(CommandError::serialization)?,
-            available_knowledge_units,
-            candidate_count,
+            available_knowledge_units: usize::try_from(available_knowledge_units)
+                .map_err(|_| invalid())?,
+            candidate_count: candidate_count
+                .map(|count| usize::try_from(count).map_err(|_| invalid()))
+                .transpose()?,
         })
     })
     .transpose()

@@ -125,13 +125,14 @@ pub(crate) fn publish(
             return Err(invalid());
         }
         let card = cards.get(created.source_index).ok_or_else(invalid)?;
-        let card_count: usize = connection
+        let card_count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM cards WHERE note_id = ?1 AND deleted_at IS NULL",
                 [&created.note_id],
                 |row| row.get(0),
             )
             .map_err(CommandError::database)?;
+        let card_count = usize::try_from(card_count).map_err(|_| invalid())?;
         if card_count == 0 {
             return Err(invalid());
         }
