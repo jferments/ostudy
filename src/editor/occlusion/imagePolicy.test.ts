@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const configuration = JSON.parse(readFileSync(new URL("../../../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+const configuration = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
 const directives = new Map<string, string[]>(configuration.app.security.csp.split(";")
   .map((part: string) => part.trim().split(/\s+/u))
   .filter((tokens: string[]) => tokens[0])
