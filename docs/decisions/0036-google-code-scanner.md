@@ -1,11 +1,13 @@
 # ADR 0036: Google Code Scanner for Android pairing
 
-## Decision
+- Status: **Superseded by ADR 0052**
 
-Android QR pairing uses Google Code Scanner (`play-services-code-scanner:16.1.0`) through the private ostudy platform plugin. The scanner is restricted to QR codes, enables first-party auto zoom, requests the `barcode_ui` module at install time, and delegates camera permission/UI to Google Play services. ZXing Embedded and the application camera permission are removed.
+## Historical decision
 
-The native scanner returns only a bounded decoded string. Rust retains pairing-envelope parsing, expiry/protocol checks, and cryptographic validation. Raw QR contents never enter logs. Atomic guards reject concurrent scans and ignore duplicate terminal callbacks.
+Android QR pairing previously used Google Code Scanner (`play-services-code-scanner:16.1.0`) through the private oStudy platform plugin. That removed application camera permission and delegated camera UI/decoding to Google Play services while Rust retained pairing-envelope parsing and cryptographic validation.
 
-## Consequences
+PR #101 introduced a stricter dependency requirement for application-controlled non-AI functionality: it must use free/open-source software and remain locally executable. Google Code Scanner no longer satisfies that accepted release contract, even though the scanner ran on-device.
 
-Google Play services is required for this Android backend. Unsupported devices receive a typed scanner failure rather than a silent stale-library fallback. The Rust/frontend scanner contract remains provider-neutral so a bundled non-GMS backend can be added later without redesigning device sync.
+The current Android implementation and rationale are defined by [ADR 0052](0052-open-source-android-imaging.md): JourneyApps ZXing Embedded with ZXing core replaces Google Code Scanner, camera permission is explicitly application-owned, QR decoding remains local, and the existing bounded provider-neutral Rust/frontend scanner contract is unchanged.
+
+This ADR is retained only as implementation history.
