@@ -37,7 +37,18 @@ class ApplicationIconContractTests(unittest.TestCase):
         self.assertGreaterEqual(width, 512)
         self.assertEqual(desktop_icon.read_bytes(), source.read_bytes())
         self.assertIn('tauri::include_image!("./icons/icon.png")', startup)
-        self.assertIn("create_linux_main_window(app)?", startup)
+        setup = startup[startup.index("pub(crate) fn setup"):startup.index("fn initialize(")]
+        self.assertIn("if let Err(error) = create_linux_main_window(app)", setup)
+        self.assertIn("present_startup_failure(app.handle(), &error.to_string())", setup)
+        self.assertLess(
+            setup.index("create_linux_main_window(app)"),
+            setup.index("tauri::async_runtime::spawn"),
+        )
+        window_builder = startup[startup.index("fn create_linux_main_window"):startup.index("fn apply_main_window_icon")]
+        self.assertLess(
+            window_builder.index(".icon(MAIN_WINDOW_ICON.clone())?"),
+            window_builder.index(".build()?"),
+        )
         self.assertIn("WebviewWindowBuilder::from_config", startup)
         self.assertIn(".icon(MAIN_WINDOW_ICON.clone())?", startup)
         self.assertIn("window.set_icon(MAIN_WINDOW_ICON.clone())", startup)
