@@ -259,9 +259,11 @@ mod tests {
         let mut selected = context(vec!["b".repeat(32)], vec!["c".repeat(32)]);
         let rows = load(&connection, &selected).unwrap();
         assert_eq!(rows[0].question_type, "select_all");
-        assert!(load(&connection, &context(vec!["a".repeat(32)], Vec::new()))
-            .unwrap()
-            .is_empty());
+        assert!(
+            load(&connection, &context(vec!["a".repeat(32)], Vec::new()))
+                .unwrap()
+                .is_empty()
+        );
         selected.tag_ids = vec!["d".repeat(32)];
         assert!(load(&connection, &selected).unwrap().is_empty());
         selected.tag_ids.clear();
