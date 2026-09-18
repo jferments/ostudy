@@ -8,6 +8,8 @@
 
 use rusqlite::{params, Transaction};
 
+pub(crate) mod evidence;
+
 use crate::{
     document_canonical::{CanonicalIngestion, CANONICAL_DOCUMENT_SCHEMA_VERSION},
     document_domain::SourceLocator,
@@ -249,6 +251,7 @@ pub(crate) fn persist_canonical_ingestion(
             })?;
     }
 
+    evidence::publish(transaction, document_id, &ingestion.document.blocks)?;
     Ok(())
 }
 

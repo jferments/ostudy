@@ -153,9 +153,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0017_generation_reports.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 18,
+        name: "canonical_evidence",
+        checksum: "8793ee5d592dca80ce52a5c5396a780d103dff9b81ecc7080b2cc42a29f3b1ca",
+        sql: include_str!("../migrations/0018_canonical_evidence.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 17;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 18;
 
 pub struct Database {
     connection: Mutex<Connection>,
@@ -415,6 +422,14 @@ fn apply_migration_transaction(
     transaction
         .execute_batch(migration.sql)
         .map_err(|error| format!("Could not apply migration {}: {error}", migration.version))?;
+    if migration.version == 18 {
+        // Known-source native backfill belongs to the SAME schema transaction.
+        // It retains exact text; unavailable old structure is never invented.
+        crate::document_canonical_store::evidence::backfill(&transaction)
+            .map_err(|error| error.message)?;
+        crate::document_canonical_store::evidence::validate(&transaction)
+            .map_err(|error| error.message)?;
+    }
     let applied_at = unix_time_millis().map_err(|error| error.message)?;
     transaction
         .execute(
