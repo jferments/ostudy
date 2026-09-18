@@ -223,6 +223,7 @@ pub fn run() {
             deletion_commands::delete_cards_with_undo,
             authoring::card_types_and_templates::create_card_note,
             authoring::card_types_and_templates::update_card_note,
+            authoring::card_types_and_templates::preview_card_draft,
             authoring::card_types_and_templates::templates::list_card_template_summaries,
             authoring::card_types_and_templates::get_card_template,
             authoring::card_types_and_templates::create_card_template,

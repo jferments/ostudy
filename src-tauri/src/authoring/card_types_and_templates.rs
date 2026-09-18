@@ -251,6 +251,39 @@ pub struct GenerateTemplateCardsResultDto {
     pub created_note_ids: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "cardType",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum PreviewCardDraftInput {
+    Basic {
+        #[serde(default)]
+        reverse_enabled: bool,
+        front_doc: Value,
+        back_doc: Value,
+    },
+    Cloze {
+        cloze_source: String,
+        #[serde(default)]
+        cloze_mode: ClozeMode,
+    },
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardDraftPreviewDto {
+    pub presentation_key: String,
+    pub presentation_label: String,
+    pub card_label: String,
+    pub front_doc: Value,
+    pub back_doc: Value,
+    pub front_text: String,
+    pub back_text: String,
+}
+
 pub(crate) struct RenderedCardPresentation {
     pub(crate) card_type: String,
     pub(crate) card_label: String,
@@ -320,6 +353,82 @@ pub fn update_card_note(
     input: UpdateCardNoteInput,
 ) -> Result<CardNoteDto, CommandError> {
     update_card_note_in_database(database, paths, input)
+}
+
+#[tauri::command]
+pub fn preview_card_draft(
+    input: PreviewCardDraftInput,
+) -> Result<Vec<CardDraftPreviewDto>, CommandError> {
+    match input {
+        PreviewCardDraftInput::Basic {
+            reverse_enabled,
+            front_doc,
+            back_doc,
+        } => {
+            let content = prepare_basic_card_content(front_doc, back_doc)?;
+            let mut previews = Vec::with_capacity(if reverse_enabled { 2 } else { 1 });
+            for (direction, label) in [("forward", "Forward"), ("reverse", "Reverse")] {
+                if direction == "reverse" && !reverse_enabled {
+                    continue;
+                }
+                let rendered = render_projected_presentation(ProjectedPresentationInput {
+                    direction,
+                    template_ordinal: 0,
+                    note_type: "basic",
+                    front_doc_json: &content.front_doc_json,
+                    back_doc_json: &content.back_doc_json,
+                    front_text: &content.front_text,
+                    back_text: &content.back_text,
+                    cloze_source: "",
+                    cloze_mode: "one_at_a_time",
+                    reps: 0,
+                    presentation_variant: None,
+                })?;
+                previews.push(card_draft_preview(direction, label, rendered));
+            }
+            Ok(previews)
+        }
+        PreviewCardDraftInput::Cloze {
+            cloze_source,
+            cloze_mode,
+        } => {
+            let parsed = parse_cloze(&cloze_source)?;
+            let variants = if cloze_mode == ClozeMode::AllTogether {
+                vec![("cloze:all".to_string(), "All blanks".to_string())]
+            } else {
+                parsed
+                    .groups
+                    .iter()
+                    .enumerate()
+                    .map(|(index, group)| {
+                        (
+                            format!("cloze:{group}"),
+                            format!("Blank group {}", index + 1),
+                        )
+                    })
+                    .collect()
+            };
+            variants
+                .into_iter()
+                .map(|(variant, label)| {
+                    let rendered = render_projected_presentation(ProjectedPresentationInput {
+                        direction: "forward",
+                        template_ordinal: 0,
+                        note_type: "cloze",
+                        front_doc_json: "{}",
+                        back_doc_json: "{}",
+                        front_text: "",
+                        back_text: "",
+                        cloze_source: &cloze_source,
+                        cloze_mode: cloze_mode.as_str(),
+                        reps: 0,
+                        presentation_variant: Some(&variant),
+                    })?;
+                    Ok(card_draft_preview(&variant, &label, rendered))
+                })
+                .collect()
+        }
+    }
 }
 
 #[tauri::command]
@@ -1337,6 +1446,22 @@ pub(crate) fn render_projected_presentation(
     })
 }
 
+fn card_draft_preview(
+    presentation_key: &str,
+    presentation_label: &str,
+    rendered: RenderedCardPresentation,
+) -> CardDraftPreviewDto {
+    CardDraftPreviewDto {
+        presentation_key: presentation_key.to_string(),
+        presentation_label: presentation_label.to_string(),
+        card_label: rendered.card_label,
+        front_doc: rendered.front_doc,
+        back_doc: rendered.back_doc,
+        front_text: rendered.front_text,
+        back_text: rendered.back_text,
+    }
+}
+
 pub(crate) mod templates;
 use templates::{
     create_card_template_in_connection, delete_card_template_in_connection,
@@ -1388,5 +1513,45 @@ mod authoring_contract_tests {
             "backDoc": paragraph("Answer")
         });
         assert!(serde_json::from_value::<CreateCardNoteInput>(input).is_ok());
+    }
+
+    #[test]
+    fn author_preview_uses_the_practice_projection_for_basic_and_cloze() {
+        let basic = preview_card_draft(PreviewCardDraftInput::Basic {
+            reverse_enabled: true,
+            front_doc: paragraph("Question"),
+            back_doc: paragraph("Answer"),
+        })
+        .expect("basic preview");
+        assert_eq!(basic.len(), 2);
+        assert_eq!(basic[0].presentation_key, "forward");
+        assert_eq!(basic[0].front_text, "Question");
+        assert_eq!(basic[1].presentation_key, "reverse");
+        assert_eq!(basic[1].front_text, "Answer");
+
+        let cloze = preview_card_draft(PreviewCardDraftInput::Cloze {
+            cloze_source: "The {{c1::heart}} moves {{c2::blood}}.".to_string(),
+            cloze_mode: ClozeMode::OneAtATime,
+        })
+        .expect("one-at-a-time cloze preview");
+        assert_eq!(
+            cloze
+                .iter()
+                .map(|preview| preview.presentation_key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["cloze:1", "cloze:2"]
+        );
+        assert_ne!(cloze[0].front_text, cloze[1].front_text);
+
+        let together = preview_card_draft(PreviewCardDraftInput::Cloze {
+            cloze_source: "The {{c1::heart}} moves {{c2::blood}}.".to_string(),
+            cloze_mode: ClozeMode::AllTogether,
+        })
+        .expect("all-together cloze preview");
+        assert_eq!(together.len(), 1);
+        assert_eq!(together[0].presentation_key, "cloze:all");
+        assert!(together[0].front_text.contains("[…]"));
+        assert!(!together[0].front_text.contains("heart"));
+        assert!(!together[0].front_text.contains("blood"));
     }
 }

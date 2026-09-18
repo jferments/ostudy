@@ -36,7 +36,7 @@ A **note** is the shared editable source. A **card** is a presentation you study
 
 A **Fill in the blank** note marks text to hide. One-at-a-time mode selects a blank group for that review; all-together mode hides all groups. It still has one stable scheduled card rather than a separate schedule for every blank. Changing blanks or switching presentation mode does not imply a fresh learning history.
 
-The same **Template** selector also opens purpose-built interactive editors for **Single best answer**, **Select all that apply**, **True/false**, **Matching**, **Grouping**, **Ordering**, and **Image occlusion**. These are native question kinds rather than Basic cards with special markup. Rich prompts/options/rationales reuse the ordinary editor and managed assets. Explanations stay collapsed until you choose **Add explanation**, and **Preview card** uses the same presentation components as Practice without checking an answer or changing a schedule.
+The same **Template** selector also opens purpose-built interactive editors for **Single best answer**, **Select all that apply**, **True/false**, **Matching**, **Grouping**, **Ordering**, and **Image occlusion**. These are native question kinds rather than Basic cards with special markup. Rich prompts/options/rationales reuse the ordinary editor and managed assets. Explanations stay collapsed until you choose **Add explanation**. **Preview card** uses the same presentation components as Practice; objective answers can be checked there with native feedback without recording a learner attempt or changing a schedule.
 
 Single-best-answer requires exactly one correct option; select-all stores the exact correct set, including a deliberate empty set; true/false keeps unanswered distinct from false. Matching requires a one-to-one pairing, grouping assigns each item to one category, and ordering stores one explicit total order. Matching/grouping/ordering support drag interaction plus non-drag controls so dragging is not required to author or study them.
 
@@ -48,9 +48,9 @@ The normal editor reports duplicate candidates and requires deliberate override 
 
 **Preview card** opens a full-width study presentation instead of a side panel. **Close preview** stays at the top while you scroll. Close it, press Escape when no dialog is open, or use Android Back to return to the same unsaved editor. Closing a preview does not save or discard the draft. Save shortcuts are inactive while preview is open.
 
-Basic previews share Practice's rich-content surface, flip/motion setting, and media presentation. When Reverse is enabled, choose Forward or Reverse in the preview. Objective boards and image occlusion use the existing shared question and masked-image renderers at the available workspace width. Preview interactions do not record reviews or change schedules.
+Basic previews share Practice's rich-content surface, flip/motion setting, and media presentation. When Reverse is enabled, choose Forward or Reverse in the preview. Fill-in-the-blank preview uses the native Practice renderer and lets you inspect each authored blank group (or the all-together presentation) without creating another scheduled card. Reusable templates show each generated rule in the same full workspace.
 
-Fill-in-the-blank and reusable-template previews still use their field-specific presentation controls; full-workspace native preview admission and objective Check feedback are the next implementation boundary. [Editor-preview ownership and tests](../development/editor-preview.md) describes that boundary separately from completed behavior.
+Objective boards use native draft validation and **Check answer** feedback without creating an attempt or review. Image occlusion uses its managed masked-image renderer and lets you choose among authored target questions. Preview interactions do not record reviews, analytics, or schedules and do not call an AI provider. [Editor-preview ownership and tests](../development/editor-preview.md) describes the shared/native boundaries.
 
 ## Practice behavior for interactive questions
 

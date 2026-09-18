@@ -76,6 +76,29 @@ export type UpdateCardNoteInput = CreateCardNoteInput & {
   revision: number;
 };
 
+export type PreviewCardDraftInput =
+  | {
+      cardType: "basic";
+      reverseEnabled: boolean;
+      frontDoc: RichDocument;
+      backDoc: RichDocument;
+    }
+  | {
+      cardType: "cloze";
+      clozeSource: string;
+      clozeMode: ClozeMode;
+    };
+
+export interface CardDraftPreview {
+  presentationKey: string;
+  presentationLabel: string;
+  cardLabel: string;
+  frontDoc: RichDocument;
+  backDoc: RichDocument;
+  frontText: string;
+  backText: string;
+}
+
 export interface TagSummary {
   id: string;
   name: string;
@@ -231,6 +254,10 @@ export async function createCardNote(input: CreateCardNoteInput): Promise<CardNo
 
 export async function updateCardNote(input: UpdateCardNoteInput): Promise<CardNote> {
   return invoke<CardNote>("update_card_note", { input });
+}
+
+export async function previewCardDraft(input: PreviewCardDraftInput): Promise<CardDraftPreview[]> {
+  return invoke<CardDraftPreview[]>("preview_card_draft", { input });
 }
 
 export async function findDuplicateCards(input: DuplicateCheckInput): Promise<DuplicateCard[]> {

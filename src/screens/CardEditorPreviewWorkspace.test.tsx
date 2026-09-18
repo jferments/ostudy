@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   back: null as (() => boolean) | null,
   topId: null as string | null,
   save: vi.fn(), discard: vi.fn(), prepare: vi.fn(), confirm: vi.fn(),
+  previewRecall: vi.fn(), templateSummaries: vi.fn(), getTemplate: vi.fn(), previewTemplate: vi.fn(),
 }));
 vi.mock("../platform/backNavigation", () => ({
   registerPlatformBackHandler: (handler: () => boolean) => {
@@ -34,12 +35,19 @@ vi.mock("../ipc/assets", () => ({
 }));
 vi.mock("../ipc/cards", () => ({
   createCardNote: mocks.save, updateCardNote: mocks.save, getCardNote: vi.fn(),
+  previewCardDraft: mocks.previewRecall,
   findDuplicateCards: vi.fn().mockResolvedValue([]), listTags: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../ipc/decks", () => ({ listDecks: vi.fn().mockResolvedValue([]) }));
 vi.mock("../ipc/templates", () => ({
-  generateCardsFromTemplate: mocks.save, getCardTemplate: vi.fn(),
-  listCardTemplateSummaries: vi.fn().mockResolvedValue([]), previewTemplateCards: vi.fn(),
+  generateCardsFromTemplate: mocks.save, getCardTemplate: mocks.getTemplate,
+  listCardTemplateSummaries: mocks.templateSummaries, previewTemplateCards: mocks.previewTemplate,
+}));
+vi.mock("./card-editor/TemplateEntryForm", () => ({
+  TemplateEntryForm: ({ onValueChange }: {
+    onValueChange: (fieldId: string, doc: RichDocument, text: string) => void;
+  }) => <label>Template value<input onChange={(event) =>
+    onValueChange("f".repeat(32), textDoc(event.target.value), event.target.value)} /></label>,
 }));
 vi.mock("./card-editor/BasicCardFields", () => ({
   BasicCardFields: (props: ComponentProps<typeof BasicCardFields>) => <>
@@ -67,7 +75,54 @@ function mount() {
   return { onCancel };
 }
 
-beforeEach(() => { vi.clearAllMocks(); mocks.topId = null; });
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.topId = null;
+  mocks.templateSummaries.mockResolvedValue([{
+    id: "t".repeat(32), name: "Reusable template", description: "", fieldCount: 1,
+    generatedCardRuleCount: 2, imageCount: 0, updatedAt: 1, revision: 1,
+  }]);
+  mocks.getTemplate.mockResolvedValue({
+    id: "t".repeat(32), name: "Reusable template", description: "",
+    fields: [{ id: "f".repeat(32), name: "Term", description: "", position: 0 }],
+    rules: [
+      { id: "1".repeat(32), name: "Forward rule", frontDoc: textDoc("{{Term}}"), backDoc: textDoc("Answer"), position: 0 },
+      { id: "2".repeat(32), name: "Reverse rule", frontDoc: textDoc("Answer"), backDoc: textDoc("{{Term}}"), position: 1 },
+    ],
+    assets: [], createdAt: 1, updatedAt: 1, revision: 1,
+  });
+  mocks.previewRecall.mockImplementation(async (input: {
+    cardType: "basic" | "cloze"; reverseEnabled?: boolean; frontDoc?: RichDocument; backDoc?: RichDocument;
+  }) => input.cardType === "basic" ? [
+    {
+      presentationKey: "forward", presentationLabel: "Forward", cardLabel: "Basic",
+      frontDoc: input.frontDoc!, backDoc: input.backDoc!, frontText: "Forward question", backText: "Forward answer",
+    },
+    ...(input.reverseEnabled ? [{
+      presentationKey: "reverse", presentationLabel: "Reverse", cardLabel: "Reverse",
+      frontDoc: input.backDoc!, backDoc: input.frontDoc!, frontText: "Forward answer", backText: "Forward question",
+    }] : []),
+  ] : [
+    {
+      presentationKey: "cloze:1", presentationLabel: "Blank group 1", cardLabel: "Fill in the blank",
+      frontDoc: textDoc("First cloze"), backDoc: textDoc("First answer"), frontText: "First cloze", backText: "First answer",
+    },
+    {
+      presentationKey: "cloze:2", presentationLabel: "Blank group 2", cardLabel: "Fill in the blank",
+      frontDoc: textDoc("Second cloze"), backDoc: textDoc("Second answer"), frontText: "Second cloze", backText: "Second answer",
+    },
+  ]);
+  mocks.previewTemplate.mockResolvedValue([
+    {
+      ruleId: "1".repeat(32), ruleName: "Forward rule", questionDoc: textDoc("Generated forward"),
+      answerDoc: textDoc("Generated answer"), questionText: "Generated forward", answerText: "Generated answer", assets: [],
+    },
+    {
+      ruleId: "2".repeat(32), ruleName: "Reverse rule", questionDoc: textDoc("Generated reverse"),
+      answerDoc: textDoc("Generated term"), questionText: "Generated reverse", answerText: "Generated term", assets: [],
+    },
+  ]);
+});
 
 describe("full-size editor preview workspace", () => {
   it("keeps the unsaved editor mounted, restores field selection, and never saves or discards from preview", async () => {
@@ -81,7 +136,7 @@ describe("full-size editor preview workspace", () => {
     expect(preview.querySelector("aside")).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Question draft" })).toBeNull();
     expect(field.isConnected).toBe(true);
-    expect(within(preview).getByText(/Unsaved question/u)).toBeTruthy();
+    expect(await within(preview).findByText(/Unsaved question/u)).toBeTruthy();
     fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     fireEvent.click(within(preview).getByRole("button", { name: "Reveal answer" }));
     expect(within(preview).getByText(/Unsaved answer/u)).toBeTruthy();
@@ -103,12 +158,46 @@ describe("full-size editor preview workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enable reverse" }));
     fireEvent.click(screen.getByRole("button", { name: "Preview card" }));
     const preview = screen.getByRole("region", { name: "Card preview" });
-    fireEvent.change(within(preview).getByRole("combobox", { name: "Presentation" }), { target: { value: "reverse" } });
+    fireEvent.change(await within(preview).findByRole("combobox", { name: "Presentation" }), { target: { value: "reverse" } });
     expect(within(preview).getByText(/Forward answer/u)).toBeTruthy();
     act(() => { expect(mocks.back?.()).toBe(true); });
     expect(screen.queryByRole("region", { name: "Card preview" })).toBeNull();
     expect(onCancel).not.toHaveBeenCalled();
     expect(mocks.discard).not.toHaveBeenCalled();
+  });
+
+  it("previews each cloze group in the full workspace from the native recall projection", async () => {
+    mount();
+    const selector = await screen.findByRole("combobox", { name: "Card template" });
+    fireEvent.change(selector, { target: { value: "cloze" } });
+    const source = await screen.findByRole("textbox", { name: "Complete statement" });
+    fireEvent.change(source, { target: { value: "The {{c1::heart}} moves {{c2::blood}}." } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview card" }));
+    const preview = screen.getByRole("region", { name: "Card preview" });
+    const presentations = await within(preview).findByRole("combobox", { name: "Presentation" });
+    expect(within(preview).getByText(/First cloze/u)).toBeTruthy();
+    fireEvent.change(presentations, { target: { value: "cloze:2" } });
+    expect(within(preview).getByText(/Second cloze/u)).toBeTruthy();
+    expect(mocks.previewRecall).toHaveBeenCalledWith(expect.objectContaining({
+      cardType: "cloze",
+      clozeSource: "The {{c1::heart}} moves {{c2::blood}}.",
+    }));
+  });
+
+  it("opens reusable-template outputs in the same full Practice-style preview", async () => {
+    mount();
+    const selector = await screen.findByRole("combobox", { name: "Card template" });
+    await screen.findByRole("option", { name: "Reusable template" });
+    fireEvent.change(selector, { target: { value: "t".repeat(32) } });
+    const value = await screen.findByRole("textbox", { name: "Template value" });
+    fireEvent.change(value, { target: { value: "alveolus" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview card" }));
+    const preview = screen.getByRole("region", { name: "Card preview" });
+    const presentations = await within(preview).findByRole("combobox", { name: "Presentation" });
+    expect(within(preview).getByText(/Generated forward/u)).toBeTruthy();
+    fireEvent.change(presentations, { target: { value: `template:${"2".repeat(32)}` } });
+    expect(within(preview).getByText(/Generated reverse/u)).toBeTruthy();
+    expect(mocks.previewTemplate).toHaveBeenCalledTimes(1);
   });
 
   it("does not consume Escape from an overlay or input composition", async () => {

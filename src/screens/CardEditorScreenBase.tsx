@@ -36,7 +36,6 @@ import {
 import { registerPlatformBackHandler } from "../platform/backNavigation";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
-import { Badge } from "../ui/primitives/Badge";
 import { Button } from "../ui/primitives/Button";
 import { FormField } from "../ui/primitives/FormField";
 import { InlineNotice, InlineProgress } from "../ui/primitives/InlineNotice";
@@ -49,7 +48,7 @@ import { InteractiveQuestionEditor } from "./card-editor/InteractiveQuestionEdit
 import { QuestionDraftPreview } from "./card-editor/QuestionDraftPreview";
 import { CardPreviewWorkspace } from "./card-editor/CardPreviewWorkspace";
 import { useEditorPreview } from "./card-editor/useEditorPreview";
-import { RecallCardSurface } from "./practice/RecallCardSurface";
+import { RecallDraftPreview, type RecallPreviewPresentation } from "./card-editor/RecallDraftPreview";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { presentation } from "./card-editor/presentation";
@@ -183,8 +182,8 @@ export function CardEditorScreen({
   const [moveCopyOpen, setMoveCopyOpen] = useState(false);
   const preview = useEditorPreview();
   const previewOpen = preview.isOpen;
-  const [previewReverse, setPreviewReverse] = useState(false);
-  const [previewAnswer, setPreviewAnswer] = useState(false);
+  const [previewPresentations, setPreviewPresentations] = useState<RecallPreviewPresentation[]>([]);
+  const [isPreparingPreview, setIsPreparingPreview] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
   const platformBackCancelRef = useRef<() => void>(() => undefined);
@@ -208,7 +207,8 @@ export function CardEditorScreen({
         ? clozeSource.trim() !== "" && clozeGroups.length > 0
         : builtInCardType === "basic" && hasFront && hasBack;
   const canSave = contentReady && selectedDeckId !== "" && !isSaving && !isLoadingTemplate;
-  const canPreview = !selectedCustomTemplate && (builtInCardType === "basic" || activeQuestionDraft !== null);
+  const canPreview = !isLoadingTemplate
+    && (builtInCardType !== null || activeQuestionDraft !== null || selectedCustomTemplate !== null);
   const assetIds = useMemo(() => new Set(assets.map((asset) => asset.id)), [assets]);
   const usedAssetIds = useMemo(() => {
     const ids = new Set<string>();
@@ -431,6 +431,7 @@ export function CardEditorScreen({
     setErrorMessage(null);
     setDuplicateMatches([]);
     setTemplatePreviews([]);
+    setPreviewPresentations([]);
   }
 
   function updateQuestionDraft(change: QuestionDraftChange): void {
@@ -489,6 +490,70 @@ export function CardEditorScreen({
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsPreviewingTemplate(false);
+    }
+  }
+
+  async function openCardPreview(): Promise<void> {
+    if (!canPreview || previewOpen || isSaving || isPreparingPreview) return;
+    setErrorMessage(null);
+    setPreviewPresentations([]);
+    preview.open();
+    if (activeQuestionDraft) return;
+
+    setIsPreparingPreview(true);
+    try {
+      if (selectedCustomTemplate) {
+        if (!templateValuesComplete) {
+          setErrorMessage("Fill in every template field before previewing generated cards.");
+          return;
+        }
+        const generated = await controller.preview({
+          templateId: selectedCustomTemplate.id,
+          templateRevision: selectedCustomTemplate.revision,
+          values: templateValues,
+        });
+        if (!generated) return;
+        setTemplatePreviews(generated);
+        setPreviewPresentations(generated.map((item) => ({
+          presentationKey: `template:${item.ruleId}`,
+          presentationLabel: item.ruleName,
+          cardLabel: item.ruleName,
+          frontDoc: item.questionDoc,
+          backDoc: item.answerDoc,
+          frontText: item.questionText,
+          backText: item.answerText,
+          assets: item.assets,
+        })));
+        return;
+      }
+
+      if (builtInCardType === "basic") {
+        const generated = await controller.previewRecall({
+          cardType: "basic",
+          reverseEnabled,
+          frontDoc,
+          backDoc,
+        });
+        if (generated) {
+          setPreviewPresentations(generated.map((item) => ({ ...item, assets })));
+        }
+        return;
+      }
+
+      if (builtInCardType === "cloze") {
+        const generated = await controller.previewRecall({
+          cardType: "cloze",
+          clozeSource,
+          clozeMode,
+        });
+        if (generated) {
+          setPreviewPresentations(generated.map((item) => ({ ...item, assets })));
+        }
+      }
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally {
+      setIsPreparingPreview(false);
     }
   }
 
@@ -657,7 +722,8 @@ export function CardEditorScreen({
         }))
       : []);
     preview.close();
-    setPreviewAnswer(false);
+    setPreviewPresentations([]);
+    setIsPreparingPreview(false);
     setEditorGeneration((value) => value + 1);
     try {
       await restartDurableDraft(nextQuestionDrafts);
@@ -710,24 +776,9 @@ export function CardEditorScreen({
     {previewOpen ? <CardPreviewWorkspace title={selectedDeck.name} onClose={preview.close}>
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {activeQuestionDraft ? <QuestionDraftPreview draft={activeQuestionDraft} assets={assets}
-        assetDraftId={assetDraftId} disabled={isSaving} onError={setErrorMessage} /> : <>
-        {reverseEnabled ? <FormField label="Presentation">
-          <NativeSelect value={previewReverse ? "reverse" : "forward"} onChange={(event) => {
-            setPreviewReverse(event.currentTarget.value === "reverse"); setPreviewAnswer(false);
-          }}><option value="forward">Forward</option><option value="reverse">Reverse</option></NativeSelect>
-        </FormField> : null}
-        {tags.length > 0 ? <div className="tw:flex tw:flex-wrap tw:gap-2">{tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}</div> : null}
-        <RecallCardSurface presentation={{
-          frontDoc: previewReverse ? backDoc : frontDoc, backDoc: previewReverse ? frontDoc : backDoc,
-          frontText: previewReverse ? backText : frontText, backText: previewReverse ? frontText : backText, assets,
-        }} presentationKey={previewReverse ? "preview-reverse" : "preview-forward"} revealed={previewAnswer}
-          onReveal={() => setPreviewAnswer(true)} onLinkError={setErrorMessage} />
-        <div className="tw:flex tw:justify-center">
-          <Button variant="primary" size="large" onClick={() => setPreviewAnswer((value) => !value)}>
-            {previewAnswer ? "Show question" : "Reveal answer"}
-          </Button>
-        </div>
-      </>}
+        assetDraftId={assetDraftId} disabled={isSaving} onError={setErrorMessage} /> :
+        <RecallDraftPreview presentations={previewPresentations} tags={tags} loading={isPreparingPreview}
+          disabled={isSaving} onError={setErrorMessage} />}
     </CardPreviewWorkspace> : null}
     <div ref={preview.editorRef} hidden={previewOpen} inert={previewOpen} onBlurCapture={preview.rememberField}>
     <PageScaffold aria-busy={isSaving || isLoadingTemplate}>
@@ -735,8 +786,8 @@ export function CardEditorScreen({
         <Button variant="back" disabled={isSaving} onClick={() => void cancel()}>← {deck.name}</Button>
         {existing && recallNote ? <Button variant="secondary" disabled={isSaving || dirty}
           title={dirty ? "Save or discard edits before moving this card" : undefined} onClick={openMoveCopy}>Move / copy</Button> : null}
-        {canPreview ? <Button variant="secondary" disabled={isSaving}
-          onClick={() => { setPreviewAnswer(false); setPreviewReverse(false); preview.open(); }}>Preview card</Button> : null}
+        {canPreview ? <Button variant="secondary" disabled={isSaving || isPreparingPreview}
+          onClick={() => void openCardPreview()}>Preview card</Button> : null}
         <Button variant="secondary" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>
         {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>
           {selectedCustomTemplate ? "Generate + another" : "Save + another"}
@@ -769,7 +820,8 @@ export function CardEditorScreen({
               <NativeSelect value={selectedTemplateKey} disabled={isSaving || existing} onChange={(event) => {
                 setSelectedTemplateKey(event.currentTarget.value);
                 preview.close();
-                setPreviewAnswer(false);
+                setPreviewPresentations([]);
+                setIsPreparingPreview(false);
                 markDirty();
               }}>
                 <optgroup label="Recall cards">
