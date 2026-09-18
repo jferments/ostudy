@@ -6,7 +6,7 @@ Part of the [development plan](README.md). This document defines required eviden
 
 The human has explicitly confirmed that oStudy has not been publicly released. The goal is one current canonical runtime representation, not an expanding matrix of legacy application modes. The repository's existing `ostudy-public-v1` name does not contradict that product status; it is a schema identifier.
 
-**Migrate and verify first; archive second.** Do not delete useful data, clear application storage, overwrite historical checksums, relabel an old database as current, or force a library through a guessed conversion. The current request authorizes a plan and branch, not execution against the user's personal library.
+**Migrate and verify first; archive second.** Do not delete useful data, clear application storage, overwrite historical checksums, relabel an old database as current, or force a library through a guessed conversion. Staged source implementation is authorized on PR #103; execution against the user's personal library is a separate LK-13 human gate and has not occurred.
 
 Different formats still serve different purposes: SQLite library, validated rich/question payloads, authoring JSON, portable deck, full backup, sync payload, and PowerPoint. Each has one current application representation/writer after conversion; they are not collapsed into one universal format. Incoming formats such as Anki remain useful import boundaries, not obsolete internal schemas to delete. Human-authored and generated origins, Basic/Cloze and objective questions are distinct content kinds, not redundant migration versions.
 

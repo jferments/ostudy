@@ -1,6 +1,6 @@
 # Foundation stages: LK-01 through LK-07
 
-Part of the [development plan](README.md). All implementation checkboxes start unchecked. Existing code named here is a reuse boundary, not a claim that the new behavior exists. Proposed test filenames are future deliverables, not commands claimed to run today.
+Part of the [development plan](README.md). Checkboxes reflect the implementation currently published on PR #103; unchecked work remains backlog rather than implied behavior. Existing code named here is a reuse boundary, not by itself proof that a later stage exists. Proposed test filenames remain proposals until the corresponding test is committed.
 
 ## LK-01 — Full-size Practice-faithful editor preview
 
