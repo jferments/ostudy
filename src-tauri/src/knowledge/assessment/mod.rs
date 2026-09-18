@@ -106,14 +106,13 @@ pub(crate) fn admit_card(
         return Err(invalid("The model returned a disabled question type."));
     }
     let required = components::requirements(&input.question, policy.max_compound_items)?;
-    if proposal.components.len() != required.len() || required.len() > MAX_COMPONENTS {
-        return Err(invalid(
-            "Every assessed component requires its own evidence binding.",
-        ));
+    let allowed = components::allowed_requirements(&input.question, policy.max_compound_items)?;
+    if required.len() > MAX_COMPONENTS || proposal.components.len() > MAX_COMPONENTS {
+        return Err(invalid("Assessment component evidence exceeds its bound."));
     }
     let mut components = BTreeMap::new();
     for component in proposal.components {
-        if required.get(&component.key) != Some(&component.stance) {
+        if allowed.get(&component.key) != Some(&component.stance) {
             return Err(invalid(
                 "A component's evidence role does not match the answer key.",
             ));
@@ -131,6 +130,26 @@ pub(crate) fn admit_card(
                 "An assessment repeats a component evidence binding.",
             ));
         }
+    }
+    let missing_required = required
+        .keys()
+        .filter(|key| !components.contains_key(*key))
+        .count();
+    if missing_required != 0 {
+        crate::logging::warn_target(
+            "ai.knowledge.assessment",
+            "assessment_required_evidence_missing",
+            "Generated assessment evidence omitted one or more graded answer components.",
+            json!({
+                "questionKind": question.kind().as_str(),
+                "requiredComponents": required.len(),
+                "providedComponents": components.len(),
+                "missingRequiredComponents": missing_required,
+            }),
+        );
+        return Err(invalid(
+            "Every graded answer component requires its own evidence binding; prompt/category/context bindings are optional.",
+        ));
     }
     let question_hash = hash(&question.to_json()?);
     let criterion = proposal.criterion.trim().to_string();
@@ -205,16 +224,24 @@ impl AssessmentRecord {
             .map_err(|_| invalid("Stored assessment card content is invalid."))?;
         let question = input.question.admit()?;
         let required = components::requirements(&input.question, policy::MAX_COMPOUND_ITEMS)?;
+        let allowed =
+            components::allowed_requirements(&input.question, policy::MAX_COMPOUND_ITEMS)?;
         self.support()?;
         validate_criterion(&self.criterion)?;
         let opportunity = opportunity_id(&self.question_hash, &self.criterion, &self.components)?;
         let wrong_role = self
             .components
             .iter()
-            .any(|component| required.get(&component.key) != Some(&component.stance));
+            .any(|component| allowed.get(&component.key) != Some(&component.stance));
+        let provided = self
+            .components
+            .iter()
+            .map(|component| component.key.as_str())
+            .collect::<BTreeSet<_>>();
+        let missing_required = required.keys().any(|key| !provided.contains(key.as_str()));
         if input.kind != "interactive"
             || self.question_hash != hash(&question.to_json()?)
-            || self.components.len() != required.len()
+            || missing_required
             || wrong_role
             || self.opportunity_id != opportunity
             || self.policy_hash.len() != 64
