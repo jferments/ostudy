@@ -12,8 +12,13 @@ const paths = {
     root,
     "plugins/ostudy-platform/android/src/main/java/OstudyDocumentPlugin.kt",
   ),
+  appGradle: resolve(root, "src-tauri/gen/android/app/build.gradle.kts"),
+  ocrSmoke: resolve(
+    root,
+    "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidOcrSmokeTest.kt",
+  ),
 };
-const [gradle, manifest, qr, document] = await Promise.all(
+const [gradle, manifest, qr, document, appGradle, ocrSmoke] = await Promise.all(
   Object.values(paths).map((path) => readFile(path, "utf8")),
 );
 
@@ -57,7 +62,7 @@ for (const proprietary of [
   "TextRecognition.getClient",
 ]) {
   forbidText(
-    `${gradle}\n${qr}\n${document}`,
+    `${gradle}\n${qr}\n${document}\n${appGradle}\n${ocrSmoke}`,
     proprietary,
     `Proprietary Android imaging dependency/runtime must not remain: ${proprietary}`,
   );
@@ -122,6 +127,23 @@ requireText(
   "tess.stop()",
   "Android OCR timeout must interrupt the active Tesseract recognition operation.",
 );
+requireText(
+  appGradle,
+  'androidTestImplementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")',
+  "Android OCR instrumentation must use the same audited Tesseract runtime.",
+);
+requireText(
+  ocrSmoke,
+  "bundledTesseractRecognizesHighContrastEnglishTextOffline",
+  "Android emulator smoke must exercise packaged Tesseract OCR.",
+);
+for (const forbidden of ["TextRecognition", "TextRecognizerOptions", "com.google.mlkit"]) {
+  forbidText(
+    ocrSmoke,
+    forbidden,
+    `Android OCR smoke must not retain proprietary ML Kit code: ${forbidden}`,
+  );
+}
 
 console.log(
   "OK   Android QR and OCR use bounded local open-source ZXing/Tesseract runtimes with packaged model data and interruptible recognition.",
