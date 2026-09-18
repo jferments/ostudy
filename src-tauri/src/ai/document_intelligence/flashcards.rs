@@ -184,45 +184,79 @@ fn parse_knowledge_cards_with_policy(
             "The card response exceeded its hard safety limit.",
         ));
     }
-    let candidates: Vec<Value> = response
-        .cards
-        .into_iter()
-        .map(|item| {
-            if item.card["type"] == "interactive" {
-                if !item.knowledge_unit_ids.is_empty() {
-                    return Err(assessment::invalid(
-                        "Interactive cards use component evidence, not a separate flat target list.",
-                    ));
+    let returned_count = response.cards.len();
+    let mut candidates = Vec::with_capacity(returned_count);
+    let mut rejected_count = 0_usize;
+    let mut first_rejection = None;
+    for item in response.cards {
+        match admit_knowledge_card(item, knowledge, policy) {
+            Ok(card) => candidates.push(card),
+            Err(error) if retryable_contract_error(&error) => {
+                rejected_count = rejected_count.saturating_add(1);
+                if first_rejection.is_none() {
+                    first_rejection = Some(error);
                 }
-                let proposal = item.assessment.ok_or_else(|| {
-                    assessment::invalid("Interactive cards require an assessment opportunity.")
-                })?;
-                return assessment::admit_card(item.card, proposal, knowledge, policy);
             }
-            if item.card["type"] == "multiple_choice" {
-                return Err(assessment::invalid(
-                    "Generate single_choice as a typed question, not a legacy text-only multiple-choice card.",
-                ));
-            }
-            if item.assessment.is_some() {
-                return Err(assessment::invalid(
-                    "Recall cards cannot carry unrelated component evidence.",
-                ));
-            }
-            let support = knowledge.select(&item.knowledge_unit_ids, 2)?;
-            // Normalize one card at a time. Filtering invalid siblings must never
-            // shift a surviving card onto another card's selected knowledge IDs.
-            let mut normalized = parse_flashcards(json!({"cards":[item.card]}), 1)?;
-            let mut card = normalized
-                .pop()
-                .ok_or_else(|| super::support::output_error("No validated card was returned."))?;
-            card[CARD_SUPPORT_KEY] =
-                serde_json::to_value(support).map_err(CommandError::serialization)?;
-            card[assessment::CARD_POLICY_KEY] = Value::String(policy.fingerprint()?);
-            Ok(card)
-        })
-        .collect::<Result<_, CommandError>>()?;
+            Err(error) => return Err(error),
+        }
+    }
+    if candidates.is_empty() && returned_count != 0 {
+        return Err(first_rejection.unwrap_or_else(|| {
+            super::support::output_error("The model returned no admissible learning cards.")
+        }));
+    }
+    if rejected_count != 0 {
+        crate::logging::warn_target(
+            "ai.document.generation",
+            "document_generation_candidates_rejected",
+            "Invalid generated candidates were omitted while independently admitted siblings were retained.",
+            json!({
+                "returnedCandidates": returned_count,
+                "acceptedCandidates": candidates.len(),
+                "rejectedCandidates": rejected_count,
+            }),
+        );
+    }
     assessment::policy::select_cards(candidates, maximum, knowledge, policy)
+}
+
+fn admit_knowledge_card(
+    item: KnowledgeCard,
+    knowledge: &KnowledgeCatalog,
+    policy: &GenerationPolicy,
+) -> Result<Value, CommandError> {
+    if item.card["type"] == "interactive" {
+        if !item.knowledge_unit_ids.is_empty() {
+            return Err(assessment::invalid(
+                "Interactive cards use component evidence, not a separate flat target list.",
+            ));
+        }
+        let proposal = item.assessment.ok_or_else(|| {
+            assessment::invalid("Interactive cards require an assessment opportunity.")
+        })?;
+        return assessment::admit_card(item.card, proposal, knowledge, policy);
+    }
+    if item.card["type"] == "multiple_choice" {
+        return Err(assessment::invalid(
+            "Generate single_choice as a typed question, not a legacy text-only multiple-choice card.",
+        ));
+    }
+    if item.assessment.is_some() {
+        return Err(assessment::invalid(
+            "Recall cards cannot carry unrelated component evidence.",
+        ));
+    }
+    let support = knowledge.select(&item.knowledge_unit_ids, 2)?;
+    // Normalize one card at a time. Rejecting one sibling can never shift a
+    // surviving card onto another card's selected knowledge IDs.
+    let mut normalized = parse_flashcards(json!({"cards":[item.card]}), 1)?;
+    let mut card = normalized
+        .pop()
+        .ok_or_else(|| super::support::output_error("No validated card was returned."))?;
+    card[CARD_SUPPORT_KEY] =
+        serde_json::to_value(support).map_err(CommandError::serialization)?;
+    card[assessment::CARD_POLICY_KEY] = Value::String(policy.fingerprint()?);
+    Ok(card)
 }
 
 fn flashcard_system_prompt() -> String {
@@ -309,7 +343,13 @@ mod tests {
             {"card":{"type":"basic","front":"","back":""},"knowledgeUnitIds":["a".repeat(32)]},
             {"card":{"type":"basic","front":"What is a triangle?","back":"A three-sided shape"},"knowledgeUnitIds":["a".repeat(32)]}
         ]});
-        assert!(parse_knowledge_cards(response, 2, &catalog).is_err());
+        let cards = parse_knowledge_cards(response, 2, &catalog).unwrap();
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0]["front"], "What is a triangle?");
+        assert_eq!(
+            authoring::card_support(&cards[0]).unwrap()[0].unit_id,
+            "a".repeat(32)
+        );
         assert!(parse_knowledge_cards(json!({"cards":[]}), 2, &catalog)
             .unwrap()
             .is_empty());
@@ -339,15 +379,20 @@ mod budget_regressions {
         );
     }
     #[test]
-    fn overshoot_does_not_exempt_surplus_candidates_from_evidence_validation() {
+    fn surplus_candidates_are_individually_admitted_before_selection() {
         let catalog = crate::knowledge::authoring::tests::catalog_fixture();
         let card = |id: String| json!({"card":{"type":"basic","front":"Sides?","back":"Three"},"knowledgeUnitIds":[id]});
-        assert!(parse_knowledge_cards(
+        let cards = parse_knowledge_cards(
             json!({"cards":[card("a".repeat(32)),card("f".repeat(32))]}),
             1,
-            &catalog
+            &catalog,
         )
-        .is_err());
+        .unwrap();
+        assert_eq!(cards.len(), 1);
+        assert_eq!(
+            authoring::card_support(&cards[0]).unwrap()[0].unit_id,
+            "a".repeat(32)
+        );
         assert!(parse_knowledge_cards(
             json!({"cards":vec![card("a".repeat(32));129]}),
             16,
