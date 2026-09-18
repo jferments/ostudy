@@ -54,7 +54,9 @@ impl CoverageReceipt {
         // An omitted attachment is still planned, not interpreted or unreadable.
         let planned = EvidenceCatalog::build(sources, true)?;
         if planned.entries.len() > MAX_REGIONS {
-            return Err(invalid("The evidence coverage plan exceeds its region limit."));
+            return Err(invalid(
+                "The evidence coverage plan exceeds its region limit.",
+            ));
         }
         let images_attached = catalog
             .entries
@@ -80,7 +82,11 @@ impl CoverageReceipt {
             .iter()
             .map(|source| (&source.id, &source.content_hash, &source.owner_revision))
             .collect::<Vec<_>>();
-        let ids = planned.entries.iter().map(|entry| &entry.id).collect::<Vec<_>>();
+        let ids = planned
+            .entries
+            .iter()
+            .map(|entry| &entry.id)
+            .collect::<Vec<_>>();
         let plan_hash = hash(
             &serde_json::to_string(&(VERSION, revisions, ids))
                 .map_err(CommandError::serialization)?,
@@ -149,7 +155,10 @@ impl CoverageReceipt {
             .iter()
             .flat_map(|unit| {
                 unit.content.grounding.iter().flat_map(|grounding| {
-                    grounding.evidence.iter().map(|reference| reference.id.as_str())
+                    grounding
+                        .evidence
+                        .iter()
+                        .map(|reference| reference.id.as_str())
                 })
             })
             .collect::<HashSet<_>>();
@@ -178,7 +187,9 @@ impl CoverageReceipt {
             || self.plan_hash != expected.plan_hash
             || self.regions.len() != expected.regions.len()
         {
-            return Err(invalid("The coverage receipt does not match its evidence plan."));
+            return Err(invalid(
+                "The coverage receipt does not match its evidence plan.",
+            ));
         }
         for (region, original) in expected.regions.iter_mut().zip(&self.regions) {
             if region.id != original.id
@@ -194,13 +205,17 @@ impl CoverageReceipt {
                         )
                 })
             {
-                return Err(invalid("The coverage receipt contains an unsupported disposition."));
+                return Err(invalid(
+                    "The coverage receipt contains an unsupported disposition.",
+                ));
             }
             region.declared = original.declared;
         }
         expected.refresh(accepted, no_learning);
         if expected != *self {
-            return Err(invalid("The coverage receipt misrepresents admitted interpretations."));
+            return Err(invalid(
+                "The coverage receipt misrepresents admitted interpretations.",
+            ));
         }
         Ok(())
     }
@@ -237,9 +252,9 @@ impl CoverageReceipt {
 
     pub(crate) fn covers_unresolved(&self, evidence: &[EvidenceReference]) -> bool {
         evidence.iter().any(|reference| {
-            self.regions.iter().any(|region| {
-                region.id == reference.id && region.state == Disposition::Unresolved
-            })
+            self.regions
+                .iter()
+                .any(|region| region.id == reference.id && region.state == Disposition::Unresolved)
         })
     }
 
@@ -251,7 +266,12 @@ impl CoverageReceipt {
     }
 
     pub(crate) fn diagnostic(&self) -> Value {
-        let count = |state| self.regions.iter().filter(|region| region.state == state).count();
+        let count = |state| {
+            self.regions
+                .iter()
+                .filter(|region| region.state == state)
+                .count()
+        };
         json!({"version":self.version,"planHash":self.plan_hash,
             "regions":self.regions.len(),"interpreted":count(Disposition::Interpreted),
             "retainedMetadata":count(Disposition::RetainedMetadata),

@@ -43,7 +43,10 @@ fn one_supported_region_does_not_complete_a_large_source_and_repair_preserves_si
     checkpoint.save(&initial).unwrap();
     let before = db.with_connection(|c| Ok(c.total_changes())).unwrap();
     assert!(!checkpoint.load().unwrap().unwrap().is_complete());
-    assert_eq!(db.with_connection(|c| Ok(c.total_changes())).unwrap(), before);
+    assert_eq!(
+        db.with_connection(|c| Ok(c.total_changes())).unwrap(),
+        before
+    );
     let repaired = decode::repair(
         &initial,
         json!({"additionalUnits":[proposal(missing)]}),
@@ -65,7 +68,12 @@ fn dispositions_are_explicit_bounded_and_cannot_filter_or_merge_evidence() {
     let (_, source, _, _) = fixture();
     let sources = [source];
     let catalog = EvidenceCatalog::build(&sources, false).unwrap();
-    for invalid in ["filtered_interface", "verified_duplicate", "interpreted", "invented"] {
+    for invalid in [
+        "filtered_interface",
+        "verified_duplicate",
+        "interpreted",
+        "invented",
+    ] {
         let report = decode::initial(
             json!({"units":[],"regionDispositions":[{"evidenceId":"E0","disposition":invalid}]}),
             &catalog,
@@ -144,7 +152,10 @@ fn forged_or_stale_region_receipts_are_rejected_before_any_publication() {
         let before = db.with_connection(|c| Ok(c.total_changes())).unwrap();
         let mut checkpoint = Checkpoint::open(&db, &sources, &contract).unwrap();
         assert!(checkpoint.save(&bad).is_err());
-        assert_eq!(db.with_connection(|c| Ok(c.total_changes())).unwrap(), before);
+        assert_eq!(
+            db.with_connection(|c| Ok(c.total_changes())).unwrap(),
+            before
+        );
     }
     let mut changed = sources[0].clone();
     changed.text.push_str(" New condition");
@@ -182,7 +193,10 @@ fn multi_result_transport_retains_region_declarations_and_legacy_receipts_stay_r
     checkpoint.save(&old).unwrap();
     let before = db.with_connection(|c| Ok(c.total_changes())).unwrap();
     assert!(checkpoint.load().unwrap().unwrap().coverage.is_none());
-    assert_eq!(db.with_connection(|c| Ok(c.total_changes())).unwrap(), before);
+    assert_eq!(
+        db.with_connection(|c| Ok(c.total_changes())).unwrap(),
+        before
+    );
 }
 
 #[test]
@@ -193,7 +207,10 @@ fn oversized_or_malformed_declarations_cannot_certify_missing_regions() {
     for declarations in [
         json!([{"evidenceId":"E0","disposition":"no_learning","extra":true}]),
         json!([{"evidenceId":"E999","disposition":"no_learning"}]),
-        json!(vec![json!({"evidenceId":"E0","disposition":"no_learning"}); MAX_REGIONS + 1]),
+        json!(vec![
+            json!({"evidenceId":"E0","disposition":"no_learning"});
+            MAX_REGIONS + 1
+        ]),
     ] {
         let report = decode::initial(
             json!({"units":[],"regionDispositions":declarations}),
