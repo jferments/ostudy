@@ -52,7 +52,7 @@ Focused references provide deeper contracts:
 
 [CONTRIBUTING.md](../CONTRIBUTING.md) explains useful reports and reviewable changes. The [development guide](development/guide.md) maps the repository and day-to-day commands. [Git and PR workflow](development/workflow.md) defines source publication, evidence, review, merge, and rollback. [Testing and CI](development/testing-and-ci.md) defines focused/static/fast/full/platform gates and exact-head evidence.
 
-Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](agents/README.md), and the canonical [GitHub-direct procedure](agents/GITHUB-DIRECT-DEVELOPMENT.md). [Execution state](agents/EXECUTION-STATE.md), [failure triage](agents/FAILURE-TRIAGE.md), and [Connector diagnostics](agents/GITHUB-CONNECTOR.md) explain evidence and resumption without turning optional services into prerequisites.
+Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](agents/README.md), and the canonical [GitHub-direct procedure](agents/GITHUB-DIRECT-DEVELOPMENT.md). [Interruption recovery / ANCHORLINE](agents/RECOVERY-PROTOCOL.md) defines resumption after stalled responses or stale conversational state. [Execution state](agents/EXECUTION-STATE.md), [failure triage](agents/FAILURE-TRIAGE.md), and [Connector diagnostics](agents/GITHUB-CONNECTOR.md) explain evidence and resumption without turning optional services into prerequisites.
 
 [Documentation maintenance](agents/DOCUMENTATION-MAINTENANCE.md) defines canonical ownership and stale-code review. The [documentation/cleanup audit](development/documentation-and-cleanup-audit.md) records concrete findings, removals, intentional compatibility, and remaining engineering observations.
 

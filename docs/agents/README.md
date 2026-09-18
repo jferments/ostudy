@@ -13,6 +13,7 @@ Read [GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md) first. It is the 
 | Task | Maintained reference |
 | --- | --- |
 | Start, resume, publish, or integrate main | [GitHub-direct development](GITHUB-DIRECT-DEVELOPMENT.md) |
+| Recover after an interrupted response or stale conversational state | [Interruption recovery / ANCHORLINE](RECOVERY-PROTOCOL.md) |
 | Understand publication versus execution | [Source-publication boundary](SOURCE-PUBLICATION-BOUNDARY.md) |
 | Record acceptance, evidence, readiness, and completion | [Execution state](EXECUTION-STATE.md) |
 | Diagnose an actual failure | [Failure triage](FAILURE-TRIAGE.md) and [Connector diagnostics](GITHUB-CONNECTOR.md) |

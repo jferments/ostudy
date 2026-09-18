@@ -48,6 +48,10 @@ after this comparison; proceed from the known next implementation boundary.
 These checks prevent specific routing and stale-state errors. They do not prove
 that platform-level interrupted responses have been fixed.
 
+Connector schemas loaded into a particular model/tool context are **session-local action exposure**. A schema disappearing from the immediately loaded surface does not revoke repository permission and does not invalidate earlier successful authenticated reads or publications. Discover the required action through the available Connector surface, then invoke that real operation. Do not rediscover a working action surface repeatedly during one bounded repair loop.
+
+After an interrupted response, use [the recovery protocol](RECOVERY-PROTOCOL.md): one authoritative PR/head comparison is enough unless GitHub actually moved. Missing conversational state is not a repository outage.
+
 ## Publication evidence
 
 Read the exact current head, prepare complete source files from that ref, create blobs and a parent-based tree, create a commit naming the expected parent, re-check the remote ref, update without force, and re-read the resulting head. See the canonical protocol for details, deletions, and drift handling.

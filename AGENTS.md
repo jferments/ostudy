@@ -8,6 +8,12 @@ Read [GitHub-direct development](docs/agents/GITHUB-DIRECT-DEVELOPMENT.md) and [
 
 Do not use Codex, `dev-workspace-v1`, the orchestrator, observer, exact-head MCP, Secure MCP Tunnel, or any custom developer MCP unless the human explicitly requests it for the current task. Do not infer authorization from an old conversation, available tool, or historical deployment. If an explicitly requested MCP fails or disappears, stop that path, verify GitHub, and continue GitHub-direct rather than debugging plugins.
 
+### Interruption recovery
+
+Read [the recovery protocol](docs/agents/RECOVERY-PROTOCOL.md). **ANCHORLINE RESET** means preserve useful work, verify authoritative GitHub state once, stop optional loops, and continue the existing assignment. It never means Git reset, rollback, discarding changes, restarting the project, or reducing scope. Do not ask the human to repeat instructions that are already present or retrievable.
+
+On a resumed development turn, perform one bounded PR/head/failure/qualification read and then continue from the next unfinished boundary. Do not repeat repository inventory or Connector capability discovery merely because the prior response was interrupted. Keep a compact publication checkpoint, provide visible progress during substantial work, and finish every completed turn with a substantive evidence-based response.
+
 ### Required execution sequence
 
 1. Read the exact current base or PR head through GitHub. Inspect the relevant source and tests at that SHA.
