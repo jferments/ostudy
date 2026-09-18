@@ -209,7 +209,9 @@ describe("full-size editor preview workspace", () => {
     expect(screen.getByRole("region", { name: "Card preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
     mocks.topId = null;
-    await waitFor(() => expect(screen.getByRole("button", { name: "Preview card" })).not.toBeDisabled());
+    await waitFor(() => expect(
+      (screen.getByRole("button", { name: "Preview card" }) as HTMLButtonElement).disabled,
+    ).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Preview card" }));
     fireEvent.keyDown(window, { key: "Escape", isComposing: true });
     expect(screen.getByRole("region", { name: "Card preview" })).toBeTruthy();
