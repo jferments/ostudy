@@ -85,11 +85,11 @@ skip_case() {
 
 # Native regression cases are deliberately executed, not merely compiled into
 # the instrumentation APK. These cover the Android boundaries most likely to
-# regress without a visible desktop failure: insets, bundled ML Kit OCR, and
+# regress without a visible desktop failure: insets, bundled Tesseract OCR, and
 # the Rust-to-Kotlin native plugin routing used during application startup.
 record_case contentRootOwnsSystemBarAndDisplayCutoutInsets AndroidInsetsTest || true
 record_case activityRequestsResizeSemanticsForTheSoftwareKeyboard AndroidInsetsTest || true
-record_case bundledMlKitRecognizesHighContrastEnglishTextOffline AndroidOcrSmokeTest || true
+record_case bundledTesseractRecognizesHighContrastEnglishTextOffline AndroidOcrSmokeTest || true
 
 launch_ok=1
 if ! run_case rustPlatformSnapshotReachesDocumentAndQrNativeRoutes AndroidPlatformRoutingTest; then
