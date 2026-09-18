@@ -38,7 +38,10 @@ fn typed_table_retains_spans_roles_units_and_qualifications() {
     assert_eq!(restored.cells[0].column_span, 2);
     assert_eq!(restored.cells[0].header, Some(true));
     assert!(restored.text_projection().unwrap().contains("−2 ≤ v < 3"));
-    assert!(restored.text_projection().unwrap().contains("only while moving"));
+    assert!(restored
+        .text_projection()
+        .unwrap()
+        .contains("only while moving"));
 }
 
 #[test]
@@ -74,10 +77,18 @@ fn unknown_structure_geometry_and_forged_links_fail_closed() {
     structure.version = 999;
     assert!(structure.validate(CanonicalBlockRole::Paragraph).is_err());
     structure.version = 1;
-    structure.bounds = Some(SourceBounds { x0: 2.0, y0: 0.0, x1: 1.0, y1: 1.0 });
+    structure.bounds = Some(SourceBounds {
+        x0: 2.0,
+        y0: 0.0,
+        x1: 1.0,
+        y1: 1.0,
+    });
     assert!(structure.validate(CanonicalBlockRole::Paragraph).is_err());
     structure.bounds = None;
-    structure.links.push(StructureLink { target_node: 2, kind: StructureLinkKind::Footnote });
+    structure.links.push(StructureLink {
+        target_node: 2,
+        kind: StructureLinkKind::Footnote,
+    });
     assert!(structure.validate(CanonicalBlockRole::Paragraph).is_err());
     structure.node = Some(1);
     structure.validate(CanonicalBlockRole::Paragraph).unwrap();
