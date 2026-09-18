@@ -4,6 +4,9 @@
 
 use rusqlite::Connection;
 
+#[path = "payload_entry.rs"]
+mod payload_entry;
+
 use super::{verify_public_ledger_exists, LATEST_SCHEMA_VERSION, MIGRATIONS};
 
 pub(super) fn user_version(connection: &Connection) -> Result<i64, String> {
@@ -66,5 +69,6 @@ pub(super) fn validate_public_input(connection: &Connection) -> Result<i64, Stri
     // Do this before applying even an earlier missing repair. Otherwise a later
     // unknown repair could be discovered only after the library has changed.
     crate::data_repairs::verify_repair_ledger(connection)?;
+    payload_entry::validate(connection, version)?;
     Ok(version)
 }
