@@ -28,6 +28,7 @@ pub(crate) mod runtime;
 mod scope;
 pub(crate) mod shared_preparation;
 pub(crate) mod snapshot;
+pub(crate) mod typed_payload;
 
 pub(crate) use images::load_images;
 pub(crate) use runtime::has_active_tasks;

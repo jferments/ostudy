@@ -30,6 +30,7 @@ pub(crate) fn catalog_fixture() -> KnowledgeCatalog {
                 topic: "Geometry".to_string(),
                 supporting_excerpt: "A triangle has three sides.".to_string(),
                 grounding: None,
+                details: None,
             },
         }],
     }

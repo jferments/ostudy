@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
 
 pub(crate) const CONTENT_SCHEMA_VERSION: i64 = 1;
-pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 3;
+pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 4;
 pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
 // A storage ceiling, not a pedagogical quota per PDF page.
@@ -227,6 +227,9 @@ pub(crate) struct KnowledgeUnitInput {
     pub supporting_excerpt: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grounding: Option<super::evidence::Grounding>,
+    /// Optional native spans into `statement`; absence preserves existing hashes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<super::typed_payload::TypedPayload>,
 }
 
 impl KnowledgeUnitInput {
@@ -258,6 +261,9 @@ impl KnowledgeUnitInput {
         }
         if let Some(grounding) = &self.grounding {
             grounding.validate_shape(source)?;
+        }
+        if let Some(details) = &self.details {
+            details.validate(&self.statement, self.kind)?;
         }
         // An exact excerpt proves location, not correctness or entailment.
         // Image-grounded units deliberately have no invented quotation.

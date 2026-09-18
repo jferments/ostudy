@@ -74,6 +74,8 @@ struct Proposal {
     topic: String,
     importance: Importance,
     evidence_ids: Vec<String>,
+    #[serde(default)]
+    details: Option<Value>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -118,7 +120,19 @@ fn admit(
         .iter()
         .find(|e| e.source_id == primary.id && !e.excerpt.is_empty())
         .map_or_else(String::new, |e| e.excerpt.clone());
+    let details = proposal
+        .details
+        .map(|value| {
+            super::super::typed_payload::TypedPayload::admit(
+                value,
+                &proposal.statement,
+                proposal.kind,
+            )
+        })
+        .transpose()
+        .map_err(|_| invalid("invalid_qualified_structure"))?;
     let content = KnowledgeUnitInput {
+        details,
         title: proposal.title,
         kind: proposal.kind,
         statement: proposal.statement,
@@ -593,3 +607,6 @@ mod capacity_regression_tests {
         assert!(!invalid.is_complete());
     }
 }
+
+#[cfg(test)]
+mod typed_tests;

@@ -11,6 +11,7 @@ fn proposal(catalog: &EvidenceCatalog) -> Value {
         "statement":{"type":"string","minLength":1,"maxLength":3000},
         "qualifications":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":1000}},
         "topic":{"type":"string","maxLength":500},
+        "details":super::super::typed_payload::TypedPayload::schema(),
         "importance":{"type":"string","enum":["core","supporting","detail"]},
         "evidenceIds":{"type":"array","minItems":1,"maxItems":8,"uniqueItems":true,"items":{"type":"string","enum":catalog.aliases()}}
     }})

@@ -77,14 +77,20 @@ impl KnowledgeCatalog {
                     "legacy":true}));
                 vec![id]
             };
-            json!({
+            let details = unit.content.details.as_ref()
+                .map(|details| {
+                    details.validate(&unit.content.statement, unit.content.kind)?;
+                    details.prompt(&unit.content.statement)
+                }).transpose()?;
+            Ok(json!({
+                "details":details,
                 "id":unit.id,"title":unit.content.title,"kind":unit.content.kind,
                 "statement":unit.content.statement,"qualifications":unit.content.qualifications,
                 "topic":unit.content.topic,"origin":unit.origin,"evidenceIds":evidence_ids,
                 "importance":unit.content.grounding.as_ref().map(|grounding| grounding.importance),
                 "documentCore":self.document_core_units.contains(&unit.id),
-            })
-        }).collect::<Vec<_>>();
+            }))
+        }).collect::<Result<Vec<_>, CommandError>>()?;
         serde_json::to_string(&json!({"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
             "trust":"Knowledge statements and priorities are model interpretations. Evidence is literal source material. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."}))
             .map_err(CommandError::serialization)
