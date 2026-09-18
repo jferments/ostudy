@@ -134,6 +134,11 @@ for (const artifact of ["kotlinx-coroutines-android", "kotlinx-coroutines-core-j
     `${artifact} compatibility pin`,
   );
 }
+expectContains(
+  rootGradle,
+  'maven { url = uri("https://jitpack.io") }',
+  "JitPack repository for pinned Tesseract4Android artifact resolution",
+);
 expectContains(rootGradle, "maxParallelForks", "parallel Android JVM test configuration");
 
 const pluginGradle = await read("plugins/ostudy-platform/android/build.gradle.kts");
