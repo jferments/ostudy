@@ -262,8 +262,7 @@ fn admit_knowledge_card(
     let mut card = normalized
         .pop()
         .ok_or_else(|| super::support::output_error("No validated card was returned."))?;
-    card[CARD_SUPPORT_KEY] =
-        serde_json::to_value(support).map_err(CommandError::serialization)?;
+    card[CARD_SUPPORT_KEY] = serde_json::to_value(support).map_err(CommandError::serialization)?;
     card[assessment::CARD_POLICY_KEY] = Value::String(policy.fingerprint()?);
     Ok(card)
 }
@@ -289,7 +288,9 @@ mod tests {
         )));
         assert!(!prompt.contains("PDF"));
         assert!(prompt.contains("Mandatory graded bindings"));
-        assert!(prompt.contains("Prompt, category:<id>, and isolated ordering item:<id> bindings are optional"));
+        assert!(prompt.contains(
+            "Prompt, category:<id>, and isolated ordering item:<id> bindings are optional"
+        ));
         assert!(!prompt.contains("Bind prompt for every question"));
     }
 
