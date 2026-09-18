@@ -58,6 +58,7 @@ Use `./scripts/ostudy-dev desktop` or `pnpm desktop` only for deliberate Tauri h
 ```bash
 pnpm verify:docs
 node ./scripts/verify-agent-workflow-policy.mjs
+node ./scripts/verify-agent-recovery-policy.mjs
 ./scripts/check-changed.sh
 ./scripts/check-static.sh
 ./scripts/check-fast.sh

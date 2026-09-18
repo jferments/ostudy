@@ -75,6 +75,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Verify CI runner identity and isolation
+        run: bash ./scripts/runner/ci-runtime-preflight.sh
+
       - name: Expose pinned user toolchains and persistent caches
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"

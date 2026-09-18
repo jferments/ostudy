@@ -8,6 +8,14 @@ Do not use Codex, `dev-workspace-v1`, the orchestrator, observer, exact-head MCP
 
 A human's local checkout and the commands supplied for local testing are not an alternate agent publishing service. A sandbox may help inspect already retrieved text, prepare ordinary file contents, or perform explicitly identified auxiliary checks; it must not be represented as the user's workstation, the CI VM, or an unpublished authoritative worktree. Publish source only through the selected GitHub writer.
 
+## Interruption-resilient execution
+
+[Interruption recovery](RECOVERY-PROTOCOL.md) is part of this procedure. **ANCHORLINE RESET** is a recovery cue, not a Git operation: preserve useful work, perform one bounded authoritative state read, and continue the existing assignment. It never authorizes rollback, force-push, scope reduction, or project restart. Do not ask the human to repeat instructions that are already present or retrievable.
+
+After an interrupted response or resumed chat, resolve the actual PR/head, unresolved failure/review state, and exact-head qualification once. Compare remembered or PR-body SHAs to the remote head, record the next unfinished boundary, and proceed. Do not restart repository inventory, architecture discovery, or Connector schema discovery without new evidence that it is necessary.
+
+For substantial work, surface brief progress after meaningful publication or a few tool operations. These updates do not require acknowledgement and never replace the final response. Every completed turn must return a substantive response with the verified published head, useful changes, actual tests and tested SHAs, unrun/failed gates, and the next unfinished boundary. Do not promise background continuation.
+
 ## The complete normal loop
 
 1. Read current GitHub state. For a new task, resolve current `main` to a full commit SHA. For resumption, read the actual PR, head ref, reviews, and exact-head Actions state.
