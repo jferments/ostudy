@@ -201,6 +201,15 @@ fn parse_knowledge_cards_with_policy(
         }
     }
     if candidates.is_empty() && returned_count != 0 {
+        crate::logging::warn_target(
+            "ai.document.generation",
+            "document_generation_all_candidates_rejected",
+            "Every generated candidate in this response failed native admission; a bounded repair may follow.",
+            json!({
+                "returnedCandidates": returned_count,
+                "rejectedCandidates": rejected_count,
+            }),
+        );
         return Err(first_rejection.unwrap_or_else(|| {
             super::support::output_error("The model returned no admissible learning cards.")
         }));
