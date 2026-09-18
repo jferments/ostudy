@@ -3,12 +3,17 @@ use std::collections::BTreeMap;
 use super::{invalid, EvidenceStance, GeneratedQuestion};
 use crate::error::CommandError;
 
+/// Evidence that is mandatory because the learner's objective result depends on
+/// this exact answer component. Prompt/category/item context may also be
+/// grounded, but it is not independently graded and therefore cannot make an
+/// otherwise fully grounded question invalid merely because the provider omits a
+/// redundant binding.
 pub(super) fn requirements(
     question: &GeneratedQuestion,
     maximum: usize,
 ) -> Result<BTreeMap<String, EvidenceStance>, CommandError> {
     use EvidenceStance::{Contradicts, Supports};
-    let mut required = BTreeMap::from([("prompt".to_string(), Supports)]);
+    let mut required = BTreeMap::new();
     match question {
         GeneratedQuestion::SingleChoice {
             options,
@@ -71,26 +76,49 @@ pub(super) fn requirements(
         } => {
             bound(categories.len(), maximum)?;
             bound(items.len(), maximum)?;
-            for category in categories {
-                required.insert(format!("category:{}", category.id), Supports);
-            }
             for item in items {
+                // The graded proposition is membership in the selected category;
+                // the category label itself is context, not a separate answer.
                 required.insert(format!("item:{}", item.id), Supports);
             }
         }
         GeneratedQuestion::Ordering { items, .. } => {
             bound(items.len(), maximum)?;
-            for item in items {
-                required.insert(format!("item:{}", item.id), Supports);
-            }
             // Evidence for isolated steps does not establish their order. Every
-            // adjacent precedence edge must be grounded under the same criterion.
+            // adjacent precedence edge is the graded relation and must be
+            // grounded under the same criterion.
             for pair in items.windows(2) {
                 required.insert(format!("before:{}:{}", pair[0].id, pair[1].id), Supports);
             }
         }
     }
     Ok(required)
+}
+
+/// Superset accepted for compatibility with earlier Stage-7 checkpoints and for
+/// providers that choose to return useful contextual grounding in addition to
+/// the mandatory graded components.
+pub(super) fn allowed_requirements(
+    question: &GeneratedQuestion,
+    maximum: usize,
+) -> Result<BTreeMap<String, EvidenceStance>, CommandError> {
+    use EvidenceStance::Supports;
+    let mut allowed = requirements(question, maximum)?;
+    allowed.insert("prompt".to_string(), Supports);
+    match question {
+        GeneratedQuestion::Grouping { categories, .. } => {
+            for category in categories {
+                allowed.insert(format!("category:{}", category.id), Supports);
+            }
+        }
+        GeneratedQuestion::Ordering { items, .. } => {
+            for item in items {
+                allowed.insert(format!("item:{}", item.id), Supports);
+            }
+        }
+        _ => {}
+    }
+    Ok(allowed)
 }
 
 fn bound(count: usize, maximum: usize) -> Result<(), CommandError> {
