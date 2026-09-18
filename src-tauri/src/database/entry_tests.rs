@@ -27,12 +27,17 @@ fn every_supported_entry_reaches_the_same_current_schema_and_then_is_a_no_op() {
         validate_backup_lineage(&connection).expect("supported backup input");
         assert_eq!(connection.total_changes(), before_admission);
         initialize_connection(&mut connection).expect("normalize before runtime");
-        assert_eq!(entry::user_version(&connection).unwrap(), LATEST_SCHEMA_VERSION);
+        assert_eq!(
+            entry::user_version(&connection).unwrap(),
+            LATEST_SCHEMA_VERSION
+        );
         assert_eq!(schema_objects(&connection).unwrap(), expected_schema);
         let retained: (String, i64, i64) = connection
-            .query_row("SELECT name, created_at, updated_at FROM decks", [], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
+            .query_row(
+                "SELECT name, created_at, updated_at FROM decks",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
             .unwrap();
         assert_eq!(retained, ("Retained deck".to_string(), 10, 20));
         let setting: (String, i64) = connection
@@ -45,7 +50,11 @@ fn every_supported_entry_reaches_the_same_current_schema_and_then_is_a_no_op() {
         assert_eq!(setting, ("{\"value\":17}".to_string(), 30));
         let changes = connection.total_changes();
         initialize_connection(&mut connection).expect("current-to-current entry");
-        assert_eq!(connection.total_changes(), changes, "input schema {version}");
+        assert_eq!(
+            connection.total_changes(),
+            changes,
+            "input schema {version}"
+        );
     }
 }
 
@@ -120,14 +129,19 @@ fn rejected_disk_inputs_preserve_bytes_and_do_not_switch_journal_mode() {
     let corrupt_path = root.join("not-sqlite.sqlite3");
     std::fs::write(&corrupt_path, b"not a SQLite database").unwrap();
     assert!(Database::open(&corrupt_path).is_err());
-    assert_eq!(std::fs::read(&corrupt_path).unwrap(), b"not a SQLite database");
+    assert_eq!(
+        std::fs::read(&corrupt_path).unwrap(),
+        b"not a SQLite database"
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn versioned_empty_input_is_not_relabelled_as_a_new_library() {
     let mut connection = Connection::open_in_memory().unwrap();
-    connection.execute_batch("PRAGMA user_version = 999").unwrap();
+    connection
+        .execute_batch("PRAGMA user_version = 999")
+        .unwrap();
     assert!(initialize_connection(&mut connection).is_err());
     assert_eq!(entry::user_version(&connection).unwrap(), 999);
     assert!(schema_objects(&connection).unwrap().is_empty());
@@ -148,5 +162,8 @@ fn interrupted_conversion_rolls_back_its_ddl_data_and_ledger() {
     assert_eq!(schema_objects(&connection).unwrap(), before);
     assert_eq!(entry::validate_public_input(&connection).unwrap(), 1);
     initialize_connection(&mut connection).expect("retry the unchanged supported input");
-    assert_eq!(entry::user_version(&connection).unwrap(), LATEST_SCHEMA_VERSION);
+    assert_eq!(
+        entry::user_version(&connection).unwrap(),
+        LATEST_SCHEMA_VERSION
+    );
 }
