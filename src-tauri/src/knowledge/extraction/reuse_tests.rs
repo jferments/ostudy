@@ -14,7 +14,9 @@ async fn completed_interpretation_is_read_only_across_consumer_contracts() {
     let calls = Cell::new(0);
     let first = run_window(&db, &sources, &producer, &evidence, &signal, false, |_| {
         calls.set(calls.get() + 1);
-        std::future::ready(Ok(json!({"units":[proposal("E0")],"noLearningSourceIds":[]})))
+        std::future::ready(Ok(
+            json!({"units":[proposal("E0")],"noLearningSourceIds":[]}),
+        ))
     })
     .await
     .unwrap();
@@ -27,10 +29,18 @@ async fn completed_interpretation_is_read_only_across_consumer_contracts() {
             .unwrap();
         assert_eq!(compatible, producer);
         assert_ne!(compatible, hash(consumer));
-        let reused = run_window(&db, &sources, &compatible, &evidence, &signal, false, |_| {
-            calls.set(calls.get() + 1);
-            std::future::ready(Err(invalid("unexpected interpretation request")))
-        })
+        let reused = run_window(
+            &db,
+            &sources,
+            &compatible,
+            &evidence,
+            &signal,
+            false,
+            |_| {
+                calls.set(calls.get() + 1);
+                std::future::ready(Err(invalid("unexpected interpretation request")))
+            },
+        )
         .await
         .unwrap();
         assert_eq!(serde_json::to_value(&reused).unwrap(), initial_units);
@@ -42,7 +52,10 @@ async fn completed_interpretation_is_read_only_across_consumer_contracts() {
         assert_eq!(prompt["units"].as_array().unwrap().len(), 1);
         assert_eq!(prompt["evidence"].as_array().unwrap().len(), 1);
         assert_eq!(calls.get(), 1);
-        assert_eq!(db.with_connection(|c| Ok(c.total_changes())).unwrap(), changes);
+        assert_eq!(
+            db.with_connection(|c| Ok(c.total_changes())).unwrap(),
+            changes
+        );
     }
 }
 
@@ -74,7 +87,10 @@ async fn partial_read_does_not_retry_and_explicit_repair_retains_accepted_identi
     .await
     .unwrap();
     assert_eq!(calls.get(), 2);
-    assert_eq!(db.with_connection(|c| Ok(c.total_changes())).unwrap(), changes);
+    assert_eq!(
+        db.with_connection(|c| Ok(c.total_changes())).unwrap(),
+        changes
+    );
     let repaired = run_window(&db, &sources, &contract, &evidence, &signal, true, |call| {
         calls.set(calls.get() + 1);
         let mut fixed = proposal("E0");
@@ -89,7 +105,9 @@ async fn partial_read_does_not_retry_and_explicit_repair_retains_accepted_identi
     .unwrap();
     assert_eq!(calls.get(), 3);
     assert_eq!(repaired[&sources[0].id].len(), 2);
-    assert!(repaired[&sources[0].id].iter().any(|unit| unit.id == accepted_id));
+    assert!(repaired[&sources[0].id]
+        .iter()
+        .any(|unit| unit.id == accepted_id));
     assert!(analysis_store::load(&db, &sources, &contract)
         .unwrap()
         .unwrap()
