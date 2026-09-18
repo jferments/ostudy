@@ -207,33 +207,80 @@ fn identical_payloads_never_merge_document_ownership_or_distinct_occurrences() {
 #[test]
 fn table_values_headers_spans_and_resolved_or_missing_links_survive_persistence() {
     let database = Database::open_in_memory().unwrap();
-    database.with_connection(|connection| {
-        let document = "a".repeat(32);
-        create_document(connection, &document);
-        let mut fixture = fixture(&document);
-        let table = TableStructure {
-            rows: 1, columns: 2,
-            cells: vec![TableCell { row: 0, column: 0, row_span: 1, column_span: 2,
-                header: Some(false), text: "−2 ≤ v < 3".into(), bounds: None }],
-            column_headers: Some(vec!["Velocity (m/s)".into(), "Only while moving".into()]),
-        };
-        let mut value = CanonicalBlock::new(0, 0, 1, CanonicalBlockRole::Table,
-            table.text_projection().unwrap(), None, vec![], None, None, vec![], BTreeMap::new());
-        value.structure = Some(BlockStructure { node: Some(0), table: Some(table.clone()),
-            links: vec![StructureLink { target_node: 1, kind: StructureLinkKind::Footnote },
-                StructureLink { target_node: 99, kind: StructureLinkKind::Caption }],
-            ..BlockStructure::default() });
-        fixture.document.blocks[0] = value;
-        persist(connection, &document, &fixture);
-        let json: String = connection.query_row("SELECT payload_json FROM document_evidence_payloads WHERE json_extract(payload_json, '$.role')='table'", [], |row| row.get(0)).unwrap();
-        let restored: Payload = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.table, Some(table));
-        assert_eq!(restored.text, None);
-        let resolved: i64 = connection.query_row("SELECT COUNT(*) FROM document_evidence_links WHERE target_occurrence_id IS NOT NULL", [], |row| row.get(0)).unwrap();
-        let unresolved: i64 = connection.query_row("SELECT COUNT(*) FROM document_evidence_links WHERE target_occurrence_id IS NULL", [], |row| row.get(0)).unwrap();
-        assert_eq!((resolved, unresolved), (1, 1));
-        Ok(())
-    }).unwrap();
+    database
+        .with_connection(|connection| {
+            let document = "a".repeat(32);
+            create_document(connection, &document);
+            let mut fixture = fixture(&document);
+            let table = TableStructure {
+                rows: 1,
+                columns: 2,
+                cells: vec![TableCell {
+                    row: 0,
+                    column: 0,
+                    row_span: 1,
+                    column_span: 2,
+                    header: Some(false),
+                    text: "−2 ≤ v < 3".into(),
+                    bounds: None,
+                }],
+                column_headers: Some(vec![
+                    "Velocity (m/s)".into(),
+                    "Only while moving".into(),
+                ]),
+            };
+            let mut value = CanonicalBlock::new(
+                0,
+                0,
+                1,
+                CanonicalBlockRole::Table,
+                table.text_projection().unwrap(),
+                None,
+                vec![],
+                None,
+                None,
+                vec![],
+                BTreeMap::new(),
+            );
+            value.structure = Some(BlockStructure {
+                node: Some(0),
+                table: Some(table.clone()),
+                links: vec![
+                    StructureLink {
+                        target_node: 1,
+                        kind: StructureLinkKind::Footnote,
+                    },
+                    StructureLink {
+                        target_node: 99,
+                        kind: StructureLinkKind::Caption,
+                    },
+                ],
+                ..BlockStructure::default()
+            });
+            fixture.document.blocks[0] = value;
+            persist(connection, &document, &fixture);
+            let json: String = connection.query_row("SELECT payload_json FROM document_evidence_payloads WHERE json_extract(payload_json, '$.role')='table'", [], |row| row.get(0)).unwrap();
+            let restored: Payload = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored.table, Some(table));
+            assert_eq!(restored.text, None);
+            let resolved: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM document_evidence_links WHERE target_occurrence_id IS NOT NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let unresolved: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM document_evidence_links WHERE target_occurrence_id IS NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!((resolved, unresolved), (1, 1));
+            Ok(())
+        })
+        .unwrap();
 }
 
 #[test]

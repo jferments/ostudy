@@ -260,9 +260,7 @@ pub(crate) fn backfill(connection: &Connection) -> Result<usize, CommandError> {
              parent_heading, heading_path_json, geometry_json, confidence, asset_ids_json, attributes_json
              FROM document_source_blocks WHERE document_id = ?1 ORDER BY block_index",
         ).map_err(CommandError::database)?;
-        let mut rows = statement
-            .query([&document])
-            .map_err(CommandError::database)?;
+        let mut rows = statement.query([&document]).map_err(CommandError::database)?;
         let mut blocks = Vec::new();
         while let Some(row) = rows.next().map_err(CommandError::database)? {
             let role: String = row.get(3).map_err(CommandError::database)?;

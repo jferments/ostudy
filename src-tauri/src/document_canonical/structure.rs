@@ -97,7 +97,9 @@ impl BlockStructure {
         }
         if let Some(table) = &self.table {
             if role != CanonicalBlockRole::Table {
-                return Err(invalid_canonical("Table structure belongs to a table block."));
+                return Err(invalid_canonical(
+                    "Table structure belongs to a table block.",
+                ));
             }
             table.validate()?;
         }
@@ -135,7 +137,9 @@ impl TableStructure {
             || self.rows.saturating_mul(self.columns) > MAX_CELLS
             || self.cells.len() > MAX_CELLS
         {
-            return Err(invalid_canonical("The structured table exceeds its cell budget."));
+            return Err(invalid_canonical(
+                "The structured table exceeds its cell budget.",
+            ));
         }
         let mut occupied = vec![false; self.rows * self.columns];
         let mut characters = 0_usize;
@@ -158,7 +162,9 @@ impl TableStructure {
                 for column in cell.column..end_column.unwrap_or(cell.column) {
                     let slot = &mut occupied[row * self.columns + column];
                     if *slot {
-                        return Err(invalid_canonical("Overlapping table cells are ambiguous."));
+                        return Err(invalid_canonical(
+                            "Overlapping table cells are ambiguous.",
+                        ));
                     }
                     *slot = true;
                 }
@@ -166,7 +172,9 @@ impl TableStructure {
         }
         if let Some(headers) = &self.column_headers {
             if headers.len() != self.columns {
-                return Err(invalid_canonical("Table headers do not match its columns."));
+                return Err(invalid_canonical(
+                    "Table headers do not match its columns.",
+                ));
             }
             for header in headers {
                 validate_text(header, MAX_TEXT, true)?;
@@ -174,7 +182,9 @@ impl TableStructure {
             }
         }
         if characters > MAX_TEXT {
-            return Err(invalid_canonical("The structured table exceeds its text budget."));
+            return Err(invalid_canonical(
+                "The structured table exceeds its text budget.",
+            ));
         }
         Ok(())
     }
@@ -195,7 +205,9 @@ impl TableStructure {
             .trim()
             .to_string();
         if text.chars().count() > MAX_TEXT {
-            return Err(invalid_canonical("The table text projection exceeds its budget."));
+            return Err(invalid_canonical(
+                "The table text projection exceeds its budget.",
+            ));
         }
         Ok(text)
     }

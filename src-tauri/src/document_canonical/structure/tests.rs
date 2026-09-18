@@ -50,7 +50,9 @@ fn inherited_headers_do_not_become_a_fabricated_physical_row() {
     table.column_headers = Some(vec!["Parent header A".into(), "Parent header B".into()]);
     table.validate().unwrap();
     assert!(!table.text_projection().unwrap().contains("Parent header"));
-    assert!(serde_json::to_string(&table).unwrap().contains("Parent header"));
+    assert!(serde_json::to_string(&table)
+        .unwrap()
+        .contains("Parent header"));
 }
 
 #[test]
