@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 use crate::{error::CommandError, knowledge::contracts::invalid};
 
 pub(super) fn initial(value: Value, maximum: usize) -> Result<Value, CommandError> {
-    let fields = ["units", "noLearningSourceIds"];
+    let fields = ["units", "noLearningSourceIds", "regionDispositions"];
     if !value.as_array().is_some_and(|items| {
         items
             .iter()
@@ -26,7 +26,12 @@ pub(super) fn repair(value: Value, maximum: usize) -> Result<Value, CommandError
     }
     combine(
         value,
-        &["repairs", "additionalUnits", "noLearningSourceIds"],
+        &[
+            "repairs",
+            "additionalUnits",
+            "noLearningSourceIds",
+            "regionDispositions",
+        ],
         None,
         maximum,
     )
@@ -62,7 +67,12 @@ fn combine(
         for (index, field) in fields.iter().enumerate() {
             if let Some(values) = object.get(*field).and_then(Value::as_array) {
                 let target = &mut collections[index];
-                if values.len() > maximum.saturating_sub(target.len()) {
+                let limit = if *field == "regionDispositions" {
+                    512
+                } else {
+                    maximum
+                };
+                if values.len() > limit.saturating_sub(target.len()) {
                     return Err(invalid(
                         "The combined knowledge results exceed their collection budget.",
                     ));
@@ -76,6 +86,7 @@ fn combine(
     let object: Map<String, Value> = fields
         .iter()
         .zip(collections)
+        .filter(|(field, values)| **field != "regionDispositions" || !values.is_empty())
         .map(|(field, values)| ((*field).to_string(), Value::Array(values)))
         .collect();
     crate::logging::debug_target(

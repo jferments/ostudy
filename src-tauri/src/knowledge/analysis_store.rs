@@ -204,6 +204,9 @@ fn load_units(
 }
 
 fn validate_report(sources: &[SourceRecord], report: &AnalysisReport) -> Result<(), CommandError> {
+    if let Some(coverage) = &report.coverage {
+        coverage.validate(sources, &report.accepted, &report.no_learning)?;
+    }
     let mut checked = report.clone();
     checked.refresh_coverage(sources);
     if checked.missing_sources != report.missing_sources

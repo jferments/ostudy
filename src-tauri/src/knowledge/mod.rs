@@ -11,6 +11,7 @@ pub(crate) mod assessment;
 pub(crate) mod authoring;
 pub(crate) mod commands;
 pub(crate) mod contracts;
+pub(crate) mod coverage;
 pub(crate) mod document_view;
 pub(crate) mod evidence;
 pub(crate) mod extraction;

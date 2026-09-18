@@ -34,13 +34,20 @@ pub(crate) struct AnalysisReport {
     pub(crate) rejected: Vec<RejectedUnit>,
     pub(crate) no_learning: Vec<String>,
     pub(crate) missing_sources: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) coverage: Option<super::super::coverage::CoverageReceipt>,
 }
 impl AnalysisReport {
     pub(crate) fn rejected_count(&self) -> usize {
         self.rejected.len() + self.missing_sources.len()
     }
     pub(crate) fn is_complete(&self) -> bool {
-        self.rejected.is_empty() && self.missing_sources.is_empty()
+        self.rejected.is_empty()
+            && self.missing_sources.is_empty()
+            && self
+                .coverage
+                .as_ref()
+                .is_none_or(|coverage| coverage.unresolved() == 0)
     }
     pub(crate) fn refresh_coverage(&mut self, sources: &[SourceRecord]) {
         let used = self
@@ -59,6 +66,10 @@ impl AnalysisReport {
             .filter(|s| !used.contains(s.id.as_str()) && !self.no_learning.contains(&s.id))
             .map(|s| s.id.clone())
             .collect();
+        if let Some(coverage) = &mut self.coverage {
+            coverage.refresh(&self.accepted, &self.no_learning);
+            self.missing_sources = coverage.missing_sources(sources);
+        }
     }
     pub(crate) fn repair_prompt(&self) -> Value {
         json!({"rejectedProposals":self.rejected,"sourcesWithoutDisposition":self.missing_sources})
@@ -273,7 +284,15 @@ pub(crate) fn initial(
     if units.len() > MAX_WINDOW_UNITS || dispositions.len() > MAX_WINDOW_UNITS {
         return Err(invalid("The semantic window exceeded its proposal limit."));
     }
-    let mut report = AnalysisReport::default();
+    let mut report = AnalysisReport {
+        coverage: Some(super::super::coverage::CoverageReceipt::new(
+            sources, catalog,
+        )?),
+        ..AnalysisReport::default()
+    };
+    if let Some(coverage) = &mut report.coverage {
+        coverage.apply(ancillary(&value, "regionDispositions"), catalog);
+    }
     add_dispositions(&mut report, dispositions, sources);
     for (slot, proposal) in units.iter().enumerate() {
         append_unit(&mut report, proposal.clone(), slot, catalog, sources);
@@ -321,6 +340,9 @@ pub(crate) fn repair(
         }
     }
     let mut result = report.clone();
+    if let Some(coverage) = &mut result.coverage {
+        coverage.apply(ancillary(&value, "regionDispositions"), catalog);
+    }
     for raw in repairs {
         let Ok(item) = Repair::deserialize(raw) else {
             continue;
@@ -351,9 +373,14 @@ pub(crate) fn repair(
         }
         let addresses_missing = admit(value.clone(), catalog, sources).is_ok_and(|unit| {
             unit.content.grounding.is_some_and(|g| {
-                g.evidence
-                    .iter()
-                    .any(|e| report.missing_sources.contains(&e.source_id))
+                report.coverage.as_ref().map_or_else(
+                    || {
+                        g.evidence
+                            .iter()
+                            .any(|e| report.missing_sources.contains(&e.source_id))
+                    },
+                    |coverage| coverage.covers_unresolved(&g.evidence),
+                )
             })
         });
         if addresses_missing {
@@ -367,6 +394,7 @@ pub(crate) fn repair(
 }
 pub(crate) fn report_diagnostic(report: &AnalysisReport) -> Value {
     json!({"acceptedUnits":report.accepted.len(),"rejectedUnits":report.rejected.len(),"uncoveredSources":report.missing_sources,
+        "coverage":report.coverage.as_ref().map(|coverage| coverage.diagnostic()),
         "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":r.code,
         "draftFingerprint":hash(&r.proposal.to_string())})).collect::<Vec<_>>()})
 }
