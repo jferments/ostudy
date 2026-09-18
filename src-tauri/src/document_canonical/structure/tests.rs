@@ -75,8 +75,10 @@ fn invalid_overlapping_and_unbounded_grids_fail_without_truncation() {
 
 #[test]
 fn unknown_structure_geometry_and_forged_links_fail_closed() {
-    let mut structure = BlockStructure::default();
-    structure.version = 999;
+    let mut structure = BlockStructure {
+        version: 999,
+        ..BlockStructure::default()
+    };
     assert!(structure.validate(CanonicalBlockRole::Paragraph).is_err());
     structure.version = 1;
     structure.bounds = Some(SourceBounds {
