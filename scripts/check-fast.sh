@@ -79,6 +79,9 @@ cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-fe
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
+step "Current-format entry and preservation contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests::
+
 step "External file transfer and recovery contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
