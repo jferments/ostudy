@@ -18,15 +18,15 @@ fn recall(id: &str, front: &str) -> Value {
 
 fn choice(id: &str) -> Value {
     json!({"card":{"type":"interactive","question":{
-        "kind":"single_choice","prompt":"Which shape has three sides?",
-        "options":[{"id":"triangle","content":"Triangle"},
-            {"id":"square","content":"Square","rationale":"A square has four sides."}],
-        "correctOptionId":"triangle"}},
-        "assessment":{"criterion":"Number of straight sides","ambiguous":false,
-        "components":[
-            {"key":"option:triangle","stance":"supports","knowledgeUnitIds":[id]},
-            {"key":"option:square","stance":"contradicts","knowledgeUnitIds":[id]}
-        ]}})
+    "kind":"single_choice","prompt":"Which shape has three sides?",
+    "options":[{"id":"triangle","content":"Triangle"},
+        {"id":"square","content":"Square","rationale":"A square has four sides."}],
+    "correctOptionId":"triangle"}},
+    "assessment":{"criterion":"Number of straight sides","ambiguous":false,
+    "components":[
+        {"key":"option:triangle","stance":"supports","knowledgeUnitIds":[id]},
+        {"key":"option:square","stance":"contradicts","knowledgeUnitIds":[id]}
+    ]}})
 }
 
 fn retained_next_to(bad: Value) -> Vec<Value> {
@@ -278,10 +278,10 @@ fn mixed_provider_output_publishes_only_retained_cards_with_exact_evidence() {
 fn public_file_import_remains_whole_file_atomic() {
     let database = crate::database::Database::open_in_memory().unwrap();
     let payload = json!({"format":"ostudy-flashcards","formatVersion":2,
-        "deck":{"mode":"create","name":"Must not publish"},"cards":[
-            {"type":"basic","front":"Valid?","back":"Valid answer."},
-            {"type":"basic","front":"![bad](https://example.invalid/x)","back":"No."}
-        ]});
+    "deck":{"mode":"create","name":"Must not publish"},"cards":[
+        {"type":"basic","front":"Valid?","back":"Valid answer."},
+        {"type":"basic","front":"![bad](https://example.invalid/x)","back":"No."}
+    ]});
     let result = import_generated_flashcards_bytes_with_commit_context(
         &database,
         payload.to_string().as_bytes(),
