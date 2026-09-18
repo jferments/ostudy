@@ -57,11 +57,19 @@ fn native_normalization_retains_distinct_occurrences_and_exact_code() {
     assert_eq!(blocks.len(), 3);
     assert_eq!(blocks[0].text, blocks[1].text);
     assert_eq!(
-        catalog.resolve(&blocks[0].attributes).unwrap().unwrap().node,
+        catalog
+            .resolve(&blocks[0].attributes)
+            .unwrap()
+            .unwrap()
+            .node,
         Some(0)
     );
     assert_eq!(
-        catalog.resolve(&blocks[1].attributes).unwrap().unwrap().node,
+        catalog
+            .resolve(&blocks[1].attributes)
+            .unwrap()
+            .unwrap()
+            .node,
         Some(1)
     );
     assert_eq!(blocks[2].role, CanonicalBlockRole::CodeBlock);

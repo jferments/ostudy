@@ -75,15 +75,18 @@ pub(super) fn structure_from_table(value: &Table) -> Result<TableStructure, Comm
         .iter()
         .enumerate()
         .flat_map(|(row, values)| {
-            values.iter().enumerate().map(move |(column, text)| TableCell {
-                row,
-                column,
-                row_span: 1,
-                column_span: 1,
-                header: None,
-                text: text.clone(),
-                bounds: None,
-            })
+            values
+                .iter()
+                .enumerate()
+                .map(move |(column, text)| TableCell {
+                    row,
+                    column,
+                    row_span: 1,
+                    column_span: 1,
+                    header: None,
+                    text: text.clone(),
+                    bounds: None,
+                })
         })
         .collect();
     let table = TableStructure {
