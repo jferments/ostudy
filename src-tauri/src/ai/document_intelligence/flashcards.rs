@@ -270,6 +270,39 @@ mod tests {
     }
 
     #[test]
+    fn provider_response_may_omit_context_bindings_but_not_graded_answer_bindings() {
+        let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let response = json!({"cards":[{
+            "card":{"type":"interactive","question":{
+                "kind":"single_choice",
+                "prompt":"Which has three sides?",
+                "options":[
+                    {"id":"triangle","content":"Triangle"},
+                    {"id":"square","content":"Square","rationale":"A square has four sides, not three."}
+                ],
+                "correctOptionId":"triangle"
+            }},
+            "assessment":{
+                "criterion":"Choose the shape with exactly three sides.",
+                "ambiguous":false,
+                "components":[
+                    {"key":"option:triangle","stance":"supports","knowledgeUnitIds":["a".repeat(32)]},
+                    {"key":"option:square","stance":"contradicts","knowledgeUnitIds":["a".repeat(32)]}
+                ]
+            }
+        }]});
+        let cards = parse_knowledge_cards(response.clone(), 1, &catalog).unwrap();
+        assert_eq!(cards.len(), 1);
+
+        let mut missing = response;
+        missing["cards"][0]["assessment"]["components"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        assert!(parse_knowledge_cards(missing, 1, &catalog).is_err());
+    }
+
+    #[test]
     fn invalid_sibling_does_not_shift_knowledge_association_to_next_card() {
         let catalog = crate::knowledge::authoring::tests::catalog_fixture();
         let response = json!({"cards":[
