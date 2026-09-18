@@ -318,5 +318,7 @@ fn cached_cards_cannot_bypass_native_content_preparation() {
         .unwrap()
         .clone();
     broken["front"] = json!("![bad](https://example.invalid/cached)");
-    assert!(!assessment::validates_checkpoint(&broken, &catalog, &policy));
+    assert!(!assessment::validates_checkpoint(
+        &broken, &catalog, &policy
+    ));
 }
