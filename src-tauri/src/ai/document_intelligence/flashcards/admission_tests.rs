@@ -298,3 +298,25 @@ fn public_file_import_remains_whole_file_atomic() {
         })
         .unwrap();
 }
+
+#[test]
+fn cached_cards_cannot_bypass_native_content_preparation() {
+    let catalog = catalog_fixture();
+    let policy = GenerationPolicy::default();
+    let cards = parse_knowledge_cards(
+        json!({"cards":[recall(&catalog.units[0].id, "Sides?"), choice(&catalog.units[0].id)]}),
+        4,
+        &catalog,
+    )
+    .unwrap();
+    for card in &cards {
+        assert!(assessment::validates_checkpoint(card, &catalog, &policy));
+    }
+    let mut broken = cards
+        .iter()
+        .find(|card| card["type"] == "basic")
+        .unwrap()
+        .clone();
+    broken["front"] = json!("![bad](https://example.invalid/cached)");
+    assert!(!assessment::validates_checkpoint(&broken, &catalog, &policy));
+}

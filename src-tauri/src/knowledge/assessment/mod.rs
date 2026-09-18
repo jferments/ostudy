@@ -284,6 +284,12 @@ pub(crate) fn validates_checkpoint(
     if card.get(CARD_POLICY_KEY).and_then(Value::as_str) != Some(policy_hash.as_str()) {
         return false;
     }
+    // Cached recall content must pass the same native preparation as new output.
+    // Valid source IDs alone do not make malformed Markdown or cloze importable.
+    use crate::authoring::card_types_and_templates::generated_import::validate_generated_card;
+    if validate_generated_card(super::authoring::without_card_support(card.clone())).is_err() {
+        return false;
+    }
     let Ok(record) = record_from_card(card) else {
         return false;
     };
