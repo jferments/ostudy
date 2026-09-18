@@ -26,6 +26,7 @@ pub(crate) mod repository;
 pub(crate) mod retrieval;
 pub(crate) mod runtime;
 mod scope;
+pub(crate) mod shared_preparation;
 pub(crate) mod snapshot;
 
 pub(crate) use images::load_images;
