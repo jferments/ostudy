@@ -150,6 +150,9 @@ pub(crate) fn complete(
         if conversation.revision != identity.accepted_revision {
             return Err(conversations::changed());
         }
+        if let Some(stamp) = &context.learning_stamp {
+            stamp.ensure_current(&transaction)?;
+        }
         for source in &context.sources {
             if !repository::source_is_current(&transaction, source)? {
                 return Err(repository::stale_source());

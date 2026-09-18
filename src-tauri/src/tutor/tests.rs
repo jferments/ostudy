@@ -130,6 +130,7 @@ fn input(fixture: &Fixture, mode: TutorMode) -> TutorTurnInput {
 
 fn context() -> StudyContext {
     StudyContext {
+        learning_stamp: None,
         question_hint: None,
         sources: Vec::new(),
         units: Vec::new(),
@@ -428,3 +429,5 @@ fn hints_use_native_reveal_state_and_the_exact_practice_question() {
 }
 
 mod source_optional;
+
+mod learning_context;

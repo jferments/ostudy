@@ -24,6 +24,7 @@ pub(super) fn build(
         ));
     }
     Ok(StudyContext {
+        learning_stamp: None,
         question_hint: focus.question_hint.clone(),
         sources: Vec::new(),
         units: Vec::new(),

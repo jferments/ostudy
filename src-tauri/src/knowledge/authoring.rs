@@ -25,7 +25,7 @@ use super::{
     runtime::check_canceled,
 };
 
-pub(crate) const AUTHORING_VERSION: i64 = 2;
+pub(crate) const AUTHORING_VERSION: i64 = 3;
 pub(crate) const CARD_SUPPORT_KEY: &str = "_ostudyKnowledge";
 const MAX_AUTHORING_SOURCES: usize = 100_000;
 
@@ -55,6 +55,7 @@ impl UnitSupport {
 pub(crate) struct KnowledgeCatalog {
     pub units: Vec<KnowledgeUnit>,
     pub document_core_units: BTreeSet<String>,
+    pub preparation: super::learning_context::PreparationSummary,
 }
 
 impl KnowledgeCatalog {
@@ -91,7 +92,7 @@ impl KnowledgeCatalog {
                 "documentCore":self.document_core_units.contains(&unit.id),
             }))
         }).collect::<Result<Vec<_>, CommandError>>()?;
-        serde_json::to_string(&json!({"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
+        serde_json::to_string(&json!({"preparation":self.preparation,"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
             "trust":"Knowledge statements and priorities are model interpretations. Evidence is literal source material. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."}))
             .map_err(CommandError::serialization)
     }
@@ -99,7 +100,7 @@ impl KnowledgeCatalog {
     pub(crate) fn fingerprint(&self) -> Result<String, CommandError> {
         Ok(hash(&format!(
             "authoring-v{AUTHORING_VERSION}|{}",
-            serde_json::to_string(&(&self.units, &self.document_core_units))
+            serde_json::to_string(&(&self.units, &self.document_core_units, &self.preparation))
                 .map_err(CommandError::serialization)?
         )))
     }
@@ -297,40 +298,18 @@ pub(crate) fn catalog_for_chunks(
     chunk_indices: &[i64],
     task: &DocumentTaskContext,
 ) -> Result<KnowledgeCatalog, CommandError> {
-    let wanted = serde_json::to_string(chunk_indices).map_err(CommandError::serialization)?;
     let contract = extraction_contract(task)?;
+    task.ensure_current(database)?;
     database.with_connection(|connection| {
-        let mut statement = connection
-            .prepare(
-                "SELECT id FROM knowledge_sources WHERE kind = 'document' AND document_id = ?1
-             AND active = 1 AND parent_key IN (SELECT CAST(value AS TEXT) FROM json_each(?2))
-             ORDER BY CAST(parent_key AS INTEGER), segment_key",
-            )
-            .map_err(CommandError::database)?;
-        let ids = statement
-            .query_map(params![document_id, wanted], |row| row.get::<_, String>(0))
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        if ids.is_empty() {
-            return Err(repository::stale_source());
-        }
-        let mut units = BTreeMap::new();
-        for id in ids {
-            let source =
-                repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
-            if !repository::extraction_available(connection, &source)? {
-                return Err(repository::stale_source());
-            }
-            for unit in repository::load_units(connection, &id)? {
-                units.insert(unit.id.clone(), unit);
-            }
-        }
+        let context = super::learning_context::for_document_chunks(
+            connection, document_id, chunk_indices,
+        )?;
         let document_core_units =
             super::document_view::core_ids(connection, document_id, &contract)?;
         Ok(KnowledgeCatalog {
-            units: units.into_values().collect(),
+            units: context.units,
             document_core_units,
+            preparation: context.preparation,
         })
     })
 }
