@@ -65,6 +65,8 @@ Use this one branch and draft PR for the planned continuation unless the human e
 | LK-13 | Final current-schema baseline, library conversion, archive old code | All schema-bearing stages | S9, data integration |
 | LK-14 | Cross-feature qualification and human handoff | LK-13 | S9, final gates |
 
+Current implementation status: **LK-00 and LK-01 complete; LK-02 is the next unfinished stage.** Stage completion records implementation separately from later human/platform acceptance.
+
 LK-04 and LK-05 can be built in either order after LK-03. PDF capability work can begin against a single-document fixture before collections finish. PPTX layout can begin once lesson composition is stable; its audio gate waits for retained audio. An outstanding human library-conversion check prevents retirement of its needed old converter, not unrelated implementation or publication.
 
 The first product increment is LK-01, not another repository inventory. LK-02 identifies the preservation contract early. Perform one final baseline consolidation at LK-13 after the last schema-bearing feature, avoiding repeated baseline squashes while the data model is changing. During development, small forward transitions normalize libraries before ordinary runtime use; there is never a requirement for every feature to operate directly on multiple historical schemas.
