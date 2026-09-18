@@ -51,3 +51,11 @@ export function rematchMatching(assignments: readonly Placement[], itemId: strin
   next.push({ itemId, targetId });
   return next;
 }
+
+export function responseReady(response: QuestionResponse): boolean {
+  if (response.kind === "single_choice") return response.selectedOptionId !== null;
+  if (response.kind === "true_false") return response.selected !== null;
+  if (response.kind === "matching" || response.kind === "grouping") return response.assignments.length > 0;
+  if (response.kind === "ordering") return response.orderedItemIds.length > 0;
+  return true;
+}

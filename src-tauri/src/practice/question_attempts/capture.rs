@@ -1,11 +1,9 @@
 //! Session-owned capture. Shuffling is native and happens once per instance;
 //! restoration reads the frozen checkpoint, never the latest editable note.
 
-use sha2::{Digest, Sha256};
-
 use super::*;
 use crate::cards::questions::{
-    DisplayOrder, InstanceIdentity, QuestionBody, QuestionInstance, QuestionKind, ValidatedQuestion,
+    InstanceIdentity, QuestionInstance, QuestionKind, ValidatedQuestion,
 };
 
 #[derive(Clone)]
@@ -24,51 +22,7 @@ pub(crate) fn prepare(
     let question = ValidatedQuestion::parse(definition_json)?;
     let kind = question.kind();
     let stem = question.prompt_text(presentation_key)?;
-    let mut order = DisplayOrder::default();
-    match &question.definition().question {
-        QuestionBody::SingleChoice { options, .. } | QuestionBody::SelectAll { options, .. } => {
-            order.item_ids = options.iter().map(|item| item.id.clone()).collect();
-        }
-        QuestionBody::Matching { pairs, .. } => {
-            order.item_ids = pairs.iter().map(|pair| pair.left.id.clone()).collect();
-            order.target_ids = pairs.iter().map(|pair| pair.right.id.clone()).collect();
-        }
-        QuestionBody::Grouping {
-            categories, items, ..
-        } => {
-            order.item_ids = items.iter().map(|item| item.item.id.clone()).collect();
-            order.target_ids = categories.iter().map(|item| item.id.clone()).collect();
-        }
-        QuestionBody::Ordering { items, .. } => {
-            order.item_ids = items.iter().map(|item| item.id.clone()).collect();
-        }
-        // Image geometry/target identity is frozen here; raster bytes are
-        // prepared lazily by the session-authorized image route.
-        QuestionBody::TrueFalse { .. } | QuestionBody::ImageOcclusion { .. } => {}
-    }
-    shuffle(&mut order.item_ids, shuffle_seed, b"items");
-    shuffle(&mut order.target_ids, shuffle_seed, b"targets");
-    match &question.definition().question {
-        QuestionBody::Ordering { items, .. }
-            if order.item_ids.iter().eq(items.iter().map(|item| &item.id)) =>
-        {
-            order.item_ids.rotate_left(1);
-        }
-        QuestionBody::Matching { pairs, .. }
-            if order
-                .item_ids
-                .iter()
-                .zip(&order.target_ids)
-                .all(|(left, right)| {
-                    pairs
-                        .iter()
-                        .any(|pair| &pair.left.id == left && &pair.right.id == right)
-                }) =>
-        {
-            order.target_ids.rotate_left(1);
-        }
-        _ => {}
-    }
+    let order = question.display_order(shuffle_seed);
     let instance =
         QuestionInstance::capture(identity, question, presentation_key.to_string(), order)?;
     Ok(PreparedQuestion {
@@ -78,17 +32,6 @@ pub(crate) fn prepare(
     })
 }
 
-fn shuffle(ids: &mut [String], seed: &str, lane: &[u8]) {
-    ids.sort_by_cached_key(|id| {
-        let mut hash = Sha256::new();
-        hash.update(seed.as_bytes());
-        hash.update([0]);
-        hash.update(lane);
-        hash.update([0]);
-        hash.update(id.as_bytes());
-        (format!("{:x}", hash.finalize()), id.clone())
-    });
-}
 
 pub(crate) fn insert(
     connection: &Connection,

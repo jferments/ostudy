@@ -3,14 +3,21 @@ import { useEffect, useMemo, useState } from "react";
 import { RichTextView } from "../../editor/RichTextView";
 import { OcclusionImageView } from "../../editor/occlusion/OcclusionImageView";
 import type { Asset } from "../../ipc/assets";
+import { getErrorMessage } from "../../ipc/common";
 import type { QuestionResponse } from "../../ipc/questionAttempts";
+import { previewQuestionDraft, type QuestionDraftPreview as NativeQuestionDraftPreview } from "../../ipc/questions";
 import { Button } from "../../ui/primitives/Button";
+import { FormField } from "../../ui/primitives/FormField";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
+import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { QuestionBody } from "../practice/QuestionBody";
-import { emptyQuestionResponse } from "../practice/questionPresentation";
+import { emptyQuestionResponse, responseReady } from "../practice/questionPresentation";
 import { presentation } from "./presentation";
-import { publicQuestionFromDraft, questionPreviewStructureKey } from "./questionPreview";
-import type { QuestionEditorDraft } from "./questionDraft";
+import {
+  definitionFromDraft,
+  questionDraftReady,
+  type QuestionEditorDraft,
+} from "./questionDraft";
 import type { OcclusionEditorDraft } from "./occlusionDraft";
 import { useOcclusionSource } from "./useOcclusionImage";
 import { useOcclusionPreview } from "./useOcclusionPreview";
@@ -32,19 +39,78 @@ export function QuestionDraftPreview(props: QuestionDraftPreviewProps) {
 function ObjectiveDraftPreview({ draft, assets, disabled, onError }: QuestionDraftPreviewProps & {
   draft: Exclude<QuestionEditorDraft, { kind: "image_occlusion" }>;
 }) {
-  const question = useMemo(() => publicQuestionFromDraft(draft)!, [draft]);
-  const structureKey = questionPreviewStructureKey(question);
-  const [response, setResponse] = useState<QuestionResponse>(() => emptyQuestionResponse(question));
-  useEffect(() => { setResponse(emptyQuestionResponse(question)); }, [structureKey]);
+  const ready = questionDraftReady(draft);
+  const definitionJson = useMemo(
+    () => ready ? JSON.stringify(definitionFromDraft(draft)) : null,
+    [draft, ready],
+  );
+  const [compiled, setCompiled] = useState<NativeQuestionDraftPreview | null>(null);
+  const [response, setResponse] = useState<QuestionResponse | null>(null);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+
+  useEffect(() => {
+    setCompiled(null);
+    setResponse(null);
+    setIsChecking(false);
+    if (!definitionJson) return;
+    let live = true;
+    setIsCompiling(true);
+    void previewQuestionDraft({ definitionJson, response: null }).then((result) => {
+      if (!live) return;
+      setCompiled(result);
+      setResponse(emptyQuestionResponse(result.question));
+    }).catch((error: unknown) => {
+      if (live) onError(getErrorMessage(error));
+    }).finally(() => {
+      if (live) setIsCompiling(false);
+    });
+    return () => { live = false; };
+  }, [definitionJson, onError]);
+
+  async function checkAnswer(): Promise<void> {
+    if (!definitionJson || !compiled || !response || disabled || isChecking || !responseReady(response)) return;
+    setIsChecking(true);
+    try {
+      const result = await previewQuestionDraft({ definitionJson, response });
+      setCompiled(result);
+    } catch (error: unknown) {
+      onError(getErrorMessage(error));
+    } finally {
+      setIsChecking(false);
+    }
+  }
+
+  function reset(): void {
+    if (!compiled) return;
+    setCompiled({ ...compiled, evaluation: null });
+    setResponse(emptyQuestionResponse(compiled.question));
+  }
+
+  if (!ready) {
+    return <InlineNotice kind="warning" title="Complete this question before previewing">
+      Fill the required prompt/items and answer key in the editor, then open Preview again.
+    </InlineNotice>;
+  }
+  if (isCompiling || !compiled || !response) {
+    return <InlineProgress>Validating and preparing the Practice preview…</InlineProgress>;
+  }
+
+  const checked = compiled.evaluation !== null;
   return <section className="tw:grid tw:min-w-0 tw:gap-5">
     <div className={presentation["preview-panel-heading"]}>
-      <div><span className={presentation["eyebrow"]}>CARD PREVIEW</span><h2>Practice appearance</h2></div>
-      <Button variant="secondary" size="small" disabled={disabled}
-        onClick={() => setResponse(emptyQuestionResponse(question))}>Reset preview</Button>
+      <div><span className={presentation["eyebrow"]}>PRACTICE PREVIEW</span><h2>{checked ? "Feedback" : "Question"}</h2></div>
+      <Button variant="secondary" size="small" disabled={disabled || isChecking} onClick={reset}>Reset preview</Button>
     </div>
-    <QuestionBody question={question} response={response} evaluation={null} assets={assets}
-      disabled={disabled} onChange={setResponse} onError={onError} />
-    <p className="tw:mt-3 tw:text-xs tw:text-muted-foreground">Preview interactions are local only. They do not check, schedule, or record a review.</p>
+    <QuestionBody question={compiled.question} response={response} evaluation={compiled.evaluation}
+      assets={assets} disabled={disabled || isChecking || checked} onChange={setResponse} onError={onError} />
+    {!checked ? <div className="tw:flex tw:justify-center">
+      <Button variant="primary" size="large" disabled={disabled || isChecking || !responseReady(response)}
+        onClick={() => void checkAnswer()}>{isChecking ? "Checking…" : "Check answer"}</Button>
+    </div> : null}
+    <p className="tw:text-xs tw:text-muted-foreground">
+      Preview checking uses the native question evaluator but creates no attempt, review, schedule, or analytics event.
+    </p>
   </section>;
 }
 
@@ -52,18 +118,31 @@ function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError 
   draft: OcclusionEditorDraft;
 }) {
   const [revealed, setRevealed] = useState(false);
+  const [questionId, setQuestionId] = useState(draft.selectedQuestionId ?? draft.questions[0]?.id ?? "");
+  const selectedQuestionId = draft.questions.some((item) => item.id === questionId)
+    ? questionId
+    : draft.selectedQuestionId ?? draft.questions[0]?.id ?? "";
+  const previewDraft = { ...draft, selectedQuestionId: selectedQuestionId || null };
   const source = useOcclusionSource(draft.imageAssetId);
-  const preview = useOcclusionPreview(draft, assetDraftId, true, revealed);
-  const question = draft.questions.find((item) => item.id === draft.selectedQuestionId) ?? null;
+  const preview = useOcclusionPreview(previewDraft, assetDraftId, true, revealed);
+  const question = draft.questions.find((item) => item.id === selectedQuestionId) ?? null;
   const size = draft.imageSize ?? source.size;
   const targets = draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
-  useEffect(() => { setRevealed(false); }, [draft.selectedQuestionId, draft.imageAssetId]);
+  useEffect(() => { setRevealed(false); }, [selectedQuestionId, draft.imageAssetId]);
   return <section className="tw:grid tw:min-w-0 tw:gap-5">
     <div className={presentation["preview-panel-heading"]}>
       <div><span className={presentation["eyebrow"]}>CARD PREVIEW</span><h2>{revealed ? "Answer" : "Question"}</h2></div>
       <Button variant="primary" size="small" disabled={disabled || !preview.ready}
         onClick={() => setRevealed((value) => !value)}>{revealed ? "Show question" : "Reveal answer"}</Button>
     </div>
+    {draft.questions.length > 1 ? <FormField label="Presentation">
+      <NativeSelect value={selectedQuestionId} onChange={(event) => {
+        setQuestionId(event.currentTarget.value);
+        setRevealed(false);
+      }}>
+        {draft.questions.map((item, index) => <option key={item.id} value={item.id}>Question {index + 1}</option>)}
+      </NativeSelect>
+    </FormField> : null}
     {question ? <div className="tw:grid tw:gap-4">
       <RichTextView document={question.prompt} assets={assets} onLinkError={onError} />
       {source.error ? <InlineNotice kind="error">{source.error}</InlineNotice> : null}

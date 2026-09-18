@@ -20,7 +20,9 @@ use super::super::{ensure_active_deck, load_tag_names, replace_note_tags, valida
 
 mod generated;
 mod persistence;
+mod preview;
 pub(crate) use generated::insert_generated;
+pub use preview::preview_question_draft;
 
 #[cfg(test)]
 mod tests;

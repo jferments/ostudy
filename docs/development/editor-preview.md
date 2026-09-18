@@ -4,9 +4,9 @@ The editor's full-width preview is an inline workspace, not a new Practice sessi
 
 `src/screens/practice/RecallCardSurface.tsx` is shared by author previews and `src/screens/practice/ActivePractice.tsx` (the latter is under `practice/`, not directly under `screens/`). It owns only reveal/flip presentation, the rich renderer, accessible faces and active-face playback. Practice keeps its session effects, scheduling controls, shortcut ratings, progress and feedback ownership. No fake session is constructed to obtain card styling.
 
-Objective preview still uses `QuestionBody` and its current draft projection without grading. Image preview retains native masked derivatives and the existing draft asset lease. The former preview aside, split-column recipe and separate Basic preview surface are removed. Cloze and template field examples remain live, distinct controls and have not been deleted as unused.
+Objective preview now sends the unsaved definition to the pure native `preview_question_draft` command. Rust applies the same validation, deterministic display ordering, and evaluator used by captured Practice questions; Check returns transient feedback without creating an attempt, review, schedule, or analytics record. Image preview retains native masked derivatives and the existing draft asset lease, including explicit selection among authored occlusion targets. The former preview aside, split-column recipe and separate Basic preview surface are removed.
 
-The next LK-01 increment adds native draft compilation/checking and brings Cloze/template presentation selection into the full workspace. This first increment must not be reported as all of LK-01, LK-02 or LK-03 complete. The current-format conversion and shared-knowledge work are specified in the [foundation plan](shared-knowledge-lessons/01-foundations.md).
+The remaining LK-01 increment brings native Basic/Cloze draft projection and reusable-template presentation selection into this same workspace, then closes visual/platform qualification. This intermediate checkpoint must not be reported as all of LK-01, LK-02 or LK-03 complete. The current-format conversion and shared-knowledge work are specified in the [foundation plan](shared-knowledge-lessons/01-foundations.md).
 
 ## Regression coverage
 
