@@ -64,10 +64,13 @@ struct Location {
     cell_bounds: Vec<Option<SourceBounds>>,
     headings: Vec<String>,
     assets: Vec<String>,
-    attributes: BTreeMap<String, String>,
+    attributes: BTreeMap<String, serde_json::Value>,
 }
 
-fn encode(block: &CanonicalBlock) -> Result<(String, String, String), CommandError> {
+fn encode(
+    block: &CanonicalBlock,
+    retained_attributes: Option<&BTreeMap<String, serde_json::Value>>,
+) -> Result<(String, String, String), CommandError> {
     if let Some(structure) = &block.structure {
         structure.validate(block.role)?;
     }
@@ -97,12 +100,14 @@ fn encode(block: &CanonicalBlock) -> Result<(String, String, String), CommandErr
         cell_bounds,
         headings: block.heading_path.clone(),
         assets: block.asset_ids.clone(),
-        attributes: block
-            .attributes
-            .iter()
-            .filter(|(key, _)| !key.starts_with("_ostudy"))
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
+        attributes: retained_attributes.cloned().unwrap_or_else(|| {
+            block
+                .attributes
+                .iter()
+                .filter(|(key, _)| !key.starts_with("_ostudy"))
+                .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
+                .collect()
+        }),
     };
     Ok((
         sha256_hex(serialized.as_bytes()),
@@ -124,6 +129,15 @@ pub(crate) fn publish(
     connection: &Connection,
     document: &str,
     blocks: &[CanonicalBlock],
+) -> Result<usize, CommandError> {
+    publish_retained(connection, document, blocks, &BTreeMap::new())
+}
+
+fn publish_retained(
+    connection: &Connection,
+    document: &str,
+    blocks: &[CanonicalBlock],
+    attributes: &BTreeMap<i64, BTreeMap<String, serde_json::Value>>,
 ) -> Result<usize, CommandError> {
     let mut statement = connection
         .prepare(
@@ -158,7 +172,7 @@ pub(crate) fn publish(
         .collect::<BTreeSet<_>>();
     let mut incoming = BTreeSet::new();
     for block in blocks {
-        let (hash, _, location) = encode(block)?;
+        let (hash, _, location) = encode(block, attributes.get(&block.block_index))?;
         let key = (block.source_unit_number, hash, location);
         if !incoming.insert(key.clone()) {
             ambiguous.insert(key);
@@ -191,7 +205,7 @@ pub(crate) fn publish(
     let mut links = Vec::new();
     for block in blocks {
         let file = files.get(&block.source_unit_number).ok_or_else(invalid)?;
-        let (hash, payload, location) = encode(block)?;
+        let (hash, payload, location) = encode(block, attributes.get(&block.block_index))?;
         connection.execute("INSERT INTO document_evidence_payloads (sha256, payload_json) VALUES (?1, ?2) ON CONFLICT DO NOTHING", params![hash, payload])
             .map_err(CommandError::database)?;
         let key = (block.source_unit_number, hash.clone(), location.clone());
@@ -264,12 +278,23 @@ pub(crate) fn backfill(connection: &Connection) -> Result<usize, CommandError> {
             .query([&document])
             .map_err(CommandError::database)?;
         let mut blocks = Vec::new();
+        let mut retained_attributes = BTreeMap::new();
         while let Some(row) = rows.next().map_err(CommandError::database)? {
             let role: String = row.get(3).map_err(CommandError::database)?;
             let headings: String = row.get(6).map_err(CommandError::database)?;
             let geometry: Option<String> = row.get(7).map_err(CommandError::database)?;
             let assets: String = row.get(9).map_err(CommandError::database)?;
             let attributes: String = row.get(10).map_err(CommandError::database)?;
+            if attributes.len() > 8_000_000 {
+                return Err(invalid());
+            }
+            // Older PDF migrations retained numeric/bool metadata, not strings.
+            // Preserve those JSON values as provenance without rewriting source rows
+            // or interpreting an adapter-local metadata field as native structure.
+            retained_attributes.insert(
+                row.get::<_, i64>(0).map_err(CommandError::database)?,
+                serde_json::from_str(&attributes).map_err(|_| invalid())?,
+            );
             blocks.push(CanonicalBlock::new(
                 row.get(0).map_err(CommandError::database)?,
                 row.get(1).map_err(CommandError::database)?,
@@ -284,7 +309,7 @@ pub(crate) fn backfill(connection: &Connection) -> Result<usize, CommandError> {
                     .map_err(CommandError::serialization)?,
                 row.get(8).map_err(CommandError::database)?,
                 serde_json::from_str(&assets).map_err(CommandError::serialization)?,
-                serde_json::from_str(&attributes).map_err(CommandError::serialization)?,
+                BTreeMap::new(),
             ));
             if blocks.len() > 1_000_000 {
                 return Err(invalid());
@@ -292,7 +317,7 @@ pub(crate) fn backfill(connection: &Connection) -> Result<usize, CommandError> {
         }
         drop(rows);
         drop(statement);
-        count += publish(connection, &document, &blocks)?;
+        count += publish_retained(connection, &document, &blocks, &retained_attributes)?;
     }
     Ok(count)
 }
@@ -388,3 +413,6 @@ fn invalid() -> CommandError {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod legacy_tests;
