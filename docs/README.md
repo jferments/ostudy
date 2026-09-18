@@ -72,6 +72,8 @@ The [generated JSON reference](reference/generated-json-import.md), [generator-a
 
 ## Roadmap and historical material
 
+The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) specifies the next implementation: reusable evidence, image sets, folders, automatic materials, responsive lessons, retained narration, PowerPoint export, Practice-faithful editor preview, and a verified pre-release data consolidation. Its stage checklists are planned work, not claims of implemented behavior.
+
 [Interactive question types](development/interactive-question-types.md) is the active implementation contract for seven new question types, shared authoring, deterministic evaluation and evidence-based generation after PR #98. It includes single-best-answer multiple choice and the free/open-source, non-AI offline requirement. Its current-boundary section distinguishes implemented foundations from types not yet available.
 
 The [roadmap](roadmap.md) separates implemented foundations from limitations and planned work. [History](history/README.md) preserves earlier audits/designs. Some stage-plan paths remain in `development/` because tests and provenance refer to them; their historical status and current replacement must be explicit.
