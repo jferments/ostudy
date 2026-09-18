@@ -16,7 +16,7 @@ shared Rust application services and SQLite transactions
 shared TypeScript controllers and React screens
 ```
 
-Kotlin may interact with Android's document provider, Sharesheet, Keystore, lifecycle, Back dispatcher, connectivity manager, window insets, battery/thermal services, PDF renderer, ML Kit OCR, QR scanner, and foreground services. Kotlin must not open or migrate the ostudy database, implement scheduling, validate deck/sync packages, decide merge semantics, or modify learner data.
+Kotlin may interact with Android's document provider, Sharesheet, Keystore, lifecycle, Back dispatcher, connectivity manager, window insets, battery/thermal services, PDF renderer, local Tesseract OCR, local ZXing QR scanner, USB accessory APIs, and foreground services. Kotlin must not open or migrate the ostudy database, implement scheduling, validate deck/sync packages, decide merge semantics, or modify learner data.
 
 The generated Android project lives under `src-tauri/gen/android`. Custom native behavior lives in `plugins/ostudy-platform`; keep `MainActivity` minimal so regenerating the Tauri shell remains manageable.
 
@@ -27,6 +27,7 @@ Android values that Tauri exposes as configuration belong in `src-tauri/tauri.an
 Supported Android capabilities include:
 
 - deck, card, tag, template, search, and bulk authoring;
+- all native interactive question types, including manual image occlusion;
 - FSRS practice and scheduling controls;
 - analytics;
 - managed images and durable drafts;
@@ -37,17 +38,18 @@ Supported Android capabilities include:
 - Android Keystore credentials;
 - cloud and LAN AI-provider profile tests;
 - native PDF page rasterization through Android `PdfRenderer`;
-- selective on-device PDF OCR through bundled ML Kit Text Recognition v2;
+- selective on-device PDF OCR through bundled open-source Tesseract;
 - foreground document processing with notification/wake-lock ownership while a user-started job is active;
 - encrypted same-LAN trusted-device synchronization with explicit conflict handling;
-- Android QR pairing through the embedded ZXing scanner;
+- direct encrypted Android Open Accessory USB synchronization;
+- Android QR pairing through the local open-source ZXing Embedded scanner; and
 - optional encrypted AI-provider/credential transfer into the destination secure store when the sender opts in.
 
 Android `PdfRenderer` has no independent second text-extraction API, so the `native_pdf_text_rescue` capability remains unavailable. Shared Rust first keeps usable PDF text extracted by the document pipeline and invokes Android OCR only for pages that require visual recovery.
 
 ## Platform plugin ownership
 
-`plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt` owns general Android API interactions. `OstudyDocumentPlugin.kt` owns bounded PDF rendering, ML Kit text recognition, and foreground document-execution requests. `OstudyQrPlugin.kt` owns QR scanner activity integration. The Rust wrappers in `plugins/ostudy-platform/src` expose typed methods and `src-tauri/src/platform/android.rs` adapts them to shared platform contracts.
+`plugins/ostudy-platform/android/src/main/java/OstudyPlatformPlugin.kt` owns general Android API interactions. `OstudyDocumentPlugin.kt` owns bounded PDF rendering, Tesseract text recognition, and foreground document-execution requests. `OstudyQrPlugin.kt` owns local ZXing scanner activity integration. `OstudyUsbPlugin.kt` owns Android Open Accessory attachment/descriptor handoff. The Rust wrappers in `plugins/ostudy-platform/src` expose typed methods and `src-tauri/src/platform/android.rs` adapts them to shared platform contracts.
 
 ### External files
 
@@ -63,15 +65,17 @@ Kotlin copies temporary `ACTION_SEND` URI grants into private cache and exposes 
 
 Kotlin stores AI credentials behind a non-exportable Android Keystore AES-GCM key. Rust retains shared secure-store policy and write-only UI behavior. Android Auto Backup remains disabled for those records.
 
-The stable device-sync identity key uses the same secure-store boundary. Each synchronization offer uses fresh pairing-secret and ephemeral key-agreement material; there is no long-lived paired-device transport secret that gets reused across QR sessions. Synchronization packages never contain API credential bytes. Saved credentials can travel only when the **sending device** explicitly opts in for that encrypted LAN offer, and received credentials are committed to the destination secure store rather than ordinary SQLite settings.
+The stable device-sync identity key uses the same secure-store boundary. Each synchronization offer uses fresh pairing-secret and ephemeral key-agreement material; there is no long-lived paired-device transport secret that gets reused across QR sessions. Synchronization packages never contain API credential bytes. Saved credentials can travel only when the **sending device** explicitly opts in for that encrypted offer, and received credentials are committed to the destination secure store rather than ordinary SQLite settings.
 
 ### PDF rendering and OCR
 
 Rust owns document validation, extraction planning, page selection, cancellation, durable checkpoints, AI generation, and SQLite transactions. Android receives only app-private PDF/image paths and bounded operation parameters.
 
-`OstudyDocumentPlugin` uses `PdfRenderer` to rasterize requested PDF pages to app-private PNG files. For a rendered page that needs OCR, the plugin uses the bundled ML Kit Text Recognition v2 Latin recognizer and returns normalized text, confidence, language observations, dimensions, duration, and a versioned engine identifier.
+`OstudyDocumentPlugin` uses `PdfRenderer` to rasterize requested PDF pages to app-private PNG files. For a rendered page that needs OCR, the plugin uses Tesseract4Android 4.9.0, which packages Tesseract 5.5.1 and Leptonica 1.85.0. The first Android release bundles the English `tessdata_fast` model only. The model is fetched at build time from immutable upstream commit `87416418657359cb625c412a48b6e1d6d41c29bd`, verified as Git blob `bbef4675053b5b468cdb477053e28b1c698ba08e` with exact size 4,113,088 bytes, then packaged in the APK at `assets/tessdata/eng.traineddata`.
 
-Android deliberately does not ship Tesseract, Tesseract4Android, a Tesseract sidecar, or `tessdata`. Desktop platforms can continue using their independently qualified Tesseract CLI adapter behind the same Rust OCR contract.
+Recognition itself performs no model download and requires no hosted OCR service. On first use, the packaged model is copied into app-private storage before Tesseract initializes. Source bytes, image dimensions, recognition time, and output metadata remain bounded. Requests for an unbundled OCR language fail explicitly instead of silently using a network service.
+
+Desktop platforms continue using their independently qualified Tesseract CLI adapter behind the same Rust OCR contract.
 
 ### Background document execution
 
@@ -81,9 +85,9 @@ Backgrounding the Activity does not make the WebView the lifetime owner of the j
 
 ### Device synchronization
 
-Shared Rust owns snapshot construction, authenticated encryption, common-base merge planning, conflict persistence, asset validation, and secure credential policy. Android contributes the QR scanner and Keystore implementation. The sync protocol never copies a live SQLite database over another installation.
+Shared Rust owns snapshot construction, authenticated encryption, common-base merge planning, conflict persistence, typed-question graph admission, asset validation, and secure credential policy. Android contributes local QR scanning, Open Accessory I/O and Keystore implementation. The sync protocol never copies a live SQLite database over another installation.
 
-Protocol v2 uses explicit **one-way offers**. The device that creates an invitation is the sender. Scanning that invitation on Android is the acceptance gesture and immediately starts receiving the sender-selected study-library snapshot; the receiver does not upload its library or create a second invitation. A future reverse transfer is a separate offer initiated by the other device.
+Protocol v3 uses explicit **one-way offers**. The device that creates an invitation is the sender. Scanning that invitation on Android is the acceptance gesture and immediately starts receiving the sender-selected study-library snapshot; the receiver does not upload its library or create a second invitation. A future reverse transfer is a separate offer initiated by the other device. Direct USB uses the same authenticated transfer semantics under a different transport adapter rather than tunneling through TCP, tethering, ADB or a second merge implementation.
 
 `app_settings` is excluded from both the outgoing package and the synchronization merge allowlist, so theme, fonts, UI scale, motion/layout preferences, and other device-specific settings remain local. AI provider configuration and saved credentials are the only settings-related synchronization scope currently supported, and that scope is off by default and controlled by the sender per offer.
 
@@ -97,7 +101,7 @@ The native content boundary applies status-bar, navigation-bar, display-cutout, 
 
 Lifecycle observations are useful but are not the sole durability mechanism. Draft autosave, UI checkpoints, durable practice sessions, document checkpoints, and idempotent operation identities protect abrupt process death.
 
-Android system picker Activity results are delivered to the Tauri invoke only after the host Activity has returned to `RESUMED`. This prevents a result from being lost while the WebView is still returning from system file UI.
+Android system picker and local scanner Activity results are delivered to the Tauri invoke only after the host Activity has returned to a valid result boundary. This prevents a system Activity transition from being mistaken for an application-level completion.
 
 ## Device-local UI checkpoint
 
@@ -111,7 +115,9 @@ The UI checkpoint is a bounded, versioned, atomically replaced app-private JSON 
 
 `node scripts/verify-external-file-streaming.mjs` protects the streaming import/export boundary and the required Android smoke coverage.
 
-The device-sync contract verifier additionally checks QR routing, automatic receive after scanning, sender-owned API scope, absence of `app_settings` from the merge allowlist/outgoing package, and first-contact merge behavior.
+`node scripts/verify-android-qr-scanner.mjs` enforces the open-source Android imaging boundary: pinned ZXing Embedded/core and Tesseract4Android versions, immutable English Tesseract model provenance, local QR-only scanning, no retained scan images, camera permission, bounded OCR timeout, and absence of Google Code Scanner/ML Kit text-recognition runtime dependencies.
+
+The device-sync contract verifier additionally checks local QR routing, automatic receive after scanning, direct USB routing, sender-owned API scope, absence of `app_settings` from the merge allowlist/outgoing package, typed-question graph transfer, and first-contact merge behavior.
 
 ### Compile and package
 
@@ -119,7 +125,7 @@ The device-sync contract verifier additionally checks QR routing, automatic rece
 pnpm android:test
 ```
 
-This is the authoritative Android compile/package gate. It runs the shared prerequisites required by Android, builds through the Tauri-owned Android path, compiles the private Kotlin plugin and instrumentation package, and verifies the debug package.
+This is the authoritative Android compile/package gate. It runs the shared prerequisites required by Android, builds through the Tauri-owned Android path, resolves and verifies the Kotlin/coroutines/ZXing/Tesseract dependency graph, compiles the private Kotlin plugin and instrumentation package, and verifies the debug APK. Package verification requires camera permission for the local scanner, rejects broad storage/install permissions, requires the pinned Tesseract model in the APK, and retains 16 KiB native-library alignment checks.
 
 `OSTUDY_ANDROID_JOBS` may lower parallelism on a constrained machine. The canonical CI runner currently has 16 vCPUs and ample RAM.
 
@@ -140,10 +146,10 @@ The authoritative mobile smoke uses the pinned API 36 Google APIs x86_64 AVD and
 - Storage Access Framework launch/cancellation for supported import purposes;
 - prepared export through `ACTION_CREATE_DOCUMENT`;
 - release of native picker-operation ownership across sequential cancellations;
-- bundled ML Kit OCR through a real synthetic-text recognition case;
-- production native-plugin routing for document and QR capabilities.
+- bundled Tesseract OCR through a real synthetic-text recognition case; and
+- production native-plugin routing for document, QR and USB capabilities.
 
-The smoke-only JavaScript bridge is opt-in at build time and forbidden in release packages. A headless emulator cannot reproduce a physical phone camera aimed at a desktop QR code, so the final camera-decode plus desktop-to-phone LAN transfer remains part of the physical-device acceptance pass.
+The smoke-only JavaScript bridge is opt-in at build time and forbidden in release packages. A headless emulator cannot reproduce a physical phone camera aimed at a desktop QR code, real USB accessory re-enumeration, or physical touch/occlusion ergonomics, so those remain part of the explicit physical-device acceptance pass.
 
 Waydroid may be useful for informal checks but does not replace the official emulator gate.
 
@@ -193,4 +199,6 @@ The generated directory is committed because reproducibility and review are more
 
 ## QR scanner verification
 
-`node scripts/verify-android-qr-scanner.mjs` enforces the Google Code Scanner dependency, install-time `barcode_ui` metadata, QR-only/auto-zoom configuration, concurrent-scan guard, and absence of ZXing Embedded. APK verification rejects any merged `android.permission.CAMERA` permission. `./scripts/android-test.sh --debug=qr --keep-artifacts` retains bounded ostudy QR Logcat evidence on failure without recording decoded payloads.
+The Android pairing scanner is fully local. JourneyApps ZXing Embedded 4.3.0 owns the scanner Activity and ZXing core 3.5.4 performs decoding. oStudy requests only QR format, disables barcode-image retention and bounds returned content to 16 KiB. `android.permission.CAMERA` is required for this local scanner; camera hardware remains optional so non-camera devices can still install oStudy and use other transports.
+
+`node scripts/verify-android-qr-scanner.mjs` and `./scripts/android-test.sh` enforce the dependency/version/runtime boundary and reject reintroduction of Google Code Scanner or ML Kit text recognition. `./scripts/android-test.sh --debug=qr --keep-artifacts` retains bounded oStudy QR Logcat evidence on failure without recording decoded payloads.

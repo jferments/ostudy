@@ -47,8 +47,11 @@ target_sdk="$(sed -n "s/^targetSdkVersion:'\([^']*\)'.*/\1/p" <<< "$badging")"
   exit 1
 }
 
+if ! grep -Fq 'android.permission.CAMERA' <<< "$permissions"; then
+  printf 'The local QR scanner requires the bounded Android camera permission.\n' >&2
+  exit 1
+fi
 for forbidden_permission in \
-  android.permission.CAMERA \
   android.permission.READ_EXTERNAL_STORAGE \
   android.permission.WRITE_EXTERNAL_STORAGE \
   android.permission.MANAGE_EXTERNAL_STORAGE \
@@ -59,9 +62,13 @@ for forbidden_permission in \
   fi
 done
 
-for forbidden_payload in pdfium tesseract tessdata liblept; do
+if ! grep -Fxq 'assets/tessdata/eng.traineddata' <<< "$listing"; then
+  printf 'The APK is missing the pinned offline English Tesseract model.\n' >&2
+  exit 1
+fi
+for forbidden_payload in pdfium; do
   if grep -Fiq "$forbidden_payload" <<< "$listing"; then
-    printf 'Document-processing payload must not be bundled during A1-A3: %s\n' "$forbidden_payload" >&2
+    printf 'Desktop-only document-processing payload must not be bundled on Android: %s\n' "$forbidden_payload" >&2
     exit 1
   fi
 done
@@ -98,5 +105,5 @@ if [[ "$MODE" == release ]]; then
   fi
 fi
 
-printf 'OK   Android APK package=%s minSdk=%s targetSdk=%s nativeLibraries=%s zipAlignment=16KiB permissionlessQr=true\n' \
+printf 'OK   Android APK package=%s minSdk=%s targetSdk=%s nativeLibraries=%s zipAlignment=16KiB localQrCamera=true packagedTessdata=true\n' \
   "$actual_package" "$min_sdk" "$target_sdk" "${#libraries[@]}"

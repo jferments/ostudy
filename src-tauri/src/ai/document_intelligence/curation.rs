@@ -14,7 +14,7 @@ use super::{
     transport::{request_json, JsonTaskRequest},
 };
 
-const CURATION_PROMPT_VERSION: i64 = 3;
+const CURATION_PROMPT_VERSION: i64 = 4;
 const CURATION_SCHEMA_VERSION: i64 = 1;
 
 pub(crate) async fn curate_document_cards(
@@ -183,6 +183,14 @@ async fn request_curation_with_retry(
 }
 
 fn compact_card_summary(index: usize, card: &Value) -> String {
+    if card["type"] == "interactive" {
+        // Selection-only curation needs the relation and its key, not empty
+        // legacy front/back fields. Internal hashes and source IDs stay native.
+        return format!(
+            "{index}. type=interactive; question={}",
+            bounded_diagnostic(&card["question"].to_string(), 6_000),
+        );
+    }
     let card_type = card
         .get("type")
         .and_then(Value::as_str)
@@ -213,6 +221,15 @@ fn compact_card_summary(index: usize, card: &Value) -> String {
 }
 
 fn card_identity(card: &Value) -> String {
+    if card["type"] == "interactive" {
+        use crate::authoring::card_types_and_templates::generated_import::question::GeneratedQuestion;
+        return serde_json::from_value::<GeneratedQuestion>(card["question"].clone())
+            .map_err(|_| ())
+            .and_then(|question| question.admit().map_err(|_| ()))
+            .and_then(|question| question.duplicate_identity().map_err(|_| ()))
+            .map(|identity| format!("interactive|{identity}"))
+            .unwrap_or_else(|_| format!("invalid-interactive|{}", card["question"]));
+    }
     let card_type = card.get("type").and_then(Value::as_str).unwrap_or("");
     let front = card
         .get("front")
@@ -265,6 +282,26 @@ mod tests {
             json!({"type":"basic", "front":"  Cardiac   Output ", "back":"Flow per minute"});
         let second = json!({"type":"basic", "front":"cardiac output", "back":"flow per minute"});
         assert_eq!(card_identity(&first), card_identity(&second));
+    }
+
+    #[test]
+    fn typed_curation_keeps_keys_distinct_and_does_not_expose_native_evidence() {
+        let first = json!({"type":"interactive","question":{
+            "kind":"single_choice","prompt":"Which is even?",
+            "options":[{"id":"a","content":"2"},{"id":"b","content":"3"}],
+            "correctOptionId":"a"},"_ostudyAssessment":{"secret":"native-only"}});
+        let mut changed = first.clone();
+        changed["question"]["correctOptionId"] = json!("b");
+        assert_ne!(card_identity(&first), card_identity(&changed));
+        let mut renamed = first.clone();
+        renamed["question"]["options"][0]["id"] = json!("other");
+        renamed["question"]["correctOptionId"] = json!("other");
+        assert_eq!(card_identity(&first), card_identity(&renamed));
+        let summary = compact_card_summary(0, &first);
+        assert!(summary.contains("Which is even?"));
+        assert!(summary.contains("correctOptionId"));
+        assert!(!summary.contains("native-only"));
+        assert!(!summary.contains("_ostudyAssessment"));
     }
 
     #[test]

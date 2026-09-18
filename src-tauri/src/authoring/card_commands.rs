@@ -1,5 +1,12 @@
 use super::*;
 
+#[path = "card_search_projection.rs"]
+mod card_search_projection;
+#[cfg(test)]
+pub(super) use card_search_projection::search_cards_in_connection as search_cards_in_connection_for_tests;
+#[path = "interactive/mod.rs"]
+pub(crate) mod interactive;
+
 #[tauri::command]
 pub fn list_tags(
     database: State<'_, Database>,
@@ -15,7 +22,9 @@ pub fn search_cards(
     input: SearchCardsInput,
 ) -> Result<CardSearchPageDto, CommandError> {
     validate_search_input(&input)?;
-    database.with_connection(|connection| search_cards_in_connection(connection, input))
+    database.with_connection(|connection| {
+        card_search_projection::search_cards_in_connection(connection, input)
+    })
 }
 
 #[tauri::command]

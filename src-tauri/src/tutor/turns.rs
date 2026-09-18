@@ -168,6 +168,9 @@ pub(crate) fn complete(
         if changed != 1 {
             return Err(conversations::changed());
         }
+        if let Some(target) = &context.question_hint {
+            crate::practice::question_attempts::tutoring::expose_hint(&transaction, target, now)?;
+        }
         // Dependencies include all material supplied to the model, not just the
         // citations it elected to display. Hint citations stay entirely private.
         for source in &context.sources {

@@ -33,19 +33,33 @@ struct StartupFailurePresentation {
 }
 
 pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    if let Err(error) = initialize(app) {
-        present_startup_failure(app, &error.to_string());
+    #[cfg(target_os = "linux")]
+    if let Err(error) = create_linux_main_window(app) {
+        present_startup_failure(app.handle(), &error.to_string());
+        return Ok(());
     }
-    // Tauri treats an Err returned by the setup hook as a panic. Startup
-    // compatibility and operational failures are therefore presented and the
-    // process is exited explicitly instead of being propagated through setup.
+
+    // Return control to the native event loop before opening/migrating SQLite
+    // or decoding/reconciling managed files. The HTML loading shell can paint
+    // immediately; NativeStartupGate keeps product commands behind readiness.
+    let handle = app.handle().clone();
+    let worker = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            initialize(&worker).map_err(|error| error.to_string())
+        })
+        .await;
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => present_startup_failure(&handle, &error),
+            Err(error) => present_startup_failure(&handle, &error.to_string()),
+        }
+    });
+    // Setup errors must be presented explicitly, not propagated as Tauri panics.
     Ok(())
 }
 
-fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(target_os = "linux")]
-    create_linux_main_window(app)?;
-
+fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let app_data_directory = app.path().app_data_dir().map_err(|error| {
         io::Error::other(format!(
             "Could not resolve the application data directory: {error}"
@@ -59,7 +73,7 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let pending_restore =
         library_backup::apply_pending_restore(&paths).map_err(io::Error::other)?;
     let database = open_database_with_pre_public_adoption(&paths)?;
-    let platform_runtime = platform::PlatformRuntime::for_app(app.handle().clone());
+    let platform_runtime = platform::PlatformRuntime::for_app(app.clone());
     platform::install_global(platform_runtime.clone()).map_err(io::Error::other)?;
     let ai_runtime =
         AiRuntimeState::new(platform_runtime.secure_secret_store()).map_err(io::Error::other)?;
@@ -96,9 +110,6 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if !app.manage(paths.clone()) {
         return Err(io::Error::other("Application paths were already initialized.").into());
     }
-    if !app.manage(database) {
-        return Err(io::Error::other("The database state was already initialized.").into());
-    }
     if !app.manage(platform_runtime.clone()) {
         return Err(io::Error::other("The platform runtime was already initialized.").into());
     }
@@ -128,10 +139,13 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "pdfRenderer": crate::pdf_render_backend::active_backend_id(),
         }),
     );
-    // Startup and one-time migration/adoption events must reach the persistent
-    // JSONL log before the application begins normal event-loop work. This
-    // keeps early diagnostic evidence available even after abrupt termination.
+    // Flush early diagnostics before releasing the existing getSettings-based
+    // readiness gate. Database is published LAST so the gate cannot mount the
+    // product while another managed runtime or durable reconciliation is missing.
     let _ = logging::flush(Duration::from_millis(500));
+    if !app.manage(database) {
+        return Err(io::Error::other("The database state was already initialized.").into());
+    }
     Ok(())
 }
 
@@ -154,7 +168,7 @@ fn create_linux_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::
 }
 
 #[cfg(desktop)]
-fn apply_main_window_icon(app: &tauri::App) {
+fn apply_main_window_icon(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         logging::warn_target(
             "app.startup",
@@ -218,7 +232,7 @@ fn open_database_with_pre_public_adoption(
     }
 }
 
-fn present_startup_failure(app: &mut tauri::App, error: &str) {
+fn present_startup_failure(app: &tauri::AppHandle, error: &str) {
     let app_data_directory = app.path().app_data_dir().ok();
     let presentation = startup_failure_presentation(error, app_data_directory.as_deref());
 
@@ -250,7 +264,7 @@ fn present_startup_failure(app: &mut tauri::App, error: &str) {
         }
         StartupFailureKind::Internal => eprintln!("ostudy startup blocked: {error}"),
     }
-    let handle = app.handle().clone();
+    let handle = app.clone();
     let kind = match presentation.kind {
         StartupFailureKind::PrePublicDatabase => MessageDialogKind::Warning,
         StartupFailureKind::Internal => MessageDialogKind::Error,

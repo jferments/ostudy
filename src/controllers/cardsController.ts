@@ -3,12 +3,13 @@ import {
   listMatchingCards,
   listTags,
   searchCards,
-  type CardNote,
   type CardSearchInput,
   type CardSearchPage,
   type SelectionCard,
   type TagSummary,
 } from "../ipc/cards";
+import type { AuthoringNote } from "../ipc/authoringNotes";
+import { getQuestionNote } from "../ipc/questions";
 import {
   applyScheduleAction,
   type ScheduleActionInput,
@@ -30,8 +31,10 @@ export class CardsController {
     return latestResult(this.#tags, () => listTags(deckIds));
   }
 
-  note(noteId: string): Promise<CardNote | undefined> {
-    return latestResult(this.#note, () => getCardNote(noteId));
+  note(noteId: string, cardType: string): Promise<AuthoringNote | undefined> {
+    return latestResult<AuthoringNote>(this.#note, async () => (
+      isInteractiveType(cardType) ? getQuestionNote(noteId) : getCardNote(noteId)
+    ));
   }
 
   matching(input: CardSearchInput): Promise<SelectionCard[] | undefined> {
@@ -53,4 +56,16 @@ export class CardsController {
     this.#note.invalidate();
     this.#matching.invalidate();
   }
+}
+
+function isInteractiveType(cardType: string): boolean {
+  return [
+    "single_choice",
+    "select_all",
+    "true_false",
+    "matching",
+    "grouping",
+    "ordering",
+    "image_occlusion",
+  ].includes(cardType);
 }

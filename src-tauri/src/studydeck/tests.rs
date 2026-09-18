@@ -5,7 +5,7 @@ use crate::{
 };
 use serde_json::json;
 
-fn temp_paths(label: &str) -> AppPaths {
+pub(super) fn temp_paths(label: &str) -> AppPaths {
     let root = std::env::temp_dir().join(format!(
         "ostudy-studydeck-{label}-{}-{}",
         std::process::id(),
@@ -119,7 +119,7 @@ fn current_package_round_trip_preserves_content_and_uses_fresh_schedules() {
             .expect("package");
     assert_eq!(
         metadata_value(&package_connection, "formatVersion").expect("version"),
-        "2"
+        "3"
     );
 
     let target_paths = temp_paths("target");

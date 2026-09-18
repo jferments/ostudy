@@ -130,8 +130,12 @@ pub(crate) async fn send(
         )?;
         if input.mode == TutorMode::Hint {
             guard.progress("checking hint for spoilers", 3, 4);
-            answer.text =
-                output::guard_hint(runtime, &task, &focused, &answer.text, &guard.signal).await?;
+            answer.text = if focused.question_hint.is_some() {
+                context::guard_typed_hint(runtime, &task, &focused, &answer.text, &guard.signal)
+                    .await?
+            } else {
+                output::guard_hint(runtime, &task, &focused, &answer.text, &guard.signal).await?
+            };
         }
         task.ensure_current(database)?;
         guard.check()?;

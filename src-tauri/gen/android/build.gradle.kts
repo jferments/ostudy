@@ -16,6 +16,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Pinned open-source Tesseract4Android is published through JitPack.
+        // This is build-time artifact resolution only; the app has no runtime
+        // dependency on JitPack or any hosted OCR service.
+        maven { url = uri("https://jitpack.io") }
     }
     configurations.configureEach {
         resolutionStrategy.force(

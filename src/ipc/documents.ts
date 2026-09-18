@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { QuestionFamily, QuestionGenerationPolicy } from "./questionGeneration";
 import type { SourceLocator } from "./studyGuides";
 
 export type DocumentLifecycleState = "processing" | "ready" | "failed";
@@ -32,6 +33,24 @@ export interface DocumentGenerationProgress {
   lastModelActivityAt: number | null;
 }
 
+/** Immutable native report for one successful generation pass, not live inventory. */
+export interface GenerationReport {
+  schemaVersion: 1;
+  generatedAt: number;
+  requestedPolicy: QuestionGenerationPolicy;
+  candidateNoteCount: number;
+  selectedNoteCount: number;
+  curationRemovedCount: number;
+  savedNoteCount: number;
+  savedCardCount: number;
+  skippedDuplicateCount: number;
+  availableKnowledgeUnits: number;
+  linkedKnowledgeUnits: number;
+  evidenceBindingCount: number;
+  itemCount: number;
+  types: { family: QuestionFamily; noteCount: number; cardCount: number; itemCount: number }[];
+}
+
 export interface DocumentSummary {
   id: string;
   title: string;
@@ -61,6 +80,8 @@ export interface DocumentSummary {
   generatedDeckId: string | null;
   /** Unresolved analysis proposals; usable generated cards may still exist. */
   analysisPendingItems?: number;
+  /** Absent for older jobs without captured summary inputs. */
+  generationSummary?: GenerationReport | null;
   safeErrorCode: string;
   safeErrorMessage: string;
   createdAt: number;

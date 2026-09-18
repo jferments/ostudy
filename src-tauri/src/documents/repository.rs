@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::error::CommandError;
+use crate::{document_card_topics::report, error::CommandError};
 
 use super::contracts::DocumentDto;
 
@@ -46,15 +46,25 @@ pub(crate) fn list_document_rows(
     let rows = statement
         .query_map(params![MAX_DOCUMENTS_RETURNED], document_row)
         .map_err(CommandError::database)?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)
+    let mut documents = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let ids = documents
+        .iter()
+        .map(|document| document.id.as_str())
+        .collect::<Vec<_>>();
+    let mut reports = report::load_latest_many(connection, &ids)?;
+    for document in &mut documents {
+        document.generation_summary = reports.remove(&document.id);
+    }
+    Ok(documents)
 }
 
 pub(crate) fn load_document(
     connection: &Connection,
     document_id: &str,
 ) -> Result<StoredDocument, CommandError> {
-    connection
+    let mut stored = connection
         .query_row(
             "SELECT id, title, original_filename, byte_size, sha256, lifecycle_state,
                     page_count, extracted_page_count, rendered_page_count,
@@ -94,7 +104,9 @@ pub(crate) fn load_document(
                 "document_not_found",
                 "That document is no longer in the library.",
             )
-        })
+        })?;
+    stored.dto.generation_summary = report::load_latest(connection, document_id)?;
+    Ok(stored)
 }
 
 pub(crate) fn active_generated_deck_exists(
@@ -171,6 +183,7 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DocumentDto> {
         generated_card_count: row.get(21)?,
         generated_deck_id: row.get(22)?,
         analysis_pending_items: row.get(36)?,
+        generation_summary: None,
         safe_error_code: row.get(23)?,
         safe_error_message: row.get(24)?,
         created_at: row.get(25)?,

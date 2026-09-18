@@ -12,6 +12,7 @@ mod aggregates;
 mod current_inventory;
 mod daily;
 mod history;
+mod question_types;
 mod recent;
 mod scope;
 mod timeline;
@@ -21,6 +22,7 @@ use tauri::State;
 
 use crate::{database::Database, error::CommandError, settings::load_settings};
 
+use question_types::QuestionTypeAnalyticsDto;
 use scope::AnalyticsContext;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -257,6 +259,7 @@ pub struct AnalyticsDto {
     pub recent_sessions: Vec<SessionAnalyticsDto>,
     pub attribution_coverage: AttributionCoverageDto,
     pub dimension_options: AnalyticsDimensionOptionsDto,
+    pub question_types: Vec<QuestionTypeAnalyticsDto>,
 }
 
 #[tauri::command]
@@ -316,6 +319,7 @@ pub(crate) fn load_analytics(
         recent_sessions,
         attribution_coverage: historical.attribution_coverage,
         dimension_options,
+        question_types: question_types::load(connection, &context)?,
     })
 }
 

@@ -341,6 +341,9 @@ pub(crate) fn extract_package(
             "The synchronized SQLite snapshot is invalid: {message}"
         ))
     })?;
+    // Admit the complete migrated graph before extracting files or applying a
+    // merge. Older senders cannot bypass the same typed-question restriction.
+    migrated.with_connection(|connection| scope::require_supported_question_snapshot(connection))?;
     drop(migrated);
 
     let assets = extract_assets(&package, staging_root)?;

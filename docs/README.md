@@ -72,6 +72,8 @@ The [generated JSON reference](reference/generated-json-import.md), [generator-a
 
 ## Roadmap and historical material
 
+[Interactive question types](development/interactive-question-types.md) is the active implementation contract for seven new question types, shared authoring, deterministic evaluation and evidence-based generation after PR #98. It includes single-best-answer multiple choice and the free/open-source, non-AI offline requirement. Its current-boundary section distinguishes implemented foundations from types not yet available.
+
 The [roadmap](roadmap.md) separates implemented foundations from limitations and planned work. [History](history/README.md) preserves earlier audits/designs. Some stage-plan paths remain in `development/` because tests and provenance refer to them; their historical status and current replacement must be explicit.
 
 A maintained document should answer its reader's question cohesively. Update the owning section rather than append a contradictory PR-specific note. Keep this index, current source links, and relative file links valid. The documentation verifier catches organization/link contracts; source review is still required to establish that prose matches the application.

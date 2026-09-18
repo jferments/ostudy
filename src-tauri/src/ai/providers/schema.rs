@@ -70,6 +70,89 @@ pub(super) fn portable_strict_schema(value: &Value) -> Value {
     Value::Object(normalized)
 }
 
+/// DeepSeek strict function calling is a smaller JSON-Schema language than the
+/// provider-neutral contract. Incompatible contracts must use JSON object mode
+/// and keep Rust/native admission authoritative instead of sending a schema the
+/// provider will reject before inference begins.
+pub(super) fn deepseek_strict_schema_compatible(value: &Value) -> bool {
+    deepseek_node_compatible(&portable_strict_schema(value))
+}
+
+fn deepseek_node_compatible(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return true;
+    };
+    if let Some(kind) = object.get("type") {
+        if !matches!(
+            kind.as_str(),
+            Some("object" | "string" | "number" | "integer" | "boolean" | "array")
+        ) {
+            return false;
+        }
+    }
+    if [
+        "allOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "contains",
+        "prefixItems",
+        "patternProperties",
+        "dependentSchemas",
+        "unevaluatedProperties",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key))
+    {
+        return false;
+    }
+    if object
+        .get("enum")
+        .and_then(Value::as_array)
+        .is_some_and(|values| values.iter().any(Value::is_null))
+    {
+        return false;
+    }
+    if object
+        .get("additionalProperties")
+        .is_some_and(|value| value != &Value::Bool(false))
+    {
+        return false;
+    }
+    for group in ["properties", "$defs", "definitions"] {
+        if object
+            .get(group)
+            .and_then(Value::as_object)
+            .is_some_and(|entries| {
+                entries
+                    .values()
+                    .any(|child| !deepseek_node_compatible(child))
+            })
+        {
+            return false;
+        }
+    }
+    if object
+        .get("items")
+        .is_some_and(|child| !deepseek_node_compatible(child))
+    {
+        return false;
+    }
+    if object
+        .get("anyOf")
+        .and_then(Value::as_array)
+        .is_some_and(|variants| {
+            variants
+                .iter()
+                .any(|child| !deepseek_node_compatible(child))
+        })
+    {
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +188,20 @@ mod tests {
         }
         assert_eq!(schema["properties"]["minItems"]["enum"], json!([literal]));
         assert_eq!(schema["properties"]["nullable"]["enum"], json!([null]));
+    }
+    #[test]
+    fn deepseek_strict_compatibility_rejects_nullable_and_composition_not_supported_by_server() {
+        assert!(deepseek_strict_schema_compatible(&json!({
+            "type":"object","properties":{"name":{"type":"string"}},"required":["name"]
+        })));
+        assert!(!deepseek_strict_schema_compatible(&json!({
+            "type":"object","properties":{"explanation":{"type":["string","null"]}}
+        })));
+        assert!(!deepseek_strict_schema_compatible(&json!({
+            "allOf":[{"type":"object","properties":{}}]
+        })));
+        assert!(!deepseek_strict_schema_compatible(&json!({
+            "type":"object","properties":{"value":{"const":null}}
+        })));
     }
 }

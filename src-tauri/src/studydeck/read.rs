@@ -30,7 +30,10 @@ pub(super) fn read_package(source: &Path) -> Result<PackageData, CommandError> {
         .parse::<i64>()
         .map_err(|_| CommandError::invalid_package("The deck has an invalid package version."))?;
     if format != PACKAGE_FORMAT
-        || !matches!(version, LEGACY_PACKAGE_VERSION | CURRENT_PACKAGE_VERSION)
+        || !matches!(
+            version,
+            LEGACY_PACKAGE_VERSION | CORE_PACKAGE_VERSION | CURRENT_PACKAGE_VERSION
+        )
     {
         return Err(CommandError::invalid_package(
             "This file is not a supported ostudy deck package.",
@@ -39,7 +42,7 @@ pub(super) fn read_package(source: &Path) -> Result<PackageData, CommandError> {
 
     let deck = read_deck(&package, version)?;
     let notes = read_notes(&package, version, &deck)?;
-    let cards = read_cards(&package)?;
+    let cards = read_cards(&package, version)?;
     let tags = read_tags(&package, version, &deck)?;
     let note_tags = read_note_tags(&package)?;
     let assets = read_assets(&package)?;
@@ -54,7 +57,7 @@ pub(super) fn read_package(source: &Path) -> Result<PackageData, CommandError> {
         assets,
         note_assets,
     };
-    validate_package_data(&data, version == CURRENT_PACKAGE_VERSION)?;
+    validate_package_data(&data, version >= CORE_PACKAGE_VERSION)?;
     canonicalize_legacy_presentations(&mut data)?;
     validate_package_data(&data, true)?;
     Ok(data)
@@ -64,6 +67,14 @@ pub(super) fn validate_package_data(
     data: &PackageData,
     strict_current: bool,
 ) -> Result<(), CommandError> {
+    if !matches!(
+        data.version,
+        LEGACY_PACKAGE_VERSION | CORE_PACKAGE_VERSION | CURRENT_PACKAGE_VERSION
+    ) {
+        return Err(CommandError::invalid_package(
+            "Unsupported deck package version.",
+        ));
+    }
     validate_entity_id(&data.deck.source_id, "exported deck")?;
     validate_name(data.deck.name.clone())
         .map_err(|error| CommandError::invalid_package(error.message))?;
@@ -145,9 +156,8 @@ pub(super) fn validate_package_data(
     for note in &data.notes {
         validate_entity_id(&note.source_id, "exported note")?;
         if note.source_deck_id != data.deck.source_id
-            || note.content_format != "tiptap-json"
             || note.content_schema_version != 1
-            || !matches!(note.note_type.as_str(), "basic" | "cloze")
+            || !matches!(note.note_type.as_str(), "basic" | "cloze" | "interactive")
             || note.revision < 1
             || note.cloze_source.chars().count() > MAX_CLOZE_SOURCE_CHARS
             || !matches!(note.cloze_mode.as_str(), "one_at_a_time" | "all_together")
@@ -168,6 +178,9 @@ pub(super) fn validate_package_data(
             return Err(CommandError::invalid_package(
                 "A source note contains duplicate generated-card identities.",
             ));
+        }
+        if questions::validate_presentations(note, cards, data.version, &data.assets)? {
+            continue;
         }
         match note.note_type.as_str() {
             "basic" => {
@@ -216,7 +229,7 @@ pub(super) fn validate_package_data(
 
     let expected_assets = expected_asset_links(&data.notes)?;
     let actual_assets = data.note_assets.iter().cloned().collect::<BTreeSet<_>>();
-    if expected_assets != actual_assets {
+    if expected_assets != actual_assets || actual_assets.len() != data.note_assets.len() {
         return Err(CommandError::invalid_package(
             "Image references do not match the packaged rich documents.",
         ));
@@ -224,7 +237,7 @@ pub(super) fn validate_package_data(
     for (note_id, asset_id, side) in &data.note_assets {
         if !note_ids.contains(note_id.as_str())
             || !asset_ids.contains(asset_id.as_str())
-            || !matches!(side.as_str(), "front" | "back")
+            || !matches!(side.as_str(), "front" | "back" | "content")
         {
             return Err(CommandError::invalid_package(
                 "The deck contains an invalid image relationship.",
@@ -308,7 +321,7 @@ fn read_deck(connection: &Connection, version: i64) -> Result<PackageDeck, Comma
         ));
     }
     let has_sort_order =
-        version >= CURRENT_PACKAGE_VERSION && column_exists(connection, "deck", "sort_order")?;
+        version >= CORE_PACKAGE_VERSION && column_exists(connection, "deck", "sort_order")?;
     let sql = if has_sort_order {
         "SELECT source_id, name, description, sort_order,
                 created_at, updated_at, revision FROM deck"
@@ -366,16 +379,24 @@ fn read_notes(
     let sql = if version == CURRENT_PACKAGE_VERSION {
         "SELECT source_id, source_deck_id, note_type,
                 content_format, content_schema_version,
+                COALESCE(front_doc, 'null'), COALESCE(back_doc, 'null'),
+                front_text, back_text, duplicate_hash,
+                reverse_enabled, cloze_source, cloze_mode,
+                created_at, updated_at, revision, question_definition
+         FROM notes ORDER BY created_at, source_id"
+    } else if version == CORE_PACKAGE_VERSION {
+        "SELECT source_id, source_deck_id, note_type,
+                content_format, content_schema_version,
                 front_doc, back_doc, front_text, back_text, duplicate_hash,
                 reverse_enabled, cloze_source, cloze_mode,
-                created_at, updated_at, revision
+                created_at, updated_at, revision, NULL
          FROM notes ORDER BY created_at, source_id"
     } else {
         "SELECT source_id, source_deck_id, note_type,
                 content_format, content_schema_version,
                 front_doc, back_doc, front_text, back_text, '',
                 0, '', 'one_at_a_time',
-                created_at, updated_at, revision
+                created_at, updated_at, revision, NULL
          FROM notes ORDER BY created_at, source_id"
     };
     let mut statement = connection.prepare(sql).map_err(CommandError::database)?;
@@ -398,6 +419,7 @@ fn read_notes(
                 row.get::<_, i64>(13)?,
                 row.get::<_, i64>(14)?,
                 row.get::<_, i64>(15)?,
+                row.get::<_, Option<String>>(16)?,
             ))
         })
         .map_err(CommandError::database)?
@@ -416,18 +438,11 @@ fn read_notes(
             let back_doc: Value = serde_json::from_str(&row.6).map_err(|error| {
                 CommandError::invalid_package(format!("Invalid answer document: {error}"))
             })?;
-            let validated = validate_content(front_doc, back_doc, row.7, row.8)
-                .map_err(|error| CommandError::invalid_package(error.message))?;
             let legacy_metadata = metadata.get(&row.0);
             let reverse_enabled = legacy_metadata.map_or(row.10 == 1, |value| value.0);
             let cloze_source = legacy_metadata.map_or(row.11, |value| value.1.clone());
             let cloze_mode = legacy_metadata.map_or(row.12, |value| value.2.clone());
-            let duplicate_hash = if row.9.is_empty() {
-                duplicate_fingerprint(&validated.front_text, &validated.back_text)
-            } else {
-                row.9
-            };
-            Ok(PackageNote {
+            let mut note = PackageNote {
                 source_id: row.0,
                 source_deck_id: if row.1.is_empty() {
                     deck.source_id.clone()
@@ -437,32 +452,34 @@ fn read_notes(
                 note_type: row.2,
                 content_format: row.3,
                 content_schema_version: row.4,
-                front_doc: serde_json::from_str(&validated.front_doc_json)
-                    .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(&validated.back_doc_json)
-                    .map_err(CommandError::serialization)?,
-                front_text: validated.front_text,
-                back_text: validated.back_text,
-                duplicate_hash,
+                front_doc,
+                back_doc,
+                front_text: row.7,
+                back_text: row.8,
+                duplicate_hash: row.9,
+                question_definition: row.16,
                 reverse_enabled,
                 cloze_source,
                 cloze_mode,
                 created_at: row.13,
                 updated_at: row.14,
                 revision: row.15.max(1),
-            })
+            };
+            questions::normalize(&mut note)?;
+            Ok(note)
         })
         .collect()
 }
 
-fn read_cards(connection: &Connection) -> Result<Vec<PackageCard>, CommandError> {
-    let mut statement = connection
-        .prepare(
-            "SELECT source_id, source_note_id, direction, template_ordinal,
-                    created_at, updated_at
-             FROM cards ORDER BY created_at, source_id",
-        )
-        .map_err(CommandError::database)?;
+fn read_cards(connection: &Connection, version: i64) -> Result<Vec<PackageCard>, CommandError> {
+    let sql = if version == CURRENT_PACKAGE_VERSION {
+        "SELECT source_id, source_note_id, direction, template_ordinal,
+                created_at, updated_at, question_key FROM cards ORDER BY created_at, source_id"
+    } else {
+        "SELECT source_id, source_note_id, direction, template_ordinal,
+                created_at, updated_at, NULL FROM cards ORDER BY created_at, source_id"
+    };
+    let mut statement = connection.prepare(sql).map_err(CommandError::database)?;
     let cards = statement
         .query_map([], |row| {
             Ok(PackageCard {
@@ -470,6 +487,7 @@ fn read_cards(connection: &Connection) -> Result<Vec<PackageCard>, CommandError>
                 source_note_id: row.get(1)?,
                 direction: row.get(2)?,
                 template_ordinal: row.get(3)?,
+                question_key: row.get(6)?,
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
             })
@@ -494,7 +512,7 @@ fn read_tags(
         return Ok(Vec::new());
     }
     let has_timestamps =
-        version == CURRENT_PACKAGE_VERSION && column_exists(connection, "tags", "created_at")?;
+        version >= CORE_PACKAGE_VERSION && column_exists(connection, "tags", "created_at")?;
     let sql = if has_timestamps {
         "SELECT source_id, name, normalized_name, created_at, updated_at
          FROM tags ORDER BY normalized_name, source_id"
@@ -671,6 +689,16 @@ fn expected_asset_links(
 ) -> Result<BTreeSet<(String, String, String)>, CommandError> {
     let mut links = BTreeSet::new();
     for note in notes {
+        if let Some(question) = questions::definition(note)? {
+            for asset_id in question.asset_ids() {
+                links.insert((
+                    note.source_id.clone(),
+                    asset_id.clone(),
+                    "content".to_string(),
+                ));
+            }
+            continue;
+        }
         for asset_id in collect_asset_ids(&note.front_doc)? {
             links.insert((note.source_id.clone(), asset_id, "front".to_string()));
         }

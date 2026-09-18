@@ -9,16 +9,21 @@ use crate::{
         projected_presentation_variant, render_projected_presentation, ProjectedPresentationInput,
         RenderedCardPresentation,
     },
-    cards::CardPresentationDto,
+    cards::questions::InstanceIdentity,
     error::CommandError,
     paths::AppPaths,
-    practice::{PracticeCardDto, PracticeCardWindowDto},
+    practice::{
+        presentation::{PracticeContentDto, PracticePresentationDto},
+        question_attempts::{self, capture::PreparedQuestion, AttemptIdentityInput},
+        PracticeCardDto, PracticeCardWindowDto,
+    },
     projections::{
         learning_signals as signal_projection,
         scope::{chunks, push_value},
     },
     study_calendar::StudyTimeContext,
     studyability,
+    util::generate_id,
     workload::PlannedCard,
 };
 
@@ -31,7 +36,17 @@ pub struct TagSnapshot {
     pub name: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+pub enum PreparedPracticeContent {
+    Recall {
+        front_doc_json: String,
+        back_doc_json: String,
+        back_text: String,
+    },
+    Interactive(Box<PreparedQuestion>),
+}
+
+#[derive(Clone)]
 pub struct PreparedPracticeCard {
     pub deck_id: String,
     pub deck_name: String,
@@ -45,10 +60,8 @@ pub struct PreparedPracticeCard {
     pub presentation_variant: String,
     pub card_type: String,
     pub card_label: String,
-    pub front_doc_json: String,
-    pub back_doc_json: String,
+    pub content: PreparedPracticeContent,
     pub front_text: String,
-    pub back_text: String,
     pub question_excerpt: String,
     pub question_text_hash: String,
     pub question_was_truncated: bool,
@@ -60,21 +73,37 @@ pub struct PreparedPracticeCard {
 impl PreparedPracticeCard {
     pub fn to_dto(
         &self,
+        connection: &Connection,
         assets: Vec<crate::assets::AssetDto>,
     ) -> Result<PracticeCardDto, CommandError> {
+        let content = match &self.content {
+            PreparedPracticeContent::Recall {
+                front_doc_json,
+                back_doc_json,
+                back_text,
+            } => PracticeContentDto::Recall {
+                front_doc: serde_json::from_str(front_doc_json)
+                    .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(back_doc_json)
+                    .map_err(CommandError::serialization)?,
+                back_text: back_text.clone(),
+                assets,
+            },
+            PreparedPracticeContent::Interactive(captured) => PracticeContentDto::Interactive {
+                question: Box::new(question_attempts::captured_view(
+                    connection,
+                    &captured.attempt,
+                )?),
+            },
+        };
         Ok(PracticeCardDto {
-            presentation: CardPresentationDto {
+            presentation: PracticePresentationDto {
                 id: self.card_id.clone(),
                 note_id: self.note_id.clone(),
                 deck_id: self.deck_id.clone(),
                 direction: self.direction.clone(),
-                front_doc: serde_json::from_str(&self.front_doc_json)
-                    .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(&self.back_doc_json)
-                    .map_err(CommandError::serialization)?,
                 front_text: self.front_text.clone(),
-                back_text: self.back_text.clone(),
-                assets,
+                content,
                 created_at: self.created_at,
                 updated_at: self.updated_at,
                 revision: self.note_revision,
@@ -95,8 +124,10 @@ struct ProjectionRow {
     direction: String,
     template_ordinal: i64,
     note_type: String,
-    front_doc: String,
-    back_doc: String,
+    front_doc: Option<String>,
+    back_doc: Option<String>,
+    question_definition: Option<String>,
+    question_key: Option<String>,
     front_text: String,
     back_text: String,
     cloze_source: String,
@@ -134,6 +165,34 @@ pub fn prepare_new_session_cards(
                 "A selected card is suspended, buried, deleted, archived, or otherwise unavailable.",
             )
         })?;
+        if row.note_type == "interactive" {
+            let definition = row
+                .question_definition
+                .as_deref()
+                .ok_or_else(invalid_question_row)?;
+            let key = row
+                .question_key
+                .as_deref()
+                .ok_or_else(invalid_question_row)?;
+            let captured = question_attempts::capture::prepare(
+                InstanceIdentity {
+                    instance_id: generate_id(connection)?,
+                    card_id: row.card_id.clone(),
+                    note_id: row.note_id.clone(),
+                    note_revision: row.note_revision,
+                },
+                definition,
+                key,
+                &generate_id(connection)?,
+            )?;
+            prepared.push(prepared_from_question(
+                row,
+                captured,
+                tags.get(&row.note_id).cloned().unwrap_or_default(),
+                time.now_utc_millis,
+            ));
+            continue;
+        }
         let presentation_variant = projected_presentation_variant(
             &row.note_type,
             &row.cloze_source,
@@ -144,8 +203,8 @@ pub fn prepare_new_session_cards(
             direction: &row.direction,
             template_ordinal: row.template_ordinal,
             note_type: &row.note_type,
-            front_doc_json: &row.front_doc,
-            back_doc_json: &row.back_doc,
+            front_doc_json: row.front_doc.as_deref().ok_or_else(invalid_question_row)?,
+            back_doc_json: row.back_doc.as_deref().ok_or_else(invalid_question_row)?,
             front_text: &row.front_text,
             back_text: &row.back_text,
             cloze_source: &row.cloze_source,
@@ -183,11 +242,13 @@ fn load_projection_rows(
                  c.deck_id, d.name, c.id, c.note_id, c.direction, c.template_ordinal,
                  n.note_type, n.front_doc, n.back_doc, n.front_text, n.back_text,
                  n.cloze_source, n.cloze_mode, n.revision, n.created_at, n.updated_at,
-                 s.due_at, s.state, s.reps, {signal_value}
+                 s.due_at, s.state, s.reps, {signal_value},
+                 n.question_definition, qp.question_key
              FROM cards c
              JOIN notes n ON n.id = c.note_id
              JOIN decks d ON d.id = c.deck_id
              JOIN card_schedules s ON s.card_id = c.id
+             LEFT JOIN card_question_presentations qp ON qp.card_id = c.id
              {signal_join}
              WHERE c.id IN ({placeholders})
                AND {studyable}",
@@ -220,6 +281,8 @@ fn load_projection_rows(
                     state: row.get(17)?,
                     reps: row.get(18)?,
                     needs_more_practice: row.get::<_, i64>(19)? != 0,
+                    question_definition: row.get(20)?,
+                    question_key: row.get(21)?,
                 })
             })
             .map_err(CommandError::database)?
@@ -303,10 +366,12 @@ fn prepared_from_rendered(
         presentation_variant,
         card_type: rendered.card_type,
         card_label: rendered.card_label,
-        front_doc_json,
-        back_doc_json,
+        content: PreparedPracticeContent::Recall {
+            front_doc_json,
+            back_doc_json,
+            back_text: rendered.back_text,
+        },
         front_text: rendered.front_text,
-        back_text: rendered.back_text,
         question_excerpt,
         question_text_hash,
         question_was_truncated,
@@ -314,6 +379,45 @@ fn prepared_from_rendered(
         updated_at: row.updated_at,
         tags,
     })
+}
+
+fn prepared_from_question(
+    row: &ProjectionRow,
+    captured: PreparedQuestion,
+    tags: Vec<TagSnapshot>,
+    captured_at: i64,
+) -> PreparedPracticeCard {
+    let (question_excerpt, question_was_truncated) = bounded_excerpt(&captured.stem);
+    let question_text_hash = format!("{:x}", Sha256::digest(captured.stem.as_bytes()));
+    PreparedPracticeCard {
+        deck_id: row.deck_id.clone(),
+        deck_name: row.deck_name.clone(),
+        card_id: row.card_id.clone(),
+        note_id: row.note_id.clone(),
+        note_revision: row.note_revision,
+        direction: row.direction.clone(),
+        due_at: row.due_at,
+        state: row.state,
+        needs_more_practice: row.needs_more_practice,
+        presentation_variant: row.question_key.clone().unwrap_or_default(),
+        card_type: captured.kind.as_str().to_string(),
+        card_label: captured.kind.label().to_string(),
+        front_text: captured.stem.clone(),
+        content: PreparedPracticeContent::Interactive(Box::new(captured)),
+        question_excerpt,
+        question_text_hash,
+        question_was_truncated,
+        created_at: captured_at,
+        updated_at: captured_at,
+        tags,
+    }
+}
+
+fn invalid_question_row() -> CommandError {
+    CommandError::new(
+        "invalid_practice_content",
+        "This card has no valid study presentation.",
+    )
 }
 
 fn bounded_excerpt(value: &str) -> (String, bool) {
@@ -329,6 +433,27 @@ pub fn insert_session_snapshot(
     card: &PreparedPracticeCard,
     captured_at: i64,
 ) -> Result<(), CommandError> {
+    let (front, back, back_text, instance_id) = match &card.content {
+        PreparedPracticeContent::Recall {
+            front_doc_json,
+            back_doc_json,
+            back_text,
+        } => (
+            Some(front_doc_json.as_str()),
+            Some(back_doc_json.as_str()),
+            back_text.as_str(),
+            None,
+        ),
+        PreparedPracticeContent::Interactive(captured) => {
+            question_attempts::capture::insert(connection, session_id, captured, captured_at)?;
+            (
+                None,
+                None,
+                "",
+                Some(captured.attempt.instance().identity().instance_id.as_str()),
+            )
+        }
+    };
     connection
         .execute(
             "INSERT INTO practice_session_card_snapshots (
@@ -336,10 +461,11 @@ pub fn insert_session_snapshot(
                  owner_deck_id_at_capture, captured_deck_name,
                  direction, card_type, card_label, presentation_variant,
                  front_doc_json, back_doc_json, front_text, back_text,
-                 question_excerpt, question_text_hash, question_was_truncated, captured_at
+                 question_excerpt, question_text_hash, question_was_truncated, captured_at,
+                 question_instance_id
              ) VALUES (
                  ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-                 ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+                 ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19
              )",
             params![
                 session_id,
@@ -352,14 +478,15 @@ pub fn insert_session_snapshot(
                 card.card_type,
                 card.card_label,
                 card.presentation_variant,
-                card.front_doc_json,
-                card.back_doc_json,
+                front,
+                back,
                 card.front_text,
-                card.back_text,
+                back_text,
                 card.question_excerpt,
                 card.question_text_hash,
                 i64::from(card.question_was_truncated),
                 captured_at,
+                instance_id,
             ],
         )
         .map_err(CommandError::database)?;
@@ -411,7 +538,7 @@ pub fn load_practice_window(
              snap.card_id, snap.note_id, c.deck_id, d.name, snap.direction,
              snap.front_doc_json, snap.back_doc_json, snap.front_text, snap.back_text,
              snap.note_revision, snap.captured_at,
-             s.due_at, s.state, {signal_value}
+             s.due_at, s.state, {signal_value}, snap.question_instance_id
          FROM practice_session_cards psc
          JOIN practice_session_card_snapshots snap
            ON snap.session_id = psc.session_id AND snap.card_id = psc.card_id
@@ -436,8 +563,8 @@ pub fn load_practice_window(
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, String>(7)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
                 row.get::<_, String>(8)?,
                 row.get::<_, String>(9)?,
                 row.get::<_, i64>(10)?,
@@ -445,13 +572,18 @@ pub fn load_practice_window(
                 row.get::<_, i64>(12)?,
                 row.get::<_, i64>(13)?,
                 row.get::<_, i64>(14)? != 0,
+                row.get::<_, Option<String>>(15)?,
             ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    let note_ids = rows.iter().map(|row| row.2.clone()).collect::<Vec<_>>();
-    let mut assets = load_assets_for_notes(connection, paths, &note_ids)?;
+    let note_ids = rows
+        .iter()
+        .filter(|row| row.15.is_none())
+        .map(|row| row.2.clone())
+        .collect::<Vec<_>>();
+    let assets = load_assets_for_notes(connection, paths, &note_ids)?;
     let mut cards = Vec::with_capacity(rows.len());
     let mut last_position = start_position.saturating_sub(1);
     for (
@@ -470,22 +602,43 @@ pub fn load_practice_window(
         due_at,
         state,
         needs_more_practice,
+        instance_id,
     ) in rows
     {
         last_position = position;
+        let content = if let Some(instance_id) = instance_id {
+            PracticeContentDto::Interactive {
+                question: Box::new(question_attempts::read(
+                    connection,
+                    &AttemptIdentityInput {
+                        session_id: session_id.to_string(),
+                        card_id: card_id.clone(),
+                        instance_id,
+                    },
+                )?),
+            }
+        } else {
+            PracticeContentDto::Recall {
+                front_doc: serde_json::from_str(
+                    front_doc_json.as_deref().ok_or_else(invalid_question_row)?,
+                )
+                .map_err(CommandError::serialization)?,
+                back_doc: serde_json::from_str(
+                    back_doc_json.as_deref().ok_or_else(invalid_question_row)?,
+                )
+                .map_err(CommandError::serialization)?,
+                back_text,
+                assets: assets.get(&note_id).cloned().unwrap_or_default(),
+            }
+        };
         cards.push(PracticeCardDto {
-            presentation: CardPresentationDto {
+            presentation: PracticePresentationDto {
                 id: card_id,
                 note_id: note_id.clone(),
                 deck_id,
                 direction,
-                front_doc: serde_json::from_str(&front_doc_json)
-                    .map_err(CommandError::serialization)?,
-                back_doc: serde_json::from_str(&back_doc_json)
-                    .map_err(CommandError::serialization)?,
                 front_text,
-                back_text,
-                assets: assets.remove(&note_id).unwrap_or_default(),
+                content,
                 created_at: captured_at,
                 updated_at: captured_at,
                 revision: note_revision,

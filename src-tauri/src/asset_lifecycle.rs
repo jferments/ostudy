@@ -6,6 +6,8 @@
 //! represented in the ledger so startup can repair a crash without guessing or
 //! deleting a referenced image.
 
+pub(crate) mod occlusion;
+
 include!("asset_lifecycle/core_a.rs");
 include!("asset_lifecycle/core_b.rs");
 include!("asset_lifecycle/core_c.rs");

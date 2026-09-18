@@ -45,14 +45,16 @@ const failures = [];
 const referenceTokenData = JSON.parse(referenceTokens);
 const syncTransportProduction = syncTransport.split("\n#[cfg(test)]", 1)[0];
 
-expectContains(nativeScanner, "GmsBarcodeScanning.getClient(activity, options)", "Google Code Scanner client");
-expectContains(nativeScanner, ".setBarcodeFormats(Barcode.FORMAT_QR_CODE)", "QR-only native scan format");
-expectContains(nativeScanner, ".enableAutoZoom()", "first-party native scan auto zoom");
+expectContains(nativeScanner, "ScanContract()", "local ZXing scanner contract");
+expectContains(nativeScanner, ".setDesiredBarcodeFormats(ScanOptions.QR_CODE)", "QR-only local scan format");
+expectContains(nativeScanner, ".setBarcodeImageEnabled(false)", "scanner image-retention disablement");
 expectContains(nativeScanner, "AtomicBoolean", "concurrent and duplicate scanner completion guard");
-expectContains(nativeScanner, ".addOnCanceledListener", "native scanner cancellation path");
+expectContains(nativeScanner, "@ActivityCallback", "native scanner cancellation/result callback path");
 expectContains(nativeScanner, "MAX_QR_CONTENT_CHARS", "bounded decoded QR payload");
-expectNotContains(nativeScanner, "IntentIntegrator", "removed ZXing Embedded scanner");
-expectNotContains(nativeScanner, "parsed.contents", "removed ZXing activity-result parser");
+expectContains(nativeScanner, "parsed.contents", "local ZXing activity-result parser");
+expectNotContains(nativeScanner, "GmsBarcodeScanning", "removed Google Code Scanner client");
+expectContains(nativeManifest, "android.permission.CAMERA", "local scanner camera permission");
+expectNotContains(nativeManifest, "com.google.mlkit.vision.DEPENDENCIES", "removed Google scanner install metadata");
 expectContains(qrCommand, "pub async fn scan_device_pairing_qr_async", "async QR command adapter");
 expectContains(qrCommand, "tauri::async_runtime::spawn_blocking", "QR mobile-plugin worker handoff");
 expectContains(frontendIpc, 'invoke<string | null>("scan_device_pairing_qr_async")', "frontend async QR invocation");
@@ -203,7 +205,7 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log("OK   Device sync keeps LAN QR pairing and direct Android USB as separate adapters beneath one authenticated SyncIo protocol; USB uses Android Open Accessory bulk I/O with automatic attachment, no tethering/IP/QR/debugging workflow; sender-selected scopes, merge/privacy rules, and credential boundaries remain shared.");
+console.log("OK   Device sync keeps LAN QR pairing and direct Android USB as separate adapters beneath one authenticated SyncIo protocol; Android QR uses a bounded local ZXing camera flow, while USB uses Android Open Accessory bulk I/O with automatic attachment; sender-selected scopes, merge/privacy rules, and credential boundaries remain shared.");
 
 async function read(relativePath) { return readFile(join(root, relativePath), "utf8"); }
 function expectContains(source, expected, label) {

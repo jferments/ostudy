@@ -96,7 +96,7 @@ cargo test \
   document_
 
 step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
-for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::privacy_tests device_sync::package::media_asset_tests library_backup::media_backup_tests library_backup::tutor_backup_tests; do
+for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::scope:: device_sync::package:: library_backup::media_backup_tests library_backup::tutor_backup_tests; do
   cargo test \
     --manifest-path src-tauri/Cargo.toml \
     --locked \
@@ -128,6 +128,16 @@ cargo test \
   --all-features \
   --lib \
   cards::
+
+step "Interactive question authoring and migration preservation"
+for test_filter in authoring::card_commands::interactive:: database::interactive_migration_tests:: practice::question_attempts:: asset_lifecycle::question_attempt_assets_keep_images_referenced asset_lifecycle::occlusion::; do
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    "$test_filter"
+done
 
 step "Document metadata migration regression"
 cargo test \

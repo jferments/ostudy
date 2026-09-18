@@ -89,7 +89,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-web:3.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
-    androidTestImplementation("com.google.mlkit:text-recognition:16.0.1")
+    androidTestImplementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
 }
 
 apply(from = "tauri.build.gradle.kts")

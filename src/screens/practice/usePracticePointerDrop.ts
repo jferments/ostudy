@@ -1,0 +1,126 @@
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+
+interface PointerDrag {
+  pointerId: number;
+  itemId: string;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  active: boolean;
+  owner: HTMLElement;
+}
+interface PracticePointerDropOptions {
+  disabled: boolean;
+  onDrop: (itemId: string, targetId: string) => void;
+  scopeRef?: RefObject<HTMLElement | null>;
+}
+const DROP_TARGET_SELECTOR = "[data-practice-drop-target-id]";
+const INTERACTIVE = "a,button,input,textarea,select,audio,video,[contenteditable=true],[role=checkbox],[role=radio],[data-no-drag]";
+
+export function usePracticePointerDrop({ disabled, onDrop, scopeRef }: PracticePointerDropOptions) {
+  const latest = useRef({ disabled, onDrop, scopeRef });
+  latest.current = { disabled, onDrop, scopeRef };
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [overTargetId, setOverTargetId] = useState<string | null>(null);
+  const pointerRef = useRef<PointerDrag | null>(null);
+  const suppressClickRef = useRef(false);
+  const frame = useRef<number | null>(null);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function hit(x: number, y: number): string | null {
+    const node = document.elementFromPoint(x, y)?.closest<HTMLElement>(DROP_TARGET_SELECTOR);
+    const scope = latest.current.scopeRef?.current;
+    return node && (!scope || scope.contains(node)) ? node.dataset.practiceDropTargetId ?? null : null;
+  }
+  function release(): void {
+    const drag = pointerRef.current;
+    pointerRef.current = null;
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    if (drag?.owner.hasPointerCapture(drag.pointerId)) drag.owner.releasePointerCapture(drag.pointerId);
+  }
+  function cancel(): void {
+    release();
+    setDraggingItemId(null);
+    setOverTargetId(null);
+    setOffset({ x: 0, y: 0 });
+  }
+  function scrollEdges(): void {
+    const drag = pointerRef.current;
+    if (!drag?.active) return;
+    let parent = drag.owner.parentElement;
+    while (parent) {
+      const style = getComputedStyle(parent);
+      if (/(auto|scroll)/u.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) {
+        const box = parent.getBoundingClientRect();
+        const edge = 44;
+        const delta = drag.y < box.top + edge ? -10 : drag.y > box.bottom - edge ? 10 : 0;
+        if (delta) parent.scrollTop += delta;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+    setOverTargetId(hit(drag.x, drag.y));
+    frame.current = requestAnimationFrame(scrollEdges);
+  }
+  useEffect(() => {
+    const interrupted = () => cancel();
+    const visibility = () => { if (document.hidden) cancel(); };
+    window.addEventListener("blur", interrupted);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      release();
+      if (clickTimer.current !== null) clearTimeout(clickTimer.current);
+      window.removeEventListener("blur", interrupted);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
+  useEffect(() => { if (disabled) cancel(); }, [disabled]);
+
+  function pointerDown(event: ReactPointerEvent<HTMLElement>, itemId: string): void {
+    if (disabled || event.button !== 0) return;
+    if (pointerRef.current) { cancel(); return; }
+    if (event.target instanceof Element && event.target !== event.currentTarget
+      && event.target.closest(INTERACTIVE)) return;
+    if (clickTimer.current !== null) clearTimeout(clickTimer.current);
+    suppressClickRef.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointerRef.current = {
+      pointerId: event.pointerId, itemId, startX: event.clientX, startY: event.clientY,
+      x: event.clientX, y: event.clientY, active: false, owner: event.currentTarget,
+    };
+  }
+  function pointerMove(event: ReactPointerEvent<HTMLElement>): void {
+    const drag = pointerRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.x = event.clientX; drag.y = event.clientY;
+    if (!drag.active && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) >= 8) {
+      drag.active = true;
+      suppressClickRef.current = true;
+      setDraggingItemId(drag.itemId);
+      frame.current = requestAnimationFrame(scrollEdges);
+    }
+    if (drag.active) {
+      event.preventDefault();
+      setOffset({ x: drag.x - drag.startX, y: drag.y - drag.startY });
+      setOverTargetId(hit(drag.x, drag.y));
+    }
+  }
+  function finish(event: ReactPointerEvent<HTMLElement>, commit: boolean): void {
+    const drag = pointerRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const targetId = commit && drag.active ? hit(event.clientX, event.clientY) : null;
+    cancel();
+    if (targetId && !latest.current.disabled) latest.current.onDrop(drag.itemId, targetId);
+    // Suppress the synthetic click immediately following a drag, not later taps.
+    clickTimer.current = setTimeout(() => { suppressClickRef.current = false; }, 0);
+  }
+  return {
+    draggingItemId, offset, overTargetId, pointerDown, pointerMove,
+    pointerUp: (event: ReactPointerEvent<HTMLElement>) => finish(event, true),
+    pointerCancel: (event: ReactPointerEvent<HTMLElement>) => finish(event, false),
+    shouldSuppressClick: () => suppressClickRef.current,
+  };
+}

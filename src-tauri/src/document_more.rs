@@ -259,12 +259,12 @@ async fn generate_more_impl(
             "The second pass did not find important material that was not already tested by the existing deck.",
         ));
     }
-    let grounded_candidates = attach_generated_card_source_windows(
-        database,
-        &job_id,
-        &windows,
-        generated_values.clone(),
-    )?;
+    let grounded_candidates =
+        attach_generated_card_source_windows(database, &job_id, &windows, generated_values)?;
+    let generated_values = grounded_candidates
+        .iter()
+        .map(|card| card.generation_value())
+        .collect::<Result<Vec<_>, _>>()?;
     let curated_values = document_intelligence::curate_document_cards(
         runtime,
         &task,
@@ -583,7 +583,7 @@ fn build_append_payload(
 ) -> Result<String, CommandError> {
     serde_json::to_string(&serde_json::json!({
         "format": "ostudy-flashcards",
-        "formatVersion": 1,
+        "formatVersion": 2,
         "deck": {
             "mode": "append",
             "name": deck_name
@@ -635,6 +635,7 @@ mod tests {
         let payload = build_append_payload(
             "Physiology",
             &[SourceGroundedGeneratedCard {
+                assessment: None,
                 knowledge_support: Vec::new(),
                 card: serde_json::json!({
                     "type": "basic",

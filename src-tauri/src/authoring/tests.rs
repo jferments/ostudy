@@ -103,7 +103,10 @@ fn creates_searches_and_detects_tagged_cards() {
 
     let page = database
         .with_connection(|connection| {
-            search_cards_in_connection(connection, search_input(vec![deck_id.clone()], "warfarin"))
+            card_commands::search_cards_in_connection_for_tests(
+                connection,
+                search_input(vec![deck_id.clone()], "warfarin"),
+            )
         })
         .expect("search should work");
     assert_eq!(page.total_count, 1);
@@ -112,7 +115,7 @@ fn creates_searches_and_detects_tagged_cards() {
 
     let tag_page = database
         .with_connection(|connection| {
-            search_cards_in_connection(
+            card_commands::search_cards_in_connection_for_tests(
                 connection,
                 search_input(vec![deck_id.clone()], "anticoagulants"),
             )
@@ -189,7 +192,7 @@ fn multi_deck_filter_limits_results_to_selected_decks() {
 
     let one_deck = database
         .with_connection(|connection| {
-            search_cards_in_connection(
+            card_commands::search_cards_in_connection_for_tests(
                 connection,
                 search_input(vec![second_deck.clone()], "shared"),
             )

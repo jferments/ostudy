@@ -1,7 +1,7 @@
 import { Surface } from "../../ui/primitives/Surface";
 import { Badge } from "../../ui/primitives/Badge";
 import { presentation } from "./presentation";
-import { RichTextEditor } from "../../editor/RichTextEditor";
+import { RichFieldList, type RichEditorField } from "../../editor/RichFieldList";
 import { RichTextView } from "../../editor/RichTextView";
 import {
   type Asset,
@@ -24,7 +24,7 @@ interface TemplateEntryFormProps {
   assetDraftId: string | null;
   disabled: boolean;
   isPreviewing: boolean;
-  onValuesChange: (values: TemplateValueInput[]) => void;
+  onValueChange: (fieldId: string, document: RichDocument, plainText: string) => void;
   onAssetImported: (asset: Asset) => void;
   onPreview: () => void;
 }
@@ -37,21 +37,21 @@ export function TemplateEntryForm({
   assetDraftId,
   disabled,
   isPreviewing,
-  onValuesChange,
+  onValueChange,
   onAssetImported,
   onPreview,
 }: TemplateEntryFormProps) {
-  function updateValue(
-    fieldId: string,
-    doc: RichDocument,
-    text: string,
-  ): void {
-    onValuesChange(
-      values.map((entry) =>
-        entry.fieldId === fieldId ? { ...entry, doc, text } : entry,
-      ),
-    );
-  }
+  const fields: RichEditorField[] = template.fields.flatMap((field) => {
+    const value = values.find((entry) => entry.fieldId === field.id);
+    if (!value) return [];
+    return [{
+      id: field.id,
+      label: field.name,
+      description: field.description || "Enter the content for this field.",
+      document: value.doc,
+      minHeight: 180,
+    }];
+  });
 
   return (
     <Surface className={presentation["template-entry-form"]} aria-labelledby="template-entry-heading">
@@ -66,24 +66,8 @@ export function TemplateEntryForm({
       </div>
 
       <div className={presentation["template-rich-value-list"]}>
-        {template.fields.map((field) => {
-          const value = values.find((entry) => entry.fieldId === field.id);
-          if (!value) return null;
-          return (
-            <RichTextEditor
-              key={field.id}
-              label={field.name}
-              description={field.description || "Enter the content for this field."}
-              document={value.doc}
-              assets={assets}
-              assetDraftId={assetDraftId}
-              disabled={disabled}
-              onAssetImported={onAssetImported}
-              onChange={(doc, text) => updateValue(field.id, doc, text)}
-              minHeight={180}
-            />
-          );
-        })}
+        <RichFieldList fields={fields} assets={assets} assetDraftId={assetDraftId}
+          disabled={disabled} onAssetImported={onAssetImported} onFieldChange={onValueChange} />
       </div>
 
       <div className={presentation["template-preview-actions"]}>

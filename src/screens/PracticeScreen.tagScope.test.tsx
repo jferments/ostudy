@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as practiceIpc from "../ipc/practice";
@@ -14,7 +14,8 @@ vi.mock("../ipc/common", () => ({
   getErrorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Unexpected error",
 }));
-vi.mock("../ipc/practice", () => ({
+vi.mock("../ipc/practice", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../ipc/practice")>(),
   completePracticeSession: vi.fn(),
   getPracticeCardWindow: vi.fn(),
   markPracticeCardRevealed: vi.fn(),
@@ -77,6 +78,8 @@ describe("PracticeScreen tag scope", () => {
         mode: "scheduled",
       });
       expect(onLaunchConsumed).toHaveBeenCalledOnce();
+      expect(screen.getByText("Active practice")).toBeTruthy();
+      expect(practiceIpc.markPracticeCardViewed).toHaveBeenCalledOnce();
     });
   });
 });

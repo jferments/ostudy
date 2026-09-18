@@ -1,7 +1,7 @@
 //! Canonical `.studydeck` package boundary.
 //!
-//! Version 2 writes core content, tags, generated-card metadata, and managed
-//! assets from one SQLite read snapshot. Version 1 packages remain readable
+//! Version 3 writes typed definitions, presentation keys, tags and managed
+//! assets from one SQLite read snapshot. Versions 1 and 2 remain readable
 //! through the tolerant reader in this module, but no current export is built by
 //! layering optional tables onto an already-finished file. Imports validate the
 //! complete graph before staging files or mutating the library, then commit one
@@ -10,10 +10,13 @@
 mod anki;
 mod export;
 mod import;
+mod questions;
 mod read;
 
 #[cfg(test)]
 mod extended_tests;
+#[cfg(test)]
+mod question_tests;
 #[cfg(test)]
 mod tests;
 
@@ -42,7 +45,8 @@ use crate::{
 };
 
 const PACKAGE_FORMAT: &str = "studydeck-sqlite";
-const CURRENT_PACKAGE_VERSION: i64 = 2;
+const CURRENT_PACKAGE_VERSION: i64 = 3;
+const CORE_PACKAGE_VERSION: i64 = 2;
 const LEGACY_PACKAGE_VERSION: i64 = 1;
 const MAX_PACKAGE_ASSET_BYTES: usize = 512 * 1024 * 1024;
 const MAX_PACKAGE_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
@@ -53,74 +57,7 @@ const MAX_TAGS_PER_NOTE: usize = 32;
 const MAX_CLOZE_SOURCE_CHARS: usize = 200_000;
 const OPERATION_PROGRESS_EVENT: &str = "ostudy-operation-progress";
 
-const PACKAGE_SCHEMA: &str = r#"
-PRAGMA foreign_keys = ON;
-CREATE TABLE package_metadata (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-) STRICT;
-CREATE TABLE deck (
-    source_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL,
-    sort_order INTEGER NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    revision INTEGER NOT NULL
-) STRICT;
-CREATE TABLE notes (
-    source_id TEXT PRIMARY KEY,
-    source_deck_id TEXT NOT NULL,
-    note_type TEXT NOT NULL CHECK(note_type IN ('basic', 'cloze')),
-    content_format TEXT NOT NULL CHECK(content_format = 'tiptap-json'),
-    content_schema_version INTEGER NOT NULL CHECK(content_schema_version = 1),
-    front_doc TEXT NOT NULL,
-    back_doc TEXT NOT NULL,
-    front_text TEXT NOT NULL,
-    back_text TEXT NOT NULL,
-    duplicate_hash TEXT NOT NULL,
-    reverse_enabled INTEGER NOT NULL CHECK(reverse_enabled IN (0, 1)),
-    cloze_source TEXT NOT NULL,
-    cloze_mode TEXT NOT NULL CHECK(cloze_mode IN ('one_at_a_time', 'all_together')),
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    revision INTEGER NOT NULL
-) STRICT;
-CREATE TABLE cards (
-    source_id TEXT PRIMARY KEY,
-    source_note_id TEXT NOT NULL REFERENCES notes(source_id) ON DELETE CASCADE,
-    direction TEXT NOT NULL CHECK(direction IN ('forward', 'reverse')),
-    template_ordinal INTEGER NOT NULL CHECK(template_ordinal >= 0),
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    UNIQUE(source_note_id, direction, template_ordinal)
-) STRICT;
-CREATE TABLE tags (
-    source_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    normalized_name TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-) STRICT;
-CREATE TABLE note_tags (
-    source_note_id TEXT NOT NULL REFERENCES notes(source_id) ON DELETE CASCADE,
-    source_tag_id TEXT NOT NULL REFERENCES tags(source_id) ON DELETE CASCADE,
-    PRIMARY KEY(source_note_id, source_tag_id)
-) STRICT;
-CREATE TABLE assets (
-    source_id TEXT PRIMARY KEY,
-    original_filename TEXT NOT NULL,
-    mime_type TEXT NOT NULL,
-    byte_size INTEGER NOT NULL CHECK(byte_size > 0),
-    data BLOB NOT NULL
-) STRICT;
-CREATE TABLE note_assets (
-    source_note_id TEXT NOT NULL REFERENCES notes(source_id) ON DELETE CASCADE,
-    source_asset_id TEXT NOT NULL REFERENCES assets(source_id) ON DELETE RESTRICT,
-    side TEXT NOT NULL CHECK(side IN ('front', 'back')),
-    PRIMARY KEY(source_note_id, source_asset_id, side)
-) STRICT;
-"#;
+const PACKAGE_SCHEMA: &str = include_str!("studydeck/package-schema.sql");
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -431,6 +368,7 @@ struct PackageNote {
     reverse_enabled: bool,
     cloze_source: String,
     cloze_mode: String,
+    question_definition: Option<String>,
     created_at: i64,
     updated_at: i64,
     revision: i64,
@@ -442,6 +380,7 @@ struct PackageCard {
     source_note_id: String,
     direction: String,
     template_ordinal: i64,
+    question_key: Option<String>,
     created_at: i64,
     updated_at: i64,
 }

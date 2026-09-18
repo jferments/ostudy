@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::error::CommandError;
 
 use super::{
-    scope::SyncSelection,
+    scope::{self, SyncSelection},
     store::{BaselineRecord, NewConflict, SyncStore},
 };
 
@@ -47,7 +47,9 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         ],
     },
     TableSpec::new("notes", &["id"]),
+    TableSpec::new("question_generation_evidence", &["note_id"]),
     TableSpec::new("cards", &["id"]),
+    TableSpec::new("card_question_presentations", &["card_id"]),
     TableSpec::new("card_template_rules", &["id"]),
     TableSpec::new("note_tags", &["note_id", "tag_id"]),
     TableSpec::new("note_assets", &["note_id", "asset_id", "side"]),
@@ -55,6 +57,8 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("card_schedules", &["card_id"]),
     TableSpec::new("practice_sessions", &["id"]),
     TableSpec::new("practice_session_cards", &["session_id", "card_id"]),
+    TableSpec::new("question_attempts", &["instance_id"]),
+    TableSpec::new("question_attempt_assets", &["instance_id", "asset_id"]),
     TableSpec::new(
         "practice_session_card_snapshots",
         &["session_id", "card_id"],
@@ -69,6 +73,8 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         "review_event_tag_attributions",
         &["review_event_id", "tag_id"],
     ),
+    TableSpec::new("question_review_links", &["review_event_id"]),
+    TableSpec::new("question_remediation_attempts", &["operation_id"]),
     TableSpec::new("source_citation_snapshots", &["id"]),
     TableSpec::new("deck_source_citations", &["deck_id", "citation_id"]),
     TableSpec::new("note_source_citations", &["note_id"]),
@@ -102,6 +108,7 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         &["document_id", "contract_key", "window_index"],
     ),
     TableSpec::new("document_generation_jobs", &["id"]),
+    TableSpec::new("question_generation_reports", &["job_id"]),
     TableSpec::new("document_generation_units", &["job_id", "page_number"]),
     TableSpec::new("document_generation_windows", &["job_id", "window_index"]),
     TableSpec::new(
@@ -206,7 +213,7 @@ pub(crate) fn merge_remote_database(
         )?);
     }
 
-    let changed_row_count = apply_plans(local, &plans)?;
+    let changed_row_count = apply_plans(local, &plans, selection.flashcards)?;
     let mut conflict_ids = Vec::new();
     for plan in &plans {
         for conflict in &plan.conflicts {
@@ -282,6 +289,7 @@ pub(crate) fn apply_conflict_payload(
         None => delete_row(&transaction, spec, row_key)?,
     }
     verify_foreign_keys(&transaction)?;
+    scope::validate_question_snapshot(&transaction)?;
     transaction.commit().map_err(CommandError::database)
 }
 
@@ -338,14 +346,24 @@ fn plan_three_way_table(
         } else {
             None
         };
-        let (selected, conflicting_fields) = merge_rows(
-            base.as_ref(),
-            left,
-            right,
-            spec.key_columns,
-            local_device_id,
-            remote_device_id,
-        );
+        let (selected, conflicting_fields) = if atomic_question_row(spec.name) {
+            merge_atomic_rows(
+                base.as_ref(),
+                left,
+                right,
+                local_device_id,
+                remote_device_id,
+            )
+        } else {
+            merge_rows(
+                base.as_ref(),
+                left,
+                right,
+                spec.key_columns,
+                local_device_id,
+                remote_device_id,
+            )
+        };
         if !conflicting_fields.is_empty() {
             if spec.name == "assets" {
                 return Err(CommandError::new(
@@ -371,6 +389,55 @@ fn plan_three_way_table(
         merged,
         conflicts,
     })
+}
+
+fn atomic_question_row(table: &str) -> bool {
+    matches!(
+        table,
+        "card_question_presentations"
+            | "question_attempts"
+            | "question_review_links"
+            | "question_remediation_attempts"
+            | "question_generation_evidence"
+    )
+}
+
+/// Question checkpoints and evidence receipts contain columns that validate as a
+/// unit. Concurrent edits select one whole row and record a conflict rather than
+/// field-merging revision/phase/checkpoint fragments into an impossible hybrid.
+fn merge_atomic_rows(
+    base: Option<&RowPayload>,
+    left: Option<&RowPayload>,
+    right: Option<&RowPayload>,
+    left_device_id: &str,
+    right_device_id: &str,
+) -> (Option<RowPayload>, Vec<String>) {
+    if left == right {
+        return (left.cloned(), Vec::new());
+    }
+    if base == left {
+        return (right.cloned(), Vec::new());
+    }
+    if base == right {
+        return (left.cloned(), Vec::new());
+    }
+    match (left, right) {
+        (None, None) => (None, Vec::new()),
+        (Some(payload), None) | (None, Some(payload)) if base.is_none() => {
+            (Some(payload.clone()), Vec::new())
+        }
+        (Some(payload), None) | (None, Some(payload)) => {
+            (Some(payload.clone()), vec!["$row".to_string()])
+        }
+        (Some(left), Some(right)) => (
+            Some(if left_device_id <= right_device_id {
+                left.clone()
+            } else {
+                right.clone()
+            }),
+            vec!["$row".to_string()],
+        ),
+    }
 }
 
 fn merge_rows(
@@ -463,7 +530,11 @@ fn merge_present_rows(
     (Some(output), conflicts)
 }
 
-fn apply_plans(connection: &mut Connection, plans: &[TablePlan]) -> Result<usize, CommandError> {
+fn apply_plans(
+    connection: &mut Connection,
+    plans: &[TablePlan],
+    validate_questions: bool,
+) -> Result<usize, CommandError> {
     let transaction = connection.transaction().map_err(CommandError::database)?;
     transaction
         .execute_batch("PRAGMA defer_foreign_keys = ON;")
@@ -499,6 +570,9 @@ fn apply_plans(connection: &mut Connection, plans: &[TablePlan]) -> Result<usize
             .map_err(CommandError::database)?;
     }
     verify_foreign_keys(&transaction)?;
+    if validate_questions {
+        scope::validate_question_snapshot(&transaction)?;
+    }
     transaction.commit().map_err(CommandError::database)?;
     Ok(changed)
 }
@@ -897,6 +971,31 @@ mod tests {
     }
 
     #[test]
+    fn question_checkpoint_conflicts_select_one_complete_row() {
+        let base = row(&[
+            ("instance_id", CellValue::Text("a".repeat(32))),
+            ("revision", CellValue::Integer(1)),
+            ("phase", CellValue::Text("answering".to_string())),
+            ("checkpoint_json", CellValue::Text("base".to_string())),
+        ]);
+        let mut left = base.clone();
+        left.insert("revision".into(), CellValue::Integer(2));
+        left.insert("checkpoint_json".into(), CellValue::Text("left".into()));
+        let mut right = base.clone();
+        right.insert("phase".into(), CellValue::Text("checked".into()));
+        right.insert("checkpoint_json".into(), CellValue::Text("right".into()));
+        let (merged, conflicts) = merge_atomic_rows(
+            Some(&base),
+            Some(&left),
+            Some(&right),
+            &"1".repeat(32),
+            &"2".repeat(32),
+        );
+        assert_eq!(conflicts, vec!["$row"]);
+        assert_eq!(merged, Some(left));
+    }
+
+    #[test]
     fn document_and_study_guide_tables_are_scope_gated() {
         let docs = SyncSelection {
             flashcards: false,
@@ -906,6 +1005,7 @@ mod tests {
             api_credentials: false,
         };
         assert!(docs.includes_table("documents"));
+        assert!(docs.includes_table("question_generation_reports"));
         assert!(docs.includes_table("document_generation_checkpoints"));
         assert!(!docs.includes_table("document_study_guides"));
         assert!(!docs.includes_table("document_note_topics"));

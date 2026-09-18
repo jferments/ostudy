@@ -29,6 +29,7 @@ vi.mock("../ipc/common", () => ({
         : "Unexpected error",
 }));
 vi.mock("../ipc/practice", () => ({
+  isInteractivePracticePresentation: (presentation: object) => "question" in presentation,
   completePracticeSession: vi.fn(),
   getPracticeCardWindow: vi.fn(),
   getPracticeWorkload: vi.fn(),

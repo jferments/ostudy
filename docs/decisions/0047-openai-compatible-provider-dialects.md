@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-24
-- **Pull request:** #73
+- **Pull request:** #73; DeepSeek compatibility clarification in #101
 
 ## Context
 
@@ -40,7 +40,7 @@ providers/
 ├── openai_compatible.rs   common Chat Completions body/response helpers
 ├── schema.rs              shared portable strict-schema lowering
 ├── llama_cpp.rs           llama.cpp route/properties/schema compatibility
-├── deepseek.rs            DeepSeek thinking + beta strict-tool dialect
+├── deepseek.rs            DeepSeek thinking + strict-tool dialect
 └── openrouter.rs          OpenRouter routing/privacy/catalog metadata
 ```
 
@@ -73,13 +73,27 @@ llama.cpp keeps custom code only for:
 ### DeepSeek
 
 DeepSeek Chat Completions supports JSON-object output but does not expose the
-same Chat Completions JSON-schema contract used by OpenRouter. ostudy therefore
-keeps DeepSeek's strict beta function-tool path for real document schemas. The
-schema is lowered through the same portable strict subset used by OpenRouter.
+same Chat Completions JSON-schema contract used by OpenRouter. Its beta strict
+function-tool path also accepts only a restricted JSON-Schema subset.
+
+For a document contract that fits that subset, ostudy uses the strict beta tool
+path. Before sending the request, the provider adapter examines the lowered
+schema rather than assuming every native contract is strict-tool compatible.
+Contracts containing unsupported constructs such as nullable union types or
+unsupported composition use DeepSeek's ordinary Chat Completions
+`response_format: {"type":"json_object"}` path instead. The complete native
+schema is still embedded in the structured-output instructions, and the same
+bounded Rust parser/admission code remains authoritative after the response.
+
+This distinction became necessary when interactive-question generation added
+optional explanation/rationale fields represented as `type: ["string","null"]`.
+Sending those schemas as strict tools caused an immediate HTTP 400 before model
+inference. Falling back only at the provider wire boundary preserves those
+legitimate native contracts instead of weakening validation or silently changing
+the selected provider/model.
 
 A future migration to DeepSeek's Responses API may permit a more uniform JSON
-schema wire format, but that is a provider-behavior change and is deliberately
-outside this refactor.
+schema wire format, but that is a provider-behavior change and remains separate.
 
 ### OpenRouter
 
@@ -95,13 +109,16 @@ OpenRouter keeps custom code for behavior that is genuinely router-specific:
 ## Probe policy
 
 The tiny connectivity structured-output probe and the representative document
-contract are separate facts. Every implemented provider now executes the exact
-structured-output dialect used by real document generation against the same
-representative basic/cloze union schema.
+contract are separate facts. Every implemented provider executes the exact
+structured-output dialect used by real document generation against a
+representative document schema. Provider-specific compatibility logic is tested
+at this boundary: DeepSeek strict-tool-compatible schemas remain strict tools,
+while schemas outside that subset use its JSON-object fallback.
 
 This prevents both false positives (a tiny JSON object works but the real schema
-does not) and false negatives (for example, DeepSeek JSON-object mode fails while
-its strict-tool document contract works).
+does not) and false negatives (a provider's preferred strict route rejects a
+native contract that its supported JSON-object route can still produce and Rust
+can validate).
 
 Persisted probe evidence is valid only when the profile revision, credential
 epoch, model ID, **adapter revision**, and result-schema version all match the
@@ -117,5 +134,7 @@ old evidence without a database migration.
   protocol family later without distorting this abstraction.
 - Provider-specific behavior is easier to audit because every exception lives in
   the provider dialect package instead of document or probe orchestration.
+- Native schema/semantic admission remains authoritative even when a provider
+  cannot enforce the complete schema on the wire.
 - The static architecture verifier rejects provider-wire vocabulary returning to
   document transport and rejects provider persistence/Tauri ownership.

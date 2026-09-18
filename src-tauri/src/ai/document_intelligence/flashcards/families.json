@@ -1,0 +1,265 @@
+[
+  {
+    "card": {
+      "type": "interactive",
+      "question": {
+        "kind": "single_choice",
+        "prompt": "Which has three sides?",
+        "options": [
+          {
+            "id": "triangle",
+            "content": "Triangle"
+          },
+          {
+            "id": "square",
+            "content": "Square",
+            "rationale": "A square has four sides."
+          }
+        ],
+        "correctOptionId": "triangle"
+      }
+    },
+    "assessment": {
+      "criterion": "Use the exact relation stated in the question.",
+      "ambiguous": false,
+      "components": [
+        {
+          "key": "option:triangle",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "option:square",
+          "stance": "contradicts",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "card": {
+      "type": "interactive",
+      "question": {
+        "kind": "select_all",
+        "prompt": "Select the polygons.",
+        "options": [
+          {
+            "id": "triangle",
+            "content": "Triangle"
+          },
+          {
+            "id": "square",
+            "content": "Square"
+          },
+          {
+            "id": "circle",
+            "content": "Circle",
+            "rationale": "A circle has a curved boundary."
+          }
+        ],
+        "correctOptionIds": [
+          "triangle",
+          "square"
+        ]
+      }
+    },
+    "assessment": {
+      "criterion": "Use the exact relation stated in the question.",
+      "ambiguous": false,
+      "components": [
+        {
+          "key": "option:triangle",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "option:square",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "option:circle",
+          "stance": "contradicts",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "card": {
+      "type": "interactive",
+      "question": {
+        "kind": "true_false",
+        "statement": "A triangle has four sides.",
+        "correct": false,
+        "explanation": "A triangle has three sides.",
+        "correctedStatement": "A triangle has three sides."
+      }
+    },
+    "assessment": {
+      "criterion": "Use the exact relation stated in the question.",
+      "ambiguous": false,
+      "components": [
+        {
+          "key": "statement",
+          "stance": "contradicts",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "correction",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "card": {
+      "type": "interactive",
+      "question": {
+        "kind": "matching",
+        "prompt": "Match shapes to side counts.",
+        "pairs": [
+          {
+            "id": "triangle",
+            "left": "Triangle",
+            "right": "Three"
+          },
+          {
+            "id": "square",
+            "left": "Square",
+            "right": "Four"
+          }
+        ]
+      }
+    },
+    "assessment": {
+      "criterion": "Use the exact relation stated in the question.",
+      "ambiguous": false,
+      "components": [
+        {
+          "key": "pair:triangle",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "pair:square",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "card": {
+      "type": "interactive",
+      "question": {
+        "kind": "grouping",
+        "prompt": "Group by curved versus straight boundaries.",
+        "categories": [
+          {
+            "id": "straight",
+            "content": "Straight edges only"
+          },
+          {
+            "id": "curved",
+            "content": "Curved boundary"
+          }
+        ],
+        "items": [
+          {
+            "id": "triangle",
+            "content": "Triangle",
+            "categoryId": "straight"
+          },
+          {
+            "id": "circle",
+            "content": "Circle",
+            "categoryId": "curved"
+          }
+        ]
+      }
+    },
+    "assessment": {
+      "criterion": "Use the exact relation stated in the question.",
+      "ambiguous": false,
+      "components": [
+        {
+          "key": "item:triangle",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "item:circle",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "card": {
+      "type": "interactive",
+      "question": {
+        "kind": "ordering",
+        "prompt": "Arrange in increasing numerical order.",
+        "items": [
+          {
+            "id": "one",
+            "content": "1"
+          },
+          {
+            "id": "two",
+            "content": "2"
+          },
+          {
+            "id": "three",
+            "content": "3"
+          }
+        ]
+      }
+    },
+    "assessment": {
+      "criterion": "Use the exact relation stated in the question.",
+      "ambiguous": false,
+      "components": [
+        {
+          "key": "before:one:two",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        {
+          "key": "before:two:three",
+          "stance": "supports",
+          "knowledgeUnitIds": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        }
+      ]
+    }
+  }
+]

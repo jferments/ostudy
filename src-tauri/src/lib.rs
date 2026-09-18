@@ -100,6 +100,9 @@ mod util;
 mod workload;
 mod xberg_document_adapter;
 
+// Application-owned question contracts, reusable by native authoring and study.
+pub use cards::questions;
+
 #[cfg(test)]
 mod canonical_migration_tests;
 #[cfg(test)]
@@ -209,6 +212,8 @@ pub fn run() {
             authoring::card_commands::search_cards,
             authoring::card_commands::list_matching_cards,
             authoring::card_commands::get_card_note,
+            authoring::card_commands::interactive::save_question_note,
+            authoring::card_commands::interactive::get_question_note,
             authoring::card_commands::find_duplicate_cards,
             authoring::card_commands::analyze_bulk_cards,
             authoring::card_commands::bulk_create_cards,
@@ -229,6 +234,8 @@ pub fn run() {
             asset_lifecycle::cancel_asset_draft,
             asset_lifecycle::sync_asset_draft,
             assets::import_image,
+            asset_lifecycle::occlusion::prepare_occlusion_image,
+            asset_lifecycle::occlusion::preview_occlusion_image,
             media_assets::import_media,
             media_assets::read_media_asset,
             deletion::undo_deletion,
@@ -285,6 +292,8 @@ pub fn run() {
             ai::probes::commands::list_ai_provider_models,
             ai::probes::commands::test_ai_provider_profile,
             ai::probes::commands::get_ai_provider_probe_result,
+            knowledge::assessment::settings::get_question_generation_policy,
+            knowledge::assessment::settings::save_question_generation_policy,
             knowledge::commands::list_semantic_scope_choices,
             knowledge::commands::preview_semantic_preparation,
             knowledge::commands::prepare_semantic_material,
@@ -332,6 +341,13 @@ pub fn run() {
             practice_resume::resume_practice_session,
             practice_selection::get_practice_card_window,
             practice_selection::refresh_practice_after_card_edit,
+            practice::question_attempts::get_practice_question_attempt,
+            practice::question_attempts::save_practice_question_answer,
+            practice::question_attempts::check_practice_question_answer,
+            practice::question_attempts::occlusion::reveal_practice_question_answer,
+            practice::question_attempts::occlusion::read_practice_occlusion_image,
+            practice::question_attempts::review::submit_practice_question_review,
+            practice::question_attempts::remediation::remediate_practice_question,
             practice::mark_practice_card_viewed,
             practice::mark_practice_card_revealed,
             practice::submit_practice_review,

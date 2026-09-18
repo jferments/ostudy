@@ -10,7 +10,7 @@ A deck shared with a classmate, generated card input, a personal disaster-recove
 | Compatible Anki `.apkg` | Convert existing Anki card presentations | Not imported | Not imported |
 | `.ostudy.json` | Strict generated-card authoring input | Excluded | Excluded |
 | `.ostudybackup` | Whole-library recovery | Included | Excluded |
-| Trusted-device sync offer | Explicit one-way exchange of the supported study-data graph | Included within supported scope | Separate sender opt-in and secure-store requirements |
+| Trusted-device sync offer | Explicit one-way exchange of the selected supported study-data graph | Included within selected scope | Separate sender opt-in and secure-store requirements |
 
 A backup is not automatically encrypted just because credentials are excluded. It contains private study material and history; protect its storage and any channel used to transfer it.
 
@@ -22,9 +22,11 @@ A new imported deck starts in **Unsorted decks** until you organize it locally. 
 
 ### Portable `.studydeck`
 
-This versioned SQLite interchange package contains one deck's notes, active presentations, tags, supported rich content, and managed study images. It excludes the exporting learner's schedules/reviews, personal practice and analytics, application settings, provider profiles/credentials, and unrelated reusable authoring templates.
+Current `.studydeck` version 3 is a versioned SQLite interchange package containing one deck's notes, active presentations, tags, supported rich content, and managed study assets. Basic, Fill in the blank, single-best-answer, select-all, true/false, matching, grouping, ordering, and manually authored image-occlusion questions retain their native typed definitions. Image-occlusion source images and other managed assets referenced by the question travel with the deck.
 
-The importer validates the package graph and assigns fresh local schedules. The receiver studies the shared content using their own history, not the sender's due dates. A portable deck is therefore useful for sharing content but is not sufficient to recover a personal library.
+The package deliberately excludes the exporting learner's schedules/reviews, captured practice attempts, remediation/history, personal analytics, application settings, provider profiles/credentials, and unrelated reusable authoring templates. The importer validates the complete typed graph before mutation, remaps managed asset identities when needed, rebuilds stable interactive presentation ownership, and assigns fresh local schedules. The receiver therefore studies shared content using their own history, not the sender's due dates.
+
+Older supported `.studydeck` versions remain readable for the card kinds they could represent. A typed interactive graph cannot masquerade as an older package version and be flattened into another kind; incompatible structure is rejected before library mutation.
 
 ### Anki `.apkg`
 
@@ -62,7 +64,7 @@ A successful import remains committed even if a subsequent screen refresh fails.
 
 ## Create a whole-library backup
 
-Open **Settings → Backup/Sync** and use the library backup controls. A `.ostudybackup` captures a coherent SQLite snapshot and the managed files required to restore it, including decks/folders, notes/cards, tags/templates, schedules, reviews, sessions, analytics source records, ordinary settings, managed images, retained source documents, canonical document derivatives, learning plans/topics, study-guide revisions and learner overlays, and their persisted relationships.
+Open **Settings → Backup/Sync** and use the library backup controls. A `.ostudybackup` captures a coherent SQLite snapshot and the managed files required to restore it, including decks/folders, notes/cards, typed interactive definitions and presentation identities, schedules, captured attempts and review evidence, generation evidence, tags/templates, reviews, sessions, analytics source records, ordinary settings, managed images, retained source documents, canonical document derivatives, learning plans/topics, study-guide revisions and learner overlays, and their persisted relationships.
 
 Supported backups also preserve recoverable card, template, bulk-entry, and nonsecret provider-metadata drafts with their staged images. Nonsecret provider profiles, task defaults, and appropriate redacted metadata belong to the library; saved credential bytes do not. Device-local presentation checkpoints and browser-local tutorial progress are not a full portable UI session.
 
@@ -74,15 +76,17 @@ Create backups after substantial authoring, before migration-heavy testing, befo
 
 Restoration replaces the personal library; it does not merge like importing one deck. The application validates and stages a replacement, then applies it through startup so a partially copied database or managed directory is not exposed as a normal library.
 
-Restart when instructed. Confirm decks, images, schedules, recent reviews, documents/guides, notes, settings, and unfinished drafts that should have been backed up. Reconfigure or verify provider credentials separately. Test a small session and preserve the original backup until recovery is confirmed.
+Restart when instructed. Confirm decks, images, schedules, recent reviews, interactive questions/attempts, documents/guides, notes, settings, and unfinished drafts that should have been backed up. Reconfigure or verify provider credentials separately. Test a small session and preserve the original backup until recovery is confirmed.
 
 Do not rename an arbitrary SQLite file to masquerade as a backup. The package version, schema, inventory, paths, and managed bytes are validated together. Installing an older binary is not a guaranteed rollback for a newer data schema; preserve a compatible backup before development testing.
 
 ## Sync is not backup
 
-[Device synchronization](device-sync.md) sends a supported study-data snapshot over an authenticated encrypted private-LAN session and merges it on the receiver. It is not automatic cloud backup, continuous background replication, or permission for the receiver to upload its own library during acceptance.
+[Device synchronization](device-sync.md) sends the selected supported study-data graph over an authenticated encrypted local-network or direct-USB transport and merges it on the receiver. It is not automatic cloud backup, continuous background replication, or permission for the receiver to upload its own library during acceptance.
 
-Ordinary appearance/application settings stay device-local. Provider configuration and available saved credentials require a new explicit sender opt-in per offer. The document/study-guide learning-artifact graph is not currently a promise of full cross-device synchronization: use a complete-library backup/restore for that recovery scope rather than assuming every table or source file is synchronized.
+When **Flashcards** is selected, native interactive definitions, stable presentation identities, retained captured attempts/review links, managed question assets, and question-generation evidence participate in the same typed graph admission and merge policy as the rest of the flashcard domain. Checkpoint/evidence records whose fields must remain consistent are merged atomically rather than field-by-field. Malformed received question graphs are rejected before files are installed or a merge commits. Private editor drafts, write receipts, reconciliation diagnostics and other transfer-excluded local state do not hitchhike in the package.
+
+Documents and Study Guides have explicit selectable scopes; Study Guides require Documents. Cross-document/flashcard provenance travels only when both domains are selected. Ordinary appearance/application settings stay device-local. Provider configuration and available saved credentials require a new explicit sender opt-in per offer. For disaster recovery of the entire personal library, use `.ostudybackup` rather than assuming a selected sync scope is a complete backup.
 
 ## Safety and factual accuracy
 

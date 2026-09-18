@@ -20,12 +20,14 @@
         "center": true,
         "minWidth": 380,
         "minHeight": 520,
+        "backgroundColor": "#0d1117",
+        "transparent": false,
         "resizable": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost ostudy-asset: http://ostudy-asset.localhost https://ostudy-asset.localhost data:; media-src 'self' blob: ostudy-asset: http://ostudy-asset.localhost https://ostudy-asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+      "csp": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' blob: asset: http://asset.localhost ostudy-asset: http://ostudy-asset.localhost https://ostudy-asset.localhost data:; media-src 'self' blob: ostudy-asset: http://ostudy-asset.localhost https://ostudy-asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
       "devCsp": null,
       "assetProtocol": {
         "enable": true,

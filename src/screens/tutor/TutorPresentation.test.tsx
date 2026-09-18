@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TutorWorkspace } from "./TutorWorkspace";
 
@@ -55,7 +55,7 @@ describe("Conversational Tutor presentation", () => {
 
 
 describe("Tutor saved mathematical replies", () => {
-  it("renders the saved answer without rewriting evidence, hint visibility or triggering a request", () => {
+  it("renders the saved answer without rewriting evidence, hint visibility or triggering a request", async () => {
     const detail = { conversation: { id: "a", title: "Saved math" }, turns: [{
       id: "m", mode: "explain", userText: "Explain", assistantText: String.raw`Answer \(x^2\)`,
       state: "complete", citations: [{ id: "s", title: "Original source" }], evidenceCurrent: false,
@@ -64,7 +64,7 @@ describe("Tutor saved mathematical replies", () => {
     const before = JSON.stringify(detail);
     state.detail = detail;
     const { container } = render(<TutorWorkspace />);
-    expect(container.querySelector("math annotation")?.textContent).toBe("x^2");
+    await waitFor(() => expect(container.querySelector("math annotation")?.textContent).toBe("x^2"));
     expect((screen.getByRole("button", { name: "Source 1: Original source" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/This answer is historical/u)).toBeTruthy();
     expect(state.send).not.toHaveBeenCalled();

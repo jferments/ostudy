@@ -248,7 +248,7 @@ class AndroidSmokeTest {
                 webView,
                 predicate = { it == "true" },
                 expression = {
-                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add flashcard') && " +
+                    "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add card') && " +
                         "Array.from(document.querySelectorAll('main button')).some(button => button.textContent?.trim() === 'Save card')"
                 }
             )
@@ -259,7 +259,7 @@ class AndroidSmokeTest {
                 predicate = { it == "true" },
                 expression = {
                     "Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Android Emulator Smoke Deck') && " +
-                        "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add flashcard')"
+                        "!Array.from(document.querySelectorAll('main h1')).some(heading => heading.textContent?.trim() === 'Add card')"
                 }
             )
             waitForAndroidBackReady(webView)

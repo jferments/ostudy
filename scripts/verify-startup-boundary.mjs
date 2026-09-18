@@ -26,6 +26,9 @@ const ledger = JSON.parse(source.ledger);
 const lineageIndex = source.database.indexOf("let lineage = inspect_lineage(connection)?;");
 const configureIndex = source.database.indexOf("configure_connection(connection)?;");
 
+const setup = source.startup.slice(source.startup.indexOf("pub(crate) fn setup"), source.startup.indexOf("fn initialize("));
+const initialization = source.startup.slice(source.startup.indexOf("fn initialize("), source.startup.indexOf("fn create_linux_main_window"));
+
 const contracts = [
   [
     "Tauri delegates setup to the non-panicking startup boundary",
@@ -44,9 +47,18 @@ const contracts = [
   ],
   [
     "unsupported startup failures are presented rather than returned through Tauri setup",
-    source.startup.includes("if let Err(error) = initialize(app)") &&
-      source.startup.includes("present_startup_failure(app, &error.to_string())") &&
+    setup.includes("present_startup_failure(app.handle(), &error.to_string())") &&
+      setup.includes("Ok(Err(error)) => present_startup_failure(&handle, &error)") &&
+      setup.includes("Err(error) => present_startup_failure(&handle, &error.to_string())") &&
+      setup.includes("Ok(())") && !setup.includes("initialize(app)?") &&
       source.startup.includes("application_startup_blocked"),
+  ],
+  [
+    "native initialization releases the event loop and readiness follows all managed runtimes",
+    setup.includes("tauri::async_runtime::spawn_blocking") &&
+      setup.includes("initialize(&worker).map_err") &&
+      initialization.indexOf("app.manage(database)") > initialization.indexOf("app.manage(pdf_render_runtime)") &&
+      initialization.indexOf("app.manage(database)") > initialization.indexOf("logging::flush"),
   ],
   [
     "startup failure presentation uses the nonblocking dialog API",

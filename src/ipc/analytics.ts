@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { ReviewOutcome } from "./practice";
+import type { QuestionBody } from "./questions";
 
 export type AnalyticsRange = "7d" | "30d" | "90d" | "1y" | "all" | "custom";
 export type TagAnalyticsStatus =
@@ -191,6 +192,26 @@ export interface AnalyticsDimensionOptions {
   tags: AnalyticsTagOption[];
 }
 
+/** Reviewed first attempts, grouped by the captured question type. */
+export interface QuestionTypeAnalytics {
+  questionType: "basic" | "cloze" | QuestionBody["kind"];
+  reviewCount: number;
+  selfAssessedCount: number;
+  objectiveCount: number;
+  correctCount: number;
+  incorrectCount: number;
+  incompleteCount: number;
+  objectiveAccuracy: number | null;
+  unassistedObjectiveCount: number;
+  unassistedCorrectCount: number;
+  unassistedAccuracy: number | null;
+  assistanceTrackedCount: number;
+  assistedCount: number;
+  overrideCount: number;
+  remediationCount: number;
+  unavailableEvidenceCount: number;
+}
+
 export interface Analytics {
   scope: AnalyticsScope;
   currentInventory: CurrentInventorySummary;
@@ -204,6 +225,7 @@ export interface Analytics {
   recentSessions: SessionAnalytics[];
   attributionCoverage: AttributionCoverage;
   dimensionOptions: AnalyticsDimensionOptions;
+  questionTypes: QuestionTypeAnalytics[];
 }
 
 export async function getAnalytics(input: AnalyticsQuery): Promise<Analytics> {

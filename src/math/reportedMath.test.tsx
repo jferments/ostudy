@@ -40,14 +40,14 @@ describe("reported mixed inline/display math", () => {
     expect(container.querySelector("p div, script, img")).toBeNull();
   });
 
-  it("rerenders saved/streamed single-dollar formulas without stale output or active content", () => {
+  it("rerenders saved/streamed single-dollar formulas without stale output or active content", async () => {
     const { container, rerender } = render(<TutorMarkdown text="Answer $x_1" />);
     expect(container.textContent).toBe("Answer $x_1");
     rerender(<TutorMarkdown text="Answer $x_1$" />);
-    expect(container.querySelector("math annotation")?.textContent).toBe("x_1");
+    await waitFor(() => expect(container.querySelector("math annotation")?.textContent).toBe("x_1"));
     rerender(<TutorMarkdown text={String.raw`$\href{https://example.invalid}{x}$`} />);
     expect(container.querySelector("a,math,img,script")).toBeNull();
-    expect(container.querySelector("[data-formula-error]")).not.toBeNull();
+    await waitFor(() => expect(container.querySelector("[data-formula-error]")).not.toBeNull());
     rerender(<TutorMarkdown text="Price $10" />);
     expect(container.querySelector("[data-study-math]")).toBeNull();
     expect(container.textContent).toBe("Price $10");

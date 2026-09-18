@@ -7,12 +7,18 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const paths = {
   gradle: resolve(root, "plugins/ostudy-platform/android/build.gradle.kts"),
   manifest: resolve(root, "plugins/ostudy-platform/android/src/main/AndroidManifest.xml"),
-  implementation: resolve(
+  qr: resolve(root, "plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt"),
+  document: resolve(
     root,
-    "plugins/ostudy-platform/android/src/main/java/OstudyQrPlugin.kt",
+    "plugins/ostudy-platform/android/src/main/java/OstudyDocumentPlugin.kt",
+  ),
+  appGradle: resolve(root, "src-tauri/gen/android/app/build.gradle.kts"),
+  ocrSmoke: resolve(
+    root,
+    "src-tauri/gen/android/app/src/androidTest/java/io/github/jferments/ostudy/AndroidOcrSmokeTest.kt",
   ),
 };
-const [gradle, manifest, implementation] = await Promise.all(
+const [gradle, manifest, qr, document, appGradle, ocrSmoke] = await Promise.all(
   Object.values(paths).map((path) => readFile(path, "utf8")),
 );
 
@@ -26,60 +32,119 @@ function forbidText(source, text, message) {
 
 requireText(
   gradle,
-  'implementation("com.google.android.gms:play-services-code-scanner:16.1.0")',
-  "The audited Google Code Scanner dependency is missing or changed.",
-);
-forbidText(gradle, "journeyapps", "ZXing Embedded must not remain in the Android dependency graph.");
-forbidText(gradle, "zxing-android", "ZXing Android dependencies must not remain in the plugin.");
-requireText(
-  manifest,
-  'android:name="com.google.mlkit.vision.DEPENDENCIES"',
-  "The install-time ML Kit dependency metadata is missing.",
+  'implementation("com.journeyapps:zxing-android-embedded:4.3.0")',
+  "The audited Apache-2.0 ZXing Embedded dependency is missing or changed.",
 );
 requireText(
+  gradle,
+  'implementation("com.google.zxing:core:3.5.4")',
+  "The audited Apache-2.0 ZXing core dependency is missing or changed.",
+);
+requireText(
+  gradle,
+  'implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")',
+  "The audited Apache-2.0 Tesseract4Android dependency is missing or changed.",
+);
+requireText(
+  gradle,
+  'val tesseractDataCommit = "87416418657359cb625c412a48b6e1d6d41c29bd"',
+  "The bundled Tesseract model source is not pinned to the audited upstream commit.",
+);
+requireText(
+  gradle,
+  'val tesseractEnglishBlobSha1 = "bbef4675053b5b468cdb477053e28b1c698ba08e"',
+  "The bundled Tesseract model does not verify its immutable upstream Git blob.",
+);
+for (const proprietary of [
+  "com.google.mlkit:text-recognition",
+  "com.google.android.gms:play-services-code-scanner",
+  "GmsBarcodeScanning",
+  "TextRecognition.getClient",
+]) {
+  forbidText(
+    `${gradle}\n${qr}\n${document}\n${appGradle}\n${ocrSmoke}`,
+    proprietary,
+    `Proprietary Android imaging dependency/runtime must not remain: ${proprietary}`,
+  );
+}
+requireText(
   manifest,
-  'android:value="barcode_ui"',
-  "The Google Code Scanner barcode_ui module is not requested at install time.",
+  'android.permission.CAMERA',
+  "The local QR scanner must declare camera permission explicitly.",
 );
 forbidText(
   manifest,
-  "android.permission.CAMERA",
-  "ostudy must not request camera permission when Google Code Scanner owns the camera UI.",
+  "com.google.mlkit.vision.DEPENDENCIES",
+  "Google scanner module metadata must not remain in the Android manifest.",
 );
 requireText(
-  implementation,
-  ".setBarcodeFormats(Barcode.FORMAT_QR_CODE)",
-  "The scanner must restrict recognition to QR codes.",
+  qr,
+  "ScanContract()",
+  "The QR plugin is not using the local ZXing Activity Result contract.",
 );
 requireText(
-  implementation,
-  ".enableAutoZoom()",
-  "The scanner should enable first-party auto zoom for accessibility and reliability.",
+  qr,
+  ".setDesiredBarcodeFormats(ScanOptions.QR_CODE)",
+  "The local scanner must restrict recognition to QR codes.",
 );
 requireText(
-  implementation,
-  "GmsBarcodeScanning.getClient(activity, options)",
-  "The QR plugin is not using Google Code Scanner.",
+  qr,
+  ".setBarcodeImageEnabled(false)",
+  "The scanner must not retain camera-frame image files.",
 );
 requireText(
-  implementation,
-  ".startScan()",
-  "The QR plugin does not start the first-party scanner task.",
-);
-requireText(
-  implementation,
+  qr,
   "AtomicBoolean",
   "The scanner must guard against concurrent and duplicate completion callbacks.",
 );
 forbidText(
-  implementation,
-  "IntentIntegrator",
-  "The maintenance-mode ZXing IntentIntegrator implementation must be removed.",
-);
-forbidText(
-  implementation,
+  qr,
   "contents}",
   "Raw QR payloads must never be interpolated into Android diagnostic messages.",
 );
+requireText(
+  document,
+  "TessBaseAPI()",
+  "Android OCR is not using the local Tesseract engine.",
+);
+requireText(
+  document,
+  'activity.assets.open(TESSDATA_ASSET)',
+  "Android OCR must install its packaged trained data without a runtime download.",
+);
+requireText(
+  document,
+  "tess.getHOCRText(0)",
+  "Android OCR recognition must use Tesseract's interruptible recognition entrypoint.",
+);
+requireText(
+  document,
+  "future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)",
+  "Android OCR must retain a bounded native recognition timeout.",
+);
+requireText(
+  document,
+  "tess.stop()",
+  "Android OCR timeout must interrupt the active Tesseract recognition operation.",
+);
+requireText(
+  appGradle,
+  'androidTestImplementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")',
+  "Android OCR instrumentation must use the same audited Tesseract runtime.",
+);
+requireText(
+  ocrSmoke,
+  "bundledTesseractRecognizesHighContrastEnglishTextOffline",
+  "Android emulator smoke must exercise packaged Tesseract OCR.",
+);
+for (const forbidden of ["TextRecognition", "TextRecognizerOptions", "com.google.mlkit"]) {
+  forbidText(
+    ocrSmoke,
+    forbidden,
+    `Android OCR smoke must not retain proprietary ML Kit code: ${forbidden}`,
+  );
+}
 
-console.log("OK   Android QR scanning uses permissionless Google Code Scanner with bounded results.");
+console.log(
+  "OK   Android QR and OCR use bounded local open-source ZXing/Tesseract runtimes with packaged model data and interruptible recognition.",
+);

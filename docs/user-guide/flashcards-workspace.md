@@ -36,7 +36,21 @@ A **note** is the shared editable source. A **card** is a presentation you study
 
 A **Fill in the blank** note marks text to hide. One-at-a-time mode selects a blank group for that review; all-together mode hides all groups. It still has one stable scheduled card rather than a separate schedule for every blank. Changing blanks or switching presentation mode does not imply a fresh learning history.
 
+The same **Template** selector also opens purpose-built interactive editors for **Single best answer**, **Select all that apply**, **True/false**, **Matching**, **Grouping**, **Ordering**, and **Image occlusion**. These are native question kinds rather than Basic cards with special markup. Rich prompts/options/rationales reuse the ordinary editor and managed assets. Explanations stay collapsed until you choose **Add explanation**, and **Preview card** uses the same presentation components as Practice without checking an answer or changing a schedule.
+
+Single-best-answer requires exactly one correct option; select-all stores the exact correct set, including a deliberate empty set; true/false keeps unanswered distinct from false. Matching requires a one-to-one pairing, grouping assigns each item to one category, and ordering stores one explicit total order. Matching/grouping/ordering support drag interaction plus non-drag controls so dragging is not required to author or study them.
+
+Image occlusion is manually authored. Choose a managed still image, draw normalized rectangular regions, and define one or more rich prompt/answer questions that target those regions. A question can target several masks and a mask can participate in several questions. Each saved occlusion question has its own stable scheduled presentation. Practice requests a native masked derivative before reveal rather than briefly loading the original image under a CSS cover. Document AI generation does not automatically create image masks.
+
 The normal editor reports duplicate candidates and requires deliberate override for an exact duplicate. Bulk entry, template generation, and generated JSON import skip exact duplicates according to their native validation rules. Image-only content is not declared duplicate solely because its searchable text is empty.
+
+## Practice behavior for interactive questions
+
+Objective interactive questions use **answer → Check answer → feedback → difficulty/continue**. Matching, grouping and ordering do not auto-submit when the last tile moves, and item moves do not leak correctness before Check. Correctness is calculated locally from the captured immutable question instance.
+
+A single compound board produces one scheduling review. Incorrect or incomplete objective attempts default to Wrong; correct attempts permit Hard/Medium/Easy. A deliberate rating override retains the original objective evaluation. A retry after feedback is remediation and does not replace the first attempt or manufacture another successful scheduling event. Image occlusion is reveal-and-self-rate rather than pretending a free-form answer can be objectively graded.
+
+Opening Tutor does not automatically mark the attempt assisted. Assistance is recorded only when usable help is actually exposed, and a late/failed/cancelled hint cannot rewrite a first result. Captured question revisions and answer keys remain frozen for the active attempt even if the editable note changes later.
 
 ## Drafts and saving
 
@@ -58,7 +72,7 @@ Open **Search/Filter** for cross-library queries. Common controls stay visible: 
 
 A deck's inline search is simpler and stays within that deck. Clearing global filters should not be confused with changing the underlying cards or schedules. A folder filter resolves current deck membership; it is not a temporary deck.
 
-Results describe actual study presentations: a forward and reverse card can appear separately, while a multi-blank cloze note appears once. Previews use compact question/answer text; open a card to inspect its full rich content rather than treating truncation as missing data.
+Results describe actual study presentations: a forward and reverse card can appear separately, while a multi-blank cloze note appears once. An image-occlusion note can expose several separately scheduled question presentations. Previews use compact question/answer text; open a card to inspect its full rich content rather than treating truncation as missing data.
 
 **Select visible** selects only loaded rows. **Select all matching** resolves the complete current filtered identity set. Bulk move/copy/tag/delete operations account for presentations that share one source note. Review the scope and confirmation before acting.
 
@@ -68,6 +82,6 @@ Current tags shown on recent reviews in Analytics can launch Search by stable ta
 
 ## Importing content
 
-The library's **Import deck from file** action accepts portable `.studydeck` and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
+The library's **Import deck from file** action accepts portable `.studydeck`, compatible Anki `.apkg`, and compatible generated `.ostudy.json` input. There is no generated-import approval/preview queue. JSON is validated as a whole before the transaction; invalid content leaves the library unchanged and produces a useful error path. Imported study content receives local schedules rather than another learner's history.
 
-A new imported deck appears in Unsorted decks until organized locally. Folder membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.
+Current `.studydeck` packages preserve native interactive question definitions and managed question assets while excluding the sender's schedules/practice history. A new imported deck appears in Unsorted decks until organized locally. Folder membership and the sender's personal learning history are not part of the portable deck. Whole-library recovery requires `.ostudybackup`, not an individual deck export.

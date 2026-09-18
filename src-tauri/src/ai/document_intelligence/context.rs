@@ -31,6 +31,7 @@ pub(crate) struct DocumentTaskContext {
     pub include_page_images: bool,
     pub requested_reasoning_effort: String,
     pub reasoning_effort: String,
+    pub question_policy: crate::knowledge::assessment::policy::GenerationPolicy,
     profile: ProfileSnapshot,
     credential_storage: CredentialStorage,
     capabilities: DocumentProviderCapabilities,
@@ -157,7 +158,11 @@ impl DocumentTaskContext {
 pub(crate) fn load_document_task_context(
     database: &Database,
 ) -> Result<DocumentTaskContext, CommandError> {
-    context_from_request(database, load_default_profile_request(database)?)
+    let mut task = context_from_request(database, load_default_profile_request(database)?)?;
+    task.question_policy = database.with_connection(|connection| {
+        crate::knowledge::assessment::settings::load(connection).map(|snapshot| snapshot.policy)
+    })?;
+    Ok(task)
 }
 
 pub(crate) fn load_tutor_task_context(
@@ -206,6 +211,7 @@ fn context_from_request(
         include_page_images,
         requested_reasoning_effort,
         reasoning_effort: "none".to_string(),
+        question_policy: crate::knowledge::assessment::policy::GenerationPolicy::default(),
         profile,
         credential_storage: request.credential_storage,
         capabilities,

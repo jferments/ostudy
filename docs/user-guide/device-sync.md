@@ -11,14 +11,14 @@ ostudy has two transport adapters under the same authenticated synchronization p
 - **USB Sync** is the preferred cable workflow on a supported Linux desktop sending to Android. Plug in one Android phone with a data-capable USB cable, choose the data, and click **USB Sync**. There is no USB tethering, IP address, network-adapter selection, QR scan, ADB, developer-mode, or USB-debugging setup in the product workflow.
 - **Local network** uses Wi-Fi or Ethernet. The sender creates a short-lived QR/text invitation containing its private LAN endpoint; the receiver scans or pastes it.
 
-The transport changes only how the two native processes exchange bytes. Device identity, pairing proof, authenticated key exchange, encryption, package validation, selected data scopes, merge rules, conflicts, and cancellation are shared.
+The transport changes only how the two native processes exchange bytes. Device identity, pairing proof, authenticated key exchange, encryption, package validation, selected data scopes, merge rules, conflicts, typed-question admission, and cancellation are shared.
 
 ## Choose what to synchronize
 
 Every outgoing transfer has a **What to synchronize** section. The sender chooses the categories included in that transfer:
 
-- **Flashcards** — decks, folders, notes/cards, templates, tags, schedules, practice/review history, source-citation snapshots, and managed card images.
-- **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device.
+- **Flashcards** — decks, folders, Basic/Cloze and native interactive notes/cards, stable interactive presentation identities, templates, tags, schedules, retained practice/review evidence, question-generation evidence, source-citation snapshots, and managed card/question images.
+- **Documents** — original managed source files plus canonical document content, rendered pages/source assets, OCR and semantic extraction data, outlines, durable LLM generation jobs/units/windows/checkpoints, generation reports, learning plans/topics, and document-processing metadata needed to continue working with the document on the receiving device.
 - **Study Guides** — generated study guides, sections, overlays, checkpoints, and related guide artifact state.
 - **API provider settings** — AI provider profiles and task defaults. Ordinary app preferences are not included.
 - **Saved API keys** — securely stored provider credentials. Key bytes are a separate opt-in from provider settings.
@@ -32,6 +32,8 @@ At least one transferable category must be selected.
 ### Privacy of unselected categories
 
 An unselected category is removed from the copied synchronization snapshot before transmission. It is not merely ignored during merge.
+
+When Flashcards is unselected, typed question definitions, schedules, attempts, question-review links, remediation records, generation evidence and managed card assets are removed with that graph. Private editor drafts, question write receipts, asset-reconciliation diagnostics and other local operation records are excluded even when Flashcards is selected.
 
 General application and appearance settings always stay local. Theme, font, UI scale, motion, density/layout preferences, and similar device preferences are not part of device sync. Transient AI probe evidence is also excluded.
 
@@ -78,14 +80,15 @@ On the receiving Android device:
 
 1. Open **Settings → Backup/Sync → Device synchronization**.
 2. Select **Scan and receive**.
-3. Center the complete QR code inside the camera frame, including the white border.
-4. Hold the phone steady until the scanner detects it.
+3. Grant camera access if Android asks for it.
+4. Center the complete QR code inside the camera frame, including the white border.
+5. Hold the phone steady until the scanner detects it.
 
 A successful QR scan is the acceptance gesture. ostudy immediately connects to the sender, authenticates the offer, receives the sender-selected package, validates it, and merges it locally. There is no reverse invitation.
 
 If the initial network connection fails, the scanned invitation remains loaded and the action changes to **Retry connection** while the offer is still valid. Canceling the scanner starts nothing.
 
-When camera scanning is unavailable, paste the sender's **Copy invitation text** value into **Synchronization invitation** and choose **Accept sync offer**.
+When camera scanning is unavailable or permission is declined, paste the sender's **Copy invitation text** value into **Synchronization invitation** and choose **Accept sync offer**.
 
 Direct USB does not use either of these QR/text receive controls; Android receives the cable bootstrap from the native accessory descriptor automatically.
 
@@ -112,9 +115,17 @@ The final **Merging** phase is an atomic database commit boundary. Once that sho
 
 If ostudy restarts while a request is still recorded as active, startup marks the old request interrupted because its process-local TCP socket or USB descriptor cannot survive the process restart.
 
+## Typed interactive questions
+
+When **Flashcards** is selected, synchronization carries the canonical typed question definition and stable presentation ownership for single-best-answer, select-all, true/false, matching, grouping, ordering, and image occlusion. Managed assets referenced by those definitions travel through the same validated asset path.
+
+Retained first-attempt checkpoints, question/review links, remediation records and generation evidence also participate in the supported graph. The receiver validates definitions, active presentation keys, managed-asset ownership, immutable attempt checkpoints, session-snapshot ownership and review linkage before applying the graph. Checkpoint/evidence rows whose columns must agree are resolved as atomic rows during a concurrent merge rather than field-merging revision/phase/checkpoint fragments into an impossible hybrid.
+
+If a received graph is malformed or its typed ownership no longer agrees, the package is rejected before files are installed or the merge commits. Sync does not silently flatten an interactive question into Basic or discard its presentation identities.
+
 ## Documents and their LLM processing data
 
-Selecting **Documents** transfers the managed source files and durable relational graph required to retain processing progress: canonical source units/blocks/assets, page and semantic data, outlines/checkpoints, generation jobs and their units/windows/checkpoints, learning plans/topics, and document artifact metadata.
+Selecting **Documents** transfers the managed source files and durable relational graph required to retain processing progress: canonical source units/blocks/assets, page and semantic data, outlines/checkpoints, generation jobs and their units/windows/checkpoints/reports, learning plans/topics, and document artifact metadata.
 
 Document files use the same validated file-ledger rules as complete library backup: managed relative paths, sizes, hashes, and expected file roles are checked before installation. A local file with the same managed identity but different bytes fails rather than being silently overwritten.
 
@@ -130,7 +141,7 @@ Turning Study Guides off while leaving Documents on removes guide rows and guide
 
 ostudy merges compatible edits automatically. When both devices changed the same synchronized field, or one deleted a record while the other edited it, ostudy records an explicit conflict instead of silently discarding one side.
 
-Open **Conflicts requiring a decision** to inspect the versions and choose the desired result. Managed image or document-file identity mismatches fail rather than selecting arbitrary bytes. Appearance/theme settings never participate because they are excluded from transfer and merge allowlists.
+Question attempt/evidence rows are treated atomically when concurrent changes cannot be reconciled field-by-field safely. Open **Conflicts requiring a decision** to inspect the versions and choose the desired result. Managed image or document-file identity mismatches fail rather than selecting arbitrary bytes. Appearance/theme settings never participate because they are excluded from transfer and merge allowlists.
 
 ## Local-network requirements
 
@@ -142,7 +153,7 @@ Outgoing LAN offers listen on TCP **49251–49258**. If a receiver reads the QR 
 
 Native diagnostic events are stored as JSON Lines in the app-private `diagnostics/ostudy.jsonl` file. The exact path appears under **Settings → Backup/Sync → Storage → Diagnostics**. The file rotates at a bounded size.
 
-Device synchronization records major phases such as offer creation, transport connection, authentication, package receipt, merge start, and merge completion without logging pairing secrets, credential bytes, or package contents.
+Device synchronization records major phases such as offer creation, transport connection, authentication, package receipt, typed-graph admission, merge start, and merge completion without logging pairing secrets, credential bytes, answer content, or package contents.
 
 On debuggable Android development builds, `adb` can still be used by developers to inspect app-private diagnostics. That development tool is unrelated to product USB Sync and is not required for cable synchronization.
 
@@ -152,7 +163,7 @@ Offers expire after a short period. Create a fresh transfer if one expires or th
 
 Protocol v3 binds the selected transport into the authenticated pairing transcript. LAN invitations contain a private network endpoint. Direct-USB invitations use the symbolic `usb` endpoint and are delivered only over the accessory stream; pasting a USB invitation into the LAN receive box is rejected.
 
-The synchronization package has its own versioned format. Granular-scope packages record the selected categories explicitly while retaining package-level compatibility handling for the earlier flashcard/API-settings package format.
+The synchronization package has its own versioned format. Granular-scope packages record the selected categories explicitly while retaining package-level compatibility handling for the earlier flashcard/API-settings package format. Received snapshots are migrated and semantically admitted before merge; an older sender cannot bypass current typed-question validation by supplying a structurally valid SQLite file.
 
 ## Removing a trusted device
 
@@ -160,4 +171,6 @@ Removing a trusted device forgets its synchronization trust/baseline relationshi
 
 ## Android QR scanner backend
 
-LAN QR pairing on Android uses Google Code Scanner. The scanner UI and camera permission are owned by Google Play services; ostudy itself does not request camera permission. Devices without a compatible scanner module can use pasted LAN invitations. Direct USB does not use the camera scanner.
+LAN QR pairing on Android uses local **JourneyApps ZXing Embedded 4.3.0** with **ZXing core 3.5.4**. Decoding runs on the device and does not require Google Play services or a hosted scanner. The app requests camera permission only for the local scan flow, restricts recognition to QR codes, disables barcode-image retention, and bounds decoded content before returning it to Rust. Raw invitation contents are not logged.
+
+Devices without a usable camera, or users who do not grant camera permission, can paste LAN invitations. Direct USB does not use the camera scanner. See [Android development architecture](../development/android.md) and [ADR 0052](../decisions/0052-open-source-android-imaging.md) for the dependency/offline boundary.
