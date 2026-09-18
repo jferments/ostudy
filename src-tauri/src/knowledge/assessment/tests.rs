@@ -197,25 +197,27 @@ fn contextual_bindings_are_optional_but_graded_components_remain_mandatory() {
     let policy = policy::GenerationPolicy::default();
 
     let mut single = proposal(0);
-    single.components.retain(|component| component.key != "prompt");
+    single
+        .components
+        .retain(|component| component.key != "prompt");
     let admitted = admit_card(raw(0), single, &catalog, &policy).unwrap();
     let record = record_from_card(&admitted).unwrap().unwrap();
     assert_eq!(record.components.len(), 2);
     record.validate_card(&admitted).unwrap();
 
     let mut grouping = proposal(4);
-    grouping.components.retain(|component| {
-        component.key.starts_with("item:")
-    });
+    grouping
+        .components
+        .retain(|component| component.key.starts_with("item:"));
     let admitted = admit_card(raw(4), grouping, &catalog, &policy).unwrap();
     let record = record_from_card(&admitted).unwrap().unwrap();
     assert_eq!(record.components.len(), 2);
     record.validate_card(&admitted).unwrap();
 
     let mut ordering = proposal(5);
-    ordering.components.retain(|component| {
-        component.key.starts_with("before:")
-    });
+    ordering
+        .components
+        .retain(|component| component.key.starts_with("before:"));
     let admitted = admit_card(raw(5), ordering, &catalog, &policy).unwrap();
     let record = record_from_card(&admitted).unwrap().unwrap();
     assert_eq!(record.components.len(), 2);
