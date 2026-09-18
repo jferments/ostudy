@@ -100,6 +100,19 @@ pub(super) fn prepare_flashcard_import_bytes(bytes: &[u8]) -> Result<PreparedImp
     })
 }
 
+/// Pure single-card preparation for live generation. The public file importer
+/// remains whole-file atomic and calls this same underlying preparation path.
+/// Never write a card here: generation still publishes one final transaction.
+pub(crate) fn validate_generated_card(value: serde_json::Value) -> Result<(), CommandError> {
+    let card: GeneratedImportCard = serde_json::from_value(value).map_err(|_| {
+        CommandError::new(
+            "invalid_generated_card_shape",
+            "The generated card does not match a supported native card shape.",
+        )
+    })?;
+    prepare_import_card(0, &[], card, 2).map(|_| ())
+}
+
 fn format_import_card_errors(total: usize, examples: &[String]) -> String {
     let mut message = format!(
         "{total} {} could not be imported:\n{}",

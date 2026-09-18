@@ -155,7 +155,8 @@ struct KnowledgeCard {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct KnowledgeCards {
-    cards: Vec<KnowledgeCard>,
+    // Only the outer response is atomic. Deserialize each envelope in isolation.
+    cards: Vec<Value>,
 }
 
 #[cfg(test)]
@@ -188,11 +189,17 @@ fn parse_knowledge_cards_with_policy(
     let mut candidates = Vec::with_capacity(returned_count);
     let mut rejected_count = 0_usize;
     let mut first_rejection = None;
-    for item in response.cards {
+    for (index, item) in response.cards.into_iter().enumerate() {
         match admit_knowledge_card(item, knowledge, policy) {
             Ok(card) => candidates.push(card),
             Err(error) if retryable_contract_error(&error) => {
                 rejected_count = rejected_count.saturating_add(1);
+                crate::logging::debug_target(
+                    "ai.document.generation",
+                    "document_generation_candidate_rejected",
+                    "A generated candidate failed admission; its content is not logged.",
+                    json!({"candidateIndex": index, "code": error.code}),
+                );
                 if first_rejection.is_none() {
                     first_rejection = Some(error);
                 }
@@ -230,10 +237,13 @@ fn parse_knowledge_cards_with_policy(
 }
 
 fn admit_knowledge_card(
-    item: KnowledgeCard,
+    raw: Value,
     knowledge: &KnowledgeCatalog,
     policy: &GenerationPolicy,
 ) -> Result<Value, CommandError> {
+    let item: KnowledgeCard = serde_json::from_value(raw).map_err(|_| {
+        assessment::invalid("A generated card envelope has invalid fields or evidence types.")
+    })?;
     if item.card["type"] == "interactive" {
         if !item.knowledge_unit_ids.is_empty() {
             return Err(assessment::invalid(
@@ -243,6 +253,11 @@ fn admit_knowledge_card(
         let proposal = item.assessment.ok_or_else(|| {
             assessment::invalid("Interactive cards require an assessment opportunity.")
         })?;
+        // Use the SAME pure content preparation as the eventual public import.
+        // Native question/Markdown errors are input errors here, not reasons to
+        // abort independently grounded siblings. No database or provider call is
+        // made by this preparation boundary.
+        validate_candidate_content(item.card.clone())?;
         return assessment::admit_card(item.card, proposal, knowledge, policy);
     }
     if item.card["type"] == "multiple_choice" {
@@ -255,16 +270,42 @@ fn admit_knowledge_card(
             "Recall cards cannot carry unrelated component evidence.",
         ));
     }
+    if !policy
+        .allowed_types
+        .contains(&assessment::policy::QuestionFamily::Recall)
+    {
+        return Err(assessment::invalid(
+            "The model returned a disabled recall question.",
+        ));
+    }
     let support = knowledge.select(&item.knowledge_unit_ids, 2)?;
     // Normalize one card at a time. Rejecting one sibling can never shift a
     // surviving card onto another card's selected knowledge IDs.
-    let mut normalized = parse_flashcards(json!({"cards":[item.card]}), 1)?;
+    let mut normalized = parse_flashcards(json!({"cards":[item.card]}), 1).map_err(|_| {
+        assessment::invalid("A generated recall card has invalid fields, text, blanks or tags.")
+    })?;
     let mut card = normalized
         .pop()
         .ok_or_else(|| super::support::output_error("No validated card was returned."))?;
+    validate_candidate_content(card.clone())?;
     card[CARD_SUPPORT_KEY] = serde_json::to_value(support).map_err(CommandError::serialization)?;
     card[assessment::CARD_POLICY_KEY] = Value::String(policy.fingerprint()?);
     Ok(card)
+}
+
+fn validate_candidate_content(card: Value) -> Result<(), CommandError> {
+    use crate::authoring::card_types_and_templates::generated_import::validate_generated_card;
+    validate_generated_card(card).map_err(|error| {
+        // This is pure preparation, not a write. Do not copy parser text or
+        // generated values into persistent diagnostics or a repair prompt.
+        if error.code == "serialization_error" {
+            error
+        } else {
+            assessment::invalid(
+                "A generated card failed native question, rich-content, cloze or tag validation.",
+            )
+        }
+    })
 }
 
 fn flashcard_system_prompt() -> String {
@@ -411,3 +452,6 @@ mod budget_regressions {
         .is_err());
     }
 }
+
+#[cfg(test)]
+mod admission_tests;

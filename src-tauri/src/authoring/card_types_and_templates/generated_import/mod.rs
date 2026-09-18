@@ -56,6 +56,7 @@ struct PreparedImport {
 
 mod apply;
 mod prepare;
+pub(crate) use prepare::validate_generated_card;
 
 #[cfg(test)]
 use apply::import_prepared_flashcards;
