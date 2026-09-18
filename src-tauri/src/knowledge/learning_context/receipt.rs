@@ -8,7 +8,10 @@ pub(super) fn fingerprint(
     sources: &[SourceRecord],
 ) -> Result<String, CommandError> {
     let ids = serde_json::to_string(
-        &sources.iter().map(|source| &source.id).collect::<BTreeSet<_>>(),
+        &sources
+            .iter()
+            .map(|source| &source.id)
+            .collect::<BTreeSet<_>>(),
     )
     .map_err(CommandError::serialization)?;
     let mut digest = Sha256::new();
@@ -82,7 +85,9 @@ pub(super) fn summarize(
              OR s.extraction_contract<>w.contract)) ORDER BY w.id LIMIT 16385",
         )
         .map_err(CommandError::database)?;
-    let mut rows = statement.query([serialized]).map_err(CommandError::database)?;
+    let mut rows = statement
+        .query([serialized])
+        .map_err(CommandError::database)?;
     let mut count = 0;
     while let Some(row) = rows.next().map_err(CommandError::database)? {
         count += 1;
@@ -136,7 +141,8 @@ pub(super) fn summarize(
         .iter()
         .filter(|source| source.kind != SourceKind::Conversation)
     {
-        if !described.contains(&source.id) && repository::extraction_available(connection, source)? {
+        if !described.contains(&source.id) && repository::extraction_available(connection, source)?
+        {
             summary.legacy_coverage_sources += 1;
         }
     }
@@ -195,7 +201,8 @@ pub(super) fn structures(
                     "The canonical evidence payload hash is inconsistent.",
                 ));
             }
-            let payload: Value = serde_json::from_str(&text).map_err(CommandError::serialization)?;
+            let payload: Value =
+                serde_json::from_str(&text).map_err(CommandError::serialization)?;
             if payload.get("version").and_then(Value::as_u64) != Some(1) {
                 return Err(invalid(
                     "The canonical evidence payload version is unsupported.",

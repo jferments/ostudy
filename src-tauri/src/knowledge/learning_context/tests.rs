@@ -148,10 +148,12 @@ fn all_dependencies_travel_with_authoring_but_retrieval_eviction_drops_the_entir
         }
     )
     .is_err());
-    assert!(material_prompt(&authored.sources[..1], &authored.units).unwrap()["units"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        material_prompt(&authored.sources[..1], &authored.units).unwrap()["units"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -180,8 +182,11 @@ fn late_interpretation_replacement_is_rejected_even_when_source_bytes_did_not_ch
     assert!(empty.units.is_empty());
     database
         .with_connection(|c| {
-            c.execute("UPDATE knowledge_sources SET active=0 WHERE id=?1", [&source.id])
-                .map_err(CommandError::database)?;
+            c.execute(
+                "UPDATE knowledge_sources SET active=0 WHERE id=?1",
+                [&source.id],
+            )
+            .map_err(CommandError::database)?;
             assert!(empty.stamp.ensure_current(c).is_err());
             Ok(())
         })
