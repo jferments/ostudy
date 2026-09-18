@@ -67,7 +67,10 @@ fn process_dependencies_preserve_branches_without_inventing_a_total_order() {
     let payload = TypedPayload::admit(proposal.clone(), statement, KnowledgeKind::Process).unwrap();
     let prompt = payload.prompt(statement).unwrap();
     assert_eq!(prompt["dependencies"].as_array().unwrap().len(), 4);
-    assert!(!prompt["dependencies"].as_array().unwrap().contains(&json!({"before":1,"after":2})));
+    assert!(!prompt["dependencies"]
+        .as_array()
+        .unwrap()
+        .contains(&json!({"before":1,"after":2})));
     for bad in [
         json!({"before":3,"after":0}),
         json!({"before":9,"after":0}),
@@ -80,7 +83,10 @@ fn process_dependencies_preserve_branches_without_inventing_a_total_order() {
     let mut unordered = proposal;
     unordered["dependencies"] = json!([]);
     let payload = TypedPayload::admit(unordered, statement, KnowledgeKind::Process).unwrap();
-    assert_eq!(payload.prompt(statement).unwrap()["dependencies"], json!([]));
+    assert_eq!(
+        payload.prompt(statement).unwrap()["dependencies"],
+        json!([])
+    );
 }
 
 #[test]
@@ -97,7 +103,10 @@ fn comparison_criteria_and_overlapping_classifications_remain_explicit() {
     let payload =
         TypedPayload::admit(classification, statement, KnowledgeKind::Definition).unwrap();
     let prompt = payload.prompt(statement).unwrap();
-    assert_eq!(prompt["categories"][0]["members"], prompt["categories"][1]["members"]);
+    assert_eq!(
+        prompt["categories"][0]["members"],
+        prompt["categories"][1]["members"]
+    );
     assert_eq!(prompt["exclusion"], "green excludes apple");
     assert!(prompt.get("mutuallyExclusive").is_none());
 }
@@ -108,9 +117,12 @@ fn malformed_and_oversized_structure_is_not_silently_treated_as_absent() {
     let mut proposal = quantity("=", "2");
     proposal["bounds"] = json!(vec![proposal["bounds"][0].clone(); 3]);
     assert!(TypedPayload::admit(proposal, statement, KnowledgeKind::Fact).is_err());
-    assert!(
-        TypedPayload::admit(json!({"kind":"quantity","unknown":true}), statement, KnowledgeKind::Fact).is_err()
-    );
+    assert!(TypedPayload::admit(
+        json!({"kind":"quantity","unknown":true}),
+        statement,
+        KnowledgeKind::Fact
+    )
+    .is_err());
     assert!(TypedPayload::admit(quantity("=", "NaN"), "v = NaN m/s", KnowledgeKind::Fact).is_err());
 }
 

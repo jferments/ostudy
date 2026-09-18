@@ -10,16 +10,16 @@ pub(super) struct Selection {
 
 impl Selection {
     pub(super) fn resolve(self, statement: &str) -> Result<StatementSpan, CommandError> {
-        if self.text.trim().is_empty()
-            || self.text.len() > statement.len()
-            || self.occurrence > 64
+        if self.text.trim().is_empty() || self.text.len() > statement.len() || self.occurrence > 64
         {
             return Err(invalid("Invalid qualified phrase selection."));
         }
         let (start, text) = statement
             .match_indices(self.text.as_str())
             .nth(self.occurrence)
-            .ok_or_else(|| invalid("The selected qualified phrase is absent from the statement."))?;
+            .ok_or_else(|| {
+                invalid("The selected qualified phrase is absent from the statement.")
+            })?;
         Ok(StatementSpan {
             start,
             end: start + text.len(),

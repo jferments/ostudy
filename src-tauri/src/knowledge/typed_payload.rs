@@ -78,11 +78,15 @@ impl<T> Shape<T> {
             Self::Quantity { bounds, .. } => (1..=2).contains(&bounds.len()),
             Self::Classification { categories, .. } => {
                 (2..=16).contains(&categories.len())
-                    && categories.iter().all(|c| (1..=32).contains(&c.members.len()))
+                    && categories
+                        .iter()
+                        .all(|c| (1..=32).contains(&c.members.len()))
             }
         };
         if !valid {
-            return Err(invalid("Qualified knowledge exceeds its structural bounds."));
+            return Err(invalid(
+                "Qualified knowledge exceeds its structural bounds.",
+            ));
         }
         Ok(())
     }
@@ -140,7 +144,11 @@ impl<T> Shape<T> {
                     .map(|c| {
                         Ok(Category {
                             label: f(c.label)?,
-                            members: c.members.into_iter().map(&mut f).collect::<Result<_, _>>()?,
+                            members: c
+                                .members
+                                .into_iter()
+                                .map(&mut f)
+                                .collect::<Result<_, _>>()?,
                         })
                     })
                     .collect::<Result<_, CommandError>>()?,
@@ -193,7 +201,10 @@ impl TypedPayload {
             return Err(invalid("Unsupported qualified knowledge version."));
         }
         self.shape.check_bounds()?;
-        if let Shape::Quantity { subject, bounds, .. } = &self.shape {
+        if let Shape::Quantity {
+            subject, bounds, ..
+        } = &self.shape
+        {
             for bound in bounds {
                 bound_direction(subject, bound)?;
                 token_boundary(statement, &bound.label, |ch| "<>=≤≥≠".contains(ch))?;
@@ -236,11 +247,16 @@ impl TypedPayload {
                 kind == KnowledgeKind::Fact
             }
             Shape::Classification { .. } => {
-                matches!(kind, KnowledgeKind::Definition | KnowledgeKind::Relationship)
+                matches!(
+                    kind,
+                    KnowledgeKind::Definition | KnowledgeKind::Relationship
+                )
             }
         };
         if !compatible {
-            return Err(invalid("Qualified structure does not match the knowledge kind."));
+            return Err(invalid(
+                "Qualified structure does not match the knowledge kind.",
+            ));
         }
         Ok(())
     }
@@ -252,9 +268,13 @@ impl TypedPayload {
             .clone()
             .map(|span| Ok(span.text(statement)?.to_string()))?;
         let mut value = serde_json::to_value(resolved).map_err(CommandError::serialization)?;
-        if let Shape::Quantity { subject, bounds, .. } = &self.shape {
+        if let Shape::Quantity {
+            subject, bounds, ..
+        } = &self.shape
+        {
             for (index, bound) in bounds.iter().enumerate() {
-                value["bounds"][index]["subjectOnLeft"] = Value::Bool(bound_direction(subject, bound)?);
+                value["bounds"][index]["subjectOnLeft"] =
+                    Value::Bool(bound_direction(subject, bound)?);
             }
         }
         Ok(value)
@@ -273,21 +293,31 @@ fn token_boundary(
     belongs: impl Fn(char) -> bool,
 ) -> Result<(), CommandError> {
     span.text(statement)?;
-    if statement[..span.start].chars().next_back().is_some_and(&belongs)
+    if statement[..span.start]
+        .chars()
+        .next_back()
+        .is_some_and(&belongs)
         || statement[span.end..].chars().next().is_some_and(belongs)
     {
-        return Err(invalid("A qualified selection cuts a numeric or comparison token."));
+        return Err(invalid(
+            "A qualified selection cuts a numeric or comparison token.",
+        ));
     }
     Ok(())
 }
 
-fn bound_direction(subject: &StatementSpan, bound: &Pair<StatementSpan>) -> Result<bool, CommandError> {
+fn bound_direction(
+    subject: &StatementSpan,
+    bound: &Pair<StatementSpan>,
+) -> Result<bool, CommandError> {
     if subject.end <= bound.label.start && bound.label.end <= bound.value.start {
         Ok(true)
     } else if bound.value.end <= bound.label.start && bound.label.end <= subject.start {
         Ok(false)
     } else {
-        Err(invalid("A quantity's operator must remain between its subject and value."))
+        Err(invalid(
+            "A quantity's operator must remain between its subject and value.",
+        ))
     }
 }
 
