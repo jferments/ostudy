@@ -252,6 +252,7 @@ requireText("read-only check workflow", checkWorkflow, [
   "permissions:\n  contents: read",
   "runs-on: [self-hosted, linux, x64, ostudy-unified]",
   "persist-credentials: false",
+  "ci-runtime-preflight.sh",
   "OSTUDY_CARGO_TARGET_DIR",
   "select-check-gate.mjs",
   "write-qualification-result.mjs",
@@ -268,6 +269,7 @@ requireText("read-only pull-request contract workflow", prContractWorkflow, [
   "permissions:\n  contents: read",
   "runs-on: [self-hosted, linux, x64, ostudy-unified]",
   "persist-credentials: false",
+  "ci-runtime-preflight.sh",
   "verify-pr-contract.mjs",
   "Product qualification: **independent; not run by this workflow**",
 ]);
@@ -288,7 +290,7 @@ requireText("manual generated-candidate maintenance workflow", maintenanceWorkfl
   "git add -- src-tauri/Cargo.lock src-tauri/src src-tauri/build.rs",
   'git push origin "HEAD:$GITHUB_REF_NAME"',
 ]);
-requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy-unified]", "./scripts/release.sh"]);
+requireText("release workflow", releaseWorkflow, ["runs-on: [self-hosted, linux, x64, ostudy-unified]", "ci-runtime-preflight.sh", "./scripts/release.sh"]);
 requireText("pull request template", pullRequestTemplate, [
   "Acceptance criteria",
   "<!-- ostudy-agent-state:start -->",
@@ -318,6 +320,8 @@ for (const requiredPath of [
   "scripts/check-fast.sh",
   "scripts/check.sh",
   "scripts/check-changed.sh",
+  "scripts/runner/ci-runtime-preflight.sh",
+  "scripts/runner/install-service-hardening.sh",
   "scripts/select-check-gate.mjs",
   "scripts/verify-pr-contract.mjs",
   "scripts/verify-agent-workflow-policy.mjs",
