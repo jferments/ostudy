@@ -1,6 +1,6 @@
 # Shared knowledge, collections, and lessons: development plan
 
-Status: implementation plan; product work has not started. Prepared 18 September 2026.
+Status: implementation underway; LK-00 through LK-02 are implemented on PR #103. Prepared 18 September 2026 and updated as stages close.
 
 This is the execution contract for the next oStudy development branch. It turns the approved Shared Knowledge and Responsive Lessons revision-2 design into ordered, reviewable implementation increments. This initial publication changes documentation only. Opening its draft PR does not authorize implementation, migration of a personal library, or merge; implementation begins after the human starts the walkthrough.
 
@@ -65,7 +65,7 @@ Use this one branch and draft PR for the planned continuation unless the human e
 | LK-13 | Final current-schema baseline, library conversion, archive old code | All schema-bearing stages | S9, data integration |
 | LK-14 | Cross-feature qualification and human handoff | LK-13 | S9, final gates |
 
-Current implementation status: **LK-00 and LK-01 complete; LK-02 is the next unfinished stage.** Stage completion records implementation separately from later human/platform acceptance.
+Current implementation status: **LK-00 through LK-02 complete; LK-03 is the next unfinished stage.** Stage completion records implementation separately from later human/platform acceptance.
 
 LK-04 and LK-05 can be built in either order after LK-03. PDF capability work can begin against a single-document fixture before collections finish. PPTX layout can begin once lesson composition is stable; its audio gate waits for retained audio. An outstanding human library-conversion check prevents retirement of its needed old converter, not unrelated implementation or publication.
 

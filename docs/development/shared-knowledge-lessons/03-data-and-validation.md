@@ -1,6 +1,6 @@
 # Current-format transition, acceptance and validation
 
-Part of the [development plan](README.md). This document defines required evidence, not results already obtained.
+Part of the [development plan](README.md). This document defines required evidence and records the implemented LK-02 transition boundary. Later-stage acceptance remains unclaimed until its own evidence exists.
 
 ## 1. The pre-release data policy
 
@@ -18,9 +18,42 @@ Keep historical migration SQL/fixtures unchanged while they are needed for conve
 
 New feature schema transitions during this branch are narrow forward steps. They upgrade the library before normal use; they do not enable parallel runtime schemas. Consolidate once, after the final schema-bearing stage, rather than repeatedly rebuilding the baseline during development. Future schema changes still need a forward transition from the active development baseline. A first public release will establish a separately explicit support window.
 
+### LK-02 implemented current-format checkpoint
+
+LK-02 makes the transition boundary executable without retiring historical machinery. The contract below describes repository state on this branch; it is **not** evidence about the schema installed in any personal application data directory.
+
+| Persisted surface | Current contract at the LK-02 boundary | Reader / transition owner |
+| --- | --- | --- |
+| SQLite library | Lineage `ostudy-public-v1`; exact registered migration prefix through schema/user version 17; registered data-repair ledger | `database.rs`, `database/entry.rs`, `data_repairs.rs` |
+| Basic/Cloze rich notes | `content_format = tiptap-json`, note `content_schema_version = 1`; current rich-document validator admits the supported document schema through version 2 | `cards/content.rs`; entry validation in `database/payload_entry.rs` |
+| Interactive questions | `content_format = question-json`, question schema 1 | `cards/questions/`; entry validation parses every persisted definition |
+| Question attempts | checkpoint `attemptVersion = 1`, with stored instance/note/card identity, fingerprint, and revision required to match the decoded checkpoint | `cards/questions/attempt.rs`; entry validation cross-checks the row against the decoded attempt |
+| Canonical knowledge/source records | knowledge content schema 1; source identity version 1 remains readable and document evidence identity version 2 is the current document form | `knowledge/contracts.rs`; successor knowledge contracts belong to LK-03 rather than scattered runtime adapters |
+| Study scope | strict native `StudyScope`: general/library or one deck/document/guide, plus a canonical non-nested selection of at most 16 explicit members | `knowledge/scope.rs`; LK-05 replaces this through the same current-format transition boundary |
+| Durable editor drafts | payload schema 1 for card/template/bulk/profile recovery; active drafts are validated during startup reconciliation and unsafe/unsupported recovery state becomes explicit conflict rather than guessed canonical content | `editor_drafts.rs` |
+| Complete-library backup | `ostudy-library-backup` format 4; package readers retain explicit support for versions 1–4; the embedded SQLite snapshot must pass the same read-only database admission before activation | `library_backup.rs`, `database::validate_backup_lineage` |
+| Trusted-device package | `ostudy-device-sync` format 3 with explicit legacy-v2 reader; package schema may not exceed the receiving build; v3 carries the selected document files while private/derived semantic state follows the existing sanitization policy | `device_sync/package.rs`, `knowledge::sanitize_for_device_transfer` |
+| External study imports | `.studydeck`, strict authoring JSON, Anki/APKG and staged external files remain explicit import/interchange contracts | Their existing import owners; they are not historical internal runtime schemas to collapse into SQLite |
+
+For a public-lineage database, startup now performs a **read-only admission before SQLite durability/journal configuration and before any migration or repair write**. Admission requires an exact known migration-ledger prefix, matching `PRAGMA user_version`, a recognized repair ledger, supported persisted card/question payloads, and database integrity. Only then does the existing migration/repair chain normalize the input. The resulting connection is revalidated at `LATEST_SCHEMA_VERSION` before ordinary runtime state is published. Backup admission calls the same read-only validator. Unknown, future, altered-checksum, corrupt-payload, and version/ledger-mismatch fixtures are rejected before conversion writes; disk fixtures assert rejected bytes remain identical and no WAL/SHM sidecar is created.
+
+The synthetic preservation fixture intentionally contains Basic/reverse, both Cloze modes, every interactive question kind including image occlusion, answering and checked attempts, schedules and review history, a durable draft, managed image bytes, a retained source document/citations, an edited Study Guide overlay, Tutor conversation/turn history, and deliberate deletion/suppression evidence. Its receipt hashes every SQLite value with type and length information and separately hashes managed files. Reopen, complete-backup creation, staged restore rollback, committed restore, and post-restore reopen must preserve those receipts and pass foreign-key/integrity plus current question/attempt decoders. Equal row counts alone are deliberately insufficient.
+
+### Final consolidation checkpoint (LK-13)
+
+LK-02 defines the retirement gate now so later schema work cannot make it up opportunistically:
+
+1. Freeze the final post-LK-12 schema and payload contracts and construct a curated fresh baseline proven equivalent to the migrated current schema, including tables, indexes, triggers, constraints and FTS behavior.
+2. Convert isolated copies from every explicitly supported retained development lineage using the known chain and narrowly scoped payload converters. Already-current input must be a verified no-op; unknown/future/corrupt input remains fail-closed.
+3. Run the maintained local actual-library adoption workflow. Its privacy-safe receipt records converter/source SHA, input lineage and user/ledger version summary, coherent backup/integrity identity, preservation-receipt digest, output lineage/version, and successful reopen plus restore verification. It records no source text or private database contents.
+4. Only after that evidence, move superseded migration/converter/fixture material into a versioned historical archive outside normal compilation/startup/packaging, with a manifest naming the source SHA and an explicit offline historical-backup recovery entry point. Released migration bytes/checksums are never rewritten to simulate consolidation.
+5. Prove ordinary startup no longer loads archived history and repeat integrated backup/restore across the final source, question, history, collection, Tutor, lesson and retained-media graph.
+
+Until LK-13 satisfies that gate, the current migration chain and historical recovery paths remain live and unchanged. This is intentional preservation, not unfinished LK-02 work.
+
 ### Known-source conversion procedure
 
-1. **Inspect safely.** Stop or acquire the existing exclusive library-maintenance boundary. Resolve actual application storage through maintained paths. Record installed application identity, schema lineage/version, checksum/repair state and converter SHA. Unknown/future/corrupt input is rejected without mutation. Repository schema 17 is a planning observation, not proof of the user's installed state.
+1. **Inspect safely.** Stop or acquire the existing exclusive library-maintenance boundary. Resolve actual application storage through maintained paths. Record installed application identity, schema lineage/version, checksum/repair state and converter SHA. Unknown/future/corrupt input is rejected without mutation. The LK-02 branch registry is schema 17; repository state is not proof of the user's installed state.
 2. **Preserve a recoverable input.** Produce a coherent full backup using the existing backup boundary, including managed assets and required journals handled correctly by that boundary. Verify its integrity and restore an isolated copy. Check free space for original, backup, staging and output. A raw copy of a live SQLite file is not the backup procedure.
 3. **Capture invariants.** Record stable IDs and canonical sorted-row/value digests for learner-owned records, schedules/reviews, attempts, guide overlays, source associations and conversation turns, plus asset reference/hash manifests. Counts alone cannot detect silently changed values. Sensitive content and full databases stay local; diagnostics contain only the approved bounded summaries.
 4. **Normalize a staged copy.** Apply the known migration/repair path and current-payload conversions. Reuse existing repair ownership and write a conversion receipt. Preserve original note/card IDs, schedules, due values, review outcomes, tags, templates, drafts, annotations, conversation scopes and managed bytes. Source/interpretation changes are separate from mere schema conversion; migration never silently contacts a provider.
@@ -125,4 +158,4 @@ One unchanged-head rerun requires transient evidence. The same failure fingerpri
 
 Actual-library migration, live model quality, speech pronunciation, visual/accessibility behavior, physical Android lifecycle and PowerPoint/Impress compatibility are distinct from unit/static/emulator checks. Record which were actually performed, on which exact source/platform, and what remains. Never mark all gates passed because one workflow is green.
 
-The next product action after the human starts implementation is **LK-01.1 through LK-01.3: characterize the existing preview and replace its sidebar with the shared full-size Practice presentation workspace**. Continue on the created branch/PR, preserve all current data/work, and complete that bounded increment with tests and publication before starting another large change.
+The next product action is **LK-03 — reusable evidence, knowledge and context foundation**. Continue on the same branch/PR, preserve the LK-01/LK-02 boundaries, and implement the next coherent acceptance increment before starting screenshot or collection work.
