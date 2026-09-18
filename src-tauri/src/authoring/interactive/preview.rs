@@ -11,7 +11,7 @@ const AUTHOR_PREVIEW_SHUFFLE_SEED: &str = "ostudy-author-preview-v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct PreviewQuestionDraftInput {
+pub(crate) struct PreviewQuestionDraftInput {
     pub definition_json: String,
     #[serde(default)]
     pub response: Option<QuestionResponse>,
@@ -19,7 +19,7 @@ pub(super) struct PreviewQuestionDraftInput {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct QuestionDraftPreviewDto {
+pub(crate) struct QuestionDraftPreviewDto {
     pub question: PublicQuestion,
     pub evaluation: Option<Evaluation>,
 }
