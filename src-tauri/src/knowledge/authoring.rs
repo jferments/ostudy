@@ -301,9 +301,8 @@ pub(crate) fn catalog_for_chunks(
     let contract = extraction_contract(task)?;
     task.ensure_current(database)?;
     database.with_connection(|connection| {
-        let context = super::learning_context::for_document_chunks(
-            connection, document_id, chunk_indices,
-        )?;
+        let context =
+            super::learning_context::for_document_chunks(connection, document_id, chunk_indices)?;
         let document_core_units =
             super::document_view::core_ids(connection, document_id, &contract)?;
         Ok(KnowledgeCatalog {

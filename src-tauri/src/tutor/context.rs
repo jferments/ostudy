@@ -13,7 +13,9 @@ use crate::{
     error::CommandError,
     knowledge::{
         contracts::{KnowledgeUnit, ScopeKind, SourceRecord, StudyScope, MAX_CONTEXT_BYTES},
-        learning_context::{self, ContextBudget, ContextPolicy, ContextStamp, LearningContextRequest},
+        learning_context::{
+            self, ContextBudget, ContextPolicy, ContextStamp, LearningContextRequest,
+        },
         relationships, repository, retrieval,
     },
     paths::AppPaths,
@@ -125,14 +127,21 @@ pub(crate) async fn build(
         sources.insert(sources.len().min(2), source);
     }
     let material = database.with_connection(|connection| {
-        learning_context::build(connection, LearningContextRequest {
-            scope,
-            include_conversations: input.include_conversations && input.mode != TutorMode::Hint,
-            candidates: &sources,
-            policy: ContextPolicy::Retrieval,
-            target_units: None,
-            budget: ContextBudget { sources: 12, units: 768, bytes: 1024 * 1024 },
-        })
+        learning_context::build(
+            connection,
+            LearningContextRequest {
+                scope,
+                include_conversations: input.include_conversations && input.mode != TutorMode::Hint,
+                candidates: &sources,
+                policy: ContextPolicy::Retrieval,
+                target_units: None,
+                budget: ContextBudget {
+                    sources: 12,
+                    units: 768,
+                    bytes: 1024 * 1024,
+                },
+            },
+        )
     })?;
     let mut sources = material.sources;
     let mut units = material.units;
@@ -150,7 +159,9 @@ pub(crate) async fn build(
         notice = format!("{notice} No source evidence is attached. General-knowledge questions may be answered from model knowledge without citations. For an explicit source-only request, explain that the requested evidence is unavailable rather than claiming source support.").trim().to_string();
     }
     let image_source = focus.sources.first().and_then(|focused| {
-        sources.iter().find(|source| source.id == focused.id && !source.images.is_empty())
+        sources
+            .iter()
+            .find(|source| source.id == focused.id && !source.images.is_empty())
     });
     let image_source_id = image_source.map(|source| source.id.clone());
     let mut images = if task.include_page_images {
@@ -191,7 +202,9 @@ pub(crate) async fn build(
     let request_text = loop {
         let shared = learning_context::material_prompt(&sources, &units)?;
         preparation.evidence_structures.retain(|value| {
-            value.get("sourceId").and_then(serde_json::Value::as_str)
+            value
+                .get("sourceId")
+                .and_then(serde_json::Value::as_str)
                 .is_some_and(|id| sources.iter().any(|source| source.id == id))
         });
         let payload = json!({
@@ -235,9 +248,8 @@ pub(crate) async fn build(
     if let Some(id) = &input.question_id {
         inherited_turns.push(id.clone());
     }
-    let learning_stamp = database.with_connection(|connection| {
-        material.stamp.restrict_to(connection, &sources)
-    })?;
+    let learning_stamp =
+        database.with_connection(|connection| material.stamp.restrict_to(connection, &sources))?;
     Ok(StudyContext {
         learning_stamp: Some(learning_stamp),
         question_hint: None,

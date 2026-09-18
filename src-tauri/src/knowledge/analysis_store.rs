@@ -203,7 +203,10 @@ fn load_units(
         .collect()
 }
 
-pub(crate) fn validate_report(sources: &[SourceRecord], report: &AnalysisReport) -> Result<(), CommandError> {
+pub(crate) fn validate_report(
+    sources: &[SourceRecord],
+    report: &AnalysisReport,
+) -> Result<(), CommandError> {
     if let Some(coverage) = &report.coverage {
         coverage.validate(sources, &report.accepted, &report.no_learning)?;
     }

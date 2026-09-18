@@ -35,7 +35,11 @@ pub(crate) struct ContextBudget {
 
 impl ContextBudget {
     pub(crate) fn authoring() -> Self {
-        Self { sources: 2048, units: 16384, bytes: 16 * 1024 * 1024 }
+        Self {
+            sources: 2048,
+            units: 16384,
+            bytes: 16 * 1024 * 1024,
+        }
     }
 }
 
@@ -54,8 +58,12 @@ pub(crate) struct PreparationSummary {
 
 impl PreparationSummary {
     pub(crate) fn notice(&self) -> String {
-        if self.unprepared_sources + self.unresolved_regions + self.unreadable_regions
-            + self.rejected_proposals + self.legacy_coverage_sources > 0
+        if self.unprepared_sources
+            + self.unresolved_regions
+            + self.unreadable_regions
+            + self.rejected_proposals
+            + self.legacy_coverage_sources
+            > 0
         {
             format!("Saved material is usable but exhaustive analysis is not established: {} unprepared sources, {} unresolved regions, {} unreadable regions, {} rejected proposals, and {} sources with older coverage receipts. Do not claim complete source coverage.",
                 self.unprepared_sources, self.unresolved_regions, self.unreadable_regions,
@@ -100,10 +108,14 @@ impl ContextStamp {
         sources: &[SourceRecord],
     ) -> Result<Self, CommandError> {
         self.ensure_current(connection)?;
-        if sources.iter().any(|source| !self.sources.iter().any(|old| old.id == source.id)) {
+        if sources
+            .iter()
+            .any(|source| !self.sources.iter().any(|old| old.id == source.id))
+        {
             return Err(repository::stale_source());
         }
-        self.sources.retain(|old| sources.iter().any(|source| source.id == old.id));
+        self.sources
+            .retain(|old| sources.iter().any(|source| source.id == old.id));
         self.fingerprint = receipt::fingerprint(connection, &self.sources)?;
         Ok(self)
     }
@@ -112,7 +124,11 @@ impl ContextStamp {
     /// caller's publication transaction, not just the citations a model chose.
     pub(crate) fn ensure_current(&self, connection: &Connection) -> Result<(), CommandError> {
         let allowed = permitted(connection, &self.scope, self.include_conversations)?;
-        if self.sources.iter().any(|source| !allowed.contains(&source.id)) {
+        if self
+            .sources
+            .iter()
+            .any(|source| !allowed.contains(&source.id))
+        {
             return Err(repository::stale_source());
         }
         for source in &self.sources {
@@ -132,10 +148,12 @@ fn permitted(
     scope: &StudyScope,
     include_conversations: bool,
 ) -> Result<HashSet<String>, CommandError> {
-    Ok(retrieval::eligible_entries_in(connection, scope, include_conversations)?
-        .into_iter()
-        .filter_map(|entry| entry.id.strip_prefix("source:").map(str::to_string))
-        .collect())
+    Ok(
+        retrieval::eligible_entries_in(connection, scope, include_conversations)?
+            .into_iter()
+            .filter_map(|entry| entry.id.strip_prefix("source:").map(str::to_string))
+            .collect(),
+    )
 }
 
 pub(crate) fn build(
@@ -143,9 +161,18 @@ pub(crate) fn build(
     request: LearningContextRequest<'_>,
 ) -> Result<LearningContext, CommandError> {
     request.scope.validate()?;
-    let ContextBudget { sources: source_limit, units: unit_limit, bytes: byte_limit } = request.budget;
-    if source_limit == 0 || source_limit > 2048 || unit_limit == 0 || unit_limit > 16384
-        || byte_limit == 0 || byte_limit > 16 * 1024 * 1024 || request.candidates.len() > 4096
+    let ContextBudget {
+        sources: source_limit,
+        units: unit_limit,
+        bytes: byte_limit,
+    } = request.budget;
+    if source_limit == 0
+        || source_limit > 2048
+        || unit_limit == 0
+        || unit_limit > 16384
+        || byte_limit == 0
+        || byte_limit > 16 * 1024 * 1024
+        || request.candidates.len() > 4096
     {
         return Err(invalid("The learning-context budget is invalid."));
     }
@@ -167,7 +194,9 @@ pub(crate) fn build(
         }
         let source = repository::load_source(connection, &candidate.id)?
             .ok_or_else(repository::stale_source)?;
-        let size = serde_json::to_vec(&source).map_err(CommandError::serialization)?.len();
+        let size = serde_json::to_vec(&source)
+            .map_err(CommandError::serialization)?
+            .len();
         if sources.len() == source_limit || size > byte_limit.saturating_sub(bytes) {
             omitted_sources += 1;
             continue;
@@ -176,22 +205,29 @@ pub(crate) fn build(
         sources.push(source);
     }
     if request.policy == ContextPolicy::Coverage && omitted_sources > 0 {
-        return Err(invalid("The coverage window is not fully permitted or exceeds its source budget."));
+        return Err(invalid(
+            "The coverage window is not fully permitted or exceeds its source budget.",
+        ));
     }
     let mut units = Vec::new();
     let mut seen_units = HashSet::new();
     let mut omitted_units = 0;
     for source in &sources {
         for unit in repository::load_units(connection, &source.id)? {
-            if request.target_units.is_some_and(|ids| !ids.contains(&unit.id))
-                || !seen_units.insert(unit.id.clone()) {
+            if request
+                .target_units
+                .is_some_and(|ids| !ids.contains(&unit.id))
+                || !seen_units.insert(unit.id.clone())
+            {
                 continue;
             }
             if !unit_visible(&unit, &sources) {
                 omitted_units += 1;
                 continue;
             }
-            let size = serde_json::to_vec(&unit).map_err(CommandError::serialization)?.len();
+            let size = serde_json::to_vec(&unit)
+                .map_err(CommandError::serialization)?
+                .len();
             if units.len() == unit_limit || size > byte_limit.saturating_sub(bytes) {
                 omitted_units += 1;
                 continue;
@@ -201,27 +237,40 @@ pub(crate) fn build(
         }
     }
     if request.policy == ContextPolicy::Coverage && omitted_units > 0 {
-        return Err(invalid("The coverage window lacks required evidence or exceeds its knowledge budget."));
+        return Err(invalid(
+            "The coverage window lacks required evidence or exceeds its knowledge budget.",
+        ));
     }
     let mut preparation = receipt::summarize(connection, &sources)?;
     preparation.omitted_sources = omitted_sources;
     preparation.omitted_units = omitted_units;
     // Structures are optional exact evidence, never permission to read another
     // region. A complete block must occur literally within an admitted source.
-    preparation.evidence_structures = receipt::structures(connection, &sources,
-        byte_limit.saturating_sub(bytes))?;
+    preparation.evidence_structures =
+        receipt::structures(connection, &sources, byte_limit.saturating_sub(bytes))?;
     let stamp = ContextStamp {
         scope: request.scope.clone(),
         include_conversations: request.include_conversations,
         fingerprint: receipt::fingerprint(connection, &sources)?,
         sources: sources.clone(),
     };
-    Ok(LearningContext { sources, units, preparation, stamp })
+    Ok(LearningContext {
+        sources,
+        units,
+        preparation,
+        stamp,
+    })
 }
 
 pub(crate) fn unit_visible(unit: &KnowledgeUnit, sources: &[SourceRecord]) -> bool {
-    sources.iter().any(|source| source.id == unit.source_id && source.content_hash == unit.source_hash)
-        && unit.content.grounding.as_ref().is_none_or(|grounding| grounding.is_visible_in(sources))
+    sources
+        .iter()
+        .any(|source| source.id == unit.source_id && source.content_hash == unit.source_hash)
+        && unit
+            .content
+            .grounding
+            .as_ref()
+            .is_none_or(|grounding| grounding.is_visible_in(sources))
 }
 
 /// Native source-window selection for cards and guides. Dependent pages may be
@@ -233,7 +282,10 @@ pub(crate) fn for_document_chunks(
     chunk_indices: &[i64],
 ) -> Result<LearningContext, CommandError> {
     crate::util::validate_entity_id(document_id, "knowledge document")?;
-    if chunk_indices.is_empty() || chunk_indices.len() > 2048 || chunk_indices.iter().any(|i| *i < 0) {
+    if chunk_indices.is_empty()
+        || chunk_indices.len() > 2048
+        || chunk_indices.iter().any(|i| *i < 0)
+    {
         return Err(invalid("The authoring context source window is invalid."));
     }
     let scope = StudyScope {
@@ -242,24 +294,37 @@ pub(crate) fn for_document_chunks(
         members: Vec::new(),
     };
     let wanted = serde_json::to_string(chunk_indices).map_err(CommandError::serialization)?;
-    let mut statement = connection.prepare(
-        "SELECT id,parent_key FROM knowledge_sources WHERE kind='document' AND document_id=?1
+    let mut statement = connection
+        .prepare(
+            "SELECT id,parent_key FROM knowledge_sources WHERE kind='document' AND document_id=?1
          AND active=1 AND parent_key IN(SELECT CAST(value AS TEXT) FROM json_each(?2))
-         ORDER BY CAST(parent_key AS INTEGER),segment_key LIMIT 2049"
-    ).map_err(CommandError::database)?;
-    let rows = statement.query_map(params![document_id, wanted], |row|
-        Ok((row.get::<_, String>(0)?,row.get::<_, String>(1)?)))
-        .map_err(CommandError::database)?.collect::<Result<Vec<_>,_>>()
+         ORDER BY CAST(parent_key AS INTEGER),segment_key LIMIT 2049",
+        )
         .map_err(CommandError::database)?;
-    let present = rows.iter().map(|(_, key)| key.as_str()).collect::<HashSet<_>>();
-    if rows.len() > 2048 || chunk_indices.iter().any(|index| !present.contains(index.to_string().as_str())) {
+    let rows = statement
+        .query_map(params![document_id, wanted], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(CommandError::database)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)?;
+    let present = rows
+        .iter()
+        .map(|(_, key)| key.as_str())
+        .collect::<HashSet<_>>();
+    if rows.len() > 2048
+        || chunk_indices
+            .iter()
+            .any(|index| !present.contains(index.to_string().as_str()))
+    {
         return Err(repository::stale_source());
     }
     let mut sources = BTreeMap::new();
     let mut dependencies = BTreeSet::new();
     let mut target_units = BTreeSet::new();
     for (id, _) in rows {
-        let source = repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
+        let source =
+            repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
         if !repository::extraction_available(connection, &source)? {
             return Err(repository::stale_source());
         }
@@ -267,35 +332,58 @@ pub(crate) fn for_document_chunks(
             target_units.insert(unit.id.clone());
             dependencies.insert(unit.source_id.clone());
             if let Some(grounding) = unit.content.grounding {
-                dependencies.extend(grounding.evidence.into_iter().map(|reference| reference.source_id));
+                dependencies.extend(
+                    grounding
+                        .evidence
+                        .into_iter()
+                        .map(|reference| reference.source_id),
+                );
             }
         }
         sources.insert(source.id.clone(), source);
     }
     for id in dependencies {
-        if sources.contains_key(&id) { continue; }
-        let source = repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
-        if source.kind != SourceKind::Document || source.document_id.as_deref() != Some(document_id) {
+        if sources.contains_key(&id) {
+            continue;
+        }
+        let source =
+            repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
+        if source.kind != SourceKind::Document || source.document_id.as_deref() != Some(document_id)
+        {
             return Err(repository::stale_source());
         }
         sources.insert(id, source);
     }
-    build(connection, LearningContextRequest {
-        scope: &scope, include_conversations: false,
-        candidates: &sources.into_values().collect::<Vec<_>>(),
-        policy: ContextPolicy::Coverage, target_units: Some(&target_units), budget: ContextBudget::authoring(),
-    })
+    build(
+        connection,
+        LearningContextRequest {
+            scope: &scope,
+            include_conversations: false,
+            candidates: &sources.into_values().collect::<Vec<_>>(),
+            policy: ContextPolicy::Coverage,
+            target_units: Some(&target_units),
+            budget: ContextBudget::authoring(),
+        },
+    )
 }
 
 /// One deduplicated prompt representation, also used after Tutor budget eviction.
 /// Source data and interpretation remain distinct; excluded dependencies remove
 /// the whole claim. This function performs no reads or provider requests.
-pub(crate) fn material_prompt(sources: &[SourceRecord], units: &[KnowledgeUnit]) -> Result<Value, CommandError> {
-    let admitted = units.iter().filter(|unit| unit_visible(unit, sources)).collect::<Vec<_>>();
-    let evidence = admitted.iter().flat_map(|unit| unit.content.grounding.iter())
+pub(crate) fn material_prompt(
+    sources: &[SourceRecord],
+    units: &[KnowledgeUnit],
+) -> Result<Value, CommandError> {
+    let admitted = units
+        .iter()
+        .filter(|unit| unit_visible(unit, sources))
+        .collect::<Vec<_>>();
+    let evidence = admitted
+        .iter()
+        .flat_map(|unit| unit.content.grounding.iter())
         .flat_map(|grounding| &grounding.evidence)
         .map(|reference| (reference.id.clone(), reference))
-        .collect::<BTreeMap<_,_>>();
+        .collect::<BTreeMap<_, _>>();
     let projected = admitted.iter().map(|unit| {
         let details = unit.content.details.as_ref().map(|details| details.prompt(&unit.content.statement)).transpose()?;
         Ok(json!({
