@@ -11,7 +11,7 @@ const AUTHOR_PREVIEW_SHUFFLE_SEED: &str = "ostudy-author-preview-v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PreviewQuestionDraftInput {
+pub(super) struct PreviewQuestionDraftInput {
     pub definition_json: String,
     #[serde(default)]
     pub response: Option<QuestionResponse>,
@@ -19,7 +19,7 @@ pub struct PreviewQuestionDraftInput {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QuestionDraftPreviewDto {
+pub(super) struct QuestionDraftPreviewDto {
     pub question: PublicQuestion,
     pub evaluation: Option<Evaluation>,
 }
@@ -27,8 +27,7 @@ pub struct QuestionDraftPreviewDto {
 /// Pure authoring projection: validate with the canonical Rust question domain,
 /// use the same deterministic display-order algorithm as Practice, and optionally
 /// grade one transient response. No database, schedule, attempt, or review exists.
-#[tauri::command]
-pub fn preview_question_draft(
+pub(super) fn preview_question_draft(
     input: PreviewQuestionDraftInput,
 ) -> Result<QuestionDraftPreviewDto, CommandError> {
     let question = ValidatedQuestion::parse(&input.definition_json)?;
