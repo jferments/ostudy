@@ -117,13 +117,13 @@ fn interleaved_tool_results_preserve_all_knowledge_and_native_provenance() {
 // validates every returned unit and evidence reference above.
 fn strict_transport_schema() -> Value {
     json!({"type":"object","additionalProperties":false,
-        "required":["units","noLearningSourceIds"],"properties":{
-            "units":{"type":"array","items":{"type":"object","additionalProperties":false,
-                "required":["title","kind","statement","qualifications","topic","importance","evidenceIds"],
-                "properties":{"title":{"type":"string"},"kind":{"type":"string","enum":["fact"]},
-                    "statement":{"type":"string"},"qualifications":{"type":"array","items":{"type":"string"}},
-                    "topic":{"type":"string"},"importance":{"type":"string","enum":["core"]},
-                    "evidenceIds":{"type":"array","items":{"type":"string"}}}}},
-            "noLearningSourceIds":{"type":"array","items":{"type":"string"}}
-        }})
+    "required":["units","noLearningSourceIds"],"properties":{
+        "units":{"type":"array","items":{"type":"object","additionalProperties":false,
+            "required":["title","kind","statement","qualifications","topic","importance","evidenceIds"],
+            "properties":{"title":{"type":"string"},"kind":{"type":"string","enum":["fact"]},
+                "statement":{"type":"string"},"qualifications":{"type":"array","items":{"type":"string"}},
+                "topic":{"type":"string"},"importance":{"type":"string","enum":["core"]},
+                "evidenceIds":{"type":"array","items":{"type":"string"}}}}},
+        "noLearningSourceIds":{"type":"array","items":{"type":"string"}}
+    }})
 }
