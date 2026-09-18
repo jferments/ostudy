@@ -48,8 +48,12 @@ describe("interactive editor card preview entry point", () => {
       const preview = screen.getByRole("button", { name: "Preview card" });
       fireEvent.click(preview);
       expect(await screen.findByText(`Preview ${kind}`)).toBeTruthy();
-      fireEvent.click(screen.getByRole("button", { name: "Hide preview" }));
+      expect(screen.getByRole("region", { name: "Card preview" })).toBeTruthy();
+      expect(screen.queryByRole("combobox", { name: "Card template" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
       expect(screen.queryByText(`Preview ${kind}`)).toBeNull();
+      expect(screen.queryByRole("region", { name: "Card preview" })).toBeNull();
+      expect(screen.getByRole("combobox", { name: "Card template" })).toBe(selector);
     }
   });
 });
