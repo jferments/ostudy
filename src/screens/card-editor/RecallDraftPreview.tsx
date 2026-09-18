@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { Asset } from "../../ipc/assets";
 import type { CardDraftPreview } from "../../ipc/cards";
@@ -34,14 +34,6 @@ export function RecallDraftPreview({
     () => presentations.find((item) => item.presentationKey === selectedKey) ?? presentations[0] ?? null,
     [presentations, selectedKey],
   );
-
-  useEffect(() => {
-    const nextKey = presentations.some((item) => item.presentationKey === selectedKey)
-      ? selectedKey
-      : presentations[0]?.presentationKey ?? "";
-    if (nextKey !== selectedKey) setSelectedKey(nextKey);
-    setRevealed(false);
-  }, [presentations, selectedKey]);
 
   if (loading) return <InlineProgress>Validating and preparing the Practice preview…</InlineProgress>;
   if (!selected) {

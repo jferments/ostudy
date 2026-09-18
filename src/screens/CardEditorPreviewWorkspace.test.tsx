@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RichDocument } from "../ipc/common";
@@ -139,7 +139,7 @@ describe("full-size editor preview workspace", () => {
     expect(await within(preview).findByText(/Unsaved question/u)).toBeTruthy();
     fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     fireEvent.click(within(preview).getByRole("button", { name: "Reveal answer" }));
-    expect(within(preview).getByText(/Unsaved answer/u)).toBeTruthy();
+    expect(await within(preview).findByText(/Unsaved answer/u)).toBeTruthy();
     fireEvent.click(within(preview).getByRole("button", { name: "Close preview" }));
     expect(screen.getByRole("textbox", { name: "Question draft" })).toBe(field);
     expect(document.activeElement).toBe(field);
@@ -209,6 +209,7 @@ describe("full-size editor preview workspace", () => {
     expect(screen.getByRole("region", { name: "Card preview" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
     mocks.topId = null;
+    await waitFor(() => expect(screen.getByRole("button", { name: "Preview card" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Preview card" }));
     fireEvent.keyDown(window, { key: "Escape", isComposing: true });
     expect(screen.getByRole("region", { name: "Card preview" })).toBeTruthy();
