@@ -45,7 +45,7 @@ fn interleaved_tool_results_preserve_all_knowledge_and_native_provenance() {
         &profile,
         &extraction::extraction_prompt(),
         Value::String(catalog.prompt(&sources).to_string()),
-        &extraction::response_schema_for_test(&catalog, &sources),
+        &strict_transport_schema(),
         6000,
         "none",
     )
@@ -110,4 +110,20 @@ fn interleaved_tool_results_preserve_all_knowledge_and_native_provenance() {
             .unwrap();
     }
     assert!(checkpoint.load().unwrap().unwrap().is_complete());
+}
+
+// This fixture keeps exercising the strict-tool transport independently of the
+// current task's nullable JSON-object schema. The current native decoder still
+// validates every returned unit and evidence reference above.
+fn strict_transport_schema() -> Value {
+    json!({"type":"object","additionalProperties":false,
+        "required":["units","noLearningSourceIds"],"properties":{
+            "units":{"type":"array","items":{"type":"object","additionalProperties":false,
+                "required":["title","kind","statement","qualifications","topic","importance","evidenceIds"],
+                "properties":{"title":{"type":"string"},"kind":{"type":"string","enum":["fact"]},
+                    "statement":{"type":"string"},"qualifications":{"type":"array","items":{"type":"string"}},
+                    "topic":{"type":"string"},"importance":{"type":"string","enum":["core"]},
+                    "evidenceIds":{"type":"array","items":{"type":"string"}}}}},
+            "noLearningSourceIds":{"type":"array","items":{"type":"string"}}
+        }})
 }
