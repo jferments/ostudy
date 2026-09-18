@@ -7,20 +7,31 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import androidx.test.platform.app.InstrumentationRegistry
+import com.googlecode.tesseract.android.TessBaseAPI
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.concurrent.TimeUnit
+import java.io.File
+import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 @LargeTest
 class AndroidOcrSmokeTest {
   @Test
-  fun bundledMlKitRecognizesHighContrastEnglishTextOffline() {
+  fun bundledTesseractRecognizesHighContrastEnglishTextOffline() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val dataRoot = File(context.filesDir, "tesseract-smoke")
+    val trainedData = File(dataRoot, "tessdata/eng.traineddata")
+    trainedData.parentFile?.mkdirs()
+    context.assets.open("tessdata/eng.traineddata").use { input ->
+      FileOutputStream(trainedData, false).use { output ->
+        input.copyTo(output)
+        output.fd.sync()
+      }
+    }
+    assertTrue("Packaged Tesseract English data is empty", trainedData.length() > 0L)
+
     val bitmap = Bitmap.createBitmap(1_600, 420, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     canvas.drawColor(Color.WHITE)
@@ -31,25 +42,28 @@ class AndroidOcrSmokeTest {
     }
     canvas.drawText("OSTUDY FLASHCARDS", 70f, 260f, paint)
 
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    val tess = TessBaseAPI()
     try {
-      val result = Tasks.await(
-        recognizer.process(InputImage.fromBitmap(bitmap, 0)),
-        20,
-        TimeUnit.SECONDS,
-      )
-      val recognized = result.text.uppercase()
       assertTrue(
-        "Expected ML Kit to recognize the synthetic OSTUDY line, got: $recognized",
+        "Expected bundled English Tesseract data to initialize",
+        tess.init(dataRoot.absolutePath, "eng", TessBaseAPI.OEM_LSTM_ONLY),
+      )
+      tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
+      tess.setImage(bitmap)
+      tess.getHOCRText(0)
+      val recognized = (tess.getUTF8Text() ?: "").uppercase()
+      assertTrue(
+        "Expected Tesseract to recognize the synthetic OSTUDY line, got: $recognized",
         recognized.contains("OSTUDY"),
       )
       assertTrue(
-        "Expected ML Kit to recognize the synthetic FLASHCARDS line, got: $recognized",
+        "Expected Tesseract to recognize the synthetic FLASHCARDS line, got: $recognized",
         recognized.contains("FLASH"),
       )
     } finally {
-      recognizer.close()
+      tess.recycle()
       bitmap.recycle()
+      dataRoot.deleteRecursively()
     }
   }
 }
