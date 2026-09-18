@@ -21,15 +21,14 @@ fn node(content: NodeContent) -> DocumentNode {
 }
 
 fn document(nodes: Vec<DocumentNode>) -> ExtractedDocument {
-    ExtractedDocument {
-        document: Some(DocumentStructure {
-            nodes,
-            source_format: Some("docx".to_string()),
-            relationships: Vec::new(),
-            node_types: Vec::new(),
-        }),
-        ..ExtractedDocument::default()
-    }
+    let mut value = ExtractedDocument::default();
+    value.document.replace(DocumentStructure {
+        nodes,
+        source_format: Some("docx".to_string()),
+        relationships: Vec::new(),
+        node_types: Vec::new(),
+    });
+    value
 }
 
 #[test]
@@ -153,10 +152,10 @@ fn equal_flat_text_does_not_discard_different_table_headers() {
         table_id: None,
         columns: Some(vec![header.into()]),
     };
-    let input = ExtractedDocument {
-        tables: vec![table("Velocity (m/s)"), table("Acceleration (m/s²)")],
-        ..ExtractedDocument::default()
-    };
+    let mut input = ExtractedDocument::default();
+    input
+        .tables
+        .extend([table("Velocity (m/s)"), table("Acceleration (m/s²)")]);
     let normalized =
         super::super::normalize_document(&input, DocumentFormat::Docx, &HashMap::new()).unwrap();
     let catalog = StructureCatalog::new(&input).unwrap();
