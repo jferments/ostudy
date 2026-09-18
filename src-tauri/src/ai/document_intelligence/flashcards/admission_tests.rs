@@ -322,3 +322,6 @@ fn cached_cards_cannot_bypass_native_content_preparation() {
         &broken, &catalog, &policy
     ));
 }
+
+#[path = "family_tests.rs"]
+mod families;
