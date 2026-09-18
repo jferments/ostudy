@@ -19,6 +19,9 @@ use crate::{
 const PUBLIC_SCHEMA_LINEAGE: &str = "ostudy-public-v1";
 pub(crate) const PRE_PUBLIC_RESET_PREFIX: &str = "PRE_PUBLIC_DATABASE_REQUIRES_RESET";
 
+#[path = "database/entry.rs"]
+mod entry;
+
 #[path = "database/table_rebuild.rs"]
 mod table_rebuild;
 
@@ -209,7 +212,15 @@ enum DatabaseLineage {
 fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
     let lineage = inspect_lineage(connection)?;
     match lineage {
-        DatabaseLineage::Empty | DatabaseLineage::Public => {}
+        DatabaseLineage::Empty => {
+            if entry::user_version(connection)? != 0 {
+                return Err("An empty database has an unknown schema version. The database was not modified.".to_string());
+            }
+        }
+        DatabaseLineage::Public => {
+            entry::validate_public_input(connection)?;
+            verify_integrity(connection)?;
+        }
         DatabaseLineage::PrePublic => {
             return Err(format!(
                 "{PRE_PUBLIC_RESET_PREFIX}: This database predates oStudy's public schema baseline. Stop oStudy, preserve a backup if needed, and run scripts/reset-pre-public-data.sh with the exact application data directory. The database was not modified."
@@ -230,6 +241,9 @@ fn initialize_connection(connection: &mut Connection) -> Result<(), String> {
         RepairPhase::AfterMigration(LATEST_SCHEMA_VERSION),
     )?;
     verify_repair_ledger(connection)?;
+    if entry::validate_public_input(connection)? != LATEST_SCHEMA_VERSION {
+        return Err("Database conversion did not reach the current schema.".to_string());
+    }
     if migrated || crate::logging::enabled(LogLevel::Debug, "ostudy.database.integrity") {
         verify_integrity(connection)?;
     }
@@ -472,35 +486,9 @@ pub(crate) fn validate_backup_lineage(connection: &Connection) -> Result<(), Com
             "The backup does not have the supported public schema lineage.",
         ));
     }
-    let mut statement = connection
-        .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })
-        .map_err(CommandError::database)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CommandError::database)?;
-    if rows.is_empty() || rows.len() > MIGRATIONS.len() {
-        return Err(CommandError::new(
-            "invalid_backup",
-            "The backup migration ledger is incomplete or newer than this build.",
-        ));
-    }
-    for (row, migration) in rows.iter().zip(MIGRATIONS) {
-        if row.0 != migration.version || row.1 != migration.name || row.2 != migration.checksum {
-            return Err(CommandError::new(
-                "invalid_backup",
-                "The backup migration ledger does not match this application build.",
-            ));
-        }
-    }
-    Ok(())
+    entry::validate_public_input(connection)
+        .map(|_| ())
+        .map_err(|message| CommandError::new("invalid_backup", message))
 }
 
 #[cfg(test)]
@@ -888,3 +876,7 @@ mod tests {
 #[cfg(test)]
 #[path = "database/interactive_migration_tests.rs"]
 mod interactive_migration_tests;
+
+#[cfg(test)]
+#[path = "database/entry_tests.rs"]
+mod entry_tests;
