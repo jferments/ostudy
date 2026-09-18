@@ -192,6 +192,43 @@ fn compound_support_can_cover_more_than_two_targets_but_recall_cannot() {
 }
 
 #[test]
+fn contextual_bindings_are_optional_but_graded_components_remain_mandatory() {
+    let catalog = catalog_fixture();
+    let policy = policy::GenerationPolicy::default();
+
+    let mut single = proposal(0);
+    single.components.retain(|component| component.key != "prompt");
+    let admitted = admit_card(raw(0), single, &catalog, &policy).unwrap();
+    let record = record_from_card(&admitted).unwrap().unwrap();
+    assert_eq!(record.components.len(), 2);
+    record.validate_card(&admitted).unwrap();
+
+    let mut grouping = proposal(4);
+    grouping.components.retain(|component| {
+        component.key.starts_with("item:")
+    });
+    let admitted = admit_card(raw(4), grouping, &catalog, &policy).unwrap();
+    let record = record_from_card(&admitted).unwrap().unwrap();
+    assert_eq!(record.components.len(), 2);
+    record.validate_card(&admitted).unwrap();
+
+    let mut ordering = proposal(5);
+    ordering.components.retain(|component| {
+        component.key.starts_with("before:")
+    });
+    let admitted = admit_card(raw(5), ordering, &catalog, &policy).unwrap();
+    let record = record_from_card(&admitted).unwrap().unwrap();
+    assert_eq!(record.components.len(), 2);
+    record.validate_card(&admitted).unwrap();
+
+    let mut missing_graded = proposal(0);
+    missing_graded
+        .components
+        .retain(|component| component.key != "option:square");
+    assert!(admit_card(raw(0), missing_graded, &catalog, &policy).is_err());
+}
+
+#[test]
 fn image_occlusion_remote_media_and_unexplained_distractors_are_not_generated() {
     let policy = policy::GenerationPolicy::default();
     let catalog = catalog_fixture();
