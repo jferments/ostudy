@@ -162,9 +162,7 @@ impl TableStructure {
                 for column in cell.column..end_column.unwrap_or(cell.column) {
                     let slot = &mut occupied[row * self.columns + column];
                     if *slot {
-                        return Err(invalid_canonical(
-                            "Overlapping table cells are ambiguous.",
-                        ));
+                        return Err(invalid_canonical("Overlapping table cells are ambiguous."));
                     }
                     *slot = true;
                 }
@@ -172,9 +170,7 @@ impl TableStructure {
         }
         if let Some(headers) = &self.column_headers {
             if headers.len() != self.columns {
-                return Err(invalid_canonical(
-                    "Table headers do not match its columns.",
-                ));
+                return Err(invalid_canonical("Table headers do not match its columns."));
             }
             for header in headers {
                 validate_text(header, MAX_TEXT, true)?;
