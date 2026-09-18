@@ -163,7 +163,12 @@ async fn analyze(
             authorization,
             images
                 .iter()
-                .map(|image| (image.page_number, crate::document_canonical::sha256_hex(&image.bytes)))
+                .map(|image| {
+                    (
+                        image.page_number,
+                        crate::document_canonical::sha256_hex(&image.bytes),
+                    )
+                })
                 .collect::<Vec<_>>(),
         ))
         .map_err(CommandError::serialization)?,

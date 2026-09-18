@@ -33,10 +33,22 @@ async fn matching_subscribers_share_one_producer_and_cancellation_is_local() {
         panic!("a subscriber must not start another producer")
     }));
     pending(follower.as_mut()).await;
-    assert_eq!(*registry.jobs.lock().unwrap()[&key].subscribers.lock().unwrap(), 2);
+    assert_eq!(
+        *registry.jobs.lock().unwrap()[&key]
+            .subscribers
+            .lock()
+            .unwrap(),
+        2
+    );
     leader_signal.cancel();
     pending(leader.as_mut()).await;
-    assert_eq!(*registry.jobs.lock().unwrap()[&key].subscribers.lock().unwrap(), 1);
+    assert_eq!(
+        *registry.jobs.lock().unwrap()[&key]
+            .subscribers
+            .lock()
+            .unwrap(),
+        1
+    );
     release.notify_one();
     let (leader_result, follower_result) = tokio::join!(leader, follower);
     assert_eq!(leader_result.unwrap_err().code, "ai_request_canceled");
@@ -79,9 +91,11 @@ async fn canceled_follower_cannot_cancel_the_producer() {
         }
     }));
     pending(leader.as_mut()).await;
-    let mut follower = Box::pin(registry.run((1, "work".into()), &follower_signal, |_| async {
-        panic!("unexpected second producer")
-    }));
+    let mut follower = Box::pin(
+        registry.run((1, "work".into()), &follower_signal, |_| async {
+            panic!("unexpected second producer")
+        }),
+    );
     pending(follower.as_mut()).await;
     follower_signal.cancel();
     assert_eq!(follower.await.unwrap_err().code, "ai_request_canceled");
@@ -102,7 +116,10 @@ async fn interrupted_producer_wakes_waiters_without_automatic_retry() {
     }));
     pending(follower.as_mut()).await;
     drop(leader);
-    assert_eq!(follower.await.unwrap_err().code, "shared_preparation_interrupted");
+    assert_eq!(
+        follower.await.unwrap_err().code,
+        "shared_preparation_interrupted"
+    );
     assert!(registry.jobs.lock().unwrap().is_empty());
 }
 
@@ -124,7 +141,10 @@ async fn provider_failure_is_shared_but_not_cached_as_a_success() {
     let (first, second) = tokio::join!(first, second);
     assert_eq!(first.unwrap_err().code, "provider_failed");
     assert_eq!(second.unwrap_err().code, "provider_failed");
-    registry.run((1, "failure".into()), &signal, |_| async { Ok(()) }).await.unwrap();
+    registry
+        .run((1, "failure".into()), &signal, |_| async { Ok(()) })
+        .await
+        .unwrap();
 }
 
 #[test]

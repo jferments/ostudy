@@ -94,19 +94,24 @@ mod tests {
         std::future::poll_fn(|context| {
             assert!(first.as_mut().poll(context).is_pending());
             Poll::Ready(())
-        }).await;
+        })
+        .await;
         let mut second = Box::pin(run(input, &signal, |_| async {
             panic!("the second consumer must not call the provider")
         }));
         std::future::poll_fn(|context| {
             assert!(second.as_mut().poll(context).is_pending());
             Poll::Ready(())
-        }).await;
+        })
+        .await;
         release.notify_one();
         let (first, second) = tokio::join!(first, second);
         let first = first.unwrap();
         assert_eq!(first[&sources[0].id].len(), 1);
-        assert_eq!(serde_json::to_value(&first).unwrap(), serde_json::to_value(second.unwrap()).unwrap());
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(second.unwrap()).unwrap()
+        );
         assert_eq!(calls.get(), 1);
     }
 }
