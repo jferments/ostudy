@@ -41,8 +41,8 @@ fn fixture(document: &str) -> CanonicalIngestion {
                 original_filename: "authored.pdf".into(),
                 media_type: "application/pdf".into(),
                 relative_path: format!("documents/{document}/source.pdf"),
-                byte_size: 1,
-                sha256: sha256_hex(b"x"),
+                byte_size: 32,
+                sha256: sha256_hex(document.as_bytes()),
             }],
             metadata: DocumentMetadata::default(),
             units: vec![CanonicalSourceUnit::new(
@@ -79,11 +79,11 @@ fn create_document(connection: &Connection, document: &str) {
             "INSERT INTO documents (id, title, original_filename, mime_type, byte_size,
          sha256, source_relative_path, lifecycle_state, created_at, updated_at,
          source_unit_count, extracted_source_unit_count)
-         VALUES (?1, 'Authored fixture', 'authored.pdf', 'application/pdf', 1, ?2,
+         VALUES (?1, 'Authored fixture', 'authored.pdf', 'application/pdf', 32, ?2,
          ?3, 'failed', 1, 1, 1, 1)",
             params![
                 document,
-                sha256_hex(b"x"),
+                sha256_hex(document.as_bytes()),
                 format!("documents/{document}/source.pdf")
             ],
         )
