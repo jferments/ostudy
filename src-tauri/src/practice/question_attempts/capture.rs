@@ -32,7 +32,6 @@ pub(crate) fn prepare(
     })
 }
 
-
 pub(crate) fn insert(
     connection: &Connection,
     session_id: &str,

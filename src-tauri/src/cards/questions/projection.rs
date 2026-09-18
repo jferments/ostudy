@@ -26,7 +26,9 @@ impl ValidatedQuestion {
                 order.item_ids = pairs.iter().map(|pair| pair.left.id.clone()).collect();
                 order.target_ids = pairs.iter().map(|pair| pair.right.id.clone()).collect();
             }
-            QuestionBody::Grouping { categories, items, .. } => {
+            QuestionBody::Grouping {
+                categories, items, ..
+            } => {
                 order.item_ids = items.iter().map(|item| item.item.id.clone()).collect();
                 order.target_ids = categories.iter().map(|item| item.id.clone()).collect();
             }
@@ -44,9 +46,15 @@ impl ValidatedQuestion {
                 order.item_ids.rotate_left(1);
             }
             QuestionBody::Matching { pairs, .. }
-                if order.item_ids.iter().zip(&order.target_ids).all(|(left, right)| {
-                    pairs.iter().any(|pair| &pair.left.id == left && &pair.right.id == right)
-                }) =>
+                if order
+                    .item_ids
+                    .iter()
+                    .zip(&order.target_ids)
+                    .all(|(left, right)| {
+                        pairs
+                            .iter()
+                            .any(|pair| &pair.left.id == left && &pair.right.id == right)
+                    }) =>
             {
                 order.target_ids.rotate_left(1);
             }

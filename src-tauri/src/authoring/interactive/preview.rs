@@ -48,16 +48,21 @@ pub fn preview_question_draft(
         .as_ref()
         .map(|response| question.evaluate(response))
         .transpose()?;
-    Ok(QuestionDraftPreviewDto { question: public, evaluation })
+    Ok(QuestionDraftPreviewDto {
+        question: public,
+        evaluation,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
     use super::*;
     use crate::cards::questions::Verdict;
+    use serde_json::json;
 
-    fn id(value: char) -> String { std::iter::repeat_n(value, 32).collect() }
+    fn id(value: char) -> String {
+        std::iter::repeat_n(value, 32).collect()
+    }
     fn doc(text: &str) -> serde_json::Value {
         json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":text}]}]})
     }
@@ -69,14 +74,17 @@ mod tests {
                 {"id":id('b'),"content":doc("Right"),"rationale":doc("Supported answer")}
             ],
             "correctOptionId":id('b'),"explanation":doc("Overall explanation")
-        }}).to_string()
+        }})
+        .to_string()
     }
 
     #[test]
     fn preview_validates_projects_and_evaluates_without_storage() {
         let prepared = preview_question_draft(PreviewQuestionDraftInput {
-            definition_json: definition(), response: None,
-        }).expect("preview should validate");
+            definition_json: definition(),
+            response: None,
+        })
+        .expect("preview should validate");
         let PublicQuestion::SingleChoice { options, .. } = prepared.question else {
             panic!("expected choice projection");
         };
@@ -88,7 +96,8 @@ mod tests {
             response: Some(QuestionResponse::SingleChoice {
                 selected_option_id: Some(id('b')),
             }),
-        }).expect("native preview check should succeed");
+        })
+        .expect("native preview check should succeed");
         let evaluation = checked.evaluation.expect("evaluation");
         assert_eq!(evaluation.verdict, Verdict::Correct);
         assert_eq!(evaluation.matched_count, 1);
@@ -102,10 +111,14 @@ mod tests {
             "masks":[{"id":id('a'),"rect":{"x":0.1,"y":0.1,"width":0.2,"height":0.2}}],
             "questions":[{"id":id('b'),"prompt":doc("Identify"),"answer":doc("Answer"),
                 "explanation":null,"maskIds":[id('a')],"mode":"hide_target"}]
-        }}).to_string();
+        }})
+        .to_string();
         let error = preview_question_draft(PreviewQuestionDraftInput {
-            definition_json: definition, response: None,
-        }).err().expect("occlusion uses dedicated renderer");
+            definition_json: definition,
+            response: None,
+        })
+        .err()
+        .expect("occlusion uses dedicated renderer");
         assert_eq!(error.code, "question_preview_uses_occlusion_renderer");
     }
 }
