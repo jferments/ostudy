@@ -26,12 +26,9 @@ fn all_six_families_retain_valid_siblings_and_reject_missing_graded_evidence() {
             .pop();
         let rejected = parse_knowledge_cards(json!({"cards":[missing.clone()]}), 4, &catalog);
         assert!(rejected.is_err());
-        let cards = parse_knowledge_cards(
-            json!({"cards":[missing, null, good.clone()]}),
-            4,
-            &catalog,
-        )
-        .unwrap();
+        let cards =
+            parse_knowledge_cards(json!({"cards":[missing, null, good.clone()]}), 4, &catalog)
+                .unwrap();
         assert_eq!(cards.len(), 1);
         assert_eq!(cards[0], expected);
         let record = assessment::record_from_card(&cards[0]).unwrap().unwrap();
