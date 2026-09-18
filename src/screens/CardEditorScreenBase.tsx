@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { TagInput } from "../components/TagInput";
 import { CardEditorController } from "../controllers/cardEditorController";
 import { useDurableDraft } from "../controllers/useDurableDraft";
-import { RichTextView } from "../editor/RichTextView";
 import {
   EMPTY_RICH_DOCUMENT,
   cloneDocument,
@@ -35,7 +34,6 @@ import {
   type TemplateValueInput,
 } from "../ipc/templates";
 import { registerPlatformBackHandler } from "../platform/backNavigation";
-import { cn } from "../ui/internal/cn";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Badge } from "../ui/primitives/Badge";
@@ -49,6 +47,9 @@ import { BasicCardFields } from "./card-editor/BasicCardFields";
 import { ClozeEditor } from "./card-editor/ClozeEditor";
 import { InteractiveQuestionEditor } from "./card-editor/InteractiveQuestionEditor";
 import { QuestionDraftPreview } from "./card-editor/QuestionDraftPreview";
+import { CardPreviewWorkspace } from "./card-editor/CardPreviewWorkspace";
+import { useEditorPreview } from "./card-editor/useEditorPreview";
+import { RecallCardSurface } from "./practice/RecallCardSurface";
 import { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 import { distinctClozeGroups } from "./card-editor/cloze";
 import { presentation } from "./card-editor/presentation";
@@ -180,7 +181,9 @@ export function CardEditorScreen({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [duplicateMatches, setDuplicateMatches] = useState<DuplicateCard[]>([]);
   const [moveCopyOpen, setMoveCopyOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const preview = useEditorPreview();
+  const previewOpen = preview.isOpen;
+  const [previewReverse, setPreviewReverse] = useState(false);
   const [previewAnswer, setPreviewAnswer] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -284,7 +287,8 @@ export function CardEditorScreen({
 
   useEffect(() => {
     platformBackCancelRef.current = () => {
-      void cancel();
+      if (previewOpen) preview.close();
+      else void cancel();
     };
   });
 
@@ -409,7 +413,7 @@ export function CardEditorScreen({
     function onKeyDown(event: KeyboardEvent): void {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        if (canSave) void save(false, false);
+        if (!previewOpen && canSave) void save(false, false);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -489,6 +493,7 @@ export function CardEditorScreen({
   }
 
   async function save(continueAdding: boolean, allowDuplicate: boolean): Promise<void> {
+    if (previewOpen) return;
     if (!contentReady) {
       setErrorMessage(activeQuestionDraft
         ? "Complete the required question fields and answer key before saving."
@@ -651,7 +656,7 @@ export function CardEditorScreen({
           text: "",
         }))
       : []);
-    setPreviewOpen(false);
+    preview.close();
     setPreviewAnswer(false);
     setEditorGeneration((value) => value + 1);
     try {
@@ -701,13 +706,37 @@ export function CardEditorScreen({
         : "Save card";
 
   return (
+    <>
+    {previewOpen ? <CardPreviewWorkspace title={selectedDeck.name} onClose={preview.close}>
+      {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
+      {activeQuestionDraft ? <QuestionDraftPreview draft={activeQuestionDraft} assets={assets}
+        assetDraftId={assetDraftId} disabled={isSaving} onError={setErrorMessage} /> : <>
+        {reverseEnabled ? <FormField label="Presentation">
+          <NativeSelect value={previewReverse ? "reverse" : "forward"} onChange={(event) => {
+            setPreviewReverse(event.currentTarget.value === "reverse"); setPreviewAnswer(false);
+          }}><option value="forward">Forward</option><option value="reverse">Reverse</option></NativeSelect>
+        </FormField> : null}
+        {tags.length > 0 ? <div className="tw:flex tw:flex-wrap tw:gap-2">{tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}</div> : null}
+        <RecallCardSurface presentation={{
+          frontDoc: previewReverse ? backDoc : frontDoc, backDoc: previewReverse ? frontDoc : backDoc,
+          frontText: previewReverse ? backText : frontText, backText: previewReverse ? frontText : backText, assets,
+        }} presentationKey={previewReverse ? "preview-reverse" : "preview-forward"} revealed={previewAnswer}
+          onReveal={() => setPreviewAnswer(true)} onLinkError={setErrorMessage} />
+        <div className="tw:flex tw:justify-center">
+          <Button variant="primary" size="large" onClick={() => setPreviewAnswer((value) => !value)}>
+            {previewAnswer ? "Show question" : "Reveal answer"}
+          </Button>
+        </div>
+      </>}
+    </CardPreviewWorkspace> : null}
+    <div ref={preview.editorRef} hidden={previewOpen} inert={previewOpen} onBlurCapture={preview.rememberField}>
     <PageScaffold aria-busy={isSaving || isLoadingTemplate}>
       <PageHeader eyebrow={deck.name} title={title} actions={<>
         <Button variant="back" disabled={isSaving} onClick={() => void cancel()}>← {deck.name}</Button>
         {existing && recallNote ? <Button variant="secondary" disabled={isSaving || dirty}
           title={dirty ? "Save or discard edits before moving this card" : undefined} onClick={openMoveCopy}>Move / copy</Button> : null}
         {canPreview ? <Button variant="secondary" disabled={isSaving}
-          onClick={() => { setPreviewOpen((value) => !value); setPreviewAnswer(false); }}>{previewOpen ? "Hide preview" : "Preview card"}</Button> : null}
+          onClick={() => { setPreviewAnswer(false); setPreviewReverse(false); preview.open(); }}>Preview card</Button> : null}
         <Button variant="secondary" disabled={isSaving} onClick={() => void cancel()}>Cancel</Button>
         {!existing ? <Button variant="secondary" disabled={!canSave} onClick={() => void save(true, false)}>
           {selectedCustomTemplate ? "Generate + another" : "Save + another"}
@@ -731,7 +760,7 @@ export function CardEditorScreen({
           </div>
         </InlineNotice>
       ) : null}
-      <div className={cn(presentation["card-editor-layout"], previewOpen && canPreview && presentation["with-preview"])}>
+      <div className={presentation["card-editor-layout"]}>
         <div className={presentation["card-editor-fields"]}>
           <Surface className="tw:grid tw:gap-5 tw:p-5 tw:lg:grid-cols-2">
             <FormField label="Card template" description={existing
@@ -739,7 +768,7 @@ export function CardEditorScreen({
               : "Choose a recall card, an interactive question type, or a reusable bulk-entry template."}>
               <NativeSelect value={selectedTemplateKey} disabled={isSaving || existing} onChange={(event) => {
                 setSelectedTemplateKey(event.currentTarget.value);
-                setPreviewOpen(false);
+                preview.close();
                 setPreviewAnswer(false);
                 markDirty();
               }}>
@@ -800,22 +829,7 @@ export function CardEditorScreen({
           <TagInput tags={tags} suggestions={tagSuggestions} disabled={isSaving}
             onChange={(nextTags) => { setTags(nextTags); markDirty(); }} />
         </div>
-        {previewOpen && activeQuestionDraft ? (
-          <QuestionDraftPreview draft={activeQuestionDraft} assets={assets} assetDraftId={assetDraftId}
-            disabled={isSaving} onError={setErrorMessage} />
-        ) : previewOpen && builtInCardType === "basic" && !selectedCustomTemplate ? (
-          <Surface as="aside" className={presentation["editor-preview-panel"]}>
-            <div className={presentation["preview-panel-heading"]}>
-              <div><span className={presentation["eyebrow"]}>LIVE PREVIEW</span><h2>{previewAnswer ? "Answer" : "Question"}</h2></div>
-              <Button variant="primary" size="small" disabled={isSaving}
-                onClick={() => setPreviewAnswer((value) => !value)}>{previewAnswer ? "Show question" : "Reveal answer"}</Button>
-            </div>
-            {tags.length > 0 ? <div className="tw:mb-4 tw:flex tw:flex-wrap tw:gap-2">{tags.map((tag) => <Badge key={tag}>{tag}</Badge>)}</div> : null}
-            <div className={presentation["flashcard-preview-surface"]}>
-              <RichTextView document={previewAnswer ? backDoc : frontDoc} assets={assets} onLinkError={setErrorMessage} />
-            </div>
-          </Surface>
-        ) : null}
+
       </div>
       {moveCopyOpen && recallNote ? (
         <MoveCopyModal cards={[{ noteId: recallNote.noteId, deckId: recallNote.deckId }]} decks={availableDecks}
@@ -826,6 +840,8 @@ export function CardEditorScreen({
           }} />
       ) : null}
     </PageScaffold>
+    </div>
+    </>
   );
 }
 

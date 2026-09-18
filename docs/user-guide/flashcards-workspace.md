@@ -44,6 +44,14 @@ Image occlusion is manually authored. Choose a managed still image, draw normali
 
 The normal editor reports duplicate candidates and requires deliberate override for an exact duplicate. Bulk entry, template generation, and generated JSON import skip exact duplicates according to their native validation rules. Image-only content is not declared duplicate solely because its searchable text is empty.
 
+## Preview without leaving the editor
+
+**Preview card** opens a full-width study presentation instead of a side panel. **Close preview** stays at the top while you scroll. Close it, press Escape when no dialog is open, or use Android Back to return to the same unsaved editor. Closing a preview does not save or discard the draft. Save shortcuts are inactive while preview is open.
+
+Basic previews share Practice's rich-content surface, flip/motion setting, and media presentation. When Reverse is enabled, choose Forward or Reverse in the preview. Objective boards and image occlusion use the existing shared question and masked-image renderers at the available workspace width. Preview interactions do not record reviews or change schedules.
+
+Fill-in-the-blank and reusable-template previews still use their field-specific presentation controls; full-workspace native preview admission and objective Check feedback are the next implementation boundary. [Editor-preview ownership and tests](../development/editor-preview.md) describes that boundary separately from completed behavior.
+
 ## Practice behavior for interactive questions
 
 Objective interactive questions use **answer → Check answer → feedback → difficulty/continue**. Matching, grouping and ordering do not auto-submit when the last tile moves, and item moves do not leak correctness before Check. Correctness is calculated locally from the captured immutable question instance.

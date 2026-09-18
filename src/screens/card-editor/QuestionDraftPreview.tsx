@@ -6,7 +6,6 @@ import type { Asset } from "../../ipc/assets";
 import type { QuestionResponse } from "../../ipc/questionAttempts";
 import { Button } from "../../ui/primitives/Button";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
-import { Surface } from "../../ui/primitives/Surface";
 import { QuestionBody } from "../practice/QuestionBody";
 import { emptyQuestionResponse } from "../practice/questionPresentation";
 import { presentation } from "./presentation";
@@ -37,7 +36,7 @@ function ObjectiveDraftPreview({ draft, assets, disabled, onError }: QuestionDra
   const structureKey = questionPreviewStructureKey(question);
   const [response, setResponse] = useState<QuestionResponse>(() => emptyQuestionResponse(question));
   useEffect(() => { setResponse(emptyQuestionResponse(question)); }, [structureKey]);
-  return <Surface as="aside" className={presentation["editor-preview-panel"]}>
+  return <section className="tw:grid tw:min-w-0 tw:gap-5">
     <div className={presentation["preview-panel-heading"]}>
       <div><span className={presentation["eyebrow"]}>CARD PREVIEW</span><h2>Practice appearance</h2></div>
       <Button variant="secondary" size="small" disabled={disabled}
@@ -46,7 +45,7 @@ function ObjectiveDraftPreview({ draft, assets, disabled, onError }: QuestionDra
     <QuestionBody question={question} response={response} evaluation={null} assets={assets}
       disabled={disabled} onChange={setResponse} onError={onError} />
     <p className="tw:mt-3 tw:text-xs tw:text-muted-foreground">Preview interactions are local only. They do not check, schedule, or record a review.</p>
-  </Surface>;
+  </section>;
 }
 
 function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError }: QuestionDraftPreviewProps & {
@@ -59,7 +58,7 @@ function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError 
   const size = draft.imageSize ?? source.size;
   const targets = draft.masks.filter((mask) => question?.maskIds.includes(mask.id)).map((mask) => mask.rect);
   useEffect(() => { setRevealed(false); }, [draft.selectedQuestionId, draft.imageAssetId]);
-  return <Surface as="aside" className={presentation["editor-preview-panel"]}>
+  return <section className="tw:grid tw:min-w-0 tw:gap-5">
     <div className={presentation["preview-panel-heading"]}>
       <div><span className={presentation["eyebrow"]}>CARD PREVIEW</span><h2>{revealed ? "Answer" : "Question"}</h2></div>
       <Button variant="primary" size="small" disabled={disabled || !preview.ready}
@@ -78,5 +77,5 @@ function OcclusionDraftPreview({ draft, assets, assetDraftId, disabled, onError 
         {question.explanation ? <RichTextView document={question.explanation} assets={assets} onLinkError={onError} /> : null}
       </section> : null}
     </div> : <InlineNotice>Choose a question to preview.</InlineNotice>}
-  </Surface>;
+  </section>;
 }
