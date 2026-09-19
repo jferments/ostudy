@@ -7,8 +7,8 @@ pub(crate) mod cache;
 pub(crate) mod files;
 pub(crate) mod import;
 pub(crate) mod manifest;
-pub(crate) mod repository;
 pub(crate) mod raster;
+pub(crate) mod repository;
 
 #[cfg(test)]
 pub(crate) mod test_support;

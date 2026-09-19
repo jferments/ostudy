@@ -107,21 +107,34 @@ impl Projection {
                     continue;
                 }
                 text.push(line.text.clone());
-                let geometry = line.bounds.and_then(|bounds| NormalizedBoundingBox::new(
-                    f64::from(bounds.left) / f64::from(result.width),
-                    f64::from(bounds.top) / f64::from(result.height),
-                    f64::from(bounds.right - bounds.left) / f64::from(result.width),
-                    f64::from(bounds.bottom - bounds.top) / f64::from(result.height),
-                ));
+                let geometry = line.bounds.and_then(|bounds| {
+                    NormalizedBoundingBox::new(
+                        f64::from(bounds.left) / f64::from(result.width),
+                        f64::from(bounds.top) / f64::from(result.height),
+                        f64::from(bounds.right - bounds.left) / f64::from(result.width),
+                        f64::from(bounds.bottom - bounds.top) / f64::from(result.height),
+                    )
+                });
                 let attributes = BTreeMap::from([
                     ("imageMemberId".to_string(), member.id.clone()),
                     ("ocrGroup".to_string(), line.group.clone()),
-                    ("coordinateSpace".to_string(), "upright-rotated-normalized".to_string()),
+                    (
+                        "coordinateSpace".to_string(),
+                        "upright-rotated-normalized".to_string(),
+                    ),
                 ]);
                 document.blocks.push(CanonicalBlock::new(
-                    document.blocks.len() as i64, ordinal as i64, unit,
-                    CanonicalBlockRole::Paragraph, &line.text, None, Vec::new(), geometry,
-                    line.confidence, Vec::new(), attributes,
+                    document.blocks.len() as i64,
+                    ordinal as i64,
+                    unit,
+                    CanonicalBlockRole::Paragraph,
+                    &line.text,
+                    None,
+                    Vec::new(),
+                    geometry,
+                    line.confidence,
+                    Vec::new(),
+                    attributes,
                 ));
             }
         } else {
@@ -129,7 +142,12 @@ impl Projection {
         }
         let plain_text = text.join("\n");
         document.units.push(CanonicalSourceUnit::new(
-            unit, SourceUnitKind::Image, &label, None, &plain_text, 1,
+            unit,
+            SourceUnitKind::Image,
+            &label,
+            None,
+            &plain_text,
+            1,
         ));
         let block_index = document.blocks.len() as i64;
         let attributes = BTreeMap::from([
@@ -138,15 +156,30 @@ impl Projection {
             ("pixelContract".to_string(), member.pixel_contract.clone()),
         ]);
         document.blocks.push(CanonicalBlock::new(
-            block_index, result.map_or(0, |value| value.lines.len()) as i64, unit,
-            CanonicalBlockRole::Image, "", None, Vec::new(), None, None,
-            vec![asset_id.clone()], attributes,
+            block_index,
+            result.map_or(0, |value| value.lines.len()) as i64,
+            unit,
+            CanonicalBlockRole::Image,
+            "",
+            None,
+            Vec::new(),
+            None,
+            None,
+            vec![asset_id.clone()],
+            attributes,
         ));
         document.assets.push(CanonicalAsset {
-            asset_id: asset_id.clone(), source_unit_number: Some(unit), block_index: Some(block_index),
-            role: CanonicalAssetRole::EmbeddedImage, media_type: "image/png".to_string(),
-            relative_path: path, byte_size: png.len() as i64, sha256: sha256_hex(&png),
-            width: Some(i64::from(width)), height: Some(i64::from(height)), alt_text: Some(label.clone()),
+            asset_id: asset_id.clone(),
+            source_unit_number: Some(unit),
+            block_index: Some(block_index),
+            role: CanonicalAssetRole::EmbeddedImage,
+            media_type: "image/png".to_string(),
+            relative_path: path,
+            byte_size: png.len() as i64,
+            sha256: sha256_hex(&png),
+            width: Some(i64::from(width)),
+            height: Some(i64::from(height)),
+            alt_text: Some(label.clone()),
         });
         let context = if plain_text.is_empty() {
             "[Image evidence without reliable admitted OCR text.]".to_string()
@@ -154,13 +187,24 @@ impl Projection {
             plain_text.clone()
         };
         let locator = SourceLocator::with_evidence(
-            SourceUnitKind::Image, vec![unit], Some(label), vec![asset_id], None,
+            SourceUnitKind::Image,
+            vec![unit],
+            Some(label),
+            vec![asset_id],
+            None,
         )?;
-        self.canonical.semantic_chunks.push(CanonicalSemanticChunk::new(
-            index as i64, &context, &context, locator,
-            vec!["paragraph".to_string(), "image".to_string()], None,
-            context.chars().count().div_ceil(4), false,
-        ));
+        self.canonical
+            .semantic_chunks
+            .push(CanonicalSemanticChunk::new(
+                index as i64,
+                &context,
+                &context,
+                locator,
+                vec!["paragraph".to_string(), "image".to_string()],
+                None,
+                context.chars().count().div_ceil(4),
+                false,
+            ));
         self.reused += usize::from(reused);
         Ok(())
     }
@@ -168,12 +212,22 @@ impl Projection {
     pub(super) fn finish(mut self) -> Result<AdapterExtraction, CommandError> {
         let document = &mut self.canonical.document;
         document.extraction.semantic_analysis_degraded = self.unresolved > 0;
-        document.extraction.ocr_mean_confidence = (self.recognized > 0)
-            .then(|| self.confidence_sum / self.recognized as f64);
+        document.extraction.ocr_mean_confidence =
+            (self.recognized > 0).then(|| self.confidence_sum / self.recognized as f64);
         document.extraction.ocr_engine = Some("native region OCR".to_string());
-        document.metadata.attributes.insert("reusedImageExtractions".to_string(), self.reused.to_string());
-        document.metadata.attributes.insert("unresolvedImageRegions".to_string(), self.unresolved.to_string());
+        document.metadata.attributes.insert(
+            "reusedImageExtractions".to_string(),
+            self.reused.to_string(),
+        );
+        document.metadata.attributes.insert(
+            "unresolvedImageRegions".to_string(),
+            self.unresolved.to_string(),
+        );
         self.canonical.validate()?;
-        Ok(AdapterExtraction { identity: IDENTITY, canonical: self.canonical, compatibility: None })
+        Ok(AdapterExtraction {
+            identity: IDENTITY,
+            canonical: self.canonical,
+            compatibility: None,
+        })
     }
 }

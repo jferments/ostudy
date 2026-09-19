@@ -51,9 +51,9 @@ impl PlatformOcrProvider {
             if self.is_canceled() {
                 return Err(canceled_ocr_error());
             }
-            Ok(fingerprint.ok().map(|value| {
-                format!("image-ocr-v1:{}:{value}", sha256_hex(native.as_bytes()))
-            }))
+            Ok(fingerprint
+                .ok()
+                .map(|value| format!("image-ocr-v1:{}:{value}", sha256_hex(native.as_bytes()))))
         }
     }
 }
@@ -77,8 +77,8 @@ mod desktop {
         options: &OcrOptions,
     ) -> OcrResult<String> {
         let workspace = TempOcrWorkspace::create()?;
-        let deadline = Instant::now()
-            + Duration::from_secs(u64::from(options.timeout_seconds.max(1)));
+        let deadline =
+            Instant::now() + Duration::from_secs(u64::from(options.timeout_seconds.max(1)));
         let version = metadata(provider, "--version", &workspace.path, deadline)?;
         let languages = metadata(provider, "--list-langs", &workspace.path, deadline)?;
         let root = model_directory(&languages).ok_or_else(unavailable)?;
@@ -165,9 +165,7 @@ mod desktop {
     }
 
     fn unavailable() -> OcrError {
-        OcrError::Configuration(
-            "The local OCR runtime identity could not be verified.".to_string(),
-        )
+        OcrError::Configuration("The local OCR runtime identity could not be verified.".to_string())
     }
 
     #[cfg(test)]
@@ -177,9 +175,7 @@ mod desktop {
         #[test]
         fn model_identity_uses_only_the_runtime_reported_directory() {
             assert_eq!(
-                model_directory(
-                    "List of available languages in \"/models/tessdata/\" (1):\neng\n"
-                ),
+                model_directory("List of available languages in \"/models/tessdata/\" (1):\neng\n"),
                 Some("/models/tessdata/")
             );
             assert_eq!(

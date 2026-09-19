@@ -8,14 +8,18 @@ use oxidize_pdf::OcrOptions;
 use crate::{
     database::Database,
     document_domain::DocumentFormat,
-    documents::image_sets::{cache, manifest::{ImageManifest, MAX_MANIFEST_BYTES}, raster},
+    documents::image_sets::{
+        cache,
+        manifest::{ImageManifest, MAX_MANIFEST_BYTES},
+        raster,
+    },
     error::CommandError,
     pdf_ocr_backend::{is_cancellation_error, regions::RegionOcrResult, PlatformOcrProvider},
 };
 
 use super::contracts::{
-    AdapterExtraction, AdapterRequest, DocumentAdapter, DocumentAdapterIdentity,
-    IngestionProgress, IngestionProgressSink, IngestionStage,
+    AdapterExtraction, AdapterRequest, DocumentAdapter, DocumentAdapterIdentity, IngestionProgress,
+    IngestionProgressSink, IngestionStage,
 };
 
 mod projection;
@@ -46,7 +50,9 @@ impl DocumentAdapter for ImageSetAdapter {
 
     fn identity(&self, format: DocumentFormat) -> Result<DocumentAdapterIdentity, CommandError> {
         if !self.supports(format) {
-            return Err(invalid("This adapter accepts native ordered image sets only."));
+            return Err(invalid(
+                "This adapter accepts native ordered image sets only.",
+            ));
         }
         Ok(IDENTITY)
     }
@@ -69,9 +75,11 @@ impl DocumentAdapter for ImageSetAdapter {
 
 fn read_manifest(path: &Path) -> Result<(ImageManifest, Vec<u8>), CommandError> {
     let mut bytes = Vec::new();
-    File::open(path).map_err(CommandError::io)?
+    File::open(path)
+        .map_err(CommandError::io)?
         .take(MAX_MANIFEST_BYTES as u64 + 1)
-        .read_to_end(&mut bytes).map_err(CommandError::io)?;
+        .read_to_end(&mut bytes)
+        .map_err(CommandError::io)?;
     Ok((ImageManifest::decode(&bytes)?, bytes))
 }
 
@@ -123,7 +131,15 @@ fn extract_with(
             Err(error) => return Err(error),
         };
         request.cancellation.check()?;
-        output.add(request.paths, member, index, &image, inclusion, result.as_ref(), reused)?;
+        output.add(
+            request.paths,
+            member,
+            index,
+            &image,
+            inclusion,
+            result.as_ref(),
+            reused,
+        )?;
         progress.report(IngestionProgress::Ocr {
             completed_units: index + 1,
             total_units: manifest.members.len(),

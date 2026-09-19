@@ -218,7 +218,9 @@ mod tests {
         accepts_object_safe_adapter(&registry.xberg);
         accepts_object_safe_adapter(&registry.image_set);
         assert_eq!(
-            registry.identity_for_format(DocumentFormat::ImageBundle).unwrap(),
+            registry
+                .identity_for_format(DocumentFormat::ImageBundle)
+                .unwrap(),
             super::super::image_set::IDENTITY
         );
         assert_eq!(
