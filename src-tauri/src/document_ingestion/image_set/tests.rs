@@ -112,6 +112,15 @@ fn image_set_adapter_reuses_ocr_and_publishes_the_existing_canonical_contract() 
                 )
                 .map_err(CommandError::database)?;
             assert_eq!(count, 2);
+            let (mode, total, completed): (String, i64, i64) = connection
+                .query_row(
+                    "SELECT extraction_mode, ocr_page_count, ocr_completed_page_count
+                     FROM documents WHERE id = ?1",
+                    [&manifest.document_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!((mode.as_str(), total, completed), ("ocr_fallback", 2, 2));
             Ok(())
         })
         .unwrap();

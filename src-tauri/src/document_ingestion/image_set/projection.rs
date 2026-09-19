@@ -60,7 +60,7 @@ impl Projection {
                         adapter_backend: IDENTITY.adapter_backend.to_string(),
                         extraction_backend: IDENTITY.extraction_backend.to_string(),
                         render_backend: IDENTITY.render_backend.map(str::to_string),
-                        extraction_mode: "ocr".to_string(),
+                        extraction_mode: "ocr_fallback".to_string(),
                         semantic_analysis_degraded: false,
                         ocr_unit_count: manifest.members.len(),
                         ocr_mean_confidence: None,
