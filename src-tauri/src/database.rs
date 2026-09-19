@@ -1,6 +1,6 @@
 use std::{
     path::Path,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -167,12 +167,20 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0019_image_sets.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 20,
+        name: "image_extraction",
+        checksum: "0121782267e44e1a78aea403e051d4c2697bed53069af60369c9f833b14d078e",
+        sql: include_str!("../migrations/0020_image_extraction.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 19;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 20;
 
+#[derive(Clone)]
 pub struct Database {
-    connection: Mutex<Connection>,
+    connection: Arc<Mutex<Connection>>,
 }
 
 impl Database {
@@ -187,7 +195,7 @@ impl Database {
             .map_err(|error| format!("Could not open the local SQLite database: {error}"))?;
         initialize_connection(&mut connection)?;
         Ok(Self {
-            connection: Mutex::new(connection),
+            connection: Arc::new(Mutex::new(connection)),
         })
     }
 
@@ -210,7 +218,7 @@ impl Database {
             .map_err(|error| format!("Could not open an in-memory database: {error}"))?;
         initialize_connection(&mut connection)?;
         Ok(Self {
-            connection: Mutex::new(connection),
+            connection: Arc::new(Mutex::new(connection)),
         })
     }
 }
