@@ -283,15 +283,18 @@ pub(super) fn read_inspected(
     inspected: &InspectedImage,
 ) -> Result<Vec<u8>, CommandError> {
     let staged = resolve(database, paths, id)?;
-    if staged.sha256 != inspected.sha256 || staged.bytes != inspected.byte_size
+    if staged.sha256 != inspected.sha256
+        || staged.bytes != inspected.byte_size
         || staged.kind.media_type() != inspected.media_type
     {
         return Err(invalid("The image selection changed after inspection."));
     }
     let mut bytes = Vec::new();
-    File::open(&staged.path).map_err(|_| unreadable())?
+    File::open(&staged.path)
+        .map_err(|_| unreadable())?
         .take(MAX_IMAGE_BYTES as u64 + 1)
-        .read_to_end(&mut bytes).map_err(|_| unreadable())?;
+        .read_to_end(&mut bytes)
+        .map_err(|_| unreadable())?;
     if bytes.len() as u64 != inspected.byte_size || sha256_hex(&bytes) != inspected.sha256 {
         return Err(invalid("The selected image bytes changed after inspection."));
     }

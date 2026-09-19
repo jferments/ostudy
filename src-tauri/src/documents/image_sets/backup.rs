@@ -5,9 +5,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{
-    cards::questions::occlusion::CanonicalImage,
-    document_backup::table_exists,
-    error::CommandError,
+    cards::questions::occlusion::CanonicalImage, document_backup::table_exists, error::CommandError,
 };
 
 use super::{manifest, repository};
@@ -20,23 +18,37 @@ pub(crate) fn originals(connection: &Connection) -> Result<Vec<SourceAsset>, Com
         return Ok(Vec::new());
     }
     repository::validate(connection)?;
-    let mut statement = connection.prepare(
-        "SELECT document_id, id, media_type, relative_path, byte_size, sha256
+    let mut statement = connection
+        .prepare(
+            "SELECT document_id, id, media_type, relative_path, byte_size, sha256
          FROM document_image_members ORDER BY document_id, position",
-    ).map_err(CommandError::database)?;
-    let rows = statement.query_map([], |row| {
-        let id: String = row.get(1)?;
-        Ok((row.get(0)?, format!("original-member-{id}"), row.get(2)?,
-            row.get(3)?, row.get(4)?, row.get(5)?))
-    }).map_err(CommandError::database)?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(CommandError::database)
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([], |row| {
+            let id: String = row.get(1)?;
+            Ok((
+                row.get(0)?,
+                format!("original-member-{id}"),
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(CommandError::database)
 }
 
 pub(crate) fn original_count(connection: &Connection) -> Result<i64, CommandError> {
     if !table_exists(connection, "document_image_members")? {
         return Ok(0);
     }
-    connection.query_row("SELECT COUNT(*) FROM document_image_members", [], |row| row.get(0))
+    connection
+        .query_row("SELECT COUNT(*) FROM document_image_members", [], |row| {
+            row.get(0)
+        })
         .map_err(CommandError::database)
 }
 
@@ -48,18 +60,25 @@ pub(crate) fn original_record(
     if !table_exists(connection, "document_image_members")? {
         return Ok(None);
     }
-    connection.query_row(
-        "SELECT relative_path, media_type, byte_size, sha256 FROM document_image_members
+    connection
+        .query_row(
+            "SELECT relative_path, media_type, byte_size, sha256 FROM document_image_members
          WHERE document_id = ?1 AND relative_path = ?2",
-        params![document_id, relative_path],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-    ).optional().map_err(CommandError::database)
+            params![document_id, relative_path],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)
 }
 
 pub(crate) fn valid_original_path(document_id: &str, path: &str) -> bool {
     let prefix = format!("documents/{document_id}/originals/");
-    let Some(file) = path.strip_prefix(&prefix) else { return false };
-    let Some((id, extension)) = file.split_once('.') else { return false };
+    let Some(file) = path.strip_prefix(&prefix) else {
+        return false;
+    };
+    let Some((id, extension)) = file.split_once('.') else {
+        return false;
+    };
     let media = match extension {
         "png" => "image/png",
         "jpg" => "image/jpeg",
@@ -71,7 +90,10 @@ pub(crate) fn valid_original_path(document_id: &str, path: &str) -> bool {
 
 pub(crate) fn valid_manifest_path(document_id: &str, path: &str) -> bool {
     let prefix = format!("documents/{document_id}/source-");
-    let Some(hash) = path.strip_prefix(&prefix).and_then(|suffix| suffix.strip_suffix(".imageset")) else {
+    let Some(hash) = path
+        .strip_prefix(&prefix)
+        .and_then(|suffix| suffix.strip_suffix(".imageset"))
+    else {
         return false;
     };
     manifest::manifest_path(document_id, hash).is_ok_and(|expected| expected == path)
@@ -87,14 +109,19 @@ pub(crate) fn validate_original_bytes(
         return Ok(());
     }
     let saved = repository::load(connection, document_id)?;
-    let member = saved.members.iter().find(|member| member.relative_path == relative_path)
+    let member = saved
+        .members
+        .iter()
+        .find(|member| member.relative_path == relative_path)
         .ok_or_else(|| manifest::invalid("The original image has no retained owner."))?;
     let image = CanonicalImage::decode(bytes)?;
     if image.dimensions() != (member.width, member.height)
         || image.fingerprint() != member.pixel_sha256
         || crate::document_canonical::sha256_hex(bytes) != member.sha256
     {
-        return Err(manifest::invalid("The original image does not match its admitted pixels."));
+        return Err(manifest::invalid(
+            "The original image does not match its admitted pixels.",
+        ));
     }
     Ok(())
 }

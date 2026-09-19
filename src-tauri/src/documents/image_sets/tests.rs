@@ -8,10 +8,7 @@ use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
 use rusqlite::params;
 
 use crate::{
-    database::Database,
-    document_canonical::sha256_hex,
-    error::CommandError,
-    paths::AppPaths,
+    database::Database, document_canonical::sha256_hex, error::CommandError, paths::AppPaths,
 };
 
 use super::{
@@ -39,7 +36,11 @@ impl Fixture {
         ));
         let paths = AppPaths::new(root.clone()).unwrap();
         let database = Database::open_in_memory().unwrap();
-        Self { root, paths, database }
+        Self {
+            root,
+            paths,
+            database,
+        }
     }
 
     fn stage(&self, number: u64, data: &[u8]) -> String {
@@ -68,25 +69,41 @@ impl Fixture {
             operation_id: "d".repeat(32),
             title: "Ordered screenshots".to_string(),
             members: vec![
-                ImageSelectionInput { staged_file_id: b, quarter_turns: 1, inclusion: None },
+                ImageSelectionInput {
+                    staged_file_id: b,
+                    quarter_turns: 1,
+                    inclusion: None,
+                },
                 ImageSelectionInput {
                     staged_file_id: a,
                     quarter_turns: 0,
-                    inclusion: Some(InclusionCrop { left: 0.0, top: 0.0, right: 0.5, bottom: 1.0 }),
+                    inclusion: Some(InclusionCrop {
+                        left: 0.0,
+                        top: 0.0,
+                        right: 0.5,
+                        bottom: 1.0,
+                    }),
                 },
             ],
         }
     }
 
     fn load(&self, id: &str) -> ImageManifest {
-        self.database.with_connection(|connection| repository::load(connection, id)).unwrap()
+        self.database
+            .with_connection(|connection| repository::load(connection, id))
+            .unwrap()
     }
 
     fn count(&self, table: &str) -> i64 {
-        self.database.with_connection(|connection| {
-            connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
-                .map_err(CommandError::database)
-        }).unwrap()
+        self.database
+            .with_connection(|connection| {
+                connection
+                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                        row.get(0)
+                    })
+                    .map_err(CommandError::database)
+            })
+            .unwrap()
     }
 }
 
@@ -99,7 +116,9 @@ impl Drop for Fixture {
 fn png() -> Vec<u8> {
     let mut bytes = Vec::new();
     let pixels = [55_u8; 4 * 4 * 4];
-    PngEncoder::new(&mut bytes).write_image(&pixels, 4, 4, ExtendedColorType::Rgba8).unwrap();
+    PngEncoder::new(&mut bytes)
+        .write_image(&pixels, 4, 4, ExtendedColorType::Rgba8)
+        .unwrap();
     bytes
 }
 
@@ -112,35 +131,70 @@ fn image_set_import_is_one_atomic_owned_document_and_retry_is_read_only() {
     assert_eq!(fixture.count("documents"), 1);
     assert_eq!(fixture.count("document_image_sets"), 1);
     assert_eq!(fixture.count("document_image_members"), 2);
-    assert_eq!(fixture.count("document_source_assets"), 0, "originals must not leak into model-visible assets");
+    assert_eq!(
+        fixture.count("document_source_assets"),
+        0,
+        "originals must not leak into model-visible assets"
+    );
     let manifest = fixture.load(&result.document_id);
     assert_ne!(manifest.members[0].id, manifest.members[1].id);
-    assert_ne!(manifest.members[0].relative_path, manifest.members[1].relative_path);
+    assert_ne!(
+        manifest.members[0].relative_path,
+        manifest.members[1].relative_path
+    );
     assert_eq!(manifest.members[0].sha256, manifest.members[1].sha256);
     assert_eq!(manifest.members[0].quarter_turns, 1);
     assert_eq!(manifest.members[1].inclusion, request.members[1].inclusion);
     for member in &manifest.members {
-        assert_eq!(fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap(), png());
+        assert_eq!(
+            fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap(),
+            png()
+        );
     }
-    let manifest_path = manifest::manifest_path(&manifest.document_id, &manifest.fingerprint().unwrap()).unwrap();
-    assert_eq!(fs::read(fixture.paths.resolve_relative(&manifest_path)).unwrap(), manifest.bytes().unwrap());
-    let before = fixture.database.with_connection(|connection| {
-        repository::validate(connection)?;
-        for member in &request.members {
-            let state: String = connection.query_row(
-                "SELECT state FROM staged_external_imports WHERE id = ?1", [&member.staged_file_id], |row| row.get(0),
-            ).map_err(CommandError::database)?;
-            assert_eq!(state, "consumed");
-        }
-        Ok(connection.total_changes())
-    }).unwrap();
+    let manifest_path =
+        manifest::manifest_path(&manifest.document_id, &manifest.fingerprint().unwrap()).unwrap();
+    assert_eq!(
+        fs::read(fixture.paths.resolve_relative(&manifest_path)).unwrap(),
+        manifest.bytes().unwrap()
+    );
+    let before = fixture
+        .database
+        .with_connection(|connection| {
+            repository::validate(connection)?;
+            for member in &request.members {
+                let state: String = connection
+                    .query_row(
+                        "SELECT state FROM staged_external_imports WHERE id = ?1",
+                        [&member.staged_file_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(state, "consumed");
+            }
+            Ok(connection.total_changes())
+        })
+        .unwrap();
     // The operation receipt, not the continued existence of the staging files,
     // is authoritative when a command acknowledgement was lost.
     for selection in &request.members {
-        fs::remove_file(fixture.paths.resolve_relative(&AppPaths::staged_import_relative_path(&selection.staged_file_id, "png"))).unwrap();
+        fs::remove_file(
+            fixture
+                .paths
+                .resolve_relative(&AppPaths::staged_import_relative_path(
+                    &selection.staged_file_id,
+                    "png",
+                )),
+        )
+        .unwrap();
     }
-    assert_eq!(import::import(&fixture.database, &fixture.paths, &request).unwrap(), result);
-    let after = fixture.database.with_connection(|connection| Ok(connection.total_changes())).unwrap();
+    assert_eq!(
+        import::import(&fixture.database, &fixture.paths, &request).unwrap(),
+        result
+    );
+    let after = fixture
+        .database
+        .with_connection(|connection| Ok(connection.total_changes()))
+        .unwrap();
     assert_eq!(before, after);
     assert_eq!(fixture.count("documents"), 1);
 }
@@ -151,15 +205,30 @@ fn image_set_operation_reuse_cannot_change_inputs_or_resurrect_a_deleted_source(
     let mut request = fixture.request();
     let result = import::import(&fixture.database, &fixture.paths, &request).unwrap();
     request.title = "Different".to_string();
-    assert_eq!(import::import(&fixture.database, &fixture.paths, &request).unwrap_err().code, "image_set_operation_conflict");
+    assert_eq!(
+        import::import(&fixture.database, &fixture.paths, &request)
+            .unwrap_err()
+            .code,
+        "image_set_operation_conflict"
+    );
     request.title = "Ordered screenshots".to_string();
-    fixture.database.with_connection(|connection| {
-        connection.execute("DELETE FROM documents WHERE id = ?1", [&result.document_id]).map_err(CommandError::database)?;
-        Ok(())
-    }).unwrap();
+    fixture
+        .database
+        .with_connection(|connection| {
+            connection
+                .execute("DELETE FROM documents WHERE id = ?1", [&result.document_id])
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
     assert_eq!(fixture.count("document_image_members"), 0);
     assert_eq!(fixture.count("document_image_imports"), 1);
-    assert_eq!(import::import(&fixture.database, &fixture.paths, &request).unwrap_err().code, "image_set_import_removed");
+    assert_eq!(
+        import::import(&fixture.database, &fixture.paths, &request)
+            .unwrap_err()
+            .code,
+        "image_set_import_removed"
+    );
     assert_eq!(fixture.count("documents"), 0);
 }
 
@@ -168,25 +237,51 @@ fn image_set_failed_member_and_sql_failure_do_not_publish_a_shortened_set() {
     let fixture = Fixture::new();
     let mut request = fixture.request();
     request.members[1].staged_file_id = fixture.stage(3, b"not a PNG");
-    assert_eq!(import::import(&fixture.database, &fixture.paths, &request).unwrap_err().code, "image_set_selection_failed");
+    assert_eq!(
+        import::import(&fixture.database, &fixture.paths, &request)
+            .unwrap_err()
+            .code,
+        "image_set_selection_failed"
+    );
     assert_eq!(fixture.count("documents"), 0);
     request.members[1].staged_file_id = format!("{:032x}", 1);
-    fixture.database.with_connection(|connection| {
-        connection.execute_batch(
-            "CREATE TRIGGER reject_second_image BEFORE INSERT ON document_image_members
+    fixture
+        .database
+        .with_connection(|connection| {
+            connection
+                .execute_batch(
+                    "CREATE TRIGGER reject_second_image BEFORE INSERT ON document_image_members
              WHEN NEW.position = 1 BEGIN SELECT RAISE(ABORT, 'fixture interrupted insert'); END;",
-        ).map_err(CommandError::database)
-    }).unwrap();
+                )
+                .map_err(CommandError::database)
+        })
+        .unwrap();
     assert!(import::import(&fixture.database, &fixture.paths, &request).is_err());
     assert_eq!(fixture.count("documents"), 0);
     assert_eq!(fixture.count("document_image_members"), 0);
     assert_eq!(fixture.count("document_image_imports"), 0);
-    assert_eq!(fs::read_dir(fixture.paths.resolve_relative("documents")).unwrap().count(), 0);
-    fixture.database.with_connection(|connection| {
-        let consumed: i64 = connection.query_row("SELECT COUNT(*) FROM staged_external_imports WHERE state = 'consumed'", [], |row| row.get(0)).map_err(CommandError::database)?;
-        assert_eq!(consumed, 0);
-        connection.execute_batch("DROP TRIGGER reject_second_image").map_err(CommandError::database)
-    }).unwrap();
+    assert_eq!(
+        fs::read_dir(fixture.paths.resolve_relative("documents"))
+            .unwrap()
+            .count(),
+        0
+    );
+    fixture
+        .database
+        .with_connection(|connection| {
+            let consumed: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM staged_external_imports WHERE state = 'consumed'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(consumed, 0);
+            connection
+                .execute_batch("DROP TRIGGER reject_second_image")
+                .map_err(CommandError::database)
+        })
+        .unwrap();
     import::import(&fixture.database, &fixture.paths, &request).unwrap();
     assert_eq!(fixture.count("documents"), 1);
 }
@@ -196,10 +291,16 @@ fn image_set_manifest_separates_member_identity_from_order_and_rejects_unsupport
     let fixture = Fixture::new();
     let result = import::import(&fixture.database, &fixture.paths, &fixture.request()).unwrap();
     let saved = fixture.load(&result.document_id);
-    assert_eq!(ImageManifest::decode(&saved.bytes().unwrap()).unwrap(), saved);
+    assert_eq!(
+        ImageManifest::decode(&saved.bytes().unwrap()).unwrap(),
+        saved
+    );
     let mut reordered = saved.clone();
     reordered.members.reverse();
-    assert_ne!(saved.fingerprint().unwrap(), reordered.fingerprint().unwrap());
+    assert_ne!(
+        saved.fingerprint().unwrap(),
+        reordered.fingerprint().unwrap()
+    );
     assert_eq!(reordered.members[0], saved.members[1]);
     assert_eq!(reordered.members[1], saved.members[0]);
     let mut duplicate = saved.clone();
@@ -221,13 +322,27 @@ fn image_set_manifest_separates_member_identity_from_order_and_rejects_unsupport
 
 #[test]
 fn image_set_inclusion_crops_fail_closed_without_clamping_or_rounding() {
-    let full = InclusionCrop { left: 0.0, top: 0.0, right: 1.0, bottom: 1.0 };
+    let full = InclusionCrop {
+        left: 0.0,
+        top: 0.0,
+        right: 1.0,
+        bottom: 1.0,
+    };
     full.validate().unwrap();
     for crop in [
         InclusionCrop { left: -0.1, ..full },
-        InclusionCrop { top: f64::NAN, ..full },
-        InclusionCrop { right: f64::INFINITY, ..full },
-        InclusionCrop { bottom: 1.1, ..full },
+        InclusionCrop {
+            top: f64::NAN,
+            ..full
+        },
+        InclusionCrop {
+            right: f64::INFINITY,
+            ..full
+        },
+        InclusionCrop {
+            bottom: 1.1,
+            ..full
+        },
         InclusionCrop { left: 1.0, ..full },
         InclusionCrop { top: 1.0, ..full },
     ] {
@@ -265,25 +380,51 @@ fn image_set_crash_recovery_removes_only_native_uncommitted_candidates() {
     let mut abandoned = saved.clone();
     abandoned.document_id = "c".repeat(32);
     for member in &mut abandoned.members {
-        member.relative_path = manifest::original_path(&abandoned.document_id, &member.id, &member.media_type).unwrap();
+        member.relative_path =
+            manifest::original_path(&abandoned.document_id, &member.id, &member.media_type)
+                .unwrap();
     }
     let guard = InitialSource::begin(&fixture.paths, &abandoned, &"e".repeat(32)).unwrap();
-    guard.write(&fixture.paths, &abandoned.members[0].relative_path, &png()).unwrap();
-    assert!(guard.write(&fixture.paths, &format!("documents/{}/../escaped.png", abandoned.document_id), b"escape").is_err());
+    guard
+        .write(&fixture.paths, &abandoned.members[0].relative_path, &png())
+        .unwrap();
+    assert!(guard
+        .write(
+            &fixture.paths,
+            &format!("documents/{}/../escaped.png", abandoned.document_id),
+            b"escape"
+        )
+        .is_err());
     std::mem::forget(guard); // A process interruption does not run Rust destructors.
-    let unknown = fixture.paths.resolve_relative(&format!("documents/{}/keep.txt", "f".repeat(32)));
+    let unknown = fixture
+        .paths
+        .resolve_relative(&format!("documents/{}/keep.txt", "f".repeat(32)));
     fs::create_dir_all(unknown.parent().unwrap()).unwrap();
     fs::write(&unknown, b"unrelated useful data").unwrap();
-    let marker = fixture.paths.resolve_relative(&format!("documents/{}/image-set.pending", saved.document_id));
-    fs::write(&marker, serde_json::to_vec(&serde_json::json!({
-        "version": 1, "documentId": saved.document_id, "operationId": "d".repeat(32)
-    })).unwrap()).unwrap();
+    let marker = fixture.paths.resolve_relative(&format!(
+        "documents/{}/image-set.pending",
+        saved.document_id
+    ));
+    fs::write(
+        &marker,
+        serde_json::to_vec(&serde_json::json!({
+            "version": 1, "documentId": saved.document_id, "operationId": "d".repeat(32)
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     files::reconcile_pending(&fixture.database, &fixture.paths).unwrap();
-    assert!(!fixture.paths.resolve_relative(&format!("documents/{}", abandoned.document_id)).exists());
+    assert!(!fixture
+        .paths
+        .resolve_relative(&format!("documents/{}", abandoned.document_id))
+        .exists());
     assert!(!marker.exists());
     assert_eq!(fs::read(&unknown).unwrap(), b"unrelated useful data");
     for member in saved.members {
-        assert_eq!(fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap(), png());
+        assert_eq!(
+            fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap(),
+            png()
+        );
     }
 }
 
@@ -292,7 +433,12 @@ fn image_set_missing_original_is_explicit_and_does_not_erase_other_members() {
     let fixture = Fixture::new();
     let result = import::import(&fixture.database, &fixture.paths, &fixture.request()).unwrap();
     let saved = fixture.load(&result.document_id);
-    fs::remove_file(fixture.paths.resolve_relative(&saved.members[0].relative_path)).unwrap();
+    fs::remove_file(
+        fixture
+            .paths
+            .resolve_relative(&saved.members[0].relative_path),
+    )
+    .unwrap();
     files::reconcile_missing_originals(&fixture.database, &fixture.paths, 30).unwrap();
     files::reconcile_missing_originals(&fixture.database, &fixture.paths, 40).unwrap();
     fixture.database.with_connection(|connection| {
@@ -306,5 +452,13 @@ fn image_set_missing_original_is_explicit_and_does_not_erase_other_members() {
         Ok(())
     }).unwrap();
     assert_eq!(fixture.load(&result.document_id), saved);
-    assert_eq!(fs::read(fixture.paths.resolve_relative(&saved.members[1].relative_path)).unwrap(), png());
+    assert_eq!(
+        fs::read(
+            fixture
+                .paths
+                .resolve_relative(&saved.members[1].relative_path)
+        )
+        .unwrap(),
+        png()
+    );
 }

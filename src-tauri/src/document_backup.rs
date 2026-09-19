@@ -9,7 +9,9 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     assets::detect_image_bytes, document_domain::DocumentFormat, document_ingestion,
-    documents::image_sets::{backup as image_sets, manifest::ImageManifest, repository as image_set_repository},
+    documents::image_sets::{
+        backup as image_sets, manifest::ImageManifest, repository as image_set_repository,
+    },
     error::CommandError, paths::AppPaths,
 };
 

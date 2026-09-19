@@ -38,7 +38,10 @@ impl InitialSource {
         crate::util::validate_entity_id(operation_id, "image import operation")?;
         let directory = paths.resolve_relative(&format!("documents/{}", manifest.document_id));
         fs::create_dir(&directory).map_err(CommandError::io)?;
-        let staged = Self { directory, committed: false };
+        let staged = Self {
+            directory,
+            committed: false,
+        };
         let marker = PendingSource {
             version: 1,
             document_id: manifest.document_id.clone(),
@@ -53,7 +56,12 @@ impl InitialSource {
         Ok(staged)
     }
 
-    pub(crate) fn write(&self, paths: &AppPaths, relative: &str, bytes: &[u8]) -> Result<(), CommandError> {
+    pub(crate) fn write(
+        &self,
+        paths: &AppPaths,
+        relative: &str,
+        bytes: &[u8],
+    ) -> Result<(), CommandError> {
         let target = paths.resolve_relative(relative);
         if !target.starts_with(&self.directory)
             || Path::new(relative)
@@ -62,11 +70,12 @@ impl InitialSource {
         {
             return Err(invalid("An image-set file escaped its candidate directory."));
         }
-        let parent = target.parent().ok_or_else(|| invalid("Missing managed image directory."))?;
+        let parent = target
+            .parent()
+            .ok_or_else(|| invalid("Missing managed image directory."))?;
         fs::create_dir_all(parent).map_err(CommandError::io)?;
         write_new(&target, bytes)?;
         sync_directory(parent)
-
     }
 
     /// Call immediately after SQL commit. A marker-cleanup failure must never
@@ -127,22 +136,30 @@ pub(crate) fn reconcile_pending(database: &Database, paths: &AppPaths) -> Result
         if !fs::symlink_metadata(&marker_path).is_ok_and(|metadata| metadata.is_file()) {
             continue;
         }
-        let Ok(file) = File::open(&marker_path) else { continue };
+        let Ok(file) = File::open(&marker_path) else {
+            continue;
+        };
         let mut bytes = Vec::new();
         if file.take(1025).read_to_end(&mut bytes).is_err() || bytes.len() > 1024 {
             continue;
         }
-        let Ok(marker) = serde_json::from_slice::<PendingSource>(&bytes) else { continue };
-        if marker.version != 1 || marker.document_id != name
+        let Ok(marker) = serde_json::from_slice::<PendingSource>(&bytes) else {
+            continue;
+        };
+        if marker.version != 1
+            || marker.document_id != name
             || crate::util::validate_entity_id(&marker.operation_id, "image import operation").is_err()
         {
             continue;
         }
         let owned = database.with_connection(|connection| {
-            connection.query_row(
-                "SELECT EXISTS(SELECT 1 FROM documents WHERE id = ?1)",
-                [&name], |row| row.get::<_, bool>(0),
-            ).map_err(CommandError::database)
+            connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM documents WHERE id = ?1)",
+                    [&name],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(CommandError::database)
         })?;
         if owned {
             fs::remove_file(marker_path).map_err(CommandError::io)?;

@@ -6,7 +6,10 @@ use crate::{document_canonical::sha256_hex, error::CommandError};
 
 use super::manifest::{invalid, manifest_path, ImageManifest, ImageMember, MANIFEST_MEDIA_TYPE};
 
-pub(crate) fn load(connection: &Connection, document_id: &str) -> Result<ImageManifest, CommandError> {
+pub(crate) fn load(
+    connection: &Connection,
+    document_id: &str,
+) -> Result<ImageManifest, CommandError> {
     let header: Option<(u32, i64, String)> = connection
         .query_row(
             "SELECT manifest_version, revision, manifest_sha256
@@ -16,8 +19,8 @@ pub(crate) fn load(connection: &Connection, document_id: &str) -> Result<ImageMa
         )
         .optional()
         .map_err(CommandError::database)?;
-    let (version, revision, expected_hash) = header
-        .ok_or_else(|| invalid("The selected document is not a retained image set."))?;
+    let (version, revision, expected_hash) =
+        header.ok_or_else(|| invalid("The selected document is not a retained image set."))?;
     let mut statement = connection
         .prepare(
             "SELECT position, id, original_filename, media_type, relative_path,
@@ -26,12 +29,16 @@ pub(crate) fn load(connection: &Connection, document_id: &str) -> Result<ImageMa
              FROM document_image_members WHERE document_id = ?1 ORDER BY position",
         )
         .map_err(CommandError::database)?;
-    let mut rows = statement.query([document_id]).map_err(CommandError::database)?;
+    let mut rows = statement
+        .query([document_id])
+        .map_err(CommandError::database)?;
     let mut members = Vec::new();
     while let Some(row) = rows.next().map_err(CommandError::database)? {
         let position: i64 = row.get(0).map_err(CommandError::database)?;
         if position != members.len() as i64 || members.len() >= 128 {
-            return Err(invalid("Image-set positions are missing, repeated or unbounded."));
+            return Err(invalid(
+                "Image-set positions are missing, repeated or unbounded.",
+            ));
         }
         let inclusion: Option<String> = row.get(12).map_err(CommandError::database)?;
         let member = ImageMember {
@@ -46,36 +53,65 @@ pub(crate) fn load(connection: &Connection, document_id: &str) -> Result<ImageMa
             pixel_sha256: row.get(9).map_err(CommandError::database)?,
             pixel_contract: row.get(10).map_err(CommandError::database)?,
             quarter_turns: row.get(11).map_err(CommandError::database)?,
-            inclusion: inclusion.map(|value| {
-                serde_json::from_str(&value)
-                    .map_err(|_| invalid("Unsupported saved image inclusion crop."))
-            }).transpose()?,
+            inclusion: inclusion
+                .map(|value| {
+                    serde_json::from_str(&value)
+                        .map_err(|_| invalid("Unsupported saved image inclusion crop."))
+                })
+                .transpose()?,
         };
         members.push(member);
     }
-    let manifest = ImageManifest { version, document_id: document_id.to_string(), revision, members };
+    let manifest = ImageManifest {
+        version,
+        document_id: document_id.to_string(),
+        revision,
+        members,
+    };
     if manifest.fingerprint()? != expected_hash {
-        return Err(invalid("Image-set members do not match the saved manifest fingerprint."));
+        return Err(invalid(
+            "Image-set members do not match the saved manifest fingerprint.",
+        ));
     }
     Ok(manifest)
 }
 
-pub(crate) fn insert_members(connection: &Connection, manifest: &ImageManifest) -> Result<(), CommandError> {
+pub(crate) fn insert_members(
+    connection: &Connection,
+    manifest: &ImageManifest,
+) -> Result<(), CommandError> {
     manifest.validate()?;
     for (position, member) in manifest.members.iter().enumerate() {
-        let inclusion = member.inclusion.map(|crop| serde_json::to_string(&crop))
-            .transpose().map_err(CommandError::serialization)?;
-        connection.execute(
-            "INSERT INTO document_image_members (
+        let inclusion = member
+            .inclusion
+            .map(|crop| serde_json::to_string(&crop))
+            .transpose()
+            .map_err(CommandError::serialization)?;
+        connection
+            .execute(
+                "INSERT INTO document_image_members (
                  id, document_id, position, original_filename, media_type, relative_path,
                  byte_size, sha256, width, height, pixel_sha256, pixel_contract,
                  quarter_turns, inclusion_json
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![member.id, manifest.document_id, position as i64, member.original_filename,
-                member.media_type, member.relative_path, member.byte_size, member.sha256,
-                member.width, member.height, member.pixel_sha256, member.pixel_contract,
-                member.quarter_turns, inclusion],
-        ).map_err(CommandError::database)?;
+                params![
+                    member.id,
+                    manifest.document_id,
+                    position as i64,
+                    member.original_filename,
+                    member.media_type,
+                    member.relative_path,
+                    member.byte_size,
+                    member.sha256,
+                    member.width,
+                    member.height,
+                    member.pixel_sha256,
+                    member.pixel_contract,
+                    member.quarter_turns,
+                    inclusion
+                ],
+            )
+            .map_err(CommandError::database)?;
     }
     Ok(())
 }
@@ -88,33 +124,43 @@ pub(crate) fn validate_manifest_bytes(
     let parsed = ImageManifest::decode(bytes)?;
     let stored = load(connection, document_id)?;
     if parsed != stored {
-        return Err(invalid("The retained manifest does not match its document-owned members."));
+        return Err(invalid(
+            "The retained manifest does not match its document-owned members.",
+        ));
     }
     Ok(())
 }
 
 /// Read-only startup and complete-restore admission, before conversion writes.
 pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
-    let invalid_owners: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM document_image_sets AS s
+    let invalid_owners: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM document_image_sets AS s
          LEFT JOIN documents AS d ON d.id = s.document_id
          WHERE d.id IS NULL OR d.source_format <> 'image_bundle' OR d.source_unit_kind <> 'image'",
-        [], |row| row.get(0),
-    ).map_err(CommandError::database)?;
-    let missing_sets: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM documents AS d
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
+    let missing_sets: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM documents AS d
          LEFT JOIN document_image_sets AS s ON s.document_id = d.id
          WHERE d.source_format = 'image_bundle' AND s.document_id IS NULL",
-        [], |row| row.get(0),
-    ).map_err(CommandError::database)?;
+            [],
+            |row| row.get(0),
+        )
+        .map_err(CommandError::database)?;
     if invalid_owners != 0 || missing_sets != 0 {
         return Err(invalid("Image-set source ownership is inconsistent."));
     }
-    let mut statement = connection.prepare(
-        "SELECT d.id, d.source_relative_path, d.sha256, d.byte_size, d.source_media_type,
+    let mut statement = connection
+        .prepare(
+            "SELECT d.id, d.source_relative_path, d.sha256, d.byte_size, d.source_media_type,
                 s.prepared_manifest_sha256
          FROM documents AS d JOIN document_image_sets AS s ON s.document_id = d.id ORDER BY d.id",
-    ).map_err(CommandError::database)?;
+        )
+        .map_err(CommandError::database)?;
     let mut rows = statement.query([]).map_err(CommandError::database)?;
     while let Some(row) = rows.next().map_err(CommandError::database)? {
         let id: String = row.get(0).map_err(CommandError::database)?;
@@ -125,10 +171,14 @@ pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
         let prepared: String = row.get(5).map_err(CommandError::database)?;
         let manifest = load(connection, &id)?;
         let bytes = manifest.bytes()?;
-        if path != manifest_path(&id, &hash)? || hash != sha256_hex(&bytes)
-            || size != bytes.len() as u64 || media != MANIFEST_MEDIA_TYPE
+        if path != manifest_path(&id, &hash)?
+            || hash != sha256_hex(&bytes)
+            || size != bytes.len() as u64
+            || media != MANIFEST_MEDIA_TYPE
         {
-            return Err(invalid("The document and image-set manifest ledgers disagree."));
+            return Err(invalid(
+                "The document and image-set manifest ledgers disagree.",
+            ));
         }
         if !prepared.is_empty() {
             super::manifest::validate_hash(&prepared)?;
@@ -144,7 +194,9 @@ pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
         )
         .map_err(CommandError::database)?;
     if invalid_members {
-        return Err(invalid("An original image has no retained image-set owner."));
+        return Err(invalid(
+            "An original image has no retained image-set owner.",
+        ));
     }
     let mut operations = connection
         .prepare(
@@ -162,7 +214,9 @@ pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
         crate::util::validate_entity_id(&operation, "image import operation")?;
         super::manifest::validate_hash(&request_hash)?;
         if document != owner {
-            return Err(invalid("An image import receipt refers to a different source type."));
+            return Err(invalid(
+                "An image import receipt refers to a different source type.",
+            ));
         }
     }
     Ok(())

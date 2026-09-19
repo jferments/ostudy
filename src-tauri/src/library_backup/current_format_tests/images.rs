@@ -71,7 +71,10 @@ pub(super) fn seed(database: &Database, paths: &AppPaths, image: &[u8]) -> Vec<S
                 .iter()
                 .map(|member| member.relative_path.clone())
                 .collect::<Vec<_>>();
-            files.push(manifest::manifest_path(&saved.document_id, &saved.fingerprint()?)?);
+            files.push(manifest::manifest_path(
+                &saved.document_id,
+                &saved.fingerprint()?,
+            )?);
             Ok(files)
         })
         .unwrap()
