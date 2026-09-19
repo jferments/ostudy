@@ -238,7 +238,9 @@ fn image_set_failed_member_and_sql_failure_do_not_publish_a_shortened_set() {
     let mut request = fixture.request();
     // The shared staging directory and another source are useful existing work.
     // Rollback must preserve them exactly, not make the whole directory empty.
-    let keep = fixture.paths.resolve_relative("documents/staging/keep.stage");
+    let keep = fixture
+        .paths
+        .resolve_relative("documents/staging/keep.stage");
     fs::write(&keep, b"unrelated staged source").unwrap();
     let before = document_tree(&fixture.paths);
     request.members[1].staged_file_id = fixture.stage(3, b"not a PNG");
