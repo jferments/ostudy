@@ -5,7 +5,10 @@ import { inspectImageSet, type ImageSetInspection } from "./imageSets";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => {
+  // A returned mock is a teardown function to Vitest; resetting must return void.
+  vi.mocked(invoke).mockReset();
+});
 
 it("passes stable selection identities in the chosen order to read-only native inspection", async () => {
   const ids = Object.freeze(["b".repeat(32), "a".repeat(32)]);
