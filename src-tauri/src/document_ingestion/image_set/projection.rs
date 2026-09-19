@@ -1,5 +1,5 @@
-//! Projection, not a second source representation. Only admitted text/pixels
-//! enter canonical context; the manifest and original members retain provenance.
+//! Projection, not a second source representation. Originals and exact OCR
+//! occurrences remain retained when verified overlap shares a learning passage.
 
 use std::collections::BTreeMap;
 
@@ -20,13 +20,24 @@ use crate::{
     pdf_ocr_backend::regions::{PixelBounds, RegionOcrResult},
 };
 
-use super::{AdapterExtraction, IDENTITY};
+use super::{
+    overlap::{Alignment, CONTRACT},
+    passages::{add_occurrence, Passages},
+    regions::Frame,
+    AdapterExtraction, IDENTITY,
+};
 
 pub(super) struct Projection {
     document_id: String,
     canonical: CanonicalIngestion,
+    passages: Passages,
+    previous: Option<Frame>,
+    previous_targets: Vec<usize>,
+    previous_visual: Option<usize>,
     reused: usize,
     unresolved: usize,
+    duplicates: usize,
+    ambiguous: usize,
     confidence_sum: f64,
     recognized: usize,
 }
@@ -69,8 +80,14 @@ impl Projection {
                 },
                 semantic_chunks: Vec::new(),
             },
+            passages: Passages::default(),
+            previous: None,
+            previous_targets: Vec::new(),
+            previous_visual: None,
             reused: 0,
             unresolved: 0,
+            duplicates: 0,
+            ambiguous: 0,
             confidence_sum: 0.0,
             recognized: 0,
         })
@@ -89,58 +106,85 @@ impl Projection {
     ) -> Result<(), CommandError> {
         let unit = index as i64 + 1;
         let label = format!("Image {unit}");
-        let asset_id = format!("image-member:{}", member.id);
-        let (png, width, height) = image.filtered_png(inclusion, &[])?;
-        let path = raster::retain_derivative(paths, &self.document_id, &member.id, &png)?;
+        let frame = Frame::build(member, image, inclusion, result)?;
+        let alignment = Alignment::between(self.previous.as_ref(), &frame);
+        self.unresolved += frame.unresolved;
+        self.ambiguous += usize::from(alignment.ambiguous);
+        let mut targets = Vec::new();
+        let mut excluded = Vec::new();
         let document = &mut self.canonical.document;
-        let mut text = Vec::new();
         if let Some(result) = result {
             self.recognized += 1;
             self.confidence_sum += result.confidence;
-            for (ordinal, line) in result.lines.iter().enumerate() {
-                let admitted = match line.bounds {
-                    Some(bounds) => raster::contains(inclusion, bounds),
-                    None => member.inclusion.is_none(),
-                };
-                if !admitted {
-                    self.unresolved += 1;
-                    continue;
-                }
-                text.push(line.text.clone());
-                let geometry = line.bounds.and_then(|bounds| {
-                    NormalizedBoundingBox::new(
-                        f64::from(bounds.left) / f64::from(result.width),
-                        f64::from(bounds.top) / f64::from(result.height),
-                        f64::from(bounds.right - bounds.left) / f64::from(result.width),
-                        f64::from(bounds.bottom - bounds.top) / f64::from(result.height),
-                    )
-                });
-                let attributes = BTreeMap::from([
-                    ("imageMemberId".to_string(), member.id.clone()),
-                    ("ocrGroup".to_string(), line.group.clone()),
-                    (
-                        "coordinateSpace".to_string(),
-                        "upright-rotated-normalized".to_string(),
-                    ),
-                ]);
-                document.blocks.push(CanonicalBlock::new(
-                    document.blocks.len() as i64,
-                    ordinal as i64,
+            for (position, region) in frame.regions.iter().enumerate() {
+                let target = alignment.targets[position]
+                    .and_then(|previous| self.previous_targets.get(previous).copied());
+                let (target, equivalent) = self.passages.admit(
+                    &frame,
+                    region,
                     unit,
-                    CanonicalBlockRole::Paragraph,
-                    &line.text,
-                    None,
-                    Vec::new(),
-                    geometry,
-                    line.confidence,
-                    Vec::new(),
-                    attributes,
-                ));
+                    target,
+                    alignment.whole_image,
+                );
+                targets.push(target);
+                if equivalent.is_some() {
+                    self.duplicates += 1;
+                    if !alignment.whole_image {
+                        excluded.extend(region.strip);
+                    }
+                }
+                for ordinal in region.start..region.end {
+                    let line = &result.lines[ordinal];
+                    let geometry = line.bounds.and_then(|bounds| {
+                        NormalizedBoundingBox::new(
+                            f64::from(bounds.left) / f64::from(result.width),
+                            f64::from(bounds.top) / f64::from(result.height),
+                            f64::from(bounds.right - bounds.left) / f64::from(result.width),
+                            f64::from(bounds.bottom - bounds.top) / f64::from(result.height),
+                        )
+                    });
+                    let mut attributes = BTreeMap::from([
+                        ("imageMemberId".to_string(), member.id.clone()),
+                        ("imageRegionId".to_string(), region.id.clone()),
+                        ("imageFrameIdentity".to_string(), frame.identity.clone()),
+                        ("ocrGroup".to_string(), line.group.clone()),
+                        ("alignmentContract".to_string(), CONTRACT.to_string()),
+                        (
+                            "coordinateSpace".to_string(),
+                            "upright-rotated-normalized".to_string(),
+                        ),
+                    ]);
+                    if let Some(signature) = &region.signature {
+                        attributes.insert("imageRegionSignature".to_string(), signature.clone());
+                    }
+                    if let Some(representative) = &equivalent {
+                        attributes.insert(
+                            "equivalentToRegionId".to_string(),
+                            representative.clone(),
+                        );
+                    }
+                    document.blocks.push(CanonicalBlock::new(
+                        document.blocks.len() as i64,
+                        ordinal as i64,
+                        unit,
+                        CanonicalBlockRole::Paragraph,
+                        &line.text,
+                        None,
+                        Vec::new(),
+                        geometry,
+                        line.confidence,
+                        Vec::new(),
+                        attributes,
+                    ));
+                }
             }
-        } else {
-            self.unresolved += 1;
         }
-        let plain_text = text.join("\n");
+        let plain_text = frame
+            .regions
+            .iter()
+            .map(|region| region.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
         document.units.push(CanonicalSourceUnit::new(
             unit,
             SourceUnitKind::Image,
@@ -149,11 +193,16 @@ impl Projection {
             &plain_text,
             1,
         ));
+        let asset_id = format!("image-member:{}", member.id);
+        let (png, width, height) = image.filtered_png(inclusion, &excluded)?;
+        let path = raster::retain_derivative(paths, &self.document_id, &member.id, &png)?;
         let block_index = document.blocks.len() as i64;
         let attributes = BTreeMap::from([
             ("imageMemberId".to_string(), member.id.clone()),
             ("quarterTurns".to_string(), member.quarter_turns.to_string()),
             ("pixelContract".to_string(), member.pixel_contract.clone()),
+            ("alignmentContract".to_string(), CONTRACT.to_string()),
+            ("ambiguousOverlap".to_string(), alignment.ambiguous.to_string()),
         ]);
         document.blocks.push(CanonicalBlock::new(
             block_index,
@@ -179,50 +228,65 @@ impl Projection {
             sha256: sha256_hex(&png),
             width: Some(i64::from(width)),
             height: Some(i64::from(height)),
-            alt_text: Some(label.clone()),
+            alt_text: Some(label),
         });
-        let context = if plain_text.is_empty() {
-            "[Image evidence without reliable admitted OCR text.]".to_string()
+        let visual = alignment.whole_image.then_some(self.previous_visual).flatten();
+        self.previous_visual = if let Some(index) = visual {
+            add_occurrence(&mut self.canonical.semantic_chunks[index], unit)?;
+            Some(index)
         } else {
-            plain_text.clone()
-        };
-        let locator = SourceLocator::with_evidence(
-            SourceUnitKind::Image,
-            vec![unit],
-            Some(label),
-            vec![asset_id],
-            None,
-        )?;
-        self.canonical
-            .semantic_chunks
-            .push(CanonicalSemanticChunk::new(
-                index as i64,
-                &context,
-                &context,
-                locator,
-                vec!["paragraph".to_string(), "image".to_string()],
+            let index = self.canonical.semantic_chunks.len();
+            let context = "[Image evidence; exact OCR passages are retained separately.]";
+            let locator = SourceLocator::with_evidence(
+                SourceUnitKind::Image,
+                vec![unit],
                 None,
-                context.chars().count().div_ceil(4),
-                false,
-            ));
+                vec![asset_id],
+                None,
+            )?;
+            self.canonical
+                .semantic_chunks
+                .push(CanonicalSemanticChunk::new(
+                    index as i64,
+                    context,
+                    context,
+                    locator,
+                    vec!["paragraph".to_string(), "image".to_string()],
+                    None,
+                    context.chars().count().div_ceil(4),
+                    false,
+                ));
+            Some(index)
+        };
+        self.previous = Some(frame);
+        self.previous_targets = targets;
         self.reused += usize::from(reused);
         Ok(())
     }
 
     pub(super) fn finish(mut self) -> Result<AdapterExtraction, CommandError> {
         let document = &mut self.canonical.document;
-        document.extraction.semantic_analysis_degraded = self.unresolved > 0;
+        document.extraction.semantic_analysis_degraded = self.unresolved > 0 || self.ambiguous > 0;
         document.extraction.ocr_mean_confidence =
             (self.recognized > 0).then(|| self.confidence_sum / self.recognized as f64);
         document.extraction.ocr_engine = Some("native region OCR".to_string());
-        document.metadata.attributes.insert(
-            "reusedImageExtractions".to_string(),
-            self.reused.to_string(),
-        );
-        document.metadata.attributes.insert(
-            "unresolvedImageRegions".to_string(),
-            self.unresolved.to_string(),
-        );
+        for (key, value) in [
+            ("reusedImageExtractions", self.reused),
+            ("unresolvedImageRegions", self.unresolved),
+            ("verifiedImageOverlapRegions", self.duplicates),
+            ("ambiguousImageOverlaps", self.ambiguous),
+        ] {
+            document
+                .metadata
+                .attributes
+                .insert(key.to_string(), value.to_string());
+        }
+        let mut chunks = self.passages.finish()?;
+        chunks.append(&mut self.canonical.semantic_chunks);
+        for (index, chunk) in chunks.iter_mut().enumerate() {
+            chunk.chunk_index = index as i64;
+        }
+        self.canonical.semantic_chunks = chunks;
         self.canonical.validate()?;
         Ok(AdapterExtraction {
             identity: IDENTITY,

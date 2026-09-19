@@ -7,6 +7,7 @@ use std::{
 };
 
 use image::{codecs::png::PngEncoder, imageops, ExtendedColorType, ImageEncoder, Rgba, RgbaImage};
+use sha2::{Digest, Sha256};
 
 use crate::{
     cards::questions::occlusion::{CanonicalImage, MAX_IMAGE_BYTES},
@@ -62,6 +63,25 @@ impl Raster {
 
     pub(crate) fn png(&self) -> Result<Vec<u8>, CommandError> {
         encode(&self.pixels)
+    }
+
+    /// Compare the actual full-width evidence strip without another decode or
+    /// allocating a cropped image. Coordinates and admitted dimensions are bounded.
+    pub(crate) fn strip_fingerprint(&self, bounds: PixelBounds) -> Result<String, CommandError> {
+        let (width, height) = self.dimensions();
+        if !bounds.within(width, height) {
+            return Err(invalid("Invalid image overlap strip."));
+        }
+        let mut digest = Sha256::new();
+        digest.update(b"ostudy-overlap-rgba-v1\0");
+        digest.update((bounds.right - bounds.left).to_le_bytes());
+        digest.update((bounds.bottom - bounds.top).to_le_bytes());
+        let length = (bounds.right - bounds.left) as usize * 4;
+        for row in bounds.top..bounds.bottom {
+            let start = (row as usize * width as usize + bounds.left as usize) * 4;
+            digest.update(&self.pixels.as_raw()[start..start + length]);
+        }
+        Ok(format!("{:x}", digest.finalize()))
     }
 
     pub(crate) fn filtered_png(

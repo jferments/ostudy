@@ -62,11 +62,20 @@ impl Fixture {
         PngEncoder::new(&mut bytes)
             .write_image(&[17_u8; 8 * 6 * 4], 8, 6, ExtendedColorType::Rgba8)
             .unwrap();
+        self.import_images(&vec![bytes; count], turns, crop)
+    }
+
+    pub(crate) fn import_images(
+        &self,
+        images: &[Vec<u8>],
+        turns: u8,
+        crop: Option<InclusionCrop>,
+    ) -> ImageManifest {
         let mut members = Vec::new();
-        for _ in 0..count {
+        for bytes in images {
             let id = self.id();
             let path = AppPaths::staged_import_relative_path(&id, "png");
-            fs::write(self.paths.resolve_relative(&path), &bytes).unwrap();
+            fs::write(self.paths.resolve_relative(&path), bytes).unwrap();
             self.database
                 .with_connection(|connection| {
                     connection
@@ -77,7 +86,7 @@ impl Fixture {
                          created_at, updated_at, expires_at
                      ) VALUES (?1, ?1, 'image', 'png', 'fixture.png', 'image/png',
                                ?2, ?3, ?4, 'staged', '', 1, 1, 9223372036854775807)",
-                            params![id, bytes.len() as i64, sha256_hex(&bytes), path],
+                            params![id, bytes.len() as i64, sha256_hex(bytes), path],
                         )
                         .map_err(CommandError::database)?;
                     Ok(())

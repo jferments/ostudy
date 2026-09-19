@@ -22,12 +22,15 @@ use super::contracts::{
     IngestionProgressSink, IngestionStage,
 };
 
+mod overlap;
+mod passages;
 mod projection;
+mod regions;
 
 pub(crate) const IDENTITY: DocumentAdapterIdentity = DocumentAdapterIdentity {
-    adapter_backend: "image-set-canonical-v1",
+    adapter_backend: "image-set-canonical-v2-overlap",
     extraction_backend: "image-set-region-ocr-v1",
-    render_backend: Some("image-set-inclusion-render-v1"),
+    render_backend: Some("image-set-inclusion-render-v2-overlap"),
 };
 
 pub(crate) struct ImageSetAdapter;
@@ -165,5 +168,7 @@ fn invalid(message: &str) -> CommandError {
     CommandError::new("invalid_image_set", message)
 }
 
+#[cfg(test)]
+mod overlap_tests;
 #[cfg(test)]
 mod tests;
