@@ -9,6 +9,7 @@ use super::current_format_questions::{id, rich};
 use super::*;
 use crate::cards::questions::{QuestionAttempt, ValidatedQuestion};
 
+#[path = "current_format_tests/knowledge.rs"]
 mod knowledge;
 
 // Version the receipt encoding separately from the application schema. Preserve
