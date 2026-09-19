@@ -313,6 +313,7 @@ pub fn run() {
             tutor::commands::get_tutor_memory,
             tutor::commands::change_tutor_memory,
             documents::commands::list_documents,
+            documents::image_sets::admission::inspect_image_set,
             document_import::import_document,
             document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,

@@ -1,6 +1,7 @@
 pub(crate) mod commands;
 mod contracts;
 mod generation;
+pub(crate) mod image_sets;
 mod lifecycle;
 mod reconciliation;
 mod repository;
