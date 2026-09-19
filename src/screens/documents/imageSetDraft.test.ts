@@ -9,9 +9,16 @@ import {
 } from "./imageSetDraft";
 import type { ImageSetDisplayCrop } from "./imageSetDraft";
 
-const a = Object.freeze({ id: "selection-a", name: "same.png", state: "ready", sha256: "same-bytes" });
-const b = Object.freeze({ id: "selection-b", name: "same.png", state: "failed", sha256: "same-bytes" });
-const c = Object.freeze({ id: "selection-c", name: "third.png", state: "ready", sha256: "other-bytes" });
+interface SelectionFixture {
+  readonly id: string;
+  readonly name: string;
+  readonly state: "ready" | "failed";
+  readonly sha256: string;
+}
+
+const a: SelectionFixture = Object.freeze({ id: "selection-a", name: "same.png", state: "ready", sha256: "same-bytes" });
+const b: SelectionFixture = Object.freeze({ id: "selection-b", name: "same.png", state: "failed", sha256: "same-bytes" });
+const c: SelectionFixture = Object.freeze({ id: "selection-c", name: "third.png", state: "ready", sha256: "other-bytes" });
 const members = Object.freeze([a, b, c]);
 const ids = (values: readonly { id: string }[]) => values.map((value) => value.id);
 const crop = Object.freeze({ left: 0.125, top: 0.25, right: 0.5, bottom: 0.75 });
