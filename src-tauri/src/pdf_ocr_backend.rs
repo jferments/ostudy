@@ -3,7 +3,7 @@
 //! ostudy owns the OCR contract rather than making document ingestion depend on
 //! one executable. Desktop adapts the oxidize-pdf `OcrProvider` trait to local
 //! Tesseract CLI. Android stages the bounded PNG in app-private storage and calls
-//! the bundled ML Kit Text Recognition v2 adapter through the private Tauri
+//! the bundled open-source Tesseract adapter through the private Tauri
 //! platform plugin. iOS remains reserved for Apple Vision.
 
 use oxidize_pdf::{
@@ -35,12 +35,16 @@ use tauri::Manager;
 #[cfg(target_os = "android")]
 use tauri_plugin_ostudy_platform::{OstudyPlatformExt, RecognizeImageRequest};
 
+pub(crate) mod regions;
+
+use regions::RegionOcrResult;
+
 const OCR_CANCELED_MARKER: &str = "ostudy_document_ocr_canceled";
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const ENGINE_NAME: &str = "Tesseract CLI via ostudy platform OCR";
 #[cfg(target_os = "android")]
-const ENGINE_NAME: &str = "ML Kit Text Recognition v2 (bundled Latin)";
+const ENGINE_NAME: &str = "Tesseract 5.5.1 (bundled English)";
 #[cfg(target_os = "ios")]
 const ENGINE_NAME: &str = "Apple Vision OCR adapter";
 
@@ -181,11 +185,11 @@ impl PlatformOcrProvider {
     }
 
     #[cfg(target_os = "android")]
-    fn process_android_ml_kit(
+    fn process_android_ocr(
         &self,
         image_data: &[u8],
         options: &OcrOptions,
-    ) -> OcrResult<OcrProcessingResult> {
+    ) -> OcrResult<RegionOcrResult> {
         let expected_dimensions = png_dimensions(image_data)?;
         let app = self.app.as_ref().ok_or_else(|| {
             OcrError::Configuration(
@@ -228,15 +232,20 @@ impl PlatformOcrProvider {
                     .to_string(),
             ));
         }
-        Ok(OcrProcessingResult::new(
-            result.text,
-            result.confidence.clamp(0.0, 1.0),
-            Vec::new(),
-            result.duration_millis,
-            result.engine,
-            result.language,
-            expected_dimensions,
-        ))
+        let lines = regions::hocr_lines(&result.hocr);
+        let mut output = RegionOcrResult {
+            version: 1,
+            text: result.text,
+            confidence: result.confidence.clamp(0.0, 1.0),
+            lines,
+            duration_millis: result.duration_millis,
+            engine: result.engine,
+            language: result.language,
+            width: expected_dimensions.0,
+            height: expected_dimensions.1,
+        };
+        output.reconcile_geometry();
+        Ok(output)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -244,7 +253,7 @@ impl PlatformOcrProvider {
         &self,
         image_data: &[u8],
         options: &OcrOptions,
-    ) -> OcrResult<OcrProcessingResult> {
+    ) -> OcrResult<RegionOcrResult> {
         let dimensions = png_dimensions(image_data)?;
         let workspace = TempOcrWorkspace::create()?;
         let input = workspace.path.join("page.png");
@@ -289,15 +298,19 @@ impl PlatformOcrProvider {
             ),
         );
 
-        Ok(OcrProcessingResult::new(
-            selected.text,
-            selected.confidence,
-            Vec::new(),
-            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            format!("{ENGINE_NAME} psm={}", selected.psm),
+        let mut output = RegionOcrResult {
+            version: 1,
+            text: selected.text,
+            confidence: selected.confidence,
+            lines: selected.lines,
+            duration_millis: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            engine: format!("{ENGINE_NAME} psm={}", selected.psm),
             language,
-            dimensions,
-        ))
+            width: dimensions.0,
+            height: dimensions.1,
+        };
+        output.reconcile_geometry();
+        Ok(output)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -399,26 +412,8 @@ impl OcrProvider for PlatformOcrProvider {
         image_data: &[u8],
         options: &OcrOptions,
     ) -> OcrResult<OcrProcessingResult> {
-        self.validate_image_data(image_data)?;
-        if self.is_canceled() {
-            return Err(canceled_ocr_error());
-        }
-
-        #[cfg(target_os = "android")]
-        {
-            self.ensure_available()?;
-            self.process_android_ml_kit(image_data, options)
-        }
-        #[cfg(target_os = "ios")]
-        {
-            let _ = options;
-            self.ensure_available()?;
-            unreachable!("iOS OCR availability cannot succeed before Apple Vision is linked")
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            self.process_desktop_tesseract(image_data, options)
-        }
+        self.process_regions(image_data, options)
+            .map(RegionOcrResult::into_legacy)
     }
 
     fn supported_formats(&self) -> Vec<ImageFormat> {
@@ -448,6 +443,7 @@ fn canceled_ocr_error() -> OcrError {
 #[derive(Debug, PartialEq)]
 struct ParsedTsv {
     text: String,
+    lines: Vec<regions::OcrLine>,
     confidence: f64,
     nonspace_chars: usize,
     alphabetic_chars: usize,
@@ -528,6 +524,7 @@ fn parse_tesseract_tsv(tsv: &str, psm: u8) -> ParsedTsv {
         .count();
     ParsedTsv {
         text,
+        lines: regions::tsv_lines(tsv),
         confidence,
         nonspace_chars,
         alphabetic_chars,
@@ -668,6 +665,7 @@ mod tests {
             nonspace_chars: 2,
             alphabetic_chars: 0,
             psm: 3,
+            lines: Vec::new(),
         };
         let fallback = ParsedTsv {
             text: "Drugs affecting the cardiovascular system".to_string(),
@@ -675,6 +673,7 @@ mod tests {
             nonspace_chars: 37,
             alphabetic_chars: 36,
             psm: 11,
+            lines: Vec::new(),
         };
         assert!(!weak.is_strong());
         assert!(fallback.is_strong());

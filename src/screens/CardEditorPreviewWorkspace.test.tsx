@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RichDocument } from "../ipc/common";
 import type { DeckSummary } from "../ipc/decks";
 import type { BasicCardFields } from "./card-editor/BasicCardFields";
+import type { TemplateEntryForm } from "./card-editor/TemplateEntryForm";
 import { CardEditorScreen } from "./CardEditorScreenBase";
 
 const mocks = vi.hoisted(() => ({
@@ -44,10 +45,12 @@ vi.mock("../ipc/templates", () => ({
   listCardTemplateSummaries: mocks.templateSummaries, previewTemplateCards: mocks.previewTemplate,
 }));
 vi.mock("./card-editor/TemplateEntryForm", () => ({
-  TemplateEntryForm: ({ onValueChange }: {
-    onValueChange: (fieldId: string, doc: RichDocument, text: string) => void;
-  }) => <label>Template value<input onChange={(event) =>
-    onValueChange("f".repeat(32), textDoc(event.target.value), event.target.value)} /></label>,
+  // Like the real form, do not expose a field before its value has initialized.
+  TemplateEntryForm: ({ values, disabled, onValueChange }: ComponentProps<typeof TemplateEntryForm>) => <>
+    {values.map((value) => <label key={value.fieldId}>Template value<input
+      disabled={disabled} value={value.text} onChange={(event) =>
+        onValueChange(value.fieldId, textDoc(event.target.value), event.target.value)} /></label>)}
+  </>,
 }));
 vi.mock("./card-editor/BasicCardFields", () => ({
   BasicCardFields: (props: ComponentProps<typeof BasicCardFields>) => <>
@@ -198,6 +201,9 @@ describe("full-size editor preview workspace", () => {
     fireEvent.change(presentations, { target: { value: `template:${"2".repeat(32)}` } });
     expect(within(preview).getByText(/Generated reverse/u)).toBeTruthy();
     expect(mocks.previewTemplate).toHaveBeenCalledTimes(1);
+    expect(mocks.previewTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      values: [{ fieldId: "f".repeat(32), doc: textDoc("alveolus"), text: "alveolus" }],
+    }));
   });
 
   it("does not consume Escape from an overlay or input composition", async () => {
