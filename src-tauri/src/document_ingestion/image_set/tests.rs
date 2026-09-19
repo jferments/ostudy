@@ -147,7 +147,9 @@ fn image_set_crop_removes_excluded_text_from_chunks_and_pixels_but_retains_ocr()
             bottom: 1.0,
         }),
     );
-    let source = fixture.paths.resolve_relative(&manifest.members[0].relative_path);
+    let source = fixture
+        .paths
+        .resolve_relative(&manifest.members[0].relative_path);
     let original = std::fs::read(&source).unwrap();
     let output = extract(&fixture, &manifest, Some("fixture-v1"), recognition);
     assert!(output.canonical.document.units[0].plain_text.is_empty());
@@ -194,7 +196,13 @@ fn image_set_unreliable_geometry_is_not_guessed_to_allow_a_crop() {
         Ok(result)
     });
     assert!(output.canonical.document.units[0].plain_text.is_empty());
-    assert!(output.canonical.document.extraction.semantic_analysis_degraded);
+    assert!(
+        output
+            .canonical
+            .document
+            .extraction
+            .semantic_analysis_degraded
+    );
     assert_eq!(
         output.canonical.document.metadata.attributes["unresolvedImageRegions"],
         "1"
@@ -223,7 +231,13 @@ fn image_set_ocr_failure_retains_successful_siblings_and_explicit_visual_evidenc
     );
     assert!(output.canonical.document.units[1].plain_text.is_empty());
     assert_eq!(output.canonical.document.assets.len(), 2);
-    assert!(output.canonical.document.extraction.semantic_analysis_degraded);
+    assert!(
+        output
+            .canonical
+            .document
+            .extraction
+            .semantic_analysis_degraded
+    );
     assert_eq!(
         output.canonical.semantic_chunks[1].element_types,
         vec!["paragraph", "image"]

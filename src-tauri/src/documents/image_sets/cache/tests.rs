@@ -183,14 +183,16 @@ fn image_extraction_failure_preserves_successful_siblings_and_does_not_store_fai
     .unwrap();
     assert_eq!(error.code, "fixture_ocr_failure");
     assert_eq!(fixture.count("document_image_extractions"), 1);
-    assert!(get_or_extract(
-        Some(&fixture.database),
-        &manifest.members[0],
-        Some("v1"),
-        || panic!("sibling was lost")
-    )
-    .unwrap()
-    .reused);
+    assert!(
+        get_or_extract(
+            Some(&fixture.database),
+            &manifest.members[0],
+            Some("v1"),
+            || panic!("sibling was lost")
+        )
+        .unwrap()
+        .reused
+    );
 }
 
 #[test]
@@ -204,7 +206,10 @@ fn image_extraction_rejects_geometry_drift_and_a_source_deleted_during_ocr() {
     let error = get_or_extract(Some(&fixture.database), member, Some("v1"), || {
         fixture.database.with_connection(|connection| {
             connection
-                .execute("DELETE FROM documents WHERE id = ?1", [&manifest.document_id])
+                .execute(
+                    "DELETE FROM documents WHERE id = ?1",
+                    [&manifest.document_id],
+                )
                 .map_err(CommandError::database)?;
             Ok(())
         })?;
@@ -231,7 +236,10 @@ fn image_extraction_entry_refuses_altered_payloads_before_any_write() {
         .database
         .with_connection(|connection| {
             connection
-                .execute("UPDATE document_image_extractions SET result_json = '{}'", [])
+                .execute(
+                    "UPDATE document_image_extractions SET result_json = '{}'",
+                    [],
+                )
                 .map_err(CommandError::database)?;
             let changes = connection.total_changes();
             assert!(crate::database::validate_backup_lineage(connection).is_err());
