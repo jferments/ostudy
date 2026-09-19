@@ -288,8 +288,9 @@ mod tests {
         let decoded = image::load_from_memory(&png).unwrap().into_rgba8();
         assert_eq!((width, height), (8, 6));
         for (x, y, pixel) in decoded.enumerate_pixels() {
-            let excluded =
-                x < 1 || x >= 7 || y < 1 || y >= 5 || ((2..4).contains(&x) && (2..4).contains(&y));
+            let excluded = !(1..7).contains(&x)
+                || !(1..5).contains(&y)
+                || ((2..4).contains(&x) && (2..4).contains(&y));
             assert_eq!(
                 *pixel,
                 if excluded {

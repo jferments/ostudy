@@ -179,7 +179,7 @@ fn validate_result(member: &ImageMember, result: &RegionOcrResult) -> Result<(),
     result
         .validate()
         .map_err(|_| invalid("The OCR result is incomplete or invalid."))?;
-    let dimensions = if member.quarter_turns % 2 == 0 {
+    let dimensions = if member.quarter_turns.is_multiple_of(2) {
         (member.width, member.height)
     } else {
         (member.height, member.width)
@@ -312,7 +312,7 @@ fn validate_owners(
         let contract: String = owner.get(1).map_err(CommandError::database)?;
         let width: u32 = owner.get(2).map_err(CommandError::database)?;
         let height: u32 = owner.get(3).map_err(CommandError::database)?;
-        let dimensions = if identity.quarter_turns % 2 == 0 {
+        let dimensions = if identity.quarter_turns.is_multiple_of(2) {
             (width, height)
         } else {
             (height, width)

@@ -5,7 +5,7 @@ use crate::{
 };
 
 fn result(member: &ImageMember) -> RegionOcrResult {
-    let (width, height) = if member.quarter_turns % 2 == 0 {
+    let (width, height) = if member.quarter_turns.is_multiple_of(2) {
         (member.width, member.height)
     } else {
         (member.height, member.width)
