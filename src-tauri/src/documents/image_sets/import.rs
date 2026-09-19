@@ -261,12 +261,13 @@ fn validate_lease(
     now: i64,
 ) -> Result<(), CommandError> {
     let path = AppPaths::staged_import_relative_path(id, manifest::extension(&member.media_type)?);
+    let byte_size = repository::sql_size(member.byte_size)?;
     let matched: bool = connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM staged_external_imports
          WHERE id = ?1 AND state = 'staged' AND purpose = 'image'
            AND relative_path = ?2 AND byte_size = ?3 AND sha256 = ?4 AND expires_at > ?5)",
-            params![id, path, member.byte_size, member.sha256, now],
+            params![id, path, byte_size, member.sha256, now],
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;

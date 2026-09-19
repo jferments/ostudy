@@ -46,7 +46,7 @@ pub(crate) fn load(
             original_filename: row.get(2).map_err(CommandError::database)?,
             media_type: row.get(3).map_err(CommandError::database)?,
             relative_path: row.get(4).map_err(CommandError::database)?,
-            byte_size: row.get(5).map_err(CommandError::database)?,
+            byte_size: unsigned_size(row.get(5).map_err(CommandError::database)?)?,
             sha256: row.get(6).map_err(CommandError::database)?,
             width: row.get(7).map_err(CommandError::database)?,
             height: row.get(8).map_err(CommandError::database)?,
@@ -101,7 +101,7 @@ pub(crate) fn insert_members(
                     member.original_filename,
                     member.media_type,
                     member.relative_path,
-                    member.byte_size,
+                    sql_size(member.byte_size)?,
                     member.sha256,
                     member.width,
                     member.height,
@@ -166,7 +166,7 @@ pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
         let id: String = row.get(0).map_err(CommandError::database)?;
         let path: String = row.get(1).map_err(CommandError::database)?;
         let hash: String = row.get(2).map_err(CommandError::database)?;
-        let size: u64 = row.get(3).map_err(CommandError::database)?;
+        let size = unsigned_size(row.get(3).map_err(CommandError::database)?)?;
         let media: String = row.get(4).map_err(CommandError::database)?;
         let prepared: String = row.get(5).map_err(CommandError::database)?;
         let manifest = load(connection, &id)?;
@@ -220,4 +220,33 @@ pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
         }
     }
     Ok(())
+}
+
+/// SQLite stores signed 64-bit integers; never wrap image sizes at its boundary.
+pub(super) fn sql_size(value: u64) -> Result<i64, CommandError> {
+    i64::try_from(value).map_err(|_| invalid("Image byte size exceeds SQLite's integer range."))
+}
+
+fn unsigned_size(value: i64) -> Result<u64, CommandError> {
+    u64::try_from(value).map_err(|_| invalid("A saved image byte size is negative."))
+}
+
+#[cfg(test)]
+mod integer_tests {
+    use super::*;
+
+    #[test]
+    fn image_set_sql_sizes_round_trip_without_wrapping_or_truncation() {
+        let connection = Connection::open_in_memory().unwrap();
+        for size in [0, 1, 25 * 1024 * 1024, 512 * 1024 * 1024, i64::MAX as u64] {
+            let saved: i64 = connection
+                .query_row("SELECT ?1", [sql_size(size).unwrap()], |row| row.get(0))
+                .unwrap();
+            assert_eq!(unsigned_size(saved).unwrap(), size);
+        }
+        assert!(sql_size(i64::MAX as u64 + 1).is_err());
+        assert!(sql_size(u64::MAX).is_err());
+        assert!(unsigned_size(-1).is_err());
+        assert!(unsigned_size(i64::MIN).is_err());
+    }
 }

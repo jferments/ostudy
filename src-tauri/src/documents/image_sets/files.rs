@@ -180,7 +180,7 @@ pub(crate) fn reconcile_missing_originals(
     paths: &AppPaths,
     now: i64,
 ) -> Result<(), CommandError> {
-    let originals = database.with_connection(super::backup::originals)?;
+    let originals = database.with_connection(|conn| super::backup::originals(conn))?;
     let missing = originals
         .into_iter()
         .filter(|(_, _, _, path, _, _)| !paths.resolve_relative(path).is_file())
