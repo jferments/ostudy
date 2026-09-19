@@ -5,7 +5,7 @@ use crate::pdf_ocr_backend::{
     canceled_ocr_error, OcrOptions, OcrProvider, OcrResult, PlatformOcrProvider,
 };
 
-#[path = "identity.rs"]
+#[path = "../../platform/image_ocr_identity.rs"]
 mod identity;
 
 impl PlatformOcrProvider {
