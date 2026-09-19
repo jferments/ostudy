@@ -115,7 +115,9 @@ fn resolve(database: &Database, paths: &AppPaths, id: &str) -> Result<StagedImag
             invalid("This image selection is no longer available. Select it again.")
         })?;
         if state != "staged" {
-            return Err(invalid("This image selection was already used or released."));
+            return Err(invalid(
+                "This image selection was already used or released.",
+            ));
         }
         let bytes = u64::try_from(bytes).map_err(|_| invalid("Invalid image size."))?;
         if bytes == 0 || bytes > MAX_IMAGE_BYTES as u64 {
@@ -191,7 +193,9 @@ pub(crate) fn inspect(
                 .read_to_end(&mut bytes)
                 .map_err(|_| unreadable())?;
             if bytes.len() as u64 != staged.bytes || sha256_hex(&bytes) != staged.sha256 {
-                return Err(invalid("The staged image changed. Select the original again."));
+                return Err(invalid(
+                    "The staged image changed. Select the original again.",
+                ));
             }
             let actual_format = image::guess_format(&bytes).map_err(|_| unreadable())?;
             let expected_format = match staged.kind {
@@ -201,7 +205,9 @@ pub(crate) fn inspect(
                 _ => return Err(invalid("Select a still PNG, JPEG or WebP image.")),
             };
             if actual_format != expected_format {
-                return Err(invalid("The image bytes do not match the admitted file format."));
+                return Err(invalid(
+                    "The image bytes do not match the admitted file format.",
+                ));
             }
             let image = if let Some(previous) = cache.get(&staged.sha256) {
                 reused_images += 1;

@@ -93,7 +93,11 @@ fn image_set_inspection_preserves_order_ownership_bytes_and_database() {
     let result = fixture.inspect(&order);
     assert!(result.can_import);
     assert_eq!(
-        result.members.iter().map(|member| &member.id).collect::<Vec<_>>(),
+        result
+            .members
+            .iter()
+            .map(|member| &member.id)
+            .collect::<Vec<_>>(),
         order.iter().collect::<Vec<_>>()
     );
     assert_eq!(result.decoded_images, 2);
@@ -219,7 +223,9 @@ fn image_set_selection_validation_refuses_ambiguity_and_unbounded_work() {
 #[test]
 fn image_set_budget_has_exact_limits_and_rejects_overflow_without_mutation() {
     let mut budget = Budget::default();
-    budget.include(MAX_SET_BYTES - 1, MAX_SET_PIXELS - 1).unwrap();
+    budget
+        .include(MAX_SET_BYTES - 1, MAX_SET_PIXELS - 1)
+        .unwrap();
     assert!(budget.include(2, 1).is_err());
     assert_eq!(budget.bytes, MAX_SET_BYTES - 1);
     assert_eq!(budget.pixels, MAX_SET_PIXELS - 1);
