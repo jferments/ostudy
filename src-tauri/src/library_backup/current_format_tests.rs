@@ -9,6 +9,8 @@ use super::current_format_questions::{id, rich};
 use super::*;
 use crate::cards::questions::{QuestionAttempt, ValidatedQuestion};
 
+mod knowledge;
+
 // Version the receipt encoding separately from the application schema. Preserve
 // SQLite types, IEEE float bits, lengths and duplicates, not just row counts.
 fn rows(connection: &Connection) -> BTreeMap<String, (usize, String)> {
@@ -95,6 +97,7 @@ fn manifest(database: &Database) -> BTreeMap<String, (usize, String)> {
             {
                 QuestionAttempt::restore(&row.map_err(CommandError::database)?)?;
             }
+            knowledge::verify(connection)?;
             Ok(rows(connection))
         })
         .unwrap()
@@ -237,6 +240,7 @@ fn current_library_preserves_every_value_identity_and_asset_through_reopen_and_r
         })
         .unwrap();
     let document_path = super::current_format_sources::seed(&database, &paths, &deck);
+    knowledge::seed(&database);
     let relative = vec![asset_path, document_path];
     let before = manifest(&database);
     let before_files = files(&paths, &relative);
@@ -250,6 +254,10 @@ fn current_library_preserves_every_value_identity_and_asset_through_reopen_and_r
         ("tutor_turns", 1),
         ("editor_drafts", 1),
         ("question_note_writes", 1),
+        ("knowledge_units", 1),
+        ("knowledge_analysis_windows", 1),
+        ("document_evidence_payloads", 1),
+        ("document_evidence_occurrences", 1),
     ] {
         assert_eq!(before[table].0, count, "fixture coverage: {table}");
     }
