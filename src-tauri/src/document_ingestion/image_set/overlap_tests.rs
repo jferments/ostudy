@@ -101,7 +101,10 @@ fn extract(
         |_| Ok(readings.next().expect("unexpected OCR call")),
     )
     .unwrap();
-    assert!(readings.next().is_none(), "expected local OCR was not exercised");
+    assert!(
+        readings.next().is_none(),
+        "expected local OCR was not exercised"
+    );
     result
 }
 
@@ -113,7 +116,10 @@ fn image_overlap_projects_unique_passages_and_retains_exact_owned_occurrences() 
     let output = extract(
         &fixture,
         &manifest,
-        vec![scan(&[A, B, C], &[10, 40, 60]), scan(&[B, C, D], &[10, 30, 50])],
+        vec![
+            scan(&[A, B, C], &[10, 40, 60]),
+            scan(&[B, C, D], &[10, 30, 50]),
+        ],
     );
     let canonical = &output.canonical;
     assert_eq!(canonical.semantic_chunks.len(), 6);
@@ -125,13 +131,11 @@ fn image_overlap_projects_unique_passages_and_retains_exact_owned_occurrences() 
             .collect::<Vec<_>>();
         assert_eq!(passages.len(), 1);
         assert_eq!(passages[0].source_locator.unit_numbers, vec![1, 2]);
-        assert!(
-            canonical
-                .document
-                .units
-                .iter()
-                .all(|unit| unit.plain_text.contains(text))
-        );
+        assert!(canonical
+            .document
+            .units
+            .iter()
+            .all(|unit| unit.plain_text.contains(text)));
     }
     assert_eq!(
         canonical.document.metadata.attributes["verifiedImageOverlapRegions"],
@@ -160,7 +164,8 @@ fn image_overlap_projects_unique_passages_and_retains_exact_owned_occurrences() 
     }
     assert_ne!(*pixels.get_pixel(7, 50), Rgba([255, 255, 255, 255]));
     for (member, bytes) in manifest.members.iter().zip(&originals) {
-        let retained = std::fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap();
+        let retained =
+            std::fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap();
         assert_eq!(&retained, bytes);
     }
     persist_ingested_document(&fixture.database, &manifest.document_id, &output).unwrap();
@@ -172,7 +177,10 @@ fn image_overlap_projects_unique_passages_and_retains_exact_owned_occurrences() 
         })
         .unwrap();
     let repeated = extract(&fixture, &manifest, Vec::new());
-    assert_eq!(repeated.canonical.semantic_chunks, canonical.semantic_chunks);
+    assert_eq!(
+        repeated.canonical.semantic_chunks,
+        canonical.semantic_chunks
+    );
     assert_eq!(
         repeated.canonical.document.metadata.attributes["reusedImageExtractions"],
         "2"
@@ -182,9 +190,18 @@ fn image_overlap_projects_unique_passages_and_retains_exact_owned_occurrences() 
 #[test]
 fn image_overlap_protected_characters_reject_equivalence_without_losing_either_reading() {
     for (original, changed) in [
-        (B, "The limit is 50 mg, not 5 mg; preserve every qualification."),
-        (B, "The limit is 5 g, not 50 mg; preserve every qualification."),
-        (B, "The limit is 5 mg, or 50 mg; preserve every qualification."),
+        (
+            B,
+            "The limit is 50 mg, not 5 mg; preserve every qualification.",
+        ),
+        (
+            B,
+            "The limit is 5 g, not 50 mg; preserve every qualification.",
+        ),
+        (
+            B,
+            "The limit is 5 mg, or 50 mg; preserve every qualification.",
+        ),
         (
             "Keep x <= 10 with the stated prerequisite.",
             "Keep x >= 10 with the stated prerequisite.",
@@ -207,7 +224,10 @@ fn image_overlap_protected_characters_reject_equivalence_without_losing_either_r
         let output = extract(
             &fixture,
             &manifest,
-            vec![scan(&[A, original, C], &[10, 40, 60]), scan(&[changed, C, D], &[10, 30, 50])],
+            vec![
+                scan(&[A, original, C], &[10, 40, 60]),
+                scan(&[changed, C, D], &[10, 30, 50]),
+            ],
         );
         assert_eq!(
             output.canonical.document.metadata.attributes["verifiedImageOverlapRegions"],
@@ -218,13 +238,11 @@ fn image_overlap_protected_characters_reject_equivalence_without_losing_either_r
             "1"
         );
         for text in [original, changed] {
-            assert!(
-                output
-                    .canonical
-                    .semantic_chunks
-                    .iter()
-                    .any(|chunk| chunk.full_text == text)
-            );
+            assert!(output
+                .canonical
+                .semantic_chunks
+                .iter()
+                .any(|chunk| chunk.full_text == text));
         }
     }
 }
@@ -236,7 +254,10 @@ fn image_overlap_identical_ocr_does_not_hide_different_source_pixels() {
     let output = extract(
         &fixture,
         &manifest,
-        vec![scan(&[A, B, C], &[10, 40, 60]), scan(&[B, C, D], &[10, 30, 50])],
+        vec![
+            scan(&[A, B, C], &[10, 40, 60]),
+            scan(&[B, C, D], &[10, 30, 50]),
+        ],
     );
     assert_eq!(
         output.canonical.document.metadata.attributes["verifiedImageOverlapRegions"],

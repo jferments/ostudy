@@ -27,13 +27,9 @@ impl Alignment {
             && previous.available == current.available
             && previous.unresolved == current.unresolved
             && previous.regions.len() == current.regions.len()
-            && previous
-                .regions
-                .iter()
-                .zip(&current.regions)
-                .all(|(a, b)| {
-                    a.text == b.text && a.bounds == b.bounds && a.signature == b.signature
-                })
+            && previous.regions.iter().zip(&current.regions).all(|(a, b)| {
+                a.text == b.text && a.bounds == b.bounds && a.signature == b.signature
+            })
         {
             result.targets = (0..current.regions.len()).map(Some).collect();
             result.whole_image = true;
@@ -63,7 +59,11 @@ impl Alignment {
             return result;
         };
         if tail.len() < 2
-            || tail.iter().map(|region| region.text.chars().count()).sum::<usize>() < 48
+            || tail
+                .iter()
+                .map(|region| region.text.chars().count())
+                .sum::<usize>()
+                < 48
             || !reading_order(tail)
             || !reading_order(prefix)
         {

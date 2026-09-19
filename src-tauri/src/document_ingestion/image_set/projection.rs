@@ -119,13 +119,9 @@ impl Projection {
             for (position, region) in frame.regions.iter().enumerate() {
                 let target = alignment.targets[position]
                     .and_then(|previous| self.previous_targets.get(previous).copied());
-                let (target, equivalent) = self.passages.admit(
-                    &frame,
-                    region,
-                    unit,
-                    target,
-                    alignment.whole_image,
-                );
+                let (target, equivalent) =
+                    self.passages
+                        .admit(&frame, region, unit, target, alignment.whole_image);
                 targets.push(target);
                 if equivalent.is_some() {
                     self.duplicates += 1;
@@ -158,10 +154,8 @@ impl Projection {
                         attributes.insert("imageRegionSignature".to_string(), signature.clone());
                     }
                     if let Some(representative) = &equivalent {
-                        attributes.insert(
-                            "equivalentToRegionId".to_string(),
-                            representative.clone(),
-                        );
+                        attributes
+                            .insert("equivalentToRegionId".to_string(), representative.clone());
                     }
                     document.blocks.push(CanonicalBlock::new(
                         document.blocks.len() as i64,
@@ -202,7 +196,10 @@ impl Projection {
             ("quarterTurns".to_string(), member.quarter_turns.to_string()),
             ("pixelContract".to_string(), member.pixel_contract.clone()),
             ("alignmentContract".to_string(), CONTRACT.to_string()),
-            ("ambiguousOverlap".to_string(), alignment.ambiguous.to_string()),
+            (
+                "ambiguousOverlap".to_string(),
+                alignment.ambiguous.to_string(),
+            ),
         ]);
         document.blocks.push(CanonicalBlock::new(
             block_index,
@@ -230,7 +227,10 @@ impl Projection {
             height: Some(i64::from(height)),
             alt_text: Some(label),
         });
-        let visual = alignment.whole_image.then_some(self.previous_visual).flatten();
+        let visual = alignment
+            .whole_image
+            .then_some(self.previous_visual)
+            .flatten();
         self.previous_visual = if let Some(index) = visual {
             add_occurrence(&mut self.canonical.semantic_chunks[index], unit)?;
             Some(index)

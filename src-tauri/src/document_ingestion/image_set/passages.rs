@@ -29,9 +29,9 @@ impl Passages {
         target: Option<usize>,
         whole_image: bool,
     ) -> (usize, Option<String>) {
-        if let Some((index, previous)) = target.and_then(|index| {
-            self.values.get_mut(index).map(|passage| (index, passage))
-        }) {
+        if let Some((index, previous)) =
+            target.and_then(|index| self.values.get_mut(index).map(|passage| (index, passage)))
+        {
             let exact = region.text == previous.region.text
                 && ((region.signature.is_some() && region.signature == previous.region.signature)
                     || (whole_image && frame.identity == previous.frame_identity));
