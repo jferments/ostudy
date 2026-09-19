@@ -236,6 +236,11 @@ fn image_set_operation_reuse_cannot_change_inputs_or_resurrect_a_deleted_source(
 fn image_set_failed_member_and_sql_failure_do_not_publish_a_shortened_set() {
     let fixture = Fixture::new();
     let mut request = fixture.request();
+    // The shared staging directory and another source are useful existing work.
+    // Rollback must preserve them exactly, not make the whole directory empty.
+    let keep = fixture.paths.resolve_relative("documents/staging/keep.stage");
+    fs::write(&keep, b"unrelated staged source").unwrap();
+    let before = document_tree(&fixture.paths);
     request.members[1].staged_file_id = fixture.stage(3, b"not a PNG");
     assert_eq!(
         import::import(&fixture.database, &fixture.paths, &request)
@@ -244,6 +249,7 @@ fn image_set_failed_member_and_sql_failure_do_not_publish_a_shortened_set() {
         "image_set_selection_failed"
     );
     assert_eq!(fixture.count("documents"), 0);
+    assert_eq!(document_tree(&fixture.paths), before);
     request.members[1].staged_file_id = format!("{:032x}", 1);
     fixture
         .database
@@ -260,12 +266,8 @@ fn image_set_failed_member_and_sql_failure_do_not_publish_a_shortened_set() {
     assert_eq!(fixture.count("documents"), 0);
     assert_eq!(fixture.count("document_image_members"), 0);
     assert_eq!(fixture.count("document_image_imports"), 0);
-    assert_eq!(
-        fs::read_dir(fixture.paths.resolve_relative("documents"))
-            .unwrap()
-            .count(),
-        0
-    );
+    assert_eq!(document_tree(&fixture.paths), before);
+    assert_eq!(fs::read(&keep).unwrap(), b"unrelated staged source");
     fixture
         .database
         .with_connection(|connection| {
@@ -461,4 +463,27 @@ fn image_set_missing_original_is_explicit_and_does_not_erase_other_members() {
         .unwrap(),
         png()
     );
+}
+
+/// Includes directory identities and complete file bytes, so both leaked
+/// candidates and collateral deletion/change fail the rollback regression.
+fn document_tree(paths: &AppPaths) -> Vec<(PathBuf, Option<Vec<u8>>)> {
+    let root = paths.resolve_relative("documents");
+    let mut pending = vec![root.clone()];
+    let mut result = Vec::new();
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let relative = path.strip_prefix(&root).unwrap().to_path_buf();
+            if entry.file_type().unwrap().is_dir() {
+                result.push((relative, None));
+                pending.push(path);
+            } else {
+                result.push((relative, Some(fs::read(path).unwrap())));
+            }
+        }
+    }
+    result.sort_by(|left, right| left.0.cmp(&right.0));
+    result
 }
