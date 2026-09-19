@@ -4,6 +4,8 @@
 
 use rusqlite::Connection;
 
+#[path = "knowledge_entry.rs"]
+mod knowledge_entry;
 #[path = "payload_entry.rs"]
 mod payload_entry;
 
@@ -70,6 +72,9 @@ pub(super) fn validate_public_input(connection: &Connection) -> Result<i64, Stri
     // unknown repair could be discovered only after the library has changed.
     crate::data_repairs::verify_repair_ledger(connection)?;
     payload_entry::validate(connection, version)?;
+    if version >= 14 {
+        knowledge_entry::validate(connection)?;
+    }
     if version >= 18 {
         crate::document_canonical_store::evidence::validate(connection)
             .map_err(|error| error.message)?;
