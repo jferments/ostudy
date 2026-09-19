@@ -37,6 +37,7 @@ fn qualified_units_round_trip_through_decoder_receipt_storage_and_authoring_prom
             let catalog = KnowledgeCatalog {
                 units,
                 document_core_units: Default::default(),
+                preparation: Default::default(),
             };
             let value: Value = serde_json::from_str(&catalog.prompt()?).unwrap();
             assert_eq!(value["units"][0]["statement"], sources[0].text);

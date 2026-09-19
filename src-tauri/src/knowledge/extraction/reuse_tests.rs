@@ -47,6 +47,7 @@ async fn completed_interpretation_is_read_only_across_consumer_contracts() {
         let catalog = KnowledgeCatalog {
             units: reused[&sources[0].id].clone(),
             document_core_units: Default::default(),
+            preparation: Default::default(),
         };
         let prompt: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
         assert_eq!(prompt["units"].as_array().unwrap().len(), 1);
