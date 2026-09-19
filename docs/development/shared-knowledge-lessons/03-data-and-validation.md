@@ -1,6 +1,6 @@
 # Current-format transition, acceptance and validation
 
-Part of the [development plan](README.md). This document defines required evidence and records the implemented LK-02 transition boundary. Later-stage acceptance remains unclaimed until its own evidence exists.
+Part of the [development plan](README.md). This document defines required evidence and records the implemented LK-02/LK-03 transition and preservation boundaries. Later-stage acceptance remains unclaimed until its own evidence exists.
 
 ## 1. The pre-release data policy
 
@@ -39,6 +39,16 @@ For a public-lineage database, startup now performs a **read-only admission befo
 
 The synthetic preservation fixture intentionally contains Basic/reverse, both Cloze modes, every interactive question kind including image occlusion, answering and checked attempts, schedules and review history, a durable draft, managed image bytes, a retained source document/citations, an edited Study Guide overlay, Tutor conversation/turn history, and deliberate deletion/suppression evidence. Its receipt hashes every SQLite value with type and length information and separately hashes managed files. Reopen, complete-backup creation, staged restore rollback, committed restore, and post-restore reopen must preserve those receipts and pass foreign-key/integrity plus current question/attempt decoders. Equal row counts alone are deliberately insufficient.
 
+### LK-03 successor checkpoint
+
+The current registry is schema **18**. Migration `0018_canonical_evidence.sql` adds immutable evidence payloads, document-owned source occurrences and structure links. The migration backfills only retained canonical facts; it does not invent missing table/figure structure or call a provider. Historical migrations and checksums remain unchanged.
+
+Qualified detail schema **1** stores native UTF-8 spans into the existing authoritative knowledge statement for comparison, process, quantity and classification projections. Existing units without details keep their serialization and identity; absence means unavailable structure. Region coverage receipt version **1** binds the planned evidence and source revisions, distinguishes unreadable/unresolved/non-learning content, and never equates protocol completion with exhaustive understanding. Older compatible receipts remain readable and are reported as older coverage, not silently promoted to region-complete evidence.
+
+`database/knowledge_entry.rs` adds read-only typed-knowledge and receipt admission to the shared startup/restore boundary. Unsupported detail versions, malformed spans, forged coverage plans and dispositions fail before conversion writes. `database/knowledge_entry_tests.rs` verifies refusal and zero-write current/legacy admission. The current-format test filter executes these tests and the complete preservation fixture; `scripts/test-native-contracts.sh` rejects filters matching no tests.
+
+The complete-library fixture now includes immutable structured evidence, a typed process and a partially successful semantic window. Its existing typed-row/managed-file receipts, plus native evidence/context decoding, are checked through reopen, export without mutation, staged-restore rollback, committed restore and post-restore reopen. Private rejected proposals stay in complete backups and are removed by device-transfer sanitization. No new interchange version or personal-library conversion is implied by these repository tests.
+
 ### Final consolidation checkpoint (LK-13)
 
 LK-02 defines the retirement gate now so later schema work cannot make it up opportunistically:
@@ -53,7 +63,7 @@ Until LK-13 satisfies that gate, the current migration chain and historical reco
 
 ### Known-source conversion procedure
 
-1. **Inspect safely.** Stop or acquire the existing exclusive library-maintenance boundary. Resolve actual application storage through maintained paths. Record installed application identity, schema lineage/version, checksum/repair state and converter SHA. Unknown/future/corrupt input is rejected without mutation. The LK-02 branch registry is schema 17; repository state is not proof of the user's installed state.
+1. **Inspect safely.** Stop or acquire the existing exclusive library-maintenance boundary. Resolve actual application storage through maintained paths. Record installed application identity, schema lineage/version, checksum/repair state and converter SHA. Unknown/future/corrupt input is rejected without mutation. The historical LK-02 boundary was schema 17; LK-03 advances the registry to 18. Repository state is not proof of the user's installed state.
 2. **Preserve a recoverable input.** Produce a coherent full backup using the existing backup boundary, including managed assets and required journals handled correctly by that boundary. Verify its integrity and restore an isolated copy. Check free space for original, backup, staging and output. A raw copy of a live SQLite file is not the backup procedure.
 3. **Capture invariants.** Record stable IDs and canonical sorted-row/value digests for learner-owned records, schedules/reviews, attempts, guide overlays, source associations and conversation turns, plus asset reference/hash manifests. Counts alone cannot detect silently changed values. Sensitive content and full databases stay local; diagnostics contain only the approved bounded summaries.
 4. **Normalize a staged copy.** Apply the known migration/repair path and current-payload conversions. Reuse existing repair ownership and write a conversion receipt. Preserve original note/card IDs, schedules, due values, review outcomes, tags, templates, drafts, annotations, conversation scopes and managed bytes. Source/interpretation changes are separate from mere schema conversion; migration never silently contacts a provider.
@@ -79,7 +89,7 @@ There is no need for a remote service to inspect the library, and no demand to u
 
 ## 2. Stable acceptance contract
 
-PR acceptance uses these IDs. AC-01 covers this documentation-only request. Product acceptance starts at AC-02; none is completed by writing this plan. Revision-2 requirement families are retained as traceability labels rather than silently replaced by new scope.
+PR acceptance uses these IDs. AC-01 covers the original planning publication. Product acceptance starts at AC-02; writing the plan alone does not complete any product criterion. LK-01 through LK-03 implementation and exact-SHA evidence are tracked separately in the PR ledger. Revision-2 requirement families are retained as traceability labels rather than silently replaced by new scope.
 
 | ID | Acceptance boundary | First owner | Revision-2 coverage |
 | --- | --- | --- | --- |
@@ -148,7 +158,7 @@ An ordinary Tutor question may use its selected answer/embedding service; the ze
 
 Use the maintained [command runbook](../../agents/COMMAND-RUNBOOK.md), [testing guide](../testing-and-ci.md), [execution state](../../agents/EXECUTION-STATE.md), and [local handoff](../local-testing-and-handoff.md). Existing focused entry points include `pnpm verify:docs`, `./scripts/check-changed.sh`, `./scripts/check-static.sh`, `./scripts/check-fast.sh`, `./scripts/check.sh`, `pnpm android:test`, and `pnpm android:smoke`. Select exact test filenames only after they exist; do not present proposed files as commands already executable.
 
-For this initial plan: inspect links, stage/acceptance traceability and scope; publish documentation; inspect the automatic exact-head Check and PR Contract runs. Do not manually dispatch full Linux/Android merely for Markdown. For implementation: run the smallest affected regression first, then the required broader gates. All source is published through the GitHub connector; self-hosted Actions qualify it read-only.
+For documentation-only increments, inspect links, stage/acceptance traceability and scope, publish the documentation, and inspect automatic exact-head Check and PR Contract runs. Do not manually dispatch full Linux/Android merely for Markdown. For implementation: run the smallest affected regression first, then the required broader gates. All source is published through the GitHub connector; self-hosted Actions qualify it read-only.
 
 Each stage handoff records branch, expected parent/tree, acknowledged changed blobs, candidate/published SHA, acceptance boundary, exact run and tested SHA, actual commands, failures/unrun gates, manual boundaries and next concrete action. Update the PR body for progress; do not keep a second contradictory source-of-truth ledger in timeless documentation.
 
@@ -158,4 +168,4 @@ One unchanged-head rerun requires transient evidence. The same failure fingerpri
 
 Actual-library migration, live model quality, speech pronunciation, visual/accessibility behavior, physical Android lifecycle and PowerPoint/Impress compatibility are distinct from unit/static/emulator checks. Record which were actually performed, on which exact source/platform, and what remains. Never mark all gates passed because one workflow is green.
 
-The next product action is **LK-03 — reusable evidence, knowledge and context foundation**. Continue on the same branch/PR, preserve the LK-01/LK-02 boundaries, and implement the next coherent acceptance increment before starting screenshot or collection work.
+The next product stage is **LK-04 — ordered image sets and screenshot cleaning**. Continue on the same branch/PR after the human assigns that stage, preserving the completed LK-01/LK-02/LK-03 boundaries. Remaining platform/manual gates and the LK-13 real-library adoption boundary remain explicit; this stage does not authorize merge.
