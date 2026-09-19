@@ -5,10 +5,7 @@ use std::collections::HashSet;
 use rusqlite::Connection;
 
 use crate::knowledge::{
-    analysis_store,
-    contracts::KnowledgeUnit,
-    extraction::decode::AnalysisReport,
-    repository,
+    analysis_store, contracts::KnowledgeUnit, extraction::decode::AnalysisReport, repository,
 };
 
 pub(super) fn validate(connection: &Connection) -> Result<(), String> {
