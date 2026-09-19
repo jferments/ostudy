@@ -184,6 +184,30 @@ impl PlatformOcrProvider {
             .is_some_and(task_cancellation::is_document_task_canceled)
     }
 
+    fn recognize_regions(
+        &self,
+        image_data: &[u8],
+        options: &OcrOptions,
+    ) -> OcrResult<RegionOcrResult> {
+        #[cfg(target_os = "android")]
+        {
+            self.ensure_available()?;
+            self.process_android_ocr(image_data, options)
+        }
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        {
+            self.process_desktop_tesseract(image_data, options)
+        }
+        #[cfg(target_os = "ios")]
+        {
+            let _ = (image_data, options);
+            self.ensure_available()?;
+            Err(oxidize_pdf::OcrError::ProviderNotAvailable(
+                "Image OCR is unavailable on this platform.".to_string(),
+            ))
+        }
+    }
+
     #[cfg(target_os = "android")]
     fn process_android_ocr(
         &self,
@@ -232,7 +256,7 @@ impl PlatformOcrProvider {
                     .to_string(),
             ));
         }
-        let lines = regions::hocr_lines(&result.hocr);
+        let lines = regions::parse_lines(&result.hocr, "hocr");
         let mut output = RegionOcrResult {
             version: 1,
             text: result.text,
@@ -524,7 +548,7 @@ fn parse_tesseract_tsv(tsv: &str, psm: u8) -> ParsedTsv {
         .count();
     ParsedTsv {
         text,
-        lines: regions::tsv_lines(tsv),
+        lines: regions::parse_lines(tsv, "tsv"),
         confidence,
         nonspace_chars,
         alphabetic_chars,

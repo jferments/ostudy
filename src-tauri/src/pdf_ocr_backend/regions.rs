@@ -4,14 +4,18 @@
 use oxidize_pdf::{OcrError, OcrProcessingResult, OcrResult};
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(not(target_os = "ios"), test))]
 mod parsers;
 mod runtime;
 
-#[cfg(target_os = "android")]
-pub(super) use parsers::hocr_lines;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(super) use parsers::tsv_lines;
+/// Both native layout formats use the same application-owned geometry contract.
+/// Platform selection stays in the existing OCR adapter, not this representation.
+pub(super) fn parse_lines(layout: &str, format: &str) -> Vec<OcrLine> {
+    match format {
+        "tsv" => parsers::tsv_lines(layout),
+        "hocr" => parsers::hocr_lines(layout),
+        _ => Vec::new(),
+    }
+}
 
 pub(crate) const MAX_OCR_LINES: usize = 4096;
 pub(crate) const MAX_OCR_TEXT: usize = 250_000;
@@ -33,7 +37,6 @@ impl PixelBounds {
             && self.bottom <= height
     }
 
-    #[cfg(any(target_os = "android", test))]
     fn contains(self, other: Self) -> bool {
         self.left <= other.left
             && self.top <= other.top
@@ -41,7 +44,6 @@ impl PixelBounds {
             && self.bottom >= other.bottom
     }
 
-    #[cfg(any(not(target_os = "ios"), test))]
     fn union(self, other: Self) -> Self {
         Self {
             left: self.left.min(other.left),
@@ -102,7 +104,9 @@ impl RegionOcrResult {
                 || line.text.trim().is_empty()
                 || line.group.len() > 128
                 || line.confidence.is_some_and(|value| !valid_confidence(value))
-                || line.bounds.is_some_and(|bounds| !bounds.within(self.width, self.height))
+                || line
+                    .bounds
+                    .is_some_and(|bounds| !bounds.within(self.width, self.height))
             {
                 return Err(invalid_regions());
             }
@@ -141,7 +145,10 @@ impl RegionOcrResult {
             };
         }
         for line in &mut self.lines {
-            if line.bounds.is_some_and(|bounds| !bounds.within(self.width, self.height)) {
+            if line
+                .bounds
+                .is_some_and(|bounds| !bounds.within(self.width, self.height))
+            {
                 line.bounds = None;
             }
         }

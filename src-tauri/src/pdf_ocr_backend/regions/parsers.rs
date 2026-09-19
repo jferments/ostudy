@@ -2,7 +2,6 @@
 
 use super::{OcrLine, PixelBounds, MAX_OCR_LINES};
 
-#[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
 pub(crate) fn tsv_lines(tsv: &str) -> Vec<OcrLine> {
     let mut lines = Vec::<OcrLine>::new();
     let mut current = None::<(i64, i64, i64)>;
@@ -38,7 +37,10 @@ pub(crate) fn tsv_lines(tsv: &str) -> Vec<OcrLine> {
         } else if let Some(line) = lines.last_mut() {
             line.text.push(' ');
             line.text.push_str(columns[11].trim());
-            line.bounds = line.bounds.zip(bounds).map(|(left, right)| left.union(right));
+            line.bounds = line
+                .bounds
+                .zip(bounds)
+                .map(|(left, right)| left.union(right));
             // A strong neighbour cannot hide a weak decimal, sign or negation.
             line.confidence = line.confidence.zip(confidence).map(|(a, b)| a.min(b));
         }
@@ -46,7 +48,6 @@ pub(crate) fn tsv_lines(tsv: &str) -> Vec<OcrLine> {
     lines
 }
 
-#[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
 fn word_bounds(columns: &[&str]) -> Option<PixelBounds> {
     let left = columns[6].parse::<u32>().ok()?;
     let top = columns[7].parse::<u32>().ok()?;
@@ -63,7 +64,6 @@ fn word_bounds(columns: &[&str]) -> Option<PixelBounds> {
     })
 }
 
-#[cfg(any(target_os = "android", test))]
 pub(crate) fn hocr_lines(hocr: &str) -> Vec<OcrLine> {
     if hocr.len() > 16 * 1024 * 1024 {
         return Vec::new();
@@ -139,7 +139,6 @@ pub(crate) fn hocr_lines(hocr: &str) -> Vec<OcrLine> {
     lines
 }
 
-#[cfg(any(target_os = "android", test))]
 fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
     node.is_element()
         && node
@@ -147,7 +146,6 @@ fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
             .is_some_and(|value| value.split_ascii_whitespace().any(|value| value == class))
 }
 
-#[cfg(any(target_os = "android", test))]
 fn hocr_attribute<'a>(title: &'a str, name: &str) -> Option<&'a str> {
     title.split(';').find_map(|part| {
         let (key, value) = part.trim().split_once(' ')?;
@@ -155,7 +153,6 @@ fn hocr_attribute<'a>(title: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
-#[cfg(any(target_os = "android", test))]
 fn hocr_bounds(title: &str) -> Option<PixelBounds> {
     let numbers = hocr_attribute(title, "bbox")?
         .split_ascii_whitespace()
