@@ -78,7 +78,9 @@ impl ImageMember {
             || self.pixel_contract != PIXEL_CONTRACT
             || self.quarter_turns > 3
         {
-            return Err(invalid("Unsupported or inconsistent image-member metadata."));
+            return Err(invalid(
+                "Unsupported or inconsistent image-member metadata.",
+            ));
         }
         if let Some(crop) = self.inclusion {
             crop.validate()?;

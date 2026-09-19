@@ -43,7 +43,9 @@ impl ImportImageSetInput {
             || self.title.chars().count() > 255
             || self.title.chars().any(char::is_control)
         {
-            return Err(invalid("Give the image set a title of 1 to 255 characters."));
+            return Err(invalid(
+                "Give the image set a title of 1 to 255 characters.",
+            ));
         }
         let ids = self
             .members

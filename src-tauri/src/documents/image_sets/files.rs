@@ -68,7 +68,9 @@ impl InitialSource {
                 .components()
                 .any(|component| !matches!(component, Component::Normal(_)))
         {
-            return Err(invalid("An image-set file escaped its candidate directory."));
+            return Err(invalid(
+                "An image-set file escaped its candidate directory.",
+            ));
         }
         let parent = target
             .parent()
@@ -148,7 +150,8 @@ pub(crate) fn reconcile_pending(database: &Database, paths: &AppPaths) -> Result
         };
         if marker.version != 1
             || marker.document_id != name
-            || crate::util::validate_entity_id(&marker.operation_id, "image import operation").is_err()
+            || crate::util::validate_entity_id(&marker.operation_id, "image import operation")
+                .is_err()
         {
             continue;
         }

@@ -296,7 +296,9 @@ pub(super) fn read_inspected(
         .read_to_end(&mut bytes)
         .map_err(|_| unreadable())?;
     if bytes.len() as u64 != inspected.byte_size || sha256_hex(&bytes) != inspected.sha256 {
-        return Err(invalid("The selected image bytes changed after inspection."));
+        return Err(invalid(
+            "The selected image bytes changed after inspection.",
+        ));
     }
     Ok(bytes)
 }

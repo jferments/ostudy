@@ -8,11 +8,14 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    assets::detect_image_bytes, document_domain::DocumentFormat, document_ingestion,
+    assets::detect_image_bytes,
+    document_domain::DocumentFormat,
+    document_ingestion,
     documents::image_sets::{
         backup as image_sets, manifest::ImageManifest, repository as image_set_repository,
     },
-    error::CommandError, paths::AppPaths,
+    error::CommandError,
+    paths::AppPaths,
 };
 
 const MAX_SOURCE_DOCUMENT_BYTES: usize = 512 * 1024 * 1024;
