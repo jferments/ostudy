@@ -10,7 +10,6 @@ use std::{
 
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
 
 use crate::{
     cards::questions::occlusion::{CanonicalImage, MAX_IMAGE_BYTES},
@@ -19,7 +18,6 @@ use crate::{
     error::CommandError,
     external_files::{self, ExternalFileKind, ExternalImportPurpose},
     paths::AppPaths,
-    task_activity::ActivityGuard,
     util::validate_entity_id,
 };
 
@@ -78,32 +76,6 @@ pub struct ImageSetInspection {
     pub can_import: bool,
     pub decoded_images: usize,
     pub reused_images: usize,
-}
-
-/// Only explicit selection invokes this command. CPU/IO work stays off Tauri's
-/// event loop; the shared activity lease excludes a concurrent library restore.
-#[tauri::command]
-pub async fn inspect_image_set(
-    app: AppHandle,
-    input: InspectImageSetInput,
-) -> Result<ImageSetInspection, CommandError> {
-    validate_selection(&input.staged_file_ids)?;
-    let activity = ActivityGuard::begin()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let _activity = activity;
-        inspect(
-            app.state::<Database>().inner(),
-            app.state::<AppPaths>().inner(),
-            &input.staged_file_ids,
-        )
-    })
-    .await
-    .map_err(|_| {
-        CommandError::new(
-            "image_set_inspection_interrupted",
-            "Image inspection stopped. The selected files were not imported or removed.",
-        )
-    })?
 }
 
 pub(crate) fn validate_selection(ids: &[String]) -> Result<(), CommandError> {
