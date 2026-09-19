@@ -17,17 +17,25 @@ fn result(text: &str, lines: Vec<OcrLine>) -> RegionOcrResult {
 }
 
 fn bounds(left: u32, top: u32, right: u32, bottom: u32) -> PixelBounds {
-    PixelBounds { left, top, right, bottom }
+    PixelBounds {
+        left,
+        top,
+        right,
+        bottom,
+    }
 }
 
 #[test]
 fn image_ocr_tsv_retains_actual_lines_bounds_and_the_weakest_word_confidence() {
-    let tsv = format!("{HEADER}{}", concat!(
-        "5\t1\t2\t3\t1\t1\t10\t20\t30\t10\t99\tDose\n",
-        "5\t1\t2\t3\t1\t2\t50\t21\t20\t9\t40\t0.50\n",
-        "5\t1\t2\t3\t1\t3\t75\t20\t10\t10\t95\tµg\n",
-        "5\t1\t2\t3\t2\t1\t10\t40\t70\t10\t91\tnot positive\n",
-    ));
+    let tsv = format!(
+        "{HEADER}{}",
+        concat!(
+            "5\t1\t2\t3\t1\t1\t10\t20\t30\t10\t99\tDose\n",
+            "5\t1\t2\t3\t1\t2\t50\t21\t20\t9\t40\t0.50\n",
+            "5\t1\t2\t3\t1\t3\t75\t20\t10\t10\t95\tµg\n",
+            "5\t1\t2\t3\t2\t1\t10\t40\t70\t10\t91\tnot positive\n",
+        )
+    );
     let lines = parsers::tsv_lines(&tsv);
     assert_eq!(lines.len(), 2);
     assert_eq!(lines[0].text, "Dose 0.50 µg");
@@ -35,7 +43,9 @@ fn image_ocr_tsv_retains_actual_lines_bounds_and_the_weakest_word_confidence() {
     assert_eq!(lines[0].confidence, Some(0.4));
     assert_eq!(lines[0].group, "2:3");
     assert_eq!(lines[1].text, "not positive");
-    result("Dose 0.50 µg\nnot positive", lines).validate().unwrap();
+    result("Dose 0.50 µg\nnot positive", lines)
+        .validate()
+        .unwrap();
 }
 
 #[test]
@@ -122,7 +132,10 @@ fn image_ocr_validation_rejects_forged_order_numbers_geometry_and_versions() {
         assert!(candidate.validate().is_err());
     }
     let encoded = serde_json::to_vec(&valid).unwrap();
-    assert_eq!(serde_json::from_slice::<RegionOcrResult>(&encoded).unwrap(), valid);
+    assert_eq!(
+        serde_json::from_slice::<RegionOcrResult>(&encoded).unwrap(),
+        valid
+    );
 }
 
 #[test]

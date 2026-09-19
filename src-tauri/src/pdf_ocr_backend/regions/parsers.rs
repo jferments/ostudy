@@ -120,7 +120,9 @@ pub(crate) fn hocr_lines(hocr: &str) -> Vec<OcrLine> {
                     .filter(|value| value.is_finite() && (0.0..=100.0).contains(value))
                     .map(|value| value / 100.0)
             })
-            .try_fold(1.0_f64, |minimum, value| value.map(|value| minimum.min(value)));
+            .try_fold(1.0_f64, |minimum, value| {
+                value.map(|value| minimum.min(value))
+            });
         let group = node
             .ancestors()
             .find(|parent| has_class(*parent, "ocr_par"))

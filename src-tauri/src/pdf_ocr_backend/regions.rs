@@ -103,7 +103,9 @@ impl RegionOcrResult {
             if length > MAX_OCR_TEXT
                 || line.text.trim().is_empty()
                 || line.group.len() > 128
-                || line.confidence.is_some_and(|value| !valid_confidence(value))
+                || line
+                    .confidence
+                    .is_some_and(|value| !valid_confidence(value))
                 || line
                     .bounds
                     .is_some_and(|bounds| !bounds.within(self.width, self.height))
