@@ -9,6 +9,8 @@ use super::current_format_questions::{id, rich};
 use super::*;
 use crate::cards::questions::{QuestionAttempt, ValidatedQuestion};
 
+#[path = "current_format_tests/images.rs"]
+mod images;
 #[path = "current_format_tests/knowledge.rs"]
 mod knowledge;
 
@@ -99,6 +101,7 @@ fn manifest(database: &Database) -> BTreeMap<String, (usize, String)> {
                 QuestionAttempt::restore(&row.map_err(CommandError::database)?)?;
             }
             knowledge::verify(connection)?;
+            images::verify(connection)?;
             Ok(rows(connection))
         })
         .unwrap()
@@ -242,7 +245,8 @@ fn current_library_preserves_every_value_identity_and_asset_through_reopen_and_r
         .unwrap();
     let document_path = super::current_format_sources::seed(&database, &paths, &deck);
     knowledge::seed(&database);
-    let relative = vec![asset_path, document_path];
+    let mut relative = vec![asset_path, document_path];
+    relative.extend(images::seed(&database, &paths, image));
     let before = manifest(&database);
     let before_files = files(&paths, &relative);
     for (table, count) in [
@@ -259,6 +263,9 @@ fn current_library_preserves_every_value_identity_and_asset_through_reopen_and_r
         ("knowledge_analysis_windows", 1),
         ("document_evidence_payloads", 1),
         ("document_evidence_occurrences", 1),
+        ("document_image_sets", 1),
+        ("document_image_members", 2),
+        ("document_image_imports", 1),
     ] {
         assert_eq!(before[table].0, count, "fixture coverage: {table}");
     }

@@ -38,3 +38,32 @@ export async function inspectImageSet(
     input: { stagedFileIds: [...stagedFileIds] },
   });
 }
+
+export interface ImageSetInclusionCrop {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface ImportImageSetInput {
+  /** Retain this identity when recovering an interrupted acknowledgement. */
+  operationId: string;
+  title: string;
+  members: {
+    stagedFileId: string;
+    quarterTurns: 0 | 1 | 2 | 3;
+    /** Source inclusion in native upright coordinates, not a display-only crop. */
+    inclusion: ImageSetInclusionCrop | null;
+  }[];
+}
+
+export interface ImportedImageSet {
+  documentId: string;
+  revision: number;
+}
+
+/** Retain originals and the ordered manifest; no OCR or generation is started. */
+export async function importImageSet(input: ImportImageSetInput): Promise<ImportedImageSet> {
+  return invoke<ImportedImageSet>("import_image_set", { input });
+}

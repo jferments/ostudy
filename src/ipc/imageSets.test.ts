@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { inspectImageSet, type ImageSetInspection } from "./imageSets";
+import { inspectImageSet, importImageSet, type ImageSetInspection, type ImportImageSetInput } from "./imageSets";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -63,4 +63,30 @@ it("does not retry or consume files after native refusal", async () => {
   vi.mocked(invoke).mockRejectedValue(failure);
   await expect(inspectImageSet(["a".repeat(32)])).rejects.toBe(failure);
   expect(invoke).toHaveBeenCalledTimes(1);
+});
+
+it("preserves the import operation identity and native source-inclusion intent", async () => {
+  const input: ImportImageSetInput = {
+    operationId: "e".repeat(32),
+    title: "Ordered images",
+    members: [
+      { stagedFileId: "b".repeat(32), quarterTurns: 1, inclusion: null },
+      { stagedFileId: "a".repeat(32), quarterTurns: 0, inclusion: { left: 0, top: 0.25, right: 1, bottom: 1 } },
+    ],
+  };
+  const result = { documentId: "f".repeat(32), revision: 1 };
+  vi.mocked(invoke).mockResolvedValue(result);
+  expect(await importImageSet(input)).toBe(result);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("import_image_set", { input });
+});
+
+it("does not allocate a new operation or start generation after an import acknowledgement fails", async () => {
+  const input: ImportImageSetInput = {
+    operationId: "e".repeat(32), title: "Ordered images",
+    members: [{ stagedFileId: "b".repeat(32), quarterTurns: 0, inclusion: null }],
+  };
+  const failure = { code: "image_set_import_interrupted", message: "Retry the same operation." };
+  vi.mocked(invoke).mockRejectedValue(failure);
+  await expect(importImageSet(input)).rejects.toBe(failure);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("import_image_set", { input });
 });

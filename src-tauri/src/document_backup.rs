@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     assets::detect_image_bytes, document_domain::DocumentFormat, document_ingestion,
+    documents::image_sets::{backup as image_sets, manifest::ImageManifest, repository as image_set_repository},
     error::CommandError, paths::AppPaths,
 };
 
@@ -59,6 +60,9 @@ pub(crate) fn export_document_files(
         )?;
         let format = DocumentFormat::from_db(&source_format)?;
         validate_source_bytes(format, &relative_path, &data, "invalid_document_file")?;
+        if format == DocumentFormat::ImageBundle {
+            image_set_repository::validate_manifest_bytes(snapshot, &document_id, &data)?;
+        }
         transaction
             .execute(
                 "INSERT INTO document_files (
@@ -160,7 +164,7 @@ pub(crate) fn export_document_files(
                  ORDER BY document_id, asset_id",
             )
             .map_err(CommandError::database)?;
-        let assets = asset_statement
+        let mut assets = asset_statement
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -174,6 +178,7 @@ pub(crate) fn export_document_files(
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)?;
+        assets.extend(image_sets::originals(snapshot)?);
         for (document_id, asset_id, mime_type, relative_path, byte_size, sha256) in assets {
             validate_document_path(&document_id, None, "source_asset", &relative_path)?;
             let data = read_managed_file(
@@ -184,6 +189,7 @@ pub(crate) fn export_document_files(
                 "A managed document image is missing or does not match its database record.",
             )?;
             validate_source_asset_bytes(&data, &mime_type, "invalid_document_file")?;
+            image_sets::validate_original_bytes(snapshot, &document_id, &relative_path, &data)?;
             transaction
                 .execute(
                     "INSERT INTO document_files (
@@ -244,7 +250,8 @@ pub(crate) fn validate_document_files(
     };
     let expected = expected_sources
         .saturating_add(expected_pages)
-        .saturating_add(expected_assets);
+        .saturating_add(expected_assets)
+        .saturating_add(image_sets::original_count(snapshot)?);
     let actual: i64 = package
         .query_row("SELECT COUNT(*) FROM document_files", [], |row| row.get(0))
         .map_err(CommandError::database)?;
@@ -360,7 +367,9 @@ pub(crate) fn validate_document_files(
                 None,
             ),
             "source_asset" => (
-                if table_exists(snapshot, "document_source_assets")? {
+                if image_sets::valid_original_path(&document_id, &relative_path) {
+                    image_sets::original_record(snapshot, &document_id, &relative_path)?
+                } else if table_exists(snapshot, "document_source_assets")? {
                     snapshot
                         .query_row(
                             "SELECT relative_path, media_type, byte_size, sha256
@@ -416,12 +425,13 @@ pub(crate) fn validate_document_files(
             ));
         }
         match file_kind.as_str() {
-            "source_pdf" | "source_document" => validate_source_bytes(
-                source_format.unwrap_or(DocumentFormat::Pdf),
-                &relative_path,
-                &data,
-                "invalid_backup",
-            )?,
+            "source_pdf" | "source_document" => {
+                let format = source_format.unwrap_or(DocumentFormat::Pdf);
+                validate_source_bytes(format, &relative_path, &data, "invalid_backup")?;
+                if format == DocumentFormat::ImageBundle {
+                    image_set_repository::validate_manifest_bytes(snapshot, &document_id, &data)?;
+                }
+            }
             "page_render" => {
                 if !is_png(&data) || mime_type != "image/png" {
                     return Err(CommandError::new(
@@ -432,6 +442,7 @@ pub(crate) fn validate_document_files(
             }
             "source_asset" => {
                 validate_source_asset_bytes(&data, &mime_type, "invalid_backup")?;
+                image_sets::validate_original_bytes(snapshot, &document_id, &relative_path, &data)?;
             }
             _ => unreachable!("file kind was rejected above"),
         }
@@ -485,6 +496,9 @@ fn validate_source_bytes(
     data: &[u8],
     error_code: &'static str,
 ) -> Result<(), CommandError> {
+    if format == DocumentFormat::ImageBundle {
+        return ImageManifest::decode(data).map(|_| ());
+    }
     let filename = Path::new(relative_path)
         .file_name()
         .and_then(|value| value.to_str())
@@ -542,7 +556,10 @@ fn validate_document_path(
             relative_path == AppPaths::document_source_relative_path(document_id)
         }
         ("source_document", None) => valid_source_document_path(document_id, relative_path),
-        ("source_asset", None) => valid_source_asset_path(document_id, &components),
+        ("source_asset", None) => {
+            valid_source_asset_path(document_id, &components)
+                || image_sets::valid_original_path(document_id, relative_path)
+        }
         ("page_render", Some(page)) if page >= 1 => {
             components.len() == 4
                 && components[0] == Component::Normal("documents".as_ref())
@@ -562,6 +579,9 @@ fn validate_document_path(
 }
 
 fn valid_source_document_path(document_id: &str, relative_path: &str) -> bool {
+    if image_sets::valid_manifest_path(document_id, relative_path) {
+        return true;
+    }
     let path = Path::new(relative_path);
     let extension = path.extension().and_then(|value| value.to_str());
     extension.is_some_and(|extension| {

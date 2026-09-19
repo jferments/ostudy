@@ -79,5 +79,24 @@ pub(super) fn validate_public_input(connection: &Connection) -> Result<i64, Stri
         crate::document_canonical_store::evidence::validate(connection)
             .map_err(|error| error.message)?;
     }
+    if (2..19).contains(&version) {
+        // Older registries named image bundles but did not implement this
+        // manifest contract. Refuse unknown retained sources before migrations
+        // can write; never fabricate membership from filenames or derivatives.
+        let unsupported: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM documents WHERE source_format IN ('image_bundle', 'image'))",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("Could not inspect image source contracts: {error}"))?;
+        if unsupported {
+            return Err("This library contains an unsupported historical image source. The database was not modified.".to_string());
+        }
+    }
+    if version >= 19 {
+        crate::documents::image_sets::repository::validate(connection)
+            .map_err(|error| error.message)?;
+    }
     Ok(version)
 }

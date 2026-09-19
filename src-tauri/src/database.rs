@@ -160,9 +160,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0018_canonical_evidence.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 19,
+        name: "image_sets",
+        checksum: "b1a4d4b0463faf8affdbaa205e29e0ae506b31dd3bf8ea4edf9fd5b5e7d0ca92",
+        sql: include_str!("../migrations/0019_image_sets.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 18;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 19;
 
 pub struct Database {
     connection: Mutex<Connection>,

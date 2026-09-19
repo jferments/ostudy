@@ -6,7 +6,10 @@ use crate::{
 
 use super::{
     contracts::DocumentDto,
-    image_sets::admission::{self, ImageSetInspection, InspectImageSetInput},
+    image_sets::{
+        admission::{self, ImageSetInspection, InspectImageSetInput},
+        import::{self as image_import, ImportImageSetInput, ImportedImageSet},
+    },
     repository,
 };
 
@@ -37,6 +40,32 @@ pub async fn inspect_image_set(
         CommandError::new(
             "image_set_inspection_interrupted",
             "Image inspection stopped. The selected files were not imported or removed.",
+        )
+    })?
+}
+
+/// Retain one whole source before extraction. A retry uses the same operation
+/// identity even when the original invocation's acknowledgement was interrupted.
+#[tauri::command]
+pub async fn import_image_set(
+    app: AppHandle,
+    input: ImportImageSetInput,
+) -> Result<ImportedImageSet, CommandError> {
+    input.validate()?;
+    let activity = ActivityGuard::begin()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _activity = activity;
+        image_import::import(
+            app.state::<Database>().inner(),
+            app.state::<AppPaths>().inner(),
+            &input,
+        )
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "image_set_import_interrupted",
+            "The import acknowledgement was interrupted. Retry the same operation to recover its saved result.",
         )
     })?
 }
