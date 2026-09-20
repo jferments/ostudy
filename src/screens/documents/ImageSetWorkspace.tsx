@@ -267,8 +267,8 @@ export function ImageSetWorkspace(props: ImageSetWorkspaceProps) {
         ) : controller.details ? (
           <>
             <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2">
-              <Badge tone={controller.details.prepared ? "success" : "warning"}>
-                {controller.details.prepared ? "Prepared" : "Needs local preparation"}
+              <Badge tone={controller.details?.prepared ? "success" : "warning"}>
+                {controller.details?.prepared ? "Prepared" : "Needs local preparation"}
               </Badge>
               <span className="tw:text-sm tw:text-muted-foreground">
                 Revision {controller.details.revision} · {controller.details.members.length} image{controller.details.members.length === 1 ? "" : "s"}
@@ -364,7 +364,7 @@ export function ImageSetWorkspace(props: ImageSetWorkspaceProps) {
                     </label>
                   </div>
 
-                  {!controller.details.prepared ? (
+                  {!controller.details?.prepared ? (
                     <InlineNotice kind="warning">
                       Prepare the current source before changing region filters. The previous processing receipt remains inspectable while edits are pending.
                     </InlineNotice>
@@ -381,7 +381,7 @@ export function ImageSetWorkspace(props: ImageSetWorkspaceProps) {
                             <NativeSelect
                               aria-label={`Content filter for ${region.text || "unreadable region"}`}
                               value={controller.regionActions[region.id] ?? "automatic"}
-                              disabled={busy || !controller.details.prepared}
+                              disabled={busy || !controller.details?.prepared}
                               onChange={(event) =>
                                 controller.setRegionAction(
                                   region.id,
@@ -414,7 +414,7 @@ export function ImageSetWorkspace(props: ImageSetWorkspaceProps) {
                     <Button
                       variant="primary"
                       loading={controller.busyAction === "filters"}
-                      disabled={busy || !controller.details.prepared}
+                      disabled={busy || !controller.details?.prepared}
                       onClick={() => void controller.saveFilters()}
                     >
                       Save Content filter
