@@ -68,12 +68,24 @@ pub(crate) fn begin(
     task: &DocumentTaskContext,
 ) -> Result<TurnIdentity, CommandError> {
     input.validate()?;
-    let request_json = serde_json::to_string(input).map_err(CommandError::serialization)?;
-    let request_hash = hash(&request_json);
+    let request_hash = hash(
+        &serde_json::to_string(input).map_err(CommandError::serialization)?,
+    );
     database.with_connection(|connection| {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         let conversation = conversations::load_summary(&transaction, &input.conversation_id)?;
+        let mut request_value =
+            serde_json::to_value(input).map_err(CommandError::serialization)?;
+        let request_object = request_value
+            .as_object_mut()
+            .ok_or_else(|| invalid("The tutor request could not be captured."))?;
+        request_object.insert(
+            "capturedScope".to_string(),
+            serde_json::to_value(&conversation.scope).map_err(CommandError::serialization)?,
+        );
+        let request_json =
+            serde_json::to_string(&request_value).map_err(CommandError::serialization)?;
         if conversation.revision != input.expected_revision {
             return Err(conversations::changed());
         }

@@ -2,7 +2,7 @@
 //! scope filter runs before vector ranking; no keyword match is required for a
 //! passage to become a candidate. Source revisions are checked again afterward.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
@@ -20,6 +20,7 @@ use crate::{
 
 use super::{
     adapters::scope_documents,
+    collection_scope,
     contracts::{bounded, invalid, ScopeKind, SourceCitation, SourceRecord, StudyScope},
     index::{IndexKey, VectorHit},
     preparation::open_index,
@@ -192,6 +193,30 @@ pub(crate) fn eligible_entries_in(
     scope.validate()?;
     if scope.kind == ScopeKind::General {
         return Ok(Vec::new());
+    }
+    if collection_scope::has_collection(scope) {
+        let mut entries = BTreeMap::new();
+        for entry in collection_scope::eligible_entries(connection, scope)? {
+            entries.insert(entry.id.clone(), entry);
+        }
+        for member in scope
+            .material_scopes()
+            .into_iter()
+            .filter(|member| member.kind != ScopeKind::Collection)
+        {
+            for entry in eligible_entries_in(connection, &member, false)? {
+                entries.insert(entry.id.clone(), entry);
+            }
+        }
+        if entries.len() > MAX_ELIGIBLE_ENTRIES {
+            return Err(invalid(
+                "This semantic search scope is too large. Select fewer sources.",
+            ));
+        }
+        // Historical conversation text is never reused implicitly for a dynamic
+        // collection scope. Current collection evidence remains available.
+        let _ = include_conversations;
+        return Ok(entries.into_values().collect());
     }
     let documents = scope_documents(connection, scope)?;
     let members = scope.material_scopes();

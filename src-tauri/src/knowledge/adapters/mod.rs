@@ -38,7 +38,7 @@ pub(crate) fn enumerate_sources(
     scope.validate()?;
     database.with_connection(|connection| {
         let mut seeds = scopes::enumerate_material(connection, scope)?;
-        if include_conversations {
+        if include_conversations && !super::collection_scope::has_collection(scope) {
             let scope_json = serde_json::to_string(scope).map_err(CommandError::serialization)?;
             let mut statement = connection
                 .prepare(
