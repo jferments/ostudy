@@ -8,7 +8,9 @@ mod conversations;
 mod focus;
 mod history;
 mod memory;
+mod organization;
 mod output;
+mod projects;
 mod service;
 mod turns;
 

@@ -15,7 +15,8 @@ vi.mock("../../ipc/tutor", () => ({ createTutorConversation: vi.fn(), deleteTuto
   getTutorConversation: vi.fn(), listTutorConversations: vi.fn(), sendTutorTurn: vi.fn() }));
 
 const conversation: ConversationSummary = {
-  id: "a".repeat(32), title: "Geometry", scope: { kind: "general", id: null }, revision: 1, createdAt: 1, updatedAt: 1,
+  id: "a".repeat(32), title: "Geometry", scope: { kind: "general", id: null },
+  projectId: null, revision: 1, organizationRevision: 1, archivedAt: null, createdAt: 1, updatedAt: 1,
 };
 const turn: TutorTurn = {
   id: "b".repeat(32), operationId: "c".repeat(32), sequence: 1, mode: "explain", userText: "Explain triangles",

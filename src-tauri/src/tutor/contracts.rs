@@ -225,13 +225,16 @@ pub struct QuizFeedback {
     pub criteria_feedback: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
     pub id: String,
     pub title: String,
     pub scope: StudyScope,
+    pub project_id: Option<String>,
     pub revision: i64,
+    pub organization_revision: i64,
+    pub archived_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -266,6 +269,50 @@ pub struct ConversationDetail {
     pub has_earlier_turns: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateProjectConversationInput {
+    pub operation_id: String,
+    pub project_id: String,
+    pub title: String,
+}
+
+impl CreateProjectConversationInput {
+    pub(crate) fn validate(&self) -> Result<(), CommandError> {
+        validate_entity_id(&self.operation_id, "conversation operation")?;
+        validate_entity_id(&self.project_id, "Tutor project")?;
+        bounded(&self.title, 200, "conversation title", false)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameConversationInput {
+    pub operation_id: String,
+    pub conversation_id: String,
+    pub expected_organization_revision: i64,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MoveConversationInput {
+    pub operation_id: String,
+    pub conversation_id: String,
+    pub expected_organization_revision: i64,
+    pub project_id: Option<String>,
+    pub apply_project_default: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetConversationArchivedInput {
+    pub operation_id: String,
+    pub conversation_id: String,
+    pub expected_organization_revision: i64,
+    pub archived: bool,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationPageInput {
@@ -273,11 +320,13 @@ pub struct ConversationPageInput {
     pub before_sequence: Option<i64>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeleteConversationInput {
+    pub operation_id: String,
     pub conversation_id: String,
     pub expected_revision: i64,
+    pub expected_organization_revision: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

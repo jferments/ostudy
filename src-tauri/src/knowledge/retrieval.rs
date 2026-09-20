@@ -254,7 +254,8 @@ pub(crate) fn eligible_entries_in(
                  OR (?5 = 1 AND s.kind = 'conversation' AND EXISTS(
                      SELECT 1 FROM tutor_turns t JOIN tutor_conversations tc ON tc.id = t.conversation_id
                      WHERE t.id = s.turn_id AND t.state = 'complete' AND t.evidence_current = 1
-                       AND tc.scope_json = ?6 AND tc.retrieval_enabled = 1 AND t.sequence > tc.memory_start_sequence))
+                       AND COALESCE(json_extract(t.request_json, '$.capturedScope'), tc.scope_json) = ?6
+                       AND tc.retrieval_enabled = 1 AND t.sequence > tc.memory_start_sequence))
              )
          )
          SELECT 'source:' || s.id, s.id, s.content_hash FROM allowed_sources s

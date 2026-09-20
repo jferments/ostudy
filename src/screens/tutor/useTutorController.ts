@@ -38,6 +38,7 @@ export function useTutorController() {
   const [pending, setPendingState] = useState<TutorTurnInput | null>(null);
   const pendingRef = useRef<TutorTurnInput | null>(null);
   const creating = useRef<Parameters<typeof createTutorConversation>[0] | null>(null);
+  const deleting = useRef<{ conversationId: string; operationId: string } | null>(null);
   const active = useRef<string | null>(null);
   const mutating = useRef(false);
   const alive = useRef(true);
@@ -306,13 +307,32 @@ export function useTutorController() {
     mutating.current = true;
     detailLane.invalidate();
     setBusy(true);
+    const operation = deleting.current?.conversationId === value.conversation.id
+      ? deleting.current
+      : { conversationId: value.conversation.id, operationId: createOperationId() };
+    deleting.current = operation;
     try {
-      await deleteTutorConversation({ conversationId: value.conversation.id, expectedRevision: value.conversation.revision });
+      await deleteTutorConversation({
+        operationId: operation.operationId,
+        conversationId: value.conversation.id,
+        expectedRevision: value.conversation.revision,
+        expectedOrganizationRevision: value.conversation.organizationRevision,
+      });
+      deleting.current = null;
       setDetail(null);
       setConversations((saved) => saved.filter((entry) => entry.id !== value.conversation.id));
       setDraft("");
       setError(null);
-    } catch (failure: unknown) { setError(getErrorMessage(failure)); }
+    } catch (failure: unknown) {
+      const code = getErrorCode(failure);
+      if (code && (code.startsWith("invalid_") || [
+        "tutor_conversation_changed",
+        "tutor_conversation_organization_changed",
+        "tutor_conversation_missing",
+        "tutor_turn_running",
+      ].includes(code))) deleting.current = null;
+      setError(getErrorMessage(failure));
+    }
     finally { mutating.current = false; setBusy(false); }
   }
 

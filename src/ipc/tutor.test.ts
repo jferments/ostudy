@@ -60,7 +60,12 @@ describe("tutor IPC", () => {
     await listTutorConversations();
     await createTutorConversation({ operationId: id, scope: { kind: "general", id: null }, title: "Geometry" });
     await getTutorConversation({ conversationId: id, beforeSequence: 50 });
-    await deleteTutorConversation({ conversationId: id, expectedRevision: 3 });
+    await deleteTutorConversation({
+      operationId: "d".repeat(32),
+      conversationId: id,
+      expectedRevision: 3,
+      expectedOrganizationRevision: 2,
+    });
     expect(invokeMock.mock.calls.map((call) => call[0])).toEqual([
       "list_tutor_conversations", "create_tutor_conversation", "get_tutor_conversation", "delete_tutor_conversation",
     ]);
