@@ -127,12 +127,7 @@ fn guide_content() -> StudyGuideSectionContent {
     StudyGuideSectionContent {
         overview: "Triangles have three sides.".to_string(),
         key_points: vec!["A triangle has three sides.".to_string()],
-        explanations: vec![],
-        important_terms: vec![],
-        process_steps: vec![],
-        comparisons: vec![],
-        common_misconceptions: vec![],
-        visual_explanations: vec![],
+        ..StudyGuideSectionContent::default()
     }
 }
 

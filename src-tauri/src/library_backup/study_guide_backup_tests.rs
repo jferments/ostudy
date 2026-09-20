@@ -45,12 +45,7 @@ mod study_guide_artifact_backup_tests {
         StudyGuideSectionContent {
             overview: "Preload is ventricular filling before systole.".to_string(),
             key_points: vec!["More filling can increase stroke volume.".to_string()],
-            explanations: Vec::new(),
-            important_terms: Vec::new(),
-            process_steps: Vec::new(),
-            comparisons: Vec::new(),
-            common_misconceptions: Vec::new(),
-            visual_explanations: Vec::new(),
+            ..StudyGuideSectionContent::default()
         }
     }
 
