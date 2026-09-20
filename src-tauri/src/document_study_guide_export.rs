@@ -1035,7 +1035,11 @@ impl PdfFlowWriter {
     }
 
     fn heading(&mut self, text: &str, size: f64, line_height: f64) -> Result<(), CommandError> {
-        self.ensure_space(line_height + (2.0 * BODY_LINE_HEIGHT))?;
+        let available_width = PAGE_WIDTH - (2.0 * MARGIN_X);
+        let line_count = wrap_text(text, available_width, size).len().max(1) as f64;
+        let heading_height =
+            (line_count * line_height) + (line_height * 0.35).max(2.0);
+        self.ensure_space(heading_height + (2.0 * BODY_LINE_HEIGHT))?;
         self.text_color(text, size, line_height, true, 0.0, color_accent())
     }
 
@@ -1971,6 +1975,46 @@ mod tests {
         let second = wrap_text(text, 100.0, 10.0);
         assert_eq!(first, second);
         assert!(first.len() > 1);
+    }
+
+    #[test]
+    fn wrapped_heading_moves_with_following_body_instead_of_splitting_at_page_bottom() {
+        let mut document = Document::new();
+        document.set_title("Heading pagination fixture");
+        let font = install_unicode_font(&mut document).unwrap();
+        let mut writer = PdfFlowWriter::new(document, font);
+        writer.enable_running_pages("Heading pagination fixture").unwrap();
+        writer
+            .paragraph("Earlier page content.", BODY_SIZE, BODY_LINE_HEIGHT, false)
+            .unwrap();
+        writer.y = MARGIN_BOTTOM + 60.0;
+        let heading = "A deliberately long study-guide heading that wraps across several lines and must move as one readable unit with the explanation that immediately follows it rather than leaving part of the heading stranded on the previous page";
+        writer.heading(heading, 12.5, 17.5).unwrap();
+        writer
+            .paragraph(
+                "Following explanation stays with the wrapped heading.",
+                BODY_SIZE,
+                BODY_LINE_HEIGHT,
+                false,
+            )
+            .unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-study-guide-heading-pagination-{}.pdf",
+            std::process::id()
+        ));
+        writer.finish(&root).unwrap();
+
+        let parsed = PdfDocument::new(
+            PdfReader::new(Cursor::new(fs::read(&root).unwrap())).unwrap(),
+        );
+        assert_eq!(parsed.page_count().unwrap(), 2);
+        let first = parsed.extract_text_from_page(0).unwrap().text;
+        let second = parsed.extract_text_from_page(1).unwrap().text;
+        assert!(first.contains("Earlier page content."));
+        assert!(!first.contains("deliberately long study-guide heading"));
+        assert!(second.contains("deliberately long study-guide heading"));
+        assert!(second.contains("Following explanation stays with"));
+        fs::remove_file(root).unwrap();
     }
 
     #[test]

@@ -1386,6 +1386,33 @@ mod tests {
     }
 
     #[test]
+    fn collection_guide_overlays_reject_unsupported_rich_content_before_persistence() {
+        let database = Database::open_in_memory().unwrap();
+        let error = save_collection_overlay(
+            &database,
+            SaveCollectionStudyGuideOverlayInput {
+                overlay_id: None,
+                collection_id: "a".repeat(32),
+                guide_id: "b".repeat(32),
+                block_key: None,
+                overlay_kind: CollectionStudyGuideOverlayKind::GuideNote,
+                base_content_hash: None,
+                rich_doc: json!({
+                    "type": "doc",
+                    "content": [{
+                        "type": "script",
+                        "attrs": {"src": "file:///tmp/not-allowed"}
+                    }]
+                }),
+                plain_text: "unsafe".to_string(),
+                expected_revision: None,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "invalid_study_target");
+    }
+
+    #[test]
     fn restart_interrupts_jobs_without_granting_provider_authorization() {
         let database = Database::open_in_memory().unwrap();
         database
