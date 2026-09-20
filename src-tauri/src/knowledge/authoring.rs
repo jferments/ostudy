@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::{
-    adapters::{materialize_sources, read_seed, SourceSeed},
+    adapters::{materialize_source_groups, read_seed, SourceSeed},
     contracts::{hash, ContentOrigin, KnowledgeUnit, SourceKind},
     extraction::{batch_ranges, ensure_units_batch, extraction_contract, retry_units_batch},
     repository,
@@ -179,6 +179,7 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
     let mut pending = Vec::new();
     let mut completed = 0;
     let mut remaining = std::collections::HashMap::<String, usize>::new();
+    let mut source_parents = std::collections::HashMap::<String, String>::new();
     let parallelism =
         crate::ai::concurrency::document_request_parallelism(&task.network_scope).clamp(1, 4);
     crate::logging::debug_target(
@@ -189,24 +190,22 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
     );
     for (batch_index, batch) in seeds.chunks(32).enumerate() {
         check_canceled(&cancellation)?;
-        let sources = materialize_sources(database, batch)?;
-        for seed in batch {
-            if !sources.iter().any(|source| {
-                source
-                    .segment_key
-                    .starts_with(&format!("{}:", seed.parent_key))
-            }) {
+        let groups = materialize_source_groups(database, batch)?;
+        let mut sources = Vec::new();
+        for (seed, group) in batch.iter().zip(groups) {
+            if group.is_empty() {
                 return Err(repository::stale_source());
             }
-        }
-        for source in &sources {
-            let parent = source
-                .segment_key
-                .split(':')
-                .next()
-                .unwrap_or(&source.segment_key)
-                .to_string();
-            *remaining.entry(parent).or_default() += 1;
+            for source in &group {
+                if source_parents
+                    .insert(source.id.clone(), seed.parent_key.clone())
+                    .is_some_and(|previous| previous != seed.parent_key)
+                {
+                    return Err(repository::stale_source());
+                }
+                *remaining.entry(seed.parent_key.clone()).or_default() += 1;
+            }
+            sources.extend(group);
         }
         pending.extend(sources);
         let ranges = batch_ranges(&pending);
@@ -255,11 +254,9 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
                 match outcome {
                     Ok(_) => {
                         for source in *group {
-                            let parent = source
-                                .segment_key
-                                .split(':')
-                                .next()
-                                .unwrap_or(&source.segment_key);
+                            let parent = source_parents
+                                .get(&source.id)
+                                .ok_or_else(repository::stale_source)?;
                             if let Some(left) = remaining.get_mut(parent) {
                                 *left = left.saturating_sub(1);
                                 if *left == 0 {

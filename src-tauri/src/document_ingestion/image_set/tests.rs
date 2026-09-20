@@ -124,6 +124,23 @@ fn image_set_adapter_reuses_ocr_and_publishes_the_existing_canonical_contract() 
             Ok(())
         })
         .unwrap();
+    let seeds = (0..output.canonical.semantic_chunks.len())
+        .map(|index| crate::knowledge::adapters::SourceSeed {
+            kind: crate::knowledge::contracts::SourceKind::Document,
+            owner_id: manifest.document_id.clone(),
+            parent_key: index.to_string(),
+        })
+        .collect::<Vec<_>>();
+    let groups =
+        crate::knowledge::adapters::materialize_source_groups(&fixture.database, &seeds).unwrap();
+    assert_eq!(groups.len(), seeds.len());
+    for (seed, group) in seeds.iter().zip(&groups) {
+        assert!(!group.is_empty());
+        assert!(group.iter().all(|source| source.segment_key.starts_with("image:")));
+        assert!(group
+            .iter()
+            .all(|source| !source.segment_key.starts_with(&format!("{}:", seed.parent_key))));
+    }
     let repeated = extract(&fixture, &manifest, Some("fixture-v1"), |_| {
         panic!("re-OCR on compatible retry")
     });
