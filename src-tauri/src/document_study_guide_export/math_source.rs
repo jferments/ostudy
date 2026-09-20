@@ -1,32 +1,82 @@
-//! Read-only detection/disclosure for the native source-notation PDF writer.
-//! This is not a second math renderer. The WebView still uses shared KaTeX.
+//! Mathematical segment detection and fallback accounting for PDF export.
+//!
+//! The WebView uses shared KaTeX. The native PDF renderer handles a bounded
+//! presentation subset and preserves original LaTeX visibly when that subset
+//! cannot represent an expression.
 
-use super::{EffectiveGuideExport, ExportBlock};
+use super::{math_layout, EffectiveGuideExport, ExportBlock};
 
-pub(super) const NOTICE: &str = "Math notation: equations in this PDF are preserved as readable LaTeX source, not typeset formulas. Open this study guide in oStudy to view typeset math.";
+pub(super) const NOTICE: &str = "Math notation: some equations in this PDF are preserved as readable LaTeX source because their notation is outside oStudy's bounded native PDF math subset. Open this study guide in oStudy to view the full typeset math.";
 
-pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
-    if contains_math(&export.overview)
-        || export.learning_objectives.iter().any(|s| contains_math(s))
-        || export.key_concepts.iter().any(|s| contains_math(s))
-        || export.guide_notes.iter().any(|s| contains_math(s))
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum MathSegment<'a> {
+    Text(&'a str),
+    Formula {
+        latex: &'a str,
+        source: &'a str,
+        block: bool,
+    },
+}
+
+#[derive(Clone, Copy)]
+struct MathSpan {
+    start: usize,
+    end: usize,
+    content_start: usize,
+    content_end: usize,
+    block: bool,
+}
+
+pub(super) fn contains_math(source: &str) -> bool {
+    !math_spans(source).is_empty()
+}
+
+pub(super) fn segments(source: &str) -> Vec<MathSegment<'_>> {
+    let spans = math_spans(source);
+    if spans.is_empty() {
+        return vec![MathSegment::Text(source)];
+    }
+    let mut result = Vec::with_capacity((spans.len() * 2) + 1);
+    let mut cursor = 0_usize;
+    for span in spans {
+        if cursor < span.start {
+            result.push(MathSegment::Text(&source[cursor..span.start]));
+        }
+        result.push(MathSegment::Formula {
+            latex: &source[span.content_start..span.content_end],
+            source: &source[span.start..span.end],
+            block: span.block,
+        });
+        cursor = span.end;
+    }
+    if cursor < source.len() {
+        result.push(MathSegment::Text(&source[cursor..]));
+    }
+    result
+}
+
+pub(super) fn requires_source_fallback(export: &EffectiveGuideExport) -> bool {
+    if unsupported(&export.overview)
+        || export.learning_objectives.iter().any(|value| unsupported(value))
+        || export.key_concepts.iter().any(|value| unsupported(value))
+        || export.guide_notes.iter().any(|value| unsupported(value))
     {
         return true;
     }
     export.sections.iter().any(|section| {
-        contains_math(&section.title)
-            || section.notes.iter().any(|s| contains_math(s))
+        unsupported(&section.title)
+            || section.notes.iter().any(|value| unsupported(value))
             || section.figures.iter().any(|figure| {
-                contains_math(&figure.title) || contains_math(&figure.caption)
+                unsupported(&figure.title) || unsupported(&figure.caption)
             })
             || section.body_lines.iter().any(|block| match block {
-                ExportBlock::Heading(s) | ExportBlock::Paragraph(s) => contains_math(s),
+                ExportBlock::Heading(value) | ExportBlock::Paragraph(value) => unsupported(value),
                 ExportBlock::Bullets(items) | ExportBlock::Numbered(items) => {
-                    items.iter().any(|s| contains_math(s))
+                    items.iter().any(|value| unsupported(value))
                 }
                 ExportBlock::Terms(items) => items
                     .iter()
-                    .any(|(a, b)| contains_math(a) || contains_math(b)),
+                    .any(|(term, explanation)| unsupported(term) || unsupported(explanation)),
                 ExportBlock::Callout { label, title, body } => {
                     contains_math(label) || contains_math(title) || contains_math(body)
                 }
@@ -36,10 +86,10 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
                     rows,
                     caption,
                 } => {
-                    contains_math(title)
-                        || columns.iter().any(|v| contains_math(v))
-                        || rows.iter().flatten().any(|v| contains_math(v))
-                        || contains_math(caption)
+                    unsupported(title)
+                        || columns.iter().any(|value| contains_math(value))
+                        || rows.iter().flatten().any(|value| contains_math(value))
+                        || unsupported(caption)
                 }
                 ExportBlock::WorkedExample {
                     title,
@@ -48,24 +98,30 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
                     answer,
                     takeaway,
                 } => {
-                    contains_math(title)
-                        || contains_math(prompt)
-                        || steps.iter().any(|v| contains_math(v))
-                        || contains_math(answer)
-                        || contains_math(takeaway)
+                    unsupported(title)
+                        || unsupported(prompt)
+                        || steps.iter().any(|value| unsupported(value))
+                        || unsupported(answer)
+                        || unsupported(takeaway)
                 }
                 ExportBlock::RetrievalCheck { prompt, answer } => {
-                    contains_math(prompt) || contains_math(answer)
+                    unsupported(prompt) || unsupported(answer)
                 }
                 ExportBlock::Spacer => false,
             })
     })
 }
 
-/// Complete supported delimiters outside code only. Boundaries are found before
-/// backslashes can be lost; no source normalization or TeX evaluation happens.
-pub(super) fn contains_math(source: &str) -> bool {
-    let mut cursor = 0;
+fn unsupported(source: &str) -> bool {
+    segments(source).into_iter().any(|segment| match segment {
+        MathSegment::Formula { latex, .. } => math_layout::layout(latex, 10.0).is_err(),
+        MathSegment::Text(_) => false,
+    })
+}
+
+fn math_spans(source: &str) -> Vec<MathSpan> {
+    let mut spans = Vec::new();
+    let mut cursor = 0_usize;
     let mut fence: Option<(u8, usize)> = None;
     while cursor < source.len() {
         let rest = &source[cursor..];
@@ -75,7 +131,7 @@ pub(super) fn contains_math(source: &str) -> bool {
             let trimmed = line.trim_start_matches(' ');
             let indent = line.len() - trimmed.len();
             let marker = trimmed.as_bytes().first().copied().unwrap_or_default();
-            let width = trimmed.bytes().take_while(|b| *b == marker).count();
+            let width = trimmed.bytes().take_while(|byte| *byte == marker).count();
             if let Some((expected, minimum)) = fence {
                 if indent <= 3
                     && marker == expected
@@ -98,54 +154,71 @@ pub(super) fn contains_math(source: &str) -> bool {
             }
         }
         if rest.starts_with('`') {
-            let width = rest.bytes().take_while(|b| *b == b'`').count();
+            let width = rest.bytes().take_while(|byte| *byte == b'`').count();
             if let Some(end) = rest[width..].find(&rest[..width]) {
                 cursor += width + end + width;
                 continue;
             }
         }
-        let close = if rest.starts_with("\\(") {
-            Some("\\)")
+
+        let opening = if rest.starts_with("\\(") {
+            Some(("\\)", 2_usize, false))
         } else if rest.starts_with("\\[") {
-            Some("\\]")
+            Some(("\\]", 2_usize, true))
         } else if rest.starts_with("$$") {
-            Some("$$")
+            Some(("$$", 2_usize, true))
+        } else if rest.starts_with('$') {
+            Some(("$", 1_usize, false))
         } else {
             None
         };
-        if let Some(close) = close.filter(|_| !escaped(source, cursor)) {
-            let start = cursor + 2;
-            if let Some(end) = source[start..]
+        if let Some((close, open_len, block)) = opening.filter(|_| !escaped(source, cursor)) {
+            let content_start = cursor + open_len;
+            let close_position = source[content_start..]
                 .match_indices(close)
-                .map(|(offset, _)| start + offset)
-                .find(|end| !escaped(source, *end))
-            {
-                if !source[start..end].trim().is_empty() {
-                    return true;
+                .map(|(offset, _)| content_start + offset)
+                .find(|end| {
+                    !escaped(source, *end)
+                        && (close != "$" || !source[*end..].starts_with("$$"))
+                });
+            if let Some(content_end) = close_position {
+                let content = &source[content_start..content_end];
+                let source_end = content_end + close.len();
+                let single_dollar_safe = open_len != 1
+                    || (!content.contains('\n')
+                        && !content.is_empty()
+                        && content.trim() == content);
+                if !content.trim().is_empty() && single_dollar_safe {
+                    spans.push(MathSpan {
+                        start: cursor,
+                        end: source_end,
+                        content_start,
+                        content_end,
+                        block,
+                    });
                 }
-                cursor = end + 2;
+                cursor = source_end;
                 continue;
             }
-            return false;
+            if open_len != 1 {
+                break;
+            }
         }
         cursor += rest.chars().next().map_or(0, char::len_utf8);
     }
-    false
+    spans
 }
 
 fn escaped(source: &str, position: usize) -> bool {
     source.as_bytes()[..position]
         .iter()
         .rev()
-        .take_while(|b| **b == b'\\')
+        .take_while(|byte| **byte == b'\\')
         .count()
         % 2
         == 1
 }
 
-/// Ordinary prose wrapping collapses spaces; that would change \text{...} and
-/// source examples. Preserve every character on math-bearing lines. Added PDF
-/// line breaks are presentation only, and the stored guide remains untouched.
 pub(super) fn wrap_source(text: &str, maximum: usize) -> Vec<String> {
     let maximum = maximum.max(1);
     let mut lines = Vec::new();
@@ -171,9 +244,16 @@ pub(super) fn wrap_source(text: &str, maximum: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
-    fn document_pdf_math_detection_keeps_currency_code_and_escapes_literal() {
-        for source in [r"\(x\)", r"\[x\]", "$$x$$", "**before \\(x_i\\) after**"] {
+    fn math_detection_keeps_currency_code_and_escapes_literal() {
+        for source in [
+            r"\(x\)",
+            r"\[x\]",
+            "$$x$$",
+            "$x$",
+            "**before \\(x_i\\) after**",
+        ] {
             assert!(contains_math(source), "{source}");
         }
         for source in [
@@ -190,8 +270,34 @@ mod tests {
         }
         assert!(contains_math("```\n$$code$$\n```\n\\(real\\)"));
     }
+
     #[test]
-    fn document_pdf_math_wrapping_preserves_source_characters_and_unicode() {
+    fn segments_preserve_source_around_inline_and_block_math() {
+        let source = "before \\(x_1\\) after\n\\[\\frac{a}{b}\\]";
+        let parsed = segments(source);
+        assert_eq!(parsed.len(), 4);
+        assert_eq!(parsed[0], MathSegment::Text("before "));
+        assert_eq!(
+            parsed[1],
+            MathSegment::Formula {
+                latex: "x_1",
+                source: "\\(x_1\\)",
+                block: false,
+            }
+        );
+        assert_eq!(parsed[2], MathSegment::Text(" after\n"));
+        assert_eq!(
+            parsed[3],
+            MathSegment::Formula {
+                latex: "\\frac{a}{b}",
+                source: "\\[\\frac{a}{b}\\]",
+                block: true,
+            }
+        );
+    }
+
+    #[test]
+    fn source_wrapping_preserves_characters_and_unicode() {
         let source = r"  \(\text{A  B} + α_1 + \frac{a}{b}\)  ";
         let lines = wrap_source(source, 9);
         assert!(lines.iter().all(|line| line.chars().count() <= 9));

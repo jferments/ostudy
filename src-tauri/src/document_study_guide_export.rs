@@ -40,6 +40,7 @@ use crate::{
     util::validate_entity_id,
 };
 
+mod math_layout;
 mod math_source;
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
