@@ -799,7 +799,12 @@ fn balanced_reduction_digest(
         if pool.is_empty() {
             return None;
         }
-        pool.sort_by_key(|unit| importance_order(unit));
+        pool.sort_by_key(|unit| {
+            (
+                importance_order(unit),
+                unit.content.qualifications.is_empty(),
+            )
+        });
         pools.push(pool);
         rows.push(json!({
             "topicId":topic.id,
