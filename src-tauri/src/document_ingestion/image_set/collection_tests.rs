@@ -153,7 +153,10 @@ fn image_collection_all_upload_orders_retain_the_same_unique_evidence() {
         persist_ingested_document(&fixture.database, &manifest.document_id, &output).unwrap();
         fixture
             .database
-            .with_connection(crate::database::validate_backup_lineage)
+            .with_connection(|connection| {
+                crate::database::validate_backup_lineage(connection)?;
+                crate::document_canonical_store::evidence::validate(connection)
+            })
             .unwrap();
         let repeated = extract(&fixture, &manifest, Vec::new());
         assert_eq!(
@@ -195,7 +198,10 @@ fn image_collection_nonadjacent_identical_images_share_ocr_without_sharing_owner
     persist_ingested_document(&fixture.database, &manifest.document_id, &output).unwrap();
     fixture
         .database
-        .with_connection(crate::database::validate_backup_lineage)
+        .with_connection(|connection| {
+            crate::database::validate_backup_lineage(connection)?;
+            crate::document_canonical_store::evidence::validate(connection)
+        })
         .unwrap();
 }
 
