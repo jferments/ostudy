@@ -326,7 +326,7 @@ describe("StudyGuideDialog", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Export PDF" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Export math as source notation?" });
     expect(mockedPublish).not.toHaveBeenCalled();
-    expect(within(dialog).getByText(/readable LaTeX source rather than typeset formulas/u)).toBeTruthy();
+    expect(within(dialog).getByText(/outside the native PDF math subset.*readable LaTeX source/iu)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: accepted ? "Export PDF" : "Cancel" }));
     await waitFor(() => expect(mockedRelease).toHaveBeenCalledWith("8".repeat(32)));
     expect(mockedPublish).toHaveBeenCalledTimes(accepted ? 1 : 0);
