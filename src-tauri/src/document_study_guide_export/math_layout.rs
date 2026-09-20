@@ -221,8 +221,8 @@ impl<'a> Parser<'a> {
                 Ok(Node::Sqrt(Box::new(self.required_group(depth + 1)?)))
             }
             "text" | "operatorname" => Ok(Node::Text(self.raw_group()?)),
-            "mathrm" | "mathbf" | "mathit" | "mathsf" | "mathtt" | "mathcal"
-            | "mathbb" | "mathfrak" => self.required_group(depth + 1),
+            "mathrm" | "mathbf" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb"
+            | "mathfrak" => self.required_group(depth + 1),
             "left" | "right" => Ok(Node::Text(self.delimiter()?)),
             "begin" => self.matrix(depth + 1),
             "displaystyle" | "textstyle" => Ok(Node::Space(0.0)),
@@ -636,8 +636,8 @@ fn layout_matrix(
     }
     let column_gap = size * 0.7;
     let row_gap = size * 0.35;
-    let content_width = column_widths.iter().sum::<f64>()
-        + column_gap * columns.saturating_sub(1) as f64;
+    let content_width =
+        column_widths.iter().sum::<f64>() + column_gap * columns.saturating_sub(1) as f64;
     let content_height = row_heights
         .iter()
         .zip(&row_depths)

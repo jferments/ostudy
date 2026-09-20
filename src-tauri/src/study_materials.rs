@@ -163,7 +163,6 @@ pub(crate) struct CollectionStudyGuide {
     pub published_at: i64,
 }
 
-
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CollectionStudyGuideOverlayKind {
@@ -186,7 +185,10 @@ impl CollectionStudyGuideOverlayKind {
     }
 
     fn content_bound(self) -> bool {
-        matches!(self, Self::TitleOverride | Self::BodyOverride | Self::Highlight)
+        matches!(
+            self,
+            Self::TitleOverride | Self::BodyOverride | Self::Highlight
+        )
     }
 }
 
@@ -296,21 +298,29 @@ fn save_collection_overlay(
         validate_entity_id(overlay_id, "collection study-guide overlay")?;
     }
     if input.expected_revision.is_some_and(|revision| revision < 1) {
-        return Err(invalid("The collection study-guide overlay revision was invalid."));
+        return Err(invalid(
+            "The collection study-guide overlay revision was invalid.",
+        ));
     }
     match input.overlay_kind {
         CollectionStudyGuideOverlayKind::GuideNote if input.block_key.is_some() => {
-            return Err(invalid("A collection guide note cannot target one section."));
+            return Err(invalid(
+                "A collection guide note cannot target one section.",
+            ));
         }
         CollectionStudyGuideOverlayKind::GuideNote => {}
         _ if input.block_key.as_deref().is_none_or(str::is_empty) => {
-            return Err(invalid("A section overlay must target one collection guide block."));
+            return Err(invalid(
+                "A section overlay must target one collection guide block.",
+            ));
         }
         _ => {}
     }
     let encoded = serde_json::to_string(&input.rich_doc).map_err(CommandError::serialization)?;
     if encoded.len() > MAX_COLLECTION_OVERLAY_DOC_BYTES {
-        return Err(invalid("That collection study-guide annotation is too large."));
+        return Err(invalid(
+            "That collection study-guide annotation is too large.",
+        ));
     }
     crate::cards::validate_document(&input.rich_doc).map_err(|error| {
         CommandError::new(
@@ -349,7 +359,9 @@ fn save_collection_overlay(
             .map(|section| section.content_hash.as_str())
     });
     if input.overlay_kind != CollectionStudyGuideOverlayKind::GuideNote && block_hash.is_none() {
-        return Err(invalid("The selected collection study-guide section no longer exists."));
+        return Err(invalid(
+            "The selected collection study-guide section no longer exists.",
+        ));
     }
     if input.overlay_kind.content_bound() {
         let expected_hash = input.base_content_hash.as_deref().ok_or_else(|| {
@@ -430,7 +442,9 @@ fn save_collection_overlay(
     load_collection_guide_overlays(database, &input.guide_id, &guide.target_id)?
         .into_iter()
         .find(|overlay| overlay.id == overlay_id)
-        .ok_or_else(|| invalid("The saved collection study-guide annotation could not be reloaded."))
+        .ok_or_else(|| {
+            invalid("The saved collection study-guide annotation could not be reloaded.")
+        })
 }
 
 fn discard_collection_overlay(
@@ -440,7 +454,9 @@ fn discard_collection_overlay(
     validate_entity_id(&input.collection_id, "document collection")?;
     validate_entity_id(&input.overlay_id, "collection study-guide overlay")?;
     if input.revision < 1 {
-        return Err(invalid("The collection study-guide overlay revision was invalid."));
+        return Err(invalid(
+            "The collection study-guide overlay revision was invalid.",
+        ));
     }
     let now = unix_time_millis()?;
     database.with_connection(|connection| {
@@ -573,9 +589,8 @@ fn decode_collection_guide_content(
         .collect::<Result<Vec<_>, CommandError>>()?;
     if !synthesis.gaps.is_empty() {
         let content = StudyGuideSectionContent {
-            overview:
-                "Coverage limits remain explicit for this earlier collection-guide revision."
-                    .to_string(),
+            overview: "Coverage limits remain explicit for this earlier collection-guide revision."
+                .to_string(),
             callouts: synthesis
                 .gaps
                 .iter()

@@ -58,7 +58,10 @@ pub(super) fn segments(source: &str) -> Vec<MathSegment<'_>> {
 
 pub(super) fn requires_source_fallback(export: &EffectiveGuideExport) -> bool {
     if unsupported(&export.overview)
-        || export.learning_objectives.iter().any(|value| unsupported(value))
+        || export
+            .learning_objectives
+            .iter()
+            .any(|value| unsupported(value))
         || export.key_concepts.iter().any(|value| unsupported(value))
         || export.guide_notes.iter().any(|value| unsupported(value))
     {
@@ -67,9 +70,10 @@ pub(super) fn requires_source_fallback(export: &EffectiveGuideExport) -> bool {
     export.sections.iter().any(|section| {
         unsupported(&section.title)
             || section.notes.iter().any(|value| unsupported(value))
-            || section.figures.iter().any(|figure| {
-                unsupported(&figure.title) || unsupported(&figure.caption)
-            })
+            || section
+                .figures
+                .iter()
+                .any(|figure| unsupported(&figure.title) || unsupported(&figure.caption))
             || section.body_lines.iter().any(|block| match block {
                 ExportBlock::Heading(value) | ExportBlock::Paragraph(value) => unsupported(value),
                 ExportBlock::Bullets(items) | ExportBlock::Numbered(items) => {
@@ -187,8 +191,7 @@ fn math_spans(source: &str) -> Vec<MathSpan> {
                 .match_indices(close)
                 .map(|(offset, _)| content_start + offset)
                 .find(|end| {
-                    !escaped(source, *end)
-                        && (close != "$" || !source[*end..].starts_with("$$"))
+                    !escaped(source, *end) && (close != "$" || !source[*end..].starts_with("$$"))
                 });
             if let Some(content_end) = close_position {
                 let content = &source[content_start..content_end];

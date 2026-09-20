@@ -975,17 +975,24 @@ fn build_collection_guide_content(
             )
             .optional()
             .map_err(CommandError::database)?
-            .ok_or_else(|| CommandError::new(
-                "document_collection_not_found",
-                "That document collection is no longer available.",
-            ))
+            .ok_or_else(|| {
+                CommandError::new(
+                    "document_collection_not_found",
+                    "That document collection is no longer available.",
+                )
+            })
     })?;
     let topic_order = view
         .synthesis
         .topics
         .iter()
         .enumerate()
-        .map(|(index, topic)| (normalize_guide_topic(&topic.title), (index, topic.id.clone())))
+        .map(|(index, topic)| {
+            (
+                normalize_guide_topic(&topic.title),
+                (index, topic.id.clone()),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
     let topic_titles = view
         .synthesis
@@ -1068,8 +1075,12 @@ fn build_collection_guide_content(
         }
     }
     pending.sort_by(|left, right| {
-        (&left.0, &left.1, &left.2, &left.3.block_key)
-            .cmp(&(&right.0, &right.1, &right.2, &right.3.block_key))
+        (&left.0, &left.1, &left.2, &left.3.block_key).cmp(&(
+            &right.0,
+            &right.1,
+            &right.2,
+            &right.3.block_key,
+        ))
     });
     if pending.len() > MAX_COLLECTION_GUIDE_SECTIONS {
         return Err(CommandError::new(
@@ -1194,9 +1205,8 @@ fn collection_semantic_section(
     title: &str,
     content: StudyGuideSectionContent,
 ) -> Result<CollectionGuideSection, CommandError> {
-    let content_hash = hash_text(
-        &serde_json::to_string(&(title, &content)).map_err(CommandError::serialization)?,
-    );
+    let content_hash =
+        hash_text(&serde_json::to_string(&(title, &content)).map_err(CommandError::serialization)?);
     Ok(CollectionGuideSection {
         block_key: block_key.to_string(),
         title: title.to_string(),
@@ -2243,9 +2253,8 @@ mod tests {
         assert_ne!(before["overview"], after_overview["overview"]);
         assert_eq!(before["topic"], after_overview["topic"]);
         content.sections[0].content.overview = "Changed topic".to_string();
-        content.sections[0].content_hash = hash_text(
-            &serde_json::to_string(&content.sections[0].content).unwrap(),
-        );
+        content.sections[0].content_hash =
+            hash_text(&serde_json::to_string(&content.sections[0].content).unwrap());
         let after_topic = collection_block_hashes(&content).unwrap();
         assert_ne!(after_overview["topic"], after_topic["topic"]);
     }

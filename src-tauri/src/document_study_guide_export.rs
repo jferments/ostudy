@@ -27,12 +27,11 @@ use crate::{
     database::Database,
     document_domain::SourceLocator,
     document_store,
-    document_visual_evidence,
     document_study_guides::{
         load_active_document_study_guide, DocumentStudyGuide, DocumentStudyGuideSection,
-        StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState,
-        StudyGuideSectionContent,
+        StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState, StudyGuideSectionContent,
     },
+    document_visual_evidence,
     error::CommandError,
     external_files::{PreparedExportDto, RegisterPreparedExport},
     paths::AppPaths,
@@ -297,7 +296,10 @@ pub(crate) fn prepare_collection_study_guide_pdf(
     input: PrepareCollectionStudyGuidePdfInput,
 ) -> Result<PreparedStudyGuidePdfDto, CommandError> {
     validate_entity_id(&input.collection_id, "document collection")?;
-    validate_entity_id(&input.operation_id, "collection study-guide export operation")?;
+    validate_entity_id(
+        &input.operation_id,
+        "collection study-guide export operation",
+    )?;
 
     if let Some((prepared_export, summary)) = database.with_connection(|connection| {
         crate::external_files::load_prepared_export_summary::<StudyGuidePdfSummary>(
@@ -316,12 +318,13 @@ pub(crate) fn prepare_collection_study_guide_pdf(
         });
     }
 
-    let guide = load_collection_study_guide(database.inner(), &input.collection_id)?.ok_or_else(
-        || CommandError::new(
-            "collection_study_guide_not_found",
-            "Create the collection study guide before exporting it to PDF.",
-        ),
-    )?;
+    let guide =
+        load_collection_study_guide(database.inner(), &input.collection_id)?.ok_or_else(|| {
+            CommandError::new(
+                "collection_study_guide_not_found",
+                "Create the collection study guide before exporting it to PDF.",
+            )
+        })?;
     let effective = compose_effective_collection_export(
         database.inner(),
         paths.inner(),
@@ -573,7 +576,10 @@ fn compose_effective_collection_export(
             }
         }
         let figures = if body_override.is_none() {
-            match (section.source_document_id.as_deref(), section.source_locator.as_ref()) {
+            match (
+                section.source_document_id.as_deref(),
+                section.source_locator.as_ref(),
+            ) {
                 (Some(document_id), Some(locator)) => load_export_figures(
                     database,
                     paths,
@@ -984,7 +990,11 @@ impl PdfFlowWriter {
 
     fn register_navigation(&mut self, name: &str, title: &str) {
         let page = self.current_page_index();
-        if self.navigation.iter().any(|(existing, _, _)| existing == name) {
+        if self
+            .navigation
+            .iter()
+            .any(|(existing, _, _)| existing == name)
+        {
             return;
         }
         self.navigation
@@ -1003,9 +1013,7 @@ impl PdfFlowWriter {
             .as_deref()
             .map(|value| wrap_text(value, PAGE_WIDTH - (2.0 * MARGIN_X), 9.0))
             .unwrap_or_default();
-        let needed = title_lines.len() as f64 * 14.0
-            + source_lines.len() as f64 * 12.0
-            + 9.0;
+        let needed = title_lines.len() as f64 * 14.0 + source_lines.len() as f64 * 12.0 + 9.0;
         self.ensure_space(needed)?;
         let top = self.y + 3.0;
         self.paragraph(title, 10.5, 14.0, true)?;
@@ -1444,7 +1452,8 @@ impl PdfFlowWriter {
                             flow.push(FlowLine::Inline(std::mem::take(&mut current)));
                         }
                         pending_space = false;
-                        if let Some(layout) = formula.filter(|layout| layout.width <= maximum_width) {
+                        if let Some(layout) = formula.filter(|layout| layout.width <= maximum_width)
+                        {
                             flow.push(FlowLine::Block(layout));
                         } else {
                             flow.extend(source_fallback_lines(source, size, maximum_width));
@@ -1546,14 +1555,9 @@ impl PdfFlowWriter {
                     y: offset_y,
                     text,
                     size,
-                } => self.absolute_text(
-                    text,
-                    x + offset_x,
-                    baseline + offset_y,
-                    *size,
-                    bold,
-                    color,
-                )?,
+                } => {
+                    self.absolute_text(text, x + offset_x, baseline + offset_y, *size, bold, color)?
+                }
                 math_layout::DrawOp::Line {
                     x1,
                     y1,

@@ -10,7 +10,9 @@ use crate::{
         DocumentArtifactKind, DocumentArtifactProviderSnapshot,
     },
     document_cost,
-    document_domain::{validate_asset_id, DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
+    document_domain::{
+        validate_asset_id, DocumentFormat, DocumentSourceDescriptor, SourceUnitKind,
+    },
     document_learning::{load_active_document_learning_plan, DocumentLearningPlan},
     document_learning_service::ensure_learning_plan_for_outline,
     document_outline_service::{ensure_document_outline, EnsureDocumentOutlineInput},
