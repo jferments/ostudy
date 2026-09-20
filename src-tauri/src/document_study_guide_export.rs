@@ -12,7 +12,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use oxidize_pdf::{graphics::Color, Document, Font, Page};
+use oxidize_pdf::{
+    annotations::{HighlightMode, LinkAction, LinkAnnotation, LinkDestination},
+    geometry::{Point, Rectangle},
+    graphics::Color,
+    structure::{Destination, NamedDestinations, OutlineItem, OutlineTree, PageDestination},
+    Document, Font, Page,
+};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -645,6 +651,7 @@ fn render_study_guide_pdf(
     writer.page_break()?;
     writer.enable_running_pages(&export.document_title)?;
 
+    writer.register_navigation("contents", "Contents");
     writer.heading("Contents", 20.0, 25.0)?;
     writer.muted_paragraph(
         "A source-grounded map of the topics in this guide.",
@@ -652,21 +659,21 @@ fn render_study_guide_pdf(
         14.0,
     )?;
     writer.spacer(5.0)?;
+    writer.toc_entry("Overview", None, "overview")?;
     for (index, section) in export.sections.iter().enumerate() {
-        writer.paragraph(
+        let destination = format!("section-{}", index + 1);
+        writer.toc_entry(
             &format!("{}. {}", index + 1, section.title),
-            10.5,
-            14.0,
-            true,
+            section.source_locator.as_ref(),
+            &destination,
         )?;
-        if let Some(locator) = section.source_locator.as_ref() {
-            writer.muted_paragraph(&source_label(locator), 9.0, 12.0)?;
-        }
     }
     writer.spacer(12.0)?;
     writer.rule()?;
     writer.spacer(10.0)?;
 
+    writer.ensure_space(80.0)?;
+    writer.register_navigation("overview", "Overview");
     writer.heading("Overview", 20.0, 25.0)?;
     writer.paragraph(&export.overview, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
     if !export.learning_objectives.is_empty() {
@@ -687,7 +694,10 @@ fn render_study_guide_pdf(
     writer.page_break()?;
 
     for (index, section) in export.sections.iter().enumerate() {
-        writer.heading(&format!("{}. {}", index + 1, section.title), 18.0, 23.0)?;
+        writer.ensure_space(90.0)?;
+        let heading = format!("{}. {}", index + 1, section.title);
+        writer.register_navigation(&format!("section-{}", index + 1), &heading);
+        writer.heading(&heading, 18.0, 23.0)?;
         if let Some(locator) = section.source_locator.as_ref() {
             writer.muted_paragraph(&source_label(locator), 9.25, 12.5)?;
         }
@@ -714,6 +724,7 @@ struct PdfFlowWriter {
     page_has_content: bool,
     running_title: Option<String>,
     running_pages: bool,
+    navigation: Vec<(String, String, u32)>,
 }
 
 impl PdfFlowWriter {
@@ -727,6 +738,7 @@ impl PdfFlowWriter {
             page_has_content: false,
             running_title: None,
             running_pages: false,
+            navigation: Vec::new(),
         }
     }
 
@@ -828,6 +840,54 @@ impl PdfFlowWriter {
             .line_to(PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 42.0)
             .stroke();
         self.y = PAGE_HEIGHT - MARGIN_TOP;
+        Ok(())
+    }
+
+    fn current_page_index(&self) -> u32 {
+        u32::try_from(self.page_number.saturating_sub(1)).unwrap_or(u32::MAX)
+    }
+
+    fn register_navigation(&mut self, name: &str, title: &str) {
+        let page = self.current_page_index();
+        if self.navigation.iter().any(|(existing, _, _)| existing == name) {
+            return;
+        }
+        self.navigation
+            .push((name.to_string(), title.to_string(), page));
+    }
+
+    fn toc_entry(
+        &mut self,
+        title: &str,
+        locator: Option<&SourceLocator>,
+        destination: &str,
+    ) -> Result<(), CommandError> {
+        let title_lines = wrap_text(title, PAGE_WIDTH - (2.0 * MARGIN_X), 10.5);
+        let source = locator.map(source_label);
+        let source_lines = source
+            .as_deref()
+            .map(|value| wrap_text(value, PAGE_WIDTH - (2.0 * MARGIN_X), 9.0))
+            .unwrap_or_default();
+        let needed = title_lines.len() as f64 * 14.0
+            + source_lines.len() as f64 * 12.0
+            + 9.0;
+        self.ensure_space(needed)?;
+        let top = self.y + 3.0;
+        self.paragraph(title, 10.5, 14.0, true)?;
+        if let Some(source) = source {
+            self.muted_paragraph(&source, 9.0, 12.0)?;
+        }
+        let bottom = self.y + 2.0;
+        let rect = Rectangle::new(
+            Point::new(MARGIN_X, bottom),
+            Point::new(PAGE_WIDTH - MARGIN_X, top),
+        );
+        let link = LinkAnnotation::new(
+            rect,
+            LinkAction::GoTo(LinkDestination::Named(destination.to_string())),
+        )
+        .with_highlight_mode(HighlightMode::None);
+        self.page.add_annotation(link.to_annotation());
         Ok(())
     }
 
@@ -1161,6 +1221,20 @@ impl PdfFlowWriter {
     fn finish(mut self, destination: &Path) -> Result<(), CommandError> {
         if self.page_has_content {
             self.commit_page()?;
+        }
+        if !self.navigation.is_empty() {
+            let mut named = NamedDestinations::new();
+            let mut outline = OutlineTree::new();
+            for (name, title, page) in &self.navigation {
+                let target = Destination::fit(PageDestination::PageNumber(*page));
+                named.add_destination(name.clone(), target.to_array());
+                outline.add_item(
+                    OutlineItem::new(title.clone())
+                        .with_destination(Destination::fit(PageDestination::PageNumber(*page))),
+                );
+            }
+            self.document.set_named_destinations(named);
+            self.document.set_outline(outline);
         }
         self.document.save(destination).map_err(pdf_error)
     }
@@ -1516,6 +1590,23 @@ mod tests {
         assert!(text.contains("Cardiovascular Physiology"));
         assert!(!text.contains("Guide revision"));
         assert!(!text.contains("Revision 2"));
+        fs::remove_file(root).unwrap();
+    }
+
+    #[test]
+    fn rendered_pdf_contains_bookmarks_named_destinations_and_toc_links() {
+        let export = test_export();
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-study-guide-navigation-{}.pdf",
+            std::process::id()
+        ));
+        render_study_guide_pdf(&export, &root).unwrap();
+        let bytes = fs::read(&root).unwrap();
+        let raw = String::from_utf8_lossy(&bytes);
+        assert!(raw.contains("/Outlines"));
+        assert!(raw.contains("/Dests"));
+        assert!(raw.contains("/Subtype /Link"));
+        assert!(raw.contains("(section-1)"));
         fs::remove_file(root).unwrap();
     }
 
