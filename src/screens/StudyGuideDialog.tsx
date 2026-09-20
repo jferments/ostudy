@@ -8,7 +8,7 @@ import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuideSectionContent, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import type { TutorTarget } from "../ipc/tutor";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
@@ -256,7 +256,7 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
       <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
       <OverflowMenu label={`Section actions for ${section.title}`} items={menuItems} className={styles.sectionMenu} />
     </header>
-    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StructuredSection section={section} />}
+    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent content={section.content} />}
     {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
     {conflict ? <InlineNotice kind="warning">
       <strong>Older section edit needs review.</strong>
@@ -266,8 +266,7 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
     </InlineNotice> : null}
   </section>;
 }
-function StructuredSection({ section }: { section: DocumentStudyGuideSection }) {
-  const { content } = section;
+export function StudyGuideStructuredContent({ content }: { content: StudyGuideSectionContent }) {
   return <div className={styles.structuredSection}>
     <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} />
     {content.callouts.length > 0 ? <div className={styles.callouts}>

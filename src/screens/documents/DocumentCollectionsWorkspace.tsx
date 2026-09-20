@@ -32,10 +32,12 @@ export function DocumentCollectionsWorkspace({
   documents,
   refreshDecks,
   onOpenDeck,
+  onOpenGuide,
 }: {
   documents: DocumentSummary[];
   refreshDecks?: () => Promise<unknown>;
   onOpenDeck?: (deckId: string) => void;
+  onOpenGuide?: (collectionId: string, title: string) => void;
 }) {
   const controller = useDocumentCollectionsController();
   const confirm = useConfirm();
@@ -207,6 +209,7 @@ export function DocumentCollectionsWorkspace({
             error={bundle.error}
             onRun={() => void bundle.run()}
             onOpenDeck={onOpenDeck}
+            onOpenGuide={onOpenGuide}
           />
           <Tabs
             ariaLabel="Document folder views"
@@ -280,6 +283,7 @@ function CollectionStudyMaterials({
   error,
   onRun,
   onOpenDeck,
+  onOpenGuide,
 }: {
   status: StudyTargetBundleStatus | null;
   loading: boolean;
@@ -287,6 +291,7 @@ function CollectionStudyMaterials({
   error: string | null;
   onRun: () => void;
   onOpenDeck?: (deckId: string) => void;
+  onOpenGuide?: (collectionId: string, title: string) => void;
 }) {
   const action = bundleActionLabel(status, busy);
   return (
@@ -313,7 +318,14 @@ function CollectionStudyMaterials({
           openLabel="Open Flashcards deck"
           onOpen={status?.deckId && onOpenDeck ? () => onOpenDeck(status.deckId as string) : undefined}
         />
-        <ArtifactStatus label="Study Guide" artifact={status?.studyGuide ?? null} />
+        <ArtifactStatus
+          label="Study Guide"
+          artifact={status?.studyGuide ?? null}
+          openLabel="Open collection study guide"
+          onOpen={status?.guideId && status.target.kind === "collection" && onOpenGuide
+            ? () => onOpenGuide(status.target.id, status.title)
+            : undefined}
+        />
       </div>
       {error ? <InlineNotice kind="warning">{error}</InlineNotice> : null}
     </Surface>

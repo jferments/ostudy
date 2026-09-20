@@ -17,6 +17,7 @@ import {
 import { GenerationSummary } from "./documents/GenerationSummary";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
+import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
 import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
@@ -40,6 +41,20 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
+  const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
+
+  if (collectionGuide) {
+    return (
+      <PageScaffold width="full" aria-label="Documents collection study guide">
+        <CollectionStudyGuideDialog
+          collectionId={collectionGuide.id}
+          collectionTitle={collectionGuide.title}
+          showToast={props.showToast}
+          onClose={() => setCollectionGuide(null)}
+        />
+      </PageScaffold>
+    );
+  }
 
   if (imageWorkspaceDocumentId !== undefined) {
     return (
@@ -78,6 +93,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
         documents={documents}
         refreshDecks={props.refreshDecks}
         onOpenDeck={props.onOpenDeck}
+        onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
       />
       <div className={styles.toolbar}>
         <span className={styles.count}>{documents.length} document{documents.length === 1 ? "" : "s"}</span>

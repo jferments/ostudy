@@ -162,9 +162,11 @@ beforeEach(() => {
 function renderWorkspace({
   refreshDecks = vi.fn().mockResolvedValue([]),
   onOpenDeck = vi.fn(),
+  onOpenGuide = vi.fn(),
 }: {
   refreshDecks?: () => Promise<unknown>;
   onOpenDeck?: (deckId: string) => void;
+  onOpenGuide?: (collectionId: string, title: string) => void;
 } = {}) {
   render(
     <OverlayProvider>
@@ -172,10 +174,11 @@ function renderWorkspace({
         documents={[document]}
         refreshDecks={refreshDecks}
         onOpenDeck={onOpenDeck}
+        onOpenGuide={onOpenGuide}
       />
     </OverlayProvider>,
   );
-  return { refreshDecks, onOpenDeck };
+  return { refreshDecks, onOpenDeck, onOpenGuide };
 }
 
 describe("Document collections workspace", () => {
@@ -216,7 +219,8 @@ describe("Document collections workspace", () => {
   it("creates one coherent bundle and opens its ordinary flashcard deck from compact status", async () => {
     const refreshDecks = vi.fn().mockResolvedValue([]);
     const onOpenDeck = vi.fn();
-    renderWorkspace({ refreshDecks, onOpenDeck });
+    const onOpenGuide = vi.fn();
+    renderWorkspace({ refreshDecks, onOpenDeck, onOpenGuide });
 
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
@@ -237,7 +241,10 @@ describe("Document collections workspace", () => {
     expect(open.textContent).toContain("Ready");
     fireEvent.click(open);
     expect(onOpenDeck).toHaveBeenCalledWith("9".repeat(32));
-    expect(screen.getByText("Study Guide")).toBeTruthy();
+    const openGuide = screen.getByRole("button", { name: "Open collection study guide" });
+    expect(openGuide.textContent).toContain("Ready");
+    fireEvent.click(openGuide);
+    expect(onOpenGuide).toHaveBeenCalledWith(folderId, "Week 1");
   });
 
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {
