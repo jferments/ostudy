@@ -136,10 +136,12 @@ fn image_set_adapter_reuses_ocr_and_publishes_the_existing_canonical_contract() 
     assert_eq!(groups.len(), seeds.len());
     for (seed, group) in seeds.iter().zip(&groups) {
         assert!(!group.is_empty());
-        assert!(group.iter().all(|source| source.segment_key.starts_with("image:")));
         assert!(group
             .iter()
-            .all(|source| !source.segment_key.starts_with(&format!("{}:", seed.parent_key))));
+            .all(|source| source.segment_key.starts_with("image:")));
+        assert!(group.iter().all(|source| !source
+            .segment_key
+            .starts_with(&format!("{}:", seed.parent_key))));
     }
     let repeated = extract(&fixture, &manifest, Some("fixture-v1"), |_| {
         panic!("re-OCR on compatible retry")

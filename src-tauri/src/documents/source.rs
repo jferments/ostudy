@@ -64,9 +64,12 @@ mod tests {
         let document_id = "c".repeat(32);
         let bytes = b"retained image manifest";
         let hash = crate::document_canonical::sha256_hex(bytes);
-        let relative =
-            expected_document_source_relative_path(&document_id, DocumentFormat::ImageBundle, &hash)
-                .expect("image manifest path should be valid");
+        let relative = expected_document_source_relative_path(
+            &document_id,
+            DocumentFormat::ImageBundle,
+            &hash,
+        )
+        .expect("image manifest path should be valid");
         let source = paths.resolve_relative(&relative);
         std::fs::create_dir_all(source.parent().expect("source should have a parent"))
             .expect("source directory should exist");
