@@ -156,3 +156,22 @@ export async function getImageSetPreview(input: {
 }): Promise<ImageSetPreview> {
   return invoke<ImageSetPreview>("get_image_set_preview", { input });
 }
+
+export interface AmendImageSetInput {
+  operationId: string;
+  documentId: string;
+  expectedRevision: number;
+  expectedFilterRevision: number;
+  /** All retained member identities, once each, in the requested order. */
+  members: {
+    memberId: string;
+    quarterTurns: 0 | 1 | 2 | 3;
+    inclusion: ImageSetInclusionCrop | null;
+  }[];
+  append: ImportImageSetInput["members"];
+}
+
+/** Save source edits without performing OCR, interpretation, or generation. */
+export async function amendImageSet(input: AmendImageSetInput): Promise<ImageSetEditResult> {
+  return invoke<ImageSetEditResult>("amend_image_set", { input });
+}

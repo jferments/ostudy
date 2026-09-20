@@ -319,6 +319,7 @@ pub fn run() {
             documents::commands::get_image_set_preview,
             documents::commands::prepare_image_set,
             documents::commands::set_image_set_filters,
+            documents::commands::amend_image_set,
             document_import::import_document,
             document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,

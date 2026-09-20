@@ -176,6 +176,8 @@ fn invalid(message: &str) -> CommandError {
 }
 
 #[cfg(test)]
+mod amendment_tests;
+#[cfg(test)]
 mod filter_tests;
 #[cfg(test)]
 mod overlap_tests;

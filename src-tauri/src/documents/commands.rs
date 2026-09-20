@@ -9,6 +9,7 @@ use super::{
     contracts::DocumentDto,
     image_sets::{
         admission::{self, ImageSetInspection, InspectImageSetInput},
+        amend::{self, AmendImageSetInput},
         filter_commands::{self, SetImageFiltersInput},
         import::{self as image_import, ImportImageSetInput, ImportedImageSet},
         operations::EditResult,
@@ -145,6 +146,29 @@ pub async fn set_image_set_filters(
         .await
         .map_err(|_| {
             interrupted("The filter acknowledgement stopped. Retry with the same operation identity to recover the saved result.")
+        })?
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn amend_image_set(
+    app: AppHandle,
+    input: AmendImageSetInput,
+) -> Result<EditResult, CommandError> {
+    input.validate()?;
+    let id = input.document_id.clone();
+    run_document_task(&id, async move {
+        tauri::async_runtime::spawn_blocking(move || {
+            amend::apply(
+                app.state::<Database>().inner(),
+                app.state::<AppPaths>().inner(),
+                &input,
+            )
+        })
+        .await
+        .map_err(|_| {
+            interrupted("The image-edit acknowledgement stopped. Retry the same operation to recover its saved result.")
         })?
     })
     .await

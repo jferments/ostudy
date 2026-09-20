@@ -71,6 +71,15 @@ pub(crate) fn apply(
             ));
         }
         let receipt = storage::load(&transaction, &input.document_id)?;
+        let fingerprint = manifest.fingerprint()?;
+        if !input.overrides.is_empty()
+            && receipt.as_ref().is_some_and(|receipt| receipt.manifest_sha256 != fingerprint)
+        {
+            return Err(CommandError::new(
+                "image_set_changed",
+                "Prepare the edited images before changing their region filters.",
+            ));
+        }
         let regions = receipt
             .as_ref()
             .map(|receipt| {

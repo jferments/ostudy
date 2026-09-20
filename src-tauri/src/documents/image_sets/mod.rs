@@ -2,6 +2,7 @@
 //! retaining a source and publishing its canonical evidence are separate steps.
 
 pub(crate) mod admission;
+pub(crate) mod amend;
 pub(crate) mod backup;
 pub(crate) mod cache;
 pub(crate) mod files;

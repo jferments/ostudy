@@ -100,6 +100,7 @@ impl Projection {
                 filter_revision: settings.revision,
                 members: Vec::new(),
                 chunks: Vec::new(),
+                source_manifest: Some(manifest.clone()),
             },
             settings,
             visual_keys: Vec::new(),

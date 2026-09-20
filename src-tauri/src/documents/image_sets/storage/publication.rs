@@ -15,11 +15,14 @@ pub(crate) fn begin_projection(
     connection: &Connection,
     receipt: &ImageReceipt,
 ) -> Result<(), CommandError> {
-    receipt.validate(&repository::load(connection, &receipt.document_id)?)?;
-    if settings(connection, &receipt.document_id)?.revision != receipt.filter_revision {
+    let current = repository::load(connection, &receipt.document_id)?;
+    receipt.validate(&current)?;
+    if receipt.manifest_sha256 != current.fingerprint()?
+        || settings(connection, &receipt.document_id)?.revision != receipt.filter_revision
+    {
         return Err(CommandError::new(
             "image_set_changed",
-            "Content filters changed during image processing. Retry processing the saved source.",
+            "The image source or filters changed during processing. Retry the saved source.",
         ));
     }
     connection

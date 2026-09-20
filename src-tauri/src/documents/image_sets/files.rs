@@ -170,7 +170,7 @@ pub(crate) fn reconcile_pending(database: &Database, paths: &AppPaths) -> Result
             fs::remove_dir_all(entry.path()).map_err(CommandError::io)?;
         }
     }
-    Ok(())
+    super::amend::files::reconcile(database, paths)
 }
 
 /// Missing originals are not reconstructed from OCR or a derivative. Mark the

@@ -42,10 +42,14 @@ pub(crate) struct ImageReceipt {
     pub filter_revision: i64,
     pub members: Vec<MemberReceipt>,
     pub chunks: Vec<ChunkIdentity>,
+    /// Exact source for the retained projection while newer edits await preparation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_manifest: Option<ImageManifest>,
 }
 
 impl ImageReceipt {
     pub(crate) fn validate(&self, manifest: &ImageManifest) -> Result<(), CommandError> {
+        let manifest = self.retained_manifest(manifest)?;
         if self.version != 1
             || self.document_id != manifest.document_id
             || self.manifest_sha256 != manifest.fingerprint()?
@@ -115,6 +119,39 @@ impl ImageReceipt {
             }
         }
         Ok(())
+    }
+
+    /// Old receipts were published only against their current manifest. A native
+    /// amendment freezes that manifest before changing sequence or transforms.
+    /// Originals remain owned by the same document; snapshots never grant access
+    /// to a foreign member, future revision, or replacement pixel payload.
+    pub(crate) fn retained_manifest<'a>(
+        &'a self,
+        current: &'a ImageManifest,
+    ) -> Result<&'a ImageManifest, CommandError> {
+        let saved = self.source_manifest.as_ref().unwrap_or(current);
+        saved.validate()?;
+        if saved.document_id != current.document_id
+            || saved.revision > current.revision
+            || (saved.revision == current.revision && saved != current)
+            || saved.fingerprint()? != self.manifest_sha256
+        {
+            return Err(invalid("The retained projection has an invalid source snapshot."));
+        }
+        for member in &saved.members {
+            let owner = current
+                .members
+                .iter()
+                .find(|owner| owner.id == member.id)
+                .ok_or_else(|| invalid("A retained projection has no original image owner."))?;
+            let mut original = member.clone();
+            original.quarter_turns = owner.quarter_turns;
+            original.inclusion = owner.inclusion;
+            if &original != owner {
+                return Err(invalid("An image source snapshot refers to different original bytes."));
+            }
+        }
+        Ok(saved)
     }
 
     pub(crate) fn validate_projection(
