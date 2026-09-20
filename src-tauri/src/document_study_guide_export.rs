@@ -1447,16 +1447,7 @@ impl PdfFlowWriter {
                         if let Some(layout) = formula.filter(|layout| layout.width <= maximum_width) {
                             flow.push(FlowLine::Block(layout));
                         } else {
-                            let width = approximate_text_width(source, size);
-                            flow.push(FlowLine::Inline(InlineLine {
-                                pieces: vec![InlinePiece::Text {
-                                    value: source.to_string(),
-                                    width,
-                                }],
-                                width,
-                                height: size * 0.78,
-                                depth: size * 0.22,
-                            }));
+                            flow.extend(source_fallback_lines(source, size, maximum_width));
                         }
                     } else if let Some(layout) =
                         formula.filter(|layout| layout.width <= maximum_width)
@@ -1485,19 +1476,10 @@ impl PdfFlowWriter {
                         current.pieces.push(InlinePiece::Formula(layout));
                         pending_space = false;
                     } else {
-                        let source_width = approximate_text_width(source, size);
-                        if !current.pieces.is_empty()
-                            && current.width + source_width > maximum_width
-                        {
+                        if !current.pieces.is_empty() {
                             flow.push(FlowLine::Inline(std::mem::take(&mut current)));
                         }
-                        current.pieces.push(InlinePiece::Text {
-                            value: source.to_string(),
-                            width: source_width,
-                        });
-                        current.width += source_width;
-                        current.height = current.height.max(size * 0.78);
-                        current.depth = current.depth.max(size * 0.22);
+                        flow.extend(source_fallback_lines(source, size, maximum_width));
                         pending_space = false;
                     }
                 }
@@ -1737,6 +1719,25 @@ fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
     .map(PathBuf::from)
     .find(|path| path.is_file())
     .map(|path| (path.clone(), path))
+}
+
+fn source_fallback_lines(source: &str, size: f64, maximum_width: f64) -> Vec<FlowLine> {
+    let approximate_character_width = (size * 0.53).max(1.0);
+    let maximum = (maximum_width / approximate_character_width)
+        .floor()
+        .max(8.0) as usize;
+    math_source::wrap_source(source, maximum)
+        .into_iter()
+        .map(|value| {
+            let width = approximate_text_width(&value, size);
+            FlowLine::Inline(InlineLine {
+                pieces: vec![InlinePiece::Text { value, width }],
+                width,
+                height: size * 0.78,
+                depth: size * 0.22,
+            })
+        })
+        .collect()
 }
 
 fn approximate_text_width(text: &str, size: f64) -> f64 {
