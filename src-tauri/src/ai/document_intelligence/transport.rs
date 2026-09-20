@@ -32,7 +32,7 @@ pub(super) async fn request_json(
     task: &DocumentTaskContext,
     request: JsonTaskRequest<'_>,
 ) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, None).await
+    request_json_inner(runtime, task, request, None, true).await
 }
 
 pub(crate) async fn request_json_cancellable(
@@ -41,7 +41,19 @@ pub(crate) async fn request_json_cancellable(
     request: JsonTaskRequest<'_>,
     cancellation: &CancellationSignal,
 ) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, Some(cancellation)).await
+    request_json_inner(runtime, task, request, Some(cancellation), true).await
+}
+
+/// A caller that promises at most one provider request can opt out of the
+/// provider-dialect compatibility retry while keeping the same cancellation,
+/// response-size and structured-output validation boundary.
+pub(crate) async fn request_json_cancellable_single_attempt(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    request: JsonTaskRequest<'_>,
+    cancellation: &CancellationSignal,
+) -> Result<Value, CommandError> {
+    request_json_inner(runtime, task, request, Some(cancellation), false).await
 }
 
 async fn request_json_inner(
@@ -49,6 +61,7 @@ async fn request_json_inner(
     task: &DocumentTaskContext,
     request: JsonTaskRequest<'_>,
     cancellation: Option<&CancellationSignal>,
+    allow_compatibility_retry: bool,
 ) -> Result<Value, CommandError> {
     ensure_context_budget(task, &request)?;
     crate::logging::debug_target("ai.contract", "structured_request_prepared",
@@ -112,7 +125,8 @@ async fn request_json_inner(
             .await
     };
     let response = match first {
-        Err(first_error) if first_error.safe.code == "ai_http_bad_request" => {
+        Err(first_error)
+            if allow_compatibility_retry && first_error.safe.code == "ai_http_bad_request" => {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
                 if let Some(cancellation) = cancellation {
                     runtime

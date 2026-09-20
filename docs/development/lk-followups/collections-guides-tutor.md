@@ -2,7 +2,7 @@
 
 Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Current boundary: **104-A** (folder/range persistence, native source-set resolution, typed IPC and preservation) is published on the PR branch; exact-head qualification and acceptance evidence are tracked in PR #104. **104-B** (folder UI and folder-scoped Tutor) is the next implementation boundary.
+Current boundary: **104-A** (folder/range persistence/resolution) and **104-B** (folder UI plus folder-scoped Tutor) are implemented on the PR branch. **104-C** now provides compact collection synthesis, complete range-safe coverage planning, bounded single-attempt provider-authorized cross-document reduction, explicit gaps/dependencies, and separation between complete generation coverage and bounded Tutor retrieval. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-D** is the next implementation boundary after 104-C qualification.
 
 Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
@@ -131,10 +131,10 @@ Tests cover rename/move while a response is active, archive/delete during stale 
 
 Implement coherent vertical increments:
 
-1. **104-A:** folder/range persistence + resolver + preservation — implemented on the active branch; exact-head qualification is recorded in PR #104.
-2. **104-B:** folder UI + Tutor source selection.
-3. **104-C:** synthesis + coverage-aware LearningContext.
-4. **104-D:** study target/bundle persistence + safe publication/status UI.
+1. **104-A:** folder/range persistence + resolver + preservation — implemented.
+2. **104-B:** folder UI + Tutor source selection — implemented.
+3. **104-C:** synthesis + coverage-aware LearningContext — implemented on the active branch; exact-head qualification is recorded in PR #104.
+4. **104-D:** study target/bundle persistence + safe publication/status UI — next implementation boundary.
 5. **104-E:** semantic guide viewer + PDF capability/renderer work.
 6. **104-F:** Tutor project/menu integration.
 7. **104-G:** cross-stage audit, exact-head terminal qualification, and human handoff.

@@ -33,7 +33,9 @@ pub(crate) use flashcards::{
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
 pub(crate) use study_guide::generate_study_guide_topic_section;
-pub(crate) use transport::{request_json_cancellable, JsonTaskRequest};
+pub(crate) use transport::{
+    request_json_cancellable, request_json_cancellable_single_attempt, JsonTaskRequest,
+};
 
 /// Generate optional subject-centered metadata from the validated global
 /// learning outline. Callers treat failure as recoverable and apply the

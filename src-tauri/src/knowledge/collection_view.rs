@@ -13,7 +13,9 @@ use serde_json::{json, Value};
 
 use crate::{
     ai::{
-        document_intelligence::{request_json_cancellable, DocumentTaskContext, JsonTaskRequest},
+        document_intelligence::{
+            request_json_cancellable_single_attempt, DocumentTaskContext, JsonTaskRequest,
+        },
         AiRuntimeState,
     },
     collections::{self, SourceSelectionInput, SourceSetSnapshotDto},
@@ -199,7 +201,7 @@ pub(crate) async fn ensure_reduced(
         "Organize this balanced cross-document digest from a complete permitted collection catalog. Every collection topic is represented at least once, but individual topics may have additional units outside this bounded digest. Preserve polarity, conditions, units, exceptions, and contradictions exactly. Instructional emphasis is advisory and is not factual corroboration. Return exactly one concise topic summary for every supplied topic, with only the supplied unit IDs that support that summary. Return broad learning objectives and only complementary, contrast, contradictory, or prerequisite relationships supported by supplied unit IDs. Do not merge conflicting claims, invent facts, infer learner mastery, or treat repetition as independent corroboration.\n<collection-digest>\n{digest}\n</collection-digest>"
     );
     record_current_provider_request();
-    let response = request_json_cancellable(
+    let response = request_json_cancellable_single_attempt(
         runtime,
         task,
         JsonTaskRequest {
@@ -1715,6 +1717,104 @@ mod tests {
             })
             .unwrap();
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn adding_prepared_member_reuses_saved_knowledge_without_reanalysis() {
+        let (database, collection, _, _, _) = fixture().unwrap();
+        let other_collection = id('o');
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO document_collections(
+                             id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
+                         ) VALUES(?1,NULL,'Week 2',1000,NULL,1,1,1)",
+                        [&other_collection],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+        let (added_document, added_source) = seed_document(
+            &database,
+            &other_collection,
+            'p',
+            'd',
+            "Prepared additional source.",
+            Some("Added prepared topic"),
+        )
+        .unwrap();
+
+        let read_prepared = || {
+            database.with_connection(|connection| {
+                let source: (String, String, String, String, String) = connection
+                    .query_row(
+                        "SELECT owner_revision,content_hash,extraction_contract,extracted_hash,record_json
+                         FROM knowledge_sources WHERE id=?1",
+                        [&added_source],
+                        |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                            ))
+                        },
+                    )
+                    .map_err(CommandError::database)?;
+                let units: String = connection
+                    .query_row(
+                        "SELECT group_concat(id || ':' || content_hash,'|')
+                         FROM (
+                             SELECT id,content_hash FROM knowledge_units
+                             WHERE source_id=?1 ORDER BY id
+                         )",
+                        [&added_source],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                Ok((source, units))
+            })
+        };
+        let before = read_prepared().unwrap();
+        let initial = refresh_native(&database, &collection).unwrap();
+        assert!(!initial
+            .synthesis
+            .topics
+            .iter()
+            .any(|topic| topic.title == "Added prepared topic"));
+
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO document_collection_memberships(
+                             id,collection_id,document_id,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,?2,?3,1000,2,2,1)",
+                        params![id('q'), collection, added_document],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "UPDATE document_collection_organization
+                         SET revision=revision+1,updated_at=2 WHERE singleton_id=1",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+
+        let refreshed = refresh_native(&database, &collection).unwrap();
+        assert!(!refreshed.stale);
+        assert!(refreshed
+            .synthesis
+            .topics
+            .iter()
+            .any(|topic| topic.title == "Added prepared topic"));
+        assert_eq!(read_prepared().unwrap(), before);
     }
 
     #[test]
