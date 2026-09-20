@@ -1271,19 +1271,21 @@ mod tests {
                 assert!(count > 0, "request closed before body completed");
                 request.extend_from_slice(&buffer[..count]);
             }
-            let body = json!({
-                "id":"collection-reducer-test",
-                "model":"fixture",
+            let request_body =
+                String::from_utf8(request[header_end..header_end + content_length].to_vec())
+                    .expect("request body should be UTF-8");
+            assert!(request_body.contains("\"stream\":true"));
+            let event = json!({
                 "choices":[{
                     "index":0,
-                    "message":{"role":"assistant","content":content},
+                    "delta":{"content":content},
                     "finish_reason":"stop"
-                }],
-                "usage":{"prompt_tokens":20,"completion_tokens":10,"total_tokens":30}
+                }]
             })
             .to_string();
+            let body = format!("data: {event}\n\ndata: [DONE]\n\n");
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 body.len(),
                 body,
             );
