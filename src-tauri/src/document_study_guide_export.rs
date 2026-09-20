@@ -670,16 +670,9 @@ impl PdfFlowWriter {
                 }
                 Ok(())
             }
-            ExportBlock::Callout { label, title, body } => {
-                self.heading(&format!("{label}: {title}"), 11.5, 16.0)?;
-                self.paragraph(body, BODY_SIZE, BODY_LINE_HEIGHT, false)
-            }
+            ExportBlock::Callout { label, title, body } => self.callout(label, title, body),
             ExportBlock::Table { title, columns, rows, caption } => {
-                self.heading(title, 12.5, 17.5)?;
-                self.paragraph(&columns.join(" | "), BODY_SIZE, BODY_LINE_HEIGHT, true)?;
-                for row in rows { self.paragraph(&row.join(" | "), BODY_SIZE, BODY_LINE_HEIGHT, false)?; }
-                if !caption.is_empty() { self.muted_paragraph(caption, 9.5, 13.0)?; }
-                Ok(())
+                self.table(title, columns, rows, caption)
             }
             ExportBlock::WorkedExample { title, prompt, steps, answer, takeaway } => {
                 self.heading(&format!("Worked example: {title}"), 12.5, 17.5)?;
@@ -696,6 +689,132 @@ impl PdfFlowWriter {
             }
             ExportBlock::Spacer => self.spacer(5.0),
         }
+    }
+
+    fn callout(&mut self, label: &str, title: &str, body: &str) -> Result<(), CommandError> {
+        let width = PAGE_WIDTH - (2.0 * MARGIN_X);
+        let inner_width = width - 28.0;
+        let heading = format!("{label}: {title}");
+        let heading_lines = wrap_text(&heading, inner_width, 10.5);
+        let body_lines = wrap_text(body, inner_width, 9.75);
+        let height = 18.0
+            + (heading_lines.len() as f64 * 14.0)
+            + (body_lines.len() as f64 * 13.0)
+            + 10.0;
+        self.ensure_space(height + 8.0)?;
+        let bottom = self.y - height;
+        self.page.graphics()
+            .set_fill_color(Color::rgb(0.93, 0.97, 0.97))
+            .rectangle(MARGIN_X, bottom, width, height)
+            .fill();
+        self.page.graphics()
+            .set_fill_color(color_accent())
+            .rectangle(MARGIN_X, bottom, 4.0, height)
+            .fill();
+        let mut line_y = self.y - 17.0;
+        for line in heading_lines {
+            self.absolute_text(&line, MARGIN_X + 14.0, line_y, 10.5, true, color_accent())?;
+            line_y -= 14.0;
+        }
+        line_y -= 2.0;
+        for line in body_lines {
+            self.absolute_text(&line, MARGIN_X + 14.0, line_y, 9.75, false, color_ink())?;
+            line_y -= 13.0;
+        }
+        self.y = bottom - 8.0;
+        self.page_has_content = true;
+        Ok(())
+    }
+
+    fn table(
+        &mut self,
+        title: &str,
+        columns: &[String],
+        rows: &[Vec<String>],
+        caption: &str,
+    ) -> Result<(), CommandError> {
+        if columns.len() < 2 || rows.is_empty() {
+            return Ok(());
+        }
+        self.heading(title, 12.5, 17.5)?;
+        let table_width = PAGE_WIDTH - (2.0 * MARGIN_X);
+        let column_width = table_width / columns.len() as f64;
+        self.draw_table_row(columns, column_width, true, false)?;
+        for (index, row) in rows.iter().enumerate() {
+            let height = table_row_height(row, column_width, 8.8, 11.5);
+            if self.y - height < MARGIN_BOTTOM {
+                self.commit_page()?;
+                self.draw_table_row(columns, column_width, true, false)?;
+            }
+            self.draw_table_row(row, column_width, false, index % 2 == 1)?;
+        }
+        self.spacer(4.0)?;
+        if !caption.is_empty() {
+            self.muted_paragraph(caption, 9.0, 12.5)?;
+        }
+        Ok(())
+    }
+
+    fn draw_table_row(
+        &mut self,
+        cells: &[String],
+        column_width: f64,
+        header: bool,
+        shaded: bool,
+    ) -> Result<(), CommandError> {
+        let font_size = if header { 8.9 } else { 8.8 };
+        let line_height = 11.5;
+        let height = table_row_height(cells, column_width, font_size, line_height);
+        self.ensure_space(height)?;
+        let top = self.y;
+        let bottom = top - height;
+        let fill = if header {
+            Color::rgb(0.88, 0.94, 0.94)
+        } else if shaded {
+            Color::rgb(0.975, 0.98, 0.98)
+        } else {
+            Color::rgb(1.0, 1.0, 1.0)
+        };
+        self.page.graphics()
+            .set_fill_color(fill)
+            .rectangle(MARGIN_X, bottom, column_width * cells.len() as f64, height)
+            .fill();
+        let border = Color::rgb(0.78, 0.81, 0.82);
+        self.page.graphics()
+            .set_stroke_color(border)
+            .set_line_width(0.45)
+            .move_to(MARGIN_X, top)
+            .line_to(MARGIN_X + column_width * cells.len() as f64, top)
+            .move_to(MARGIN_X, bottom)
+            .line_to(MARGIN_X + column_width * cells.len() as f64, bottom)
+            .stroke();
+        for index in 0..=cells.len() {
+            let x = MARGIN_X + column_width * index as f64;
+            self.page.graphics()
+                .set_stroke_color(border)
+                .set_line_width(0.45)
+                .move_to(x, top)
+                .line_to(x, bottom)
+                .stroke();
+        }
+        for (index, cell) in cells.iter().enumerate() {
+            let lines = wrap_text(cell, column_width - 10.0, font_size);
+            let mut line_y = top - 11.0;
+            for line in lines {
+                self.absolute_text(
+                    &line,
+                    MARGIN_X + column_width * index as f64 + 5.0,
+                    line_y,
+                    font_size,
+                    header,
+                    color_ink(),
+                )?;
+                line_y -= line_height;
+            }
+        }
+        self.y = bottom;
+        self.page_has_content = true;
+        Ok(())
     }
 
     fn spacer(&mut self, points: f64) -> Result<(), CommandError> {
@@ -776,6 +895,15 @@ impl PdfFlowWriter {
         if self.page_has_content { self.commit_page()?; }
         self.document.save(destination).map_err(pdf_error)
     }
+}
+
+fn table_row_height(cells: &[String], column_width: f64, font_size: f64, line_height: f64) -> f64 {
+    let lines = cells
+        .iter()
+        .map(|cell| wrap_text(cell, column_width - 10.0, font_size).len())
+        .max()
+        .unwrap_or(1);
+    (lines as f64 * line_height) + 10.0
 }
 
 fn compact_header(value: &str) -> String {
@@ -1014,6 +1142,36 @@ mod tests {
         let second = wrap_text(text, 100.0, 10.0);
         assert_eq!(first, second);
         assert!(first.len() > 1);
+    }
+
+    #[test]
+    fn long_tables_repeat_headers_after_page_breaks() {
+        let mut document = Document::new();
+        document.set_title("Table fixture");
+        let font = install_unicode_font(&mut document).unwrap();
+        let mut writer = PdfFlowWriter::new(document, font);
+        writer.enable_running_pages("Table fixture").unwrap();
+        let columns = vec!["Concept".to_string(), "Meaning".to_string()];
+        let rows = (0..70)
+            .map(|index| vec![format!("Concept {index}"), "A compact explanation that remains selectable.".to_string()])
+            .collect::<Vec<_>>();
+        writer.table("Reference table", &columns, &rows, "").unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-study-guide-table-{}.pdf",
+            std::process::id()
+        ));
+        writer.finish(&root).unwrap();
+        let bytes = fs::read(&root).unwrap();
+        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
+        let parsed = PdfDocument::new(reader);
+        let page_count = parsed.page_count().unwrap();
+        assert!(page_count > 1);
+        for page in 0..page_count {
+            let text = parsed.extract_text_from_page(page).unwrap().text;
+            assert!(text.contains("Concept"));
+            assert!(text.contains("Meaning"));
+        }
+        fs::remove_file(root).unwrap();
     }
 
     #[test]
