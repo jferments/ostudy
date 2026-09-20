@@ -101,6 +101,10 @@ enum ExportBlock {
     Bullets(Vec<String>),
     Numbered(Vec<String>),
     Terms(Vec<(String, String)>),
+    Callout { label: String, title: String, body: String },
+    Table { title: String, columns: Vec<String>, rows: Vec<Vec<String>>, caption: String },
+    WorkedExample { title: String, prompt: String, steps: Vec<String>, answer: String, takeaway: String },
+    RetrievalCheck { prompt: String, answer: String },
     Spacer,
 }
 
@@ -360,6 +364,31 @@ fn generated_section_blocks(section: &DocumentStudyGuideSection) -> Vec<ExportBl
         blocks.push(ExportBlock::Heading("Common misconceptions".to_string()));
         blocks.push(ExportBlock::Bullets(content.common_misconceptions.clone()));
     }
+    for callout in &content.callouts {
+        blocks.push(ExportBlock::Callout {
+            label: match callout.kind {
+                crate::document_study_guides::StudyGuideCalloutKind::KeyIdea => "Key idea",
+                crate::document_study_guides::StudyGuideCalloutKind::Warning => "Watch out",
+                crate::document_study_guides::StudyGuideCalloutKind::Tip => "Study tip",
+                crate::document_study_guides::StudyGuideCalloutKind::Note => "Note",
+            }.to_string(),
+            title: callout.title.clone(),
+            body: callout.body.clone(),
+        });
+    }
+    for table in &content.tables {
+        blocks.push(ExportBlock::Table {
+            title: table.title.clone(), columns: table.columns.clone(), rows: table.rows.clone(), caption: table.caption.clone(),
+        });
+    }
+    for example in &content.worked_examples {
+        blocks.push(ExportBlock::WorkedExample {
+            title: example.title.clone(), prompt: example.prompt.clone(), steps: example.steps.clone(), answer: example.answer.clone(), takeaway: example.takeaway.clone(),
+        });
+    }
+    for check in &content.retrieval_checks {
+        blocks.push(ExportBlock::RetrievalCheck { prompt: check.prompt.clone(), answer: check.answer.clone() });
+    }
     if !content.visual_explanations.is_empty() {
         blocks.push(ExportBlock::Heading("Visual evidence".to_string()));
         for visual in &content.visual_explanations {
@@ -504,15 +533,33 @@ impl PdfFlowWriter {
             ExportBlock::Numbered(items) => self.bullets(items, true),
             ExportBlock::Terms(entries) => {
                 for (term, explanation) in entries {
-                    self.text(
-                        &format!("{term}: {explanation}"),
-                        BODY_SIZE,
-                        BODY_LINE_HEIGHT,
-                        false,
-                        12.0,
-                    )?;
+                    self.text(&format!("{term}: {explanation}"), BODY_SIZE, BODY_LINE_HEIGHT, false, 12.0)?;
                 }
                 Ok(())
+            }
+            ExportBlock::Callout { label, title, body } => {
+                self.heading(&format!("{label}: {title}"), 11.5, 16.0)?;
+                self.paragraph(body, BODY_SIZE, BODY_LINE_HEIGHT, false)
+            }
+            ExportBlock::Table { title, columns, rows, caption } => {
+                self.heading(title, 12.5, 17.5)?;
+                self.paragraph(&columns.join(" | "), BODY_SIZE, BODY_LINE_HEIGHT, true)?;
+                for row in rows { self.paragraph(&row.join(" | "), BODY_SIZE, BODY_LINE_HEIGHT, false)?; }
+                if !caption.is_empty() { self.paragraph(caption, 9.5, 13.0, false)?; }
+                Ok(())
+            }
+            ExportBlock::WorkedExample { title, prompt, steps, answer, takeaway } => {
+                self.heading(&format!("Worked example: {title}"), 12.5, 17.5)?;
+                self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
+                self.bullets(steps, true)?;
+                self.paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT, true)?;
+                if !takeaway.is_empty() { self.paragraph(&format!("Takeaway: {takeaway}"), BODY_SIZE, BODY_LINE_HEIGHT, false)?; }
+                Ok(())
+            }
+            ExportBlock::RetrievalCheck { prompt, answer } => {
+                self.heading("Check yourself", 12.5, 17.5)?;
+                self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, true)?;
+                self.paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT, false)
             }
             ExportBlock::Spacer => self.spacer(5.0),
         }
@@ -762,6 +809,29 @@ mod tests {
             }],
             annotation_count: 2,
         }
+    }
+
+    #[test]
+    fn rich_semantic_blocks_survive_generated_export_projection() {
+        use crate::document_study_guides::{
+            StudyGuideCallout, StudyGuideCalloutKind, StudyGuideRetrievalCheck,
+            StudyGuideTable, StudyGuideWorkedExample,
+        };
+        let mut content = crate::document_study_guides::StudyGuideSectionContent::default();
+        content.overview = "Overview".to_string();
+        content.callouts.push(StudyGuideCallout { kind: StudyGuideCalloutKind::KeyIdea, title: "Remember".to_string(), body: "Preload reflects filling.".to_string() });
+        content.tables.push(StudyGuideTable { title: "Compare".to_string(), columns: vec!["Concept".to_string(), "Meaning".to_string()], rows: vec![vec!["Preload".to_string(), "Filling".to_string()]], caption: "High-yield comparison".to_string() });
+        content.worked_examples.push(StudyGuideWorkedExample { title: "Trace a change".to_string(), prompt: "Venous return rises.".to_string(), steps: vec!["Filling rises.".to_string()], answer: "Preload rises.".to_string(), takeaway: "Follow cause before effect.".to_string() });
+        content.retrieval_checks.push(StudyGuideRetrievalCheck { prompt: "What is preload?".to_string(), answer: "Ventricular filling/stretch before systole.".to_string() });
+        let section = DocumentStudyGuideSection {
+            topic_id: "a".repeat(32), parent_topic_id: None, sort_index: 0,
+            title: "Preload".to_string(), topic_summary: String::new(), content,
+            content_text: String::new(), content_hash: "b".repeat(64),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, vec![2], None).unwrap(),
+        };
+        let blocks = generated_section_blocks(&section);
+        let text = format!("{blocks:?}");
+        for expected in ["Remember", "Compare", "Trace a change", "What is preload?"] { assert!(text.contains(expected)); }
     }
 
     #[test]
