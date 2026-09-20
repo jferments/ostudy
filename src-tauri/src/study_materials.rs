@@ -853,12 +853,12 @@ mod tests {
 
                 let target_id = "t".repeat(32);
                 connection.execute(
-                    "INSERT INTO study_targets(
+                    r#"INSERT INTO study_targets(
                          id,target_kind,document_id,output_policy_json,created_at,updated_at
                      ) VALUES(
                          ?1,'document',?2,
                          '{"flashcards":true,"studyGuide":true}',1,1
-                     )",
+                     )"#,
                     params![target_id, document_id],
                 ).map_err(CommandError::database)?;
 
