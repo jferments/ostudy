@@ -880,9 +880,16 @@ fn parse_reduction(
 ) -> Result<ValidatedReduction, CommandError> {
     let result: CollectionReduction = serde_json::from_value(value)
         .map_err(|_| invalid("Invalid collection synthesis reduction structure."))?;
-    super::contracts::bounded(&result.summary, 8_000, "collection synthesis summary", false)?;
+    super::contracts::bounded(
+        &result.summary,
+        8_000,
+        "collection synthesis summary",
+        false,
+    )?;
     if result.learning_objectives.len() > 96 || result.relationships.len() > 256 {
-        return Err(invalid("The collection synthesis reduction exceeds its item budget."));
+        return Err(invalid(
+            "The collection synthesis reduction exceeds its item budget.",
+        ));
     }
     let mut objectives = HashSet::new();
     for objective in &result.learning_objectives {
