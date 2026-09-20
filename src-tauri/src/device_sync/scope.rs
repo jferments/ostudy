@@ -128,6 +128,8 @@ pub(crate) const DOCUMENT_TABLES: &[&str] = &[
     "document_collections",
     "document_collection_memberships",
     "document_collection_ranges",
+    "study_targets",
+    "study_target_suppressions",
     "document_pages",
     "document_semantic_elements",
     "document_semantic_chunks",
@@ -155,10 +157,15 @@ pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
     "document_study_guide_sections",
     "document_study_guide_overlays",
     "document_study_guide_checkpoints",
+    "study_target_guides",
+    "study_target_guide_overlays",
 ];
 
-pub(crate) const CROSS_DOCUMENT_FLASHCARD_TABLES: &[&str] =
-    &["document_decks", "document_note_topics"];
+pub(crate) const CROSS_DOCUMENT_FLASHCARD_TABLES: &[&str] = &[
+    "document_decks",
+    "document_note_topics",
+    "study_target_card_origins",
+];
 
 /// Native semantic admission for a copied/received question graph. The SQLite
 /// constraints prove relational shape; this additionally proves that active
@@ -401,6 +408,7 @@ pub(crate) fn sanitize_snapshot(
     crate::tutor::sanitize_for_device_transfer(connection)?;
     crate::knowledge::sanitize_for_device_transfer(connection)?;
     crate::collections::sanitize_for_device_transfer(connection)?;
+    crate::study_materials::sanitize_for_device_transfer(connection)?;
     connection
         .execute_batch(
             "PRAGMA foreign_keys = OFF;
@@ -416,7 +424,9 @@ pub(crate) fn sanitize_snapshot(
     if !selection.study_guides && selection.documents {
         connection
             .execute_batch(
-                "DELETE FROM document_study_guide_sections;
+                "DELETE FROM study_target_guide_overlays;
+                 DELETE FROM study_target_guides;
+                 DELETE FROM document_study_guide_sections;
                  DELETE FROM document_study_guide_overlays;
                  DELETE FROM document_study_guide_checkpoints;
                  DELETE FROM document_study_guides;
@@ -435,6 +445,8 @@ pub(crate) fn sanitize_snapshot(
                     "UPDATE documents SET generated_deck_id = NULL;
                      UPDATE document_generation_jobs SET generated_deck_id = NULL;
                      UPDATE document_artifact_metadata SET deck_id = NULL;
+                     UPDATE study_targets SET deck_id = NULL;
+                     DELETE FROM study_target_card_origins;
                      DELETE FROM document_decks;
                      DELETE FROM document_note_topics;",
                 )
@@ -499,7 +511,12 @@ pub(crate) fn sanitize_snapshot(
     if !selection.documents {
         connection
             .execute_batch(
-                "DELETE FROM document_collection_ranges;
+                "DELETE FROM study_target_guide_overlays;
+                 DELETE FROM study_target_guides;
+                 DELETE FROM study_target_card_origins;
+                 DELETE FROM study_target_suppressions;
+                 DELETE FROM study_targets;
+                 DELETE FROM document_collection_ranges;
                  DELETE FROM document_collection_memberships;
                  DELETE FROM document_collections;
                  DELETE FROM document_collection_organization;
@@ -610,7 +627,10 @@ mod tests {
         assert!(documents_only.includes_table("documents"));
         assert!(documents_only.includes_table("question_generation_reports"));
         assert!(documents_only.includes_table("document_study_guides"));
+        assert!(documents_only.includes_table("study_targets"));
+        assert!(documents_only.includes_table("study_target_guides"));
         assert!(!documents_only.includes_table("document_decks"));
+        assert!(!documents_only.includes_table("study_target_card_origins"));
         assert!(!documents_only.includes_table("notes"));
         assert!(!documents_only.includes_table("question_attempts"));
 
@@ -623,5 +643,6 @@ mod tests {
         assert!(all_learning.includes_table("question_generation_evidence"));
         assert!(all_learning.includes_table("document_decks"));
         assert!(all_learning.includes_table("document_note_topics"));
+        assert!(all_learning.includes_table("study_target_card_origins"));
     }
 }

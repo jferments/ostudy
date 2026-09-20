@@ -91,6 +91,7 @@ mod scheduler;
 mod settings;
 mod startup;
 mod study_calendar;
+mod study_materials;
 mod studyability;
 mod studydeck;
 mod system_resources;
@@ -320,6 +321,8 @@ pub fn run() {
             knowledge::commands::get_collection_synthesis,
             knowledge::commands::refresh_collection_synthesis,
             knowledge::commands::prepare_collection_synthesis,
+            study_materials::get_study_target_bundle,
+            study_materials::begin_study_target_bundle,
             tutor::commands::list_tutor_conversations,
             tutor::commands::create_tutor_conversation,
             tutor::commands::get_tutor_conversation,

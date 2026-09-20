@@ -92,6 +92,11 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("document_collections", &["id"]),
     TableSpec::new("document_collection_memberships", &["id"]),
     TableSpec::new("document_collection_ranges", &["id"]),
+    TableSpec::new("study_targets", &["id"]),
+    TableSpec::new(
+        "study_target_suppressions",
+        &["target_id", "artifact_kind"],
+    ),
     TableSpec::new("document_source_files", &["document_id", "file_ordinal"]),
     TableSpec::new("document_source_units", &["document_id", "unit_number"]),
     TableSpec::new("document_source_blocks", &["document_id", "block_index"]),
@@ -133,10 +138,16 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
         "document_study_guide_checkpoints",
         &["document_id", "contract_key", "topic_id"],
     ),
+    TableSpec::new("study_target_guides", &["id"]),
+    TableSpec::new("study_target_guide_overlays", &["id"]),
     // Cross-domain provenance is only enabled when both Documents and
     // Flashcards are selected.
     TableSpec::new("document_decks", &["document_id", "deck_id"]),
     TableSpec::new("document_note_topics", &["note_id", "topic_id"]),
+    TableSpec::new(
+        "study_target_card_origins",
+        &["target_id", "target_note_id"],
+    ),
 ];
 
 impl TableSpec {

@@ -146,6 +146,13 @@ fn delete_study_guide(
         }
 
         let now = unix_time_millis()?;
+        crate::study_materials::record_document_guide_deletion_suppression(
+            &transaction,
+            &input.document_id,
+            &input.guide_id,
+            &input.operation_id,
+            now,
+        )?;
         transaction
             .execute(
                 "UPDATE document_study_guide_overlays

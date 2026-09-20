@@ -53,6 +53,76 @@ pub(super) fn seed(database: &Database) {
         })
         .unwrap();
     crate::knowledge::collection_view::refresh_native(database, &collection).unwrap();
+    let snapshot = database
+        .with_connection(|connection| {
+            collections::resolve_selection(
+                connection,
+                SourceSelectionInput {
+                    collection_ids: vec![collection.clone()],
+                    documents: vec![],
+                    exclusions: vec![],
+                },
+            )
+        })
+        .unwrap();
+    database
+        .with_connection(|connection| {
+            let target = super::id(530);
+            let operation = super::id(531);
+            connection
+                .execute(
+                    "INSERT INTO study_targets(
+                         id,target_kind,collection_id,output_policy_json,
+                         active_snapshot_id,active_snapshot_json,created_at,updated_at
+                     ) VALUES(?1,'collection',?2,?3,?4,?5,10,10)",
+                    params![
+                        target,
+                        collection,
+                        "{\"flashcards\":true,\"studyGuide\":true}",
+                        snapshot.snapshot_id,
+                        serde_json::to_string(&snapshot).map_err(CommandError::serialization)?
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO study_target_batches(
+                         operation_id,target_id,request_sha256,source_snapshot_id,
+                         source_snapshot_json,output_policy_json,provider_authorized,
+                         state,safe_error_code,safe_error_message,created_at,updated_at,completed_at
+                     ) VALUES(?1,?2,?3,?4,?5,?6,0,'failed',
+                              'fixture_failure','Preservation fixture',10,10,10)",
+                    params![
+                        operation,
+                        target,
+                        "a".repeat(64),
+                        snapshot.snapshot_id,
+                        serde_json::to_string(&snapshot).map_err(CommandError::serialization)?,
+                        "{\"flashcards\":true,\"studyGuide\":true}"
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO study_target_artifact_jobs(
+                         batch_id,artifact_kind,state,safe_error_code,safe_error_message,
+                         created_at,updated_at,completed_at
+                     ) VALUES(?1,'flashcards','failed','fixture_failure',
+                              'Preservation fixture',10,10,10)",
+                    [operation],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO study_target_suppressions(
+                         target_id,artifact_kind,operation_id,reason,created_at
+                     ) VALUES(?1,'study_guide',?2,'user_deleted',10)",
+                    params![target, super::id(532)],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
 }
 
 pub(super) fn verify(connection: &Connection) -> Result<(), CommandError> {
@@ -85,6 +155,24 @@ pub(super) fn verify(connection: &Connection) -> Result<(), CommandError> {
             .expect("collection synthesis should be retained");
     assert!(!view.stale);
     assert_eq!(view.synthesis.snapshot_id, snapshot.snapshot_id);
+    let (stored_snapshot, batch_state, suppression_count): (String, String, i64) = connection
+        .query_row(
+            "SELECT t.active_snapshot_json,b.state,
+                    (SELECT COUNT(*) FROM study_target_suppressions s
+                     WHERE s.target_id=t.id AND s.artifact_kind='study_guide')
+             FROM study_targets t
+             JOIN study_target_batches b ON b.target_id=t.id
+             WHERE t.collection_id=?1",
+            [super::id(520)],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(CommandError::database)?;
+    let target_snapshot: crate::collections::SourceSetSnapshotDto =
+        serde_json::from_str(&stored_snapshot).map_err(CommandError::serialization)?;
+    collections::ensure_snapshot_current(connection, &target_snapshot)?;
+    assert_eq!(target_snapshot.snapshot_id, snapshot.snapshot_id);
+    assert_eq!(batch_state, "failed");
+    assert_eq!(suppression_count, 1);
     assert_eq!(connection.total_changes(), before);
     Ok(())
 }
