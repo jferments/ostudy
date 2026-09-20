@@ -15,7 +15,7 @@ export function TutorSources({ scope, choices, onApply, onClose }: {
   const [selected, setSelected] = useState<MaterialScope[]>(() => scopeMembers(scope));
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const material = choices.filter((choice) => ["deck", "document", "guide"].includes(choice.scope.kind));
+  const material = choices.filter((choice) => ["deck", "document", "guide", "collection"].includes(choice.scope.kind));
   const available = [...material];
   for (const member of scopeMembers(scope)) {
     if (!available.some((choice) => studyScopeKey(choice.scope) === studyScopeKey(member))) {
@@ -38,7 +38,7 @@ export function TutorSources({ scope, choices, onApply, onClose }: {
         const member = choice.scope as MaterialScope, key = studyScopeKey(member);
         return <label key={key} className={styles.sourceChoice}>
           <Checkbox checked={selected.some((entry) => studyScopeKey(entry) === key)} onCheckedChange={(checked) => toggle(member, checked)} />
-          <span>{choice.title}<small>{member.kind === "deck" ? "Flashcards" : member.kind === "guide" ? "Study guide" : "Document"}</small></span>
+          <span>{choice.title}<small>{member.kind === "deck" ? "Flashcards" : member.kind === "guide" ? "Study guide" : member.kind === "collection" ? "Document folder" : "Document"}</small></span>
         </label>;
       })}
       {!available.length ? <p className={styles.muted}>Import a document or create flashcards to add study sources.</p> : null}

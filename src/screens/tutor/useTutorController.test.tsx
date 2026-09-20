@@ -138,6 +138,21 @@ describe("explicit conversation retrieval", () => {
     expect(result.current.includeConversations).toBe(false); // General discussion cannot search the library.
   });
 
+  it("keeps collection-scoped Tutor retrieval source-only even when conversation search is requested", async () => {
+    const collectionScope = { kind: "collection" as const, id: "9".repeat(32) };
+    vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: collectionScope });
+    const { result } = renderHook(useTutorController);
+    await act(async () => { result.current.newConversation(collectionScope); });
+    await act(async () => { result.current.setIncludeConversations(true); });
+    expect(result.current.conversationRetrievalAllowed).toBe(false);
+    expect(result.current.includeConversations).toBe(false);
+    expect(result.current.preparation.selection).toEqual({ scope: collectionScope, includeConversations: false });
+    await act(async () => { await result.current.send("explain", "Compare the selected reading range."); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({
+      includeConversations: false,
+    }));
+  });
+
   it("cannot enable conversation retrieval in a hidden-answer context", async () => {
     vi.mocked(createTutorConversation).mockResolvedValue({ ...conversation, scope: deckScope });
     const { result } = renderHook(useTutorController);

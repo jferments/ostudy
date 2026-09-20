@@ -12,6 +12,11 @@ import { useMaterialPreparation } from "./useMaterialPreparation";
 
 const GENERAL: StudyScope = { kind: "general", id: null };
 
+function scopeUsesCollection(scope: StudyScope): boolean {
+  return scope.kind === "collection"
+    || (scope.kind === "selection" && scope.members.some((member) => member.kind === "collection"));
+}
+
 /** A single mounted owner retains in-flight operations across route/panel changes. */
 export function useTutorController() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -39,7 +44,7 @@ export function useTutorController() {
   const bootstrapLane = useRequestLane();
   const detailLane = useRequestLane();
   const historyLane = useRequestLane();
-  const preparation = useMaterialPreparation(scope, includeConversations && target?.mode !== "hint");
+  const conversationRetrievalAllowed = scope.kind !== "general" && !scopeUsesCollection(scope) && target?.mode !== "hint";\n  const preparation = useMaterialPreparation(scope, includeConversations && conversationRetrievalAllowed);
 
   useEffect(() => {
     alive.current = true;
@@ -183,7 +188,7 @@ export function useTutorController() {
     if (loading || !canSwitch()) return;
     // This opts into retrieval for the current interaction only. It neither
     // grants a conversation sharing permission nor starts a provider request.
-    setConversationInclusion(enabled && scope.kind !== "general" && target?.mode !== "hint");
+    setConversationInclusion(enabled && conversationRetrievalAllowed);
   }
 
   async function perform(request: TutorTurnInput): Promise<void> {
@@ -243,7 +248,7 @@ export function useTutorController() {
         operationId: createOperationId(), conversationId: value.conversation.id,
         expectedRevision: value.conversation.revision, mode, text,
         focus: target?.focus ?? null, profileId,
-        includeConversations: includeConversations && scope.kind !== "general" && mode !== "hint" && target?.mode !== "hint",
+        includeConversations: includeConversations && conversationRetrievalAllowed && mode !== "hint",
         questionId: question?.id ?? null,
       };
       await perform(request);
@@ -312,7 +317,7 @@ export function useTutorController() {
 
   return {
     conversations, profiles, choices, detail, scope, target, panelOpen, draft, profileId, defaultTutorProfileId,
-    loading, busy, error, pending, needsRefresh, preparation, includeConversations, setIncludeConversations,
+    loading, busy, error, pending, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
     newConversation, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
     send, retryPending, cancel, loadEarlier, removeConversation,

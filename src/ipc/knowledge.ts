@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { SourceLocator } from "./studyGuides";
 
-export type MaterialScope = { kind: "deck" | "document" | "guide"; id: string };
+export type MaterialScope = { kind: "deck" | "document" | "guide" | "collection"; id: string };
 export type StudyScope =
   | { kind: "general" | "library"; id: null }
   | MaterialScope
@@ -24,7 +24,7 @@ export function selectedScope(members: MaterialScope[]): StudyScope {
 
 export function scopeMembers(scope: StudyScope): MaterialScope[] {
   if (scope.kind === "selection") return scope.members;
-  if (scope.kind === "deck" || scope.kind === "document" || scope.kind === "guide") return [scope];
+  if (scope.kind === "deck" || scope.kind === "document" || scope.kind === "guide" || scope.kind === "collection") return [scope];
   return [];
 }
 
