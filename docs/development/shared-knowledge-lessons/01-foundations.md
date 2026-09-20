@@ -1,6 +1,6 @@
-# Foundation stages: LK-01 through LK-07
+# Foundation stages: LK-01 through LK-04
 
-Part of the [development plan](README.md). Checkboxes reflect the implementation currently published on PR #103; unchecked work remains backlog rather than implied behavior. Existing code named here is a reuse boundary, not by itself proof that a later stage exists. Proposed test filenames remain proposals until the corresponding test is committed.
+Part of the [PR #103 development record](README.md). All stages in this file are implemented on PR #103; automated qualification and human/platform acceptance remain separately recorded in the PR evidence ledger.
 
 ## LK-01 — Full-size Practice-faithful editor preview
 
@@ -70,44 +70,13 @@ Exit: multi-select, additional chooser, drop, paste, automatic card/guide calls,
 
 Implementation note: [Image collections](04-image-sources.md) defines the revised product contract that supersedes the original manual preparation UI. Deterministic tests do not imply live-provider, physical-device or visual acceptance. This single-source correction does not implement the later multi-document folder/bundle stages.
 
-## LK-05 — Folders, ranges and exact source-set resolution
 
-Outcome: manage document folders like familiar deck folders, reuse one book in several weeks, and select whole folders or individual members in Tutor.
+## Successor stages
 
-Owners: proposed `collections/` domain/repository and `src/ipc/collections.ts`; current scope validation/permission queries; Documents library/controller; Tutor Sources selector; existing menus, breadcrumbs and move patterns.
+LK-05 and later implementation has moved out of PR #103:
 
-- [ ] **05.1 Store explicit membership.** Add folder hierarchy, organization revision, document membership and selected range records. A source may belong to several folders. Keep source identity independent of location. Support add reference, move membership, remove membership, rename, archive and delete-folder-preserving-content. Detect cycles; bound hierarchy/traversal. Copy deck-folder interaction patterns, not its ownership assumptions.
-- [ ] **05.2 Normalize reading ranges.** Bind ranges to stable canonical units/blocks and actual source locator capabilities. Merge overlapping intervals, handle additions/removals, and flag invalidated ranges after a source change. A generic Xberg section must not be mislabeled as an exact slide/page link. Chapter labels are display aids, not selectors that grant unbounded text access.
-- [ ] **05.3 Resolve one native snapshot.** Support folder/material union plus exclusions; deduplicate parent/child selections, document references and ranges before counting or ranking. Bind current source/interpretation/membership revisions and authorization. Enforce expanded work/byte/depth bounds with a useful explicit refusal, never silent truncation. Replace the old scope contract through current-format conversion rather than layering nested arbitrary selections.
-- [ ] **05.4 Deliver the UI.** Folder Overview/Sources, thumbnails, contextual actions, empty states and keyboard/tap move alternatives. Existing guides/decks appear by reference in normal libraries and in the folder. Preserve source versus artifact deletion semantics. Opening the folder or Sources dialog makes no provider call.
-- [ ] **05.5 Connect Tutor.** Use the same resolver before retrieval and after hydration. Store each turn's actual snapshot. A folder can supply future members only under current permission; in-flight turns stay frozen. Excluded content must not enter through backing documents, artifact focus or a whole-folder summary. Preserve source-only and general-chat behavior.
+- [PR #104](https://github.com/jferments/ostudy/pull/104) owns LK-05 through LK-09.
+- [PR #105](https://github.com/jferments/ostudy/pull/105) owns LK-10 through LK-13.
+- [PR #106](https://github.com/jferments/ostudy/pull/106) owns LK-14 plus residual evidence-backed cleanup/qualification.
 
-Exit: folder/range CRUD, cycle prevention, duplicate selection, exclusion sentinels, scope changes mid-request, backup and default-preserving deletion pass. Adding a fully prepared source does not alter its knowledge rows or call its interpretation model.
-
-## LK-06 — Thin synthesis and coverage-aware generation context
-
-Outcome: Week 1 has a coherent overview and source connections without copies of every document's facts. Sparse slides influence emphasis while dense readings supply evidence.
-
-Owners: proposed `knowledge/collection_view.rs`, existing catalog/retrieval/context owners, collection repository and overview UI, coverage planning in document intelligence.
-
-- [ ] **06.1 Build a complete reference catalog.** Enumerate permitted member unit/topic/coverage references, not repeated statements. Keep original source kind/origin and full dependency closure. Reuse exact embedding inputs and spaces rather than embedding every folder copy. No pairwise comparison of every unit is required.
-- [ ] **06.2 Synthesize bounded connections.** Use semantic candidate retrieval with lexical exact identifiers and structural context. Add topic summaries, complementary/contrast/prerequisite links and unresolved objectives with support. Separate instructional emphasis from factual support. A slide or unanswered assignment is not evidence for a missing answer; repetition is not independent corroboration.
-- [ ] **06.3 Incrementalize without summary blindness.** Visit all changed members' manifests, including minor topics and empty/unresolved dispositions. Recompute affected edges/topics and a compact top overview; leave member knowledge untouched. Do not repeatedly synthesize only from old summaries. Removal invalidates every dependent synthesis item, even one not naming the removed document.
-- [ ] **06.4 Distinguish retrieval from coverage.** Tutor gets a bounded relevant context; full materials get an explicit selected-scope/depth coverage plan, not generic top-k hits. Track objectives, gaps and all required qualifiers. Course-focused and comprehensive depth are distinct. Whole units and required evidence survive budget admission together; unsupported inferences remain labeled, not promoted to source truth.
-- [ ] **06.5 Qualify synthesis.** Test slide/book/assignment contribution, contradictory sources, qualified numbers, minority topics, member deletion, new sources resolving a gap, and excluded-source summaries. Measure provider work and total retained bytes including references/indexes. Human source review remains separate from schema success.
-
-Exit: useful combined context drives a guide and card fixture, all-dependency permissions hold, and adding a prepared source causes zero document reanalysis. Collection synthesis can update while old completed artifacts remain readable and honestly marked out of date.
-
-## LK-07 — Automatic coherent study bundles
-
-Outcome: upload starts useful generation without a toolbar of Generate buttons; one upload scope owns one configured bundle. Later uploads update it without multiplying decks or destroying edits.
-
-Owners: existing document task and generation services; proposed `study_materials/`; native guide/card publication; `src/ipc/documents.ts`/`studyGuides.ts`; Documents and app-level task controllers.
-
-- [ ] **07.1 Introduce real study targets.** Persist document/collection target, selected output policy, source-set snapshot, ordinary deck/guide references and deliberate deletion suppression. Migrate document-owned guide/job/overlay relationships with stable IDs; no synthetic source document or duplicate ownership. A previously standalone document keeps its own materials when referenced in a folder.
-- [ ] **07.2 Coordinate dependency jobs.** One durable upload batch feeds shared extraction/preparation, optional synthesis and parallel guide/card composition. Store revision-bound work keys, captured profiles, subscriber/cancel state, partial receipts and bounded concurrency. No source-writing workflows or external scheduler. Coalesce rapid edits by revision, not arbitrary sleeps. Import success and generation failure remain distinct.
-- [ ] **07.3 Publish safely.** Create a new ordinary deck only for the first successful target publication. Replays return receipts; later sources append novel validated cards to that deck. Publish a successor guide with overlay reconciliation. Existing card edits, schedules, reviews, removed sources' surviving cards and suppressed artifacts remain protected. Cancellation never deletes a successful sibling.
-- [ ] **07.4 Replace tile controls.** Study guide and Flashcards are compact status links with real measured progress, clear indeterminate phases, and a checkmark only after commit. Show the folder destination on contributing-source tiles. Remove the separate Deck created badge. Contextual Stop/Retry/details remain accessible. Add Lesson only after LK-10 qualifies; audio readiness belongs inside the lesson.
-- [ ] **07.5 Test orchestration and recovery.** Simulate duplicate upload events, simultaneous consumers, partial provider failure, cancellation, source edits, lost commit responses, restart, deletion suppression and unavailable embedding configuration. Saved sources/materials remain usable. Restart reconciles jobs but does not silently reauthorize cloud requests.
-
-Exit: a batch in Week 1 yields one combined guide and deck, not per-file or ancestor duplicates. New uploads use configured defaults; existing libraries do not receive surprise library-wide regeneration. Full backup and lifecycle support exist before this becomes the default path. The next dependent work is richer guide rendering and text-first lessons, not another extraction implementation.
+Those PRs carry their own roadmaps and acceptance ledgers. This file remains the implementation record for LK-01 through LK-04 only.
