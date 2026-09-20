@@ -61,6 +61,10 @@ pub(super) fn normalize_content(mut value: Value) -> Value {
             "processSteps",
             "comparisons",
             "commonMisconceptions",
+            "callouts",
+            "tables",
+            "workedExamples",
+            "retrievalChecks",
             "visualExplanations",
         ],
     );
