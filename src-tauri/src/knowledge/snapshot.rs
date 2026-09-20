@@ -31,7 +31,7 @@ impl DocumentSnapshot {
             return Err(repository::stale_source());
         }
         let mut digest = Sha256::new();
-        digest.update(b"document-analysis-snapshot-v1");
+        digest.update(b"document-analysis-snapshot-v2");
         for query in [
             "SELECT json_array(sha256, source_format, source_unit_kind, source_unit_count,
                 extraction_backend, adapter_backend, canonical_schema_version, archived_at)
@@ -49,6 +49,13 @@ impl DocumentSnapshot {
              WHERE s.document_id = ?1 AND s.kind = 'document' ORDER BY u.id LIMIT 1600001",
             "SELECT json_array(id, contract, state, accepted_count, rejected_count, report_json)
              FROM knowledge_analysis_windows WHERE document_id = ?1 ORDER BY id LIMIT 100001",
+            "SELECT json_array(o.id, o.block_index, o.source_file_sha256, o.source_unit_number,
+                o.payload_sha256, p.payload_json, o.location_json, o.identity_state)
+             FROM document_evidence_occurrences o JOIN document_evidence_payloads p ON p.sha256=o.payload_sha256
+             WHERE o.document_id=?1 ORDER BY o.id LIMIT 100001",
+            "SELECT json_array(l.occurrence_id, l.target_node, l.kind, l.target_occurrence_id)
+             FROM document_evidence_links l JOIN document_evidence_occurrences o ON o.id=l.occurrence_id
+             WHERE o.document_id=?1 ORDER BY l.occurrence_id, l.target_node, l.kind LIMIT 100001",
         ] {
             digest.update((query.len() as u64).to_le_bytes());
             digest.update(query.as_bytes());
@@ -319,3 +326,6 @@ mod tests {
         .unwrap();
     }
 }
+
+#[cfg(test)]
+mod evidence_tests;

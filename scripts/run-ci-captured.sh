@@ -99,4 +99,11 @@ if (( log_size > 0 )); then
   tail -c "$FAILURE_TAIL_BYTES" "$LOG_FILE" >&2
   printf '\n%s\n' '--- end bounded failure tail ---' >&2
 fi
+# Formatting hunks are read-only source diagnostics, not a second source writer.
+# Report complete bounded hunks instead of forcing repairs from an arbitrary tail.
+if grep -Fq 'STATIC CHECK FAILED during: Rust formatting' "$LOG_FILE"; then
+  if ! node "$(dirname -- "${BASH_SOURCE[0]}")/report-rustfmt-diffs.mjs" "$LOG_FILE" >&2; then
+    echo "Could not render complete formatting diagnostics; the original log is retained." >&2
+  fi
+fi
 exit "$status"

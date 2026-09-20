@@ -203,7 +203,13 @@ fn load_units(
         .collect()
 }
 
-fn validate_report(sources: &[SourceRecord], report: &AnalysisReport) -> Result<(), CommandError> {
+pub(crate) fn validate_report(
+    sources: &[SourceRecord],
+    report: &AnalysisReport,
+) -> Result<(), CommandError> {
+    if let Some(coverage) = &report.coverage {
+        coverage.validate(sources, &report.accepted, &report.no_learning)?;
+    }
     let mut checked = report.clone();
     checked.refresh_coverage(sources);
     if checked.missing_sources != report.missing_sources
@@ -384,6 +390,7 @@ mod tests {
         let catalog = crate::knowledge::authoring::KnowledgeCatalog {
             units: published[&second.id].clone(),
             document_core_units: Default::default(),
+            preparation: Default::default(),
         };
         let support = catalog.select(&[catalog.units[0].id.clone()], 2).unwrap();
         db.with_connection(|c| {

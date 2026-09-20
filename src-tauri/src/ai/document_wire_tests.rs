@@ -56,11 +56,14 @@ fn all_provider_dialects_deliver_the_semantic_contract_and_preserve_native_evide
         assert!(system.contains("<ostudy-output-schema>"));
         let output=json!({"units":[{"title":"Triangle","kind":"fact","statement":"A triangle has three sides.",
             "qualifications":[],"topic":"Geometry","importance":"core","evidenceIds":["E0"]}],"noLearningSourceIds":null}).to_string();
-        let message = if kind == ProviderKind::Deepseek {
-            json!({"tool_calls":[{"function":{"name":request.body["tools"][0]["function"]["name"],"arguments":output}}]})
-        } else {
-            json!({"content":output})
-        };
+        // Nullable qualified structure uses the maintained JSON-object dialect,
+        // not an invented strict-tool name. Native admission is identical.
+        if kind == ProviderKind::Deepseek {
+            assert!(request.body.get("tools").is_none());
+            assert_eq!(request.body["response_format"]["type"], "json_object");
+            assert!(system.contains("details"));
+        }
+        let message = json!({"content":output});
         let response = json!({"choices":[{"message":message,"finish_reason":"stop"}]});
         let value = providers::decode_document_output(&request, &response).unwrap();
         let report = extraction::decode::initial(value, &catalog, &sources).unwrap();

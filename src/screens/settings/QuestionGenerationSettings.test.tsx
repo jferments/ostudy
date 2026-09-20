@@ -37,7 +37,8 @@ describe("question generation controls", () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith("success", "Question generation preferences saved."));
     expect(save).toHaveBeenCalledTimes(1);
     expect(save.mock.calls[0][0]).toMatchObject({ revision: 4, policy: { allowedTypes: ["recall"] } });
-    expect(dirty).toHaveBeenLastCalledWith(false);
+    // The notification runs before React commits the saved draft and its effect.
+    await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
     expect(load).toHaveBeenCalledTimes(1);
   });
 

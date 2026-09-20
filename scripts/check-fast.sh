@@ -79,6 +79,9 @@ cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-fe
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
+step "Current-format entry and preservation contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests::
+
 step "External file transfer and recovery contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
@@ -94,6 +97,9 @@ cargo test \
   --all-features \
   --lib \
   document_
+
+step "Ordered image-set source and backup contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" documents::image_sets:: library_backup::image_set_backup_tests::
 
 step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
 for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::scope:: device_sync::package:: library_backup::media_backup_tests library_backup::tutor_backup_tests; do

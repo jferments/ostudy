@@ -8,7 +8,7 @@ use super::{
 };
 
 impl ValidatedQuestion {
-    pub(super) fn evaluate(
+    pub(crate) fn evaluate(
         &self,
         response: &QuestionResponse,
     ) -> Result<Evaluation, QuestionError> {

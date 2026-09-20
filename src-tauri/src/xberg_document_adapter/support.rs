@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 
 use crate::document_domain::DocumentFormat;
 
-pub(crate) const MAX_BLOCK_TEXT_CHARS: usize = 250_000;
 pub(crate) const MAX_HEADING_CHARS: usize = 500;
 pub(crate) const MAX_ATTRIBUTE_VALUE_CHARS: usize = 2_000;
 

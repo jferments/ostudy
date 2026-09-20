@@ -58,7 +58,7 @@ Automated maintainers begin with [AGENTS.md](../AGENTS.md), [the agent index](ag
 
 PR #96 completed the shadcn/Base UI/Tailwind presentation migration described by the [Phase 0 affected-surface inventory](development/ui-overhaul-phase-0-inventory.md), [completed migration roadmap](development/ui-overhaul-roadmap.md), [ADR 0051](decisions/0051-shadcn-tailwind-presentation-architecture.md), and [PR #96 implementation record](development/ui-overhaul-current-implementation.md). The current post-migration aesthetic work is the [visual refresh roadmap](development/ui-visual-refresh-roadmap.md). [UI architecture](architecture/ui.md) owns the implemented dependency and styling rules rather than either roadmap.
 
-Focused development references include [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), and the [portability inventory](development/platform-portability-inventory.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
+Focused development references include [AI testing](development/ai-infrastructure-testing.md), [Android architecture](development/android.md), [Android build/install](development/android-build-and-install.md), [local diagnostics](development/diagnostics.md), [dependency policy](development/dependency-audit.md), the [portability inventory](development/platform-portability-inventory.md), and the [editor preview boundary](development/editor-preview.md). Other files in `development/` are subsystem regression/acceptance procedures or clearly labeled implementation records.
 
 ## CI infrastructure and performance
 
@@ -71,6 +71,8 @@ The maintained runner topology is described in [Unified Linux/Android runner](de
 The [generated JSON reference](reference/generated-json-import.md), [generator-agent instructions](reference/flashcard-import-agent.md), [version-1 JSON Schema](ostudy-flashcards-v1.schema.json), and [example](examples/cardiovascular.ostudy.json) define compatible content-only imports. They are not instructions to supply internal database IDs or learner history.
 
 ## Roadmap and historical material
+
+The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) specifies the next implementation: reusable evidence, image sets, folders, automatic materials, responsive lessons, retained narration, PowerPoint export, Practice-faithful editor preview, and a verified pre-release data consolidation. Its stage checklists are planned work, not claims of implemented behavior.
 
 [Interactive question types](development/interactive-question-types.md) is the active implementation contract for seven new question types, shared authoring, deterministic evaluation and evidence-based generation after PR #98. It includes single-best-answer multiple choice and the free/open-source, non-AI offline requirement. Its current-boundary section distinguishes implemented foundations from types not yet available.
 

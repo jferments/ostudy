@@ -64,6 +64,7 @@ mod documents;
 mod editor_drafts;
 mod error;
 mod external_file_commands;
+mod external_file_images;
 mod external_file_recovery;
 mod external_file_streaming;
 mod external_files;
@@ -214,6 +215,7 @@ pub fn run() {
             authoring::card_commands::get_card_note,
             authoring::card_commands::interactive::save_question_note,
             authoring::card_commands::interactive::get_question_note,
+            authoring::card_commands::interactive::preview_question_draft,
             authoring::card_commands::find_duplicate_cards,
             authoring::card_commands::analyze_bulk_cards,
             authoring::card_commands::bulk_create_cards,
@@ -222,6 +224,7 @@ pub fn run() {
             deletion_commands::delete_cards_with_undo,
             authoring::card_types_and_templates::create_card_note,
             authoring::card_types_and_templates::update_card_note,
+            authoring::card_types_and_templates::preview_card_draft,
             authoring::card_types_and_templates::templates::list_card_template_summaries,
             authoring::card_types_and_templates::get_card_template,
             authoring::card_types_and_templates::create_card_template,
@@ -263,6 +266,7 @@ pub fn run() {
             ui_checkpoint::save_ui_checkpoint,
             ui_checkpoint::clear_ui_checkpoint,
             external_file_streaming::stream_select_and_stage_external_import,
+            external_file_images::stage_image_collection_file,
             external_files::release_staged_external_import,
             external_file_streaming::stream_publish_prepared_export,
             external_file_commands::share_prepared_export,
@@ -311,6 +315,13 @@ pub fn run() {
             tutor::commands::get_tutor_memory,
             tutor::commands::change_tutor_memory,
             documents::commands::list_documents,
+            documents::commands::inspect_image_set,
+            documents::commands::import_image_set,
+            documents::commands::get_image_set,
+            documents::commands::get_image_set_preview,
+            documents::commands::prepare_image_set,
+            documents::commands::set_image_set_filters,
+            documents::commands::amend_image_set,
             document_import::import_document,
             document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,

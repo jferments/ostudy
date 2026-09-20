@@ -12,7 +12,17 @@ The original document is not uploaded to the model as an opaque file. ostudy sta
 
 ## Import and generate
 
-Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a red stop-sign icon; click that same button to request cancellation.
+Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Flashcard generation starts automatically after source admission; **Generate study guide** remains available on the retained document. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a red stop-sign icon; click that same button to request cancellation.
+
+### Upload an image collection
+
+Choose **Upload images**, then **Select images** to select several screenshots or photos at once. Use the **+** button to add files from another location, drag files onto the area below the file list, or paste images from the clipboard. All three paths add to the same collection. Pasting a URL does not fetch an image from the web.
+
+Processing starts automatically. ostudy retains each original, reads the images locally, resolves verified overlap across the collection, and uses the existing document-learning pipeline to create flashcards and a study guide. You do not need to order images, crop them, label text regions or run a preparation step. Upload order is not used as proof that two passages are equivalent; changed numbers, units, qualifications or source pixels are not silently merged.
+
+You can keep adding images while processing is running. They wait for the current task, then extend the same source and generated deck rather than creating a second deck. Leaving the collection page does not cancel the work. **Stop** stops the active task and prevents the next automatic stage. A genuine failure shows **Retry processing**; successfully saved sources and cards remain available. Failed files can be removed without uploading the successful selections again.
+
+Use **View collection** on an existing image source to add more images or optionally inspect a retained original. Inspection is not required for generation. Previously saved source/filter state remains compatible with complete-library backup and restore; removing the old preparation controls does not alter original image bytes.
 
 Open generated cards from Flashcards and generated guides from **Study Guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
 
@@ -23,6 +33,8 @@ Review source-grounded output for factual errors, weak questions, duplicated con
 ## Supported source families
 
 The current registry supports PDF; Word DOC/DOCX-family files; PowerPoint PPT/PPTX-family files; OpenDocument ODT/ODP/ODS; EPUB; RTF; Excel XLS/XLSX-family files; and CSV.
+
+Image collections are a separate first-class Documents source workflow for supported PNG/JPEG/WebP screenshots and photos. They are not routed through Xberg and are not converted into one stitched image.
 
 PDF uses the native PDF adapter. Supported non-PDF formats use **Xberg**, with immediate normalization into ostudy's own canonical representation. AnyDoc is a retired parser, not a selectable alternative or fallback.
 
@@ -86,7 +98,7 @@ Deleting only a study guide has a narrower scope: it removes generated guide rev
 
 ## Backup, sync, and limitations
 
-Whole-library backups include the coherent document/learning-artifact database graph and required managed sources/images/renders, including typed question definitions, retained attempt/review evidence and generation evidence. Supported older backup representations remain readable. Provider credentials are excluded.
+Whole-library backups include the coherent document/learning-artifact database graph and required managed sources/images/renders, including ordered image-set manifests, each retained original image, pending image-source snapshots, Content-filter decisions, typed question definitions, retained attempt/review evidence and generation evidence. Supported older backup representations remain readable. Provider credentials are excluded.
 
 Trusted-device synchronization has explicit sender-selected scopes for Flashcards, Documents, Study Guides and provider settings/credentials. Study Guides require Documents; cross-document/card provenance is included only when both domains are selected. Typed interactive questions and their admitted retained evidence are supported within the Flashcards graph. A selected sync scope is still not a disaster-recovery substitute for the complete-library backup.
 

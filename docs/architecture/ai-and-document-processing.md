@@ -10,6 +10,7 @@ ostudy's document system has four distinct responsibilities: retain and normaliz
 | --- | --- |
 | `documents/` plus current lifecycle/repository service modules | Source metadata, managed source ownership, admission and lifecycle coordination |
 | `document_ingestion/` | Application adapter contract, explicit registry/detection, canonicalization and persistence boundary |
+| `documents/image_sets/` + `document_ingestion/image_set.rs` | Ordered-image admission/ownership, retained originals/manifests, local OCR cache, conservative overlap/filter projection, revision-safe amendments and source inspection |
 | `pdf_backend/` | Semantic/native PDF text extraction and quality/recovery |
 | `pdf_document_ingestion/` | PDF pipeline, bounded rendering/OCR preparation, progress and recovery |
 | `xberg_document_adapter/` | Isolated non-PDF backend invocation and immediate conversion to application-owned structures |
@@ -39,6 +40,18 @@ AnyDoc is retired runtime history. Its old persisted backend identities, numbere
 Xberg is pinned with only the reviewed runtime/office/excel features. Its PDF/OCR/layout/network-acquisition/transcription/embedding/server paths are not part of this integration. Third-party parsing results are normalized immediately into ostudy-owned canonical objects.
 
 Detection primarily uses source signatures and container structure. OLE needs a valid DOC/PPT/XLS filename hint to disambiguate supported families; CSV requires its filename hint because it lacks a unique signature. Renaming unknown bytes is not authorization to treat them as a supported source. HTML acquisition and arbitrary external links are not a side effect of document import.
+
+### Ordered image-set sources
+
+Ordered image sets are a first-class source family rather than another Xberg container type. Native admission validates staged PNG/JPEG/WebP bytes, decoded dimensions/pixels, stable member identities, sequence order and aggregate limits before one manifest becomes authoritative. Each original is retained independently; the source is never defined by a stitched composite.
+
+Local region OCR is cached by compatible normalized-pixel/extractor identity separately from source ownership. The canonical adapter preserves literal text, member/region identities and geometry, and proves screenshot overlap only through exact text/pixel/reading-order evidence. Protected numbers, units, signs, operators, negation, ambiguous repeated headers, missing geometry or conflicting pixels prevent an equivalence merge.
+
+Content filtering is a reversible source projection, not deletion. Specific confident edge controls/notices may be excluded, short attribution can remain metadata, and uncertain educational text remains retained. Manual Include/Exclude/Metadata decisions are revision checked. When a transform changes OCR region IDs, a decision transfers only to one exact-literal match on the same stable member and is rebound atomically when the successor projection commits.
+
+Append, reorder, quarter-turn rotation and source-inclusion amendments use an expected source/filter revision and a bounded managed-file staging journal. An acknowledged edit invalidates the current projection while keeping the prior processing receipt inspectable until local preparation commits a successor. Stale extraction cannot publish into a newer manifest; compatible unchanged OCR/knowledge can be reused.
+
+Image import, source inspection, local OCR preparation, overlap proof, filtering and amendment do not select an AI provider or fetch guessed source URLs. The controlled original preview reads retained owned pixels through a native command. Whole-library backup packages and validates the current manifest plus independently retained originals and persistent filter/pending-source state.
 
 ## Canonical document evidence
 

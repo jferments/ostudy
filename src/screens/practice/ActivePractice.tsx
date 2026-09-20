@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { TutorEntryButton } from "../tutor/TutorEntryButton";
-import { RichTextView } from "../../editor/RichTextView";
 import {
   isInteractivePracticePresentation,
   type PracticeCard,
@@ -16,7 +15,6 @@ import type {
   SavePracticeAnswerInput,
 } from "../../ipc/questionAttempts";
 import type { RescheduleIntent, ScheduleAction } from "../../ipc/scheduling";
-import { useAppearance } from "../../ui/appearance/AppearanceProvider";
 import { useExperience } from "../../ui/feedback/ExperienceProvider";
 import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { useOverlayContext } from "../../ui/overlays/overlayContext";
@@ -29,6 +27,7 @@ import { practiceStyles as view, scoreColors } from "./presentation";
 import styles from "./PracticeCard.module.css";
 import type { ConfidenceScore } from "./confidence";
 import { InteractiveQuestionActivity } from "./InteractiveQuestionActivity";
+import { RecallCardSurface } from "./RecallCardSurface";
 
 interface ActivePracticeProps {
   session: PracticeSession;
@@ -85,12 +84,9 @@ export function ActivePractice({
 }: ActivePracticeProps) {
   const ratingPanelRef = useRef<HTMLElement | null>(null);
   const wasRevealed = useRef(revealed);
-  const [showingAnswer, setShowingAnswer] = useState(revealed);
   const busy = isRevealing || isRating || isEnding || isManaging;
   const { topId } = useOverlayContext();
-  const appearance = useAppearance();
   const experience = useExperience();
-  const animateFlip = flipAnimationEnabled ?? appearance.motion === "full";
   const cardCount = Math.max(0, session.cardCount);
   const studiedCount = Math.min(Math.max(0, ratedCount), cardCount);
   const remainingCount = Math.max(0, cardCount - studiedCount);
@@ -104,23 +100,12 @@ export function ActivePractice({
     ? null
     : current.presentation;
   const interactive = interactivePresentation !== null;
-  const normalizedQuestion = current.presentation.frontText.trim();
-  const backAlreadyIncludesQuestion = recallPresentation !== null
-    && normalizedQuestion.length > 0
-    && recallPresentation.backText.includes(normalizedQuestion);
-  const combineQuestionAndAnswer = recallPresentation !== null
-    && displayQuestionOnAnswer
-    && !backAlreadyIncludesQuestion;
   const checkedProgress = interactivePresentation?.question.attempt.progress.phase === "checked"
     ? interactivePresentation.question.attempt.progress
     : null;
   const objectiveCorrect = checkedProgress
     ? checkedProgress.evaluation.verdict === "correct"
     : null;
-
-  useEffect(() => {
-    setShowingAnswer(revealed);
-  }, [current.presentation.cardId, revealed]);
 
   useEffect(() => {
     if (revealed) ratingPanelRef.current?.focus();
@@ -152,33 +137,6 @@ export function ActivePractice({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busy, interactive, objectiveCorrect, onReveal, onScore, revealed, topId]);
 
-  function activateAnimatedCard(): void {
-    if (busy || interactive) return;
-    if (!revealed) {
-      onReveal();
-      return;
-    }
-    setShowingAnswer((side) => !side);
-  }
-
-  function questionContent(mediaPlaybackActive: boolean) {
-    if (!recallPresentation) return null;
-    return <>
-      <span className={view.practiceSideLabel}>Question</span>
-      <RichTextView document={recallPresentation.frontDoc} assets={recallPresentation.assets}
-        mediaPlaybackActive={mediaPlaybackActive} onLinkError={onLinkError} />
-    </>;
-  }
-
-  function answerContent(mediaPlaybackActive: boolean) {
-    if (!recallPresentation) return null;
-    return <>
-      <span className={view.practiceSideLabel}>Answer</span>
-      <RichTextView document={recallPresentation.backDoc} assets={recallPresentation.assets}
-        mediaPlaybackActive={mediaPlaybackActive} onLinkError={onLinkError} />
-    </>;
-  }
-
   const cardSurface = interactivePresentation ? (
     <InteractiveQuestionActivity
       key={interactivePresentation.question.attempt.instanceId}
@@ -194,39 +152,11 @@ export function ActivePractice({
       onChecked={onQuestionChecked}
       onError={onLinkError}
     />
-  ) : animateFlip ? (
-    <section className={cn(styles.cardSurface, view.cardSurface, styles.flipCard)} data-flipped={showingAnswer}
-      role="button" tabIndex={0} aria-label={!revealed ? "Reveal answer" : showingAnswer ? "Show question" : "Show answer"}
-      aria-disabled={busy ? "true" : undefined}
-      onClick={(event) => {
-        const target = event.target;
-        if (target instanceof HTMLElement && target.closest("a, button, input, textarea, select, audio, video")) return;
-        activateAnimatedCard();
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== " " && event.key !== "Enter") return;
-        if (event.target !== event.currentTarget) return;
-        event.preventDefault();
-        event.stopPropagation();
-        activateAnimatedCard();
-      }}>
-      <div className={styles.flipInner}>
-        <div className={cn(styles.flipFace, styles.flipFront)} aria-hidden={showingAnswer} inert={showingAnswer}>
-          {questionContent(!showingAnswer)}
-          {!showingAnswer ? <small className={view.practiceFlipHint}>Click the card to flip it</small> : null}
-        </div>
-        <div className={cn(styles.flipFace, styles.flipBack)} aria-hidden={!showingAnswer} inert={!showingAnswer}>
-          {combineQuestionAndAnswer ? <>{questionContent(showingAnswer)}<div className={view.practiceAnswerDivider} /></> : null}
-          {answerContent(showingAnswer)}
-        </div>
-      </div>
-    </section>
-  ) : (
-    <section className={cn(styles.cardSurface, view.cardSurface)}>
-      {!revealed || combineQuestionAndAnswer ? questionContent(!revealed || combineQuestionAndAnswer) : null}
-      {revealed ? <>{combineQuestionAndAnswer ? <div className={view.practiceAnswerDivider} /> : null}{answerContent(true)}</> : null}
-    </section>
-  );
+  ) : recallPresentation ? (
+    <RecallCardSurface presentation={recallPresentation} presentationKey={recallPresentation.cardId}
+      revealed={revealed} busy={busy} flipAnimationEnabled={flipAnimationEnabled}
+      displayQuestionOnAnswer={displayQuestionOnAnswer} onReveal={onReveal} onLinkError={onLinkError} />
+  ) : null;
 
   return <PageScaffold width="wide" className="tw:flex tw:h-full tw:min-h-0 tw:max-w-6xl tw:flex-col tw:overflow-y-auto tw:pt-5 tw:pb-5">
     <header className={view.practiceSessionHeader}>

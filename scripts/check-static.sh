@@ -97,7 +97,7 @@ step "Repository script unit tests and owned-class verification"
 python3 -m unittest discover -s tests/scripts -p 'test_*.py'
 node "$SCRIPT_DIR/verify-owned-class-usage.mjs"
 node "$SCRIPT_DIR/verify-ui-boundaries.mjs"
-node --test tests/scripts/ui-build.node-test.mjs
+node --test tests/scripts/ui-build.node-test.mjs tests/scripts/pr-contract-update.node-test.mjs
 
 step "Frontend type checking"
 pnpm exec tsc -b --pretty false

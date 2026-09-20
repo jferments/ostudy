@@ -82,6 +82,20 @@ pub(crate) fn materialize_sources(
     database: &Database,
     seeds: &[SourceSeed],
 ) -> Result<Vec<SourceRecord>, CommandError> {
+    Ok(materialize_source_groups(database, seeds)?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+/// Preserve the authoritative seed-to-source association separately from a
+/// source's stable semantic segment key. Image sources deliberately replace
+/// numeric chunk prefixes with content-stable keys, so callers must not infer
+/// ownership from `SourceRecord::segment_key`.
+pub(crate) fn materialize_source_groups(
+    database: &Database,
+    seeds: &[SourceSeed],
+) -> Result<Vec<Vec<SourceRecord>>, CommandError> {
     if seeds.len() > 32 {
         return Err(invalid(
             "The semantic source publication batch is too large.",
@@ -92,7 +106,7 @@ pub(crate) fn materialize_sources(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         let now = unix_time_millis()?;
-        let mut published = Vec::new();
+        let mut published = Vec::with_capacity(seeds.len());
         for seed in seeds {
             let mut sources = read_seed(&transaction, seed)?;
             for source in &mut sources {
@@ -109,7 +123,7 @@ pub(crate) fn materialize_sources(
                     .map(|source| source.id.clone())
                     .collect::<Vec<_>>(),
             )?;
-            published.extend(sources);
+            published.push(sources);
         }
         transaction.commit().map_err(CommandError::database)?;
         Ok(published)

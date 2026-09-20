@@ -51,7 +51,7 @@ Adds high-return deterministic tests such as the complete frontend/controller/co
 
 The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
-The current public migration registry is defined by `src-tauri/src/database.rs` (public schema version 8 at the time of this guide). Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
+The current public migration registry is defined by `src-tauri/src/database.rs` (schema version 17 at the LK-02 checkpoint). Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
 
 ### Exact-tree reuse
 

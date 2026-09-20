@@ -19,6 +19,8 @@ use crate::{
     error::CommandError,
 };
 
+pub(crate) mod structure;
+
 pub(crate) const CANONICAL_DOCUMENT_SCHEMA_VERSION: i64 = 1;
 
 const MAX_SOURCE_FILES: usize = 4_096;
@@ -245,6 +247,8 @@ pub(crate) struct CanonicalBlock {
     pub asset_ids: Vec<String>,
     pub attributes: BTreeMap<String, String>,
     pub content_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structure: Option<structure::BlockStructure>,
 }
 
 impl CanonicalBlock {
@@ -284,6 +288,7 @@ impl CanonicalBlock {
             asset_ids,
             attributes,
             content_sha256,
+            structure: None,
         }
     }
 }
@@ -569,6 +574,16 @@ impl CanonicalDocument {
                 ));
             }
             validate_attributes(&block.attributes)?;
+            if let Some(structure) = &block.structure {
+                structure.validate(block.role)?;
+                if let Some(table) = &structure.table {
+                    if table.text_projection()? != block.text {
+                        return Err(invalid_canonical(
+                            "The table text projection disagrees with its structured cells.",
+                        ));
+                    }
+                }
+            }
             let expected_hash = block_content_sha256(
                 block.source_unit_number,
                 block.block_ordinal,

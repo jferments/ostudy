@@ -16,6 +16,7 @@ use crate::{
 
 pub(crate) fn catalog_fixture() -> KnowledgeCatalog {
     KnowledgeCatalog {
+        preparation: Default::default(),
         document_core_units: Default::default(),
         units: vec![KnowledgeUnit {
             id: "a".repeat(32),
@@ -30,6 +31,7 @@ pub(crate) fn catalog_fixture() -> KnowledgeCatalog {
                 topic: "Geometry".to_string(),
                 supporting_excerpt: "A triangle has three sides.".to_string(),
                 grounding: None,
+                details: None,
             },
         }],
     }
@@ -113,6 +115,7 @@ pub(crate) fn fixture() -> (
         database,
         source,
         KnowledgeCatalog {
+            preparation: Default::default(),
             units,
             document_core_units: Default::default(),
         },

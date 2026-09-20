@@ -18,6 +18,9 @@ pub(super) fn read(
     if chunk_index < 0 {
         return Err(invalid("The canonical source chunk identity is invalid."));
     }
+    if !crate::documents::image_sets::storage::ready(connection, &seed.owner_id)? {
+        return Err(super::super::repository::stale_source());
+    }
     let row = connection
         .query_row(
             "SELECT d.title, c.full_text, c.source_locator_json, c.visual_asset_ids_json,
@@ -46,6 +49,19 @@ pub(super) fn read(
         .map_or_else(|| title.clone(), |heading| format!("{title} — {heading}"));
     let mut source = blank_record(seed, &title, &revision);
     source.identity_version = 2;
+    let key: Option<(String, String)> = connection
+        .query_row(
+            "SELECT stable_key, evidence_sha256 FROM document_image_chunk_keys WHERE document_id = ?1 AND chunk_index = ?2",
+            params![seed.owner_id, chunk_index],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    if let Some((key, evidence)) = key {
+        source.identity_version = 3;
+        source.segment_key = format!("image:{key}");
+        source.owner_revision = evidence;
+    }
     source.text = text;
     source.origin = ContentOrigin::SourceDocument;
     source.document_id = Some(seed.owner_id.clone());

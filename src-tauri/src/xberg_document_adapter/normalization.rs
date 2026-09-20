@@ -15,12 +15,12 @@ use crate::{
 };
 
 use super::{
-    support::{
-        bounded_text, deduplicate, MAX_ATTRIBUTE_VALUE_CHARS, MAX_BLOCK_TEXT_CHARS,
-        MAX_HEADING_CHARS,
-    },
+    support::{bounded_text, deduplicate, MAX_ATTRIBUTE_VALUE_CHARS, MAX_HEADING_CHARS},
     tables::{project_grid, project_table},
 };
+
+mod structure;
+pub(crate) use structure::{literal_text, StructureCatalog};
 
 const MAX_NODE_ATTRIBUTES: usize = 24;
 const MAX_ANCESTOR_DEPTH: usize = 64;
@@ -70,12 +70,12 @@ pub(crate) fn normalize_document(
 
     if blocks.is_empty() {
         if let Some(elements) = document.elements.as_ref() {
-            blocks = map_elements(elements, asset_ids, &mut state);
+            blocks = map_elements(elements, asset_ids, &mut state)?;
         }
     }
     append_unrepresented_tables(&mut blocks, &document.tables)?;
     if blocks.is_empty() {
-        let text = bounded_text(&document.content, MAX_BLOCK_TEXT_CHARS);
+        let text = literal_text(&document.content)?;
         if !text.is_empty() {
             blocks.push(block(
                 CanonicalBlockRole::Paragraph,
@@ -106,7 +106,7 @@ fn normalize_authored_pages(
     let structure = document.document.as_ref();
     let mut units = Vec::with_capacity(pages.len());
 
-    for page in pages {
+    for (page_index, page) in pages.iter().enumerate() {
         let mut page_state = MappingState::default();
         let mut blocks = structure
             .map(|structure| {
@@ -120,10 +120,10 @@ fn normalize_authored_pages(
             .transpose()?
             .unwrap_or_default();
 
-        append_page_tables(&mut blocks, page)?;
+        append_page_tables(&mut blocks, page, page_index)?;
         append_page_images(&mut blocks, page, asset_ids);
         if blocks.is_empty() {
-            let text = bounded_text(&page.content, MAX_BLOCK_TEXT_CHARS);
+            let text = literal_text(&page.content)?;
             if !text.is_empty() {
                 let role = if spreadsheet_format(format) && text.contains('\t') {
                     CanonicalBlockRole::Table
@@ -138,7 +138,8 @@ fn normalize_authored_pages(
         if let Some(notes) = page
             .speaker_notes
             .as_deref()
-            .map(|value| bounded_text(value, MAX_BLOCK_TEXT_CHARS))
+            .map(literal_text)
+            .transpose()?
             .filter(|value| !value.is_empty())
         {
             blocks.push(NormalizedBlock {
@@ -209,10 +210,11 @@ fn map_structure(
         }
         let context = node_context(structure, index);
         if let Some(mut mapped) = map_node(node, asset_ids, &context, state)? {
+            mapped
+                .attributes
+                .insert(structure::NODE.to_string(), index.to_string());
             apply_heading_context(&mut mapped, &mut headings);
-            if !is_adjacent_duplicate(output.last(), &mapped) {
-                output.push(mapped);
-            }
+            output.push(mapped);
         }
     }
     state.headings = headings;
@@ -387,10 +389,20 @@ fn map_node(
     let Some((role, text, heading_level, asset_ids)) = mapped else {
         return Ok(None);
     };
+    attributes.insert(
+        "sourceLayer".to_string(),
+        match node.content_layer {
+            ContentLayer::Body => "body",
+            ContentLayer::Header => "header",
+            ContentLayer::Footer => "footer",
+            ContentLayer::Footnote => "footnote",
+        }
+        .to_string(),
+    );
     let role = role_for_layer(role, node.content_layer);
-    let text = bounded_text(&text, MAX_BLOCK_TEXT_CHARS);
+    let text = literal_text(&text)?;
     let asset_ids = deduplicate(asset_ids);
-    if text.is_empty() && asset_ids.is_empty() {
+    if text.is_empty() && asset_ids.is_empty() && role != CanonicalBlockRole::Table {
         state.skipped_node_count = state.skipped_node_count.saturating_add(1);
         return Ok(None);
     }
@@ -409,7 +421,7 @@ fn map_elements(
     elements: &[Element],
     asset_ids: &HashMap<u32, String>,
     state: &mut MappingState,
-) -> Vec<NormalizedBlock> {
+) -> Result<Vec<NormalizedBlock>, CommandError> {
     let mut output = Vec::new();
     let mut headings = Vec::new();
     for element in elements {
@@ -417,6 +429,7 @@ fn map_elements(
             .metadata
             .additional
             .iter()
+            .filter(|(key, _)| !key.starts_with("_ostudy"))
             .take(MAX_NODE_ATTRIBUTES)
             .map(|(key, value)| {
                 (
@@ -458,7 +471,7 @@ fn map_elements(
                 attributes.insert("imageAssetUnavailable".to_string(), "true".to_string());
             }
         }
-        let text = bounded_text(&element.text, MAX_BLOCK_TEXT_CHARS);
+        let text = literal_text(&element.text)?;
         if text.is_empty() && element_asset_ids.is_empty() {
             state.skipped_node_count = state.skipped_node_count.saturating_add(1);
             continue;
@@ -473,28 +486,22 @@ fn map_elements(
             attributes,
         };
         apply_heading_context(&mut mapped, &mut headings);
-        if !is_adjacent_duplicate(output.last(), &mapped) {
-            output.push(mapped);
-        }
+        output.push(mapped);
     }
     state.headings = headings;
-    output
+    Ok(output)
 }
 
 fn append_unrepresented_tables(
     blocks: &mut Vec<NormalizedBlock>,
     tables: &[xberg::Table],
 ) -> Result<(), CommandError> {
-    let mut existing = blocks
-        .iter()
-        .filter(|block| block.role == CanonicalBlockRole::Table)
-        .map(|block| block.text.clone())
-        .collect::<HashSet<_>>();
-    for table in tables {
-        let projected = project_table(table)?;
-        if projected.text.is_empty() || !existing.insert(projected.text.clone()) {
-            continue;
-        }
+    // Equal flattened text is not proof of equal headers, provenance or spans.
+    for (index, table) in tables.iter().enumerate() {
+        let mut projected = project_table(table)?;
+        projected
+            .attributes
+            .insert(structure::TABLE.to_string(), index.to_string());
         blocks.push(NormalizedBlock {
             role: CanonicalBlockRole::Table,
             text: projected.text,
@@ -511,17 +518,16 @@ fn append_unrepresented_tables(
 fn append_page_tables(
     blocks: &mut Vec<NormalizedBlock>,
     page: &PageContent,
+    page_index: usize,
 ) -> Result<(), CommandError> {
-    let mut existing = blocks
-        .iter()
-        .filter(|block| block.role == CanonicalBlockRole::Table)
-        .map(|block| block.text.clone())
-        .collect::<HashSet<_>>();
-    for table in &page.tables {
-        let projected = project_table(table.as_ref())?;
-        if projected.text.is_empty() || !existing.insert(projected.text.clone()) {
-            continue;
-        }
+    for (index, table) in page.tables.iter().enumerate() {
+        let mut projected = project_table(table.as_ref())?;
+        projected
+            .attributes
+            .insert(structure::TABLE.to_string(), index.to_string());
+        projected
+            .attributes
+            .insert(structure::PAGE.to_string(), page_index.to_string());
         blocks.push(NormalizedBlock {
             role: CanonicalBlockRole::Table,
             text: projected.text,
@@ -641,7 +647,10 @@ fn block(
 fn role_for_layer(role: CanonicalBlockRole, layer: ContentLayer) -> CanonicalBlockRole {
     if matches!(
         role,
-        CanonicalBlockRole::Image | CanonicalBlockRole::Table | CanonicalBlockRole::Equation
+        CanonicalBlockRole::Image
+            | CanonicalBlockRole::Table
+            | CanonicalBlockRole::Equation
+            | CanonicalBlockRole::CodeBlock
     ) {
         return role;
     }
@@ -657,6 +666,7 @@ fn bounded_attributes(attributes: Option<&HashMap<String, String>>) -> BTreeMap<
     attributes
         .into_iter()
         .flat_map(|attributes| attributes.iter())
+        .filter(|(key, _)| !key.starts_with("_ostudy"))
         .take(MAX_NODE_ATTRIBUTES)
         .map(|(key, value)| {
             (
@@ -712,15 +722,6 @@ fn resolved_page(structure: &DocumentStructure, index: usize) -> Option<u32> {
         parent = parent_node.parent;
     }
     None
-}
-
-fn is_adjacent_duplicate(previous: Option<&NormalizedBlock>, next: &NormalizedBlock) -> bool {
-    previous.is_some_and(|previous| {
-        previous.role == next.role
-            && previous.text == next.text
-            && previous.asset_ids == next.asset_ids
-            && previous.heading_level == next.heading_level
-    })
 }
 
 fn authored_page_format(format: DocumentFormat) -> bool {
