@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { StudyMarkdown } from "../components/StudyMarkdown";
 import type { ShowToast } from "../components/Toast";
 import { getErrorMessage } from "../ipc/common";
+import { publishPreparedExport, releasePreparedExport } from "../ipc/externalFiles";
 import { openDocumentSource } from "../ipc/documents";
 import {
   getCollectionStudyGuide,
+  prepareCollectionStudyGuidePdf,
   type CollectionGuideSection,
   type CollectionStudyGuide,
   type CollectionStudyGuideOverlay,
@@ -13,8 +15,11 @@ import {
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { useOptionalTutor } from "./tutor/TutorContext";
 import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
+import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
+import { Checkbox } from "../ui/primitives/FormControls";
+import { Button } from "../ui/primitives/Button";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { guideReaderStyles as styles } from "./documents/presentation";
 import { StudyGuideStructuredContent } from "./StudyGuideDialog";
@@ -32,8 +37,11 @@ export function CollectionStudyGuideDialog({
   showToast,
   onClose,
 }: CollectionStudyGuideDialogProps) {
+  const confirm = useConfirm();
   const [guide, setGuide] = useState<CollectionStudyGuide | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [includeAnnotations, setIncludeAnnotations] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     const loaded = await getCollectionStudyGuide(collectionId);
@@ -59,6 +67,34 @@ export function CollectionStudyGuideDialog({
     [guide],
   );
 
+  async function exportPdf(): Promise<void> {
+    if (!guide || isExporting) return;
+    setIsExporting(true);
+    let preparedExportId: string | null = null;
+    try {
+      const prepared = await prepareCollectionStudyGuidePdf(collectionId, includeAnnotations);
+      preparedExportId = prepared.preparedExport.id;
+      if (prepared.mathSourceFallback && !await confirm({
+        title: "Export math as source notation?",
+        description: "Equations in this PDF will use readable LaTeX source rather than typeset formulas. The study guide in oStudy keeps its typeset math.",
+        confirmLabel: "Export PDF",
+        cancelLabel: "Cancel",
+      })) return;
+      const receipt = await publishPreparedExport(prepared.preparedExport.id);
+      if (receipt) {
+        const notes = prepared.annotationCount > 0
+          ? ` and ${prepared.annotationCount} note${prepared.annotationCount === 1 ? "" : "s"}`
+          : "";
+        showToast("success", `Exported collection study guide with ${prepared.sectionCount} section${prepared.sectionCount === 1 ? "" : "s"}${notes}.`);
+      }
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    } finally {
+      if (preparedExportId) await releasePreparedExport(preparedExportId).catch(() => undefined);
+      setIsExporting(false);
+    }
+  }
+
   async function openSource(section: CollectionGuideSection): Promise<void> {
     if (!section.sourceDocumentId) return;
     try {
@@ -75,6 +111,8 @@ export function CollectionStudyGuideDialog({
       onClose={onClose}
       closeLabel="Close collection study guide"
       className={styles.workspace}
+      dismissible={!isExporting}
+      busy={isExporting}
     >
       <header className={styles.header}>
         <div>
@@ -86,6 +124,21 @@ export function CollectionStudyGuideDialog({
           </strong>
         </div>
         <div className={styles.headerActions}>
+          {guide ? (
+            <label className={styles.annotationToggle}>
+              <Checkbox
+                checked={includeAnnotations}
+                disabled={isExporting}
+                onCheckedChange={setIncludeAnnotations}
+              />
+              Include my notes in PDF
+            </label>
+          ) : null}
+          {guide ? (
+            <Button variant="secondary" disabled={isExporting} onClick={() => void exportPdf()}>
+              {isExporting ? "Exporting…" : "Export PDF"}
+            </Button>
+          ) : null}
           {guide ? (
             <TutorEntryButton
               target={{
