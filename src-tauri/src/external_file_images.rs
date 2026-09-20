@@ -53,7 +53,9 @@ fn stage(
     let name = input.display_name.trim();
     if name.is_empty()
         || name.chars().count() > 255
-        || name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\'))
+        || name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\'))
     {
         return Err(invalid("The image filename is invalid."));
     }

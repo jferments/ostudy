@@ -8,6 +8,7 @@ import { cancelDocumentStudyGuideGeneration, generateDocumentStudyGuide } from "
 import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { useRequestLane } from "./requestLane";
+import { useImageCollectionJobs } from "./useImageCollectionJobs";
 
 export interface DocumentJobServices {
   refreshDecks: () => Promise<unknown>;
@@ -99,6 +100,29 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       if (alive.current) setErrorMessage(`Saved successfully; refreshing the library failed: ${getErrorMessage(error)}`);
     }
   }
+
+  const imageCollections = useImageCollectionJobs({
+    acquire() {
+      if (!acquire()) return false;
+      setIsUploading(true);
+      return true;
+    },
+    release() {
+      writing.current = false;
+      if (alive.current) setIsUploading(false);
+    },
+    changed: reconcileSaved,
+    activeDocument(id, guide) {
+      if (!alive.current) return;
+      setBusyDocumentId(guide ? null : id);
+      setGuideGeneratingDocumentId(guide ? id : null);
+      if (!id) {
+        setCancelingGuideDocumentId(null);
+        setCancelingDocumentId(null);
+      }
+    },
+    showToast,
+  });
 
   async function uploadDocument(): Promise<void> {
     if (!acquire()) return;
@@ -196,6 +220,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   async function stopStudyGuide(document: DocumentSummary): Promise<void> {
     const key = `guide:${document.id}`;
     if (guideGeneratingDocumentId !== document.id || stopping.current.has(key)) return;
+    imageCollections.stopForDocument(document.id);
     stopping.current.add(key);
     setCancelingGuideDocumentId(document.id);
     try {
@@ -230,6 +255,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   async function stopGeneration(document: DocumentSummary): Promise<void> {
     const key = `document:${document.id}`;
     if (stopping.current.has(key)) return;
+    imageCollections.stopForDocument(document.id);
     stopping.current.add(key);
     setCancelingDocumentId(document.id);
     try {
@@ -288,7 +314,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   return { documents, generationProgress, clockNow, isLoading, isUploading, busyDocumentId,
     cancelingDocumentId, deletingDocumentId, guideGeneratingDocumentId, cancelingGuideDocumentId,
     errorMessage, hasProcessingDocument, refreshDocuments, uploadDocument, retry, generateMore,
-    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument };
+    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument, imageCollections };
 }
 
 function showGenerationSuccess(createdCardCount: number, showToast: ShowToast): void {

@@ -32,7 +32,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
   const {
     documents, generationProgress, clockNow, isLoading, isUploading, busyDocumentId,
     cancelingDocumentId, deletingDocumentId, guideGeneratingDocumentId, cancelingGuideDocumentId,
-    errorMessage, hasProcessingDocument, refreshDocuments, uploadDocument, retry, generateMore,
+    errorMessage, hasProcessingDocument, uploadDocument, retry, generateMore,
     generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
   } = jobs;
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
@@ -43,9 +43,6 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     return (
       <ImageSetWorkspace
         documentId={imageWorkspaceDocumentId}
-        showToast={props.showToast}
-        onImported={setImageWorkspaceDocumentId}
-        onChanged={refreshDocuments}
         onClose={() => setImageWorkspaceDocumentId(undefined)}
       />
     );
@@ -64,7 +61,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
               disabled={isUploading || hasProcessingDocument || busyDocumentId !== null}
               onClick={() => setImageWorkspaceDocumentId(null)}
             >
-              Add image set
+              Upload images
             </Button>
             <Button variant="primary"
               disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null || guideGeneratingDocumentId !== null}
@@ -93,14 +90,11 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
             const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
             const canGenerateGuide = document.lifecycleState !== "processing";
             const actions: ResponsiveAction[] = [];
-            if (document.sourceFormat === "image_bundle") actions.push({
-              id: "edit-images", label: "Edit images", placement: "always-visible",
-              variant: "secondary", icon: "edit",
-              onSelect: () => setImageWorkspaceDocumentId(document.id), disabled: busy,
-            });
             actions.push({
-              id: "view", label: "View", placement: "always-visible",
-              onSelect: () => void openSource(document), disabled: busy,
+              id: "view", label: document.sourceFormat === "image_bundle" ? "View collection" : "View", placement: "always-visible",
+              onSelect: () => document.sourceFormat === "image_bundle"
+                ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
+              disabled: document.sourceFormat === "image_bundle" ? deletingDocumentId === document.id : busy,
             });
             if (document.lifecycleState === "processing") actions.push({
               id: "stop-generation", label: canceling ? "Stopping…" : "Stop generation",
