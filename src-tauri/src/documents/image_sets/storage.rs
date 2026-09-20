@@ -70,6 +70,7 @@ pub(crate) fn settings(connection: &Connection, id: &str) -> Result<FilterSettin
                     revision: row.get(0)?,
                     include_interface: row.get(1)?,
                     overrides: BTreeMap::new(),
+                    carried_overrides: BTreeMap::new(),
                 })
             },
         )

@@ -100,7 +100,7 @@ fn rebind_filter_overrides(
                  WHERE document_id = ?1 ORDER BY region_id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([&receipt.document_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -110,7 +110,8 @@ fn rebind_filter_overrides(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     for (member_id, old_region_id, action) in rows {
         let Some(old_member) = previous
