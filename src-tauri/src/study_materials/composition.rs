@@ -238,14 +238,15 @@ fn pending_artifacts(
             .query_map([operation_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .map(|row| {
-                row.map_err(CommandError::database).and_then(|value| match value.as_str() {
-                    "flashcards" => Ok(StudyTargetArtifactKind::Flashcards),
-                    "study_guide" => Ok(StudyTargetArtifactKind::StudyGuide),
-                    _ => Err(CommandError::new(
-                        "invalid_study_target",
-                        "A saved study-target artifact kind was invalid.",
-                    )),
-                })
+                row.map_err(CommandError::database)
+                    .and_then(|value| match value.as_str() {
+                        "flashcards" => Ok(StudyTargetArtifactKind::Flashcards),
+                        "study_guide" => Ok(StudyTargetArtifactKind::StudyGuide),
+                        _ => Err(CommandError::new(
+                            "invalid_study_target",
+                            "A saved study-target artifact kind was invalid.",
+                        )),
+                    })
             })
             .collect()
     })
@@ -464,8 +465,7 @@ fn source_note_candidates(
             })
             .map_err(CommandError::database)?;
         for row in rows {
-            let (note_id, note_revision, locator_json) =
-                row.map_err(CommandError::database)?;
+            let (note_id, note_revision, locator_json) = row.map_err(CommandError::database)?;
             let locator: SourceLocator =
                 serde_json::from_str(&locator_json).map_err(CommandError::serialization)?;
             locator.validate()?;
@@ -493,9 +493,7 @@ fn source_note_candidates(
 }
 
 fn locator_allowed(member: &SourceSetMemberDto, locator: &SourceLocator) -> bool {
-    if locator.unit_kind.as_str() != member.source_unit_kind
-        || locator.unit_numbers.is_empty()
-    {
+    if locator.unit_kind.as_str() != member.source_unit_kind || locator.unit_numbers.is_empty() {
         return false;
     }
     if member.ranges.is_empty() {
@@ -706,14 +704,9 @@ fn copy_source_note(
     }
     let new_note_id = generate_id(tx)?;
     match source.note_type.as_str() {
-        "basic" | "cloze" => copy_recall_note(
-            tx,
-            &candidate.note_id,
-            source,
-            &new_note_id,
-            deck_id,
-            now,
-        )?,
+        "basic" | "cloze" => {
+            copy_recall_note(tx, &candidate.note_id, source, &new_note_id, deck_id, now)?
+        }
         "interactive" => {
             let definition = source.question_definition.as_deref().ok_or_else(|| {
                 CommandError::new(
@@ -823,10 +816,9 @@ fn copy_recall_note(
         )
         .map_err(CommandError::database)?;
     let cards = statement
-        .query_map(
-            [source_note_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-        )
+        .query_map([source_note_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
@@ -1065,8 +1057,7 @@ fn reconcile_collection_overlays(
             "title_override" | "body_override" | "highlight"
         );
         let compatible = !content_bound
-            || block_key.as_ref().and_then(|key| hashes.get(key))
-                == base_hash.as_ref();
+            || block_key.as_ref().and_then(|key| hashes.get(key)) == base_hash.as_ref();
         tx.execute(
             "UPDATE study_target_guide_overlays
              SET guide_id=?1,state=?2,updated_at=?3,revision=revision+1
@@ -1238,12 +1229,7 @@ fn finalize_batch(database: &Database, operation_id: &str) -> Result<(), Command
             .count();
         let failure_count = rows
             .iter()
-            .filter(|(state, _, _)| {
-                matches!(
-                    state.as_str(),
-                    "failed" | "canceled" | "interrupted"
-                )
-            })
+            .filter(|(state, _, _)| matches!(state.as_str(), "failed" | "canceled" | "interrupted"))
             .count();
         let state = if failure_count == 0 {
             "complete"
@@ -1255,10 +1241,7 @@ fn finalize_batch(database: &Database, operation_id: &str) -> Result<(), Command
         let first_error = rows
             .iter()
             .find(|(row_state, _, _)| {
-                matches!(
-                    row_state.as_str(),
-                    "failed" | "canceled" | "interrupted"
-                )
+                matches!(row_state.as_str(), "failed" | "canceled" | "interrupted")
             })
             .map(|(_, code, message)| (code.as_str(), message.as_str()))
             .unwrap_or(("", ""));
@@ -1268,13 +1251,7 @@ fn finalize_batch(database: &Database, operation_id: &str) -> Result<(), Command
                  SET state=?1,safe_error_code=?2,safe_error_message=?3,
                      updated_at=?4,completed_at=?4
                  WHERE operation_id=?5 AND state='composing'",
-                params![
-                    state,
-                    first_error.0,
-                    first_error.1,
-                    now,
-                    operation_id
-                ],
+                params![state, first_error.0, first_error.1, now, operation_id],
             )
             .map_err(CommandError::database)?;
         Ok(())
@@ -1297,10 +1274,7 @@ fn to_i64(value: usize) -> Result<i64, CommandError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        collections::ResolvedSourceRangeDto,
-        document_domain::SourceUnitKind,
-    };
+    use crate::{collections::ResolvedSourceRangeDto, document_domain::SourceUnitKind};
 
     fn locator(units: Vec<i64>) -> SourceLocator {
         SourceLocator::new(SourceUnitKind::Page, units, None).unwrap()
