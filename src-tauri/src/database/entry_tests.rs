@@ -80,7 +80,8 @@ fn future_schema_error_identifies_running_build_and_preserves_input() {
     assert_eq!(connection.total_changes(), before);
 
     let backup_error = validate_backup_lineage(&connection).unwrap_err();
-    assert_eq!(backup_error, error);
+    assert_eq!(backup_error.code, "invalid_backup");
+    assert_eq!(backup_error.message, error);
     assert_eq!(connection.total_changes(), before);
 }
 
