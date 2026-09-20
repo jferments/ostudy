@@ -24,6 +24,13 @@ test("does not emit unrelated failure logs or manufacture absent diagnostics", (
   assert.doesNotMatch(rustfmtDiagnostics(hunk("source") + "private unrelated footer\n" + failure), /private unrelated footer/);
 });
 
+test("deduplicates repeated formatter hunk streams", () => {
+  const repeated = hunk("same", "-before\n+after");
+  const output = rustfmtDiagnostics(repeated + repeated + failure);
+  assert.match(output, /Complete hunks: 1\/1/);
+  assert.equal((output.match(/Diff in \/source\/same\.rs:7:/g) ?? []).length, 1);
+});
+
 test("bounds output by whole hunks and explicitly reports omissions", () => {
   const first = hunk("first");
   const output = rustfmtDiagnostics(first + hunk("second") + failure, Buffer.byteLength(first));
@@ -41,7 +48,11 @@ test("captured command keeps its exact nonzero status and source bytes", () => {
     const before = readFileSync(source);
     const run = spawnSync("bash", ["scripts/run-ci-captured.sh", log, process.execPath, "-e", `console.log(${JSON.stringify(hunk("source") + failure)}); process.exit(7);`], { encoding: "utf8" });
     assert.equal(run.status, 7);
-    assert.match(run.stdout + run.stderr, /All captured Rust formatting hunks/);
+    const output = run.stdout + run.stderr;
+    assert.match(output, /All captured Rust formatting hunks/);
+    assert.match(output, /generic failure tail suppressed/);
+    assert.doesNotMatch(output, /--- bounded failure tail ---/);
+    assert.equal((output.match(/Diff in \/source\/source\.rs:7:/g) ?? []).length, 1);
     assert.deepEqual(readFileSync(source), before);
   } finally {
     rmSync(root, { recursive: true, force: true });

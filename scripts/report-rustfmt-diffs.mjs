@@ -23,19 +23,26 @@ export function rustfmtDiagnostics(input, maximumBytes = MAX_DIFF_BYTES) {
     }
   }
   if (current) hunks.push(current.join("\n") + "\n");
-  if (hunks.length === 0) return "Rust formatting failed; no complete diff headers were captured.\n";
+  const uniqueHunks = [];
+  const seenHunks = new Set();
+  for (const hunk of hunks) {
+    if (seenHunks.has(hunk)) continue;
+    seenHunks.add(hunk);
+    uniqueHunks.push(hunk);
+  }
+  if (uniqueHunks.length === 0) return "Rust formatting failed; no complete diff headers were captured.\n";
   const selected = [];
   let bytes = 0;
-  for (const hunk of hunks) {
+  for (const hunk of uniqueHunks) {
     const size = Buffer.byteLength(hunk);
     if (bytes + size > maximumBytes) break;
     selected.push(hunk);
     bytes += size;
   }
-  const omitted = hunks.length - selected.length;
+  const omitted = uniqueHunks.length - selected.length;
   return [
     "--- read-only Rust formatting diagnostics ---",
-    `Complete hunks: ${selected.length}/${hunks.length}; bytes: ${bytes}; omitted hunks: ${omitted}.`,
+    `Complete hunks: ${selected.length}/${uniqueHunks.length}; bytes: ${bytes}; omitted hunks: ${omitted}.`,
     ...selected,
     omitted ? "INCOMPLETE: the diagnostic byte limit was reached; no partial hunk was emitted." : "All captured Rust formatting hunks are included.",
     "--- end read-only Rust formatting diagnostics ---\n",

@@ -94,14 +94,21 @@ fi
 
 printf 'ERROR Qualification command failed with exit %s; full output retained in %s (%s bytes).\n' \
   "$status" "$LOG_FILE" "$log_size" >&2
-if (( log_size > 0 )); then
+rustfmt_failure=0
+if grep -Fq 'STATIC CHECK FAILED during: Rust formatting' "$LOG_FILE"; then
+  rustfmt_failure=1
+fi
+if (( log_size > 0 && rustfmt_failure == 0 )); then
   printf '%s\n' '--- bounded failure tail ---' >&2
   tail -c "$FAILURE_TAIL_BYTES" "$LOG_FILE" >&2
   printf '\n%s\n' '--- end bounded failure tail ---' >&2
+elif (( rustfmt_failure == 1 )); then
+  printf '%s\n' 'Rust formatting failure detected; generic failure tail suppressed to avoid duplicate formatter hunks.' >&2
 fi
 # Formatting hunks are read-only source diagnostics, not a second source writer.
-# Report complete bounded hunks instead of forcing repairs from an arbitrary tail.
-if grep -Fq 'STATIC CHECK FAILED during: Rust formatting' "$LOG_FILE"; then
+# Report one deduplicated complete bounded hunk stream instead of repeating hunks
+# from both the generic failure tail and formatter-specific diagnostics.
+if (( rustfmt_failure == 1 )); then
   if ! node "$(dirname -- "${BASH_SOURCE[0]}")/report-rustfmt-diffs.mjs" "$LOG_FILE" >&2; then
     echo "Could not render complete formatting diagnostics; the original log is retained." >&2
   fi
