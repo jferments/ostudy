@@ -13,6 +13,7 @@ mod asset_protocol;
 mod assets;
 mod authoring;
 mod cards;
+mod collections;
 mod data_repairs;
 mod database;
 mod deck_cards;
@@ -206,6 +207,15 @@ pub fn run() {
             deck_folders::delete_deck_folder,
             deck_folders::move_deck_in_library,
             deck_folders::move_deck_folder,
+            collections::get_document_collection_organization,
+            collections::create_document_collection,
+            collections::update_document_collection,
+            collections::delete_document_collection,
+            collections::add_document_collection_membership,
+            collections::move_document_collection_membership,
+            collections::remove_document_collection_membership,
+            collections::set_document_collection_ranges,
+            collections::resolve_document_source_selection,
             deletion_commands::delete_deck_with_undo,
             deck_cards::list_deck_card_summaries,
             deletion_commands::delete_card_with_undo,

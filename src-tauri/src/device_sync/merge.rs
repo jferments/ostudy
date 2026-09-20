@@ -88,6 +88,10 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("ai_task_defaults", &["task_kind"]),
     // Canonical Documents + durable LLM processing/checkpoint graph.
     TableSpec::new("documents", &["id"]),
+    TableSpec::new("document_collection_organization", &["singleton_id"]),
+    TableSpec::new("document_collections", &["id"]),
+    TableSpec::new("document_collection_memberships", &["id"]),
+    TableSpec::new("document_collection_ranges", &["id"]),
     TableSpec::new("document_source_files", &["document_id", "file_ordinal"]),
     TableSpec::new("document_source_units", &["document_id", "unit_number"]),
     TableSpec::new("document_source_blocks", &["document_id", "block_index"]),

@@ -124,6 +124,10 @@ pub(crate) const FLASHCARD_TABLES: &[&str] = &[
 
 pub(crate) const DOCUMENT_TABLES: &[&str] = &[
     "documents",
+    "document_collection_organization",
+    "document_collections",
+    "document_collection_memberships",
+    "document_collection_ranges",
     "document_pages",
     "document_semantic_elements",
     "document_semantic_chunks",
@@ -396,6 +400,7 @@ pub(crate) fn sanitize_snapshot(
         .map_err(CommandError::database)?;
     crate::tutor::sanitize_for_device_transfer(connection)?;
     crate::knowledge::sanitize_for_device_transfer(connection)?;
+    crate::collections::sanitize_for_device_transfer(connection)?;
     connection
         .execute_batch(
             "PRAGMA foreign_keys = OFF;
@@ -494,7 +499,11 @@ pub(crate) fn sanitize_snapshot(
     if !selection.documents {
         connection
             .execute_batch(
-                "DELETE FROM document_study_guide_sections;
+                "DELETE FROM document_collection_ranges;
+                 DELETE FROM document_collection_memberships;
+                 DELETE FROM document_collections;
+                 DELETE FROM document_collection_organization;
+                 DELETE FROM document_study_guide_sections;
                  DELETE FROM document_study_guide_overlays;
                  DELETE FROM document_study_guide_checkpoints;
                  DELETE FROM document_study_guides;
