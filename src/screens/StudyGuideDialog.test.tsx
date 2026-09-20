@@ -478,11 +478,11 @@ describe("Study-guide mathematical presentation", () => {
     const { container } = renderGuide();
     await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(2));
     expect(screen.getByText("Older section edit needs review.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    await selectSectionAction("Edit note");
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(source);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(mockedSaveOverlay).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Edit note" }));
+    await selectSectionAction("Edit note");
     const edited = source + String.raw` and \(c\)`;
     fireEvent.change(screen.getByRole("textbox"), { target: { value: edited } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
