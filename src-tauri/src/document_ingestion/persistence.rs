@@ -32,8 +32,14 @@ pub(crate) fn persist_prepared_image_set(
     document_id: &str,
     processed: &AdapterExtraction,
 ) -> Result<(), CommandError> {
-    if !matches!(&processed.compatibility, Some(CompatibilityProjection::ImageSet(_))) {
-        return Err(CommandError::new("invalid_image_processing", "Local image preparation requires an image receipt."));
+    if !matches!(
+        &processed.compatibility,
+        Some(CompatibilityProjection::ImageSet(_))
+    ) {
+        return Err(CommandError::new(
+            "invalid_image_processing",
+            "Local image preparation requires an image receipt.",
+        ));
     }
     persist_document(database, document_id, processed, true)
 }
@@ -110,7 +116,8 @@ fn persist_document(
             ));
         }
         let normalized_title = normalize_semantic_text(&stored_source.0, MAX_CANONICAL_TITLE_CHARS);
-        canonical.document.metadata.title = (!normalized_title.is_empty()).then_some(normalized_title);
+        canonical.document.metadata.title =
+            (!normalized_title.is_empty()).then_some(normalized_title);
         let normalized_filename =
             normalize_semantic_text(&stored_source.1, MAX_CANONICAL_FILE_NAME_CHARS);
         source_file.original_filename = if normalized_filename.is_empty() {
@@ -147,7 +154,10 @@ fn persist_document(
             receipt.validate_projection(&canonical)?;
             crate::documents::image_sets::storage::begin_projection(&transaction, receipt)?;
         } else if format == crate::document_domain::DocumentFormat::ImageBundle {
-            return Err(CommandError::new("invalid_image_processing", "Image ingestion requires its native processing receipt."));
+            return Err(CommandError::new(
+                "invalid_image_processing",
+                "Image ingestion requires its native processing receipt.",
+            ));
         }
         document_canonical_store::clear_canonical_derivatives(&transaction, document_id)?;
         clear_pdf_compatibility_derivatives(&transaction, document_id)?;
@@ -250,11 +260,14 @@ fn persist_document(
             "The document changed before extracted derivatives could be committed.",
         )?;
         if settle_local {
-            transaction.execute(
-                "UPDATE documents SET lifecycle_state = 'ready', processing_duration_ms = CASE
+            transaction
+                .execute(
+                    "UPDATE documents SET lifecycle_state = 'ready', processing_duration_ms = CASE
                  WHEN processing_started_at IS NULL THEN NULL ELSE MAX(0, ?1 - processing_started_at) END
-                 WHERE id = ?2", params![now, document_id],
-            ).map_err(CommandError::database)?;
+                 WHERE id = ?2",
+                    params![now, document_id],
+                )
+                .map_err(CommandError::database)?;
         }
         transaction.commit().map_err(|error| {
             CommandError::database_at(

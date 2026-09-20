@@ -49,10 +49,14 @@ pub(super) fn read(
         .map_or_else(|| title.clone(), |heading| format!("{title} — {heading}"));
     let mut source = blank_record(seed, &title, &revision);
     source.identity_version = 2;
-    let key: Option<(String, String)> = connection.query_row(
-        "SELECT stable_key, evidence_sha256 FROM document_image_chunk_keys WHERE document_id = ?1 AND chunk_index = ?2",
-        params![seed.owner_id, chunk_index], |row| Ok((row.get(0)?, row.get(1)?)),
-    ).optional().map_err(CommandError::database)?;
+    let key: Option<(String, String)> = connection
+        .query_row(
+            "SELECT stable_key, evidence_sha256 FROM document_image_chunk_keys WHERE document_id = ?1 AND chunk_index = ?2",
+            params![seed.owner_id, chunk_index],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
     if let Some((key, evidence)) = key {
         source.identity_version = 3;
         source.segment_key = format!("image:{key}");

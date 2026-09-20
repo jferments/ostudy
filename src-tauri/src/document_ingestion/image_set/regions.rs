@@ -64,7 +64,9 @@ impl Frame {
             available: result.is_some(),
         };
         if let Some(result) = result {
-            result.validate().map_err(|_| invalid("Invalid image-region source evidence."))?;
+            result
+                .validate()
+                .map_err(|_| invalid("Invalid image-region source evidence."))?;
             if (result.width, result.height) != image.dimensions() {
                 return Err(invalid("OCR coordinates do not match the source raster."));
             }
@@ -79,21 +81,39 @@ impl Frame {
                 let lines = &result.lines[start..end];
                 let region = region(member, image, inclusion, lines, start, end, &mut budget)?;
                 let mut decision = filter::decide(
-                    region.id.clone(), lines, region.bounds, height,
-                    settings.include_interface, settings.overrides.get(&region.id).copied(),
+                    region.id.clone(),
+                    lines,
+                    region.bounds,
+                    height,
+                    settings.include_interface,
+                    settings.overrides.get(&region.id).copied(),
                 );
-                let included = region.bounds.map_or(member.inclusion.is_none(), |bounds| contains(inclusion, bounds));
+                let included = region.bounds.map_or(member.inclusion.is_none(), |bounds| {
+                    contains(inclusion, bounds)
+                });
                 if !included {
                     decision.role = RegionRole::OutsideSelection;
                     decision.reason = "This complete OCR group is outside or intersects the source inclusion boundary.".to_string();
-                } else if !decision.admitted() && decision.override_action.is_none()
-                    && region.bounds.is_some_and(|bounds| result.lines.iter().enumerate().any(|(index, line)| {
-                        !(start..end).contains(&index) && line.bounds.is_some_and(|other| overlaps(bounds, other))
-                    })) {
+                } else if !decision.admitted()
+                    && decision.override_action.is_none()
+                    && region.bounds.is_some_and(|bounds| {
+                        result.lines.iter().enumerate().any(|(index, line)| {
+                            !(start..end).contains(&index)
+                                && line.bounds.is_some_and(|other| overlaps(bounds, other))
+                        })
+                    })
+                {
                     decision.role = RegionRole::Unresolved;
-                    decision.reason = "The proposed exclusion overlaps other source text, so it is retained.".to_string();
+                    decision.reason =
+                        "The proposed exclusion overlaps other source text, so it is retained."
+                            .to_string();
                 }
-                if matches!(decision.role, RegionRole::Unresolved | RegionRole::OutsideSelection) { frame.unresolved += 1; }
+                if matches!(
+                    decision.role,
+                    RegionRole::Unresolved | RegionRole::OutsideSelection
+                ) {
+                    frame.unresolved += 1;
+                }
                 if decision.admitted() {
                     frame.regions.push(region);
                 } else if let Some(bounds) = region.bounds {
@@ -109,9 +129,15 @@ impl Frame {
         }
         frame.unresolved += usize::from(frame.withhold_visual);
         let identity = serde_json::to_vec(&(
-            "image-frame-v2-filter", &member.pixel_sha256, &member.pixel_contract,
-            member.quarter_turns, inclusion, &frame.masked, frame.withhold_visual,
-        )).map_err(CommandError::serialization)?;
+            "image-frame-v2-filter",
+            &member.pixel_sha256,
+            &member.pixel_contract,
+            member.quarter_turns,
+            inclusion,
+            &frame.masked,
+            frame.withhold_visual,
+        ))
+        .map_err(CommandError::serialization)?;
         frame.identity = sha256_hex(&identity);
         Ok(frame)
     }
@@ -131,36 +157,74 @@ fn region(
     pixel_budget: &mut u64,
 ) -> Result<Region, CommandError> {
     let bounds = union(lines);
-    let text = lines.iter().map(|line| line.text.as_str()).collect::<Vec<_>>().join("\n");
+    let text = lines
+        .iter()
+        .map(|line| line.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     let identity = serde_json::to_vec(&(
-        "image-region-v1", &member.id, &member.pixel_sha256,
-        &member.pixel_contract, member.quarter_turns, lines,
-    )).map_err(CommandError::serialization)?;
-    let strip = bounds.map(|bounds| PixelBounds { left: inclusion.left, right: inclusion.right, ..bounds });
+        "image-region-v1",
+        &member.id,
+        &member.pixel_sha256,
+        &member.pixel_contract,
+        member.quarter_turns,
+        lines,
+    ))
+    .map_err(CommandError::serialization)?;
+    let strip = bounds.map(|bounds| PixelBounds {
+        left: inclusion.left,
+        right: inclusion.right,
+        ..bounds
+    });
     let affordable_strip = strip.filter(|strip| {
         let cost = u64::from(strip.right - strip.left) * u64::from(strip.bottom - strip.top);
         if let Some(remaining) = pixel_budget.checked_sub(cost) {
             *pixel_budget = remaining;
             true
-        } else { false }
+        } else {
+            false
+        }
     });
     let signature = match (bounds, affordable_strip) {
         (Some(bounds), Some(strip)) => {
-            let relative = lines.iter().filter_map(|line| line.bounds).map(|line| {
-                (line.left, line.top - bounds.top, line.right, line.bottom - bounds.top)
-            }).collect::<Vec<_>>();
+            let relative = lines
+                .iter()
+                .filter_map(|line| line.bounds)
+                .map(|line| {
+                    (
+                        line.left,
+                        line.top - bounds.top,
+                        line.right,
+                        line.bottom - bounds.top,
+                    )
+                })
+                .collect::<Vec<_>>();
             let proof = serde_json::to_vec(&(
-                "image-region-pixels-v1", &text, relative, image.strip_fingerprint(strip)?,
-            )).map_err(CommandError::serialization)?;
+                "image-region-pixels-v1",
+                &text,
+                relative,
+                image.strip_fingerprint(strip)?,
+            ))
+            .map_err(CommandError::serialization)?;
             Some(sha256_hex(&proof))
         }
         _ => None,
     };
     Ok(Region {
-        id: sha256_hex(&identity), text, start, end, bounds, strip, signature,
-        ordered: bounds.is_some() && lines.windows(2).all(|pair| {
-            pair[0].bounds.zip(pair[1].bounds).is_some_and(|(a, b)| a.bottom <= b.top)
-        }),
+        id: sha256_hex(&identity),
+        text,
+        start,
+        end,
+        bounds,
+        strip,
+        signature,
+        ordered: bounds.is_some()
+            && lines.windows(2).all(|pair| {
+                pair[0]
+                    .bounds
+                    .zip(pair[1].bounds)
+                    .is_some_and(|(a, b)| a.bottom <= b.top)
+            }),
     })
 }
 
@@ -171,8 +235,10 @@ fn union(lines: &[OcrLine]) -> Option<PixelBounds> {
         result = Some(match result {
             None => bounds,
             Some(previous) => PixelBounds {
-                left: previous.left.min(bounds.left), top: previous.top.min(bounds.top),
-                right: previous.right.max(bounds.right), bottom: previous.bottom.max(bounds.bottom),
+                left: previous.left.min(bounds.left),
+                top: previous.top.min(bounds.top),
+                right: previous.right.max(bounds.right),
+                bottom: previous.bottom.max(bounds.bottom),
             },
         });
     }

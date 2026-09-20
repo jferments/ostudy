@@ -106,10 +106,17 @@ impl SourceRecord {
         self.content_hash = if self.identity_version == 3 && self.kind == SourceKind::Document {
             // Native image evidence proof is stable across display reordering.
             // Locators are rebound only by the image projection transaction.
-            hash(&serde_json::to_string(&(
-                "image-evidence-v3", self.kind, &self.text, self.origin,
-                &self.owner_revision, &self.images,
-            )).map_err(CommandError::serialization)?)
+            hash(
+                &serde_json::to_string(&(
+                    "image-evidence-v3",
+                    self.kind,
+                    &self.text,
+                    self.origin,
+                    &self.owner_revision,
+                    &self.images,
+                ))
+                .map_err(CommandError::serialization)?,
+            )
         } else if self.identity_version == 2 && self.kind == SourceKind::Document {
             // Renaming a document or assigning generated display metadata is
             // not an edit to its canonical evidence. Keep v1 readable for old
@@ -148,10 +155,16 @@ impl SourceRecord {
         {
             return Err(invalid("Unsupported canonical evidence identity version."));
         }
-        if self.identity_version == 3 && (!self.segment_key.starts_with("image:")
-            || !is_hash(&self.owner_revision)
-            || self.locator.as_ref().is_none_or(|locator| locator.unit_kind != crate::document_domain::SourceUnitKind::Image)) {
-            return Err(invalid("Image evidence requires a native region identity and pixel proof."));
+        if self.identity_version == 3
+            && (!self.segment_key.starts_with("image:")
+                || !is_hash(&self.owner_revision)
+                || self.locator.as_ref().is_none_or(|locator| {
+                    locator.unit_kind != crate::document_domain::SourceUnitKind::Image
+                }))
+        {
+            return Err(invalid(
+                "Image evidence requires a native region identity and pixel proof.",
+            ));
         }
         validate_entity_id(&self.id, "semantic source")?;
         validate_entity_id(&self.owner_id, "semantic source owner")?;

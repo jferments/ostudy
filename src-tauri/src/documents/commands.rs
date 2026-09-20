@@ -105,9 +105,7 @@ pub async fn get_image_set_preview(
         )
     })
     .await
-    .map_err(|_| {
-        interrupted("Source image inspection stopped. No source pixels were changed.")
-    })?
+    .map_err(|_| interrupted("Source image inspection stopped. No source pixels were changed."))?
 }
 
 #[tauri::command]

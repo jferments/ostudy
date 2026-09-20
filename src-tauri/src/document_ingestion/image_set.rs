@@ -117,9 +117,12 @@ fn extract_with(
     {
         return Err(invalid("The image-set identity or source count changed."));
     }
-    let settings = database.map(|database| database.with_connection(|connection| {
-        storage::settings(connection, request.document_id)
-    })).transpose()?.unwrap_or_default();
+    let settings = database
+        .map(|database| {
+            database.with_connection(|connection| storage::settings(connection, request.document_id))
+        })
+        .transpose()?
+        .unwrap_or_default();
     let mut output = projection::Projection::new(&manifest, &bytes, settings)?;
     for (index, member) in manifest.members.iter().enumerate() {
         request.cancellation.check()?;
