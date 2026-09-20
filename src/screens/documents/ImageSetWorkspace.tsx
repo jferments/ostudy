@@ -37,6 +37,8 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   const [details, setDetails] = useState<ImageSetDetails | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ImageSetPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const savedCount = job?.items.filter((item) => item.status === "saved").length ?? 0;
@@ -69,11 +71,20 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
   useEffect(() => {
     let current = true;
     setPreview(null);
-    if (!savedId || !details || !previewId) return;
+    setPreviewError(null);
+    if (!savedId || !details || !previewId) {
+      setPreviewLoading(false);
+      return () => { current = false; };
+    }
+    setPreviewLoading(true);
     void getImageSetPreview({ documentId: savedId, memberId: previewId,
       expectedRevision: details.revision, viewport: null }).then((value) => {
       if (current) setPreview(value);
-    }).catch((reason: unknown) => { if (current) setError(getErrorMessage(reason)); });
+    }).catch((reason: unknown) => {
+      if (current) setPreviewError(getErrorMessage(reason));
+    }).finally(() => {
+      if (current) setPreviewLoading(false);
+    });
     return () => { current = false; };
   }, [savedId, details, previewId]);
 
@@ -109,12 +120,25 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
           </Button>
         </div>
         {total > 0 ? <ul aria-label="Images in collection" className="tw:m-0 tw:grid tw:list-none tw:gap-1 tw:p-0">
-          {details?.members.map((member) => <li key={member.id}
-            className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3 tw:border-x-0 tw:border-t-0 tw:border-b tw:border-solid tw:border-border tw:py-2">
-            <span className="tw:min-w-0 tw:break-all tw:text-sm">{member.originalFilename}</span>
-            <Button size="small" variant="ghost" aria-label={`View ${member.originalFilename}`}
-              onClick={() => setPreviewId((current) => current === member.id ? null : member.id)}>View</Button>
-          </li>)}
+          {details?.members.map((member) => {
+            const selected = previewId === member.id;
+            return <li key={member.id}
+              className="tw:grid tw:min-w-0 tw:gap-2 tw:border-x-0 tw:border-t-0 tw:border-b tw:border-solid tw:border-border tw:py-2">
+              <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
+                <span className="tw:min-w-0 tw:break-all tw:text-sm">{member.originalFilename}</span>
+                <Button size="small" variant="ghost"
+                  aria-label={`${selected ? "Hide" : "View"} ${member.originalFilename}`}
+                  onClick={() => setPreviewId((current) => current === member.id ? null : member.id)}>
+                  {selected ? "Hide" : "View"}
+                </Button>
+              </div>
+              {selected && previewLoading ? <p role="status"
+                className="tw:m-0 tw:text-sm tw:text-muted-foreground">Loading retained original…</p> : null}
+              {selected && previewError ? <InlineNotice kind="error">{previewError}</InlineNotice> : null}
+              {selected && preview ? <img src={preview.dataUrl} alt="Retained original image"
+                className="tw:mx-auto tw:max-h-[70vh] tw:max-w-full tw:object-contain" /> : null}
+            </li>;
+          })}
           {pending.map((item) => <li key={item.id} className="tw:grid tw:min-w-0 tw:gap-1 tw:border-x-0 tw:border-t-0 tw:border-b tw:border-solid tw:border-border tw:py-2">
             <div className="tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-3">
               <span className="tw:min-w-0 tw:break-all tw:text-sm">{item.name}</span>
@@ -142,8 +166,6 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
         {job?.error ? <InlineNotice kind="error">{savedId ? "Your images are saved. " : ""}{job.error}</InlineNotice> : null}
         {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
         {documentJobs?.errorMessage ? <InlineNotice kind="error">{documentJobs.errorMessage}</InlineNotice> : null}
-        {preview ? <img src={preview.dataUrl} alt="Retained original image"
-          className="tw:mx-auto tw:max-h-[70vh] tw:max-w-full tw:object-contain" /> : null}
       </div>
     </InlineWorkspace>
   );

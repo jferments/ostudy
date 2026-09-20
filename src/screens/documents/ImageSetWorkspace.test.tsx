@@ -222,8 +222,22 @@ describe("automatic image collections", () => {
     expect(mocks.guide).toHaveBeenCalledTimes(1);
     expect(mocks.preview).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "View source-0.png" }));
-    expect(await screen.findByAltText("Retained original image")).toBeTruthy();
+    const preview = await screen.findByAltText("Retained original image");
+    expect(preview).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hide source-0.png" })).toBeTruthy();
+    const drop = screen.getByRole("button", { name: "Drop images here or select files" });
+    expect(preview.compareDocumentPosition(drop) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
     expect(mocks.preview).toHaveBeenCalledWith({ documentId: id, memberId: member("", 1).id,
       expectedRevision: 1, viewport: null });
+  });
+
+  it("shows retained-original preview failures next to the selected image", async () => {
+    mocks.preview.mockRejectedValueOnce(new Error("Retained preview unavailable"));
+    open();
+    select([image()]);
+    await ready();
+    fireEvent.click(await screen.findByRole("button", { name: "View source-0.png" }));
+    expect(await screen.findByText("Retained preview unavailable")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hide source-0.png" })).toBeTruthy();
   });
 });
