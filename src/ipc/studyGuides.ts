@@ -60,6 +60,34 @@ export interface StudyGuideComparison {
   relationship: string;
 }
 
+export type StudyGuideCalloutKind = "key_idea" | "warning" | "tip" | "note";
+
+export interface StudyGuideCallout {
+  kind: StudyGuideCalloutKind;
+  title: string;
+  body: string;
+}
+
+export interface StudyGuideTable {
+  title: string;
+  columns: string[];
+  rows: string[][];
+  caption: string;
+}
+
+export interface StudyGuideWorkedExample {
+  title: string;
+  prompt: string;
+  steps: string[];
+  answer: string;
+  takeaway: string;
+}
+
+export interface StudyGuideRetrievalCheck {
+  prompt: string;
+  answer: string;
+}
+
 export interface StudyGuideVisualExplanation {
   title: string;
   explanation: string;
@@ -73,6 +101,10 @@ export interface StudyGuideSectionContent {
   processSteps: string[];
   comparisons: StudyGuideComparison[];
   commonMisconceptions: string[];
+  callouts: StudyGuideCallout[];
+  tables: StudyGuideTable[];
+  workedExamples: StudyGuideWorkedExample[];
+  retrievalChecks: StudyGuideRetrievalCheck[];
   visualExplanations: StudyGuideVisualExplanation[];
 }
 

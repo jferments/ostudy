@@ -270,16 +270,45 @@ function StructuredSection({ section }: { section: DocumentStudyGuideSection }) 
   const { content } = section;
   return <div className={styles.structuredSection}>
     <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} />
+    {content.callouts.length > 0 ? <div className={styles.callouts}>
+      {content.callouts.map((callout) => <aside key={`${callout.kind}-${callout.title}`} className={styles.callout} data-kind={callout.kind}>
+        <strong><StudyMarkdown text={callout.title} inline /></strong><StudyMarkdown text={callout.body} />
+      </aside>)}
+    </div> : null}
     {content.explanations.map((explanation) => <section key={`${explanation.heading}-${explanation.body.slice(0, 24)}`}><h3><StudyMarkdown text={explanation.heading} inline /></h3><StudyMarkdown text={explanation.body} /></section>)}
     {content.importantTerms.length > 0 ? <section><h3>Important terms</h3><dl className={styles.terms}>
       {content.importantTerms.map((term) => <div key={term.term}><dt><StudyMarkdown text={term.term} inline /></dt><dd><StudyMarkdown text={term.explanation} /></dd></div>)}
     </dl></section> : null}
     <GuideList title="Process" values={content.processSteps} ordered />
+    {content.tables.map((table) => <section key={`${table.title}-${table.columns.join("|")}`} className={styles.tableSection}>
+      <h3><StudyMarkdown text={table.title} inline /></h3>
+      <div className={styles.tableWrap}><table className={styles.table}>
+        <thead><tr>{table.columns.map((column) => <th key={column} scope="col"><StudyMarkdown text={column} inline /></th>)}</tr></thead>
+        <tbody>{table.rows.map((row, rowIndex) => <tr key={`${rowIndex}-${row.join("|")}`}>
+          {row.map((cell, cellIndex) => <td key={`${cellIndex}-${cell}`}><StudyMarkdown text={cell} /></td>)}
+        </tr>)}</tbody>
+      </table></div>
+      {table.caption ? <p className={styles.tableCaption}><StudyMarkdown text={table.caption} inline /></p> : null}
+    </section>)}
     {content.comparisons.length > 0 ? <section><h3>Comparisons and relationships</h3><div className={styles.comparisons}>
       {content.comparisons.map((comparison) => <article key={`${comparison.subjectA}-${comparison.subjectB}`}><strong><StudyMarkdown text={comparison.subjectA} inline /> and <StudyMarkdown text={comparison.subjectB} inline /></strong><StudyMarkdown text={comparison.relationship} /></article>)}
     </div></section> : null}
+    {content.workedExamples.length > 0 ? <section><h3>Worked examples</h3><div className={styles.workedExamples}>
+      {content.workedExamples.map((example) => <article key={example.title} className={styles.workedExample}>
+        <h4><StudyMarkdown text={example.title} inline /></h4><StudyMarkdown text={example.prompt} />
+        <GuideList title="Reasoning" values={example.steps} ordered />
+        <div className={styles.exampleAnswer}><strong>Answer</strong><StudyMarkdown text={example.answer} /></div>
+        {example.takeaway ? <div className={styles.exampleTakeaway}><strong>Takeaway</strong><StudyMarkdown text={example.takeaway} /></div> : null}
+      </article>)}
+    </div></section> : null}
     <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
     {content.visualExplanations.map((visual) => <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}><strong><StudyMarkdown text={visual.title} inline /></strong><StudyMarkdown text={visual.explanation} /></aside>)}
+    {content.retrievalChecks.length > 0 ? <section><h3>Check yourself</h3><div className={styles.retrievalChecks}>
+      {content.retrievalChecks.map((check) => <details key={check.prompt} className={styles.retrievalCheck}>
+        <summary><StudyMarkdown text={check.prompt} inline /></summary>
+        <div><strong>Answer</strong><StudyMarkdown text={check.answer} /></div>
+      </details>)}
+    </div></section> : null}
   </div>;
 }
 function GuideList({ title, values, ordered = false }: { title: string; values: string[]; ordered?: boolean }) {

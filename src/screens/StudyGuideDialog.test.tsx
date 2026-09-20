@@ -90,6 +90,10 @@ function guide(): DocumentStudyGuide {
           processSteps: [],
           comparisons: [],
           commonMisconceptions: [],
+          callouts: [],
+          tables: [],
+          workedExamples: [],
+          retrievalChecks: [],
           visualExplanations: [],
         },
         contentText: "Preload reflects ventricular filling and stretch before systole.",
@@ -457,12 +461,16 @@ describe("Study-guide mathematical presentation", () => {
       processSteps: [String.raw`Apply \(x_{11}\)`],
       comparisons: [{ subjectA: String.raw`\(x_{12}\)`, subjectB: String.raw`\(x_{13}\)`, relationship: String.raw`Related \(x_{14}\)` }],
       commonMisconceptions: [String.raw`Not \(x_{15}\)`],
+      callouts: [{ kind: "key_idea", title: String.raw`Remember \(x_{18}\)`, body: String.raw`Callout \(x_{19}\)` }],
+      tables: [{ title: String.raw`Table \(x_{20}\)`, columns: [String.raw`A \(x_{21}\)`, String.raw`B \(x_{22}\)`], rows: [[String.raw`C \(x_{23}\)`, String.raw`D \(x_{24}\)`]], caption: String.raw`Caption \(x_{25}\)` }],
+      workedExamples: [{ title: String.raw`Example \(x_{26}\)`, prompt: String.raw`Prompt \(x_{27}\)`, steps: [String.raw`Step \(x_{28}\)`], answer: String.raw`Answer \(x_{29}\)`, takeaway: String.raw`Takeaway \(x_{30}\)` }],
+      retrievalChecks: [{ prompt: String.raw`Recall \(x_{31}\)`, answer: String.raw`Response \(x_{32}\)` }],
       visualExplanations: [{ title: String.raw`See \(x_{16}\)`, explanation: String.raw`Diagram \(x_{17}\)` }],
     };
     const before = JSON.stringify(loaded);
     mockedGetGuide.mockResolvedValue(loaded);
     const { container } = renderGuide();
-    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(17));
+    await waitFor(() => expect(container.querySelectorAll("math annotation")).toHaveLength(32));
     expect(screen.getByText("Page 2–3")).toBeTruthy();
     expect(JSON.stringify(loaded)).toBe(before);
     expect(mockedSaveOverlay).not.toHaveBeenCalled();
