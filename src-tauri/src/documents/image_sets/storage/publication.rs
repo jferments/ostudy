@@ -67,7 +67,10 @@ pub(crate) fn publish(
     connection
         .execute(
             "UPDATE documents SET adapter_backend = ?1 WHERE id = ?2",
-            params![canonical.document.extraction.adapter_backend, receipt.document_id],
+            params![
+                canonical.document.extraction.adapter_backend,
+                receipt.document_id
+            ],
         )
         .map_err(CommandError::database)?;
     connection
@@ -105,7 +108,10 @@ pub(crate) fn invalidate(connection: &Connection, id: &str, now: i64) -> Result<
         )
         .map_err(CommandError::database)?;
     connection
-        .execute("DELETE FROM knowledge_document_views WHERE document_id = ?1", [id])
+        .execute(
+            "DELETE FROM knowledge_document_views WHERE document_id = ?1",
+            [id],
+        )
         .map_err(CommandError::database)?;
     Ok(())
 }

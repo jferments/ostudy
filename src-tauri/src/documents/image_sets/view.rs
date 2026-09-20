@@ -5,9 +5,7 @@ use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    database::Database, error::CommandError, paths::AppPaths, util::validate_entity_id,
-};
+use crate::{database::Database, error::CommandError, paths::AppPaths, util::validate_entity_id};
 
 use super::{
     manifest::InclusionCrop,
@@ -51,9 +49,11 @@ pub(crate) fn details(
     let settings = storage::settings(connection, document_id)?;
     let receipt = storage::load(connection, document_id)?;
     let title = connection
-        .query_row("SELECT title FROM documents WHERE id = ?1", [document_id], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT title FROM documents WHERE id = ?1",
+            [document_id],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)?;
     let members = manifest
         .members
@@ -121,8 +121,8 @@ pub(crate) fn preview(
 ) -> Result<ImagePreview, CommandError> {
     validate_entity_id(&input.document_id, "image document")?;
     validate_entity_id(&input.member_id, "image member")?;
-    let manifest = database
-        .with_connection(|connection| repository::load(connection, &input.document_id))?;
+    let manifest =
+        database.with_connection(|connection| repository::load(connection, &input.document_id))?;
     if manifest.revision != input.expected_revision {
         return Err(invalid(
             "The source changed before its image could be opened.",

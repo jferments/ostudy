@@ -119,7 +119,8 @@ fn extract_with(
     }
     let settings = database
         .map(|database| {
-            database.with_connection(|connection| storage::settings(connection, request.document_id))
+            database
+                .with_connection(|connection| storage::settings(connection, request.document_id))
         })
         .transpose()?
         .unwrap_or_default();

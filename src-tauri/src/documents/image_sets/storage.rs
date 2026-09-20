@@ -78,7 +78,10 @@ pub(crate) fn settings(connection: &Connection, id: &str) -> Result<FilterSettin
     Ok(settings)
 }
 
-pub(crate) fn load(connection: &Connection, id: &str) -> Result<Option<ImageReceipt>, CommandError> {
+pub(crate) fn load(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<ImageReceipt>, CommandError> {
     let row: Option<(String, String, String, i64, u32)> = connection.query_row(
         "SELECT payload_json, payload_sha256, manifest_sha256, filter_revision, version FROM document_image_receipts WHERE document_id = ?1", [id],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
@@ -127,9 +130,11 @@ pub(crate) fn ready(connection: &Connection, id: &str) -> Result<bool, CommandEr
 pub(crate) fn validate(connection: &Connection) -> Result<(), CommandError> {
     super::operations::validate(connection)?;
     let guards: i64 = connection
-        .query_row("SELECT COUNT(*) FROM document_image_projection_writes", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM document_image_projection_writes",
+            [],
+            |row| row.get(0),
+        )
         .map_err(CommandError::database)?;
     if guards != 0 {
         return Err(invalid(

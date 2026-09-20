@@ -39,9 +39,7 @@ fn document_image_schema21_preserves_owned_extractions_and_originals_on_upgrade(
     let originals = manifest
         .members
         .iter()
-        .map(|member| {
-            std::fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap()
-        })
+        .map(|member| std::fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap())
         .collect::<Vec<_>>();
     fixture
         .database

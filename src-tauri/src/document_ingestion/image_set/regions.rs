@@ -75,7 +75,9 @@ impl Frame {
             let mut start = 0;
             while start < result.lines.len() {
                 let mut end = start + 1;
-                while end < result.lines.len() && result.lines[end].group == result.lines[start].group {
+                while end < result.lines.len()
+                    && result.lines[end].group == result.lines[start].group
+                {
                     end += 1;
                 }
                 let lines = &result.lines[start..end];

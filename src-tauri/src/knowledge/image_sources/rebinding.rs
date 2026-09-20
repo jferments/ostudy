@@ -48,7 +48,10 @@ pub(super) fn rebind_dependents(
                     "UPDATE knowledge_units SET record_json = ?1, content_hash = ?2 WHERE id = ?3",
                     params![
                         serde_json::to_string(&unit).map_err(CommandError::serialization)?,
-                        hash(&serde_json::to_string(&unit.content).map_err(CommandError::serialization)?),
+                        hash(
+                            &serde_json::to_string(&unit.content)
+                                .map_err(CommandError::serialization)?
+                        ),
                         id
                     ],
                 )
@@ -74,7 +77,10 @@ pub(super) fn rebind_dependents(
             connection
                 .execute(
                     "UPDATE knowledge_analysis_windows SET report_json = ?1 WHERE id = ?2",
-                    params![serde_json::to_string(&report).map_err(CommandError::serialization)?, id],
+                    params![
+                        serde_json::to_string(&report).map_err(CommandError::serialization)?,
+                        id
+                    ],
                 )
                 .map_err(CommandError::database)?;
         }
@@ -88,16 +94,18 @@ fn rebind(
     value: &mut Value,
     sources: &BTreeMap<String, (SourceRecord, SourceRecord)>,
 ) -> Result<bool, CommandError> {
-    if value.as_object().is_some_and(|object| {
-        object.contains_key("selector") && object.contains_key("sourceHash")
-    }) {
+    if value
+        .as_object()
+        .is_some_and(|object| object.contains_key("selector") && object.contains_key("sourceHash"))
+    {
         if let Ok(mut reference) = serde_json::from_value::<EvidenceReference>(value.clone()) {
             if let Some((old, new)) = sources.get(&reference.source_id) {
                 reference.validate(old)?;
                 if reference.locator != new.locator {
                     reference.locator = new.locator.clone();
                     reference.validate(new)?;
-                    *value = serde_json::to_value(reference).map_err(CommandError::serialization)?;
+                    *value =
+                        serde_json::to_value(reference).map_err(CommandError::serialization)?;
                     return Ok(true);
                 }
             }

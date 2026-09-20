@@ -15,7 +15,10 @@ use super::{
 
 mod rebinding;
 
-pub(crate) fn available(connection: &Connection, source: &SourceRecord) -> Result<bool, CommandError> {
+pub(crate) fn available(
+    connection: &Connection,
+    source: &SourceRecord,
+) -> Result<bool, CommandError> {
     if source.kind != SourceKind::Document {
         return Ok(true);
     }
@@ -93,7 +96,10 @@ pub(crate) fn reconcile(
         .execute(
             "DELETE FROM knowledge_sources WHERE kind = 'document' AND document_id = ?1
          AND id NOT IN (SELECT value FROM json_each(?2))",
-            params![document_id, serde_json::to_string(&retained).map_err(CommandError::serialization)?],
+            params![
+                document_id,
+                serde_json::to_string(&retained).map_err(CommandError::serialization)?
+            ],
         )
         .map_err(CommandError::database)?;
     rebinding::rebind_dependents(connection, &rebound)?;
@@ -119,7 +125,8 @@ pub(crate) fn validate_current(
         .map_err(CommandError::database)?;
     let mut checked = HashSet::new();
     for (parent_key, json) in rows {
-        let stored: SourceRecord = serde_json::from_str(&json).map_err(CommandError::serialization)?;
+        let stored: SourceRecord =
+            serde_json::from_str(&json).map_err(CommandError::serialization)?;
         if stored.identity_version != 3 || !checked.insert(stored.id.clone()) {
             return Err(repository::stale_source());
         }

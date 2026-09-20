@@ -127,9 +127,7 @@ pub(crate) fn decide(
         )
     };
     let (role, reason) = match override_action {
-        Some(RegionOverride::Include) => {
-            (RegionRole::Learning, "You restored this source region.")
-        }
+        Some(RegionOverride::Include) => (RegionRole::Learning, "You restored this source region."),
         Some(RegionOverride::Exclude) => (
             RegionRole::Interface,
             "You excluded this region from learning inputs.",

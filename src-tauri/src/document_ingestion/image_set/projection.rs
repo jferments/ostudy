@@ -150,7 +150,10 @@ impl Projection {
                 targets.push(target);
                 if equivalent.is_some() {
                     self.duplicates += 1;
-                    if let Some(decision) = decisions.iter_mut().find(|decision| decision.id == region.id) {
+                    if let Some(decision) = decisions
+                        .iter_mut()
+                        .find(|decision| decision.id == region.id)
+                    {
                         decision.equivalent_to = equivalent.clone();
                     }
                     if !alignment.whole_image {
@@ -252,7 +255,10 @@ impl Projection {
                 ("quarterTurns".to_string(), member.quarter_turns.to_string()),
                 ("pixelContract".to_string(), member.pixel_contract.clone()),
                 ("alignmentContract".to_string(), CONTRACT.to_string()),
-                ("ambiguousOverlap".to_string(), alignment.ambiguous.to_string()),
+                (
+                    "ambiguousOverlap".to_string(),
+                    alignment.ambiguous.to_string(),
+                ),
             ]);
             document.blocks.push(CanonicalBlock::new(
                 block_index,
@@ -267,7 +273,11 @@ impl Projection {
                 vec![asset_id.clone()],
                 attributes,
             ));
-            if !document.assets.iter().any(|asset| asset.asset_id == asset_id) {
+            if !document
+                .assets
+                .iter()
+                .any(|asset| asset.asset_id == asset_id)
+            {
                 document.assets.push(CanonicalAsset {
                     asset_id: asset_id.clone(),
                     source_unit_number: Some(unit),
@@ -302,16 +312,18 @@ impl Projection {
                     vec![asset_id],
                     None,
                 )?;
-                self.canonical.semantic_chunks.push(CanonicalSemanticChunk::new(
-                    index as i64,
-                    context,
-                    context,
-                    locator,
-                    vec!["paragraph".to_string(), "image".to_string()],
-                    None,
-                    context.chars().count().div_ceil(4),
-                    false,
-                ));
+                self.canonical
+                    .semantic_chunks
+                    .push(CanonicalSemanticChunk::new(
+                        index as i64,
+                        context,
+                        context,
+                        locator,
+                        vec!["paragraph".to_string(), "image".to_string()],
+                        None,
+                        context.chars().count().div_ceil(4),
+                        false,
+                    ));
                 self.visual_keys.push(ChunkIdentity {
                     stable_key: format!("visual:{}", member.id),
                     evidence_sha256: asset_hash,

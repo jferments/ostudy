@@ -52,7 +52,11 @@ pub(crate) fn prepare(
             &source,
             128,
             |progress| {
-                document_ingestion::update_ingestion_progress(database, &input.document_id, progress)
+                document_ingestion::update_ingestion_progress(
+                    database,
+                    &input.document_id,
+                    progress,
+                )
             },
         )?;
         document_ingestion::persist_prepared_image_set(database, &input.document_id, &extraction)?;

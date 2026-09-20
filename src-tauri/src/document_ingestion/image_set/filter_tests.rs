@@ -5,8 +5,7 @@ use crate::{
     documents::image_sets::{
         filter::RegionOverride,
         filter_commands::{self, FilterChange, SetImageFiltersInput},
-        manifest,
-        storage,
+        manifest, storage,
         test_support::Fixture,
         view::{self, ImagePreviewInput},
     },
@@ -139,8 +138,12 @@ fn teach(fixture: &Fixture, source: &SourceRecord) -> String {
 fn document_image_filters_restore_exact_evidence_without_reocr_or_sibling_knowledge_loss() {
     let fixture = Fixture::new();
     let manifest = fixture.import(1, 0, None);
-    let original =
-        std::fs::read(fixture.paths.resolve_relative(&manifest.members[0].relative_path)).unwrap();
+    let original = std::fs::read(
+        fixture
+            .paths
+            .resolve_relative(&manifest.members[0].relative_path),
+    )
+    .unwrap();
     let output = extract(&fixture, &manifest, true);
     assert_eq!(output.canonical.document.units[0].plain_text, BODY);
     assert!(output
@@ -202,7 +205,10 @@ fn document_image_filters_restore_exact_evidence_without_reocr_or_sibling_knowle
     fixture
         .database
         .with_connection(|connection| {
-            assert_eq!(repository::load_units(connection, &current_body.id)?[0].id, unit_id);
+            assert_eq!(
+                repository::load_units(connection, &current_body.id)?[0].id,
+                unit_id
+            );
             crate::database::validate_backup_lineage(connection)
         })
         .unwrap();
@@ -226,7 +232,12 @@ fn document_image_filters_restore_exact_evidence_without_reocr_or_sibling_knowle
     );
     assert_eq!(fixture.count("document_image_extractions"), 1);
     assert_eq!(
-        std::fs::read(fixture.paths.resolve_relative(&manifest.members[0].relative_path)).unwrap(),
+        std::fs::read(
+            fixture
+                .paths
+                .resolve_relative(&manifest.members[0].relative_path)
+        )
+        .unwrap(),
         original
     );
 }
@@ -254,7 +265,12 @@ fn document_image_filter_pixels_and_original_inspection_remain_separate() {
     )
     .unwrap();
     let bytes = STANDARD
-        .decode(inspected.data_url.strip_prefix("data:image/png;base64,").unwrap())
+        .decode(
+            inspected
+                .data_url
+                .strip_prefix("data:image/png;base64,")
+                .unwrap(),
+        )
         .unwrap();
     let original = image::load_from_memory(&bytes).unwrap().into_rgba8();
     assert_ne!(original.get_pixel(0, 0), filtered.get_pixel(0, 0));

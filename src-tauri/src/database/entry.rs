@@ -102,7 +102,8 @@ pub(super) fn validate_public_input(connection: &Connection) -> Result<i64, Stri
         crate::documents::image_sets::cache::validate(connection).map_err(|error| error.message)?;
     }
     if version >= 21 {
-        crate::documents::image_sets::storage::validate(connection).map_err(|error| error.message)?;
+        crate::documents::image_sets::storage::validate(connection)
+            .map_err(|error| error.message)?;
     }
     Ok(version)
 }
