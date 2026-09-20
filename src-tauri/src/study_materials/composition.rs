@@ -2250,4 +2250,3 @@ mod tests {
         assert_ne!(after_overview["topic"], after_topic["topic"]);
     }
 }
-}
