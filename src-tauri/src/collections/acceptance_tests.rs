@@ -50,12 +50,9 @@ fn seed_document(
         )
         .map_err(CommandError::database)?;
     for unit in 1..=units {
-        let locator = serde_json::to_string(&SourceLocator::new(
-            SourceUnitKind::Page,
-            vec![unit],
-            None,
-        )?)
-        .map_err(CommandError::serialization)?;
+        let locator =
+            serde_json::to_string(&SourceLocator::new(SourceUnitKind::Page, vec![unit], None)?)
+                .map_err(CommandError::serialization)?;
         connection
             .execute(
                 "INSERT INTO document_source_units(
@@ -165,10 +162,7 @@ fn hierarchy_depth_and_self_parenting_are_native_limits() {
             let mut organization = create_root(connection, '1', "Root", 1)?;
             let root = organization.collections[0].clone();
             let mut parent_id = root.id.clone();
-            for (index, operation) in ['2', '3', '4', '5', '6', '7', '8']
-                .into_iter()
-                .enumerate()
-            {
+            for (index, operation) in ['2', '3', '4', '5', '6', '7', '8'].into_iter().enumerate() {
                 let name = format!("Level {}", index + 2);
                 organization = create_collection(
                     connection,
