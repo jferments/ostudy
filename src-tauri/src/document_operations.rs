@@ -127,7 +127,7 @@ pub fn delete_document(
     let stored = database.with_connection(|connection| {
         connection
             .query_row(
-                "SELECT source_format, source_relative_path, lifecycle_state, revision
+                "SELECT source_format, source_relative_path, lifecycle_state, revision, sha256
                  FROM documents WHERE id = ?1",
                 [input.document_id.as_str()],
                 |row| {
@@ -136,6 +136,7 @@ pub fn delete_document(
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, i64>(3)?,
+                        row.get::<_, String>(4)?,
                     ))
                 },
             )
@@ -148,7 +149,7 @@ pub fn delete_document(
                 )
             })
     })?;
-    let (source_format, source_relative_path, lifecycle_state, revision) = stored;
+    let (source_format, source_relative_path, lifecycle_state, revision, source_sha256) = stored;
     if revision != input.revision {
         return Err(CommandError::new(
             "document_changed",
@@ -163,10 +164,11 @@ pub fn delete_document(
     }
 
     let format = DocumentFormat::from_db(&source_format)?;
-    let expected_source = AppPaths::document_source_relative_path_with_extension(
+    let expected_source = documents::expected_document_source_relative_path(
         &input.document_id,
-        format.default_extension(),
-    );
+        format,
+        &source_sha256,
+    )?;
     if source_relative_path != expected_source {
         return Err(CommandError::new(
             "invalid_document_path",

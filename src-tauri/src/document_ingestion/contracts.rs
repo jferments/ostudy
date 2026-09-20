@@ -66,6 +66,7 @@ pub(crate) enum IngestionProgress {
 #[derive(Debug)]
 pub(crate) enum CompatibilityProjection {
     Pdf(IngestedDocument),
+    ImageSet(crate::documents::image_sets::receipt::ImageReceipt),
 }
 
 #[derive(Debug)]

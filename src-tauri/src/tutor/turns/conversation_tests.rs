@@ -5,6 +5,7 @@ use serde_json::json;
 
 fn context() -> StudyContext {
     StudyContext {
+        learning_stamp: None,
         question_hint: None,
         sources: vec![],
         units: vec![],

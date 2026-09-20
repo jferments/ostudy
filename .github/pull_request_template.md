@@ -48,6 +48,14 @@ List concrete workflows actually exercised, plus physical-device, live-provider,
 
 List unresolved defects, compatibility effects, rollback concerns, or `None known` when supported by evidence.
 
+Before updating this snapshot, read the current PR through the connector and save a local `{"pull_request": {...}}` event containing its actual `body`, `draft`, `base.sha`, `head.sha` and `head.ref`. Prepare an explicit JSON progress patch rather than rebuilding the ledger from memory:
+
+```bash
+node scripts/prepare-pr-contract-update.mjs --event /tmp/ostudy-pr-event.json --patch /tmp/ostudy-pr-progress.json --output /tmp/ostudy-pr-body-new.md
+```
+
+The helper preserves omitted fields, validates the complete replacement with `verify-pr-contract.mjs`, and refuses stale identities or ancestor qualification relabeled as current. Missing required arrays are errors, not empty defaults. Review the prepared body, confirm the remote body/head have not changed, and publish that exact body through the connector. On a conflict, reread and reapply the patch; do not overwrite another edit. The helper performs no network or GitHub writes. For a newly created ledger, run `node scripts/verify-pr-contract.mjs --body-file <body.md>` before publication.
+
 The JSON below is a compatibility evidence snapshot. GitHub's remote head and exact-SHA Actions results remain authoritative; editing this snapshot does not trigger or select product qualification.
 
 <!-- ostudy-agent-state:start -->

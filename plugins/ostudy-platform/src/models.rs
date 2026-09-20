@@ -227,6 +227,9 @@ pub struct RecognizeImageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RecognizeImageResult {
     pub text: String,
+    /// Native OCR layout only; never rendered as source HTML.
+    #[serde(default)]
+    pub hocr: String,
     pub confidence: f64,
     pub engine: String,
     pub language: String,

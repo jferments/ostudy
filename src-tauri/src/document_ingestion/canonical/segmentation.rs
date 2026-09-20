@@ -1,11 +1,9 @@
 use crate::{document_canonical::CanonicalBlockRole, document_domain::DocumentFormat};
 
 use super::model::{NormalizedBlock, UnitDraft};
-use crate::document_ingestion::support::normalize_semantic_text;
 
 const MAX_UNIT_TARGET_CHARS: usize = 60_000;
 const MAX_UNIT_BLOCKS: usize = 160;
-const MAX_UNIT_TEXT_CHARS: usize = 250_000;
 
 pub(crate) fn segment_units(
     format: DocumentFormat,
@@ -42,11 +40,13 @@ pub(crate) fn segment_units(
 }
 
 pub(crate) fn unit_text_projection(unit: &UnitDraft, label: &str) -> String {
+    // Preserve literal block bytes; the canonical validator enforces size and
+    // control-character limits before persistence instead of truncating here.
     let text = unit
         .blocks
         .iter()
-        .map(|block| block.text.trim())
-        .filter(|text| !text.is_empty())
+        .map(|block| block.text.as_str())
+        .filter(|text| !text.trim().is_empty())
         .collect::<Vec<_>>()
         .join("\n\n");
     if text.is_empty() && unit.blocks.iter().any(|block| !block.asset_ids.is_empty()) {
@@ -54,7 +54,7 @@ pub(crate) fn unit_text_projection(unit: &UnitDraft, label: &str) -> String {
             "{label} contains embedded visual material with no extractable text. Use the attached source assets as evidence and do not infer unsupported details."
         )
     } else {
-        normalize_semantic_text(&text, MAX_UNIT_TEXT_CHARS)
+        text
     }
 }
 
@@ -89,5 +89,21 @@ mod tests {
         assert_eq!(units.len(), 2);
         assert_eq!(units[0].title.as_deref(), Some("First"));
         assert_eq!(units[1].title.as_deref(), Some("Second"));
+    }
+
+    #[test]
+    fn evidence_projection_retains_indentation_and_trailing_qualifications() {
+        let code = "    if x <= 2:\n        return x\n";
+        let units = segment_units(
+            DocumentFormat::Docx,
+            vec![block(CanonicalBlockRole::CodeBlock, code, None)],
+        );
+        assert_eq!(unit_text_projection(&units[0], "Code"), code);
+        let long = format!("{} except when x = 0", "a".repeat(250_000));
+        let units = segment_units(
+            DocumentFormat::Docx,
+            vec![block(CanonicalBlockRole::Paragraph, &long, None)],
+        );
+        assert_eq!(unit_text_projection(&units[0], "Long"), long);
     }
 }

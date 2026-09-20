@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
 import { InfoButton, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
@@ -15,6 +15,7 @@ import {
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
+import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
@@ -31,9 +32,21 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
   const {
     documents, generationProgress, clockNow, isLoading, isUploading, busyDocumentId,
     cancelingDocumentId, deletingDocumentId, guideGeneratingDocumentId, cancelingGuideDocumentId,
-    errorMessage, uploadDocument, retry, generateMore, generateStudyGuide, stopStudyGuide,
-    stopGeneration, openSource, deleteDocument,
+    errorMessage, hasProcessingDocument, uploadDocument, retry, generateMore,
+    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
   } = jobs;
+  const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
+    string | null | undefined
+  >(undefined);
+
+  if (imageWorkspaceDocumentId !== undefined) {
+    return (
+      <ImageSetWorkspace
+        documentId={imageWorkspaceDocumentId}
+        onClose={() => setImageWorkspaceDocumentId(undefined)}
+      />
+    );
+  }
 
   return (
     <PageScaffold role="region" aria-label="Documents">
@@ -42,11 +55,20 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
         icon="document"
         description="Turn your course materials into connected flashcards and study guides."
         actions={
-          <Button variant="primary"
-            disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null || guideGeneratingDocumentId !== null}
-            onClick={() => void uploadDocument()}>
-            {isUploading ? "Processing document…" : "Upload document"}
-          </Button>
+          <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
+            <Button
+              variant="secondary"
+              disabled={isUploading || hasProcessingDocument || busyDocumentId !== null}
+              onClick={() => setImageWorkspaceDocumentId(null)}
+            >
+              Upload images
+            </Button>
+            <Button variant="primary"
+              disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null || guideGeneratingDocumentId !== null}
+              onClick={() => void uploadDocument()}>
+              {isUploading ? "Processing document…" : "Upload document"}
+            </Button>
+          </div>
         }
       />
       {props.headerSupplement}
@@ -67,10 +89,13 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
             const canRetry = document.generatedDeckId === null && document.lifecycleState !== "processing";
             const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
             const canGenerateGuide = document.lifecycleState !== "processing";
-            const actions: ResponsiveAction[] = [{
-              id: "view", label: "View", placement: "always-visible",
-              onSelect: () => void openSource(document), disabled: busy,
-            }];
+            const actions: ResponsiveAction[] = [];
+            actions.push({
+              id: "view", label: document.sourceFormat === "image_bundle" ? "View collection" : "View", placement: "always-visible",
+              onSelect: () => document.sourceFormat === "image_bundle"
+                ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
+              disabled: document.sourceFormat === "image_bundle" ? deletingDocumentId === document.id : busy,
+            });
             if (document.lifecycleState === "processing") actions.push({
               id: "stop-generation", label: canceling ? "Stopping…" : "Stop generation",
               placement: "always-visible", onSelect: () => void stopGeneration(document), disabled: canceling,

@@ -4,6 +4,7 @@ use crate::{knowledge::contracts::StudyScope, tutor::history::HistorySnapshot};
 
 fn context() -> StudyContext {
     StudyContext {
+        learning_stamp: None,
         question_hint: None,
         sources: Vec::new(),
         units: Vec::new(),

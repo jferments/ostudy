@@ -259,3 +259,6 @@ async fn explicit_empty_disposition_reuses_without_inventing_knowledge() {
         .unwrap()
         .is_complete());
 }
+
+#[path = "reuse_tests.rs"]
+mod reuse_tests;

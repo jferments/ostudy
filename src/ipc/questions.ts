@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Asset } from "./assets";
 import type { RichDocument } from "./common";
 import type { EditorDraftCommitRef } from "./drafts";
+import type {
+  PublicQuestion,
+  QuestionEvaluation,
+  QuestionResponse,
+} from "./questionAttempts";
 
 export interface QuestionItem {
   id: string;
@@ -129,6 +134,22 @@ export interface QuestionNote {
   createdAt: number;
   updatedAt: number;
   revision: number;
+}
+
+export interface PreviewQuestionDraftInput {
+  definitionJson: string;
+  response: QuestionResponse | null;
+}
+
+export interface QuestionDraftPreview {
+  question: PublicQuestion;
+  evaluation: QuestionEvaluation | null;
+}
+
+export async function previewQuestionDraft(
+  input: PreviewQuestionDraftInput,
+): Promise<QuestionDraftPreview> {
+  return invoke<QuestionDraftPreview>("preview_question_draft", { input });
 }
 
 export async function saveQuestionNote(

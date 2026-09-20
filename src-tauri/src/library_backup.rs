@@ -1279,6 +1279,10 @@ mod tests {
 }
 
 #[cfg(test)]
+#[path = "library_backup/image_set_backup_tests.rs"]
+mod image_set_backup_tests;
+
+#[cfg(test)]
 #[path = "library_backup/media_backup_tests.rs"]
 mod media_backup_tests;
 

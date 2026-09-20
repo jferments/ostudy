@@ -102,6 +102,7 @@ pub(crate) async fn process_and_generate_initial_flashcards(
             && stored.rendered_source_unit_count != stored.source_unit_count)
         || stored.semantic_chunk_count == 0;
     if backend_changed || incomplete_derivatives {
+        let database_owned = database.clone();
         let paths_owned = paths.clone();
         let source_owned = source_path.clone();
         let id_owned = document_id.to_string();
@@ -116,7 +117,16 @@ pub(crate) async fn process_and_generate_initial_flashcards(
                     )
                 })
             };
-            if format == DocumentFormat::Pdf {
+            if format == DocumentFormat::ImageBundle {
+                document_ingestion::ingest_image_set(
+                    &database_owned,
+                    &paths_owned,
+                    &id_owned,
+                    &source_owned,
+                    MAX_SUPPORTED_SOURCE_UNITS,
+                    report_progress,
+                )
+            } else if format == DocumentFormat::Pdf {
                 document_ingestion::ingest_pdf(
                     &paths_owned,
                     &render_runtime,

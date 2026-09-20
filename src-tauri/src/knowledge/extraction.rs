@@ -2,6 +2,7 @@
 //! checkpointed before targeted repair; native revisions guard every publication.
 pub(crate) mod decode;
 mod schema;
+mod shared;
 use super::{
     analysis_store,
     contracts::{
@@ -79,6 +80,17 @@ async fn analyze(
         ));
     }
     let contract = extraction_contract(task)?;
+    let authorization = hash(
+        &serde_json::to_string(&(
+            &contract,
+            &task.profile_id,
+            task.profile_revision,
+            task.credential_epoch,
+            &task.network_scope,
+            task.include_page_images,
+        ))
+        .map_err(CommandError::serialization)?,
+    );
     let mut ready = HashMap::new();
     let mut pending = Vec::new();
     for source in sources {
@@ -146,17 +158,36 @@ async fn analyze(
         return Err(CommandError::new("semantic_images_require_vision","This material requires image understanding. Select and test an image-capable learning model before preparing it."));
     }
     let catalog = EvidenceCatalog::build(&pending, !images.is_empty())?;
+    let authorization = hash(
+        &serde_json::to_string(&(
+            authorization,
+            images
+                .iter()
+                .map(|image| {
+                    (
+                        image.page_number,
+                        crate::document_canonical::sha256_hex(&image.bytes),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        ))
+        .map_err(CommandError::serialization)?,
+    );
     let output_tokens = task.completion_token_ceiling(EXTRACTION_COMPLETION_TOKENS);
-    let outcome = run_window(
-        database,
-        &pending,
-        &contract,
-        &catalog,
+    let outcome = shared::run(
+        shared::Window {
+            database,
+            sources: &pending,
+            contract: &contract,
+            catalog: &catalog,
+            authorization: &authorization,
+            retry_partial,
+        },
         cancellation,
-        retry_partial,
         |call| {
             let images = &images;
             async move {
+                let cancellation = &call.cancellation;
                 task.ensure_current(database)?;
                 check_canceled(cancellation)?;
                 crate::task_cancellation::record_current_provider_request();
@@ -184,6 +215,8 @@ async fn analyze(
     .await;
     match outcome {
         Ok(units) => {
+            task.ensure_current(database)?;
+            check_canceled(cancellation)?;
             ready.extend(units);
             Ok(ready)
         }
@@ -199,6 +232,7 @@ async fn analyze(
 pub(super) struct WindowCall {
     user: String,
     schema: Value,
+    cancellation: CancellationSignal,
 }
 
 /// Tests inject only the provider boundary; they exercise the real decoder,
@@ -266,6 +300,7 @@ where
         let decoded = call(WindowCall {
             user: initial_prompt.clone(),
             schema: schema::initial(catalog, sources),
+            cancellation: cancellation.clone(),
         })
         .await
         .and_then(|value| decode::initial(value, catalog, sources));
@@ -281,7 +316,7 @@ where
                     "Retrying the response protocol once using the specific safe shape failure.",
                     json!({"windowId":analysis_store::window_id(sources,contract)?,"code":error.code,"detail":error.message}),
                 );
-                let value=call(WindowCall{user:format!("{initial_prompt}\nThe prior response failed: {}. Correct this protocol error using the explicit output schema; do not add alternate top-level fields. Keep complete evidence selections and qualifications.",error.message),schema:schema::initial(catalog,sources)}).await?;
+                let value=call(WindowCall{user:format!("{initial_prompt}\nThe prior response failed: {}. Correct this protocol error using the explicit output schema; do not add alternate top-level fields. Keep complete evidence selections and qualifications.",error.message),schema:schema::initial(catalog,sources),cancellation:cancellation.clone()}).await?;
                 decode::initial(value, catalog, sources)?
             }
             Err(error) => return Err(error),
@@ -295,7 +330,7 @@ where
         crate::logging::warn_target("ai.knowledge.extraction","knowledge_extraction_repair_started",
             "Repairing only rejected proposals and uncovered sources; admitted siblings remain unchanged.",decode::report_diagnostic(&report));
         let user=format!("{base}\nRepair ONLY these rejected proposal slots and uncovered sources. Do not return successful siblings. The response object has exactly repairs, additionalUnits and noLearningSourceIds, each an array (use [] when unused). Each repairs item supplies slot and a corrected unit, or null if unsupported. additionalUnits may address only uncovered sources.\n<repair-targets>\n{}\n</repair-targets>",report.repair_prompt());
-        match call(WindowCall{user,schema:schema::repair(catalog,sources,&report)}).await{
+        match call(WindowCall{user,schema:schema::repair(catalog,sources,&report),cancellation:cancellation.clone()}).await{
             Ok(value)=>match decode::repair(&report,value,catalog,sources){
                 Ok(repaired)=>report=repaired,
                 Err(_)=>crate::logging::warn_target("ai.knowledge.extraction","knowledge_repair_envelope_rejected",

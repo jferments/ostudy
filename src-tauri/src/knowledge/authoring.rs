@@ -18,14 +18,14 @@ use crate::{
 };
 
 use super::{
-    adapters::{materialize_sources, read_seed, SourceSeed},
+    adapters::{materialize_source_groups, read_seed, SourceSeed},
     contracts::{hash, ContentOrigin, KnowledgeUnit, SourceKind},
     extraction::{batch_ranges, ensure_units_batch, extraction_contract, retry_units_batch},
     repository,
     runtime::check_canceled,
 };
 
-pub(crate) const AUTHORING_VERSION: i64 = 2;
+pub(crate) const AUTHORING_VERSION: i64 = 3;
 pub(crate) const CARD_SUPPORT_KEY: &str = "_ostudyKnowledge";
 const MAX_AUTHORING_SOURCES: usize = 100_000;
 
@@ -55,6 +55,7 @@ impl UnitSupport {
 pub(crate) struct KnowledgeCatalog {
     pub units: Vec<KnowledgeUnit>,
     pub document_core_units: BTreeSet<String>,
+    pub preparation: super::learning_context::PreparationSummary,
 }
 
 impl KnowledgeCatalog {
@@ -77,15 +78,21 @@ impl KnowledgeCatalog {
                     "legacy":true}));
                 vec![id]
             };
-            json!({
+            let details = unit.content.details.as_ref()
+                .map(|details| {
+                    details.validate(&unit.content.statement, unit.content.kind)?;
+                    details.prompt(&unit.content.statement)
+                }).transpose()?;
+            Ok(json!({
+                "details":details,
                 "id":unit.id,"title":unit.content.title,"kind":unit.content.kind,
                 "statement":unit.content.statement,"qualifications":unit.content.qualifications,
                 "topic":unit.content.topic,"origin":unit.origin,"evidenceIds":evidence_ids,
                 "importance":unit.content.grounding.as_ref().map(|grounding| grounding.importance),
                 "documentCore":self.document_core_units.contains(&unit.id),
-            })
-        }).collect::<Vec<_>>();
-        serde_json::to_string(&json!({"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
+            }))
+        }).collect::<Result<Vec<_>, CommandError>>()?;
+        serde_json::to_string(&json!({"preparation":self.preparation,"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
             "trust":"Knowledge statements and priorities are model interpretations. Evidence is literal source material. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."}))
             .map_err(CommandError::serialization)
     }
@@ -93,7 +100,7 @@ impl KnowledgeCatalog {
     pub(crate) fn fingerprint(&self) -> Result<String, CommandError> {
         Ok(hash(&format!(
             "authoring-v{AUTHORING_VERSION}|{}",
-            serde_json::to_string(&(&self.units, &self.document_core_units))
+            serde_json::to_string(&(&self.units, &self.document_core_units, &self.preparation))
                 .map_err(CommandError::serialization)?
         )))
     }
@@ -172,6 +179,7 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
     let mut pending = Vec::new();
     let mut completed = 0;
     let mut remaining = std::collections::HashMap::<String, usize>::new();
+    let mut source_parents = std::collections::HashMap::<String, String>::new();
     let parallelism =
         crate::ai::concurrency::document_request_parallelism(&task.network_scope).clamp(1, 4);
     crate::logging::debug_target(
@@ -182,24 +190,22 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
     );
     for (batch_index, batch) in seeds.chunks(32).enumerate() {
         check_canceled(&cancellation)?;
-        let sources = materialize_sources(database, batch)?;
-        for seed in batch {
-            if !sources.iter().any(|source| {
-                source
-                    .segment_key
-                    .starts_with(&format!("{}:", seed.parent_key))
-            }) {
+        let groups = materialize_source_groups(database, batch)?;
+        let mut sources = Vec::new();
+        for (seed, group) in batch.iter().zip(groups) {
+            if group.is_empty() {
                 return Err(repository::stale_source());
             }
-        }
-        for source in &sources {
-            let parent = source
-                .segment_key
-                .split(':')
-                .next()
-                .unwrap_or(&source.segment_key)
-                .to_string();
-            *remaining.entry(parent).or_default() += 1;
+            for source in &group {
+                if source_parents
+                    .insert(source.id.clone(), seed.parent_key.clone())
+                    .is_some_and(|previous| previous != seed.parent_key)
+                {
+                    return Err(repository::stale_source());
+                }
+                *remaining.entry(seed.parent_key.clone()).or_default() += 1;
+            }
+            sources.extend(group);
         }
         pending.extend(sources);
         let ranges = batch_ranges(&pending);
@@ -248,11 +254,9 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
                 match outcome {
                     Ok(_) => {
                         for source in *group {
-                            let parent = source
-                                .segment_key
-                                .split(':')
-                                .next()
-                                .unwrap_or(&source.segment_key);
+                            let parent = source_parents
+                                .get(&source.id)
+                                .ok_or_else(repository::stale_source)?;
                             if let Some(left) = remaining.get_mut(parent) {
                                 *left = left.saturating_sub(1);
                                 if *left == 0 {
@@ -291,40 +295,17 @@ pub(crate) fn catalog_for_chunks(
     chunk_indices: &[i64],
     task: &DocumentTaskContext,
 ) -> Result<KnowledgeCatalog, CommandError> {
-    let wanted = serde_json::to_string(chunk_indices).map_err(CommandError::serialization)?;
     let contract = extraction_contract(task)?;
+    task.ensure_current(database)?;
     database.with_connection(|connection| {
-        let mut statement = connection
-            .prepare(
-                "SELECT id FROM knowledge_sources WHERE kind = 'document' AND document_id = ?1
-             AND active = 1 AND parent_key IN (SELECT CAST(value AS TEXT) FROM json_each(?2))
-             ORDER BY CAST(parent_key AS INTEGER), segment_key",
-            )
-            .map_err(CommandError::database)?;
-        let ids = statement
-            .query_map(params![document_id, wanted], |row| row.get::<_, String>(0))
-            .map_err(CommandError::database)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?;
-        if ids.is_empty() {
-            return Err(repository::stale_source());
-        }
-        let mut units = BTreeMap::new();
-        for id in ids {
-            let source =
-                repository::load_source(connection, &id)?.ok_or_else(repository::stale_source)?;
-            if !repository::extraction_available(connection, &source)? {
-                return Err(repository::stale_source());
-            }
-            for unit in repository::load_units(connection, &id)? {
-                units.insert(unit.id.clone(), unit);
-            }
-        }
+        let context =
+            super::learning_context::for_document_chunks(connection, document_id, chunk_indices)?;
         let document_core_units =
             super::document_view::core_ids(connection, document_id, &contract)?;
         Ok(KnowledgeCatalog {
-            units: units.into_values().collect(),
+            units: context.units,
             document_core_units,
+            preparation: context.preparation,
         })
     })
 }

@@ -1,102 +1,146 @@
+//! Preserve extracted grids; plain text is a projection, not table authority.
 use std::collections::BTreeMap;
 
-use crate::{document_ingestion::support::normalize_semantic_text, error::CommandError};
-use xberg::types::document_structure::TableGrid;
-use xberg::Table;
+use xberg::{types::document_structure::TableGrid, Table};
 
-const MAX_TABLE_CELLS: usize = 100_000;
-const MAX_TABLE_TEXT_CHARS: usize = 250_000;
-const MAX_ATTRIBUTE_VALUE_CHARS: usize = 2_000;
+use crate::{
+    document_canonical::structure::{SourceBounds, TableCell, TableStructure},
+    error::CommandError,
+};
 
-pub(crate) struct TableProjection {
-    pub(crate) text: String,
-    pub(crate) attributes: BTreeMap<String, String>,
+pub(super) struct TableProjection {
+    pub(super) text: String,
+    pub(super) attributes: BTreeMap<String, String>,
 }
 
-pub(crate) fn project_grid(grid: &TableGrid) -> Result<TableProjection, CommandError> {
-    let rows = usize::try_from(grid.rows).unwrap_or(usize::MAX);
-    let cols = usize::try_from(grid.cols).unwrap_or(usize::MAX);
-    validate_dimensions(rows, cols)?;
-    let mut matrix = vec![vec![String::new(); cols]; rows];
-    let mut header_rows = 0_usize;
+pub(super) fn bounds(value: &xberg::types::extraction::BoundingBox) -> SourceBounds {
+    SourceBounds {
+        x0: value.x0,
+        y0: value.y0,
+        x1: value.x1,
+        y1: value.y1,
+    }
+}
+
+pub(super) fn structure_from_grid(grid: &TableGrid) -> Result<TableStructure, CommandError> {
+    admit_dimensions(grid.rows as usize, grid.cols as usize, grid.cells.len())?;
+    let mut characters = 0_usize;
     for cell in &grid.cells {
-        let row = usize::try_from(cell.row).unwrap_or(usize::MAX);
-        let col = usize::try_from(cell.col).unwrap_or(usize::MAX);
-        if row >= rows || col >= cols {
-            return Err(invalid_table(
-                "A structured table cell is outside its declared grid.",
-            ));
-        }
-        matrix[row][col] = normalize_semantic_text(&cell.content, MAX_TABLE_TEXT_CHARS);
-        if cell.is_header {
-            header_rows = header_rows.max(row.saturating_add(1));
+        characters = characters.saturating_add(cell.content.chars().count());
+        if characters > 250_000 {
+            return Err(invalid_table());
         }
     }
-    Ok(projection(matrix, header_rows, None))
-}
-
-pub(crate) fn project_table(table: &Table) -> Result<TableProjection, CommandError> {
-    let rows = table.cells.len();
-    let cols = table.cells.iter().map(Vec::len).max().unwrap_or(0);
-    validate_dimensions(rows, cols)?;
-    let mut matrix = Vec::with_capacity(rows);
-    for row in &table.cells {
-        let mut normalized = row
+    let table = TableStructure {
+        rows: grid.rows as usize,
+        columns: grid.cols as usize,
+        cells: grid
+            .cells
             .iter()
-            .map(|cell| normalize_semantic_text(cell, MAX_TABLE_TEXT_CHARS))
-            .collect::<Vec<_>>();
-        normalized.resize(cols, String::new());
-        matrix.push(normalized);
-    }
-    Ok(projection(
-        matrix,
-        usize::from(table.columns.is_some()),
-        table.table_id.as_deref(),
-    ))
+            .map(|cell| TableCell {
+                row: cell.row as usize,
+                column: cell.col as usize,
+                row_span: cell.row_span as usize,
+                column_span: cell.col_span as usize,
+                header: Some(cell.is_header),
+                text: cell.content.clone(),
+                bounds: cell.bbox.as_ref().map(bounds),
+            })
+            .collect(),
+        column_headers: None,
+    };
+    table.validate().map_err(|_| invalid_table())?;
+    Ok(table)
 }
 
-fn projection(
-    matrix: Vec<Vec<String>>,
-    header_rows: usize,
-    table_id: Option<&str>,
-) -> TableProjection {
-    let row_count = matrix.len();
-    let column_count = matrix.first().map(Vec::len).unwrap_or(0);
-    let text = normalize_semantic_text(
-        &matrix
-            .iter()
-            .map(|row| row.join("\t"))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        MAX_TABLE_TEXT_CHARS,
-    );
-    let mut attributes = BTreeMap::new();
-    attributes.insert("rowCount".to_string(), row_count.to_string());
-    attributes.insert("columnCount".to_string(), column_count.to_string());
-    attributes.insert("headerRows".to_string(), header_rows.to_string());
-    if let Some(table_id) = table_id {
-        let table_id = normalize_semantic_text(table_id, MAX_ATTRIBUTE_VALUE_CHARS);
-        if !table_id.is_empty() {
-            attributes.insert("tableId".to_string(), table_id);
+pub(super) fn structure_from_table(value: &Table) -> Result<TableStructure, CommandError> {
+    let columns = value.cells.iter().map(Vec::len).max().unwrap_or(0);
+    let columns = columns.max(value.columns.as_ref().map_or(0, Vec::len));
+    let count = value.cells.iter().map(Vec::len).sum();
+    admit_dimensions(value.cells.len(), columns, count)?;
+    let mut characters = 0_usize;
+    for text in value
+        .cells
+        .iter()
+        .flatten()
+        .chain(value.columns.iter().flatten())
+    {
+        characters = characters.saturating_add(text.chars().count());
+        if characters > 250_000 {
+            return Err(invalid_table());
         }
     }
-    TableProjection { text, attributes }
+    let cells = value
+        .cells
+        .iter()
+        .enumerate()
+        .flat_map(|(row, values)| {
+            values
+                .iter()
+                .enumerate()
+                .map(move |(column, text)| TableCell {
+                    row,
+                    column,
+                    row_span: 1,
+                    column_span: 1,
+                    header: None,
+                    text: text.clone(),
+                    bounds: None,
+                })
+        })
+        .collect();
+    let table = TableStructure {
+        rows: value.cells.len(),
+        columns,
+        cells,
+        column_headers: value.columns.clone(),
+    };
+    table.validate().map_err(|_| invalid_table())?;
+    Ok(table)
 }
 
-fn validate_dimensions(rows: usize, cols: usize) -> Result<(), CommandError> {
-    if rows == 0 || cols == 0 {
-        return Ok(());
-    }
-    if rows.saturating_mul(cols) > MAX_TABLE_CELLS {
-        return Err(invalid_table(
-            "A document table exceeds oStudy's 100,000-cell canonical limit.",
-        ));
+pub(super) fn project_grid(grid: &TableGrid) -> Result<TableProjection, CommandError> {
+    project(&structure_from_grid(grid)?)
+}
+
+pub(super) fn project_table(table: &Table) -> Result<TableProjection, CommandError> {
+    project(&structure_from_table(table)?)
+}
+
+fn project(table: &TableStructure) -> Result<TableProjection, CommandError> {
+    let header_rows = table
+        .cells
+        .iter()
+        .filter(|cell| cell.header == Some(true))
+        .map(|cell| cell.row + cell.row_span)
+        .max()
+        .unwrap_or(0);
+    Ok(TableProjection {
+        text: table.text_projection()?,
+        attributes: BTreeMap::from([
+            ("rowCount".to_string(), table.rows.to_string()),
+            ("columnCount".to_string(), table.columns.to_string()),
+            ("headerRows".to_string(), header_rows.to_string()),
+        ]),
+    })
+}
+
+fn admit_dimensions(rows: usize, columns: usize, cells: usize) -> Result<(), CommandError> {
+    if rows > 100_000
+        || columns > 100_000
+        || cells > 100_000
+        || rows.saturating_mul(columns) > 100_000
+    {
+        return Err(invalid_table());
     }
     Ok(())
 }
 
-fn invalid_table(message: &str) -> CommandError {
-    CommandError::new("document_table_too_large", message)
+fn invalid_table() -> CommandError {
+    CommandError::new(
+        "document_table_too_large",
+        "The extracted table is invalid or exceeds its bounded cell/text limits.",
+    )
 }
 
 #[cfg(test)]
@@ -105,36 +149,36 @@ mod tests {
     use xberg::types::document_structure::GridCell;
 
     #[test]
-    fn structured_grid_is_projected_in_row_order() {
+    fn table_grid_preserves_cells_and_header_metadata() {
         let grid = TableGrid {
             rows: 2,
             cols: 2,
             cells: vec![
                 GridCell {
-                    content: "A".to_string(),
                     row: 0,
                     col: 0,
                     row_span: 1,
                     col_span: 1,
                     is_header: true,
+                    content: "A".to_string(),
                     bbox: None,
                 },
                 GridCell {
-                    content: "B".to_string(),
                     row: 1,
                     col: 1,
                     row_span: 1,
                     col_span: 1,
                     is_header: false,
+                    content: "B".to_string(),
                     bbox: None,
                 },
             ],
         };
         let projected = project_grid(&grid).unwrap();
         assert_eq!(projected.text, "A\t\n\tB");
-        assert_eq!(
-            projected.attributes.get("headerRows").map(String::as_str),
-            Some("1")
-        );
+        assert_eq!(projected.attributes["headerRows"], "1");
+        let structure = structure_from_grid(&grid).unwrap();
+        assert_eq!(structure.cells[0].header, Some(true));
+        assert_eq!(structure.cells[1].column, 1);
     }
 }

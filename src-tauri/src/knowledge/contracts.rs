@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
 
 pub(crate) const CONTENT_SCHEMA_VERSION: i64 = 1;
-pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 3;
+pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 4;
 pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
 // A storage ceiling, not a pedagogical quota per PDF page.
@@ -103,7 +103,21 @@ impl SourceRecord {
             self.segment_key
         ))[..32]
             .to_string();
-        self.content_hash = if self.identity_version == 2 && self.kind == SourceKind::Document {
+        self.content_hash = if self.identity_version == 3 && self.kind == SourceKind::Document {
+            // Native image evidence proof is stable across display reordering.
+            // Locators are rebound only by the image projection transaction.
+            hash(
+                &serde_json::to_string(&(
+                    "image-evidence-v3",
+                    self.kind,
+                    &self.text,
+                    self.origin,
+                    &self.owner_revision,
+                    &self.images,
+                ))
+                .map_err(CommandError::serialization)?,
+            )
+        } else if self.identity_version == 2 && self.kind == SourceKind::Document {
             // Renaming a document or assigning generated display metadata is
             // not an edit to its canonical evidence. Keep v1 readable for old
             // backups; new document adapters explicitly publish v2 identities.
@@ -137,9 +151,20 @@ impl SourceRecord {
 
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
         if self.identity_version != 1
-            && !(self.identity_version == 2 && self.kind == SourceKind::Document)
+            && !(matches!(self.identity_version, 2 | 3) && self.kind == SourceKind::Document)
         {
             return Err(invalid("Unsupported canonical evidence identity version."));
+        }
+        if self.identity_version == 3
+            && (!self.segment_key.starts_with("image:")
+                || !is_hash(&self.owner_revision)
+                || self.locator.as_ref().is_none_or(|locator| {
+                    locator.unit_kind != crate::document_domain::SourceUnitKind::Image
+                }))
+        {
+            return Err(invalid(
+                "Image evidence requires a native region identity and pixel proof.",
+            ));
         }
         validate_entity_id(&self.id, "semantic source")?;
         validate_entity_id(&self.owner_id, "semantic source owner")?;
@@ -227,6 +252,9 @@ pub(crate) struct KnowledgeUnitInput {
     pub supporting_excerpt: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grounding: Option<super::evidence::Grounding>,
+    /// Optional native spans into `statement`; absence preserves existing hashes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<super::typed_payload::TypedPayload>,
 }
 
 impl KnowledgeUnitInput {
@@ -258,6 +286,9 @@ impl KnowledgeUnitInput {
         }
         if let Some(grounding) = &self.grounding {
             grounding.validate_shape(source)?;
+        }
+        if let Some(details) = &self.details {
+            details.validate(&self.statement, self.kind)?;
         }
         // An exact excerpt proves location, not correctness or entailment.
         // Image-grounded units deliberately have no invented quotation.
