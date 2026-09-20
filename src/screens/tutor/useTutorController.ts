@@ -44,7 +44,8 @@ export function useTutorController() {
   const bootstrapLane = useRequestLane();
   const detailLane = useRequestLane();
   const historyLane = useRequestLane();
-  const conversationRetrievalAllowed = scope.kind !== "general" && !scopeUsesCollection(scope) && target?.mode !== "hint";\n  const preparation = useMaterialPreparation(scope, includeConversations && conversationRetrievalAllowed);
+  const conversationRetrievalAllowed = scope.kind !== "general" && !scopeUsesCollection(scope) && target?.mode !== "hint";
+  const preparation = useMaterialPreparation(scope, includeConversations && conversationRetrievalAllowed);
 
   useEffect(() => {
     alive.current = true;
