@@ -98,8 +98,8 @@ cargo test \
   --lib \
   document_
 
-step "Ordered image-set admission contracts"
-bash "$SCRIPT_DIR/test-native-contracts.sh" documents::image_sets::
+step "Ordered image-set source and backup contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" documents::image_sets:: library_backup::image_set_backup_tests::
 
 step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
 for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::scope:: device_sync::package:: library_backup::media_backup_tests library_backup::tutor_backup_tests; do
