@@ -124,11 +124,8 @@ fn image_set_pending_amendment_and_filters_round_trip_through_complete_backup() 
     let restored_assets = restored_root.join("assets");
     extract_backup_package(&backup, &restored_database, &restored_assets).unwrap();
 
-    let restored = Connection::open_with_flags(
-        &restored_database,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .unwrap();
+    let restored =
+        Connection::open_with_flags(&restored_database, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
     validate_snapshot_database(&restored).unwrap();
     let restored_manifest =
         crate::documents::image_sets::repository::load(&restored, &original.document_id).unwrap();
@@ -155,7 +152,8 @@ fn image_set_pending_amendment_and_filters_round_trip_through_complete_backup() 
 
     for member in &restored_manifest.members {
         let restored_bytes = fs::read(restored_root.join(&member.relative_path)).unwrap();
-        let original_bytes = fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap();
+        let original_bytes =
+            fs::read(fixture.paths.resolve_relative(&member.relative_path)).unwrap();
         assert_eq!(restored_bytes, original_bytes);
     }
     let restored_manifest_path = crate::documents::image_sets::manifest::manifest_path(

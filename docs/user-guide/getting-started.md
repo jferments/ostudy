@@ -52,7 +52,7 @@ In **Settings → AI/LLM**, choose Add model, select an implemented provider, en
 
 Current adapters are llama.cpp / Unsloth GGUF, DeepSeek, and OpenRouter. Other catalog entries or future integrations are not current adapters. A local provider never silently falls back to cloud. See [AI providers](ai-providers.md).
 
-In **Documents**, upload a supported source and use its flashcard or study-guide generation actions. Parsing happens locally; AI requests send bounded source context and, when supported, selected visual evidence to the configured provider. Review generated material against the source. [Documents and AI generation](documents-and-ai-generation.md) covers formats, progress, cancellation, and privacy.
+In **Documents**, upload a supported source and use its flashcard or study-guide generation actions. Use **Add image set** when screenshots or photos belong to one ordered source; inspect/reorder/rotate/crop them locally, then use **Edit images** and the reversible **Content filter** before optional generation. Parsing and image preparation happen locally; AI requests send bounded source context and, when supported, selected visual evidence only through the configured provider. Review generated material against the source. [Documents and AI generation](documents-and-ai-generation.md) covers formats, image sources, progress, cancellation, and privacy.
 
 Open **Study Guides** to browse generated guides, add learner notes, review source links, export a guide, or practice linked cards. Guides and cards are separate learning artifacts: one may exist without the other. See [Study guides](study-guides.md).
 

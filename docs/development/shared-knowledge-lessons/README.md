@@ -1,6 +1,6 @@
 # Shared knowledge, collections, and lessons: development plan
 
-Status: implementation underway; LK-00 through LK-03 are implemented on PR #103. Prepared 18 September 2026 and updated as stages close.
+Status: implementation underway; LK-00 through LK-04 are implemented on PR #103, with LK-05 next. Prepared 18 September 2026 and updated as stages close.
 
 This is the execution contract for PR #103. It turns the approved Shared Knowledge and Responsive Lessons revision-2 design into ordered, reviewable implementation increments and records each completed boundary as it is published. The human has authorized staged implementation through the requested scope; that authorization does not grant access to or conversion of a personal library, authorize merge, or collapse later human/platform acceptance into source qualification.
 

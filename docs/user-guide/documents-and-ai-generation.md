@@ -14,6 +14,18 @@ The original document is not uploaded to the model as an opaque file. ostudy sta
 
 Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Once the source is retained, use its flashcard or **Generate study guide** action. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a red stop-sign icon; click that same button to request cancellation.
 
+### Add screenshots and photos as one ordered source
+
+Choose **Add image set** when several screenshots or photos are parts of one study source. Add images in reading order. A selection that cannot be inspected stays visible with **Retry inspection** and **Remove** instead of causing a misleading partial import. Before import you can move admitted selections, rotate them in quarter turns, and set normalized source-inclusion bounds. **Use whole image** removes an inclusion crop without deleting any original pixels.
+
+Import retains every original image independently plus an ordered manifest. Local image preparation/OCR runs after the source commit and does not require an AI provider. A preparation failure does not undo the successful source import; use **Edit images → Retry local OCR** after reviewing the retained source.
+
+For an existing image set, **Edit images** opens the image workspace. The **Original source inspection** panel shows a controlled view of the retained original rather than a filtered derivative. Reorder existing members, rotate them, change source inclusion, or append another image, then choose **Save source changes**. Unchanged compatible OCR and source-grounded knowledge can be reused; affected members/neighborhoods are rebuilt after the durable source edit. Appended images enter at the end of the current sequence and can be reordered after they become owned members.
+
+The **Content filter** is reversible. Automatic rules conservatively separate specific edge controls/cookie notices and source attribution from ordinary learning text. Review the literal OCR region and choose **Automatic**, **Include for learning**, **Exclude**, or **Metadata only**. Turn on **Include interface content** when interface controls themselves are the lesson. Uncertain or unlocated text is retained rather than guessed away. An explicit exclusion whose geometry is unknown withholds the model-visible image so excluded text cannot leak back through pixels. oStudy does not invent obscured text or fetch a guessed source URL.
+
+Manual filter choices are revision checked. After rotation, a choice is carried only when the same retained image has exactly one region with the same literal text; fuzzy or position-only matching is not used. Whole-library backup preserves current manifests, retained originals, pending source-edit snapshots, and Content-filter state.
+
 Open generated cards from Flashcards and generated guides from **Study Guides**. There is no separate generated-card approval queue. Accepted model output must pass native validation before it becomes study content. A replacement study guide is published only after a complete validated revision is ready, so a failed regeneration does not discard the last active revision.
 
 Document flashcard generation can create Basic/Fill in the blank recall plus single-best-answer, select-all, true/false, matching, grouping, and ordering questions when retained source evidence supports the required relationship. Image occlusion remains manually authored; document generation does not invent masks. The type mix is a soft planning target, not a quota: allowed types, evidence fit, topic/component coverage and compound-workload limits outrank percentages. If the source does not support a requested interaction, oStudy uses another supported opportunity or returns fewer cards instead of manufacturing filler.
@@ -23,6 +35,8 @@ Review source-grounded output for factual errors, weak questions, duplicated con
 ## Supported source families
 
 The current registry supports PDF; Word DOC/DOCX-family files; PowerPoint PPT/PPTX-family files; OpenDocument ODT/ODP/ODS; EPUB; RTF; Excel XLS/XLSX-family files; and CSV.
+
+Ordered image sets are a separate first-class Documents source workflow for supported PNG/JPEG/WebP screenshots and photos. They are not routed through Xberg and are not converted into one stitched image.
 
 PDF uses the native PDF adapter. Supported non-PDF formats use **Xberg**, with immediate normalization into ostudy's own canonical representation. AnyDoc is a retired parser, not a selectable alternative or fallback.
 
@@ -86,7 +100,7 @@ Deleting only a study guide has a narrower scope: it removes generated guide rev
 
 ## Backup, sync, and limitations
 
-Whole-library backups include the coherent document/learning-artifact database graph and required managed sources/images/renders, including typed question definitions, retained attempt/review evidence and generation evidence. Supported older backup representations remain readable. Provider credentials are excluded.
+Whole-library backups include the coherent document/learning-artifact database graph and required managed sources/images/renders, including ordered image-set manifests, each retained original image, pending image-source snapshots, Content-filter decisions, typed question definitions, retained attempt/review evidence and generation evidence. Supported older backup representations remain readable. Provider credentials are excluded.
 
 Trusted-device synchronization has explicit sender-selected scopes for Flashcards, Documents, Study Guides and provider settings/credentials. Study Guides require Documents; cross-document/card provenance is included only when both domains are selected. Typed interactive questions and their admitted retained evidence are supported within the Flashcards graph. A selected sync scope is still not a disaster-recovery substitute for the complete-library backup.
 
