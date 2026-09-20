@@ -184,6 +184,19 @@ beforeEach(() => {
   mockedRelease.mockResolvedValue(undefined);
 });
 
+async function selectSectionAction(label: string): Promise<void> {
+  const trigger = await screen.findByLabelText(/Section actions for/u);
+  fireEvent.click(trigger);
+  const menu = await waitFor(() => {
+    const value = document.querySelector<HTMLElement>(
+      '[role="menu"][aria-label^="Section actions for"]',
+    );
+    if (!value) throw new Error("Section actions menu did not open.");
+    return value;
+  });
+  fireEvent.click(within(menu).getByText(label));
+}
+
 describe("StudyGuideDialog", () => {
   it("creates a guide when no active revision exists", async () => {
     mockedGetGuide.mockResolvedValue(null);
@@ -317,17 +330,6 @@ describe("StudyGuideDialog", () => {
     expect(mockedGenerate).not.toHaveBeenCalled();
     if (!accepted) expect(showToast).not.toHaveBeenCalled();
   });
-
-  async function selectSectionAction(label: string): Promise<void> {
-    const trigger = await screen.findByLabelText(/Section actions for/u);
-    fireEvent.click(trigger);
-    let menu: HTMLElement | null = null;
-    await waitFor(() => {
-      menu = document.querySelector('[role="menu"][aria-label^="Section actions for"]');
-      expect(menu).toBeTruthy();
-    });
-    fireEvent.click(within(menu as HTMLElement).getByText(label));
-  }
 
   it("collapses per-section controls into one accessible overflow menu", async () => {
     mockedGetGuide.mockResolvedValue(guide());
