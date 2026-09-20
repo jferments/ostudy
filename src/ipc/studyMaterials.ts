@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { SourceLocator, StudyGuideOverview, StudyGuideSectionContent } from "./studyGuides";
+
 export type StudyTargetKind = "document" | "collection";
 export type StudyTargetArtifactKind = "flashcards" | "study_guide";
 
@@ -39,6 +41,56 @@ export interface StudyTargetBundleStatus {
   studyGuide: StudyTargetArtifactStatus;
 }
 
+export interface CollectionGuideSection {
+  blockKey: string;
+  title: string;
+  content: StudyGuideSectionContent;
+  contentHash: string;
+  sourceDocumentId: string | null;
+  sourceDocumentTitle: string | null;
+  sourceGuideId: string | null;
+  sourceTopicId: string | null;
+  sourceLocator: SourceLocator | null;
+}
+
+export interface CollectionGuideContent {
+  schemaVersion: number;
+  collectionId: string;
+  title: string;
+  overview: StudyGuideOverview;
+  sections: CollectionGuideSection[];
+  coverageNotes: string[];
+}
+
+export interface CollectionStudyGuideOverlay {
+  id: string;
+  guideId: string;
+  targetId: string;
+  blockKey: string | null;
+  overlayKind: string;
+  baseContentHash: string | null;
+  richDoc: unknown;
+  plainText: string;
+  state: string;
+  revision: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CollectionStudyGuide {
+  id: string;
+  targetId: string;
+  collectionId: string;
+  title: string;
+  revision: number;
+  sourceSnapshotId: string;
+  content: CollectionGuideContent;
+  overlays: CollectionStudyGuideOverlay[];
+  createdAt: number;
+  updatedAt: number;
+  publishedAt: number;
+}
+
 export interface GetStudyTargetBundleInput {
   target: StudyTargetRef;
 }
@@ -48,6 +100,14 @@ export interface BeginStudyTargetBundleInput {
   target: StudyTargetRef;
   outputPolicy?: StudyTargetOutputPolicy;
   recreateArtifacts?: StudyTargetArtifactKind[];
+}
+
+export async function getCollectionStudyGuide(
+  collectionId: string,
+): Promise<CollectionStudyGuide | null> {
+  return invoke<CollectionStudyGuide | null>("get_collection_study_guide", {
+    input: { collectionId },
+  });
 }
 
 export async function getStudyTargetBundle(

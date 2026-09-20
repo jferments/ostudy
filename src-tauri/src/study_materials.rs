@@ -9,7 +9,7 @@
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
@@ -18,7 +18,11 @@ pub(crate) mod composition;
 use crate::{
     collections::{self, SelectedDocumentInput, SourceSelectionInput, SourceSetSnapshotDto},
     database::Database,
+    document_study_guides::{
+        StudyGuideCallout, StudyGuideCalloutKind, StudyGuideOverview, StudyGuideSectionContent,
+    },
     error::CommandError,
+    knowledge::collection_view::CollectionSynthesis,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -134,6 +138,45 @@ pub(crate) struct StudyTargetBundleStatus {
     pub study_guide: StudyTargetArtifactStatus,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GetCollectionStudyGuideInput {
+    pub collection_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CollectionStudyGuide {
+    pub id: String,
+    pub target_id: String,
+    pub collection_id: String,
+    pub title: String,
+    pub revision: i64,
+    pub source_snapshot_id: String,
+    pub content: composition::CollectionGuideContent,
+    pub overlays: Vec<CollectionStudyGuideOverlay>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub published_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CollectionStudyGuideOverlay {
+    pub id: String,
+    pub guide_id: String,
+    pub target_id: String,
+    pub block_key: Option<String>,
+    pub overlay_kind: String,
+    pub base_content_hash: Option<String>,
+    pub rich_doc: Value,
+    pub plain_text: String,
+    pub state: String,
+    pub revision: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 #[derive(Clone)]
 struct StoredTarget {
     id: String,
@@ -142,6 +185,15 @@ struct StoredTarget {
     revision: i64,
     deck_id: Option<String>,
     snapshot_id: String,
+}
+
+#[tauri::command]
+pub(crate) fn get_collection_study_guide(
+    database: State<'_, Database>,
+    input: GetCollectionStudyGuideInput,
+) -> Result<Option<CollectionStudyGuide>, CommandError> {
+    validate_entity_id(&input.collection_id, "document collection")?;
+    load_collection_study_guide(database.inner(), &input.collection_id)
 }
 
 #[tauri::command]
@@ -164,6 +216,233 @@ pub(crate) fn begin_study_target_bundle(
     input: BeginStudyTargetBundleInput,
 ) -> Result<StudyTargetBundleStatus, CommandError> {
     begin_bundle(database.inner(), input)
+}
+
+fn load_collection_study_guide(
+    database: &Database,
+    collection_id: &str,
+) -> Result<Option<CollectionStudyGuide>, CommandError> {
+    let stored = database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT guide.id,target.id,collection.id,collection.name,guide.revision,
+                        guide.source_snapshot_id,guide.content_json,
+                        guide.created_at,guide.updated_at,guide.published_at
+                 FROM study_target_guides guide
+                 JOIN study_targets target ON target.id=guide.target_id
+                 JOIN document_collections collection ON collection.id=target.collection_id
+                 WHERE target.target_kind='collection' AND target.collection_id=?1
+                   AND guide.state='active'",
+                [collection_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, i64>(7)?,
+                        row.get::<_, i64>(8)?,
+                        row.get::<_, i64>(9)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(CommandError::database)
+    })?;
+    let Some((
+        id,
+        target_id,
+        collection_id,
+        title,
+        revision,
+        snapshot_id,
+        content_json,
+        created_at,
+        updated_at,
+        published_at,
+    )) = stored
+    else {
+        return Ok(None);
+    };
+    let content = decode_collection_guide_content(&collection_id, &title, &content_json)?;
+    let overlays = load_collection_guide_overlays(database, &id, &target_id)?;
+    Ok(Some(CollectionStudyGuide {
+        id,
+        target_id,
+        collection_id,
+        title,
+        revision,
+        source_snapshot_id: snapshot_id,
+        content,
+        overlays,
+        created_at,
+        updated_at,
+        published_at,
+    }))
+}
+
+fn decode_collection_guide_content(
+    collection_id: &str,
+    title: &str,
+    content_json: &str,
+) -> Result<composition::CollectionGuideContent, CommandError> {
+    if let Ok(content) = serde_json::from_str::<composition::CollectionGuideContent>(content_json) {
+        return Ok(content);
+    }
+    let synthesis: CollectionSynthesis =
+        serde_json::from_str(content_json).map_err(CommandError::serialization)?;
+    let mut sections = synthesis
+        .topics
+        .iter()
+        .map(|topic| {
+            let content = StudyGuideSectionContent {
+                overview: if topic.summary.trim().is_empty() {
+                    format!("Review {} in the selected source material.", topic.title)
+                } else {
+                    topic.summary.clone()
+                },
+                ..Default::default()
+            };
+            let content_hash = hash_bytes(
+                &serde_json::to_vec(&(&topic.title, &content))
+                    .map_err(CommandError::serialization)?,
+            );
+            Ok(composition::CollectionGuideSection {
+                block_key: topic.id.clone(),
+                title: topic.title.clone(),
+                content,
+                content_hash,
+                source_document_id: None,
+                source_document_title: None,
+                source_guide_id: None,
+                source_topic_id: None,
+                source_locator: None,
+            })
+        })
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    if !synthesis.gaps.is_empty() {
+        let content = StudyGuideSectionContent {
+            overview:
+                "Coverage limits remain explicit for this earlier collection-guide revision."
+                    .to_string(),
+            callouts: synthesis
+                .gaps
+                .iter()
+                .take(16)
+                .map(|gap| StudyGuideCallout {
+                    kind: StudyGuideCalloutKind::Note,
+                    title: "Coverage note".to_string(),
+                    body: gap.detail.clone(),
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let content_hash =
+            hash_bytes(&serde_json::to_vec(&content).map_err(CommandError::serialization)?);
+        sections.push(composition::CollectionGuideSection {
+            block_key: "coverage".to_string(),
+            title: "Coverage notes".to_string(),
+            content,
+            content_hash,
+            source_document_id: None,
+            source_document_title: None,
+            source_guide_id: None,
+            source_topic_id: None,
+            source_locator: None,
+        });
+    }
+    Ok(composition::CollectionGuideContent {
+        schema_version: 0,
+        collection_id: collection_id.to_string(),
+        title: title.to_string(),
+        overview: StudyGuideOverview {
+            summary: synthesis.summary,
+            learning_objectives: synthesis.learning_objectives,
+            key_concepts: synthesis
+                .topics
+                .iter()
+                .map(|topic| topic.title.clone())
+                .take(48)
+                .collect(),
+        },
+        sections,
+        coverage_notes: synthesis
+            .gaps
+            .iter()
+            .map(|gap| gap.detail.clone())
+            .collect(),
+    })
+}
+
+fn load_collection_guide_overlays(
+    database: &Database,
+    guide_id: &str,
+    target_id: &str,
+) -> Result<Vec<CollectionStudyGuideOverlay>, CommandError> {
+    database.with_connection(|connection| {
+        let mut statement = connection
+            .prepare(
+                "SELECT id,guide_id,target_id,block_key,overlay_kind,base_content_hash,
+                        rich_doc_json,plain_text,state,revision,created_at,updated_at
+                 FROM study_target_guide_overlays
+                 WHERE guide_id=?1 AND target_id=?2 AND state IN ('active','conflicted')
+                 ORDER BY created_at,id",
+            )
+            .map_err(CommandError::database)?;
+        statement
+            .query_map(params![guide_id, target_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, i64>(10)?,
+                    row.get::<_, i64>(11)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .map(|row| {
+                let (
+                    id,
+                    guide_id,
+                    target_id,
+                    block_key,
+                    overlay_kind,
+                    base_content_hash,
+                    rich_doc_json,
+                    plain_text,
+                    state,
+                    revision,
+                    created_at,
+                    updated_at,
+                ) = row.map_err(CommandError::database)?;
+                Ok(CollectionStudyGuideOverlay {
+                    id,
+                    guide_id,
+                    target_id,
+                    block_key,
+                    overlay_kind,
+                    base_content_hash,
+                    rich_doc: serde_json::from_str(&rich_doc_json)
+                        .map_err(CommandError::serialization)?,
+                    plain_text,
+                    state,
+                    revision,
+                    created_at,
+                    updated_at,
+                })
+            })
+            .collect()
+    })
 }
 
 pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError> {
