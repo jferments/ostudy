@@ -118,6 +118,26 @@ struct EffectiveExportSection {
 }
 
 #[derive(Clone, Debug)]
+enum InlinePiece {
+    Text { value: String, width: f64 },
+    Formula(math_layout::MathLayout),
+}
+
+#[derive(Clone, Debug, Default)]
+struct InlineLine {
+    pieces: Vec<InlinePiece>,
+    width: f64,
+    height: f64,
+    depth: f64,
+}
+
+#[derive(Clone, Debug)]
+enum FlowLine {
+    Inline(InlineLine),
+    Block(math_layout::MathLayout),
+}
+
+#[derive(Clone, Debug)]
 struct ExportFigure {
     image: PdfImage,
     title: String,
@@ -240,7 +260,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
         guide_revision: effective.guide_revision,
         section_count: i64::try_from(effective.sections.len()).unwrap_or(i64::MAX),
         annotation_count: i64::try_from(effective.annotation_count).unwrap_or(i64::MAX),
-        math_source_fallback: math_source::has_math(&effective),
+        math_source_fallback: math_source::requires_source_fallback(&effective),
     };
     let suggested_filename = format!(
         "{}-study-guide.pdf",
@@ -325,7 +345,7 @@ pub(crate) fn prepare_collection_study_guide_pdf(
         guide_revision: effective.guide_revision,
         section_count: i64::try_from(effective.sections.len()).unwrap_or(i64::MAX),
         annotation_count: i64::try_from(effective.annotation_count).unwrap_or(i64::MAX),
-        math_source_fallback: math_source::has_math(&effective),
+        math_source_fallback: math_source::requires_source_fallback(&effective),
     };
     let suggested_filename = format!(
         "{}-study-guide.pdf",
@@ -798,7 +818,7 @@ fn render_study_guide_pdf(
         writer.heading("My guide notes", 14.0, 19.0)?;
         writer.bullets(&export.guide_notes, false)?;
     }
-    if math_source::has_math(export) {
+    if math_source::requires_source_fallback(export) {
         writer.muted_paragraph(math_source::NOTICE, 9.0, 12.5)?;
     }
     writer.page_break()?;
@@ -1314,6 +1334,9 @@ impl PdfFlowWriter {
         indent: f64,
         color: Color,
     ) -> Result<(), CommandError> {
+        if math_source::contains_math(text) {
+            return self.math_text(text, size, line_height, bold, indent, color);
+        }
         let available_width = PAGE_WIDTH - (2.0 * MARGIN_X) - indent;
         let lines = wrap_text(text, available_width, size);
         for line in lines {
@@ -1329,6 +1352,244 @@ impl PdfFlowWriter {
             self.y -= line_height;
         }
         self.spacer((line_height * 0.35).max(2.0))
+    }
+
+    fn math_text(
+        &mut self,
+        text: &str,
+        size: f64,
+        line_height: f64,
+        bold: bool,
+        indent: f64,
+        color: Color,
+    ) -> Result<(), CommandError> {
+        let maximum_width = PAGE_WIDTH - (2.0 * MARGIN_X) - indent;
+        let mut flow = Vec::<FlowLine>::new();
+        let mut current = InlineLine::default();
+        let mut pending_space = false;
+
+        for segment in math_source::segments(text) {
+            match segment {
+                math_source::MathSegment::Text(value) => {
+                    let normalized = value.replace('\r', "");
+                    for (line_index, line) in normalized.split('\n').enumerate() {
+                        if line_index > 0 {
+                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
+                            pending_space = false;
+                        }
+                        let mut cursor = 0_usize;
+                        while cursor < line.len() {
+                            let rest = &line[cursor..];
+                            let first = rest.chars().next().expect("nonempty text suffix");
+                            let whitespace = first.is_whitespace();
+                            let mut end = first.len_utf8();
+                            for (offset, character) in rest[first.len_utf8()..].char_indices() {
+                                if character.is_whitespace() != whitespace {
+                                    end = first.len_utf8() + offset;
+                                    break;
+                                }
+                                end = first.len_utf8() + offset + character.len_utf8();
+                            }
+                            let token = &rest[..end];
+                            cursor += end;
+                            if whitespace {
+                                pending_space = true;
+                                continue;
+                            }
+                            let space_width = if pending_space && !current.pieces.is_empty() {
+                                approximate_text_width(" ", size)
+                            } else {
+                                0.0
+                            };
+                            let token_width = approximate_text_width(token, size);
+                            if !current.pieces.is_empty()
+                                && current.width + space_width + token_width > maximum_width
+                            {
+                                flow.push(FlowLine::Inline(std::mem::take(&mut current)));
+                            }
+                            if pending_space && !current.pieces.is_empty() {
+                                let width = approximate_text_width(" ", size);
+                                current.pieces.push(InlinePiece::Text {
+                                    value: " ".to_string(),
+                                    width,
+                                });
+                                current.width += width;
+                            }
+                            current.pieces.push(InlinePiece::Text {
+                                value: token.to_string(),
+                                width: token_width,
+                            });
+                            current.width += token_width;
+                            current.height = current.height.max(size * 0.78);
+                            current.depth = current.depth.max(size * 0.22);
+                            pending_space = false;
+                        }
+                    }
+                }
+                math_source::MathSegment::Formula {
+                    latex,
+                    source,
+                    block,
+                } => {
+                    let base_size = if block { size * 1.08 } else { size };
+                    let mut formula = math_layout::layout(latex, base_size).ok();
+                    if let Some(layout) = formula.as_ref() {
+                        if layout.width > maximum_width {
+                            let scale = (maximum_width / layout.width).clamp(0.62, 1.0);
+                            formula = math_layout::layout(latex, base_size * scale).ok();
+                        }
+                    }
+                    if block {
+                        if !current.pieces.is_empty() {
+                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
+                        }
+                        pending_space = false;
+                        if let Some(layout) = formula.filter(|layout| layout.width <= maximum_width) {
+                            flow.push(FlowLine::Block(layout));
+                        } else {
+                            let width = approximate_text_width(source, size);
+                            flow.push(FlowLine::Inline(InlineLine {
+                                pieces: vec![InlinePiece::Text {
+                                    value: source.to_string(),
+                                    width,
+                                }],
+                                width,
+                                height: size * 0.78,
+                                depth: size * 0.22,
+                            }));
+                        }
+                    } else if let Some(layout) =
+                        formula.filter(|layout| layout.width <= maximum_width)
+                    {
+                        let space_width = if pending_space && !current.pieces.is_empty() {
+                            approximate_text_width(" ", size)
+                        } else {
+                            0.0
+                        };
+                        if !current.pieces.is_empty()
+                            && current.width + space_width + layout.width > maximum_width
+                        {
+                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
+                        }
+                        if pending_space && !current.pieces.is_empty() {
+                            let width = approximate_text_width(" ", size);
+                            current.pieces.push(InlinePiece::Text {
+                                value: " ".to_string(),
+                                width,
+                            });
+                            current.width += width;
+                        }
+                        current.height = current.height.max(layout.height);
+                        current.depth = current.depth.max(layout.depth);
+                        current.width += layout.width;
+                        current.pieces.push(InlinePiece::Formula(layout));
+                        pending_space = false;
+                    } else {
+                        let source_width = approximate_text_width(source, size);
+                        if !current.pieces.is_empty()
+                            && current.width + source_width > maximum_width
+                        {
+                            flow.push(FlowLine::Inline(std::mem::take(&mut current)));
+                        }
+                        current.pieces.push(InlinePiece::Text {
+                            value: source.to_string(),
+                            width: source_width,
+                        });
+                        current.width += source_width;
+                        current.height = current.height.max(size * 0.78);
+                        current.depth = current.depth.max(size * 0.22);
+                        pending_space = false;
+                    }
+                }
+            }
+        }
+        if !current.pieces.is_empty() || flow.is_empty() {
+            flow.push(FlowLine::Inline(current));
+        }
+
+        for line in flow {
+            match line {
+                FlowLine::Inline(line) if line.pieces.is_empty() => {
+                    self.ensure_space(line_height)?;
+                    self.y -= line_height;
+                }
+                FlowLine::Inline(line) => {
+                    let height = line.height.max(size * 0.78);
+                    let depth = line.depth.max(size * 0.22);
+                    let used = (height + depth + 2.0).max(line_height);
+                    self.ensure_space(used)?;
+                    let baseline = self.y - (height - (size * 0.78)).max(0.0);
+                    let mut x = MARGIN_X + indent;
+                    for piece in line.pieces {
+                        match piece {
+                            InlinePiece::Text { value, width } => {
+                                self.absolute_text(&value, x, baseline, size, bold, color)?;
+                                x += width;
+                            }
+                            InlinePiece::Formula(layout) => {
+                                self.draw_math_layout(&layout, x, baseline, bold, color)?;
+                                x += layout.width;
+                            }
+                        }
+                    }
+                    self.page_has_content = true;
+                    self.y -= used;
+                }
+                FlowLine::Block(layout) => {
+                    let used = layout.height + layout.depth + (line_height * 0.55);
+                    self.ensure_space(used)?;
+                    let x = MARGIN_X + indent + ((maximum_width - layout.width) / 2.0);
+                    let baseline = self.y - layout.height;
+                    self.draw_math_layout(&layout, x, baseline, bold, color)?;
+                    self.page_has_content = true;
+                    self.y = baseline - layout.depth - (line_height * 0.35);
+                }
+            }
+        }
+        self.spacer((line_height * 0.35).max(2.0))
+    }
+
+    fn draw_math_layout(
+        &mut self,
+        layout: &math_layout::MathLayout,
+        x: f64,
+        baseline: f64,
+        bold: bool,
+        color: Color,
+    ) -> Result<(), CommandError> {
+        for operation in &layout.ops {
+            match operation {
+                math_layout::DrawOp::Text {
+                    x: offset_x,
+                    y: offset_y,
+                    text,
+                    size,
+                } => self.absolute_text(
+                    text,
+                    x + offset_x,
+                    baseline + offset_y,
+                    *size,
+                    bold,
+                    color,
+                )?,
+                math_layout::DrawOp::Line {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    width,
+                } => {
+                    self.page
+                        .graphics()
+                        .set_stroke_color(color)
+                        .set_line_width(*width)
+                        .move_to(x + x1, baseline + y1)
+                        .line_to(x + x2, baseline + y2)
+                        .stroke();
+                }
+            }
+        }
+        Ok(())
     }
 
     fn absolute_text(
@@ -1476,6 +1737,20 @@ fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
     .map(PathBuf::from)
     .find(|path| path.is_file())
     .map(|path| (path.clone(), path))
+}
+
+fn approximate_text_width(text: &str, size: f64) -> f64 {
+    text.chars()
+        .map(|character| {
+            if character.is_whitespace() {
+                size * 0.32
+            } else if character.is_ascii_punctuation() {
+                size * 0.42
+            } else {
+                size * 0.53
+            }
+        })
+        .sum()
 }
 
 fn wrap_text(text: &str, available_width: f64, font_size: f64) -> Vec<String> {
