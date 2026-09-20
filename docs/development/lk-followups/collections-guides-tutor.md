@@ -2,7 +2,7 @@
 
 Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Current boundary: **104-A** (folder/range persistence/resolution), **104-B** (folder UI plus folder-scoped Tutor), **104-C** (compact synthesis plus complete range-safe coverage), and **104-D** (durable StudyTarget bundles plus safe publication/status) are implemented on the PR branch. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-E** rich guide semantics/viewer/PDF is the next implementation boundary.
+Current boundary: **104-A** (folder/range persistence/resolution), **104-B** (folder UI plus folder-scoped Tutor), **104-C** (compact synthesis plus complete range-safe coverage), **104-D** (durable StudyTarget bundles plus safe publication/status), and **104-E** (rich guide semantics/viewer/professional local PDF) are implemented on the PR branch. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-F** Tutor project/menu integration is the next implementation boundary.
 
 Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
@@ -113,9 +113,11 @@ Viewer and PDF consume the same effective snapshot, source links, learner overla
 
 Before changing renderers, qualify the existing native PDF boundary with fixtures for linked contents, bookmarks, heading/read-order semantics, fonts/glyphs, tables across pages, figures, and typeset math. Extend/replace only a demonstrated missing capability behind the existing prepared-export boundary. No cloud/Python/Office runtime dependency.
 
-Tests cover long headings, nested structure, multi-page tables, repeated headers, wide formulas, non-Latin fallback, image captions, orphan prevention, TOC/bookmark targets, selectable text, malicious rich-content rejection, learner edits, and zero provider calls during export/re-export. Structural PDF checks and actual rendered-page/read-order review are separate evidence.
+Implemented in 104-E: document and collection guides use the same semantic section renderer and source-bound learner overlays; section-specific actions are collapsed into an accessible overflow menu; generated topic inventories are compacted into human-readable display titles without changing durable topic identity. The local PDF renderer now provides a designed cover and hierarchy, linked contents, bookmarks/named destinations, running headers/footers, repeated table headers, keep-with-next heading pagination, verified canonical source figures with captions, selectable Unicode text, and bounded native math for common fractions/roots/scripts/operators/matrices. Unsupported or overly wide notation remains readable LaTeX source with explicit disclosure rather than executing TeX or silently corrupting layout. Export/re-export stays behind the prepared-export boundary and makes no provider request.
 
-**Exit / AC-09:** document and collection guides share semantics on screen/PDF and export locally with qualified typography/navigation/math behavior.
+Tests cover long headings, nested structure, multi-page tables, repeated headers, wide formulas, non-Latin/Unicode text, image captions, orphan prevention, TOC/bookmark targets, selectable text, malicious rich-content rejection, learner edits, exact overlay base hashes, and zero provider calls during export/re-export. Structural PDF checks and actual rendered-page/read-order review remain separate evidence.
+
+**Exit / AC-09:** implemented. Document and collection guides share semantics on screen/PDF and export locally with qualified typography/navigation/math behavior; final visual/accessibility inspection remains human acceptance rather than an automated claim.
 
 ## LK-09 — Tutor projects and conversation management
 
@@ -137,8 +139,8 @@ Implement coherent vertical increments:
 2. **104-B:** folder UI + Tutor source selection — implemented.
 3. **104-C:** synthesis + coverage-aware LearningContext — implemented on the active branch; exact-head qualification is recorded in PR #104.
 4. **104-D:** study target/bundle persistence + safe publication/status UI — implemented on the active branch; exact-head qualification is recorded in PR #104.
-5. **104-E:** semantic guide viewer + PDF capability/renderer work — next implementation boundary.
-6. **104-F:** Tutor project/menu integration.
+5. **104-E:** semantic guide viewer + PDF capability/renderer work — implemented on the active branch; exact-head Static/Fast qualification is recorded in PR #104.
+6. **104-F:** Tutor project/menu integration — next implementation boundary.
 7. **104-G:** cross-stage audit, exact-head terminal qualification, and human handoff.
 
 Each increment: inspect the owning boundary -> implement -> add focused regression coverage -> publish through expected-parent Git data -> verify remote head -> qualify the exact SHA. Add backup/privacy/schema support in the increment that introduces durable data, not at final cleanup.

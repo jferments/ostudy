@@ -14,9 +14,9 @@ The reader deliberately does not display internal revision numbers or a standing
 
 ## Read source-grounded sections
 
-Use Contents to move through the overview and topic sections. Source labels identify relevant page or section ranges when available. **Open source** opens the retained original through the operating system; an exact deep-link into an external viewer is not guaranteed.
+Use Contents to move through the overview and topic sections. Source labels identify relevant page or section ranges when available. Section-specific commands live under that section's **…** menu: **Open source**, **Add note**, **Edit section**, and **Study linked cards** when linked cards are available. This keeps the reading surface focused without removing keyboard/touch access to those actions. **Open source** opens the retained original through the operating system; an exact deep-link into an external viewer is not guaranteed.
 
-Generated sections favor a high-yield outline rather than a long restatement of the source. The native pipeline bounds section length and validates structure, but a model can still omit, misunderstand, or poorly prioritize information. Correctness requires learner review.
+Generated sections favor a high-yield outline rather than a long restatement of the source and can include semantic key points, explanations, terms, processes, comparisons, misconceptions, callouts, tables, worked examples, retrieval checks, and source-backed visual explanations when those structures add learning value. Machine-like topic inventories such as long slash-separated keyword lists are compacted into human-readable reader titles; this is display-only and does not rewrite the durable learning-topic identity or source evidence. The native pipeline bounds section length and validates structure, but a model can still omit, misunderstand, or poorly prioritize information. Correctness requires learner review.
 
 For current non-PDF ingestion, canonical provenance is expressed as sections even when the parser has richer internal slide or sheet information. Do not infer precise authored pagination from a generic section label. [Documents and AI generation](documents-and-ai-generation.md) explains source limitations.
 
@@ -34,7 +34,7 @@ Use **Add guide note** or a topic's **Add note** to open the editor, then **Save
 
 If regenerated content changes enough that an old section override cannot safely apply, the old edit becomes a visible conflict instead of being silently attached to different material. Review the preserved text and discard an older edit only when that is what you intend. Stable guide/topic notes survive ordinary regeneration.
 
-The current reader's note and section-edit entry is plain-text editing backed by validated rich-document storage. Do not assume every rich editor feature used for flashcards is exposed in the guide UI merely because the shared storage/adapter supports structured content.
+The current reader's note and section-edit entry is plain-text editing backed by validated rich-document storage. Section overrides remain tied to the exact generated content hash they edited, and collection-guide notes/edits use the same non-destructive ownership model. Do not assume every rich editor feature used for flashcards is exposed in the guide UI merely because the shared storage/adapter supports structured content.
 
 ## Practice linked cards
 
@@ -46,9 +46,13 @@ Ending the contextual session returns to the logical Study Guides context. Revie
 
 ## Export a PDF
 
-Use **Export PDF** in the reader. **Include my notes in PDF** controls annotation inclusion. The application freezes an effective guide snapshot and renders a local selectable-text PDF; export does not require another provider request or regenerate the guide.
+Use **Export PDF** in the reader. **Include my notes in PDF** controls annotation inclusion. Document and collection guides freeze the same effective semantic meaning used by the reader and render it locally; export does not require another provider request, re-interpret the source, or regenerate the guide.
 
-The normal prepared-file and platform save boundary controls the final destination. Inspect pagination, fonts, Unicode glyphs, layout, and annotation inclusion before distributing the result. Automated structural/text tests are not a guarantee of perfect visual fidelity for every document or device.
+The native PDF includes a designed cover and section hierarchy, linked table of contents, PDF bookmarks/named destinations, source labels, running headers/footers, semantic callouts/tables/examples/checks, repeated table headers across page breaks, and keep-with-next handling for wrapped headings. Verified canonical source images may be embedded with selectable captions when the generated visual explanation actually used that evidence. Text remains selectable/searchable rather than rasterizing the React view.
+
+Common mathematical notation is laid out locally with a bounded non-executing PDF math subset, including fractions, roots, scripts, common Greek/operators/functions, and small matrix forms. If an expression is unsupported or cannot fit at the bounded readable size, the PDF preserves its original LaTeX source and asks for confirmation rather than executing TeX or silently producing a misleading formula. The in-app reader keeps its full local KaTeX presentation.
+
+The normal prepared-file and platform save boundary controls the final destination. Inspect pagination, fonts, Unicode glyphs, figures, layout, and annotation inclusion before distributing the result. Structural/text tests qualify the document contract but are not a claim of pixel-perfect visual fidelity on every platform; rendered-page/accessibility review remains a separate human acceptance step.
 
 ## Regeneration, stopping, and failures
 
