@@ -319,6 +319,7 @@ pub fn run() {
             knowledge::commands::clear_semantic_index,
             knowledge::commands::get_collection_synthesis,
             knowledge::commands::refresh_collection_synthesis,
+            knowledge::commands::prepare_collection_synthesis,
             tutor::commands::list_tutor_conversations,
             tutor::commands::create_tutor_conversation,
             tutor::commands::get_tutor_conversation,

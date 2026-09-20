@@ -151,6 +151,17 @@ export async function refreshCollectionSynthesis(collectionId: string): Promise<
   return invoke<CollectionViewState>("refresh_collection_synthesis", { collectionId });
 }
 
+/**
+ * Explicit generation/preparation path. It may make at most one bounded provider
+ * request after the complete local collection coverage plan is frozen.
+ */
+export async function prepareCollectionSynthesis(input: {
+  operationId: string;
+  collectionId: string;
+}): Promise<CollectionViewState> {
+  return invoke<CollectionViewState>("prepare_collection_synthesis", { input });
+}
+
 export async function listSemanticScopeChoices(): Promise<ScopeChoice[]> {
   return invoke<ScopeChoice[]>("list_semantic_scope_choices");
 }

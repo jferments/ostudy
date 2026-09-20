@@ -6,7 +6,10 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
-    ai::AiRuntimeState, database::Database, error::CommandError, paths::AppPaths,
+    ai::{document_intelligence, AiRuntimeState},
+    database::Database,
+    error::CommandError,
+    paths::AppPaths,
     util::validate_entity_id,
 };
 
@@ -33,6 +36,13 @@ pub struct SemanticSearchInput {
 pub struct CitationInput {
     pub source_id: String,
     pub content_hash: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrepareCollectionSynthesisInput {
+    pub operation_id: String,
+    pub collection_id: String,
 }
 
 #[tauri::command]
@@ -166,4 +176,32 @@ pub async fn refresh_collection_synthesis(
             "The local collection synthesis was interrupted before publication.",
         )
     })?
+}
+
+/// Explicit provider-authorized preparation. Browsing/get/refresh remain local.
+#[tauri::command]
+pub async fn prepare_collection_synthesis(
+    database: State<'_, Database>,
+    runtime: State<'_, AiRuntimeState>,
+    input: PrepareCollectionSynthesisInput,
+) -> Result<CollectionViewState, CommandError> {
+    validate_entity_id(&input.operation_id, "collection synthesis operation")?;
+    validate_entity_id(&input.collection_id, "document collection")?;
+    let guard = TaskGuard::begin(
+        &input.operation_id,
+        &format!("collection-synthesis:{}", input.collection_id),
+        false,
+    )?;
+    guard.progress("organizing collection", 0, 1);
+    let task = document_intelligence::load_document_task_context(database.inner())?;
+    let state = collection_view::ensure_reduced(
+        database.inner(),
+        runtime.inner(),
+        &task,
+        &input.collection_id,
+        &guard.signal,
+    )
+    .await?;
+    guard.progress("ready", 1, 1);
+    Ok(state)
 }
