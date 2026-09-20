@@ -31,11 +31,7 @@ fn image_and_scan(passages: &[usize]) -> (Vec<u8>, RegionOcrResult) {
         let top = 10 + index as u32 * 20;
         for y in top..top + 6 {
             for x in 0..32 {
-                pixels.put_pixel(
-                    x,
-                    y,
-                    Rgba([passage as u8, x as u8, (y - top) as u8, 255]),
-                );
+                pixels.put_pixel(x, y, Rgba([passage as u8, x as u8, (y - top) as u8, 255]));
             }
         }
         lines.push(OcrLine {
@@ -137,7 +133,9 @@ fn image_collection_all_upload_orders_retain_the_same_unique_evidence() {
                 .iter()
                 .enumerate()
                 .filter_map(|(index, source)| {
-                    sources[*source].contains(&passage).then_some(index as i64 + 1)
+                    sources[*source]
+                        .contains(&passage)
+                        .then_some(index as i64 + 1)
                 })
                 .collect::<Vec<_>>();
             assert_eq!(chunks[0].source_locator.unit_numbers, expected);

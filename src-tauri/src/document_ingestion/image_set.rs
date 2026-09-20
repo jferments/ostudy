@@ -155,7 +155,8 @@ fn extract_with(
                 .len(),
         );
         if region_count > crate::documents::image_sets::receipt::MAX_REGIONS
-            || receipt_bytes > crate::documents::image_sets::receipt::MAX_RECEIPT_BYTES - 4 * 1024 * 1024
+            || receipt_bytes
+                > crate::documents::image_sets::receipt::MAX_RECEIPT_BYTES - 4 * 1024 * 1024
         {
             return Err(invalid(
                 "The collection exceeds its retained-region budget. Completed OCR was preserved.",
@@ -168,10 +169,14 @@ fn extract_with(
         })?;
     }
     request.cancellation.check()?;
-    let frames = prepared.iter().map(|(frame, _, _)| frame).collect::<Vec<_>>();
+    let frames = prepared
+        .iter()
+        .map(|(frame, _, _)| frame)
+        .collect::<Vec<_>>();
     let alignments = collection::align(&frames, || request.cancellation.check())?;
     let mut output = projection::Projection::new(&manifest, &bytes, settings)?;
-    for (index, ((frame, result, reused), alignment)) in prepared.into_iter().zip(&alignments).enumerate()
+    for (index, ((frame, result, reused), alignment)) in
+        prepared.into_iter().zip(&alignments).enumerate()
     {
         request.cancellation.check()?;
         let member = &manifest.members[index];
