@@ -102,10 +102,28 @@ enum ExportBlock {
     Bullets(Vec<String>),
     Numbered(Vec<String>),
     Terms(Vec<(String, String)>),
-    Callout { label: String, title: String, body: String },
-    Table { title: String, columns: Vec<String>, rows: Vec<Vec<String>>, caption: String },
-    WorkedExample { title: String, prompt: String, steps: Vec<String>, answer: String, takeaway: String },
-    RetrievalCheck { prompt: String, answer: String },
+    Callout {
+        label: String,
+        title: String,
+        body: String,
+    },
+    Table {
+        title: String,
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+        caption: String,
+    },
+    WorkedExample {
+        title: String,
+        prompt: String,
+        steps: Vec<String>,
+        answer: String,
+        takeaway: String,
+    },
+    RetrievalCheck {
+        prompt: String,
+        answer: String,
+    },
     Spacer,
 }
 
@@ -117,19 +135,32 @@ enum PdfFontChoice {
 impl PdfFontChoice {
     fn font(&self, bold: bool) -> Font {
         match self {
-            Self::Custom { regular, bold: bold_name } => Font::Custom(
-                if bold { bold_name } else { regular }.clone(),
-            ),
+            Self::Custom {
+                regular,
+                bold: bold_name,
+            } => Font::Custom(if bold { bold_name } else { regular }.clone()),
         }
     }
 }
 
-fn color_ink() -> Color { Color::rgb(0.10, 0.14, 0.18) }
-fn color_muted() -> Color { Color::rgb(0.38, 0.43, 0.48) }
-fn color_accent() -> Color { Color::rgb(0.08, 0.42, 0.45) }
-fn color_cover() -> Color { Color::rgb(0.07, 0.18, 0.25) }
-fn color_cover_text() -> Color { Color::rgb(0.96, 0.98, 0.99) }
-fn color_cover_muted() -> Color { Color::rgb(0.72, 0.81, 0.84) }
+fn color_ink() -> Color {
+    Color::rgb(0.10, 0.14, 0.18)
+}
+fn color_muted() -> Color {
+    Color::rgb(0.38, 0.43, 0.48)
+}
+fn color_accent() -> Color {
+    Color::rgb(0.08, 0.42, 0.45)
+}
+fn color_cover() -> Color {
+    Color::rgb(0.07, 0.18, 0.25)
+}
+fn color_cover_text() -> Color {
+    Color::rgb(0.96, 0.98, 0.99)
+}
+fn color_cover_muted() -> Color {
+    Color::rgb(0.72, 0.81, 0.84)
+}
 
 #[tauri::command]
 pub(crate) fn prepare_document_study_guide_pdf(
@@ -381,23 +412,34 @@ fn generated_section_blocks(section: &DocumentStudyGuideSection) -> Vec<ExportBl
                 crate::document_study_guides::StudyGuideCalloutKind::Warning => "Watch out",
                 crate::document_study_guides::StudyGuideCalloutKind::Tip => "Study tip",
                 crate::document_study_guides::StudyGuideCalloutKind::Note => "Note",
-            }.to_string(),
+            }
+            .to_string(),
             title: callout.title.clone(),
             body: callout.body.clone(),
         });
     }
     for table in &content.tables {
         blocks.push(ExportBlock::Table {
-            title: table.title.clone(), columns: table.columns.clone(), rows: table.rows.clone(), caption: table.caption.clone(),
+            title: table.title.clone(),
+            columns: table.columns.clone(),
+            rows: table.rows.clone(),
+            caption: table.caption.clone(),
         });
     }
     for example in &content.worked_examples {
         blocks.push(ExportBlock::WorkedExample {
-            title: example.title.clone(), prompt: example.prompt.clone(), steps: example.steps.clone(), answer: example.answer.clone(), takeaway: example.takeaway.clone(),
+            title: example.title.clone(),
+            prompt: example.prompt.clone(),
+            steps: example.steps.clone(),
+            answer: example.answer.clone(),
+            takeaway: example.takeaway.clone(),
         });
     }
     for check in &content.retrieval_checks {
-        blocks.push(ExportBlock::RetrievalCheck { prompt: check.prompt.clone(), answer: check.answer.clone() });
+        blocks.push(ExportBlock::RetrievalCheck {
+            prompt: check.prompt.clone(),
+            answer: check.answer.clone(),
+        });
     }
     if !content.visual_explanations.is_empty() {
         blocks.push(ExportBlock::Heading("Visual evidence".to_string()));
@@ -514,15 +556,18 @@ impl PdfFlowWriter {
         source_filename: &str,
         section_count: usize,
     ) -> Result<(), CommandError> {
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_fill_color(color_cover())
             .rectangle(0.0, 0.0, PAGE_WIDTH, PAGE_HEIGHT)
             .fill();
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_fill_color(color_accent())
             .rectangle(0.0, 0.0, PAGE_WIDTH, 72.0)
             .fill();
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_stroke_color(Color::rgb(0.68, 0.79, 0.82))
             .set_line_width(0.8)
             .move_to(MARGIN_X, PAGE_HEIGHT - 78.0)
@@ -553,7 +598,10 @@ impl PdfFlowWriter {
         )?;
         y -= 22.0;
         self.absolute_text(
-            &format!("{section_count} source-grounded section{}", if section_count == 1 { "" } else { "s" }),
+            &format!(
+                "{section_count} source-grounded section{}",
+                if section_count == 1 { "" } else { "s" }
+            ),
             MARGIN_X,
             y,
             10.0,
@@ -579,7 +627,9 @@ impl PdfFlowWriter {
     }
 
     fn draw_running_header(&mut self) -> Result<(), CommandError> {
-        if !self.running_pages { return Ok(()); }
+        if !self.running_pages {
+            return Ok(());
+        }
         if let Some(title) = self.running_title.clone() {
             self.absolute_text(
                 &compact_header(&title),
@@ -590,7 +640,8 @@ impl PdfFlowWriter {
                 color_muted(),
             )?;
         }
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_stroke_color(Color::rgb(0.82, 0.84, 0.86))
             .set_line_width(0.6)
             .move_to(MARGIN_X, PAGE_HEIGHT - 42.0)
@@ -626,7 +677,8 @@ impl PdfFlowWriter {
 
     fn rule(&mut self) -> Result<(), CommandError> {
         self.ensure_space(3.0)?;
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_stroke_color(Color::rgb(0.82, 0.84, 0.86))
             .set_line_width(0.6)
             .move_to(MARGIN_X, self.y)
@@ -638,7 +690,11 @@ impl PdfFlowWriter {
 
     fn bullets(&mut self, items: &[String], numbered: bool) -> Result<(), CommandError> {
         for (index, item) in items.iter().enumerate() {
-            let prefix = if numbered { format!("{}. ", index + 1) } else { "• ".to_string() };
+            let prefix = if numbered {
+                format!("{}. ", index + 1)
+            } else {
+                "• ".to_string()
+            };
             self.text_color(
                 &format!("{prefix}{item}"),
                 BODY_SIZE,
@@ -654,7 +710,9 @@ impl PdfFlowWriter {
     fn block(&mut self, block: &ExportBlock) -> Result<(), CommandError> {
         match block {
             ExportBlock::Heading(text) => self.heading(text, 12.5, 17.5),
-            ExportBlock::Paragraph(text) => self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false),
+            ExportBlock::Paragraph(text) => {
+                self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false)
+            }
             ExportBlock::Bullets(items) => self.bullets(items, false),
             ExportBlock::Numbered(items) => self.bullets(items, true),
             ExportBlock::Terms(entries) => {
@@ -671,15 +729,35 @@ impl PdfFlowWriter {
                 Ok(())
             }
             ExportBlock::Callout { label, title, body } => self.callout(label, title, body),
-            ExportBlock::Table { title, columns, rows, caption } => {
-                self.table(title, columns, rows, caption)
-            }
-            ExportBlock::WorkedExample { title, prompt, steps, answer, takeaway } => {
+            ExportBlock::Table {
+                title,
+                columns,
+                rows,
+                caption,
+            } => self.table(title, columns, rows, caption),
+            ExportBlock::WorkedExample {
+                title,
+                prompt,
+                steps,
+                answer,
+                takeaway,
+            } => {
                 self.heading(&format!("Worked example: {title}"), 12.5, 17.5)?;
                 self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
                 self.bullets(steps, true)?;
-                self.paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT, true)?;
-                if !takeaway.is_empty() { self.muted_paragraph(&format!("Takeaway: {takeaway}"), BODY_SIZE, BODY_LINE_HEIGHT)?; }
+                self.paragraph(
+                    &format!("Answer: {answer}"),
+                    BODY_SIZE,
+                    BODY_LINE_HEIGHT,
+                    true,
+                )?;
+                if !takeaway.is_empty() {
+                    self.muted_paragraph(
+                        &format!("Takeaway: {takeaway}"),
+                        BODY_SIZE,
+                        BODY_LINE_HEIGHT,
+                    )?;
+                }
                 Ok(())
             }
             ExportBlock::RetrievalCheck { prompt, answer } => {
@@ -697,17 +775,17 @@ impl PdfFlowWriter {
         let heading = format!("{label}: {title}");
         let heading_lines = wrap_text(&heading, inner_width, 10.5);
         let body_lines = wrap_text(body, inner_width, 9.75);
-        let height = 18.0
-            + (heading_lines.len() as f64 * 14.0)
-            + (body_lines.len() as f64 * 13.0)
-            + 10.0;
+        let height =
+            18.0 + (heading_lines.len() as f64 * 14.0) + (body_lines.len() as f64 * 13.0) + 10.0;
         self.ensure_space(height + 8.0)?;
         let bottom = self.y - height;
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_fill_color(Color::rgb(0.93, 0.97, 0.97))
             .rectangle(MARGIN_X, bottom, width, height)
             .fill();
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_fill_color(color_accent())
             .rectangle(MARGIN_X, bottom, 4.0, height)
             .fill();
@@ -775,12 +853,14 @@ impl PdfFlowWriter {
         } else {
             Color::rgb(1.0, 1.0, 1.0)
         };
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_fill_color(fill)
             .rectangle(MARGIN_X, bottom, column_width * cells.len() as f64, height)
             .fill();
         let border = Color::rgb(0.78, 0.81, 0.82);
-        self.page.graphics()
+        self.page
+            .graphics()
             .set_stroke_color(border)
             .set_line_width(0.45)
             .move_to(MARGIN_X, top)
@@ -790,7 +870,8 @@ impl PdfFlowWriter {
             .stroke();
         for index in 0..=cells.len() {
             let x = MARGIN_X + column_width * index as f64;
-            self.page.graphics()
+            self.page
+                .graphics()
                 .set_stroke_color(border)
                 .set_line_width(0.45)
                 .move_to(x, top)
@@ -824,7 +905,9 @@ impl PdfFlowWriter {
     }
 
     fn page_break(&mut self) -> Result<(), CommandError> {
-        if self.page_has_content { self.commit_page()?; }
+        if self.page_has_content {
+            self.commit_page()?;
+        }
         Ok(())
     }
 
@@ -841,7 +924,8 @@ impl PdfFlowWriter {
         let lines = wrap_text(text, available_width, size);
         for line in lines {
             self.ensure_space(line_height)?;
-            self.page.text()
+            self.page
+                .text()
                 .set_font(self.font.font(bold), size)
                 .set_fill_color(color)
                 .at(MARGIN_X + indent, self.y)
@@ -862,7 +946,8 @@ impl PdfFlowWriter {
         bold: bool,
         color: Color,
     ) -> Result<(), CommandError> {
-        self.page.text()
+        self.page
+            .text()
             .set_font(self.font.font(bold), size)
             .set_fill_color(color)
             .at(x, y)
@@ -872,7 +957,9 @@ impl PdfFlowWriter {
     }
 
     fn ensure_space(&mut self, needed: f64) -> Result<(), CommandError> {
-        if self.y - needed < MARGIN_BOTTOM { self.commit_page()?; }
+        if self.y - needed < MARGIN_BOTTOM {
+            self.commit_page()?;
+        }
         Ok(())
     }
 
@@ -892,7 +979,9 @@ impl PdfFlowWriter {
     }
 
     fn finish(mut self, destination: &Path) -> Result<(), CommandError> {
-        if self.page_has_content { self.commit_page()?; }
+        if self.page_has_content {
+            self.commit_page()?;
+        }
         self.document.save(destination).map_err(pdf_error)
     }
 }
@@ -908,7 +997,9 @@ fn table_row_height(cells: &[String], column_width: f64, font_size: f64, line_he
 
 fn compact_header(value: &str) -> String {
     let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if clean.chars().count() <= 72 { return clean; }
+    if clean.chars().count() <= 72 {
+        return clean;
+    }
     let mut result = clean.chars().take(69).collect::<String>();
     result.push_str("...");
     result
@@ -937,17 +1028,37 @@ fn install_unicode_font(document: &mut Document) -> Result<PdfFontChoice, Comman
 
 fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
     let pairs = [
-        ("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
-        ("/usr/share/fonts/opentype/noto/NotoSans-Regular.otf", "/usr/share/fonts/opentype/noto/NotoSans-Bold.otf"),
-        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-        ("/system/fonts/NotoSans-Regular.ttf", "/system/fonts/NotoSans-Bold.ttf"),
-        ("/system/fonts/Roboto-Regular.ttf", "/system/fonts/Roboto-Bold.ttf"),
-        ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
+        (
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+        ),
+        (
+            "/usr/share/fonts/opentype/noto/NotoSans-Regular.otf",
+            "/usr/share/fonts/opentype/noto/NotoSans-Bold.otf",
+        ),
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/system/fonts/NotoSans-Regular.ttf",
+            "/system/fonts/NotoSans-Bold.ttf",
+        ),
+        (
+            "/system/fonts/Roboto-Regular.ttf",
+            "/system/fonts/Roboto-Bold.ttf",
+        ),
+        (
+            "C:\\Windows\\Fonts\\arial.ttf",
+            "C:\\Windows\\Fonts\\arialbd.ttf",
+        ),
     ];
     for (regular, bold) in pairs {
         let regular = PathBuf::from(regular);
         let bold = PathBuf::from(bold);
-        if regular.is_file() && bold.is_file() { return Some((regular, bold)); }
+        if regular.is_file() && bold.is_file() {
+            return Some((regular, bold));
+        }
     }
     [
         "/Library/Fonts/Arial Unicode.ttf",
@@ -1107,24 +1218,49 @@ mod tests {
     #[test]
     fn rich_semantic_blocks_survive_generated_export_projection() {
         use crate::document_study_guides::{
-            StudyGuideCallout, StudyGuideCalloutKind, StudyGuideRetrievalCheck,
-            StudyGuideTable, StudyGuideWorkedExample,
+            StudyGuideCallout, StudyGuideCalloutKind, StudyGuideRetrievalCheck, StudyGuideTable,
+            StudyGuideWorkedExample,
         };
         let mut content = crate::document_study_guides::StudyGuideSectionContent::default();
         content.overview = "Overview".to_string();
-        content.callouts.push(StudyGuideCallout { kind: StudyGuideCalloutKind::KeyIdea, title: "Remember".to_string(), body: "Preload reflects filling.".to_string() });
-        content.tables.push(StudyGuideTable { title: "Compare".to_string(), columns: vec!["Concept".to_string(), "Meaning".to_string()], rows: vec![vec!["Preload".to_string(), "Filling".to_string()]], caption: "High-yield comparison".to_string() });
-        content.worked_examples.push(StudyGuideWorkedExample { title: "Trace a change".to_string(), prompt: "Venous return rises.".to_string(), steps: vec!["Filling rises.".to_string()], answer: "Preload rises.".to_string(), takeaway: "Follow cause before effect.".to_string() });
-        content.retrieval_checks.push(StudyGuideRetrievalCheck { prompt: "What is preload?".to_string(), answer: "Ventricular filling/stretch before systole.".to_string() });
+        content.callouts.push(StudyGuideCallout {
+            kind: StudyGuideCalloutKind::KeyIdea,
+            title: "Remember".to_string(),
+            body: "Preload reflects filling.".to_string(),
+        });
+        content.tables.push(StudyGuideTable {
+            title: "Compare".to_string(),
+            columns: vec!["Concept".to_string(), "Meaning".to_string()],
+            rows: vec![vec!["Preload".to_string(), "Filling".to_string()]],
+            caption: "High-yield comparison".to_string(),
+        });
+        content.worked_examples.push(StudyGuideWorkedExample {
+            title: "Trace a change".to_string(),
+            prompt: "Venous return rises.".to_string(),
+            steps: vec!["Filling rises.".to_string()],
+            answer: "Preload rises.".to_string(),
+            takeaway: "Follow cause before effect.".to_string(),
+        });
+        content.retrieval_checks.push(StudyGuideRetrievalCheck {
+            prompt: "What is preload?".to_string(),
+            answer: "Ventricular filling/stretch before systole.".to_string(),
+        });
         let section = DocumentStudyGuideSection {
-            topic_id: "a".repeat(32), parent_topic_id: None, sort_index: 0,
-            title: "Preload".to_string(), topic_summary: String::new(), content,
-            content_text: String::new(), content_hash: "b".repeat(64),
+            topic_id: "a".repeat(32),
+            parent_topic_id: None,
+            sort_index: 0,
+            title: "Preload".to_string(),
+            topic_summary: String::new(),
+            content,
+            content_text: String::new(),
+            content_hash: "b".repeat(64),
             source_locator: SourceLocator::new(SourceUnitKind::Page, vec![2], None).unwrap(),
         };
         let blocks = generated_section_blocks(&section);
         let text = format!("{blocks:?}");
-        for expected in ["Remember", "Compare", "Trace a change", "What is preload?"] { assert!(text.contains(expected)); }
+        for expected in ["Remember", "Compare", "Trace a change", "What is preload?"] {
+            assert!(text.contains(expected));
+        }
     }
 
     #[test]
@@ -1153,9 +1289,16 @@ mod tests {
         writer.enable_running_pages("Table fixture").unwrap();
         let columns = vec!["Concept".to_string(), "Meaning".to_string()];
         let rows = (0..70)
-            .map(|index| vec![format!("Concept {index}"), "A compact explanation that remains selectable.".to_string()])
+            .map(|index| {
+                vec![
+                    format!("Concept {index}"),
+                    "A compact explanation that remains selectable.".to_string(),
+                ]
+            })
             .collect::<Vec<_>>();
-        writer.table("Reference table", &columns, &rows, "").unwrap();
+        writer
+            .table("Reference table", &columns, &rows, "")
+            .unwrap();
         let root = std::env::temp_dir().join(format!(
             "ostudy-study-guide-table-{}.pdf",
             std::process::id()

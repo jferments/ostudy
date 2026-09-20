@@ -331,9 +331,14 @@ fn validate_generated_safety(section: &StudyGuideSectionContent) -> Result<(), C
             || table.columns.len() > 8
             || table.rows.is_empty()
             || table.rows.len() > 32
-            || table.rows.iter().any(|row| row.len() != table.columns.len())
+            || table
+                .rows
+                .iter()
+                .any(|row| row.len() != table.columns.len())
         {
-            return Err(output_error("A guide table has an invalid rectangular shape."));
+            return Err(output_error(
+                "A guide table has an invalid rectangular shape.",
+            ));
         }
         require_char_limit("tables.title", &table.title, 500)?;
         require_char_limit("tables.caption", &table.caption, 2_000)?;
@@ -457,7 +462,9 @@ fn validate_generated_outline_style(
     require_count_limit("tables", section.tables.len(), MAX_TABLES)?;
     for table in &section.tables {
         if table.columns.len() > MAX_TABLE_COLUMNS || table.rows.len() > MAX_TABLE_ROWS {
-            return Err(output_error("A guide table exceeded the concise table target."));
+            return Err(output_error(
+                "A guide table exceeded the concise table target.",
+            ));
         }
         for cell in table.columns.iter().chain(table.rows.iter().flatten()) {
             require_char_limit("tables.cell", cell, MAX_TABLE_CELL_CHARS)?;
@@ -577,8 +584,17 @@ fn generated_section_char_count(section: &StudyGuideSectionContent) -> usize {
         .map(|value| {
             value.title.chars().count()
                 + value.caption.chars().count()
-                + value.columns.iter().map(|cell| cell.chars().count()).sum::<usize>()
-                + value.rows.iter().flatten().map(|cell| cell.chars().count()).sum::<usize>()
+                + value
+                    .columns
+                    .iter()
+                    .map(|cell| cell.chars().count())
+                    .sum::<usize>()
+                + value
+                    .rows
+                    .iter()
+                    .flatten()
+                    .map(|cell| cell.chars().count())
+                    .sum::<usize>()
         })
         .sum::<usize>();
     total += section
@@ -587,7 +603,11 @@ fn generated_section_char_count(section: &StudyGuideSectionContent) -> usize {
         .map(|value| {
             value.title.chars().count()
                 + value.prompt.chars().count()
-                + value.steps.iter().map(|step| step.chars().count()).sum::<usize>()
+                + value
+                    .steps
+                    .iter()
+                    .map(|step| step.chars().count())
+                    .sum::<usize>()
                 + value.answer.chars().count()
                 + value.takeaway.chars().count()
         })

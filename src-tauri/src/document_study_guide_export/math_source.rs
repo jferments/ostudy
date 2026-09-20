@@ -24,10 +24,36 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
                 ExportBlock::Terms(items) => items
                     .iter()
                     .any(|(a, b)| contains_math(a) || contains_math(b)),
-                ExportBlock::Callout { label, title, body } => contains_math(label) || contains_math(title) || contains_math(body),
-                ExportBlock::Table { title, columns, rows, caption } => contains_math(title) || columns.iter().any(|v| contains_math(v)) || rows.iter().flatten().any(|v| contains_math(v)) || contains_math(caption),
-                ExportBlock::WorkedExample { title, prompt, steps, answer, takeaway } => contains_math(title) || contains_math(prompt) || steps.iter().any(|v| contains_math(v)) || contains_math(answer) || contains_math(takeaway),
-                ExportBlock::RetrievalCheck { prompt, answer } => contains_math(prompt) || contains_math(answer),
+                ExportBlock::Callout { label, title, body } => {
+                    contains_math(label) || contains_math(title) || contains_math(body)
+                }
+                ExportBlock::Table {
+                    title,
+                    columns,
+                    rows,
+                    caption,
+                } => {
+                    contains_math(title)
+                        || columns.iter().any(|v| contains_math(v))
+                        || rows.iter().flatten().any(|v| contains_math(v))
+                        || contains_math(caption)
+                }
+                ExportBlock::WorkedExample {
+                    title,
+                    prompt,
+                    steps,
+                    answer,
+                    takeaway,
+                } => {
+                    contains_math(title)
+                        || contains_math(prompt)
+                        || steps.iter().any(|v| contains_math(v))
+                        || contains_math(answer)
+                        || contains_math(takeaway)
+                }
+                ExportBlock::RetrievalCheck { prompt, answer } => {
+                    contains_math(prompt) || contains_math(answer)
+                }
                 ExportBlock::Spacer => false,
             })
     })

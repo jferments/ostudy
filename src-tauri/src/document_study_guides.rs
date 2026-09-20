@@ -1065,8 +1065,7 @@ fn normalize_section_content(
                     && value.columns.iter().all(|cell| !cell.is_empty())
                     && !value.rows.is_empty()
                     && value.rows.iter().all(|row| {
-                        row.len() == value.columns.len()
-                            && row.iter().all(|cell| !cell.is_empty())
+                        row.len() == value.columns.len() && row.iter().all(|cell| !cell.is_empty())
                     })
             })
             .collect(),
