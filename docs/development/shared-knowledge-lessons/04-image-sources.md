@@ -1,92 +1,53 @@
-# Ordered image sources: implemented LK-04 boundary
+# Image collections: automatic ingestion and learning materials
 
-Part of the [shared-knowledge development plan](README.md) and its [LK-04 scope](01-foundations.md#lk-04--ordered-image-sets-and-screenshot-cleaning). LK-04 implements ordered image sets as first-class managed document sources. Platform qualification and human visual/source-quality acceptance remain separate evidence from the implementation described here.
+Part of the [shared-knowledge development plan](README.md) and [LK-04](01-foundations.md#lk-04--ordered-image-sets-and-screenshot-cleaning). The revised product boundary replaces the original manual image-preparation workspace. Source ordering remains a storage/provenance detail, not a task for the learner.
 
-## Retained originals and ordered manifests
+## User workflow and ownership
 
-`documents/image_sets/` owns bounded admission, independently retained originals, stable member identities, sequence manifests, import/edit operation receipts, and local extraction reuse. The source authority is the ordered manifest plus its owned original members; oStudy never replaces it with a stitched mega-image.
+In Documents, **Upload images** opens a collection page. **Select images** accepts several PNG/JPEG/WebP images in one chooser. The **+** action adds more; the drop area sits beneath the file list, and clipboard image paste uses the same intake path. Selecting, dropping or pasting images starts processing without a separate import, preparation, filter or generation action. The screen contains no ordering controls, rotation buttons, source-coordinate fields or OCR-region classification forms.
 
-Selection inspection verifies the staged-file purpose, supported image signature, admitted byte hash, decoded dimensions/pixels, per-image bounds, and aggregate member/byte/pixel budgets before publication. A failed selection remains a distinct selection that the Documents workspace can retry or remove. A successful import commits the whole bounded set with one operation identity; it does not start provider work as part of source admission.
+`ImageSetWorkspace.tsx` renders the collection and optional original inspection. `useImageCollectionJobs.ts`, composed into the application-lifetime `useDocumentJobsController`, owns upload batches and the automatic learning workflow. Leaving the collection page does not cancel it. File selection, drop and paste enter `platform/imageInput.ts` and the typed `ipc/imageCollectionFiles.ts` gateway; `external_file_images.rs` validates bytes before admitting them to the native opaque transfer ledger. Pasted URLs/HTML are not fetched. Native drag interception is disabled for the main WebView so file drops reach the HTML drop area.
 
-Original image bytes are immutable managed evidence. Reordering, rotation, source inclusion changes, filtering, overlap cleaning, and model-visible derivatives never rewrite them. Controlled source inspection reads those retained originals through the native preview command rather than exposing arbitrary managed paths.
+Native admission verifies the supported signature, decoded dimensions/pixels, byte hash, per-image bounds and aggregate member/byte/pixel budgets. Each file keeps a retry-stable identity. A failed file is visible and removable; successfully staged siblings are retained. The collection import/amendment request also retains its identity across an interrupted acknowledgement rather than publishing the same files twice.
 
-## Cheap local extraction before interpretation
+## Automatic learning pipeline
 
-`document_ingestion/image_set.rs` routes an image set through platform-local region OCR. Compatible extraction is cached by normalized pixel identity and extractor contract, separately from source ownership. Reorder and inclusion changes reuse unchanged OCR; rotation or novel appended pixels invalidate only the affected member extraction. Successful siblings remain cached when another member is unreadable or later publication fails.
+After source admission, the controller runs local image preparation internally, then invokes the existing format-neutral document flashcard generation command and study-guide generation. This is the same native knowledge, relevance, assessment, curation and authoring infrastructure used by other documents, not a separate image-only card generator. The prior workspace's missing import-to-generation handoff is removed.
 
-The adapter groups only extractor-supplied consecutive paragraph lines. Literal OCR text, normalized pixels, geometry, source-member identity, and reading order remain separate evidence. Missing geometry is not guessed. A paragraph cut by an inclusion boundary is not promoted into a complete qualified statement.
+Further selections enter the same collection. While a batch is processing, later files remain queued; after the current task finishes, the source is amended and re-prepared. Existing generated decks receive additional cards rather than replacement decks. The guide is generated after the queued source/card work is complete. Saved sources and cards survive later provider or guide failures; retry resumes the unfinished stage without reimporting an acknowledged batch. A failed library refresh is reported separately from a successful write. Stop prevents the automatically chained next stage as well as requesting cancellation of the active task.
 
-Import, original inspection, local OCR preparation, overlap proof, filtering, and source amendment do not choose or contact an AI provider. Later flashcard, guide, Tutor, or other semantic consumers retain their existing explicit provider/permission boundaries.
+The user's configured document provider and permissions remain authoritative. Intake, original inspection, local OCR and overlap proof do not contact a provider. Interpretation, relevance selection, flashcards and guides use the existing explicit model boundary. Unreadable/ambiguous evidence is not invented to produce a card quota. No source URL is guessed or fetched.
 
-## Conservative overlap proof and canonical projection
+## Retained originals and reusable extraction
 
-`document_ingestion/image_set/overlap.rs` accepts two deliberately narrow proof shapes: an identical admitted image view with matching OCR, or a forward-scrolling suffix/prefix containing at least two unique paragraph anchors. Partial overlap requires exact literal text, exact full-width RGBA strip evidence, compatible relative line geometry, non-overlapping reading order, and one consistent positive displacement.
+`documents/image_sets/` owns independently retained originals, stable member identities, ordered manifests, revision checks and operation receipts. The manifest plus original members is the source authority; a stitched mega-image is not. Processing never replaces original bytes with a crop or cleaned derivative.
 
-Digits, signs, units, code operators, superscripts, and negation are not normalized away. Repeated headers, missing geometry, intersecting/table-like layouts, changed source pixels, protected-character changes, and other ambiguity preserve both candidates instead of choosing a majority reading. Pixel comparison uses the already decoded raster and a bounded per-image work budget; exhaustion disables an equivalence proof rather than truncating OCR.
+Compatible local OCR is cached by normalized-pixel/extractor identity, independently from source ownership. Successful siblings remain reusable after another member or publication fails. Literal text, source-member identity, geometry and pixel evidence remain distinct. Missing geometry is not reconstructed from flattened text. The collection adapter bounds retained OCR/proof metadata and decodes one source raster at a time rather than retaining all decoded images in memory.
 
-A verified repeated passage receives one canonical learning projection while retaining all proved image occurrences in its source locator. Canonical source units and blocks still retain each admitted OCR occurrence and its geometry. Model-visible image derivatives may mask only proven duplicate strips; original image files and OCR cache entries are never cleaned in place.
+## Upload-order-independent overlap
 
-## Reversible Content filtering
+`document_ingestion/image_set/collection.rs` compares every bounded pair in both scrolling directions before any learning projection is published. It combines verified region correspondences so reversed uploads, nonadjacent duplicates and a connecting screenshot arriving last do not require manual reordering.
 
-`documents/image_sets/filter.rs` applies deliberately specific local rules. Confident, located, short interface labels or cookie notices at image edges may be excluded automatically. Short author/date/copyright attribution is retained as metadata. Ordinary prose, educational qualifications, uncertain recognition, and unlocated text stay available rather than being discarded by a broad keyword rule.
+The pair proof remains deliberately conservative: identical admitted image views with matching OCR, or a suffix/prefix with multiple unique paragraph anchors, exact literal text, exact full-width pixel strips, compatible geometry, reading order and consistent displacement. Digits, signs, units, code operators, superscripts and negation are not normalized away. Repeated educational headers, table-like layouts, conflicting pixels and other ambiguity preserve candidates instead of choosing a majority reading.
 
-The Documents **Content filter** view exposes the literal retained OCR region, its automatic/current role and reason, and an explicit **Automatic / Include for learning / Exclude / Metadata only** choice. **Include interface content** lets interface material remain learning content when the interface itself is the lesson. An explicit exclusion with unknown geometry withholds the model-visible image instead of leaking excluded text back through pixels. Obscured text stays unreadable; this workflow never recovers it by guessing or fetching a source URL.
+Every equivalence class is checked directly against its representative's literal text and pixel proof; a chain alone cannot authorize a merge. One canonical learning passage retains every proved source occurrence. Original manifest ordinals continue to identify citations; they are not asserted to be the educational order. Unrelated images are not forced into a fabricated reading sequence.
 
-Manual decisions are revision checked and retry safe. A rotation can legitimately change OCR region IDs, so an old manual choice is carried only when the same stable member has exactly one new region with the same literal text. No fuzzy text, position-only, or majority transfer is allowed. Publication atomically rebinds that decision to the new region ID.
+Only proved duplicate strips can be masked in model-visible derivatives. Visual projections share content only when the actual derivative bytes match; an earlier masked derivative is not interchangeable with an unmasked original. The adapter/render identity advances for this projection change while compatible OCR extraction remains reusable.
 
-## Selective source amendments
+## Automatic filtering and durable compatibility
 
-`documents/image_sets/amend.rs` implements append, reorder, quarter-turn rotation, and source-inclusion amendments against an expected source and filter revision. Existing member IDs and original-byte ownership remain stable. Appended staged selections are re-inspected and revalidated before the transaction consumes them.
+Specific local rules can separate confident interface labels/notices from learning evidence and retain short attribution as metadata. Uncertain or unlocated educational text remains available. The shared knowledge/relevance stages decide what supports learning material; the learner is not required to label OCR regions or draw source crops.
 
-Managed amendment files use a bounded native staging journal. Candidate originals/manifests are written under their owned document paths before the SQLite publication transaction; a failed transaction leaves the old manifest authoritative and cleanup removes only exact unowned candidate files. Startup reconciliation handles an interrupted staging marker without inventing ownership or deleting altered files.
+Native source-amendment, inclusion and filter representations remain supported for previously saved sources and backups. Removing their manual UI does not erase existing decisions, rewrite original pixels, or retire durable readers. Revision-checked source amendments retain their staging journal, pending-source snapshot and stale-publication checks. Exact same-member/literal filter rebinding, unknown-geometry visual withholding and backup preservation regressions remain in force.
 
-An acknowledged amendment invalidates the current projection but preserves its previous processing receipt as an inspectable source snapshot until local preparation publishes the successor. Stale extraction cannot publish against the amended manifest. Unchanged compatible OCR and exact native knowledge identities survive reordering; changed adjacency, rotation, inclusion, filters, or appended members rebuild only the affected projection/evidence boundary. Durable mutation acknowledgement remains successful even when a subsequent UI refresh or local preparation reports a separate failure.
+## Backup, deletion and inspection
 
-## Documents workspace
+Whole-library backup retains the current manifest, each owned original, processing receipts and any pending source snapshot/filter state. Restore validates signatures, hashes, pixel fingerprints, paths and database ownership before adoption. Permanent document deletion uses the existing owned-source lifecycle; surviving generated cards keep detached citation semantics.
 
-Documents now exposes **Add image set** and **Edit images** for image-bundle sources. The feature-local controller uses the typed IPC gateways; shared UI does not call Tauri directly.
+**View collection** opens an existing source. Individual originals can be inspected through the controlled native preview command without supplying a filesystem path. Inspection is optional and never blocks automatic generation.
 
-Before initial import the workspace supports:
-- repeated image selection with retained failed rows;
-- explicit **Retry inspection** and **Remove**;
-- reading-order movement;
-- quarter-turn rotation;
-- normalized source-inclusion bounds; and
-- one source name and one retry-stable import identity.
+## Regression and qualification boundary
 
-For an existing image set it provides:
-- controlled original-source inspection;
-- reorder/rotation/inclusion edits and appended images;
-- a separate **Save source changes** mutation followed by local preparation;
-- **Retry local OCR**;
-- the reversible Content filter described above; and
-- clear prepared versus pending source state.
+The workspace integration tests exercise multi-file selection, the additional chooser action, drop and clipboard intake, automatic card/guide calls, additions during generation, navigation survival, retry identity, failed-file removal, optional inspection and post-commit refresh failure. The native collection fixtures exercise all six permutations of three overlapping screenshots, late connecting evidence, nonadjacent identical images, OCR reuse, original ownership and rejection of changed literal/pixel proofs.
 
-A pending append is committed at the end of the current sequence. Once it becomes an owned member it participates in the same reorder controls as every other member. This avoids presenting a UI ordering operation that the native amendment contract did not actually authorize.
-
-## Backup, deletion, and source-location ownership
-
-Whole-library backup already packages the current image-set manifest plus independently retained original members. Restore validates image signatures, byte hashes, decoded pixel fingerprints, managed paths, and the SQLite ownership graph before adoption. LK-04 regression coverage additionally round-trips a pending rotated amendment with the previous source snapshot and manual Content-filter decision intact.
-
-Permanent document deletion continues through the existing document-owned lifecycle, so image manifests, original members, derivatives, receipts, filters, knowledge/source links, and retained processing state follow the same source-deletion transaction and managed-file reconciliation as other documents. Generated surviving study artifacts keep their existing detached citation semantics.
-
-Canonical image chunks retain native source locators with every verified occurrence. Original inspection is intentionally a controlled source view rather than an external guessed deep-link mechanism.
-
-## Regression boundary
-
-Deterministic native/frontend fixtures cover:
-- ordered admission, stable identities, aggregate limits, retry/removal semantics, and original-byte preservation;
-- compatible OCR reuse and partial extraction failure;
-- translated overlap, protected-number/unit/operator changes, repeated educational headers, table-like ambiguity, missing geometry, conflicting pixels, and bounded dense-layout comparison;
-- filtered derivative pixels, unknown-geometry withholding, UI-course policy, attribution, restoration, stale/forged filter publication, and exact filter rebinding after rotation;
-- reorder, rotation, inclusion, append, stale extraction rejection, failed SQL publication, retry idempotency, interrupted amendment cleanup, and unchanged knowledge reuse;
-- complete-backup validation/extraction for current originals/manifests plus pending amendment/filter state; and
-- Documents workspace flows for failed-selection retry, ordered import, original inspection, source edits, and Content-filter publication.
-
-Synthetic OCR/provider seams establish deterministic contracts; they do not establish live OCR quality, live-model factual quality, physical-device behavior, or human visual/accessibility acceptance.
-
-## Qualification and acceptance boundaries
-
-Source publication, static qualification, fast qualification, full Linux qualification, Android compile/package, Android emulator smoke, live-provider testing, physical-device testing, and human visual/source-quality review are recorded separately. LK-04 implementation completion does not turn an unrun human/platform gate into a pass.
-
-Before PR #103 can be considered finally ready, the frozen LK-04 candidate still requires the applicable exact-head terminal repository/platform qualification and the broader later-stage acceptance defined by the PR roadmap. LK-05 is the next implementation stage; no LK-05 folders/ranges behavior is implied by this image-source boundary.
+Existing native admission, protected-character/geometry ambiguity, filter, amendment, knowledge-rebinding, migration and complete-backup fixtures remain required. Synthetic OCR and mocked provider calls establish deterministic contracts, not live OCR accuracy or generated factual quality. Exact-SHA static/fast, full Linux, Android package/emulator, live-provider and human visual/physical acceptance are recorded separately in PR evidence.
