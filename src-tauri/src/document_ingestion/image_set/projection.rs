@@ -23,7 +23,8 @@ use crate::{
 };
 
 use super::{
-    overlap::{Alignment, CONTRACT},
+    collection::FrameAlignment,
+    overlap::CONTRACT,
     passages::{add_occurrence, Passages},
     regions::Frame,
     AdapterExtraction, IDENTITY,
@@ -34,14 +35,12 @@ pub(super) struct Projection {
     document_id: String,
     canonical: CanonicalIngestion,
     passages: Passages,
-    settings: FilterSettings,
     receipt: ImageReceipt,
     visual_keys: Vec<ChunkIdentity>,
     receipt_bytes: usize,
     receipt_regions: usize,
-    previous: Option<Frame>,
-    previous_targets: Vec<usize>,
-    previous_visual: Option<usize>,
+    targets: Vec<Vec<usize>>,
+    visuals: Vec<Option<usize>>,
     reused: usize,
     unresolved: usize,
     duplicates: usize,
@@ -102,13 +101,11 @@ impl Projection {
                 chunks: Vec::new(),
                 source_manifest: Some(manifest.clone()),
             },
-            settings,
             visual_keys: Vec::new(),
             receipt_bytes: 0,
             receipt_regions: 0,
-            previous: None,
-            previous_targets: Vec::new(),
-            previous_visual: None,
+            targets: Vec::new(),
+            visuals: Vec::new(),
             reused: 0,
             unresolved: 0,
             duplicates: 0,
@@ -128,12 +125,12 @@ impl Projection {
         inclusion: PixelBounds,
         result: Option<&RegionOcrResult>,
         reused: bool,
+        frame: Frame,
+        alignment: &FrameAlignment,
     ) -> Result<(), CommandError> {
         let unit = index as i64 + 1;
         let label = format!("Image {unit}");
-        let frame = Frame::with_settings(member, image, inclusion, result, &self.settings)?;
         let mut decisions = frame.decisions.clone();
-        let alignment = Alignment::between(self.previous.as_ref(), &frame);
         self.unresolved += frame.unresolved;
         self.ambiguous += usize::from(alignment.ambiguous);
         let mut targets = Vec::new();
@@ -143,11 +140,19 @@ impl Projection {
             self.recognized += 1;
             self.confidence_sum += result.confidence;
             for (position, region) in frame.regions.iter().enumerate() {
-                let target = alignment.targets[position]
-                    .and_then(|previous| self.previous_targets.get(previous).copied());
-                let (target, equivalent) =
-                    self.passages
-                        .admit(&frame, region, unit, target, alignment.whole_image);
+                let proof = alignment.targets[position];
+                let target = proof.and_then(|target| {
+                    self.targets
+                        .get(target.member)
+                        .and_then(|regions| regions.get(target.region).copied())
+                });
+                let (target, equivalent) = self.passages.admit(
+                    &frame,
+                    region,
+                    unit,
+                    target,
+                    proof.is_some_and(|target| target.whole_image),
+                );
                 targets.push(target);
                 if equivalent.is_some() {
                     self.duplicates += 1;
@@ -157,7 +162,7 @@ impl Projection {
                     {
                         decision.equivalent_to = equivalent.clone();
                     }
-                    if !alignment.whole_image {
+                    if alignment.whole_image.is_none() {
                         excluded.extend(region.strip);
                     }
                 }
@@ -242,9 +247,8 @@ impl Projection {
             return Err(super::invalid("The set exceeds its retained-region budget. Split it into smaller image sets; completed OCR was preserved."));
         }
         self.receipt.members.push(member_receipt);
-        if frame.withhold_visual {
-            self.previous_visual = None;
-        } else {
+        let mut member_visual = None;
+        if !frame.withhold_visual {
             let (png, width, height) = image.filtered_png(inclusion, &excluded)?;
             let asset_hash = sha256_hex(&png);
             // Stable member identity keeps ownership separate from pixel reuse.
@@ -297,10 +301,9 @@ impl Projection {
             // A previously masked overlap is not interchangeable with its original.
             let visual = alignment
                 .whole_image
-                .then_some(self.previous_visual)
-                .flatten()
+                .and_then(|member| self.visuals.get(member).copied().flatten())
                 .filter(|index| self.visual_keys[*index].evidence_sha256 == asset_hash);
-            self.previous_visual = if let Some(index) = visual {
+            member_visual = if let Some(index) = visual {
                 add_occurrence(&mut self.canonical.semantic_chunks[index], unit)?;
                 Some(index)
             } else {
@@ -333,8 +336,8 @@ impl Projection {
                 Some(index)
             };
         }
-        self.previous = Some(frame);
-        self.previous_targets = targets;
+        self.targets.push(targets);
+        self.visuals.push(member_visual);
         self.reused += usize::from(reused);
         Ok(())
     }

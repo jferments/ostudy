@@ -221,7 +221,7 @@ describe("automatic image collections", () => {
     expect(mocks.cards).toHaveBeenCalledTimes(1);
     expect(mocks.guide).toHaveBeenCalledTimes(1);
     expect(mocks.preview).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "View source-0.png" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View source-0.png" }));
     expect(await screen.findByAltText("Retained original image")).toBeTruthy();
     expect(mocks.preview).toHaveBeenCalledWith({ documentId: id, memberId: member("", 1).id,
       expectedRevision: 1, viewport: null });

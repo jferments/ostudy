@@ -22,15 +22,16 @@ use super::contracts::{
     IngestionProgressSink, IngestionStage,
 };
 
+mod collection;
 mod overlap;
 mod passages;
 mod projection;
 mod regions;
 
 pub(crate) const IDENTITY: DocumentAdapterIdentity = DocumentAdapterIdentity {
-    adapter_backend: "image-set-canonical-v3-filter",
+    adapter_backend: "image-set-canonical-v4-collection",
     extraction_backend: "image-set-region-ocr-v1",
-    render_backend: Some("image-set-inclusion-render-v3-filter"),
+    render_backend: Some("image-set-inclusion-render-v4-collection"),
 };
 
 pub(crate) struct ImageSetAdapter;
@@ -124,7 +125,11 @@ fn extract_with(
         })
         .transpose()?
         .unwrap_or_default();
-    let mut output = projection::Projection::new(&manifest, &bytes, settings)?;
+    // Retain bounded OCR/proof metadata, never a collection of decoded rasters.
+    // A second raster read allows global equivalence before any derivative masks.
+    let mut prepared = Vec::with_capacity(manifest.members.len());
+    let mut region_count = 0_usize;
+    let mut receipt_bytes = 0_usize;
     for (index, member) in manifest.members.iter().enumerate() {
         request.cancellation.check()?;
         let image = raster::Raster::read(request.paths, member)?;
@@ -141,19 +146,47 @@ fn extract_with(
             Err(error) => return Err(error),
         };
         request.cancellation.check()?;
+        let frame =
+            regions::Frame::with_settings(member, &image, inclusion, result.as_ref(), &settings)?;
+        region_count = region_count.saturating_add(frame.decisions.len());
+        receipt_bytes = receipt_bytes.saturating_add(
+            serde_json::to_vec(&frame.decisions)
+                .map_err(CommandError::serialization)?
+                .len(),
+        );
+        if region_count > crate::documents::image_sets::receipt::MAX_REGIONS
+            || receipt_bytes > crate::documents::image_sets::receipt::MAX_RECEIPT_BYTES - 4 * 1024 * 1024
+        {
+            return Err(invalid(
+                "The collection exceeds its retained-region budget. Completed OCR was preserved.",
+            ));
+        }
+        prepared.push((frame, result, reused));
+        progress.report(IngestionProgress::Ocr {
+            completed_units: index + 1,
+            total_units: manifest.members.len(),
+        })?;
+    }
+    request.cancellation.check()?;
+    let frames = prepared.iter().map(|(frame, _, _)| frame).collect::<Vec<_>>();
+    let alignments = collection::align(&frames, || request.cancellation.check())?;
+    let mut output = projection::Projection::new(&manifest, &bytes, settings)?;
+    for (index, ((frame, result, reused), alignment)) in prepared.into_iter().zip(&alignments).enumerate()
+    {
+        request.cancellation.check()?;
+        let member = &manifest.members[index];
+        let image = raster::Raster::read(request.paths, member)?;
         output.add(
             request.paths,
             member,
             index,
             &image,
-            inclusion,
+            raster::inclusion(member)?,
             result.as_ref(),
             reused,
+            frame,
+            alignment,
         )?;
-        progress.report(IngestionProgress::Ocr {
-            completed_units: index + 1,
-            total_units: manifest.members.len(),
-        })?;
     }
     request.cancellation.check()?;
     progress.report(IngestionProgress::Stage(IngestionStage::ValidatingResult))?;
@@ -177,6 +210,8 @@ fn invalid(message: &str) -> CommandError {
 
 #[cfg(test)]
 mod amendment_tests;
+#[cfg(test)]
+mod collection_tests;
 #[cfg(test)]
 mod filter_tests;
 #[cfg(test)]
