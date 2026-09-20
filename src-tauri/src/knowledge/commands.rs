@@ -142,7 +142,6 @@ pub fn clear_semantic_index(
     preparation::clear_index(database.inner(), paths.inner())
 }
 
-
 #[tauri::command]
 pub fn get_collection_synthesis(
     database: State<'_, Database>,
