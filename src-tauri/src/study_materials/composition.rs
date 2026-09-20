@@ -1663,10 +1663,7 @@ mod tests {
                     21,
                 )?;
                 connection
-                    .execute(
-                        "UPDATE notes SET revision=2 WHERE id=?1",
-                        ["7".repeat(32)],
-                    )
+                    .execute("UPDATE notes SET revision=2 WHERE id=?1", ["7".repeat(32)])
                     .map_err(CommandError::database)?;
                 Ok(())
             })
