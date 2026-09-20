@@ -136,7 +136,9 @@ impl ImageReceipt {
             || (saved.revision == current.revision && saved != current)
             || saved.fingerprint()? != self.manifest_sha256
         {
-            return Err(invalid("The retained projection has an invalid source snapshot."));
+            return Err(invalid(
+                "The retained projection has an invalid source snapshot.",
+            ));
         }
         for member in &saved.members {
             let owner = current
@@ -148,7 +150,9 @@ impl ImageReceipt {
             original.quarter_turns = owner.quarter_turns;
             original.inclusion = owner.inclusion;
             if &original != owner {
-                return Err(invalid("An image source snapshot refers to different original bytes."));
+                return Err(invalid(
+                    "An image source snapshot refers to different original bytes.",
+                ));
             }
         }
         Ok(saved)

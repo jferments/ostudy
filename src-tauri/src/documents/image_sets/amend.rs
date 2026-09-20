@@ -56,7 +56,9 @@ impl AmendImageSetInput {
             || self.members.is_empty()
             || self.members.len().saturating_add(self.append.len()) > admission::MAX_MEMBERS
         {
-            return Err(invalid("An image amendment requires a current, bounded source selection."));
+            return Err(invalid(
+                "An image amendment requires a current, bounded source selection.",
+            ));
         }
         let mut seen = HashSet::new();
         for member in &self.members {
@@ -76,13 +78,18 @@ impl AmendImageSetInput {
     }
 
     fn append_ids(&self) -> Vec<String> {
-        self.append.iter().map(|member| member.staged_file_id.clone()).collect()
+        self.append
+            .iter()
+            .map(|member| member.staged_file_id.clone())
+            .collect()
     }
 }
 
 fn validate_transform(turns: u8, crop: Option<InclusionCrop>) -> Result<(), CommandError> {
     if turns > 3 {
-        return Err(invalid("Image orientation must use zero to three quarter turns."));
+        return Err(invalid(
+            "Image orientation must use zero to three quarter turns.",
+        ));
     }
     if let Some(crop) = crop {
         crop.validate()?;
@@ -109,11 +116,16 @@ pub(crate) fn apply(
         Ok(current)
     })?;
     if current.members.len() != input.members.len() {
-        return Err(invalid("Reordering must retain every original image exactly once."));
+        return Err(invalid(
+            "Reordering must retain every original image exactly once.",
+        ));
     }
     let mut members = Vec::with_capacity(input.members.len() + input.append.len());
     for edit in &input.members {
-        let original = current.members.iter().find(|member| member.id == edit.member_id)
+        let original = current
+            .members
+            .iter()
+            .find(|member| member.id == edit.member_id)
             .ok_or_else(|| invalid("An edited image does not belong to this document."))?;
         let mut member = original.clone();
         member.quarter_turns = edit.quarter_turns;
@@ -131,10 +143,17 @@ pub(crate) fn apply(
     };
     if let Some(inspection) = &inspection {
         for (selection, inspected) in input.append.iter().zip(&inspection.members) {
-            let image = inspected.image.as_ref().ok_or_else(|| invalid("Image inspection is incomplete."))?;
+            let image = inspected
+                .image
+                .as_ref()
+                .ok_or_else(|| invalid("Image inspection is incomplete."))?;
             let id = database.with_connection(|connection| generate_id(connection))?;
             members.push(ImageMember {
-                relative_path: manifest::original_path(&current.document_id, &id, &image.media_type)?,
+                relative_path: manifest::original_path(
+                    &current.document_id,
+                    &id,
+                    &image.media_type,
+                )?,
                 id,
                 original_filename: image.original_filename.clone(),
                 media_type: image.media_type.clone(),
@@ -155,21 +174,34 @@ pub(crate) fn apply(
     let next = ImageManifest {
         version: current.version,
         document_id: current.document_id.clone(),
-        revision: current.revision.checked_add(1).ok_or_else(|| invalid("Image revision limit reached."))?,
+        revision: current
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| invalid("Image revision limit reached."))?,
         members,
     };
     let bytes = next.bytes()?; // Includes aggregate original-byte and pixel limits.
     let mut batch = files::Batch::begin(database, paths, &input.document_id)?;
     if let Some(inspection) = &inspection {
-        for ((selection, inspected), member) in input.append.iter()
-            .zip(&inspection.members).zip(&next.members[current.members.len()..])
+        for ((selection, inspected), member) in input
+            .append
+            .iter()
+            .zip(&inspection.members)
+            .zip(&next.members[current.members.len()..])
         {
-            let image = inspected.image.as_ref().ok_or_else(|| invalid("Image inspection is incomplete."))?;
-            let bytes = admission::read_inspected(database, paths, &selection.staged_file_id, image)?;
+            let image = inspected
+                .image
+                .as_ref()
+                .ok_or_else(|| invalid("Image inspection is incomplete."))?;
+            let bytes =
+                admission::read_inspected(database, paths, &selection.staged_file_id, image)?;
             batch.write(&member.relative_path, &bytes)?;
         }
     }
-    batch.write(&manifest::manifest_path(&next.document_id, &next.fingerprint()?)?, &bytes)?;
+    batch.write(
+        &manifest::manifest_path(&next.document_id, &next.fingerprint()?)?,
+        &bytes,
+    )?;
     let saved = store::publish(database, input, &hash, &current, &next)?;
     // A receipt returned by a competing attempt may own different appended IDs.
     // Cleanup checks actual SQL ownership before touching this attempt's files.

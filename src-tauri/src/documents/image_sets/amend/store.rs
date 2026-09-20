@@ -3,12 +3,16 @@
 use rusqlite::{params, Connection, TransactionBehavior};
 
 use crate::{
-    database::Database, document_canonical::sha256_hex, error::CommandError,
-    external_files, paths::AppPaths, util::unix_time_millis,
+    database::Database, document_canonical::sha256_hex, error::CommandError, external_files,
+    paths::AppPaths, util::unix_time_millis,
 };
 
+use super::super::{
+    manifest,
+    operations::{self, EditResult},
+    repository, storage,
+};
 use super::{AmendImageSetInput, ImageManifest};
-use super::super::{manifest, operations::{self, EditResult}, repository, storage};
 
 pub(super) fn require_revision(
     manifest: &ImageManifest,
@@ -117,7 +121,9 @@ fn freeze_projection(connection: &Connection, current: &ImageManifest) -> Result
     receipt.source_manifest = Some(current.clone());
     let json = serde_json::to_string(&receipt).map_err(CommandError::serialization)?;
     if json.len() > super::super::receipt::MAX_RECEIPT_BYTES {
-        return Err(manifest::invalid("The retained source snapshot exceeds its receipt budget."));
+        return Err(manifest::invalid(
+            "The retained source snapshot exceeds its receipt budget.",
+        ));
     }
     connection.execute(
         "UPDATE document_image_receipts SET payload_json = ?1, payload_sha256 = ?2 WHERE document_id = ?3",
@@ -140,7 +146,9 @@ fn require_lease(
         |row| row.get(0),
     ).map_err(CommandError::database)?;
     if !matched {
-        return Err(manifest::invalid("An appended selection changed or expired. No partial edit was saved."));
+        return Err(manifest::invalid(
+            "An appended selection changed or expired. No partial edit was saved.",
+        ));
     }
     Ok(())
 }
