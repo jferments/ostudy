@@ -19,7 +19,7 @@ import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
 import { InlineNotice } from "../ui/primitives/InlineNotice";
-import { Checkbox, Textarea } from "../ui/primitives/FormControls";
+import { Checkbox, Disclosure, Textarea } from "../ui/primitives/FormControls";
 import { Button } from "../ui/primitives/Button";
 import { guideReaderStyles as styles } from "./documents/presentation";
 
@@ -304,10 +304,10 @@ function StructuredSection({ section }: { section: DocumentStudyGuideSection }) 
     <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
     {content.visualExplanations.map((visual) => <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}><strong><StudyMarkdown text={visual.title} inline /></strong><StudyMarkdown text={visual.explanation} /></aside>)}
     {content.retrievalChecks.length > 0 ? <section><h3>Check yourself</h3><div className={styles.retrievalChecks}>
-      {content.retrievalChecks.map((check) => <details key={check.prompt} className={styles.retrievalCheck}>
-        <summary><StudyMarkdown text={check.prompt} inline /></summary>
-        <div><strong>Answer</strong><StudyMarkdown text={check.answer} /></div>
-      </details>)}
+      {content.retrievalChecks.map((check) => <Disclosure key={check.prompt} className={styles.retrievalCheck}
+        title={<StudyMarkdown text={check.prompt} inline />}>
+        <div className={styles.retrievalAnswer}><strong>Answer</strong><StudyMarkdown text={check.answer} /></div>
+      </Disclosure>)}
     </div></section> : null}
   </div>;
 }
