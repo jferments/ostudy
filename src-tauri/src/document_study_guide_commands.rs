@@ -10,7 +10,7 @@ use crate::{
         DocumentArtifactKind, DocumentArtifactProviderSnapshot,
     },
     document_cost,
-    document_domain::{DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
+    document_domain::{validate_asset_id, DocumentFormat, DocumentSourceDescriptor, SourceUnitKind},
     document_learning::{load_active_document_learning_plan, DocumentLearningPlan},
     document_learning_service::ensure_learning_plan_for_outline,
     document_outline_service::{ensure_document_outline, EnsureDocumentOutlineInput},
@@ -46,6 +46,13 @@ pub(crate) struct GenerateDocumentStudyGuideInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GetDocumentStudyGuideInput {
     pub document_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ReadDocumentSourceAssetInput {
+    pub document_id: String,
+    pub asset_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +229,37 @@ pub(crate) fn cancel_document_study_guide_generation(
 ) -> Result<(), CommandError> {
     validate_entity_id(&document_id, "document")?;
     cancel_document_task(&document_id)
+}
+
+#[tauri::command]
+pub(crate) async fn read_document_source_asset(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: ReadDocumentSourceAssetInput,
+) -> Result<tauri::ipc::Response, CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    validate_asset_id(&input.asset_id)?;
+    let asset = document_store::load_source_assets(database.inner(), &input.document_id)?
+        .into_iter()
+        .find(|asset| asset.asset_id == input.asset_id)
+        .ok_or_else(|| {
+            CommandError::new(
+                "document_source_asset_missing",
+                "That canonical source image is no longer available for this document.",
+            )
+        })?;
+    let paths = paths.inner().clone();
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        crate::document_visual_evidence::read_source_image_bytes(&paths, &asset)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "document_source_asset_read_failed",
+            "The canonical source image read task could not be completed.",
+        )
+    })??;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 #[tauri::command]

@@ -280,6 +280,15 @@ export async function cancelDocumentStudyGuideGeneration(documentId: string): Pr
   await invoke("cancel_document_study_guide_generation", { documentId });
 }
 
+export async function readDocumentSourceAsset(
+  documentId: string,
+  assetId: string,
+): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("read_document_source_asset", {
+    input: { documentId, assetId },
+  });
+}
+
 export async function getDocumentStudyGuide(
   documentId: string,
 ): Promise<DocumentStudyGuide | null> {

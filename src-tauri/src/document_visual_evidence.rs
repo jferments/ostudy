@@ -45,24 +45,37 @@ pub(crate) fn load_locator_images(
                 "A selected multimodal source asset is not an image.",
             ));
         }
-        let bytes =
-            fs::read(paths.resolve_relative(&asset.relative_path)).map_err(CommandError::io)?;
-        if bytes.is_empty()
-            || bytes.len() > MAX_VISUAL_EVIDENCE_BYTES
-            || i64::try_from(bytes.len()).unwrap_or(i64::MAX) != asset.byte_size
-            || sha256_hex(&bytes) != asset.sha256
-        {
-            return Err(CommandError::new(
-                "document_source_asset_invalid",
-                "A canonical source asset failed its size or integrity check. Retry document processing to rebuild it.",
-            ));
-        }
+        let bytes = read_source_image_bytes(paths, asset)?;
         images.push(SourcePageImage {
             page_number: asset.source_unit_number.unwrap_or_else(|| locator.first()),
             bytes,
         });
     }
     Ok(images)
+}
+
+pub(crate) fn read_source_image_bytes(
+    paths: &AppPaths,
+    asset: &SourceAssetRecord,
+) -> Result<Vec<u8>, CommandError> {
+    if !asset.media_type.starts_with("image/") {
+        return Err(CommandError::new(
+            "document_source_asset_not_image",
+            "A selected canonical source asset is not an image.",
+        ));
+    }
+    let bytes = fs::read(paths.resolve_relative(&asset.relative_path)).map_err(CommandError::io)?;
+    if bytes.is_empty()
+        || bytes.len() > MAX_VISUAL_EVIDENCE_BYTES
+        || i64::try_from(bytes.len()).unwrap_or(i64::MAX) != asset.byte_size
+        || sha256_hex(&bytes) != asset.sha256
+    {
+        return Err(CommandError::new(
+            "document_source_asset_invalid",
+            "A canonical source asset failed its size or integrity check. Retry document processing to rebuild it.",
+        ));
+    }
+    Ok(bytes)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
