@@ -4,7 +4,6 @@
 pub(crate) mod admission;
 pub(crate) mod backup;
 pub(crate) mod cache;
-pub(crate) mod commands;
 pub(crate) mod files;
 pub(crate) mod filter;
 pub(crate) mod filter_commands;
