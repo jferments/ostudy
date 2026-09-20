@@ -176,7 +176,8 @@ pub(crate) async fn ensure_reduced(
         .saturating_sub(output_tokens)
         .saturating_sub(6_000)
         .min(MAX_REDUCTION_DIGEST_BYTES);
-    let Some((digest, allowed)) = balanced_reduction_digest(&synthesis, &plan, digest_budget) else {
+    let Some((digest, allowed)) = balanced_reduction_digest(&synthesis, &plan, digest_budget)
+    else {
         record_reduction_gap(
             &mut synthesis,
             "synthesis_reduction_omitted",
@@ -827,10 +828,7 @@ fn balanced_reduction_digest(
                 "qualifications":unit.content.qualifications,
                 "importance":unit.content.grounding.as_ref().map(|grounding| grounding.importance)
             });
-            rows[index]
-                .get_mut("units")?
-                .as_array_mut()?
-                .push(value);
+            rows[index].get_mut("units")?.as_array_mut()?.push(value);
             let topic_id = synthesis.topics[index].id.clone();
             let mut next_topic_units = allowed.topic_units.clone();
             next_topic_units
@@ -864,14 +862,22 @@ fn balanced_reduction_digest(
 }
 
 fn importance_order(unit: &KnowledgeUnit) -> u8 {
-    match unit.content.grounding.as_ref().map(|grounding| grounding.importance) {
+    match unit
+        .content
+        .grounding
+        .as_ref()
+        .map(|grounding| grounding.importance)
+    {
         Some(Importance::Core) => 0,
         Some(Importance::Supporting) | None => 1,
         Some(Importance::Detail) => 2,
     }
 }
 
-fn parse_reduction(value: Value, allowed: &ReductionAllowlist) -> Result<ValidatedReduction, CommandError> {
+fn parse_reduction(
+    value: Value,
+    allowed: &ReductionAllowlist,
+) -> Result<ValidatedReduction, CommandError> {
     let result: CollectionReduction = serde_json::from_value(value)
         .map_err(|_| invalid("Invalid collection synthesis reduction structure."))?;
     super::contracts::bounded(&result.summary, 8_000, "collection synthesis summary", false)?;
@@ -882,7 +888,9 @@ fn parse_reduction(value: Value, allowed: &ReductionAllowlist) -> Result<Validat
     for objective in &result.learning_objectives {
         super::contracts::bounded(objective, 1_200, "collection learning objective", false)?;
         if !objectives.insert(objective) {
-            return Err(invalid("The collection synthesis repeats a learning objective."));
+            return Err(invalid(
+                "The collection synthesis repeats a learning objective.",
+            ));
         }
     }
 
@@ -895,7 +903,11 @@ fn parse_reduction(value: Value, allowed: &ReductionAllowlist) -> Result<Validat
             || relationship.support_unit_ids.len() > 32
             || relationship.topic_ids.iter().collect::<HashSet<_>>().len()
                 != relationship.topic_ids.len()
-            || relationship.support_unit_ids.iter().collect::<HashSet<_>>().len()
+            || relationship
+                .support_unit_ids
+                .iter()
+                .collect::<HashSet<_>>()
+                .len()
                 != relationship.support_unit_ids.len()
             || relationship
                 .topic_ids
@@ -906,7 +918,9 @@ fn parse_reduction(value: Value, allowed: &ReductionAllowlist) -> Result<Validat
                 .iter()
                 .any(|id| !allowed.all_units.contains(id))
         {
-            return Err(invalid("The collection reducer invented or repeated a topic/unit ID."));
+            return Err(invalid(
+                "The collection reducer invented or repeated a topic/unit ID.",
+            ));
         }
         for topic_id in &relationship.topic_ids {
             let units = allowed
@@ -923,7 +937,12 @@ fn parse_reduction(value: Value, allowed: &ReductionAllowlist) -> Result<Validat
                 ));
             }
         }
-        super::contracts::bounded(&relationship.note, 1_200, "collection relationship note", false)?;
+        super::contracts::bounded(
+            &relationship.note,
+            1_200,
+            "collection relationship note",
+            false,
+        )?;
         let mut topic_ids = relationship.topic_ids;
         topic_ids.sort();
         let mut support_unit_ids = relationship.support_unit_ids;
@@ -1280,7 +1299,9 @@ mod tests {
         let (digest, allowed) = balanced_reduction_digest(&synthesis, &plan, 4_000).unwrap();
         let rows: Vec<Value> = serde_json::from_str(&digest).unwrap();
         assert_eq!(rows.len(), 2);
-        assert!(rows.iter().all(|row| !row["units"].as_array().unwrap().is_empty()));
+        assert!(rows
+            .iter()
+            .all(|row| !row["units"].as_array().unwrap().is_empty()));
         assert_eq!(allowed.topic_units.len(), 2);
         assert!(digest.contains("Rare qualifier"));
         assert!(digest.contains("Unless renal function changes."));
@@ -1316,7 +1337,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(valid.relationships.len(), 1);
-        assert_eq!(valid.relationships[0].kind, CollectionRelationshipKind::Contradictory);
+        assert_eq!(
+            valid.relationships[0].kind,
+            CollectionRelationshipKind::Contradictory
+        );
 
         assert!(parse_reduction(
             json!({
