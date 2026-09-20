@@ -1289,13 +1289,13 @@ mod tests {
                 statement: format!("Hemodynamic statement {index}"),
                 qualifications: Vec::new(),
                 topic: "Hemodynamics".into(),
-                supporting_excerpt: format!("Hemodynamic statement {index}"),
+                supporting_excerpt: source.text.clone(),
                 grounding: None,
                 details: None,
             })
             .collect::<Vec<_>>();
         dense[0].statement = "Target remains 5 mg unless renal function changes.".into();
-        dense[0].supporting_excerpt = dense[0].statement.clone();
+        dense[0].supporting_excerpt = source.text.clone();
         dense[0].qualifications = vec!["Unless renal function changes.".into()];
         repository::publish_units(&database, &source, &hash("dense-contract"), dense).unwrap();
 
