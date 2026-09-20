@@ -428,9 +428,7 @@ fn create_collection(
         "document collection organization",
     )?;
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -478,9 +476,7 @@ fn update_collection(
         "document collection organization",
     )?;
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -540,9 +536,7 @@ fn delete_collection(
         "document collection organization",
     )?;
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -600,9 +594,7 @@ fn add_membership(
         "document collection organization",
     )?;
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -663,9 +655,7 @@ fn move_membership(
         "document collection organization",
     )?;
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -695,11 +685,7 @@ fn move_membership(
                  SELECT 1 FROM document_collection_memberships
                  WHERE collection_id=?1 AND document_id=?2 AND id<>?3
              )",
-            params![
-                input.target_collection_id,
-                document_id,
-                input.membership_id
-            ],
+            params![input.target_collection_id, document_id, input.membership_id],
             |row| row.get(0),
         )
         .map_err(CommandError::database)?;
@@ -743,9 +729,7 @@ fn remove_membership(
         "document collection organization",
     )?;
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -783,9 +767,7 @@ fn set_membership_ranges(
         return Err(invalid("A document selection contains too many ranges."));
     }
     let request_hash = request_hash(&input)?;
-    if let Some(replayed) =
-        replay_receipt(connection, &input.operation_id, &request_hash)?
-    {
+    if let Some(replayed) = replay_receipt(connection, &input.operation_id, &request_hash)? {
         return Ok(replayed);
     }
     let now = unix_time_millis()?;
@@ -809,8 +791,7 @@ fn set_membership_ranges(
         return Err(membership_changed());
     }
     let shape = load_document_shape(&tx, &document_id)?;
-    let normalized =
-        validate_and_normalize_ranges(&tx, &shape, input.ranges.clone())?;
+    let normalized = validate_and_normalize_ranges(&tx, &shape, input.ranges.clone())?;
     tx.execute(
         "DELETE FROM document_collection_ranges WHERE membership_id=?1",
         [&input.membership_id],
@@ -860,10 +841,8 @@ pub(crate) fn resolve_selection(
     let organization_revision = organization_revision(connection)?;
     let parents = collection_parent_map(connection)?;
     validate_hierarchy(&parents)?;
-    let selected_collections =
-        expand_collection_ids(connection, &input.collection_ids)?;
-    let membership_sources =
-        load_membership_sources(connection, &selected_collections)?;
+    let selected_collections = expand_collection_ids(connection, &input.collection_ids)?;
+    let membership_sources = load_membership_sources(connection, &selected_collections)?;
 
     #[derive(Default)]
     struct Pending {
@@ -889,23 +868,18 @@ pub(crate) fn resolve_selection(
             });
             continue;
         }
-        let entry = pending
-            .entry(membership.document_id.clone())
-            .or_default();
+        let entry = pending.entry(membership.document_id.clone()).or_default();
         if membership.ranges.is_empty() {
             entry.whole = true;
             entry.ranges.clear();
         } else if !entry.whole {
-            entry.ranges.extend(
-                membership
-                    .ranges
-                    .iter()
-                    .map(|range| SourceRangeInput {
-                        unit_kind: range.unit_kind.clone(),
-                        start_unit: range.start_unit,
-                        end_unit: range.end_unit,
-                    }),
-            );
+            entry
+                .ranges
+                .extend(membership.ranges.iter().map(|range| SourceRangeInput {
+                    unit_kind: range.unit_kind.clone(),
+                    start_unit: range.start_unit,
+                    end_unit: range.end_unit,
+                }));
         }
         entry.refs.push(SourceMembershipReferenceDto {
             collection_id: membership.collection_id,
@@ -957,11 +931,7 @@ pub(crate) fn resolve_selection(
                 end_unit: shape.unit_count,
             }]
         } else {
-            validate_and_normalize_ranges(
-                connection,
-                &shape,
-                std::mem::take(&mut selected.ranges),
-            )?
+            validate_and_normalize_ranges(connection, &shape, std::mem::take(&mut selected.ranges))?
         };
 
         if let Some(excluded) = exclusions.get(&document_id) {
@@ -994,8 +964,7 @@ pub(crate) fn resolve_selection(
         expanded_text_bytes = expanded_text_bytes
             .checked_add(bytes)
             .ok_or_else(|| invalid("The selected source window is too large."))?;
-        if expanded_unit_count > MAX_EXPANDED_UNITS
-            || expanded_text_bytes > MAX_EXPANDED_TEXT_BYTES
+        if expanded_unit_count > MAX_EXPANDED_UNITS || expanded_text_bytes > MAX_EXPANDED_TEXT_BYTES
         {
             return Err(invalid(
                 "The selected folders exceed the bounded source window. Narrow the folders or reading ranges.",
@@ -1007,8 +976,7 @@ pub(crate) fn resolve_selection(
                 .cmp(&(&right.collection_id, &right.membership_id))
         });
         selected.refs.dedup_by(|left, right| {
-            left.collection_id == right.collection_id
-                && left.membership_id == right.membership_id
+            left.collection_id == right.collection_id && left.membership_id == right.membership_id
         });
 
         members.push(SourceSetMemberDto {
@@ -1085,9 +1053,7 @@ pub(crate) fn ensure_snapshot_current(
     Ok(())
 }
 
-fn canonicalize_selection(
-    input: &mut SourceSelectionInput,
-) -> Result<(), CommandError> {
+fn canonicalize_selection(input: &mut SourceSelectionInput) -> Result<(), CommandError> {
     if input.collection_ids.len() > MAX_SELECTION_COLLECTIONS
         || input.documents.len() > MAX_SELECTION_DOCUMENTS
         || input.exclusions.len() > MAX_SELECTION_DOCUMENTS
@@ -1102,9 +1068,7 @@ fn canonicalize_selection(
     for selected in input.documents.iter().chain(input.exclusions.iter()) {
         validate_entity_id(&selected.document_id, "document")?;
         if selected.ranges.len() > MAX_RANGES_PER_DOCUMENT {
-            return Err(invalid(
-                "A document selection contains too many ranges.",
-            ));
+            return Err(invalid("A document selection contains too many ranges."));
         }
     }
     input
@@ -1114,9 +1078,7 @@ fn canonicalize_selection(
         .exclusions
         .sort_by(|left, right| left.document_id.cmp(&right.document_id));
     if input.collection_ids.is_empty() && input.documents.is_empty() {
-        return Err(invalid(
-            "Select at least one document or document folder.",
-        ));
+        return Err(invalid("Select at least one document or document folder."));
     }
     Ok(())
 }
@@ -1151,9 +1113,7 @@ fn expand_collection_ids(
         }
         if expanded.insert(id.clone()) {
             if expanded.len() > MAX_COLLECTIONS {
-                return Err(invalid(
-                    "The selected folder hierarchy is too large.",
-                ));
+                return Err(invalid("The selected folder hierarchy is too large."));
             }
             if let Some(next) = children.get(&id) {
                 stack.extend(next.iter().cloned());
@@ -1170,8 +1130,7 @@ fn load_membership_sources(
     if collection_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let ids =
-        serde_json::to_string(collection_ids).map_err(CommandError::serialization)?;
+    let ids = serde_json::to_string(collection_ids).map_err(CommandError::serialization)?;
     let mut statement = connection
         .prepare(
             "SELECT m.collection_id,m.id,m.revision,m.document_id,
@@ -1188,20 +1147,18 @@ fn load_membership_sources(
     while let Some(row) = rows.next().map_err(CommandError::database)? {
         let collection_id: String = row.get(0).map_err(CommandError::database)?;
         let membership_id: String = row.get(1).map_err(CommandError::database)?;
-        let membership_revision: i64 =
-            row.get(2).map_err(CommandError::database)?;
+        let membership_revision: i64 = row.get(2).map_err(CommandError::database)?;
         let document_id: String = row.get(3).map_err(CommandError::database)?;
-        let entry =
-            map.entry(membership_id.clone())
-                .or_insert_with(|| MembershipSource {
-                    collection_id,
-                    membership_id: membership_id.clone(),
-                    membership_revision,
-                    document_id,
-                    ranges: Vec::new(),
-                });
-        let range_id: Option<String> =
-            row.get(4).map_err(CommandError::database)?;
+        let entry = map
+            .entry(membership_id.clone())
+            .or_insert_with(|| MembershipSource {
+                collection_id,
+                membership_id: membership_id.clone(),
+                membership_revision,
+                document_id,
+                ranges: Vec::new(),
+            });
+        let range_id: Option<String> = row.get(4).map_err(CommandError::database)?;
         if let Some(range_id) = range_id {
             entry.ranges.push(DocumentCollectionRangeDto {
                 id: range_id,
@@ -1230,8 +1187,7 @@ fn exclusion_map(
     let mut map: BTreeMap<String, Vec<SourceRangeInput>> = BTreeMap::new();
     for excluded in exclusions {
         let shape = load_document_shape(connection, &excluded.document_id)?;
-        let ranges =
-            validate_and_normalize_ranges(connection, &shape, excluded.ranges.clone())?;
+        let ranges = validate_and_normalize_ranges(connection, &shape, excluded.ranges.clone())?;
         match map.entry(excluded.document_id.clone()) {
             Entry::Vacant(entry) => {
                 entry.insert(ranges);
@@ -1264,15 +1220,10 @@ fn subtract_ranges(
     for include in included {
         let unit_kind = include.unit_kind.clone();
         let mut pieces = vec![include];
-        for exclude in excluded
-            .iter()
-            .filter(|range| range.unit_kind == unit_kind)
-        {
+        for exclude in excluded.iter().filter(|range| range.unit_kind == unit_kind) {
             let mut next = Vec::new();
             for piece in pieces {
-                if exclude.end_unit < piece.start_unit
-                    || exclude.start_unit > piece.end_unit
-                {
+                if exclude.end_unit < piece.start_unit || exclude.start_unit > piece.end_unit {
                     next.push(piece);
                     continue;
                 }
@@ -1307,9 +1258,7 @@ fn validate_and_normalize_ranges(
     ranges: Vec<SourceRangeInput>,
 ) -> Result<Vec<SourceRangeInput>, CommandError> {
     if ranges.len() > MAX_RANGES_PER_DOCUMENT {
-        return Err(invalid(
-            "A document selection contains too many ranges.",
-        ));
+        return Err(invalid("A document selection contains too many ranges."));
     }
     let normalized = normalize_ranges(ranges)?;
     for range in &normalized {
@@ -1327,12 +1276,7 @@ fn validate_and_normalize_ranges(
                 "SELECT COUNT(*) FROM document_source_units
                  WHERE document_id=?1 AND unit_kind=?2
                    AND unit_number BETWEEN ?3 AND ?4",
-                params![
-                    shape.id,
-                    range.unit_kind,
-                    range.start_unit,
-                    range.end_unit
-                ],
+                params![shape.id, range.unit_kind, range.start_unit, range.end_unit],
                 |row| row.get(0),
             )
             .map_err(CommandError::database)?;
@@ -1384,12 +1328,7 @@ fn measure_ranges(
                  FROM document_source_units
                  WHERE document_id=?1 AND unit_kind=?2
                    AND unit_number BETWEEN ?3 AND ?4",
-                params![
-                    shape.id,
-                    range.unit_kind,
-                    range.start_unit,
-                    range.end_unit
-                ],
+                params![shape.id, range.unit_kind, range.start_unit, range.end_unit],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(CommandError::database)?;
@@ -1397,14 +1336,10 @@ fn measure_ranges(
             return Err(source_set_changed());
         }
         units = units
-            .checked_add(
-                usize::try_from(count).map_err(|_| source_set_changed())?,
-            )
+            .checked_add(usize::try_from(count).map_err(|_| source_set_changed())?)
             .ok_or_else(source_set_changed)?;
         bytes = bytes
-            .checked_add(
-                usize::try_from(size).map_err(|_| source_set_changed())?,
-            )
+            .checked_add(usize::try_from(size).map_err(|_| source_set_changed())?)
             .ok_or_else(source_set_changed)?;
     }
     Ok((units, bytes))
@@ -1440,17 +1375,11 @@ fn load_document_shape(
         })
 }
 
-fn require_document(
-    connection: &Connection,
-    document_id: &str,
-) -> Result<(), CommandError> {
+fn require_document(connection: &Connection, document_id: &str) -> Result<(), CommandError> {
     load_document_shape(connection, document_id).map(|_| ())
 }
 
-fn require_collection(
-    connection: &Connection,
-    collection_id: &str,
-) -> Result<(), CommandError> {
+fn require_collection(connection: &Connection, collection_id: &str) -> Result<(), CommandError> {
     let exists: bool = connection
         .query_row(
             "SELECT EXISTS(
@@ -1480,9 +1409,7 @@ fn collection_parent_map(
         .map_err(CommandError::database)
 }
 
-fn validate_hierarchy(
-    parents: &BTreeMap<String, Option<String>>,
-) -> Result<(), CommandError> {
+fn validate_hierarchy(parents: &BTreeMap<String, Option<String>>) -> Result<(), CommandError> {
     if parents.len() > MAX_COLLECTIONS {
         return Err(invalid(
             "The document library contains too many collections.",
@@ -1494,15 +1421,11 @@ fn validate_hierarchy(
         let mut depth = 0usize;
         while let Some(node) = current {
             if !seen.insert(node.to_string()) {
-                return Err(invalid(
-                    "Document folders cannot contain themselves.",
-                ));
+                return Err(invalid("Document folders cannot contain themselves."));
             }
             depth += 1;
             if depth > MAX_COLLECTION_DEPTH {
-                return Err(invalid(
-                    "Document folders are nested too deeply.",
-                ));
+                return Err(invalid("Document folders are nested too deeply."));
             }
             current = parents.get(node).and_then(|value| value.as_deref());
             if current.is_some_and(|parent| !parents.contains_key(parent)) {
@@ -1563,11 +1486,7 @@ fn assert_organization_revision(
     }
 }
 
-fn bump_organization(
-    tx: &Transaction<'_>,
-    expected: i64,
-    now: i64,
-) -> Result<(), CommandError> {
+fn bump_organization(tx: &Transaction<'_>, expected: i64, now: i64) -> Result<(), CommandError> {
     let changed = tx
         .execute(
             "UPDATE document_collection_organization
@@ -1584,8 +1503,7 @@ fn bump_organization(
 }
 
 fn request_hash<T: Serialize>(input: &T) -> Result<String, CommandError> {
-    let bytes =
-        serde_json::to_vec(input).map_err(CommandError::serialization)?;
+    let bytes = serde_json::to_vec(input).map_err(CommandError::serialization)?;
     Ok(hash_bytes(&bytes))
 }
 
@@ -1629,8 +1547,7 @@ fn store_receipt<T: Serialize>(
     result: &T,
     now: i64,
 ) -> Result<(), CommandError> {
-    let json =
-        serde_json::to_string(result).map_err(CommandError::serialization)?;
+    let json = serde_json::to_string(result).map_err(CommandError::serialization)?;
     tx.execute(
         "INSERT INTO document_collection_operation_receipts(
              operation_id,request_sha256,result_json,created_at
@@ -1645,10 +1562,7 @@ fn validate_operation_id(value: &str) -> Result<(), CommandError> {
     validate_entity_id(value, "document collection operation")
 }
 
-fn validate_optional_id(
-    value: Option<&str>,
-    label: &str,
-) -> Result<(), CommandError> {
+fn validate_optional_id(value: Option<&str>, label: &str) -> Result<(), CommandError> {
     if let Some(value) = value {
         validate_entity_id(value, label)?;
     }
@@ -1680,13 +1594,7 @@ fn validate_revision(value: i64, label: &str) -> Result<(), CommandError> {
 fn valid_unit_kind(value: &str) -> bool {
     matches!(
         value,
-        "page"
-            | "slide"
-            | "chapter"
-            | "section"
-            | "segment"
-            | "image"
-            | "time_segment"
+        "page" | "slide" | "chapter" | "section" | "segment" | "image" | "time_segment"
     )
 }
 
@@ -1779,12 +1687,9 @@ mod tests {
             )
             .map_err(CommandError::database)?;
         for unit in 1..=units {
-            let locator = serde_json::to_string(&SourceLocator::new(
-                SourceUnitKind::Page,
-                vec![unit],
-                None,
-            )?)
-            .map_err(CommandError::serialization)?;
+            let locator =
+                serde_json::to_string(&SourceLocator::new(SourceUnitKind::Page, vec![unit], None)?)
+                    .map_err(CommandError::serialization)?;
             connection
                 .execute(
                     "INSERT INTO document_source_units(
@@ -1936,10 +1841,7 @@ mod tests {
                     },
                 )?;
                 assert!(stale.members.is_empty());
-                assert_eq!(
-                    stale.dispositions[0].reason,
-                    "range_source_changed"
-                );
+                assert_eq!(stale.dispositions[0].reason, "range_source_changed");
                 assert!(ensure_snapshot_current(connection, &snapshot).is_err());
                 Ok(())
             })
@@ -1953,8 +1855,7 @@ mod tests {
             .with_connection(|connection| {
                 let document = id('d');
                 seed_document(connection, &document, 5, 'a')?;
-                let root_organization =
-                    create_root(connection, '1', "Course", 1)?;
+                let root_organization = create_root(connection, '1', "Course", 1)?;
                 let root = root_organization.collections[0].clone();
                 let child_organization = create_collection(
                     connection,
@@ -1962,8 +1863,7 @@ mod tests {
                         operation_id: id('2'),
                         name: "Week 1".into(),
                         parent_id: Some(root.id.clone()),
-                        expected_organization_revision:
-                            root_organization.revision,
+                        expected_organization_revision: root_organization.revision,
                     },
                 )?;
                 let child = child_organization
@@ -1978,8 +1878,7 @@ mod tests {
                         operation_id: id('3'),
                         collection_id: child.id.clone(),
                         document_id: document.clone(),
-                        expected_organization_revision:
-                            child_organization.revision,
+                        expected_organization_revision: child_organization.revision,
                     },
                 )?;
                 let snapshot = resolve_selection(
@@ -1998,10 +1897,7 @@ mod tests {
                     },
                 )?;
                 assert_eq!(snapshot.members.len(), 1);
-                assert_eq!(
-                    snapshot.members[0].collection_references.len(),
-                    1
-                );
+                assert_eq!(snapshot.members[0].collection_references.len(), 1);
                 assert_eq!(
                     snapshot.members[0].ranges,
                     vec![
@@ -2017,10 +1913,7 @@ mod tests {
                         },
                     ]
                 );
-                assert_eq!(
-                    snapshot.organization_revision,
-                    organization.revision
-                );
+                assert_eq!(snapshot.organization_revision, organization.revision);
                 Ok(())
             })
             .unwrap();
@@ -2097,10 +1990,7 @@ mod tests {
                     },
                 )
                 .unwrap_err();
-                assert_eq!(
-                    stale.code,
-                    "document_collection_organization_changed"
-                );
+                assert_eq!(stale.code, "document_collection_organization_changed");
                 let organization = add_membership(
                     connection,
                     AddDocumentCollectionMembershipInput {

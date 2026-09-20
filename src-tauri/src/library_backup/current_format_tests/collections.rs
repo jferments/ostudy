@@ -57,11 +57,9 @@ pub(super) fn seed(database: &Database) {
 pub(super) fn verify(connection: &Connection) -> Result<(), CommandError> {
     let document = super::id(500);
     let present = connection
-        .query_row(
-            "SELECT id FROM documents WHERE id=?1",
-            [&document],
-            |row| row.get::<_, String>(0),
-        )
+        .query_row("SELECT id FROM documents WHERE id=?1", [&document], |row| {
+            row.get::<_, String>(0)
+        })
         .optional()
         .map_err(CommandError::database)?;
     if present.is_none() {
