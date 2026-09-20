@@ -124,7 +124,7 @@ describe("Document collections workspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
     expect(screen.getByRole("navigation", { name: "Document folder breadcrumbs" })).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Sources" }));
-    expect(await screen.findByText("Pages 1–3")).toBeTruthy();
+    expect((await screen.findAllByText("Pages 1–3")).length).toBeGreaterThan(0);
     expect(collections.getDocumentCollectionOrganization).toHaveBeenCalledTimes(1);
     expect(collections.resolveDocumentSourceSelection).not.toHaveBeenCalled();
 

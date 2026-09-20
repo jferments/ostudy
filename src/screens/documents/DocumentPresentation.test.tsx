@@ -13,6 +13,19 @@ vi.mock("../../ipc/documents", () => ({
   openDocumentSource: vi.fn(), deletePdfDocument: vi.fn(),
 }));
 vi.mock("../../ipc/studyGuides", () => ({ generateDocumentStudyGuide: vi.fn(), cancelDocumentStudyGuideGeneration: vi.fn() }));
+vi.mock("../../ipc/collections", () => ({
+  getDocumentCollectionOrganization: vi.fn().mockResolvedValue({
+    revision: 1, collections: [], memberships: [], ranges: [],
+  }),
+  createDocumentCollection: vi.fn(),
+  updateDocumentCollection: vi.fn(),
+  deleteDocumentCollection: vi.fn(),
+  addDocumentCollectionMembership: vi.fn(),
+  moveDocumentCollectionMembership: vi.fn(),
+  removeDocumentCollectionMembership: vi.fn(),
+  setDocumentCollectionRanges: vi.fn(),
+  resolveDocumentSourceSelection: vi.fn(),
+}));
 
 const documentId = "a".repeat(32);
 
