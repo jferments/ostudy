@@ -15,6 +15,9 @@ use tauri::State;
 
 pub(crate) mod composition;
 
+const MAX_COLLECTION_OVERLAY_DOC_BYTES: usize = 2 * 1024 * 1024;
+const MAX_COLLECTION_OVERLAY_TEXT_CHARS: usize = 500_000;
+
 use crate::{
     collections::{self, SelectedDocumentInput, SourceSelectionInput, SourceSetSnapshotDto},
     database::Database,
@@ -160,6 +163,55 @@ pub(crate) struct CollectionStudyGuide {
     pub published_at: i64,
 }
 
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CollectionStudyGuideOverlayKind {
+    GuideNote,
+    TopicNote,
+    TitleOverride,
+    BodyOverride,
+    Highlight,
+}
+
+impl CollectionStudyGuideOverlayKind {
+    fn as_db(self) -> &'static str {
+        match self {
+            Self::GuideNote => "guide_note",
+            Self::TopicNote => "topic_note",
+            Self::TitleOverride => "title_override",
+            Self::BodyOverride => "body_override",
+            Self::Highlight => "highlight",
+        }
+    }
+
+    fn content_bound(self) -> bool {
+        matches!(self, Self::TitleOverride | Self::BodyOverride | Self::Highlight)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SaveCollectionStudyGuideOverlayInput {
+    pub overlay_id: Option<String>,
+    pub collection_id: String,
+    pub guide_id: String,
+    pub block_key: Option<String>,
+    pub overlay_kind: CollectionStudyGuideOverlayKind,
+    pub base_content_hash: Option<String>,
+    pub rich_doc: Value,
+    pub plain_text: String,
+    pub expected_revision: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct DiscardCollectionStudyGuideOverlayInput {
+    pub overlay_id: String,
+    pub collection_id: String,
+    pub revision: i64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CollectionStudyGuideOverlay {
@@ -185,6 +237,22 @@ struct StoredTarget {
     revision: i64,
     deck_id: Option<String>,
     snapshot_id: String,
+}
+
+#[tauri::command]
+pub(crate) fn save_collection_study_guide_overlay(
+    database: State<'_, Database>,
+    input: SaveCollectionStudyGuideOverlayInput,
+) -> Result<CollectionStudyGuideOverlay, CommandError> {
+    save_collection_overlay(database.inner(), input)
+}
+
+#[tauri::command]
+pub(crate) fn discard_collection_study_guide_overlay(
+    database: State<'_, Database>,
+    input: DiscardCollectionStudyGuideOverlayInput,
+) -> Result<(), CommandError> {
+    discard_collection_overlay(database.inner(), input)
 }
 
 #[tauri::command]
@@ -216,6 +284,186 @@ pub(crate) fn begin_study_target_bundle(
     input: BeginStudyTargetBundleInput,
 ) -> Result<StudyTargetBundleStatus, CommandError> {
     begin_bundle(database.inner(), input)
+}
+
+fn save_collection_overlay(
+    database: &Database,
+    input: SaveCollectionStudyGuideOverlayInput,
+) -> Result<CollectionStudyGuideOverlay, CommandError> {
+    validate_entity_id(&input.collection_id, "document collection")?;
+    validate_entity_id(&input.guide_id, "collection study guide")?;
+    if let Some(overlay_id) = input.overlay_id.as_deref() {
+        validate_entity_id(overlay_id, "collection study-guide overlay")?;
+    }
+    if input.expected_revision.is_some_and(|revision| revision < 1) {
+        return Err(invalid("The collection study-guide overlay revision was invalid."));
+    }
+    match input.overlay_kind {
+        CollectionStudyGuideOverlayKind::GuideNote if input.block_key.is_some() => {
+            return Err(invalid("A collection guide note cannot target one section."));
+        }
+        CollectionStudyGuideOverlayKind::GuideNote => {}
+        _ if input.block_key.as_deref().is_none_or(str::is_empty) => {
+            return Err(invalid("A section overlay must target one collection guide block."));
+        }
+        _ => {}
+    }
+    let encoded = serde_json::to_string(&input.rich_doc).map_err(CommandError::serialization)?;
+    if encoded.len() > MAX_COLLECTION_OVERLAY_DOC_BYTES {
+        return Err(invalid("That collection study-guide annotation is too large."));
+    }
+    crate::cards::validate_document(&input.rich_doc).map_err(|error| {
+        CommandError::new(
+            "invalid_study_target",
+            format!(
+                "The collection study-guide annotation is not valid rich content: {}",
+                error.message
+            ),
+        )
+    })?;
+    let plain_text = input
+        .plain_text
+        .chars()
+        .take(MAX_COLLECTION_OVERLAY_TEXT_CHARS)
+        .collect::<String>()
+        .trim()
+        .to_string();
+    let guide = load_collection_study_guide(database, &input.collection_id)?.ok_or_else(|| {
+        CommandError::new(
+            "collection_study_guide_not_found",
+            "That collection study guide is no longer available.",
+        )
+    })?;
+    if guide.id != input.guide_id {
+        return Err(CommandError::new(
+            "collection_study_guide_changed",
+            "The collection study guide changed before this edit could be saved.",
+        ));
+    }
+    let block_hash = input.block_key.as_deref().and_then(|key| {
+        guide
+            .content
+            .sections
+            .iter()
+            .find(|section| section.block_key == key)
+            .map(|section| section.content_hash.as_str())
+    });
+    if input.overlay_kind != CollectionStudyGuideOverlayKind::GuideNote && block_hash.is_none() {
+        return Err(invalid("The selected collection study-guide section no longer exists."));
+    }
+    if input.overlay_kind.content_bound() {
+        let expected_hash = input.base_content_hash.as_deref().ok_or_else(|| {
+            invalid("A content edit must reference the generated section it edits.")
+        })?;
+        if expected_hash.len() != 64 || block_hash != Some(expected_hash) {
+            return Err(CommandError::new(
+                "collection_study_guide_overlay_base_changed",
+                "The collection study-guide section changed before this edit could be saved.",
+            ));
+        }
+    }
+    let now = unix_time_millis()?;
+    let overlay_id = match input.overlay_id.clone() {
+        Some(id) => id,
+        None => database.with_connection(|connection| generate_id(connection))?,
+    };
+    database.with_connection(|connection| {
+        let target_id: String = connection
+            .query_row(
+                "SELECT target_id FROM study_target_guides
+                 WHERE id=?1 AND state='active'",
+                [input.guide_id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)?;
+        if let Some(expected_revision) = input.expected_revision {
+            let changed = connection
+                .execute(
+                    "UPDATE study_target_guide_overlays
+                     SET guide_id=?1,block_key=?2,overlay_kind=?3,base_content_hash=?4,
+                         rich_doc_json=?5,plain_text=?6,state='active',
+                         revision=revision+1,updated_at=?7
+                     WHERE id=?8 AND target_id=?9 AND revision=?10",
+                    params![
+                        input.guide_id,
+                        input.block_key,
+                        input.overlay_kind.as_db(),
+                        input.base_content_hash,
+                        encoded,
+                        plain_text,
+                        now,
+                        overlay_id,
+                        target_id,
+                        expected_revision,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            if changed != 1 {
+                return Err(CommandError::new(
+                    "collection_study_guide_overlay_changed",
+                    "This collection study-guide annotation changed before it could be saved.",
+                ));
+            }
+        } else {
+            connection
+                .execute(
+                    "INSERT INTO study_target_guide_overlays(
+                         id,target_id,guide_id,block_key,overlay_kind,base_content_hash,
+                         rich_doc_json,plain_text,state,revision,created_at,updated_at
+                     ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,'active',1,?9,?9)",
+                    params![
+                        overlay_id,
+                        target_id,
+                        input.guide_id,
+                        input.block_key,
+                        input.overlay_kind.as_db(),
+                        input.base_content_hash,
+                        encoded,
+                        plain_text,
+                        now,
+                    ],
+                )
+                .map_err(CommandError::database)?;
+        }
+        Ok(())
+    })?;
+    load_collection_guide_overlays(database, &input.guide_id, &guide.target_id)?
+        .into_iter()
+        .find(|overlay| overlay.id == overlay_id)
+        .ok_or_else(|| invalid("The saved collection study-guide annotation could not be reloaded."))
+}
+
+fn discard_collection_overlay(
+    database: &Database,
+    input: DiscardCollectionStudyGuideOverlayInput,
+) -> Result<(), CommandError> {
+    validate_entity_id(&input.collection_id, "document collection")?;
+    validate_entity_id(&input.overlay_id, "collection study-guide overlay")?;
+    if input.revision < 1 {
+        return Err(invalid("The collection study-guide overlay revision was invalid."));
+    }
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        let changed = connection
+            .execute(
+                "UPDATE study_target_guide_overlays
+                 SET state='discarded',revision=revision+1,updated_at=?1
+                 WHERE id=?2 AND revision=?3
+                   AND target_id IN (
+                       SELECT id FROM study_targets
+                       WHERE target_kind='collection' AND collection_id=?4
+                   )",
+                params![now, input.overlay_id, input.revision, input.collection_id],
+            )
+            .map_err(CommandError::database)?;
+        if changed != 1 {
+            return Err(CommandError::new(
+                "collection_study_guide_overlay_changed",
+                "This collection study-guide annotation changed before it could be removed.",
+            ));
+        }
+        Ok(())
+    })
 }
 
 pub(crate) fn load_collection_study_guide(

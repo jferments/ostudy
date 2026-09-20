@@ -323,6 +323,8 @@ pub fn run() {
             knowledge::commands::prepare_collection_synthesis,
             study_materials::get_study_target_bundle,
             study_materials::get_collection_study_guide,
+            study_materials::save_collection_study_guide_overlay,
+            study_materials::discard_collection_study_guide_overlay,
             study_materials::begin_study_target_bundle,
             study_materials::composition::compose_study_target_bundle,
             tutor::commands::list_tutor_conversations,

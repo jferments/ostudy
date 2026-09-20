@@ -83,6 +83,25 @@ export interface CollectionStudyGuideOverlay {
   updatedAt: number;
 }
 
+export type CollectionStudyGuideOverlayKind =
+  | "guide_note"
+  | "topic_note"
+  | "title_override"
+  | "body_override"
+  | "highlight";
+
+export interface SaveCollectionStudyGuideOverlayInput {
+  overlayId?: string;
+  collectionId: string;
+  guideId: string;
+  blockKey?: string;
+  overlayKind: CollectionStudyGuideOverlayKind;
+  baseContentHash?: string;
+  richDoc: unknown;
+  plainText: string;
+  expectedRevision?: number;
+}
+
 export interface CollectionStudyGuide {
   id: string;
   targetId: string;
@@ -106,6 +125,22 @@ export interface BeginStudyTargetBundleInput {
   target: StudyTargetRef;
   outputPolicy?: StudyTargetOutputPolicy;
   recreateArtifacts?: StudyTargetArtifactKind[];
+}
+
+export async function saveCollectionStudyGuideOverlay(
+  input: SaveCollectionStudyGuideOverlayInput,
+): Promise<CollectionStudyGuideOverlay> {
+  return invoke<CollectionStudyGuideOverlay>("save_collection_study_guide_overlay", { input });
+}
+
+export async function discardCollectionStudyGuideOverlay(
+  collectionId: string,
+  overlayId: string,
+  revision: number,
+): Promise<void> {
+  return invoke<void>("discard_collection_study_guide_overlay", {
+    input: { collectionId, overlayId, revision },
+  });
 }
 
 export async function prepareCollectionStudyGuidePdf(
