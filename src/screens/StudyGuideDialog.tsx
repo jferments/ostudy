@@ -11,6 +11,7 @@ import {
   type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuideSectionContent, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import type { TutorTarget } from "../ipc/tutor";
+import { StudyGuideSourceFigures } from "./StudyGuideSourceFigures";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
 import { useOptionalTutor } from "./tutor/TutorContext";
 import { Icon } from "../ui/icons/Icon";
@@ -256,7 +257,10 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
       <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
       <OverflowMenu label={`Section actions for ${section.title}`} items={menuItems} className={styles.sectionMenu} />
     </header>
-    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent content={section.content} />}
+    {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StudyGuideStructuredContent
+          content={section.content}
+          figureSource={{ documentId, locator: section.sourceLocator }}
+        />}
     {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
     {conflict ? <InlineNotice kind="warning">
       <strong>Older section edit needs review.</strong>
@@ -266,7 +270,13 @@ function StudyGuideSectionView({ section, overlays, guideId, documentId, project
     </InlineNotice> : null}
   </section>;
 }
-export function StudyGuideStructuredContent({ content }: { content: StudyGuideSectionContent }) {
+export function StudyGuideStructuredContent({
+  content,
+  figureSource = null,
+}: {
+  content: StudyGuideSectionContent;
+  figureSource?: { documentId: string; locator: import("../ipc/studyGuides").SourceLocator } | null;
+}) {
   return <div className={styles.structuredSection}>
     <StudyMarkdown text={content.overview} /><GuideList title="Key points" values={content.keyPoints} />
     {content.callouts.length > 0 ? <div className={styles.callouts}>
@@ -301,7 +311,11 @@ export function StudyGuideStructuredContent({ content }: { content: StudyGuideSe
       </article>)}
     </div></section> : null}
     <GuideList title="Common misconceptions" values={content.commonMisconceptions} />
-    {content.visualExplanations.map((visual) => <aside key={`${visual.title}-${visual.explanation.slice(0, 24)}`} className={styles.visualNote}><strong><StudyMarkdown text={visual.title} inline /></strong><StudyMarkdown text={visual.explanation} /></aside>)}
+    <StudyGuideSourceFigures
+      documentId={figureSource?.documentId ?? null}
+      locator={figureSource?.locator ?? null}
+      explanations={content.visualExplanations}
+    />
     {content.retrievalChecks.length > 0 ? <section><h3>Check yourself</h3><div className={styles.retrievalChecks}>
       {content.retrievalChecks.map((check) => <Disclosure key={check.prompt} className={styles.retrievalCheck}
         title={<StudyMarkdown text={check.prompt} inline />}>

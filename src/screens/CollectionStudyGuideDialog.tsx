@@ -415,7 +415,12 @@ function CollectionSection({
       {override ? (
         <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div>
       ) : (
-        <StudyGuideStructuredContent content={section.content} />
+        <StudyGuideStructuredContent
+          content={section.content}
+          figureSource={section.sourceDocumentId && section.sourceLocator
+            ? { documentId: section.sourceDocumentId, locator: section.sourceLocator }
+            : null}
+        />
       )}
       {note?.plainText ? (
         <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside>
