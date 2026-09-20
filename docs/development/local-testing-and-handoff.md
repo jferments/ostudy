@@ -41,6 +41,23 @@ Stop if any step fails. A mismatched fetched head means the branch moved since t
 
 For routine updates to an existing clean local task branch, fetch, switch to that branch, and use `git pull --ff-only`. Do not recommend `reset --hard`, automatic stashing, force-pushing, or deleting a local branch to make checkout convenient. A squash merge may leave local ancestry that prevents safe `branch -d`; inspect it rather than substituting force deletion.
 
+### If a retained library reports a newer schema
+
+Do **not** reset, uninstall, clear application data, edit `PRAGMA user_version`, or delete migration rows. A newer-schema refusal is intentionally read-only.
+
+First compare the source you actually built with the expected merged/PR SHA:
+
+```bash
+git status --short
+git fetch origin --prune
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+If the checkout is an older clean `main`, update it with `git pull --ff-only`, then rebuild with `./scripts/build.sh` before running `./run-app.sh`. If local edits exist, preserve them and use the detached exact-SHA review-worktree procedure above instead of forcing the checkout.
+
+The native refusal identifies both the database schema and the maximum schema supported by the running build. For example, a library at schema 21 paired with a build that supports only schema 17 means the executable is older than the library; it does **not** mean the library should be downgraded. A current build that supports schema 21 should proceed through ordinary read-only admission and startup without this future-schema error.
+
 ## Linux: ordinary test-drive
 
 On an already configured machine, from the selected checkout:

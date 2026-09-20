@@ -43,8 +43,8 @@ pub(super) fn validate_public_input(connection: &Connection) -> Result<i64, Stri
         );
         if recorded.0 > LATEST_SCHEMA_VERSION {
             return Err(format!(
-                "This database was created by a newer oStudy version (public schema {}). The database was not modified.",
-                recorded.0
+                "This database uses public schema {}, but this oStudy build supports through public schema {}. Update or check out a build that supports schema {} before retrying. The database was not modified.",
+                recorded.0, LATEST_SCHEMA_VERSION, recorded.0
             ));
         }
         let expected = MIGRATIONS.get(count).ok_or_else(|| {
