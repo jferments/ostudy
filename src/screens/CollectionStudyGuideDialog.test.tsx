@@ -15,6 +15,8 @@ vi.mock("../ipc/externalFiles", () => ({
 vi.mock("../ipc/studyMaterials", () => ({
   getCollectionStudyGuide: vi.fn(),
   prepareCollectionStudyGuidePdf: vi.fn(),
+  saveCollectionStudyGuideOverlay: vi.fn(),
+  discardCollectionStudyGuideOverlay: vi.fn(),
 }));
 
 const collectionId = "a".repeat(32);
@@ -96,6 +98,21 @@ beforeEach(() => {
     displayName: "cardiovascular-unit-study-guide.pdf",
   } as never);
   vi.mocked(externalFiles.releasePreparedExport).mockResolvedValue(undefined);
+  vi.mocked(studyMaterials.saveCollectionStudyGuideOverlay).mockResolvedValue({
+    id: "5".repeat(32),
+    guideId: guide.id,
+    targetId: guide.targetId,
+    blockKey: guide.content.sections[0].blockKey,
+    overlayKind: "body_override",
+    baseContentHash: guide.content.sections[0].contentHash,
+    richDoc: { type: "doc", content: [] },
+    plainText: "Edited preload section.",
+    state: "active",
+    revision: 1,
+    createdAt: 3,
+    updatedAt: 3,
+  });
+  vi.mocked(studyMaterials.discardCollectionStudyGuideOverlay).mockResolvedValue(undefined);
 });
 
 it("renders collection sections through the shared semantic reader with one overflow menu", async () => {
@@ -145,4 +162,58 @@ it("exports the same collection guide snapshot through the native PDF boundary",
     );
   });
   expect(externalFiles.releasePreparedExport).toHaveBeenCalledWith("3".repeat(32));
+});
+
+
+it("saves source-bound section overrides from the overflow menu with the exact base hash", async () => {
+  vi.mocked(studyMaterials.getCollectionStudyGuide)
+    .mockResolvedValueOnce(guide)
+    .mockResolvedValue(guide);
+  render(
+    <OverlayProvider>
+      <CollectionStudyGuideDialog
+        collectionId={collectionId}
+        collectionTitle="Cardiovascular unit"
+        showToast={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </OverlayProvider>,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: /Section actions for Preload/u }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Edit section" }));
+  const editor = screen.getByRole("textbox", { name: "Edit generated section" });
+  fireEvent.change(editor, { target: { value: "Edited preload section." } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => {
+    expect(studyMaterials.saveCollectionStudyGuideOverlay).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionId,
+        guideId: guide.id,
+        blockKey: guide.content.sections[0].blockKey,
+        overlayKind: "body_override",
+        baseContentHash: guide.content.sections[0].contentHash,
+        plainText: "Edited preload section.",
+      }),
+    );
+  });
+});
+
+it("keeps section note actions inside the overflow menu", async () => {
+  render(
+    <OverlayProvider>
+      <CollectionStudyGuideDialog
+        collectionId={collectionId}
+        collectionTitle="Cardiovascular unit"
+        showToast={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </OverlayProvider>,
+  );
+  expect(await screen.findByRole("heading", { name: "Preload" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Add note" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /Section actions for Preload/u }));
+  expect(await screen.findByRole("menuitem", { name: "Add note" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Edit section" })).toBeTruthy();
 });
