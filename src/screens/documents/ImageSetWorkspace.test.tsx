@@ -150,7 +150,9 @@ describe("ImageSetWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add image" }));
     expect(await screen.findByText("This selection is not a readable image.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Import image set" })).toBeDisabled();
+    expect(
+      (screen.getByRole("button", { name: "Import image set" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Retry inspection" }));
     expect(await screen.findByText(/800 × 600/u)).toBeTruthy();

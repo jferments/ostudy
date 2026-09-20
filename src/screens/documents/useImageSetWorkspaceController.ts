@@ -258,7 +258,7 @@ export function useImageSetWorkspaceController({
     } catch (error: unknown) {
       const message = `Source saved; local image preparation failed: ${getErrorMessage(error)}`;
       setErrorMessage(message);
-      showToast("warning", message);
+      showToast("error", message);
       return false;
     }
   }

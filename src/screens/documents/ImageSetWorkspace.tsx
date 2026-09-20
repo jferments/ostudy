@@ -77,6 +77,7 @@ function PendingRow({
   index,
   total,
   disabled,
+  allowMove = true,
   onMove,
   onRotate,
   onCrop,
@@ -87,6 +88,7 @@ function PendingRow({
   index: number;
   total: number;
   disabled: boolean;
+  allowMove?: boolean;
   onMove: (destination: number) => void;
   onRotate: (delta: number) => void;
   onCrop: (crop: ImageSetInclusionCrop | null) => void;
@@ -107,10 +109,10 @@ function PendingRow({
         )}
       </div>
       <div className="tw:flex tw:flex-wrap tw:gap-2">
-        <Button size="small" variant="ghost" disabled={disabled || index === 0} onClick={() => onMove(index - 1)}>
+        <Button size="small" variant="ghost" disabled={disabled || !allowMove || index === 0} onClick={() => onMove(index - 1)}>
           Up
         </Button>
-        <Button size="small" variant="ghost" disabled={disabled || index === total - 1} onClick={() => onMove(index + 1)}>
+        <Button size="small" variant="ghost" disabled={disabled || !allowMove || index === total - 1} onClick={() => onMove(index + 1)}>
           Down
         </Button>
         <Button size="small" variant="ghost" disabled={disabled} onClick={() => onRotate(-1)}>
@@ -315,6 +317,7 @@ export function ImageSetWorkspace(props: ImageSetWorkspaceProps) {
                     index={controller.members.length + index}
                     total={controller.members.length + controller.pending.length}
                     disabled={busy}
+                    allowMove={false}
                     onMove={() => undefined}
                     onRotate={(delta) => controller.rotatePending(member.id, delta)}
                     onCrop={(crop) => controller.setPendingInclusion(member.id, crop)}
@@ -354,7 +357,7 @@ export function ImageSetWorkspace(props: ImageSetWorkspaceProps) {
                     <label className="tw:flex tw:min-h-11 tw:items-center tw:gap-2 tw:text-sm">
                       <Switch
                         checked={controller.includeInterface}
-                        disabled={busy || !controller.details.prepared}
+                        disabled={busy || !controller.details?.prepared}
                         onCheckedChange={controller.setIncludeInterface}
                       />
                       Include interface content
