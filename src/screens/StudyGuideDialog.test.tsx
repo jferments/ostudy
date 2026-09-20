@@ -318,11 +318,29 @@ describe("StudyGuideDialog", () => {
     if (!accepted) expect(showToast).not.toHaveBeenCalled();
   });
 
+  async function selectSectionAction(label: string): Promise<void> {
+    fireEvent.click(await screen.findByRole("button", { name: /Section actions for/u }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+  }
+
+  it("collapses per-section controls into one accessible overflow menu", async () => {
+    mockedGetGuide.mockResolvedValue(guide());
+    renderGuide();
+    const trigger = await screen.findByRole("button", { name: /Section actions for/u });
+    expect(screen.queryByRole("button", { name: "Study linked cards (2)" })).toBeNull();
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole("menu", { name: /Section actions for/u });
+    expect(within(menu).getByRole("menuitem", { name: "Study linked cards (2)" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Open source" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Add note" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Edit section" })).toBeTruthy();
+  });
+
   it("routes exact topic-linked cards through the app practice capability", async () => {
     mockedGetGuide.mockResolvedValue(guide());
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Study linked cards (2)" }));
+    await selectSectionAction("Study linked cards (2)");
 
     await waitFor(() => {
       expect(mockedCardIds).toHaveBeenCalledWith(documentId, [topicId]);
@@ -348,7 +366,7 @@ describe("StudyGuideDialog", () => {
     });
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add note" }));
+    await selectSectionAction("Add note");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "Remember the relationship to end-diastolic volume." },
     });
@@ -376,7 +394,7 @@ describe("StudyGuideDialog", () => {
     renderGuide({ showToast });
 
     expect(await screen.findByText("Remember end-diastolic volume.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Remove note" }));
+    await selectSectionAction("Remove note");
 
     await waitFor(() => {
       expect(mockedDiscardOverlay).toHaveBeenCalledWith("9".repeat(32), 3);
@@ -389,7 +407,7 @@ describe("StudyGuideDialog", () => {
     mockedGetGuide.mockResolvedValueOnce(withNote).mockResolvedValueOnce(guide());
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Edit note" }));
+    await selectSectionAction("Edit note");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 

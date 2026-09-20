@@ -34,6 +34,7 @@ const MAX_ITEM_CHARS: usize = 20_000;
 const MAX_TERM_CHARS: usize = 1_000;
 const MAX_RICH_DOC_BYTES: usize = 2 * 1024 * 1024;
 const MAX_OVERLAY_TEXT_CHARS: usize = 500_000;
+const MAX_DISPLAY_TITLE_CHARS: usize = 120;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -552,7 +553,7 @@ pub(crate) fn load_document_study_guide(
                     topic_id,
                     parent_topic_id: topic.parent_topic_id.clone(),
                     sort_index: to_usize(sort_index)?,
-                    title: topic.title.clone(),
+                    title: guide_display_title(&topic.title),
                     topic_summary: topic.summary.clone(),
                     content: deserialize_json(&content_json)?,
                     content_text,
@@ -564,6 +565,8 @@ pub(crate) fn load_document_study_guide(
         Ok(sections)
     })?;
     let overlays = load_document_study_guide_overlays(database, &header.0, Some(guide_id))?;
+    let mut overview: StudyGuideOverview = deserialize_json(&header.7)?;
+    overview.summary = guide_display_summary(&overview.summary, &sections);
 
     Ok(DocumentStudyGuide {
         id: guide_id.to_string(),
@@ -574,7 +577,7 @@ pub(crate) fn load_document_study_guide(
         schema_version: header.4,
         prompt_version: header.5,
         assembly_version: header.6,
-        overview: deserialize_json(&header.7)?,
+        overview,
         overview_text: header.8,
         sections,
         overlays,
@@ -1136,6 +1139,78 @@ fn validate_overlay_scope(
     Ok(())
 }
 
+fn guide_display_title(value: &str) -> String {
+    let clean = collapse_display_whitespace(value);
+    let mut segments = Vec::new();
+    let mut seen = HashSet::new();
+    for segment in clean
+        .split(" / ")
+        .flat_map(|part| part.split("; "))
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+    {
+        let identity = segment.to_ascii_lowercase();
+        if seen.insert(identity) {
+            segments.push(segment.to_string());
+        }
+    }
+    if segments.len() <= 1 {
+        return compact_display_label(&clean, MAX_DISPLAY_TITLE_CHARS);
+    }
+    let mut candidate = if segments.len() == 2 {
+        format!("{} and {}", segments[0], segments[1])
+    } else {
+        format!("{}, {}, and related topics", segments[0], segments[1])
+    };
+    if candidate.chars().count() > MAX_DISPLAY_TITLE_CHARS && segments.len() > 2 {
+        candidate = format!("{} and related topics", segments[0]);
+    }
+    compact_display_label(&candidate, MAX_DISPLAY_TITLE_CHARS)
+}
+
+fn guide_display_summary(summary: &str, sections: &[DocumentStudyGuideSection]) -> String {
+    let clean = collapse_display_whitespace(summary);
+    let separator_count = clean.matches(" / ").count() + clean.matches("; ").count();
+    if separator_count < 4 && clean.chars().count() <= 520 {
+        return clean;
+    }
+    match sections {
+        [] => "A source-grounded overview of the selected material.".to_string(),
+        [section] => format!("This guide focuses on {}.", section.title),
+        _ => format!(
+            "This guide is organized into {} source-grounded sections, beginning with {}.",
+            sections.len(), sections[0].title
+        ),
+    }
+}
+
+fn collapse_display_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn compact_display_label(value: &str, maximum: usize) -> String {
+    if value.chars().count() <= maximum {
+        return value.to_string();
+    }
+    let mut result = String::new();
+    for word in value.split_whitespace() {
+        let extra = word.chars().count() + usize::from(!result.is_empty());
+        if result.chars().count().saturating_add(extra).saturating_add(3) > maximum {
+            break;
+        }
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(word);
+    }
+    if result.is_empty() {
+        value.chars().take(maximum).collect()
+    } else {
+        result.push_str("...");
+        result
+    }
+}
+
 fn overview_plain_text(overview: &StudyGuideOverview) -> String {
     let mut lines = vec![overview.summary.clone()];
     lines.extend(overview.learning_objectives.iter().cloned());
@@ -1270,6 +1345,33 @@ mod tests {
         assert_eq!(first_json, second_json);
         assert_eq!(hash_text(&first_json), hash_text(&second_json));
         assert!(section_plain_text(&first).contains("Sarcomere stretch"));
+    }
+
+    #[test]
+    fn display_titles_compact_topic_inventories_without_mutating_learning_topics() {
+        let source = "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol";
+        assert_eq!(
+            guide_display_title(source),
+            "ASCVD risk reduction, Angina pectoris treatment, and related topics"
+        );
+        assert_eq!(source, "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol");
+    }
+
+    #[test]
+    fn display_overview_replaces_inventory_wall_with_reader_prose() {
+        let mut section = DocumentStudyGuideSection {
+            topic_id: "a".repeat(32), parent_topic_id: None, sort_index: 0,
+            title: "ASCVD risk reduction and related topics".to_string(),
+            topic_summary: String::new(), content: content(),
+            content_text: String::new(), content_hash: "b".repeat(64),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
+        };
+        section.title = guide_display_title(&section.title);
+        let summary = "A / B / C / D / E / F / G";
+        assert_eq!(
+            guide_display_summary(summary, &[section]),
+            "This guide focuses on ASCVD risk reduction and related topics."
+        );
     }
 
     #[test]

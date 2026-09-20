@@ -10,8 +10,11 @@ import {
   getDocumentTopicCardProjection, prepareDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
   type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
 } from "../ipc/studyGuides";
+import type { TutorTarget } from "../ipc/tutor";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
+import { useOptionalTutor } from "./tutor/TutorContext";
 import { Icon } from "../ui/icons/Icon";
+import { OverflowMenu, type OverflowMenuItem } from "../ui/overlays/OverflowMenu";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { InlineWorkspace } from "../ui/overlays/Dialog";
 import { EmptyState, LoadingState } from "../ui/primitives/EmptyState";
@@ -230,22 +233,28 @@ interface StudyGuideSectionViewProps {
   onDiscardOverlay: (overlay: StudyGuideOverlay, successMessage: string) => void; onStudy: () => void; onOpenSource: () => void;
 }
 function StudyGuideSectionView({ section, overlays, guideId, documentId, projection, actionsDisabled, onEditNote, onEditSection, onDiscardOverlay, onStudy, onOpenSource }: StudyGuideSectionViewProps) {
+  const tutor = useOptionalTutor();
   const note = findEditingOverlay(overlays, section.topicId, "note", guideId);
   const override = findEditingOverlay(overlays, section.topicId, "override", guideId);
   const conflict = overlays.find((overlay) => overlay.topicId === section.topicId && overlay.overlayKind === "body_override" && overlay.state === "conflicted");
+  const tutorTarget: TutorTarget = { title: section.title, scope: { kind: "guide", id: documentId },
+    focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" };
+  const menuItems: OverflowMenuItem[] = [
+    { id: "study", label: `Study linked cards${projection ? ` (${projection.cardCount})` : ""}`, disabled: !projection || projection.cardCount === 0, onSelect: onStudy },
+    ...(tutor ? [{ id: "tutor", label: "Ask Tutor about this section", disabled: actionsDisabled || tutor.busy || tutor.pending !== null,
+      onSelect: () => tutor.openContext(tutorTarget) }] : []),
+    { id: "source", label: "Open source", onSelect: onOpenSource },
+    { id: "note", label: note ? "Edit note" : "Add note", disabled: actionsDisabled, onSelect: onEditNote },
+    { id: "edit", label: override ? "Edit section override" : "Edit section", disabled: actionsDisabled, onSelect: onEditSection },
+    ...(note ? [{ id: "remove-note", label: "Remove note", destructive: true, disabled: actionsDisabled,
+      onSelect: () => onDiscardOverlay(note, "Topic note removed.") }] : []),
+    ...(override ? [{ id: "reset-section", label: "Reset section edit", destructive: true, disabled: actionsDisabled,
+      onSelect: () => onDiscardOverlay(override, "Section edit reset.") }] : []),
+  ];
   return <section id={`topic-${section.topicId}`} className={styles.section}>
     <header className={styles.sectionHeader}>
-      <div><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
-      <div className={styles.sectionActions}>
-        <TutorEntryButton disabled={actionsDisabled} target={{ title: section.title, scope: { kind: "guide", id: documentId },
-          focus: { kind: "guide", documentId, guideId, topicId: section.topicId, contentHash: section.contentHash }, mode: "explain" }} />
-        <Button variant="secondary" onClick={onOpenSource}>Open source</Button>
-        <Button variant="secondary" onClick={onEditNote}>{note ? "Edit note" : "Add note"}</Button>
-        {note ? <Button variant="secondary" disabled={actionsDisabled} onClick={() => onDiscardOverlay(note, "Topic note removed.")}>Remove note</Button> : null}
-        <Button variant="secondary" onClick={onEditSection}>{override ? "Edit override" : "Edit section"}</Button>
-        {override ? <Button variant="secondary" disabled={actionsDisabled} onClick={() => onDiscardOverlay(override, "Section edit reset.")}>Reset section edit</Button> : null}
-        <Button variant="primary" disabled={!projection || projection.cardCount === 0} onClick={onStudy}>Study linked cards{projection ? ` (${projection.cardCount})` : ""}</Button>
-      </div>
+      <div className={styles.sectionHeading}><p className={styles.sourceLabel}>{formatSourceLocator(section.sourceLocator)}</p><h2><StudyMarkdown text={section.title} inline /></h2></div>
+      <OverflowMenu label={`Section actions for ${section.title}`} items={menuItems} className={styles.sectionMenu} />
     </header>
     {override?.state === "active" ? <div className={styles.overrideText}><StudyMarkdown text={override.plainText} /></div> : <StructuredSection section={section} />}
     {note?.plainText ? <aside className={styles.personalNote}><strong>My note</strong><StudyMarkdown text={note.plainText} /></aside> : null}
