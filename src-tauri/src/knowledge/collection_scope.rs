@@ -331,7 +331,7 @@ mod tests {
                      document_id,chunk_index,text,full_text,source_locator_json,
                      visual_asset_ids_json,element_types_json,heading_context,token_estimate,
                      is_oversized,content_sha256,canonical_schema_version,created_at,updated_at
-                 ) VALUES(?1,?2,?3,?3,?4,'[]','["paragraph"]',NULL,2,0,?5,1,1,1)",
+                 ) VALUES(?1,?2,?3,?3,?4,'[]','[\"paragraph\"]',NULL,2,0,?5,1,1,1)",
                 params![document, unit - 1, text, locator_json, text_hash],
             ).map_err(CommandError::database)?;
             let mut source = SourceRecord {
