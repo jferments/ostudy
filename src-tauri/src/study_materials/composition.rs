@@ -234,7 +234,7 @@ fn pending_artifacts(
                      WHEN 'flashcards' THEN 0 ELSE 1 END",
             )
             .map_err(CommandError::database)?;
-        statement
+        let artifacts = statement
             .query_map([operation_id], |row| row.get::<_, String>(0))
             .map_err(CommandError::database)?
             .map(|row| {
@@ -248,7 +248,8 @@ fn pending_artifacts(
                         )),
                     })
             })
-            .collect()
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        Ok(artifacts)
     })
 }
 
@@ -468,7 +469,13 @@ fn source_note_candidates(
             let (note_id, note_revision, locator_json) = row.map_err(CommandError::database)?;
             let locator: SourceLocator =
                 serde_json::from_str(&locator_json).map_err(CommandError::serialization)?;
-            locator.validate()?;
+            let source_unit_count = usize::try_from(member.source_unit_count).map_err(|_| {
+                CommandError::new(
+                    "invalid_document_source",
+                    "A collection member has an invalid source-unit count.",
+                )
+            })?;
+            locator.validate_within(source_unit_count)?;
             if locator_allowed(member, &locator) {
                 candidates.push(SourceBundleNote {
                     document_id: member.document_id.clone(),

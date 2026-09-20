@@ -13,8 +13,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use tauri::State;
 
-mod composition;
-pub(crate) use composition::compose_study_target_bundle;
+pub(crate) mod composition;
 
 use crate::{
     collections::{self, SelectedDocumentInput, SourceSelectionInput, SourceSetSnapshotDto},
