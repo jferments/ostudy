@@ -12,7 +12,7 @@ import { providerStyles as styles } from "./documents/presentation";
 interface DocumentsSectionProps {
   refreshDecks: () => Promise<unknown>;
   onPracticeCards: (cardIds: string[]) => Promise<void>;
-  onOpenDeck: (deckId: string) => void;
+  onOpenDeck?: (deckId: string) => void;
   showToast: ShowToast;
 }
 

@@ -21,7 +21,7 @@ import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
-  onOpenDeck: (deckId: string) => void;
+  onOpenDeck?: (deckId: string) => void;
   showToast: ShowToast;
   headerSupplement?: ReactNode;
 }
