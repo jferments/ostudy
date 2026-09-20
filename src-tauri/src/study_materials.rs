@@ -301,10 +301,9 @@ fn begin_bundle(
         ));
     }
 
-    let snapshot =
-        database.with_connection(|connection| resolve_target_snapshot(connection, &input.target))?;
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(CommandError::serialization)?;
+    let snapshot = database
+        .with_connection(|connection| resolve_target_snapshot(connection, &input.target))?;
+    let snapshot_json = serde_json::to_string(&snapshot).map_err(CommandError::serialization)?;
     let policy_json =
         serde_json::to_string(&input.output_policy).map_err(CommandError::serialization)?;
     let request_hash = hash_bytes(
@@ -721,10 +720,12 @@ fn load_target(
     };
     let kind = StudyTargetKind::from_db(&kind)?;
     let source_id = match kind {
-        StudyTargetKind::Document => document_id
-            .ok_or_else(|| invalid("A document target lost its source identity."))?,
-        StudyTargetKind::Collection => collection_id
-            .ok_or_else(|| invalid("A collection target lost its source identity."))?,
+        StudyTargetKind::Document => {
+            document_id.ok_or_else(|| invalid("A document target lost its source identity."))?
+        }
+        StudyTargetKind::Collection => {
+            collection_id.ok_or_else(|| invalid("A collection target lost its source identity."))?
+        }
     };
     let stored_ref = StudyTargetRef {
         kind,
@@ -740,10 +741,7 @@ fn load_target(
     }))
 }
 
-fn target_title(
-    connection: &Connection,
-    target: &StudyTargetRef,
-) -> Result<String, CommandError> {
+fn target_title(connection: &Connection, target: &StudyTargetRef) -> Result<String, CommandError> {
     let title = match target.kind {
         StudyTargetKind::Document => connection
             .query_row(
@@ -839,8 +837,9 @@ mod tests {
         database
             .with_connection(|connection| {
                 let document_id = "d".repeat(32);
-                connection.execute(
-                    "INSERT INTO documents(
+                connection
+                    .execute(
+                        "INSERT INTO documents(
                          id,title,original_filename,mime_type,byte_size,sha256,
                          source_relative_path,lifecycle_state,created_at,updated_at,
                          revision,source_format,source_unit_kind
@@ -848,40 +847,42 @@ mod tests {
                          ?1,'Doc','doc.pdf','application/pdf',1,?2,
                          'documents/doc.pdf','ready',1,1,1,'pdf','page'
                      )",
-                    params![document_id, "e".repeat(64)],
-                ).map_err(CommandError::database)?;
+                        params![document_id, "e".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
 
                 let target_id = "t".repeat(32);
-                connection.execute(
-                    r#"INSERT INTO study_targets(
+                connection
+                    .execute(
+                        r#"INSERT INTO study_targets(
                          id,target_kind,document_id,output_policy_json,created_at,updated_at
                      ) VALUES(
                          ?1,'document',?2,
                          '{"flashcards":true,"studyGuide":true}',1,1
                      )"#,
-                    params![target_id, document_id],
-                ).map_err(CommandError::database)?;
+                        params![target_id, document_id],
+                    )
+                    .map_err(CommandError::database)?;
 
                 let operation_id = "o".repeat(32);
-                connection.execute(
-                    "INSERT INTO study_target_batches(
+                connection
+                    .execute(
+                        "INSERT INTO study_target_batches(
                          operation_id,target_id,request_sha256,source_snapshot_id,
                          source_snapshot_json,output_policy_json,provider_authorized,
                          state,created_at,updated_at
                      ) VALUES(?1,?2,?3,?4,'{}','{}',1,'composing',1,1)",
-                    params![
-                        operation_id,
-                        target_id,
-                        "a".repeat(64),
-                        "b".repeat(64)
-                    ],
-                ).map_err(CommandError::database)?;
-                connection.execute(
-                    "INSERT INTO study_target_artifact_jobs(
+                        params![operation_id, target_id, "a".repeat(64), "b".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO study_target_artifact_jobs(
                          batch_id,artifact_kind,state,created_at,updated_at
                      ) VALUES(?1,'flashcards','running',1,1)",
-                    [operation_id],
-                ).map_err(CommandError::database)?;
+                        [operation_id],
+                    )
+                    .map_err(CommandError::database)?;
                 Ok(())
             })
             .unwrap();
@@ -900,10 +901,7 @@ mod tests {
                         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                     )
                     .map_err(CommandError::database)?;
-                assert_eq!(
-                    values,
-                    ("interrupted".into(), 1, "interrupted".into())
-                );
+                assert_eq!(values, ("interrupted".into(), 1, "interrupted".into()));
                 Ok(())
             })
             .unwrap();
