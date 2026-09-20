@@ -7,6 +7,7 @@
 use super::{math_layout, EffectiveGuideExport, ExportBlock};
 
 pub(super) const NOTICE: &str = "Math notation: some equations in this PDF are preserved as readable LaTeX source because their notation is outside oStudy's bounded native PDF math subset. Open this study guide in oStudy to view the full typeset math.";
+const MAX_NATIVE_WIDTH_AT_TEN_POINTS: f64 = 380.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MathSegment<'a> {
@@ -112,9 +113,17 @@ pub(super) fn requires_source_fallback(export: &EffectiveGuideExport) -> bool {
     })
 }
 
+pub(super) fn native_layout(source: &str, size: f64) -> Option<math_layout::MathLayout> {
+    let reference = math_layout::layout(source, 10.0).ok()?;
+    if reference.width > MAX_NATIVE_WIDTH_AT_TEN_POINTS {
+        return None;
+    }
+    math_layout::layout(source, size).ok()
+}
+
 fn unsupported(source: &str) -> bool {
     segments(source).into_iter().any(|segment| match segment {
-        MathSegment::Formula { latex, .. } => math_layout::layout(latex, 10.0).is_err(),
+        MathSegment::Formula { latex, .. } => native_layout(latex, 10.0).is_none(),
         MathSegment::Text(_) => false,
     })
 }

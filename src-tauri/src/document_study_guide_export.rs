@@ -1432,11 +1432,11 @@ impl PdfFlowWriter {
                     block,
                 } => {
                     let base_size = if block { size * 1.08 } else { size };
-                    let mut formula = math_layout::layout(latex, base_size).ok();
+                    let mut formula = math_source::native_layout(latex, base_size);
                     if let Some(layout) = formula.as_ref() {
                         if layout.width > maximum_width {
                             let scale = (maximum_width / layout.width).clamp(0.62, 1.0);
-                            formula = math_layout::layout(latex, base_size * scale).ok();
+                            formula = math_source::native_layout(latex, base_size * scale);
                         }
                     }
                     if block {
