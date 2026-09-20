@@ -1346,18 +1346,30 @@ mod tests {
         first_source_note_id: String,
     }
 
+    struct SourceNoteSpec<'a> {
+        note_id: String,
+        card_id: String,
+        question: &'a str,
+        answer: &'a str,
+        unit: i64,
+        created_at: i64,
+    }
+
     fn insert_source_note(
         connection: &mut rusqlite::Connection,
         deck_id: &str,
         document_id: &str,
         topic_id: &str,
-        note_id: &str,
-        card_id: &str,
-        question: &str,
-        answer: &str,
-        unit: i64,
-        created_at: i64,
+        spec: SourceNoteSpec<'_>,
     ) -> Result<(), CommandError> {
+        let SourceNoteSpec {
+            note_id,
+            card_id,
+            question,
+            answer,
+            unit,
+            created_at,
+        } = spec;
         let content = validate_content(
             rich_doc(question),
             rich_doc(answer),
@@ -1487,12 +1499,14 @@ mod tests {
                     &deck.id,
                     &document_id,
                     &topic_id,
-                    &first_source_note_id,
-                    &first_source_card_id,
-                    "Question one?",
-                    "Answer one.",
-                    1,
-                    10,
+                    SourceNoteSpec {
+                        note_id: first_source_note_id.clone(),
+                        card_id: first_source_card_id.clone(),
+                        question: "Question one?",
+                        answer: "Answer one.",
+                        unit: 1,
+                        created_at: 10,
+                    },
                 )?;
                 connection
                     .execute(
@@ -1643,24 +1657,28 @@ mod tests {
                     &fixture.source_deck_id,
                     &fixture.document_id,
                     &fixture.topic_id,
-                    &"5".repeat(32),
-                    &"6".repeat(32),
-                    "Question two?",
-                    "Answer two.",
-                    2,
-                    20,
+                    SourceNoteSpec {
+                        note_id: "5".repeat(32),
+                        card_id: "6".repeat(32),
+                        question: "Question two?",
+                        answer: "Answer two.",
+                        unit: 2,
+                        created_at: 20,
+                    },
                 )?;
                 insert_source_note(
                     connection,
                     &fixture.source_deck_id,
                     &fixture.document_id,
                     &fixture.topic_id,
-                    &"7".repeat(32),
-                    &"8".repeat(32),
-                    "Edited source question?",
-                    "Edited source answer.",
-                    2,
-                    21,
+                    SourceNoteSpec {
+                        note_id: "7".repeat(32),
+                        card_id: "8".repeat(32),
+                        question: "Edited source question?",
+                        answer: "Edited source answer.",
+                        unit: 2,
+                        created_at: 21,
+                    },
                 )?;
                 connection
                     .execute("UPDATE notes SET revision=2 WHERE id=?1", ["7".repeat(32)])
