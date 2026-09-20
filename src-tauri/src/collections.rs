@@ -1024,7 +1024,7 @@ pub(crate) fn resolve_selection(
     ))
     .map_err(CommandError::serialization)?;
 
-    Ok(SourceSetSnapshotDto {
+    let snapshot = SourceSetSnapshotDto {
         snapshot_id: hash_bytes(&identity),
         organization_revision,
         members,
@@ -1033,7 +1033,9 @@ pub(crate) fn resolve_selection(
             .map_err(|_| invalid("The selected source window is too large."))?,
         expanded_text_bytes: i64::try_from(expanded_text_bytes)
             .map_err(|_| invalid("The selected source window is too large."))?,
-    })
+    };
+    ensure_snapshot_current(connection, &snapshot)?;
+    Ok(snapshot)
 }
 
 pub(crate) fn ensure_snapshot_current(
@@ -1654,7 +1656,7 @@ mod tests {
     use crate::document_domain::{SourceLocator, SourceUnitKind};
 
     fn id(byte: char) -> String {
-        std::iter::repeat(byte).take(32).collect()
+        byte.to_string().repeat(32)
     }
 
     fn seed_document(
@@ -1663,7 +1665,7 @@ mod tests {
         units: i64,
         sha: char,
     ) -> Result<(), CommandError> {
-        let sha256: String = std::iter::repeat(sha).take(64).collect();
+        let sha256 = sha.to_string().repeat(64);
         connection
             .execute(
                 "INSERT INTO documents(
