@@ -319,8 +319,14 @@ describe("StudyGuideDialog", () => {
   });
 
   async function selectSectionAction(label: string): Promise<void> {
-    fireEvent.click(await screen.findByRole("button", { name: /Section actions for/u }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: label }));
+    const trigger = await screen.findByLabelText(/Section actions for/u);
+    fireEvent.click(trigger);
+    let menu: HTMLElement | null = null;
+    await waitFor(() => {
+      menu = document.querySelector('[role="menu"][aria-label^="Section actions for"]');
+      expect(menu).toBeTruthy();
+    });
+    fireEvent.click(within(menu as HTMLElement).getByText(label));
   }
 
   it("collapses per-section controls into one accessible overflow menu", async () => {
