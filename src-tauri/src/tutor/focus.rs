@@ -88,6 +88,7 @@ pub(crate) fn resolve(
                         ScopeKind::General | ScopeKind::Selection => false,
                         ScopeKind::Library => true,
                         ScopeKind::Deck => member.id.as_deref() == Some(deck_id.as_str()),
+                        ScopeKind::Collection => false,
                         ScopeKind::Document | ScopeKind::Guide => connection.query_row(
                             "SELECT EXISTS(SELECT 1 FROM document_decks WHERE deck_id=?1 AND document_id=?2)
                              OR EXISTS(SELECT 1 FROM document_note_topics nt JOIN cards c ON c.note_id=nt.note_id
@@ -200,6 +201,17 @@ pub(crate) fn resolve(
             content_hash,
         } => {
             database.with_connection(|connection| {
+                let explicit_document_authority = scope.material_scopes().iter().any(|member| {
+                    matches!(member.kind, ScopeKind::Document | ScopeKind::Guide)
+                        && member.id.as_deref() == Some(document_id.as_str())
+                });
+                if crate::knowledge::collection_scope::has_collection(scope)
+                    && !explicit_document_authority
+                {
+                    return Err(invalid(
+                        "A document folder does not implicitly authorize generated guide content. Select the guide explicitly.",
+                    ));
+                }
                 if !scope_documents(connection, scope)?.contains(document_id) {
                     return Err(invalid(
                         "This guide does not belong to the conversation's material selection.",
