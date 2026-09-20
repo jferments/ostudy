@@ -221,7 +221,9 @@ pub(crate) async fn ensure_reduced(
                     .topics
                     .iter_mut()
                     .find(|topic| topic.id == summary.topic_id)
-                    .ok_or_else(|| invalid("The collection reducer referenced an unknown topic."))?;
+                    .ok_or_else(|| {
+                        invalid("The collection reducer referenced an unknown topic.")
+                    })?;
                 topic.summary = summary.summary;
                 topic.summary_support_unit_ids = summary.support_unit_ids;
             }
@@ -954,7 +956,9 @@ fn parse_reduction(
             false,
         )?;
         let Some(topic_units) = allowed.topic_units.get(&topic_summary.topic_id) else {
-            return Err(invalid("The collection reducer referenced an unknown topic."));
+            return Err(invalid(
+                "The collection reducer referenced an unknown topic.",
+            ));
         };
         if !summarized_topics.insert(topic_summary.topic_id.clone())
             || topic_summary.support_unit_ids.is_empty()
@@ -1234,20 +1238,20 @@ mod tests {
         task_cancellation::{current_signal, document_task_progress, run_document_task},
     };
 
-
     fn spawn_collection_completion(content: String) -> (String, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
         let address = listener.local_addr().expect("mock address should resolve");
         let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("one reducer request should arrive");
+            let (mut stream, _) = listener
+                .accept()
+                .expect("one reducer request should arrive");
             let mut request = Vec::new();
             let mut buffer = [0_u8; 4096];
             let header_end = loop {
                 let count = stream.read(&mut buffer).expect("request should read");
                 assert!(count > 0, "request closed before headers completed");
                 request.extend_from_slice(&buffer[..count]);
-                if let Some(index) = request.windows(4).position(|window| window == b"\r\n\r\n")
-                {
+                if let Some(index) = request.windows(4).position(|window| window == b"\r\n\r\n") {
                     break index + 4;
                 }
             };
@@ -1567,7 +1571,6 @@ mod tests {
         .is_err());
     }
 
-
     #[test]
     fn provider_authorized_reduction_uses_one_request_then_reuses_current_view() {
         let (database, collection, _, _, _) = fixture().unwrap();
@@ -1614,8 +1617,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let runtime =
-            AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
+        let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
         let task = DocumentTaskContext::for_tutor_profile(&database, &profile_id).unwrap();
 
         let (first, first_requests) = tauri::async_runtime::block_on(run_document_task(
@@ -1768,7 +1770,6 @@ mod tests {
         }));
     }
 
-
     #[test]
     fn removing_transitive_support_invalidates_and_excludes_cross_source_synthesis() {
         let (database, collection, first_document, _, second_source_id) = fixture().unwrap();
@@ -1793,7 +1794,8 @@ mod tests {
                 ))
             })
             .unwrap();
-        let catalog = EvidenceCatalog::build(&[first_source.clone(), second_source], false).unwrap();
+        let catalog =
+            EvidenceCatalog::build(&[first_source.clone(), second_source], false).unwrap();
         let first_evidence = catalog
             .entries
             .iter()
@@ -1868,9 +1870,11 @@ mod tests {
             .topics
             .iter()
             .any(|topic| topic.title == "Cross-source dependency"));
-        assert!(refreshed.synthesis.gaps.iter().any(|gap| {
-            gap.kind == "dependency_outside_scope" && !gap.unit_ids.is_empty()
-        }));
+        assert!(refreshed
+            .synthesis
+            .gaps
+            .iter()
+            .any(|gap| { gap.kind == "dependency_outside_scope" && !gap.unit_ids.is_empty() }));
     }
 
     #[test]
