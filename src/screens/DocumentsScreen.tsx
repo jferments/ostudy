@@ -16,6 +16,7 @@ import {
 } from "./documents/DocumentProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
+import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
 import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
@@ -72,6 +73,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
         }
       />
       {props.headerSupplement}
+      <DocumentCollectionsWorkspace documents={documents} />
       <div className={styles.toolbar}>
         <span className={styles.count}>{documents.length} document{documents.length === 1 ? "" : "s"}</span>
       </div>
