@@ -1221,8 +1221,10 @@ mod tests {
             StudyGuideCallout, StudyGuideCalloutKind, StudyGuideRetrievalCheck, StudyGuideTable,
             StudyGuideWorkedExample,
         };
-        let mut content = crate::document_study_guides::StudyGuideSectionContent::default();
-        content.overview = "Overview".to_string();
+        let mut content = crate::document_study_guides::StudyGuideSectionContent {
+            overview: "Overview".to_string(),
+            ..Default::default()
+        };
         content.callouts.push(StudyGuideCallout {
             kind: StudyGuideCalloutKind::KeyIdea,
             title: "Remember".to_string(),
