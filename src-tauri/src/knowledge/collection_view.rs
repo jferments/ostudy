@@ -47,6 +47,7 @@ const REDUCTION_VISIBLE_TOKENS: usize = 4_096;
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CollectionRelationshipKind {
     Complementary,
+    Contrast,
     Contradictory,
     Prerequisite,
 }
@@ -66,6 +67,10 @@ pub(crate) struct CollectionRelationship {
 pub(crate) struct CollectionTopic {
     pub id: String,
     pub title: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub summary_support_unit_ids: Vec<String>,
     pub unit_ids: Vec<String>,
     pub support_source_ids: Vec<String>,
     pub support_document_ids: Vec<String>,
@@ -191,7 +196,7 @@ pub(crate) async fn ensure_reduced(
     ensure_plan_current(database, task, &plan, signal)?;
     let schema = reduction_schema(&allowed);
     let user = format!(
-        "Organize this balanced cross-document digest from a complete permitted collection catalog. Every collection topic is represented at least once, but individual topics may have additional units outside this bounded digest. Preserve polarity, conditions, units, exceptions, and contradictions exactly. Instructional emphasis is advisory and is not factual corroboration. Return broad learning objectives and only relationships supported by supplied unit IDs. Do not merge conflicting claims, invent facts, infer learner mastery, or treat repetition as independent corroboration.\n<collection-digest>\n{digest}\n</collection-digest>"
+        "Organize this balanced cross-document digest from a complete permitted collection catalog. Every collection topic is represented at least once, but individual topics may have additional units outside this bounded digest. Preserve polarity, conditions, units, exceptions, and contradictions exactly. Instructional emphasis is advisory and is not factual corroboration. Return exactly one concise topic summary for every supplied topic, with only the supplied unit IDs that support that summary. Return broad learning objectives and only complementary, contrast, contradictory, or prerequisite relationships supported by supplied unit IDs. Do not merge conflicting claims, invent facts, infer learner mastery, or treat repetition as independent corroboration.\n<collection-digest>\n{digest}\n</collection-digest>"
     );
     record_current_provider_request();
     let response = request_json_cancellable(
@@ -211,6 +216,15 @@ pub(crate) async fn ensure_reduced(
 
     let reduced = match response.and_then(|value| parse_reduction(value, &allowed)) {
         Ok(reduction) => {
+            for summary in reduction.topic_summaries {
+                let topic = synthesis
+                    .topics
+                    .iter_mut()
+                    .find(|topic| topic.id == summary.topic_id)
+                    .ok_or_else(|| invalid("The collection reducer referenced an unknown topic."))?;
+                topic.summary = summary.summary;
+                topic.summary_support_unit_ids = summary.support_unit_ids;
+            }
             synthesis.summary = reduction.summary;
             synthesis.learning_objectives = reduction.learning_objectives;
             synthesis.relationships = reduction.relationships;
@@ -412,7 +426,7 @@ fn coverage_plan(
         .collect::<Result<Vec<_>, CommandError>>()?;
     let analysis_hash = hash(
         &serde_json::to_string(&(
-            "collection-view-v1",
+            "collection-view-v2",
             &snapshot.snapshot_id,
             context.stamp.fingerprint(),
             &unit_revisions,
@@ -493,13 +507,23 @@ fn native_synthesis(
     }
     let topics = topics
         .into_iter()
-        .map(|(key, value)| CollectionTopic {
-            id: hash(&format!("collection-topic-v1|{key}"))[..32].to_string(),
-            title: value.title,
-            unit_ids: value.unit_ids.into_iter().collect(),
-            support_source_ids: value.support_source_ids.into_iter().collect(),
-            support_document_ids: value.support_document_ids.into_iter().collect(),
-            emphasis_source_ids: value.emphasis_source_ids.into_iter().collect(),
+        .map(|(key, value)| {
+            let unit_count = value.unit_ids.len();
+            let document_count = value.support_document_ids.len();
+            CollectionTopic {
+                id: hash(&format!("collection-topic-v1|{key}"))[..32].to_string(),
+                title: value.title,
+                summary: format!(
+                    "This topic currently contains {unit_count} admitted interpreted unit{} across {document_count} supporting document{}.",
+                    if unit_count == 1 { "" } else { "s" },
+                    if document_count == 1 { "" } else { "s" },
+                ),
+                summary_support_unit_ids: Vec::new(),
+                unit_ids: value.unit_ids.into_iter().collect(),
+                support_source_ids: value.support_source_ids.into_iter().collect(),
+                support_document_ids: value.support_document_ids.into_iter().collect(),
+                emphasis_source_ids: value.emphasis_source_ids.into_iter().collect(),
+            }
         })
         .collect::<Vec<_>>();
 
@@ -762,15 +786,25 @@ struct ReductionRelationship {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReductionTopicSummary {
+    topic_id: String,
+    summary: String,
+    support_unit_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CollectionReduction {
     summary: String,
     learning_objectives: Vec<String>,
+    topic_summaries: Vec<ReductionTopicSummary>,
     relationships: Vec<ReductionRelationship>,
 }
 
 struct ValidatedReduction {
     summary: String,
     learning_objectives: Vec<String>,
+    topic_summaries: Vec<ReductionTopicSummary>,
     relationships: Vec<CollectionRelationship>,
 }
 
@@ -906,6 +940,42 @@ fn parse_reduction(
         }
     }
 
+    if result.topic_summaries.len() != allowed.topic_units.len() {
+        return Err(invalid(
+            "The collection reducer must summarize every represented topic exactly once.",
+        ));
+    }
+    let mut summarized_topics = HashSet::new();
+    for topic_summary in &result.topic_summaries {
+        super::contracts::bounded(
+            &topic_summary.summary,
+            1_200,
+            "collection topic summary",
+            false,
+        )?;
+        let Some(topic_units) = allowed.topic_units.get(&topic_summary.topic_id) else {
+            return Err(invalid("The collection reducer referenced an unknown topic."));
+        };
+        if !summarized_topics.insert(topic_summary.topic_id.clone())
+            || topic_summary.support_unit_ids.is_empty()
+            || topic_summary.support_unit_ids.len() > 16
+            || topic_summary
+                .support_unit_ids
+                .iter()
+                .collect::<HashSet<_>>()
+                .len()
+                != topic_summary.support_unit_ids.len()
+            || topic_summary
+                .support_unit_ids
+                .iter()
+                .any(|unit_id| !topic_units.contains(unit_id))
+        {
+            return Err(invalid(
+                "A collection topic summary has repeated, missing, or out-of-topic support.",
+            ));
+        }
+    }
+
     let mut relationships = Vec::with_capacity(result.relationships.len());
     let mut relationship_ids = HashSet::new();
     for relationship in result.relationships {
@@ -984,6 +1054,7 @@ fn parse_reduction(
     Ok(ValidatedReduction {
         summary: result.summary,
         learning_objectives: result.learning_objectives,
+        topic_summaries: result.topic_summaries,
         relationships,
     })
 }
@@ -993,15 +1064,27 @@ fn reduction_schema(allowed: &ReductionAllowlist) -> Value {
     let unit_ids = allowed.all_units.iter().collect::<Vec<_>>();
     json!({
         "type":"object","additionalProperties":false,
-        "required":["summary","learningObjectives","relationships"],
+        "required":["summary","learningObjectives","topicSummaries","relationships"],
         "properties":{
             "summary":{"type":"string","minLength":1,"maxLength":8000},
             "learningObjectives":{"type":"array","maxItems":96,"items":{"type":"string","minLength":1,"maxLength":1200}},
+            "topicSummaries":{
+                "type":"array","minItems":topic_ids.len(),"maxItems":topic_ids.len(),
+                "items":{
+                    "type":"object","additionalProperties":false,
+                    "required":["topicId","summary","supportUnitIds"],
+                    "properties":{
+                        "topicId":{"type":"string","enum":topic_ids},
+                        "summary":{"type":"string","minLength":1,"maxLength":1200},
+                        "supportUnitIds":{"type":"array","minItems":1,"maxItems":16,"uniqueItems":true,"items":{"type":"string","enum":unit_ids}}
+                    }
+                }
+            },
             "relationships":{"type":"array","maxItems":256,"items":{
                 "type":"object","additionalProperties":false,
                 "required":["kind","topicIds","supportUnitIds","note"],
                 "properties":{
-                    "kind":{"type":"string","enum":["complementary","contradictory","prerequisite"]},
+                    "kind":{"type":"string","enum":["complementary","contrast","contradictory","prerequisite"]},
                     "topicIds":{"type":"array","minItems":2,"maxItems":4,"uniqueItems":true,"items":{"type":"string","enum":topic_ids}},
                     "supportUnitIds":{"type":"array","minItems":2,"maxItems":32,"uniqueItems":true,"items":{"type":"string","enum":unit_ids}},
                     "note":{"type":"string","minLength":1,"maxLength":1200}
@@ -1014,6 +1097,7 @@ fn reduction_schema(allowed: &ReductionAllowlist) -> Value {
 fn relationship_kind_name(kind: CollectionRelationshipKind) -> &'static str {
     match kind {
         CollectionRelationshipKind::Complementary => "complementary",
+        CollectionRelationshipKind::Contrast => "contrast",
         CollectionRelationshipKind::Contradictory => "contradictory",
         CollectionRelationshipKind::Prerequisite => "prerequisite",
     }
@@ -1077,9 +1161,28 @@ fn validate_synthesis(synthesis: &CollectionSynthesis) -> Result<(), CommandErro
     }
     for topic in &synthesis.topics {
         validate_entity_id(&topic.id, "collection synthesis topic")?;
+        let topic_units = topic
+            .unit_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
         if topic.title.trim().is_empty()
             || topic.title.chars().count() > 500
+            || topic.summary.chars().count() > 1_200
             || topic.unit_ids.len() > MAX_COVERAGE_UNITS
+            || topic_units.len() != topic.unit_ids.len()
+            || topic.summary_support_unit_ids.len() > 16
+            || topic
+                .summary_support_unit_ids
+                .iter()
+                .collect::<HashSet<_>>()
+                .len()
+                != topic.summary_support_unit_ids.len()
+            || topic
+                .summary_support_unit_ids
+                .iter()
+                .any(|id| !topic_units.contains(id.as_str()))
+            || (topic.summary.trim().is_empty() && !topic.summary_support_unit_ids.is_empty())
         {
             return Err(invalid("A collection synthesis topic is invalid."));
         }
@@ -1109,18 +1212,83 @@ fn validate_synthesis(synthesis: &CollectionSynthesis) -> Result<(), CommandErro
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        thread,
+    };
+
     use rusqlite::params;
 
     use super::*;
     use crate::{
+        ai::{document_intelligence::DocumentTaskContext, AiRuntimeState},
         document_domain::{SourceLocator, SourceUnitKind},
         knowledge::{
             contracts::{
                 ContentOrigin, KnowledgeKind, KnowledgeUnitInput, SourceKind, SourceRecord,
             },
+            evidence::{EvidenceCatalog, Grounding, EVIDENCE_VERSION},
             repository,
         },
+        task_cancellation::{current_signal, document_task_progress, run_document_task},
     };
+
+
+    fn spawn_collection_completion(content: String) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
+        let address = listener.local_addr().expect("mock address should resolve");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("one reducer request should arrive");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            let header_end = loop {
+                let count = stream.read(&mut buffer).expect("request should read");
+                assert!(count > 0, "request closed before headers completed");
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(index) = request.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    break index + 4;
+                }
+            };
+            let headers = String::from_utf8(request[..header_end].to_vec())
+                .expect("request headers should be UTF-8");
+            assert!(headers.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().expect("length should parse"))
+                })
+                .unwrap_or(0);
+            while request.len() < header_end + content_length {
+                let count = stream.read(&mut buffer).expect("request body should read");
+                assert!(count > 0, "request closed before body completed");
+                request.extend_from_slice(&buffer[..count]);
+            }
+            let body = json!({
+                "id":"collection-reducer-test",
+                "model":"fixture",
+                "choices":[{
+                    "index":0,
+                    "message":{"role":"assistant","content":content},
+                    "finish_reason":"stop"
+                }],
+                "usage":{"prompt_tokens":20,"completion_tokens":10,"total_tokens":30}
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body,
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("response should write");
+        });
+        (format!("http://{address}/"), handle)
+    }
 
     fn id(value: char) -> String {
         value.to_string().repeat(32)
@@ -1334,40 +1502,154 @@ mod tests {
             .iter()
             .map(|topic| allowed.topic_units[topic].iter().next().unwrap().clone())
             .collect::<Vec<_>>();
+        let topic_summaries = topic_ids
+            .iter()
+            .map(|topic| {
+                json!({
+                    "topicId":topic,
+                    "summary":format!("Supported summary for {topic}."),
+                    "supportUnitIds":[allowed.topic_units[topic].iter().next().unwrap()]
+                })
+            })
+            .collect::<Vec<_>>();
         let valid = parse_reduction(
             json!({
                 "summary":"Keep both claims distinct.",
                 "learningObjectives":["Compare the two retained topics."],
+                "topicSummaries":topic_summaries,
                 "relationships":[{
                     "kind":"contradictory",
                     "topicIds":topic_ids,
                     "supportUnitIds":support,
                     "note":"The supplied interpretations should be compared without merging their conditions."
+                },{
+                    "kind":"contrast",
+                    "topicIds":topic_ids,
+                    "supportUnitIds":support,
+                    "note":"The supplied topics also have a supported non-conflicting contrast."
                 }]
             }),
             &allowed,
         )
         .unwrap();
-        assert_eq!(valid.relationships.len(), 1);
-        assert_eq!(
-            valid.relationships[0].kind,
-            CollectionRelationshipKind::Contradictory
-        );
+        assert_eq!(valid.topic_summaries.len(), 2);
+        assert_eq!(valid.relationships.len(), 2);
+        assert!(valid
+            .relationships
+            .iter()
+            .any(|relationship| relationship.kind == CollectionRelationshipKind::Contradictory));
+        assert!(valid
+            .relationships
+            .iter()
+            .any(|relationship| relationship.kind == CollectionRelationshipKind::Contrast));
 
+        let incomplete_summaries = allowed
+            .topic_units
+            .keys()
+            .take(1)
+            .map(|topic| {
+                json!({
+                    "topicId":topic,
+                    "summary":"Only one topic was summarized.",
+                    "supportUnitIds":[allowed.topic_units[topic].iter().next().unwrap()]
+                })
+            })
+            .collect::<Vec<_>>();
         assert!(parse_reduction(
             json!({
                 "summary":"Invalid",
                 "learningObjectives":[],
-                "relationships":[{
-                    "kind":"complementary",
-                    "topicIds":[allowed.topic_units.keys().next().unwrap(), "x".repeat(32)],
-                    "supportUnitIds":allowed.all_units.iter().take(2).collect::<Vec<_>>(),
-                    "note":"Invented identity."
-                }]
+                "topicSummaries":incomplete_summaries,
+                "relationships":[]
             }),
             &allowed,
         )
         .is_err());
+    }
+
+
+    #[test]
+    fn provider_authorized_reduction_uses_one_request_then_reuses_current_view() {
+        let (database, collection, _, _, _) = fixture().unwrap();
+        let plan = database
+            .with_connection(|connection| coverage_plan(connection, &collection))
+            .unwrap();
+        let synthesis = native_synthesis(&collection, &plan).unwrap();
+        let (_, allowed) = balanced_reduction_digest(&synthesis, &plan, 32_000).unwrap();
+        let topic_ids = allowed.topic_units.keys().cloned().collect::<Vec<_>>();
+        let topic_summaries = topic_ids
+            .iter()
+            .map(|topic| {
+                json!({
+                    "topicId":topic,
+                    "summary":format!("Reducer summary for {topic}."),
+                    "supportUnitIds":[allowed.topic_units[topic].iter().next().unwrap()]
+                })
+            })
+            .collect::<Vec<_>>();
+        let provider_content = json!({
+            "summary":"Combined collection summary.",
+            "learningObjectives":["Compare the selected topics."],
+            "topicSummaries":topic_summaries,
+            "relationships":[]
+        })
+        .to_string();
+        let (base_url, server) = spawn_collection_completion(provider_content);
+        let profile_id = id('9');
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO ai_provider_profiles (
+                             id,display_name,normalized_name,provider_kind,base_url,model_id,
+                             auth_mode,enabled,allow_insecure_http,request_timeout_ms,
+                             credential_storage,credential_epoch,revision,created_at,updated_at,
+                             reasoning_effort
+                         ) VALUES (?1,'Collection reducer test','collection reducer test',
+                                   'llama_cpp',?2,'fixture','none',1,0,5000,
+                                   'none',0,1,1,1,'none')",
+                        params![profile_id, base_url],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+        let runtime =
+            AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
+        let task = DocumentTaskContext::for_tutor_profile(&database, &profile_id).unwrap();
+
+        let (first, first_requests) = tauri::async_runtime::block_on(run_document_task(
+            "collection-reducer-request-count",
+            async {
+                let signal = current_signal().expect("document task signal should exist");
+                let state =
+                    ensure_reduced(&database, &runtime, &task, &collection, &signal).await?;
+                let requests = document_task_progress("collection-reducer-request-count")
+                    .map(|progress| progress.provider_request_count)
+                    .unwrap_or_default();
+                Ok((state, requests))
+            },
+        ))
+        .unwrap();
+        assert!(first.reduced);
+        assert_eq!(first_requests, 1);
+        server.join().expect("single-request server should finish");
+
+        let (reused, reused_requests) = tauri::async_runtime::block_on(run_document_task(
+            "collection-reducer-reuse-count",
+            async {
+                let signal = current_signal().expect("document task signal should exist");
+                let state =
+                    ensure_reduced(&database, &runtime, &task, &collection, &signal).await?;
+                let requests = document_task_progress("collection-reducer-reuse-count")
+                    .map(|progress| progress.provider_request_count)
+                    .unwrap_or_default();
+                Ok((state, requests))
+            },
+        ))
+        .unwrap();
+        assert!(reused.reduced);
+        assert_eq!(reused_requests, 0);
     }
 
     #[test]
@@ -1483,6 +1765,111 @@ mod tests {
         assert!(!second_view.synthesis.gaps.iter().any(|gap| {
             gap.kind == "no_interpreted_units"
                 && gap.document_id.as_deref() == Some(second.as_str())
+        }));
+    }
+
+
+    #[test]
+    fn removing_transitive_support_invalidates_and_excludes_cross_source_synthesis() {
+        let (database, collection, first_document, _, second_source_id) = fixture().unwrap();
+        let first_source_id = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT id FROM knowledge_sources WHERE document_id=?1 AND active=1",
+                        [&first_document],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        let (first_source, second_source) = database
+            .with_connection(|connection| {
+                Ok((
+                    repository::load_source(connection, &first_source_id)?
+                        .ok_or_else(repository::stale_source)?,
+                    repository::load_source(connection, &second_source_id)?
+                        .ok_or_else(repository::stale_source)?,
+                ))
+            })
+            .unwrap();
+        let catalog = EvidenceCatalog::build(&[first_source.clone(), second_source], false).unwrap();
+        let first_evidence = catalog
+            .entries
+            .iter()
+            .find(|item| item.source_id == first_source.id)
+            .unwrap()
+            .clone();
+        let second_evidence = catalog
+            .entries
+            .iter()
+            .find(|item| item.source_id == second_source_id)
+            .unwrap()
+            .clone();
+        repository::publish_units(
+            &database,
+            &first_source,
+            &hash("cross-source-contract"),
+            vec![KnowledgeUnitInput {
+                title: "Cross-source comparison".into(),
+                kind: KnowledgeKind::Comparison,
+                statement: "These retained interpretations require both selected sources.".into(),
+                qualifications: vec!["Support is intentionally multi-source.".into()],
+                topic: "Cross-source dependency".into(),
+                supporting_excerpt: first_source.text.clone(),
+                grounding: Some(Grounding {
+                    version: EVIDENCE_VERSION,
+                    importance: Importance::Core,
+                    evidence: vec![first_evidence, second_evidence],
+                }),
+                details: None,
+            }],
+        )
+        .unwrap();
+
+        let original = refresh_native(&database, &collection).unwrap();
+        assert!(original
+            .synthesis
+            .topics
+            .iter()
+            .any(|topic| topic.title == "Cross-source dependency"));
+
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "DELETE FROM document_collection_memberships WHERE id=?1",
+                        [id('n')],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "UPDATE document_collection_organization
+                         SET revision=revision+1,updated_at=2 WHERE singleton_id=1",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+
+        let retained = load(&database, &collection).unwrap().unwrap();
+        assert!(retained.stale);
+        assert!(retained
+            .synthesis
+            .topics
+            .iter()
+            .any(|topic| topic.title == "Cross-source dependency"));
+
+        let refreshed = refresh_native(&database, &collection).unwrap();
+        assert!(!refreshed.stale);
+        assert!(!refreshed
+            .synthesis
+            .topics
+            .iter()
+            .any(|topic| topic.title == "Cross-source dependency"));
+        assert!(refreshed.synthesis.gaps.iter().any(|gap| {
+            gap.kind == "dependency_outside_scope" && !gap.unit_ids.is_empty()
         }));
     }
 

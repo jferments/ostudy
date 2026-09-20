@@ -29,7 +29,7 @@ export function scopeMembers(scope: StudyScope): MaterialScope[] {
 }
 
 
-export type CollectionRelationshipKind = "complementary" | "contradictory" | "prerequisite";
+export type CollectionRelationshipKind = "complementary" | "contrast" | "contradictory" | "prerequisite";
 
 export interface CollectionRelationship {
   id: string;
@@ -42,6 +42,8 @@ export interface CollectionRelationship {
 export interface CollectionTopic {
   id: string;
   title: string;
+  summary: string;
+  summarySupportUnitIds: string[];
   unitIds: string[];
   supportSourceIds: string[];
   supportDocumentIds: string[];
