@@ -14,4 +14,4 @@ pub(crate) use lifecycle::{
     record_document_failure,
 };
 pub(crate) use reconciliation::reconcile_startup;
-pub(crate) use source::resolve_document_source;
+pub(crate) use source::{expected_document_source_relative_path, resolve_document_source};

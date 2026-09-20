@@ -5,7 +5,22 @@ use crate::{
     util::validate_entity_id,
 };
 
-use super::repository;
+use super::{image_sets::manifest, repository};
+
+pub(crate) fn expected_document_source_relative_path(
+    document_id: &str,
+    format: DocumentFormat,
+    sha256: &str,
+) -> Result<String, CommandError> {
+    if format == DocumentFormat::ImageBundle {
+        manifest::manifest_path(document_id, sha256)
+    } else {
+        Ok(AppPaths::document_source_relative_path_with_extension(
+            document_id,
+            format.default_extension(),
+        ))
+    }
+}
 
 pub(crate) fn resolve_document_source(
     database: &Database,
@@ -16,10 +31,8 @@ pub(crate) fn resolve_document_source(
     let stored = database
         .with_connection(|connection| repository::load_document(connection, document_id))?;
     let format = DocumentFormat::from_db(&stored.dto.source_format)?;
-    let expected_relative = AppPaths::document_source_relative_path_with_extension(
-        document_id,
-        format.default_extension(),
-    );
+    let expected_relative =
+        expected_document_source_relative_path(document_id, format, &stored.dto.sha256)?;
     if stored.source_relative_path != expected_relative {
         return Err(CommandError::new(
             "invalid_document_path",
@@ -39,6 +52,49 @@ pub(crate) fn resolve_document_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_resolution_accepts_content_addressed_image_manifest() {
+        let database = Database::open_in_memory().expect("database should open");
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-image-document-source-{}",
+            std::process::id()
+        ));
+        let paths = AppPaths::new(root.clone()).expect("paths should initialize");
+        let document_id = "c".repeat(32);
+        let bytes = b"retained image manifest";
+        let hash = crate::document_canonical::sha256_hex(bytes);
+        let relative =
+            expected_document_source_relative_path(&document_id, DocumentFormat::ImageBundle, &hash)
+                .expect("image manifest path should be valid");
+        let source = paths.resolve_relative(&relative);
+        std::fs::create_dir_all(source.parent().expect("source should have a parent"))
+            .expect("source directory should exist");
+        std::fs::write(&source, bytes).expect("fixture manifest should be written");
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                             id, title, original_filename, mime_type, source_media_type,
+                             byte_size, sha256, source_relative_path, lifecycle_state,
+                             source_format, source_unit_kind, source_unit_count, created_at, updated_at
+                         ) VALUES (?1, 'Images', 'Ordered images', 'application/pdf',
+                                   'application/vnd.ostudy.image-set+json', ?2, ?3, ?4,
+                                   'ready', 'image_bundle', 'image', 1, 1, 1)",
+                        rusqlite::params![document_id, bytes.len() as i64, hash, relative],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("fixture should initialize");
+        assert_eq!(
+            resolve_document_source(&database, &paths, &document_id)
+                .expect("content-addressed image manifest should resolve"),
+            source
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn source_resolution_rejects_a_path_outside_the_document_identity() {
