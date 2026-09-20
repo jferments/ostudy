@@ -113,7 +113,8 @@ impl Frame {
                 if matches!(
                     decision.role,
                     RegionRole::Unresolved | RegionRole::OutsideSelection
-                ) {
+                ) || (!decision.admitted() && region.bounds.is_none())
+                {
                     frame.unresolved += 1;
                 }
                 if decision.admitted() {
@@ -129,7 +130,6 @@ impl Frame {
                 start = end;
             }
         }
-        frame.unresolved += usize::from(frame.withhold_visual);
         let identity = serde_json::to_vec(&(
             "image-frame-v2-filter",
             &member.pixel_sha256,
@@ -245,4 +245,57 @@ fn union(lines: &[OcrLine]) -> Option<PixelBounds> {
         });
     }
     result
+}
+
+#[cfg(test)]
+mod counting_tests {
+    use super::*;
+    use crate::documents::image_sets::{filter::RegionOverride, raster, test_support::Fixture};
+
+    #[test]
+    fn document_image_unlocated_exclusions_count_regions_not_withheld_attachments() {
+        let fixture = Fixture::new();
+        let manifest = fixture.import(1, 0, None);
+        let member = &manifest.members[0];
+        let raster = Raster::read(&fixture.paths, member).unwrap();
+        let inclusion = raster::inclusion(member).unwrap();
+        let result = RegionOcrResult {
+            version: 1,
+            text: "First unread position\nSecond unread position".to_string(),
+            confidence: 0.9,
+            lines: ["First unread position", "Second unread position"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, text)| OcrLine {
+                    text: text.to_string(),
+                    bounds: None,
+                    group: index.to_string(),
+                    confidence: Some(0.9),
+                })
+                .collect(),
+            duration_millis: 1,
+            engine: "fixture".to_string(),
+            language: "eng".to_string(),
+            width: 8,
+            height: 6,
+        };
+        let retained = Frame::build(member, &raster, inclusion, Some(&result)).unwrap();
+        assert_eq!(retained.unresolved, 2);
+        assert_eq!(retained.regions.len(), 2);
+        assert!(!retained.withhold_visual);
+        let mut settings = FilterSettings::default();
+        for region in &retained.decisions {
+            settings
+                .overrides
+                .insert(region.id.clone(), RegionOverride::Exclude);
+        }
+        let excluded =
+            Frame::with_settings(member, &raster, inclusion, Some(&result), &settings).unwrap();
+        assert_eq!(excluded.unresolved, 2);
+        assert!(excluded.regions.is_empty());
+        assert!(excluded.withhold_visual);
+        assert_eq!(excluded.decisions.len(), 2);
+        assert_eq!(excluded.decisions[0].text, "First unread position");
+        assert_eq!(excluded.decisions[1].text, "Second unread position");
+    }
 }
