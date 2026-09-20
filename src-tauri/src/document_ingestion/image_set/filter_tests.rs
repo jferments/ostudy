@@ -455,7 +455,6 @@ fn document_image_filter_unknown_geometry_never_leaks_through_an_unfiltered_atta
     persist(&fixture, &manifest, &filtered);
 }
 
-
 #[test]
 fn document_image_manual_filter_rebinds_to_one_exact_region_after_rotation() {
     let fixture = Fixture::new();
@@ -491,7 +490,9 @@ fn document_image_manual_filter_rebinds_to_one_exact_region_after_rotation() {
     )
     .unwrap();
     let filtered = extract(&fixture, &manifest, false);
-    assert!(!filtered.canonical.document.units[0].plain_text.contains(BODY));
+    assert!(!filtered.canonical.document.units[0]
+        .plain_text
+        .contains(BODY));
     persist(&fixture, &manifest, &filtered);
 
     amend::apply(
