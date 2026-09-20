@@ -1179,7 +1179,8 @@ fn guide_display_summary(summary: &str, sections: &[DocumentStudyGuideSection]) 
         [section] => format!("This guide focuses on {}.", section.title),
         _ => format!(
             "This guide is organized into {} source-grounded sections, beginning with {}.",
-            sections.len(), sections[0].title
+            sections.len(),
+            sections[0].title
         ),
     }
 }
@@ -1195,7 +1196,13 @@ fn compact_display_label(value: &str, maximum: usize) -> String {
     let mut result = String::new();
     for word in value.split_whitespace() {
         let extra = word.chars().count() + usize::from(!result.is_empty());
-        if result.chars().count().saturating_add(extra).saturating_add(3) > maximum {
+        if result
+            .chars()
+            .count()
+            .saturating_add(extra)
+            .saturating_add(3)
+            > maximum
+        {
             break;
         }
         if !result.is_empty() {
@@ -1349,21 +1356,29 @@ mod tests {
 
     #[test]
     fn display_titles_compact_topic_inventories_without_mutating_learning_topics() {
-        let source = "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol";
+        let source =
+            "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol";
         assert_eq!(
             guide_display_title(source),
             "ASCVD risk reduction, Angina pectoris treatment, and related topics"
         );
-        assert_eq!(source, "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol");
+        assert_eq!(
+            source,
+            "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol"
+        );
     }
 
     #[test]
     fn display_overview_replaces_inventory_wall_with_reader_prose() {
         let mut section = DocumentStudyGuideSection {
-            topic_id: "a".repeat(32), parent_topic_id: None, sort_index: 0,
+            topic_id: "a".repeat(32),
+            parent_topic_id: None,
+            sort_index: 0,
             title: "ASCVD risk reduction and related topics".to_string(),
-            topic_summary: String::new(), content: content(),
-            content_text: String::new(), content_hash: "b".repeat(64),
+            topic_summary: String::new(),
+            content: content(),
+            content_text: String::new(),
+            content_hash: "b".repeat(64),
             source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
         };
         section.title = guide_display_title(&section.title);
