@@ -191,7 +191,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 23,
         name: "collection_synthesis",
-        checksum: "6b871a614a99d2e0012c671590fc5397631ec586211445332b007bdfdfc86e2f",
+        checksum: "e36fbcd4187eb56464fec704cf96dba235c57b3d91907199bd525219fa07de9b",
         sql: include_str!("../migrations/0023_collection_synthesis.sql"),
         rebuilds_tables: false,
     },
