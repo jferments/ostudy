@@ -1281,7 +1281,13 @@ fn to_i64(value: usize) -> Result<i64, CommandError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{collections::ResolvedSourceRangeDto, document_domain::SourceUnitKind};
+    use crate::{
+        cards::validate_content,
+        collections::ResolvedSourceRangeDto,
+        decks::{create_deck_in_connection, CreateDeckInput},
+        document_domain::SourceUnitKind,
+    };
+    use serde_json::json;
 
     fn locator(units: Vec<i64>) -> SourceLocator {
         SourceLocator::new(SourceUnitKind::Page, units, None).unwrap()
@@ -1318,6 +1324,564 @@ mod tests {
         ));
         let whole = member(Vec::new());
         assert!(locator_allowed(&whole, &locator(vec![1, 10])));
+    }
+
+    fn rich_doc(text: &str) -> serde_json::Value {
+        json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}]
+            }]
+        })
+    }
+
+    struct BundleFixture {
+        database: Database,
+        document_id: String,
+        collection_id: String,
+        membership_id: String,
+        source_deck_id: String,
+        topic_id: String,
+        first_source_note_id: String,
+    }
+
+    fn insert_source_note(
+        connection: &mut rusqlite::Connection,
+        deck_id: &str,
+        document_id: &str,
+        topic_id: &str,
+        note_id: &str,
+        card_id: &str,
+        question: &str,
+        answer: &str,
+        unit: i64,
+        created_at: i64,
+    ) -> Result<(), CommandError> {
+        let content = validate_content(
+            rich_doc(question),
+            rich_doc(answer),
+            question.to_string(),
+            answer.to_string(),
+        )?;
+        connection
+            .execute(
+                "INSERT INTO notes(
+                     id,deck_id,note_type,content_format,content_schema_version,
+                     front_doc,back_doc,front_text,back_text,duplicate_hash,
+                     created_at,updated_at,revision
+                 ) VALUES(?1,?2,'basic','tiptap-json',1,?3,?4,?5,?6,?7,?8,?8,1)",
+                params![
+                    note_id,
+                    deck_id,
+                    content.front_doc_json,
+                    content.back_doc_json,
+                    content.front_text,
+                    content.back_text,
+                    format!("fixture-{note_id}"),
+                    created_at
+                ],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO cards(
+                     id,note_id,deck_id,direction,template_ordinal,created_at,updated_at
+                 ) VALUES(?1,?2,?3,'forward',0,?4,?4)",
+                params![card_id, note_id, deck_id, created_at],
+            )
+            .map_err(CommandError::database)?;
+        let locator = SourceLocator::new(SourceUnitKind::Page, vec![unit], None)?;
+        connection
+            .execute(
+                "INSERT INTO document_note_topics(
+                     document_id,note_id,topic_id,relationship_kind,
+                     source_locator_json,evidence_hash,generation_job_id,created_at
+                 ) VALUES(?1,?2,?3,'primary',?4,?5,NULL,?6)",
+                params![
+                    document_id,
+                    note_id,
+                    topic_id,
+                    serde_json::to_string(&locator).map_err(CommandError::serialization)?,
+                    "9".repeat(64),
+                    created_at
+                ],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    }
+
+    fn bundle_fixture() -> BundleFixture {
+        let database = Database::open_in_memory().expect("database should open");
+        let document_id = "d".repeat(32);
+        let collection_id = "c".repeat(32);
+        let membership_id = "b".repeat(32);
+        let topic_id = "3".repeat(32);
+        let first_source_note_id = "1".repeat(32);
+        let first_source_card_id = "2".repeat(32);
+        let source_hash = "e".repeat(64);
+        let source_relative = format!("documents/{document_id}/source.pdf");
+        let source_deck_id = database
+            .with_connection(|connection| {
+                let deck = create_deck_in_connection(
+                    connection,
+                    CreateDeckInput {
+                        name: "Authoritative document deck".to_string(),
+                        description: Some("Existing document pipeline output".to_string()),
+                    },
+                )?;
+                connection
+                    .execute(
+                        "INSERT INTO documents(
+                             id,title,original_filename,mime_type,byte_size,sha256,
+                             source_relative_path,lifecycle_state,page_count,
+                             extracted_page_count,rendered_page_count,created_at,updated_at,
+                             revision,source_format,source_unit_kind,source_unit_count,
+                             extracted_source_unit_count,source_media_type
+                         ) VALUES(
+                             ?1,'Physiology','physiology.pdf','application/pdf',10,?2,
+                             ?3,'ready',2,2,2,1,1,1,'pdf','page',2,2,'application/pdf'
+                         )",
+                        params![document_id, source_hash, source_relative],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_source_files(
+                             document_id,file_ordinal,original_filename,media_type,
+                             relative_path,byte_size,sha256,created_at,updated_at
+                         ) VALUES(?1,1,'physiology.pdf','application/pdf',?2,10,?3,1,1)",
+                        params![document_id, source_relative, source_hash],
+                    )
+                    .map_err(CommandError::database)?;
+                for unit in 1_i64..=2 {
+                    let locator = SourceLocator::new(SourceUnitKind::Page, vec![unit], None)?;
+                    connection
+                        .execute(
+                            "INSERT INTO document_source_units(
+                                 document_id,unit_number,unit_kind,label,title,plain_text,
+                                 text_sha256,source_file_ordinal,locator_json,
+                                 extraction_confidence,created_at,updated_at
+                             ) VALUES(?1,?2,'page',?3,NULL,?4,?5,1,?6,1.0,1,1)",
+                            params![
+                                document_id,
+                                unit,
+                                format!("Page {unit}"),
+                                format!("Source unit {unit}"),
+                                format!("{:064x}", unit),
+                                serde_json::to_string(&locator)
+                                    .map_err(CommandError::serialization)?
+                            ],
+                        )
+                        .map_err(CommandError::database)?;
+                }
+                connection
+                    .execute(
+                        "INSERT INTO document_learning_topics(id,document_id,anchor_hash,created_at)
+                         VALUES(?1,?2,?3,1)",
+                        params![topic_id, document_id, "8".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                insert_source_note(
+                    connection,
+                    &deck.id,
+                    &document_id,
+                    &topic_id,
+                    &first_source_note_id,
+                    &first_source_card_id,
+                    "Question one?",
+                    "Answer one.",
+                    1,
+                    10,
+                )?;
+                connection
+                    .execute(
+                        "INSERT INTO document_collections(
+                             id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
+                         ) VALUES(?1,NULL,'Week 1',1000,NULL,1,1,1)",
+                        [collection_id.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO document_collection_memberships(
+                             id,collection_id,document_id,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,?2,?3,1000,1,1,1)",
+                        params![membership_id, collection_id, document_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "UPDATE document_collection_organization
+                         SET revision=2,updated_at=1 WHERE singleton_id=1",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(deck.id)
+            })
+            .expect("fixture should seed");
+
+        BundleFixture {
+            database,
+            document_id,
+            collection_id,
+            membership_id,
+            source_deck_id,
+            topic_id,
+            first_source_note_id,
+        }
+    }
+
+    fn begin_flashcard_bundle(
+        fixture: &BundleFixture,
+        operation_id: &str,
+    ) -> StudyTargetBundleStatus {
+        super::super::begin_bundle(
+            &fixture.database,
+            super::super::BeginStudyTargetBundleInput {
+                operation_id: operation_id.to_string(),
+                target: StudyTargetRef {
+                    kind: StudyTargetKind::Collection,
+                    id: fixture.collection_id.clone(),
+                },
+                output_policy: super::super::StudyTargetOutputPolicy {
+                    flashcards: true,
+                    study_guide: false,
+                },
+                recreate_artifacts: Vec::new(),
+            },
+        )
+        .expect("bundle should begin")
+    }
+
+    fn compose_flashcard_bundle(
+        fixture: &BundleFixture,
+        operation_id: &str,
+    ) -> StudyTargetBundleStatus {
+        compose(
+            &fixture.database,
+            ComposeStudyTargetBundleInput {
+                operation_id: operation_id.to_string(),
+            },
+        )
+        .expect("bundle should compose")
+    }
+
+    #[test]
+    fn collection_bundle_replay_is_exactly_once_and_updates_preserve_learner_state() {
+        let fixture = bundle_fixture();
+        let first_operation = "4".repeat(32);
+        begin_flashcard_bundle(&fixture, &first_operation);
+        let first = compose_flashcard_bundle(&fixture, &first_operation);
+        assert_eq!(first.latest_batch_state.as_deref(), Some("complete"));
+        let deck_id = first.deck_id.expect("collection deck");
+        assert_ne!(deck_id, fixture.source_deck_id);
+
+        let (target_note_id, target_card_id, schedule_due): (String, String, i64) = fixture
+            .database
+            .with_connection(|connection| {
+                let target_note_id: String = connection
+                    .query_row(
+                        "SELECT target_note_id FROM study_target_card_origins
+                         WHERE source_note_id=?1",
+                        [fixture.first_source_note_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                let target_card_id: String = connection
+                    .query_row(
+                        "SELECT id FROM cards WHERE note_id=?1 AND deleted_at IS NULL",
+                        [target_note_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                let schedule_due: i64 = connection
+                    .query_row(
+                        "SELECT due_at FROM card_schedules WHERE card_id=?1",
+                        [target_card_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                Ok((target_note_id, target_card_id, schedule_due))
+            })
+            .expect("target identities should read");
+
+        let replay = compose_flashcard_bundle(&fixture, &first_operation);
+        assert_eq!(replay.deck_id.as_deref(), Some(deck_id.as_str()));
+        fixture
+            .database
+            .with_connection(|connection| {
+                let counts: (i64, i64) = connection
+                    .query_row(
+                        "SELECT
+                             (SELECT COUNT(*) FROM study_target_card_origins
+                              WHERE target_id=?1),
+                             (SELECT COUNT(*) FROM notes
+                              WHERE deck_id=?2 AND deleted_at IS NULL)",
+                        params![replay.target_id, deck_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(counts, (1, 1));
+                Ok(())
+            })
+            .expect("replay should be exactly once");
+
+        fixture
+            .database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "UPDATE notes
+                         SET front_text='Learner edit',revision=revision+1,updated_at=20
+                         WHERE id=?1",
+                        [target_note_id.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                insert_source_note(
+                    connection,
+                    &fixture.source_deck_id,
+                    &fixture.document_id,
+                    &fixture.topic_id,
+                    &"5".repeat(32),
+                    &"6".repeat(32),
+                    "Question two?",
+                    "Answer two.",
+                    2,
+                    20,
+                )?;
+                insert_source_note(
+                    connection,
+                    &fixture.source_deck_id,
+                    &fixture.document_id,
+                    &fixture.topic_id,
+                    &"7".repeat(32),
+                    &"8".repeat(32),
+                    "Edited source question?",
+                    "Edited source answer.",
+                    2,
+                    21,
+                )?;
+                connection
+                    .execute(
+                        "UPDATE notes SET revision=2 WHERE id=?1",
+                        ["7".repeat(32)],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("update fixture should seed");
+
+        let second_operation = "a".repeat(32);
+        begin_flashcard_bundle(&fixture, &second_operation);
+        let second = compose_flashcard_bundle(&fixture, &second_operation);
+        assert_eq!(second.latest_batch_state.as_deref(), Some("complete"));
+        assert_eq!(second.deck_id.as_deref(), Some(deck_id.as_str()));
+
+        fixture
+            .database
+            .with_connection(|connection| {
+                let state: (String, i64, String, i64, i64, i64) = connection
+                    .query_row(
+                        "SELECT n.front_text,n.revision,c.id,s.due_at,
+                                (SELECT COUNT(*) FROM notes
+                                 WHERE deck_id=?2 AND deleted_at IS NULL),
+                                (SELECT COUNT(*) FROM study_target_card_origins
+                                 WHERE target_id=?3)
+                         FROM notes n
+                         JOIN cards c ON c.note_id=n.id AND c.deleted_at IS NULL
+                         JOIN card_schedules s ON s.card_id=c.id
+                         WHERE n.id=?1",
+                        params![target_note_id, deck_id, second.target_id],
+                        |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                                row.get(5)?,
+                            ))
+                        },
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(state.0, "Learner edit");
+                assert_eq!(state.1, 2);
+                assert_eq!(state.2, target_card_id);
+                assert_eq!(state.3, schedule_due);
+                assert_eq!(state.4, 2);
+                assert_eq!(state.5, 2);
+                Ok(())
+            })
+            .expect("learner state and append-only update should survive");
+    }
+
+    #[test]
+    fn removing_collection_source_never_deletes_successful_bundle_cards() {
+        let fixture = bundle_fixture();
+        let first_operation = "4".repeat(32);
+        begin_flashcard_bundle(&fixture, &first_operation);
+        let first = compose_flashcard_bundle(&fixture, &first_operation);
+        let deck_id = first.deck_id.expect("collection deck");
+
+        fixture
+            .database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "DELETE FROM document_collection_memberships WHERE id=?1",
+                        [fixture.membership_id.as_str()],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "UPDATE document_collection_organization
+                         SET revision=revision+1,updated_at=30 WHERE singleton_id=1",
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("source removal should commit");
+
+        let status = super::super::load_bundle_status(
+            &fixture.database,
+            &StudyTargetRef {
+                kind: StudyTargetKind::Collection,
+                id: fixture.collection_id.clone(),
+            },
+        )
+        .expect("status should load")
+        .expect("target should remain");
+        assert!(status.source_changed);
+
+        let removal_operation = "a".repeat(32);
+        begin_flashcard_bundle(&fixture, &removal_operation);
+        let failed = compose_flashcard_bundle(&fixture, &removal_operation);
+        assert_eq!(failed.latest_batch_state.as_deref(), Some("failed"));
+        assert_eq!(failed.flashcards.state, "failed");
+        assert_eq!(failed.deck_id.as_deref(), Some(deck_id.as_str()));
+
+        fixture
+            .database
+            .with_connection(|connection| {
+                let active: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM notes
+                         WHERE deck_id=?1 AND deleted_at IS NULL",
+                        [deck_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(active, 1);
+                Ok(())
+            })
+            .expect("successful bundle cards should survive source removal");
+    }
+
+    #[test]
+    fn failed_sibling_keeps_successful_collection_deck_and_batch_is_partial() {
+        let fixture = bundle_fixture();
+        let operation_id = "4".repeat(32);
+        super::super::begin_bundle(
+            &fixture.database,
+            super::super::BeginStudyTargetBundleInput {
+                operation_id: operation_id.clone(),
+                target: StudyTargetRef {
+                    kind: StudyTargetKind::Collection,
+                    id: fixture.collection_id.clone(),
+                },
+                output_policy: super::super::StudyTargetOutputPolicy {
+                    flashcards: true,
+                    study_guide: true,
+                },
+                recreate_artifacts: Vec::new(),
+            },
+        )
+        .expect("bundle should begin");
+        let claim = claim_batch(&fixture.database, &operation_id).expect("batch should claim");
+        assert!(claim.claimed);
+        compose_collection_flashcards(&fixture.database, &operation_id, &claim)
+            .expect("flashcards should publish");
+        record_artifact_failure(
+            &fixture.database,
+            &operation_id,
+            StudyTargetArtifactKind::StudyGuide,
+            &CommandError::new(
+                "fixture_guide_failure",
+                "The guide sibling failed after flashcards committed.",
+            ),
+        )
+        .expect("guide failure should record");
+        finalize_batch(&fixture.database, &operation_id).expect("batch should finalize");
+
+        let status = status_for_claim(&fixture.database, &claim).expect("status should load");
+        assert_eq!(status.latest_batch_state.as_deref(), Some("partial"));
+        assert_eq!(status.flashcards.state, "succeeded");
+        assert_eq!(status.study_guide.state, "failed");
+        let deck_id = status.deck_id.expect("successful deck should remain");
+        fixture
+            .database
+            .with_connection(|connection| {
+                let active_notes: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM notes
+                         WHERE deck_id=?1 AND deleted_at IS NULL",
+                        [deck_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(active_notes, 1);
+                Ok(())
+            })
+            .expect("successful sibling should remain intact");
+    }
+
+    #[test]
+    fn deleted_bundle_deck_stays_suppressed_until_explicit_recreation() {
+        let fixture = bundle_fixture();
+        let first_operation = "4".repeat(32);
+        begin_flashcard_bundle(&fixture, &first_operation);
+        let first = compose_flashcard_bundle(&fixture, &first_operation);
+        let deleted_deck = first.deck_id.expect("initial collection deck");
+
+        fixture
+            .database
+            .with_connection(|connection| {
+                crate::deletion::delete_deck(connection, &deleted_deck)?;
+                Ok(())
+            })
+            .expect("ordinary deck deletion should record target suppression");
+
+        let suppressed_operation = "5".repeat(32);
+        begin_flashcard_bundle(&fixture, &suppressed_operation);
+        let suppressed = compose_flashcard_bundle(&fixture, &suppressed_operation);
+        assert_eq!(suppressed.latest_batch_state.as_deref(), Some("complete"));
+        assert_eq!(suppressed.flashcards.state, "suppressed");
+        assert!(suppressed.deck_id.is_none());
+
+        let recreate_operation = "6".repeat(32);
+        super::super::begin_bundle(
+            &fixture.database,
+            super::super::BeginStudyTargetBundleInput {
+                operation_id: recreate_operation.clone(),
+                target: StudyTargetRef {
+                    kind: StudyTargetKind::Collection,
+                    id: fixture.collection_id.clone(),
+                },
+                output_policy: super::super::StudyTargetOutputPolicy {
+                    flashcards: true,
+                    study_guide: false,
+                },
+                recreate_artifacts: vec![StudyTargetArtifactKind::Flashcards],
+            },
+        )
+        .expect("explicit recreation should begin");
+        let recreated = compose_flashcard_bundle(&fixture, &recreate_operation);
+        assert_eq!(recreated.latest_batch_state.as_deref(), Some("complete"));
+        assert_eq!(recreated.flashcards.state, "succeeded");
+        let recreated_deck = recreated.deck_id.expect("recreated deck");
+        assert_ne!(recreated_deck, deleted_deck);
     }
 
     #[test]

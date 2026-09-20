@@ -30,6 +30,15 @@ Document flashcard generation can create Basic/Fill in the blank recall plus sin
 
 Review source-grounded output for factual errors, weak questions, duplicated concepts, and missing nuance. A source citation and valid schema are useful evidence, not proof of factual correctness.
 
+### Document folders and coherent study materials
+
+Open a document folder to see its retained sources and reading ranges. The **Study materials** panel is a local status read until you explicitly choose **Create study materials** or **Update study materials**. One collection target owns one ordinary flashcard deck and one collection study guide. A ready Flashcards status opens the ordinary deck; collection-guide reading and richer semantic rendering are handled by the Study Guide workspace as that capability becomes available.
+
+Collection bundling does **not** replace the individual-document flashcard generator. ostudy first relies on each source document's existing, native-validated generated cards. The collection deck copies only unedited source notes whose exact source locators remain inside the folder snapshot/ranges. Collection synthesis can organize the combined guide, but it is not used as a shortcut to invent lower-quality flashcards. If a selected source has not produced usable document flashcards, generate or retry that source through the normal document pipeline rather than weakening the collection quality gate.
+
+Updating a folder appends newly eligible cards without rewriting cards already in the collection deck. Learner edits, stable card identities, schedules and review history remain attached to the existing target cards. Removing a source from the folder stops it from contributing new candidates; it does not delete already retained study cards. Deleting the target deck or guide is explicit suppression, so an ambiguous retry cannot silently recreate it; choosing **Recreate study materials** is a new deliberate action.
+
+
 ## Supported source families
 
 The current registry supports PDF; Word DOC/DOCX-family files; PowerPoint PPT/PPTX-family files; OpenDocument ODT/ODP/ODS; EPUB; RTF; Excel XLS/XLSX-family files; and CSV.

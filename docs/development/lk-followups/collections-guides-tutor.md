@@ -2,7 +2,7 @@
 
 Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Current boundary: **104-A** (folder/range persistence/resolution) and **104-B** (folder UI plus folder-scoped Tutor) are implemented on the PR branch. **104-C** now provides compact collection synthesis, complete range-safe coverage planning, bounded single-attempt provider-authorized cross-document reduction, explicit gaps/dependencies, and separation between complete generation coverage and bounded Tutor retrieval. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-D** is the next implementation boundary after 104-C qualification.
+Current boundary: **104-A** (folder/range persistence/resolution), **104-B** (folder UI plus folder-scoped Tutor), **104-C** (compact synthesis plus complete range-safe coverage), and **104-D** (durable StudyTarget bundles plus safe publication/status) are implemented on the PR branch. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-E** rich guide semantics/viewer/PDF is the next implementation boundary.
 
 Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
@@ -89,6 +89,8 @@ Tests cover sparse slides plus dense readings, contradictions, qualified values,
 
 ## LK-07 — automatic coherent study bundles
 
+Implemented ownership is `study_materials/` over schema 24. The target layer records exact source snapshots, one ordinary deck identity, collection-guide revisions, retry-safe batch/artifact receipts, explicit deletion suppression, and restart interruption. It never replaces the mature individual-document authoring pipeline: document targets adopt its existing artifacts, while collection flashcards copy only range-authorized, unedited notes that already passed document generation/admission. `CollectionSynthesis` may organize the collection guide but is never a lower-quality flashcard authoring shortcut.
+
 Persist real study targets with source snapshots, output policy, ordinary deck/guide identities, work/retry receipts, and explicit deletion suppression. One durable upload/collection batch coordinates shared preparation, optional synthesis, and parallel guide/card composition.
 
 The first successful publication creates the target's ordinary deck exactly once. Ambiguous acknowledgements/retries recover the same publication. Later source additions append only novel, validated cards while preserving learner edits, stable card identities, schedules, reviews, and surviving cards whose sources later leave the collection.
@@ -134,8 +136,8 @@ Implement coherent vertical increments:
 1. **104-A:** folder/range persistence + resolver + preservation — implemented.
 2. **104-B:** folder UI + Tutor source selection — implemented.
 3. **104-C:** synthesis + coverage-aware LearningContext — implemented on the active branch; exact-head qualification is recorded in PR #104.
-4. **104-D:** study target/bundle persistence + safe publication/status UI — next implementation boundary.
-5. **104-E:** semantic guide viewer + PDF capability/renderer work.
+4. **104-D:** study target/bundle persistence + safe publication/status UI — implemented on the active branch; exact-head qualification is recorded in PR #104.
+5. **104-E:** semantic guide viewer + PDF capability/renderer work — next implementation boundary.
 6. **104-F:** Tutor project/menu integration.
 7. **104-G:** cross-stage audit, exact-head terminal qualification, and human handoff.
 
