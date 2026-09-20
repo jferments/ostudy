@@ -12,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use oxidize_pdf::{Document, Font, Page};
+use oxidize_pdf::{graphics::Color, Document, Font, Page};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -35,14 +35,15 @@ mod math_source;
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
 const PAGE_WIDTH: f64 = 595.0;
 const PAGE_HEIGHT: f64 = 842.0;
-const MARGIN_X: f64 = 48.0;
-const MARGIN_TOP: f64 = 50.0;
-const MARGIN_BOTTOM: f64 = 46.0;
-const BODY_SIZE: f64 = 10.5;
-const BODY_LINE_HEIGHT: f64 = 14.0;
+const MARGIN_X: f64 = 54.0;
+const MARGIN_TOP: f64 = 64.0;
+const MARGIN_BOTTOM: f64 = 48.0;
+const BODY_SIZE: f64 = 10.25;
+const BODY_LINE_HEIGHT: f64 = 14.25;
 const MAX_EXPORT_SECTIONS: usize = 512;
 const MAX_EXPORT_TEXT_CHARS: usize = 5_000_000;
-const EMBEDDED_FONT_NAME: &str = "OStudyGuideSans";
+const EMBEDDED_FONT_REGULAR_NAME: &str = "OStudyGuideSans";
+const EMBEDDED_FONT_BOLD_NAME: &str = "OStudyGuideSansBold";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -110,16 +111,25 @@ enum ExportBlock {
 
 #[derive(Clone, Debug)]
 enum PdfFontChoice {
-    Custom(String),
+    Custom { regular: String, bold: String },
 }
 
 impl PdfFontChoice {
-    fn font(&self, _bold: bool) -> Font {
+    fn font(&self, bold: bool) -> Font {
         match self {
-            Self::Custom(name) => Font::Custom(name.clone()),
+            Self::Custom { regular, bold: bold_name } => Font::Custom(
+                if bold { bold_name } else { regular }.clone(),
+            ),
         }
     }
 }
+
+fn color_ink() -> Color { Color::rgb(0.10, 0.14, 0.18) }
+fn color_muted() -> Color { Color::rgb(0.38, 0.43, 0.48) }
+fn color_accent() -> Color { Color::rgb(0.08, 0.42, 0.45) }
+fn color_cover() -> Color { Color::rgb(0.07, 0.18, 0.25) }
+fn color_cover_text() -> Color { Color::rgb(0.96, 0.98, 0.99) }
+fn color_cover_muted() -> Color { Color::rgb(0.72, 0.81, 0.84) }
 
 #[tauri::command]
 pub(crate) fn prepare_document_study_guide_pdf(
@@ -409,20 +419,35 @@ fn render_study_guide_pdf(
     let font_choice = install_unicode_font(&mut document)?;
     let mut writer = PdfFlowWriter::new(document, font_choice);
 
-    writer.heading(&export.document_title, 22.0, 28.0)?;
-    writer.paragraph("Study guide", 12.0, 17.0, true)?;
-    writer.paragraph(
-        &format!("Source: {}", export.source_filename),
-        BODY_SIZE,
-        BODY_LINE_HEIGHT,
-        false,
+    writer.cover_page(
+        &export.document_title,
+        &export.source_filename,
+        export.sections.len(),
     )?;
-    if math_source::has_math(export) {
-        writer.paragraph(math_source::NOTICE, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
+    writer.page_break()?;
+    writer.enable_running_pages(&export.document_title)?;
+
+    writer.heading("Contents", 20.0, 25.0)?;
+    writer.muted_paragraph(
+        "A source-grounded map of the topics in this guide.",
+        10.0,
+        14.0,
+    )?;
+    writer.spacer(5.0)?;
+    for (index, section) in export.sections.iter().enumerate() {
+        writer.paragraph(
+            &format!("{}. {}", index + 1, section.title),
+            10.5,
+            14.0,
+            true,
+        )?;
+        writer.muted_paragraph(&source_label(&section.source_locator), 9.0, 12.0)?;
     }
+    writer.spacer(12.0)?;
+    writer.rule()?;
     writer.spacer(10.0)?;
 
-    writer.heading("Overview", 16.0, 21.0)?;
+    writer.heading("Overview", 20.0, 25.0)?;
     writer.paragraph(&export.overview, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
     if !export.learning_objectives.is_empty() {
         writer.heading("Learning objectives", 14.0, 19.0)?;
@@ -436,26 +461,14 @@ fn render_study_guide_pdf(
         writer.heading("My guide notes", 14.0, 19.0)?;
         writer.bullets(&export.guide_notes, false)?;
     }
-
-    writer.heading("Contents", 16.0, 21.0)?;
-    for (index, section) in export.sections.iter().enumerate() {
-        writer.paragraph(
-            &format!(
-                "{}. {} ({})",
-                index + 1,
-                section.title,
-                source_label(&section.source_locator)
-            ),
-            BODY_SIZE,
-            BODY_LINE_HEIGHT,
-            false,
-        )?;
+    if math_source::has_math(export) {
+        writer.muted_paragraph(math_source::NOTICE, 9.0, 12.5)?;
     }
     writer.page_break()?;
 
     for (index, section) in export.sections.iter().enumerate() {
-        writer.heading(&format!("{}. {}", index + 1, section.title), 17.0, 23.0)?;
-        writer.paragraph(&source_label(&section.source_locator), 9.5, 13.0, false)?;
+        writer.heading(&format!("{}. {}", index + 1, section.title), 18.0, 23.0)?;
+        writer.muted_paragraph(&source_label(&section.source_locator), 9.25, 12.5)?;
         writer.spacer(5.0)?;
         for block in &section.body_lines {
             writer.block(block)?;
@@ -477,6 +490,8 @@ struct PdfFlowWriter {
     page_number: usize,
     y: f64,
     page_has_content: bool,
+    running_title: Option<String>,
+    running_pages: bool,
 }
 
 impl PdfFlowWriter {
@@ -488,11 +503,106 @@ impl PdfFlowWriter {
             page_number: 1,
             y: PAGE_HEIGHT - MARGIN_TOP,
             page_has_content: false,
+            running_title: None,
+            running_pages: false,
         }
     }
 
+    fn cover_page(
+        &mut self,
+        title: &str,
+        source_filename: &str,
+        section_count: usize,
+    ) -> Result<(), CommandError> {
+        self.page.graphics()
+            .set_fill_color(color_cover())
+            .rectangle(0.0, 0.0, PAGE_WIDTH, PAGE_HEIGHT)
+            .fill();
+        self.page.graphics()
+            .set_fill_color(color_accent())
+            .rectangle(0.0, 0.0, PAGE_WIDTH, 72.0)
+            .fill();
+        self.page.graphics()
+            .set_stroke_color(Color::rgb(0.68, 0.79, 0.82))
+            .set_line_width(0.8)
+            .move_to(MARGIN_X, PAGE_HEIGHT - 78.0)
+            .line_to(PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 78.0)
+            .stroke();
+        self.absolute_text(
+            "OSTUDY  /  STUDY GUIDE",
+            MARGIN_X,
+            PAGE_HEIGHT - 60.0,
+            9.5,
+            true,
+            color_cover_muted(),
+        )?;
+        let title_lines = wrap_text(title, PAGE_WIDTH - (2.0 * MARGIN_X), 29.0);
+        let mut y = PAGE_HEIGHT - 145.0;
+        for line in title_lines {
+            self.absolute_text(&line, MARGIN_X, y, 29.0, true, color_cover_text())?;
+            y -= 35.0;
+        }
+        y -= 18.0;
+        self.absolute_text(
+            &format!("Source: {source_filename}"),
+            MARGIN_X,
+            y,
+            11.0,
+            false,
+            color_cover_muted(),
+        )?;
+        y -= 22.0;
+        self.absolute_text(
+            &format!("{section_count} source-grounded section{}", if section_count == 1 { "" } else { "s" }),
+            MARGIN_X,
+            y,
+            10.0,
+            false,
+            color_cover_muted(),
+        )?;
+        self.absolute_text(
+            "SOURCE-GROUNDED  /  LOCAL EXPORT",
+            MARGIN_X,
+            38.0,
+            9.0,
+            true,
+            color_cover_text(),
+        )?;
+        self.page_has_content = true;
+        Ok(())
+    }
+
+    fn enable_running_pages(&mut self, title: &str) -> Result<(), CommandError> {
+        self.running_title = Some(title.to_string());
+        self.running_pages = true;
+        self.draw_running_header()
+    }
+
+    fn draw_running_header(&mut self) -> Result<(), CommandError> {
+        if !self.running_pages { return Ok(()); }
+        if let Some(title) = self.running_title.clone() {
+            self.absolute_text(
+                &compact_header(&title),
+                MARGIN_X,
+                PAGE_HEIGHT - 31.0,
+                8.5,
+                true,
+                color_muted(),
+            )?;
+        }
+        self.page.graphics()
+            .set_stroke_color(Color::rgb(0.82, 0.84, 0.86))
+            .set_line_width(0.6)
+            .move_to(MARGIN_X, PAGE_HEIGHT - 42.0)
+            .line_to(PAGE_WIDTH - MARGIN_X, PAGE_HEIGHT - 42.0)
+            .stroke();
+        self.y = PAGE_HEIGHT - MARGIN_TOP;
+        Ok(())
+    }
+
     fn heading(&mut self, text: &str, size: f64, line_height: f64) -> Result<(), CommandError> {
-        self.text(text, size, line_height, true, 0.0)
+        self.ensure_space(line_height + (2.0 * BODY_LINE_HEIGHT))?;
+        self.text_color(text, size, line_height, true, 0.0, color_accent())
     }
 
     fn paragraph(
@@ -502,22 +612,40 @@ impl PdfFlowWriter {
         line_height: f64,
         bold: bool,
     ) -> Result<(), CommandError> {
-        self.text(text, size, line_height, bold, 0.0)
+        self.text_color(text, size, line_height, bold, 0.0, color_ink())
+    }
+
+    fn muted_paragraph(
+        &mut self,
+        text: &str,
+        size: f64,
+        line_height: f64,
+    ) -> Result<(), CommandError> {
+        self.text_color(text, size, line_height, false, 0.0, color_muted())
+    }
+
+    fn rule(&mut self) -> Result<(), CommandError> {
+        self.ensure_space(3.0)?;
+        self.page.graphics()
+            .set_stroke_color(Color::rgb(0.82, 0.84, 0.86))
+            .set_line_width(0.6)
+            .move_to(MARGIN_X, self.y)
+            .line_to(PAGE_WIDTH - MARGIN_X, self.y)
+            .stroke();
+        self.y -= 3.0;
+        Ok(())
     }
 
     fn bullets(&mut self, items: &[String], numbered: bool) -> Result<(), CommandError> {
         for (index, item) in items.iter().enumerate() {
-            let prefix = if numbered {
-                format!("{}. ", index + 1)
-            } else {
-                "• ".to_string()
-            };
-            self.text(
+            let prefix = if numbered { format!("{}. ", index + 1) } else { "• ".to_string() };
+            self.text_color(
                 &format!("{prefix}{item}"),
                 BODY_SIZE,
                 BODY_LINE_HEIGHT,
                 false,
                 12.0,
+                color_ink(),
             )?;
         }
         Ok(())
@@ -526,14 +654,19 @@ impl PdfFlowWriter {
     fn block(&mut self, block: &ExportBlock) -> Result<(), CommandError> {
         match block {
             ExportBlock::Heading(text) => self.heading(text, 12.5, 17.5),
-            ExportBlock::Paragraph(text) => {
-                self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false)
-            }
+            ExportBlock::Paragraph(text) => self.paragraph(text, BODY_SIZE, BODY_LINE_HEIGHT, false),
             ExportBlock::Bullets(items) => self.bullets(items, false),
             ExportBlock::Numbered(items) => self.bullets(items, true),
             ExportBlock::Terms(entries) => {
                 for (term, explanation) in entries {
-                    self.text(&format!("{term}: {explanation}"), BODY_SIZE, BODY_LINE_HEIGHT, false, 12.0)?;
+                    self.text_color(
+                        &format!("{term}: {explanation}"),
+                        BODY_SIZE,
+                        BODY_LINE_HEIGHT,
+                        false,
+                        12.0,
+                        color_ink(),
+                    )?;
                 }
                 Ok(())
             }
@@ -545,7 +678,7 @@ impl PdfFlowWriter {
                 self.heading(title, 12.5, 17.5)?;
                 self.paragraph(&columns.join(" | "), BODY_SIZE, BODY_LINE_HEIGHT, true)?;
                 for row in rows { self.paragraph(&row.join(" | "), BODY_SIZE, BODY_LINE_HEIGHT, false)?; }
-                if !caption.is_empty() { self.paragraph(caption, 9.5, 13.0, false)?; }
+                if !caption.is_empty() { self.muted_paragraph(caption, 9.5, 13.0)?; }
                 Ok(())
             }
             ExportBlock::WorkedExample { title, prompt, steps, answer, takeaway } => {
@@ -553,13 +686,13 @@ impl PdfFlowWriter {
                 self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, false)?;
                 self.bullets(steps, true)?;
                 self.paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT, true)?;
-                if !takeaway.is_empty() { self.paragraph(&format!("Takeaway: {takeaway}"), BODY_SIZE, BODY_LINE_HEIGHT, false)?; }
+                if !takeaway.is_empty() { self.muted_paragraph(&format!("Takeaway: {takeaway}"), BODY_SIZE, BODY_LINE_HEIGHT)?; }
                 Ok(())
             }
             ExportBlock::RetrievalCheck { prompt, answer } => {
                 self.heading("Check yourself", 12.5, 17.5)?;
                 self.paragraph(prompt, BODY_SIZE, BODY_LINE_HEIGHT, true)?;
-                self.paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT, false)
+                self.muted_paragraph(&format!("Answer: {answer}"), BODY_SIZE, BODY_LINE_HEIGHT)
             }
             ExportBlock::Spacer => self.spacer(5.0),
         }
@@ -572,27 +705,26 @@ impl PdfFlowWriter {
     }
 
     fn page_break(&mut self) -> Result<(), CommandError> {
-        if self.page_has_content {
-            self.commit_page()?;
-        }
+        if self.page_has_content { self.commit_page()?; }
         Ok(())
     }
 
-    fn text(
+    fn text_color(
         &mut self,
         text: &str,
         size: f64,
         line_height: f64,
         bold: bool,
         indent: f64,
+        color: Color,
     ) -> Result<(), CommandError> {
         let available_width = PAGE_WIDTH - (2.0 * MARGIN_X) - indent;
         let lines = wrap_text(text, available_width, size);
         for line in lines {
             self.ensure_space(line_height)?;
-            self.page
-                .text()
+            self.page.text()
                 .set_font(self.font.font(bold), size)
+                .set_fill_color(color)
                 .at(MARGIN_X + indent, self.y)
                 .write(&line)
                 .map_err(pdf_error)?;
@@ -602,22 +734,33 @@ impl PdfFlowWriter {
         self.spacer((line_height * 0.35).max(2.0))
     }
 
+    fn absolute_text(
+        &mut self,
+        text: &str,
+        x: f64,
+        y: f64,
+        size: f64,
+        bold: bool,
+        color: Color,
+    ) -> Result<(), CommandError> {
+        self.page.text()
+            .set_font(self.font.font(bold), size)
+            .set_fill_color(color)
+            .at(x, y)
+            .write(text)
+            .map_err(pdf_error)?;
+        Ok(())
+    }
+
     fn ensure_space(&mut self, needed: f64) -> Result<(), CommandError> {
-        if self.y - needed < MARGIN_BOTTOM {
-            self.commit_page()?;
-        }
+        if self.y - needed < MARGIN_BOTTOM { self.commit_page()?; }
         Ok(())
     }
 
     fn commit_page(&mut self) -> Result<(), CommandError> {
-        if self.page_has_content {
-            let footer = format!("oStudy • Study guide • Page {}", self.page_number);
-            self.page
-                .text()
-                .set_font(self.font.font(false), 8.0)
-                .at(MARGIN_X, 24.0)
-                .write(&footer)
-                .map_err(pdf_error)?;
+        if self.page_has_content && self.running_pages {
+            let footer = format!("oStudy  •  Study guide  •  Page {}", self.page_number);
+            self.absolute_text(&footer, MARGIN_X, 24.0, 8.0, false, color_muted())?;
         }
         let next = Page::a4();
         let finished = std::mem::replace(&mut self.page, next);
@@ -625,45 +768,67 @@ impl PdfFlowWriter {
         self.page_number = self.page_number.saturating_add(1);
         self.y = PAGE_HEIGHT - MARGIN_TOP;
         self.page_has_content = false;
+        self.draw_running_header()?;
         Ok(())
     }
 
     fn finish(mut self, destination: &Path) -> Result<(), CommandError> {
-        if self.page_has_content {
-            self.commit_page()?;
-        }
+        if self.page_has_content { self.commit_page()?; }
         self.document.save(destination).map_err(pdf_error)
     }
 }
 
-fn install_unicode_font(document: &mut Document) -> Result<PdfFontChoice, CommandError> {
-    let Some(path) = find_unicode_font() else {
-        return Err(CommandError::new(
-            "study_guide_pdf_font_missing",
-            "oStudy could not find a local Unicode TrueType/OpenType font for study-guide PDF export.",
-        ));
-    };
-    let bytes = fs::read(&path).map_err(CommandError::io)?;
-    document
-        .add_font_from_bytes(EMBEDDED_FONT_NAME, bytes)
-        .map_err(pdf_error)?;
-    Ok(PdfFontChoice::Custom(EMBEDDED_FONT_NAME.to_string()))
+fn compact_header(value: &str) -> String {
+    let clean = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if clean.chars().count() <= 72 { return clean; }
+    let mut result = clean.chars().take(69).collect::<String>();
+    result.push_str("...");
+    result
 }
 
-fn find_unicode_font() -> Option<PathBuf> {
+fn install_unicode_font(document: &mut Document) -> Result<PdfFontChoice, CommandError> {
+    let Some((regular_path, bold_path)) = find_unicode_fonts() else {
+        return Err(CommandError::new(
+            "study_guide_pdf_font_missing",
+            "oStudy could not find local Unicode TrueType/OpenType fonts for study-guide PDF export.",
+        ));
+    };
+    let regular_bytes = fs::read(&regular_path).map_err(CommandError::io)?;
+    let bold_bytes = fs::read(&bold_path).map_err(CommandError::io)?;
+    document
+        .add_font_from_bytes(EMBEDDED_FONT_REGULAR_NAME, regular_bytes)
+        .map_err(pdf_error)?;
+    document
+        .add_font_from_bytes(EMBEDDED_FONT_BOLD_NAME, bold_bytes)
+        .map_err(pdf_error)?;
+    Ok(PdfFontChoice::Custom {
+        regular: EMBEDDED_FONT_REGULAR_NAME.to_string(),
+        bold: EMBEDDED_FONT_BOLD_NAME.to_string(),
+    })
+}
+
+fn find_unicode_fonts() -> Option<(PathBuf, PathBuf)> {
+    let pairs = [
+        ("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
+        ("/usr/share/fonts/opentype/noto/NotoSans-Regular.otf", "/usr/share/fonts/opentype/noto/NotoSans-Bold.otf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/system/fonts/NotoSans-Regular.ttf", "/system/fonts/NotoSans-Bold.ttf"),
+        ("/system/fonts/Roboto-Regular.ttf", "/system/fonts/Roboto-Bold.ttf"),
+        ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
+    ];
+    for (regular, bold) in pairs {
+        let regular = PathBuf::from(regular);
+        let bold = PathBuf::from(bold);
+        if regular.is_file() && bold.is_file() { return Some((regular, bold)); }
+    }
     [
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSans-Regular.otf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/system/fonts/NotoSans-Regular.ttf",
-        "/system/fonts/Roboto-Regular.ttf",
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-        "C:\\Windows\\Fonts\\arial.ttf",
     ]
     .into_iter()
     .map(PathBuf::from)
     .find(|path| path.is_file())
+    .map(|path| (path.clone(), path))
 }
 
 fn wrap_text(text: &str, available_width: f64, font_size: f64) -> Vec<String> {
