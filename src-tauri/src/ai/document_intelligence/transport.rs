@@ -126,7 +126,8 @@ async fn request_json_inner(
     };
     let response = match first {
         Err(first_error)
-            if allow_compatibility_retry && first_error.safe.code == "ai_http_bad_request" => {
+            if allow_compatibility_retry && first_error.safe.code == "ai_http_bad_request" =>
+        {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
                 if let Some(cancellation) = cancellation {
                     runtime
