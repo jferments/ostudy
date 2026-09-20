@@ -218,7 +218,7 @@ pub(crate) fn begin_study_target_bundle(
     begin_bundle(database.inner(), input)
 }
 
-fn load_collection_study_guide(
+pub(crate) fn load_collection_study_guide(
     database: &Database,
     collection_id: &str,
 ) -> Result<Option<CollectionStudyGuide>, CommandError> {

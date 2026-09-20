@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { SourceLocator, StudyGuideOverview, StudyGuideSectionContent } from "./studyGuides";
+import { createOperationId } from "./common";
+import type {
+  PreparedStudyGuidePdf,
+  SourceLocator,
+  StudyGuideOverview,
+  StudyGuideSectionContent,
+} from "./studyGuides";
 
 export type StudyTargetKind = "document" | "collection";
 export type StudyTargetArtifactKind = "flashcards" | "study_guide";
@@ -100,6 +106,16 @@ export interface BeginStudyTargetBundleInput {
   target: StudyTargetRef;
   outputPolicy?: StudyTargetOutputPolicy;
   recreateArtifacts?: StudyTargetArtifactKind[];
+}
+
+export async function prepareCollectionStudyGuidePdf(
+  collectionId: string,
+  includeAnnotations: boolean,
+  operationId = createOperationId(),
+): Promise<PreparedStudyGuidePdf> {
+  return invoke<PreparedStudyGuidePdf>("prepare_collection_study_guide_pdf", {
+    input: { collectionId, operationId, includeAnnotations },
+  });
 }
 
 export async function getCollectionStudyGuide(

@@ -23,16 +23,19 @@ use crate::{
     document_study_guides::{
         load_active_document_study_guide, DocumentStudyGuide, DocumentStudyGuideSection,
         StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState,
+        StudyGuideSectionContent,
     },
     error::CommandError,
     external_files::{PreparedExportDto, RegisterPreparedExport},
     paths::AppPaths,
+    study_materials::{load_collection_study_guide, CollectionStudyGuide},
     util::validate_entity_id,
 };
 
 mod math_source;
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
+const COLLECTION_EXPORT_PURPOSE: &str = "collection_study_guide_pdf";
 const PAGE_WIDTH: f64 = 595.0;
 const PAGE_HEIGHT: f64 = 842.0;
 const MARGIN_X: f64 = 54.0;
@@ -49,6 +52,15 @@ const EMBEDDED_FONT_BOLD_NAME: &str = "OStudyGuideSansBold";
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct PrepareStudyGuidePdfInput {
     pub document_id: String,
+    pub operation_id: String,
+    #[serde(default)]
+    pub include_annotations: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct PrepareCollectionStudyGuidePdfInput {
+    pub collection_id: String,
     pub operation_id: String,
     #[serde(default)]
     pub include_annotations: bool,
@@ -90,7 +102,7 @@ struct EffectiveGuideExport {
 #[derive(Clone, Debug)]
 struct EffectiveExportSection {
     title: String,
-    source_locator: SourceLocator,
+    source_locator: Option<SourceLocator>,
     body_lines: Vec<ExportBlock>,
     notes: Vec<String>,
 }
@@ -240,6 +252,85 @@ pub(crate) fn prepare_document_study_guide_pdf(
     })
 }
 
+#[tauri::command]
+pub(crate) fn prepare_collection_study_guide_pdf(
+    database: State<'_, Database>,
+    paths: State<'_, AppPaths>,
+    input: PrepareCollectionStudyGuidePdfInput,
+) -> Result<PreparedStudyGuidePdfDto, CommandError> {
+    validate_entity_id(&input.collection_id, "document collection")?;
+    validate_entity_id(&input.operation_id, "collection study-guide export operation")?;
+
+    if let Some((prepared_export, summary)) = database.with_connection(|connection| {
+        crate::external_files::load_prepared_export_summary::<StudyGuidePdfSummary>(
+            connection,
+            paths.inner(),
+            &input.operation_id,
+            COLLECTION_EXPORT_PURPOSE,
+        )
+    })? {
+        return Ok(PreparedStudyGuidePdfDto {
+            prepared_export,
+            guide_revision: summary.guide_revision,
+            section_count: summary.section_count,
+            annotation_count: summary.annotation_count,
+            math_source_fallback: summary.math_source_fallback,
+        });
+    }
+
+    let guide = load_collection_study_guide(database.inner(), &input.collection_id)?.ok_or_else(
+        || CommandError::new(
+            "collection_study_guide_not_found",
+            "Create the collection study guide before exporting it to PDF.",
+        ),
+    )?;
+    let effective = compose_effective_collection_export(guide, input.include_annotations)?;
+    if effective.sections.len() > MAX_EXPORT_SECTIONS {
+        return Err(CommandError::new(
+            "study_guide_export_too_large",
+            "The collection study guide contains too many sections to export safely.",
+        ));
+    }
+    let relative = AppPaths::prepared_export_relative_path(&input.operation_id, "pdf");
+    let destination = paths.resolve_relative(&relative);
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(CommandError::io)?;
+    }
+    render_study_guide_pdf(&effective, &destination)?;
+
+    let summary = StudyGuidePdfSummary {
+        guide_revision: effective.guide_revision,
+        section_count: i64::try_from(effective.sections.len()).unwrap_or(i64::MAX),
+        annotation_count: i64::try_from(effective.annotation_count).unwrap_or(i64::MAX),
+        math_source_fallback: math_source::has_math(&effective),
+    };
+    let suggested_filename = format!(
+        "{}-study-guide.pdf",
+        portable_filename(&effective.document_title)
+    );
+    let prepared_export = database.with_connection(|connection| {
+        crate::external_files::register_prepared_export(
+            connection,
+            paths.inner(),
+            RegisterPreparedExport {
+                id: &input.operation_id,
+                purpose: COLLECTION_EXPORT_PURPOSE,
+                suggested_filename: &suggested_filename,
+                media_type: "application/pdf",
+                relative_path: &relative,
+                summary: &summary,
+            },
+        )
+    })?;
+    Ok(PreparedStudyGuidePdfDto {
+        prepared_export,
+        guide_revision: summary.guide_revision,
+        section_count: summary.section_count,
+        annotation_count: summary.annotation_count,
+        math_source_fallback: summary.math_source_fallback,
+    })
+}
+
 // Old prepared exports did not record math presentation. Warn conservatively
 // on replay rather than claiming they contain typeset equations.
 fn legacy_math_fallback() -> bool {
@@ -331,7 +422,7 @@ fn compose_effective_export(
         }
         sections.push(EffectiveExportSection {
             title,
-            source_locator: section.source_locator.clone(),
+            source_locator: Some(section.source_locator.clone()),
             body_lines: body_override.map_or_else(
                 || generated_section_blocks(section),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
@@ -361,8 +452,93 @@ fn compose_effective_export(
     Ok(export)
 }
 
+fn compose_effective_collection_export(
+    guide: CollectionStudyGuide,
+    include_annotations: bool,
+) -> Result<EffectiveGuideExport, CommandError> {
+    let mut guide_notes = Vec::new();
+    let mut overlays_by_block = HashMap::<String, Vec<_>>::new();
+    for overlay in &guide.overlays {
+        if overlay.state != "active" {
+            continue;
+        }
+        if let Some(block_key) = overlay.block_key.as_ref() {
+            overlays_by_block
+                .entry(block_key.clone())
+                .or_default()
+                .push(overlay);
+        } else if include_annotations
+            && overlay.overlay_kind == "guide_note"
+            && !overlay.plain_text.trim().is_empty()
+        {
+            guide_notes.push(overlay.plain_text.trim().to_string());
+        }
+    }
+
+    let mut sections = Vec::with_capacity(guide.content.sections.len());
+    let mut annotation_count = guide_notes.len();
+    for section in &guide.content.sections {
+        let mut title = section.title.clone();
+        let mut body_override = None::<String>;
+        let mut notes = Vec::new();
+        for overlay in overlays_by_block
+            .get(&section.block_key)
+            .into_iter()
+            .flatten()
+            .copied()
+        {
+            match overlay.overlay_kind.as_str() {
+                "title_override" if !overlay.plain_text.trim().is_empty() => {
+                    title = overlay.plain_text.trim().to_string();
+                }
+                "body_override" if !overlay.plain_text.trim().is_empty() => {
+                    body_override = Some(overlay.plain_text.trim().to_string());
+                }
+                "topic_note" | "highlight"
+                    if include_annotations && !overlay.plain_text.trim().is_empty() =>
+                {
+                    notes.push(overlay.plain_text.trim().to_string());
+                    annotation_count = annotation_count.saturating_add(1);
+                }
+                _ => {}
+            }
+        }
+        sections.push(EffectiveExportSection {
+            title,
+            source_locator: section.source_locator.clone(),
+            body_lines: body_override.map_or_else(
+                || generated_content_blocks(&section.content),
+                |replacement| vec![ExportBlock::Paragraph(replacement)],
+            ),
+            notes,
+        });
+    }
+    let export = EffectiveGuideExport {
+        document_title: guide.title.clone(),
+        source_filename: format!("Document collection · {}", guide.title),
+        guide_revision: guide.revision,
+        overview: guide.content.overview.summary,
+        learning_objectives: guide.content.overview.learning_objectives,
+        key_concepts: guide.content.overview.key_concepts,
+        guide_notes,
+        sections,
+        annotation_count,
+    };
+    let character_count = effective_text(&export).chars().count();
+    if character_count == 0 || character_count > MAX_EXPORT_TEXT_CHARS {
+        return Err(CommandError::new(
+            "study_guide_export_too_large",
+            "The effective collection study guide is empty or exceeds the bounded PDF export size.",
+        ));
+    }
+    Ok(export)
+}
+
 fn generated_section_blocks(section: &DocumentStudyGuideSection) -> Vec<ExportBlock> {
-    let content = &section.content;
+    generated_content_blocks(&section.content)
+}
+
+fn generated_content_blocks(content: &StudyGuideSectionContent) -> Vec<ExportBlock> {
     let mut blocks = vec![ExportBlock::Paragraph(content.overview.clone())];
     if !content.key_points.is_empty() {
         blocks.push(ExportBlock::Heading("Key points".to_string()));
@@ -483,7 +659,9 @@ fn render_study_guide_pdf(
             14.0,
             true,
         )?;
-        writer.muted_paragraph(&source_label(&section.source_locator), 9.0, 12.0)?;
+        if let Some(locator) = section.source_locator.as_ref() {
+            writer.muted_paragraph(&source_label(locator), 9.0, 12.0)?;
+        }
     }
     writer.spacer(12.0)?;
     writer.rule()?;
@@ -510,7 +688,9 @@ fn render_study_guide_pdf(
 
     for (index, section) in export.sections.iter().enumerate() {
         writer.heading(&format!("{}. {}", index + 1, section.title), 18.0, 23.0)?;
-        writer.muted_paragraph(&source_label(&section.source_locator), 9.25, 12.5)?;
+        if let Some(locator) = section.source_locator.as_ref() {
+            writer.muted_paragraph(&source_label(locator), 9.25, 12.5)?;
+        }
         writer.spacer(5.0)?;
         for block in &section.body_lines {
             writer.block(block)?;
@@ -1205,7 +1385,9 @@ mod tests {
             guide_notes: vec!["Review this before lab.".to_string()],
             sections: vec![EffectiveExportSection {
                 title: "Preload".to_string(),
-                source_locator: SourceLocator::new(SourceUnitKind::Page, vec![2, 3], None).unwrap(),
+                source_locator: Some(
+                    SourceLocator::new(SourceUnitKind::Page, vec![2, 3], None).unwrap(),
+                ),
                 body_lines: vec![ExportBlock::Paragraph(
                     "Preload reflects ventricular filling before systole.".to_string(),
                 )],
