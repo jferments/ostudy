@@ -345,7 +345,7 @@ fn load_organization(
                  ORDER BY parent_id IS NOT NULL,parent_id,sort_order,name COLLATE NOCASE,id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(DocumentCollectionDto {
                     id: row.get(0)?,
@@ -360,7 +360,8 @@ fn load_organization(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let memberships = {
         let mut statement = connection
@@ -370,7 +371,7 @@ fn load_organization(
                  ORDER BY collection_id,sort_order,id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(DocumentCollectionMembershipDto {
                     id: row.get(0)?,
@@ -384,7 +385,8 @@ fn load_organization(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     let ranges = {
         let mut statement = connection
@@ -394,7 +396,7 @@ fn load_organization(
                  ORDER BY membership_id,start_unit,end_unit,id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], |row| {
                 Ok(DocumentCollectionRangeDto {
                     id: row.get(0)?,
@@ -408,7 +410,8 @@ fn load_organization(
             })
             .map_err(CommandError::database)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        rows
     };
     Ok(DocumentCollectionOrganizationDto {
         revision,
@@ -1402,11 +1405,12 @@ fn collection_parent_map(
     let mut statement = connection
         .prepare("SELECT id,parent_id FROM document_collections ORDER BY id")
         .map_err(CommandError::database)?;
-    statement
+    let rows = statement
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(CommandError::database)?
         .collect::<Result<BTreeMap<_, _>, _>>()
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    Ok(rows)
 }
 
 fn validate_hierarchy(parents: &BTreeMap<String, Option<String>>) -> Result<(), CommandError> {
