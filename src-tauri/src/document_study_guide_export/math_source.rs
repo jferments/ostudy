@@ -56,6 +56,7 @@ pub(super) fn segments(source: &str) -> Vec<MathSegment<'_>> {
     result
 }
 
+#[cfg(test)]
 pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
     if contains_math(&export.overview)
         || export
