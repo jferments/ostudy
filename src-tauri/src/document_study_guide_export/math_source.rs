@@ -16,6 +16,9 @@ pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
     export.sections.iter().any(|section| {
         contains_math(&section.title)
             || section.notes.iter().any(|s| contains_math(s))
+            || section.figures.iter().any(|figure| {
+                contains_math(&figure.title) || contains_math(&figure.caption)
+            })
             || section.body_lines.iter().any(|block| match block {
                 ExportBlock::Heading(s) | ExportBlock::Paragraph(s) => contains_math(s),
                 ExportBlock::Bullets(items) | ExportBlock::Numbered(items) => {

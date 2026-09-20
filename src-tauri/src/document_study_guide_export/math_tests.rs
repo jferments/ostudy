@@ -41,14 +41,17 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
     export.guide_notes.clear();
     export.sections.push(EffectiveExportSection {
         title: "Topic".into(),
-        source_locator: SourceLocator::new(
-            crate::document_domain::SourceUnitKind::Section,
-            vec![1],
-            None,
-        )
-        .unwrap(),
+        source_locator: Some(
+            SourceLocator::new(
+                crate::document_domain::SourceUnitKind::Section,
+                vec![1],
+                None,
+            )
+            .unwrap(),
+        ),
         body_lines: vec![ExportBlock::Terms(vec![("Term".into(), "$$x$$".into())])],
         notes: vec![],
+        figures: vec![],
     });
     assert!(math_source::has_math(&export));
     export.sections[0].body_lines = vec![ExportBlock::Paragraph("````\n$$code$$\n````".into())];

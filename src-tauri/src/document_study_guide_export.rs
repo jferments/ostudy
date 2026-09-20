@@ -15,7 +15,7 @@ use std::{
 use oxidize_pdf::{
     annotations::{HighlightMode, LinkAction, LinkAnnotation, LinkDestination},
     geometry::{Point, Rectangle},
-    graphics::Color,
+    graphics::{Color, Image as PdfImage},
     structure::{Destination, NamedDestinations, OutlineItem, OutlineTree, PageDestination},
     Document, Font, Page,
 };
@@ -26,6 +26,8 @@ use tauri::State;
 use crate::{
     database::Database,
     document_domain::SourceLocator,
+    document_store,
+    document_visual_evidence,
     document_study_guides::{
         load_active_document_study_guide, DocumentStudyGuide, DocumentStudyGuideSection,
         StudyGuideOverlay, StudyGuideOverlayKind, StudyGuideOverlayState,
@@ -111,6 +113,14 @@ struct EffectiveExportSection {
     source_locator: Option<SourceLocator>,
     body_lines: Vec<ExportBlock>,
     notes: Vec<String>,
+    figures: Vec<ExportFigure>,
+}
+
+#[derive(Clone, Debug)]
+struct ExportFigure {
+    image: PdfImage,
+    title: String,
+    caption: String,
 }
 
 #[derive(Clone, Debug)]
@@ -208,6 +218,7 @@ pub(crate) fn prepare_document_study_guide_pdf(
 
     let effective = load_effective_export(
         database.inner(),
+        paths.inner(),
         &input.document_id,
         input.include_annotations,
     )?;
@@ -290,7 +301,12 @@ pub(crate) fn prepare_collection_study_guide_pdf(
             "Create the collection study guide before exporting it to PDF.",
         ),
     )?;
-    let effective = compose_effective_collection_export(guide, input.include_annotations)?;
+    let effective = compose_effective_collection_export(
+        database.inner(),
+        paths.inner(),
+        guide,
+        input.include_annotations,
+    )?;
     if effective.sections.len() > MAX_EXPORT_SECTIONS {
         return Err(CommandError::new(
             "study_guide_export_too_large",
@@ -345,6 +361,7 @@ fn legacy_math_fallback() -> bool {
 
 fn load_effective_export(
     database: &Database,
+    paths: &AppPaths,
     document_id: &str,
     include_annotations: bool,
 ) -> Result<EffectiveGuideExport, CommandError> {
@@ -370,10 +387,21 @@ fn load_effective_export(
                 )
             })
     })?;
-    compose_effective_export(document_title, source_filename, guide, include_annotations)
+    compose_effective_export(
+        database,
+        paths,
+        document_id,
+        document_title,
+        source_filename,
+        guide,
+        include_annotations,
+    )
 }
 
 fn compose_effective_export(
+    database: &Database,
+    paths: &AppPaths,
+    document_id: &str,
     document_title: String,
     source_filename: String,
     guide: DocumentStudyGuide,
@@ -426,14 +454,26 @@ fn compose_effective_export(
                 _ => {}
             }
         }
+        let figures = if body_override.is_none() {
+            load_export_figures(
+                database,
+                paths,
+                document_id,
+                &section.source_locator,
+                &section.content.visual_explanations,
+            )
+        } else {
+            Vec::new()
+        };
         sections.push(EffectiveExportSection {
             title,
             source_locator: Some(section.source_locator.clone()),
             body_lines: body_override.map_or_else(
-                || generated_section_blocks(section),
+                || generated_section_blocks(section, figures.is_empty()),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
             ),
             notes,
+            figures,
         });
     }
 
@@ -459,6 +499,8 @@ fn compose_effective_export(
 }
 
 fn compose_effective_collection_export(
+    database: &Database,
+    paths: &AppPaths,
     guide: CollectionStudyGuide,
     include_annotations: bool,
 ) -> Result<EffectiveGuideExport, CommandError> {
@@ -509,14 +551,29 @@ fn compose_effective_collection_export(
                 _ => {}
             }
         }
+        let figures = if body_override.is_none() {
+            match (section.source_document_id.as_deref(), section.source_locator.as_ref()) {
+                (Some(document_id), Some(locator)) => load_export_figures(
+                    database,
+                    paths,
+                    document_id,
+                    locator,
+                    &section.content.visual_explanations,
+                ),
+                _ => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         sections.push(EffectiveExportSection {
             title,
             source_locator: section.source_locator.clone(),
             body_lines: body_override.map_or_else(
-                || generated_content_blocks(&section.content),
+                || generated_content_blocks(&section.content, figures.is_empty()),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
             ),
             notes,
+            figures,
         });
     }
     let export = EffectiveGuideExport {
@@ -540,11 +597,63 @@ fn compose_effective_collection_export(
     Ok(export)
 }
 
-fn generated_section_blocks(section: &DocumentStudyGuideSection) -> Vec<ExportBlock> {
-    generated_content_blocks(&section.content)
+fn load_export_figures(
+    database: &Database,
+    paths: &AppPaths,
+    document_id: &str,
+    locator: &SourceLocator,
+    explanations: &[crate::document_study_guides::StudyGuideVisualExplanation],
+) -> Vec<ExportFigure> {
+    if explanations.is_empty() || locator.asset_ids.is_empty() {
+        return Vec::new();
+    }
+    let assets = match document_store::load_source_assets(database, document_id) {
+        Ok(assets) => assets,
+        Err(error) => {
+            crate::logging::warn_target(
+                "ostudy.study_guide.pdf",
+                "study_guide_pdf_figure_assets_unavailable",
+                "Optional study-guide figures were omitted; text export remains available.",
+                serde_json::json!({"documentId":document_id,"code":error.code}),
+            );
+            return Vec::new();
+        }
+    };
+    let selected =
+        document_store::select_source_assets(&locator.asset_ids, explanations.len().min(2));
+    selected
+        .into_iter()
+        .zip(explanations.iter())
+        .filter_map(|(asset_id, explanation)| {
+            let asset = assets.iter().find(|asset| asset.asset_id == asset_id)?;
+            let bytes = match document_visual_evidence::read_source_image_bytes(paths, asset) {
+                Ok(bytes) => bytes,
+                Err(_) => return None,
+            };
+            let decoded = image::load_from_memory(&bytes).ok()?.to_rgba8();
+            let width = decoded.width();
+            let height = decoded.height();
+            let image = PdfImage::from_rgba_data(decoded.into_raw(), width, height).ok()?;
+            Some(ExportFigure {
+                image,
+                title: explanation.title.clone(),
+                caption: explanation.explanation.clone(),
+            })
+        })
+        .collect()
 }
 
-fn generated_content_blocks(content: &StudyGuideSectionContent) -> Vec<ExportBlock> {
+fn generated_section_blocks(
+    section: &DocumentStudyGuideSection,
+    include_visual_text: bool,
+) -> Vec<ExportBlock> {
+    generated_content_blocks(&section.content, include_visual_text)
+}
+
+fn generated_content_blocks(
+    content: &StudyGuideSectionContent,
+    include_visual_text: bool,
+) -> Vec<ExportBlock> {
     let mut blocks = vec![ExportBlock::Paragraph(content.overview.clone())];
     if !content.key_points.is_empty() {
         blocks.push(ExportBlock::Heading("Key points".to_string()));
@@ -623,7 +732,7 @@ fn generated_content_blocks(content: &StudyGuideSectionContent) -> Vec<ExportBlo
             answer: check.answer.clone(),
         });
     }
-    if !content.visual_explanations.is_empty() {
+    if include_visual_text && !content.visual_explanations.is_empty() {
         blocks.push(ExportBlock::Heading("Visual evidence".to_string()));
         for visual in &content.visual_explanations {
             blocks.push(ExportBlock::Heading(visual.title.clone()));
@@ -705,6 +814,9 @@ fn render_study_guide_pdf(
         for block in &section.body_lines {
             writer.block(block)?;
         }
+        for figure in &section.figures {
+            writer.figure(figure)?;
+        }
         if !section.notes.is_empty() {
             writer.heading("My notes", 13.0, 18.0)?;
             writer.bullets(&section.notes, false)?;
@@ -725,6 +837,7 @@ struct PdfFlowWriter {
     running_title: Option<String>,
     running_pages: bool,
     navigation: Vec<(String, String, u32)>,
+    image_sequence: usize,
 }
 
 impl PdfFlowWriter {
@@ -739,6 +852,7 @@ impl PdfFlowWriter {
             running_title: None,
             running_pages: false,
             navigation: Vec::new(),
+            image_sequence: 0,
         }
     }
 
@@ -1007,6 +1121,45 @@ impl PdfFlowWriter {
             }
             ExportBlock::Spacer => self.spacer(5.0),
         }
+    }
+
+    fn figure(&mut self, figure: &ExportFigure) -> Result<(), CommandError> {
+        let pixel_width = f64::from(figure.image.width().max(1));
+        let pixel_height = f64::from(figure.image.height().max(1));
+        let maximum_width = PAGE_WIDTH - (2.0 * MARGIN_X);
+        let maximum_height = 280.0;
+        let scale = (maximum_width / pixel_width)
+            .min(maximum_height / pixel_height)
+            .min(1.0);
+        let width = (pixel_width * scale).max(1.0);
+        let height = (pixel_height * scale).max(1.0);
+        let caption = if figure.title.trim().is_empty() {
+            figure.caption.trim().to_string()
+        } else if figure.caption.trim().is_empty() {
+            figure.title.trim().to_string()
+        } else {
+            format!("{} — {}", figure.title.trim(), figure.caption.trim())
+        };
+        let caption_height = if caption.is_empty() {
+            0.0
+        } else {
+            wrap_text(&caption, maximum_width, 9.0).len() as f64 * 12.5 + 5.0
+        };
+        self.ensure_space(height + caption_height + 12.0)?;
+        let x = MARGIN_X + ((maximum_width - width) / 2.0);
+        let bottom = self.y - height;
+        self.image_sequence = self.image_sequence.saturating_add(1);
+        let name = format!("StudyGuideFigure{}", self.image_sequence);
+        self.page.add_image(name.clone(), figure.image.clone());
+        self.page
+            .draw_image(&name, x, bottom, width, height)
+            .map_err(pdf_error)?;
+        self.y = bottom - 6.0;
+        self.page_has_content = true;
+        if !caption.is_empty() {
+            self.muted_paragraph(&caption, 9.0, 12.5)?;
+        }
+        self.spacer(6.0)
     }
 
     fn callout(&mut self, label: &str, title: &str, body: &str) -> Result<(), CommandError> {
@@ -1466,6 +1619,7 @@ mod tests {
                     "Preload reflects ventricular filling before systole.".to_string(),
                 )],
                 notes: vec!["Compare with afterload.".to_string()],
+                figures: Vec::new(),
             }],
             annotation_count: 2,
         }
@@ -1514,7 +1668,7 @@ mod tests {
             content_hash: "b".repeat(64),
             source_locator: SourceLocator::new(SourceUnitKind::Page, vec![2], None).unwrap(),
         };
-        let blocks = generated_section_blocks(&section);
+        let blocks = generated_section_blocks(&section, true);
         let text = format!("{blocks:?}");
         for expected in ["Remember", "Compare", "Trace a change", "What is preload?"] {
             assert!(text.contains(expected));
@@ -1590,6 +1744,33 @@ mod tests {
         assert!(text.contains("Cardiovascular Physiology"));
         assert!(!text.contains("Guide revision"));
         assert!(!text.contains("Revision 2"));
+        fs::remove_file(root).unwrap();
+    }
+
+    #[test]
+    fn rendered_pdf_embeds_verified_figure_shape_and_selectable_caption() {
+        let mut export = test_export();
+        export.sections[0].figures.push(ExportFigure {
+            image: PdfImage::from_rgba_data(vec![255, 0, 0, 255], 1, 1).unwrap(),
+            title: "Pressure-volume loop".to_string(),
+            caption: "Trace filling before ejection.".to_string(),
+        });
+        let root = std::env::temp_dir().join(format!(
+            "ostudy-study-guide-figure-{}.pdf",
+            std::process::id()
+        ));
+        render_study_guide_pdf(&export, &root).unwrap();
+        let bytes = fs::read(&root).unwrap();
+        let raw = String::from_utf8_lossy(&bytes);
+        assert!(raw.contains("/Subtype /Image"));
+        let reader = PdfReader::new(Cursor::new(bytes)).unwrap();
+        let parsed = PdfDocument::new(reader);
+        let text = (0..parsed.page_count().unwrap())
+            .map(|page| parsed.extract_text_from_page(page).unwrap().text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("Pressure-volume loop"));
+        assert!(text.contains("Trace filling before ejection."));
         fs::remove_file(root).unwrap();
     }
 
