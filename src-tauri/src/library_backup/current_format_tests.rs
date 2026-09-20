@@ -270,6 +270,8 @@ fn current_library_preserves_every_value_identity_and_asset_through_reopen_and_r
         ("document_collections", 1),
         ("document_collection_memberships", 1),
         ("document_collection_ranges", 1),
+        ("knowledge_collection_views", 1),
+        ("knowledge_collection_view_dependencies", 4),
         ("document_image_sets", 1),
         ("document_image_members", 2),
         ("document_image_imports", 1),

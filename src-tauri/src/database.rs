@@ -188,9 +188,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0022_document_collections.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 23,
+        name: "collection_synthesis",
+        checksum: "6b871a614a99d2e0012c671590fc5397631ec586211445332b007bdfdfc86e2f",
+        sql: include_str!("../migrations/0023_collection_synthesis.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 22;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 23;
 
 #[derive(Clone)]
 pub struct Database {

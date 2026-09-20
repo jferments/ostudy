@@ -104,6 +104,10 @@ pub(crate) struct ContextStamp {
 }
 
 impl ContextStamp {
+    pub(crate) fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
     pub(crate) fn restrict_to(
         mut self,
         connection: &Connection,
