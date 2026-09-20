@@ -1037,8 +1037,7 @@ impl PdfFlowWriter {
     fn heading(&mut self, text: &str, size: f64, line_height: f64) -> Result<(), CommandError> {
         let available_width = PAGE_WIDTH - (2.0 * MARGIN_X);
         let line_count = wrap_text(text, available_width, size).len().max(1) as f64;
-        let heading_height =
-            (line_count * line_height) + (line_height * 0.35).max(2.0);
+        let heading_height = (line_count * line_height) + (line_height * 0.35).max(2.0);
         self.ensure_space(heading_height + (2.0 * BODY_LINE_HEIGHT))?;
         self.text_color(text, size, line_height, true, 0.0, color_accent())
     }
@@ -1983,7 +1982,9 @@ mod tests {
         document.set_title("Heading pagination fixture");
         let font = install_unicode_font(&mut document).unwrap();
         let mut writer = PdfFlowWriter::new(document, font);
-        writer.enable_running_pages("Heading pagination fixture").unwrap();
+        writer
+            .enable_running_pages("Heading pagination fixture")
+            .unwrap();
         writer
             .paragraph("Earlier page content.", BODY_SIZE, BODY_LINE_HEIGHT, false)
             .unwrap();
@@ -2004,9 +2005,8 @@ mod tests {
         ));
         writer.finish(&root).unwrap();
 
-        let parsed = PdfDocument::new(
-            PdfReader::new(Cursor::new(fs::read(&root).unwrap())).unwrap(),
-        );
+        let parsed =
+            PdfDocument::new(PdfReader::new(Cursor::new(fs::read(&root).unwrap())).unwrap());
         assert_eq!(parsed.page_count().unwrap(), 2);
         let first = parsed.extract_text_from_page(0).unwrap().text;
         let second = parsed.extract_text_from_page(1).unwrap().text;
