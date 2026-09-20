@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as collections from "../../ipc/collections";
 import type { DocumentSummary } from "../../ipc/documents";
+import * as studyMaterials from "../../ipc/studyMaterials";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DocumentCollectionsWorkspace } from "./DocumentCollectionsWorkspace";
 
@@ -16,6 +17,11 @@ vi.mock("../../ipc/collections", () => ({
   removeDocumentCollectionMembership: vi.fn(),
   setDocumentCollectionRanges: vi.fn(),
   resolveDocumentSourceSelection: vi.fn(),
+}));
+vi.mock("../../ipc/studyMaterials", () => ({
+  getStudyTargetBundle: vi.fn(),
+  beginStudyTargetBundle: vi.fn(),
+  composeStudyTargetBundle: vi.fn(),
 }));
 vi.mock("../../ipc/common", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../ipc/common")>();
@@ -56,6 +62,38 @@ const organization: collections.DocumentCollectionOrganization = {
     sourceSha256: "e".repeat(64),
     createdAt: 1,
   }],
+};
+
+const bundleStatus: studyMaterials.StudyTargetBundleStatus = {
+  targetId: "t".repeat(32),
+  target: { kind: "collection", id: folderId },
+  title: "Week 1",
+  revision: 2,
+  sourceSnapshotId: "s".repeat(64),
+  sourceChanged: false,
+  deckId: "9".repeat(32),
+  guideId: "8".repeat(32),
+  guideRevision: 1,
+  latestOperationId: "f".repeat(32),
+  latestBatchState: "complete",
+  flashcards: {
+    kind: "flashcards",
+    state: "succeeded",
+    artifactId: "9".repeat(32),
+    totalUnits: 1,
+    completedUnits: 1,
+    safeErrorCode: "",
+    safeErrorMessage: "",
+  },
+  studyGuide: {
+    kind: "study_guide",
+    state: "succeeded",
+    artifactId: "8".repeat(32),
+    totalUnits: 1,
+    completedUnits: 1,
+    safeErrorCode: "",
+    safeErrorMessage: "",
+  },
 };
 
 const document: DocumentSummary = {
@@ -108,14 +146,36 @@ beforeEach(() => {
     }],
   });
   vi.mocked(collections.setDocumentCollectionRanges).mockResolvedValue(organization);
+  vi.mocked(studyMaterials.getStudyTargetBundle).mockResolvedValue(null);
+  vi.mocked(studyMaterials.beginStudyTargetBundle).mockResolvedValue({
+    ...bundleStatus,
+    deckId: null,
+    guideId: null,
+    guideRevision: null,
+    latestBatchState: "queued",
+    flashcards: { ...bundleStatus.flashcards, state: "pending", artifactId: null },
+    studyGuide: { ...bundleStatus.studyGuide, state: "pending", artifactId: null },
+  });
+  vi.mocked(studyMaterials.composeStudyTargetBundle).mockResolvedValue(bundleStatus);
 });
 
-function renderWorkspace() {
+function renderWorkspace({
+  refreshDecks = vi.fn().mockResolvedValue([]),
+  onOpenDeck = vi.fn(),
+}: {
+  refreshDecks?: () => Promise<unknown>;
+  onOpenDeck?: (deckId: string) => void;
+} = {}) {
   render(
     <OverlayProvider>
-      <DocumentCollectionsWorkspace documents={[document]} />
+      <DocumentCollectionsWorkspace
+        documents={[document]}
+        refreshDecks={refreshDecks}
+        onOpenDeck={onOpenDeck}
+      />
     </OverlayProvider>,
   );
+  return { refreshDecks, onOpenDeck };
 }
 
 describe("Document collections workspace", () => {
@@ -126,6 +186,11 @@ describe("Document collections workspace", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Sources" }));
     expect((await screen.findAllByText("Pages 1–3")).length).toBeGreaterThan(0);
     expect(collections.getDocumentCollectionOrganization).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(studyMaterials.getStudyTargetBundle).toHaveBeenCalledWith({
+        target: { kind: "collection", id: folderId },
+      });
+    });
     expect(collections.resolveDocumentSourceSelection).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit range" }));
@@ -146,6 +211,33 @@ describe("Document collections workspace", () => {
         expectedOrganizationRevision: 2,
       });
     });
+  });
+
+  it("creates one coherent bundle and opens its ordinary flashcard deck from compact status", async () => {
+    const refreshDecks = vi.fn().mockResolvedValue([]);
+    const onOpenDeck = vi.fn();
+    renderWorkspace({ refreshDecks, onOpenDeck });
+
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
+
+    await waitFor(() => {
+      expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith({
+        operationId: "f".repeat(32),
+        target: { kind: "collection", id: folderId },
+        outputPolicy: { flashcards: true, studyGuide: true },
+        recreateArtifacts: [],
+      });
+      expect(studyMaterials.composeStudyTargetBundle).toHaveBeenCalledWith({
+        operationId: "f".repeat(32),
+      });
+    });
+    expect(refreshDecks).toHaveBeenCalledTimes(1);
+    const open = await screen.findByRole("button", { name: "Open Flashcards deck" });
+    expect(open.textContent).toContain("Ready");
+    fireEvent.click(open);
+    expect(onOpenDeck).toHaveBeenCalledWith("9".repeat(32));
+    expect(screen.getByText("Study Guide")).toBeTruthy();
   });
 
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {

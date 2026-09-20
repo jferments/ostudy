@@ -124,6 +124,7 @@ pub(crate) struct StudyTargetBundleStatus {
     pub title: String,
     pub revision: i64,
     pub source_snapshot_id: String,
+    pub source_changed: bool,
     pub deck_id: Option<String>,
     pub guide_id: Option<String>,
     pub guide_revision: Option<i64>,
@@ -526,6 +527,12 @@ fn load_bundle_status(
             .optional()
             .map_err(CommandError::database)?;
 
+        let source_changed = if stored.snapshot_id.is_empty() {
+            false
+        } else {
+            resolve_target_snapshot(connection, &stored.target)?.snapshot_id != stored.snapshot_id
+        };
+
         let flashcards = load_artifact_status(
             connection,
             &stored,
@@ -568,6 +575,7 @@ fn load_bundle_status(
             title: stored.title,
             revision: stored.revision,
             source_snapshot_id: stored.snapshot_id,
+            source_changed,
             deck_id: active_deck_id(connection, stored.deck_id.as_deref())?,
             guide_id: collection_guide
                 .as_ref()

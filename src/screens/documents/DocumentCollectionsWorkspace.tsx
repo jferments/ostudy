@@ -7,6 +7,7 @@ import type {
   SourceRangeInput,
 } from "../../ipc/collections";
 import type { DocumentSummary } from "../../ipc/documents";
+import type { StudyTargetArtifactStatus, StudyTargetBundleStatus } from "../../ipc/studyMaterials";
 import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
@@ -17,6 +18,7 @@ import { Surface } from "../../ui/primitives/Surface";
 import { Tabs } from "../../ui/primitives/Tabs";
 import { TextField } from "../../ui/primitives/TextField";
 import { useDocumentCollectionsController } from "./useDocumentCollectionsController";
+import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
 
 type CollectionDialog =
   | { kind: "create"; parentId: string | null; name: string }
@@ -26,7 +28,15 @@ type CollectionDialog =
   | { kind: "move-source"; membership: DocumentCollectionMembership; targetCollectionId: string }
   | { kind: "ranges"; membership: DocumentCollectionMembership; value: string };
 
-export function DocumentCollectionsWorkspace({ documents }: { documents: DocumentSummary[] }) {
+export function DocumentCollectionsWorkspace({
+  documents,
+  refreshDecks,
+  onOpenDeck,
+}: {
+  documents: DocumentSummary[];
+  refreshDecks?: () => Promise<unknown>;
+  onOpenDeck?: (deckId: string) => void;
+}) {
   const controller = useDocumentCollectionsController();
   const confirm = useConfirm();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -35,6 +45,11 @@ export function DocumentCollectionsWorkspace({ documents }: { documents: Documen
   const [dialog, setDialog] = useState<CollectionDialog | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const organization = controller.organization;
+  const bundle = useStudyTargetBundleController({
+    target: selectedId ? { kind: "collection", id: selectedId } : null,
+    changed: refreshDecks,
+    refreshKey: organization?.revision ?? null,
+  });
 
   useEffect(() => {
     if (selectedId && organization && !organization.collections.some((folder) => folder.id === selectedId)) {
@@ -185,6 +200,14 @@ export function DocumentCollectionsWorkspace({ documents }: { documents: Documen
               </Button>
             </div>
           </div>
+          <CollectionStudyMaterials
+            status={bundle.status}
+            loading={bundle.loading}
+            busy={bundle.busy}
+            error={bundle.error}
+            onRun={() => void bundle.run()}
+            onOpenDeck={onOpenDeck}
+          />
           <Tabs
             ariaLabel="Document folder views"
             value={tab}
@@ -248,6 +271,106 @@ export function DocumentCollectionsWorkspace({ documents }: { documents: Documen
       ) : null}
     </section>
   );
+}
+
+function CollectionStudyMaterials({
+  status,
+  loading,
+  busy,
+  error,
+  onRun,
+  onOpenDeck,
+}: {
+  status: StudyTargetBundleStatus | null;
+  loading: boolean;
+  busy: boolean;
+  error: string | null;
+  onRun: () => void;
+  onOpenDeck?: (deckId: string) => void;
+}) {
+  const action = bundleActionLabel(status, busy);
+  return (
+    <Surface as="section" className="tw:grid tw:gap-3 tw:p-3" aria-label="Collection study materials">
+      <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+        <div className="tw:grid tw:min-w-0 tw:gap-1">
+          <strong className="tw:text-sm">Study materials</strong>
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {loading
+              ? "Checking saved artifacts…"
+              : status?.sourceChanged
+                ? "Sources changed · update available"
+                : "One ordinary flashcard deck and one collection study guide."}
+          </span>
+        </div>
+        <Button size="small" variant={status ? "secondary" : "primary"} loading={busy} disabled={loading} onClick={onRun}>
+          {action}
+        </Button>
+      </div>
+      <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-2 tw:text-sm" aria-live="polite">
+        <ArtifactStatus
+          label="Flashcards"
+          artifact={status?.flashcards ?? null}
+          openLabel="Open Flashcards deck"
+          onOpen={status?.deckId && onOpenDeck ? () => onOpenDeck(status.deckId as string) : undefined}
+        />
+        <ArtifactStatus label="Study Guide" artifact={status?.studyGuide ?? null} />
+      </div>
+      {error ? <InlineNotice kind="warning">{error}</InlineNotice> : null}
+    </Surface>
+  );
+}
+
+function ArtifactStatus({
+  label,
+  artifact,
+  openLabel,
+  onOpen,
+}: {
+  label: string;
+  artifact: StudyTargetArtifactStatus | null;
+  openLabel?: string;
+  onOpen?: () => void;
+}) {
+  const value = artifactStatusLabel(artifact);
+  return (
+    <span className="tw:flex tw:min-h-9 tw:items-center tw:gap-2">
+      <strong>{label}</strong>
+      {onOpen ? (
+        <Button size="small" variant="text" aria-label={openLabel} onClick={onOpen}>{value}</Button>
+      ) : <span className="tw:text-muted-foreground">{value}</span>}
+    </span>
+  );
+}
+
+function artifactStatusLabel(artifact: StudyTargetArtifactStatus | null): string {
+  if (!artifact) return "Not created";
+  if (artifact.state === "succeeded") return "Ready";
+  if (artifact.state === "suppressed") return "Deleted";
+  if (artifact.state === "failed") return "Needs attention";
+  if (artifact.state === "interrupted") return "Interrupted";
+  if (artifact.state === "canceled") return "Stopped";
+  if (["pending", "running", "committing"].includes(artifact.state)) {
+    return artifact.totalUnits > 0
+      ? `${artifact.completedUnits}/${artifact.totalUnits}`
+      : "Working…";
+  }
+  return "Not created";
+}
+
+function bundleActionLabel(status: StudyTargetBundleStatus | null, busy: boolean): string {
+  if (busy) return "Updating study materials";
+  if (!status) return "Create study materials";
+  if (status.flashcards.state === "suppressed" || status.studyGuide.state === "suppressed") {
+    return "Recreate study materials";
+  }
+  if (
+    ["failed", "interrupted", "canceled"].includes(status.latestBatchState ?? "")
+    || status.flashcards.state === "failed"
+    || status.studyGuide.state === "failed"
+  ) {
+    return "Retry study materials";
+  }
+  return status.sourceChanged ? "Update study materials" : "Update study materials";
 }
 
 function FolderTile({ folder, organization, onOpen }: {

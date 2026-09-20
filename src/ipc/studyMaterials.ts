@@ -29,6 +29,7 @@ export interface StudyTargetBundleStatus {
   title: string;
   revision: number;
   sourceSnapshotId: string;
+  sourceChanged: boolean;
   deckId: string | null;
   guideId: string | null;
   guideRevision: number | null;

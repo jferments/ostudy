@@ -21,6 +21,7 @@ import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
   refreshDecks: () => Promise<unknown>;
+  onOpenDeck: (deckId: string) => void;
   showToast: ShowToast;
   headerSupplement?: ReactNode;
 }
@@ -73,7 +74,11 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
         }
       />
       {props.headerSupplement}
-      <DocumentCollectionsWorkspace documents={documents} />
+      <DocumentCollectionsWorkspace
+        documents={documents}
+        refreshDecks={props.refreshDecks}
+        onOpenDeck={props.onOpenDeck}
+      />
       <div className={styles.toolbar}>
         <span className={styles.count}>{documents.length} document{documents.length === 1 ? "" : "s"}</span>
       </div>
