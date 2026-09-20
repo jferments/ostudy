@@ -1,5 +1,7 @@
 //! Exact OCR groups, source-role decisions, and bounded native pixel proofs.
 
+use std::collections::BTreeMap;
+
 use crate::{
     document_canonical::sha256_hex,
     documents::image_sets::{
@@ -72,6 +74,7 @@ impl Frame {
             }
             let (width, height) = image.dimensions();
             let mut budget = u64::from(width) * u64::from(height) * 2;
+            let text_counts = grouped_text_counts(&result.lines);
             let mut start = 0;
             while start < result.lines.len() {
                 let mut end = start + 1;
@@ -88,7 +91,12 @@ impl Frame {
                     region.bounds,
                     height,
                     settings.include_interface,
-                    settings.overrides.get(&region.id).copied(),
+                    settings.action_for(
+                        &member.id,
+                        &region.id,
+                        &region.text,
+                        text_counts.get(&region.text) == Some(&1),
+                    ),
                 );
                 let included = region.bounds.map_or(member.inclusion.is_none(), |bounds| {
                     contains(inclusion, bounds)
@@ -143,6 +151,25 @@ impl Frame {
         frame.identity = sha256_hex(&identity);
         Ok(frame)
     }
+}
+
+fn grouped_text_counts(lines: &[OcrLine]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    let mut start = 0;
+    while start < lines.len() {
+        let mut end = start + 1;
+        while end < lines.len() && lines[end].group == lines[start].group {
+            end += 1;
+        }
+        let text = lines[start..end]
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        *counts.entry(text).or_default() += 1;
+        start = end;
+    }
+    counts
 }
 
 fn overlaps(a: PixelBounds, b: PixelBounds) -> bool {

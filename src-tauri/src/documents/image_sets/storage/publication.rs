@@ -42,6 +42,7 @@ pub(crate) fn publish(
     receipt.validate_projection(canonical)?;
     let mut receipt = receipt.clone();
     preserve_unique_keys(connection, &mut receipt)?;
+    rebind_filter_overrides(connection, &receipt)?;
     let json = serde_json::to_string(&receipt).map_err(CommandError::serialization)?;
     if json.len() > MAX_RECEIPT_BYTES {
         return Err(invalid(
@@ -82,6 +83,82 @@ pub(crate) fn publish(
             params![receipt.manifest_sha256, receipt.document_id],
         )
         .map_err(CommandError::database)?;
+    Ok(())
+}
+
+fn rebind_filter_overrides(
+    connection: &Connection,
+    receipt: &ImageReceipt,
+) -> Result<(), CommandError> {
+    let Some(previous) = super::load(connection, &receipt.document_id)? else {
+        return Ok(());
+    };
+    let rows = {
+        let mut statement = connection
+            .prepare(
+                "SELECT member_id, region_id, action FROM document_image_overrides
+                 WHERE document_id = ?1 ORDER BY region_id",
+            )
+            .map_err(CommandError::database)?;
+        statement
+            .query_map([&receipt.document_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?
+    };
+    for (member_id, old_region_id, action) in rows {
+        let Some(old_member) = previous
+            .members
+            .iter()
+            .find(|member| member.member_id == member_id)
+        else {
+            continue;
+        };
+        let Some(old_region) = old_member
+            .regions
+            .iter()
+            .find(|region| region.id == old_region_id)
+        else {
+            continue;
+        };
+        let Some(new_member) = receipt
+            .members
+            .iter()
+            .find(|member| member.member_id == member_id)
+        else {
+            continue;
+        };
+        let matches = new_member
+            .regions
+            .iter()
+            .filter(|region| region.text == old_region.text)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 || matches[0].id == old_region_id {
+            continue;
+        }
+        connection
+            .execute(
+                "DELETE FROM document_image_overrides
+                 WHERE document_id = ?1 AND region_id = ?2",
+                params![receipt.document_id, old_region_id],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO document_image_overrides (document_id, member_id, region_id, action)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(document_id, region_id) DO UPDATE SET
+                    member_id = excluded.member_id, action = excluded.action",
+                params![receipt.document_id, member_id, matches[0].id, action],
+            )
+            .map_err(CommandError::database)?;
+    }
     Ok(())
 }
 

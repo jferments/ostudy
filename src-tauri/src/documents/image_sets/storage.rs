@@ -24,6 +24,8 @@ pub struct FilterSettings {
     pub revision: i64,
     pub include_interface: bool,
     pub overrides: BTreeMap<String, RegionOverride>,
+    #[serde(skip)]
+    carried_overrides: BTreeMap<String, BTreeMap<String, RegionOverride>>,
 }
 
 impl Default for FilterSettings {
@@ -32,7 +34,29 @@ impl Default for FilterSettings {
             revision: 1,
             include_interface: false,
             overrides: BTreeMap::new(),
+            carried_overrides: BTreeMap::new(),
         }
+    }
+}
+
+impl FilterSettings {
+    pub(crate) fn action_for(
+        &self,
+        member_id: &str,
+        region_id: &str,
+        text: &str,
+        text_is_unique: bool,
+    ) -> Option<RegionOverride> {
+        self.overrides.get(region_id).copied().or_else(|| {
+            text_is_unique
+                .then(|| {
+                    self.carried_overrides
+                        .get(member_id)
+                        .and_then(|regions| regions.get(text))
+                        .copied()
+                })
+                .flatten()
+        })
     }
 }
 
@@ -74,6 +98,25 @@ pub(crate) fn settings(connection: &Connection, id: &str) -> Result<FilterSettin
             _ => return Err(invalid("An image override uses an unsupported decision.")),
         };
         settings.overrides.insert(region, action);
+    }
+    if let Some(receipt) = load(connection, id)? {
+        for member in &receipt.members {
+            let mut counts = BTreeMap::<&str, usize>::new();
+            for region in &member.regions {
+                *counts.entry(region.text.as_str()).or_default() += 1;
+            }
+            for region in &member.regions {
+                if counts.get(region.text.as_str()) == Some(&1) {
+                    if let Some(action) = settings.overrides.get(&region.id).copied() {
+                        settings
+                            .carried_overrides
+                            .entry(member.member_id.clone())
+                            .or_default()
+                            .insert(region.text.clone(), action);
+                    }
+                }
+            }
+        }
     }
     Ok(settings)
 }

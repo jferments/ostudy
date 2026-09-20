@@ -3,9 +3,10 @@ use super::*;
 use crate::{
     document_ingestion::contracts::{CompatibilityProjection, DocumentCancellation},
     documents::image_sets::{
+        amend::{self, AmendImageSetInput, MemberEdit},
         filter::RegionOverride,
         filter_commands::{self, FilterChange, SetImageFiltersInput},
-        manifest, storage,
+        manifest, repository as image_repository, storage,
         test_support::Fixture,
         view::{self, ImagePreviewInput},
     },
@@ -59,6 +60,43 @@ fn recognition() -> RegionOcrResult {
         language: "eng".to_string(),
         width: 8,
         height: 6,
+    }
+}
+
+fn rotated_recognition() -> RegionOcrResult {
+    let lines = [
+        ("Accept all cookies", 0, 1),
+        (BODY, 2, 4),
+        ("© Example author", 6, 7),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (text, top, bottom))| OcrLine {
+        text: text.to_string(),
+        bounds: Some(PixelBounds {
+            left: 0,
+            top,
+            right: 6,
+            bottom,
+        }),
+        group: index.to_string(),
+        confidence: Some(0.95),
+    })
+    .collect::<Vec<_>>();
+    RegionOcrResult {
+        version: 1,
+        text: lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        confidence: 0.95,
+        lines,
+        duration_millis: 1,
+        engine: "fixture".to_string(),
+        language: "eng".to_string(),
+        width: 6,
+        height: 8,
     }
 }
 
@@ -415,4 +453,114 @@ fn document_image_filter_unknown_geometry_never_leaks_through_an_unfiltered_atta
     assert!(receipt.members[0].visual_withheld);
     assert_eq!(receipt.members[0].regions[0].text, "Accept all cookies");
     persist(&fixture, &manifest, &filtered);
+}
+
+
+#[test]
+fn document_image_manual_filter_rebinds_to_one_exact_region_after_rotation() {
+    let fixture = Fixture::new();
+    let manifest = fixture.import(1, 0, None);
+    let initial = extract(&fixture, &manifest, true);
+    persist(&fixture, &manifest, &initial);
+    let old_region = fixture
+        .database
+        .with_connection(|connection| {
+            let receipt = storage::load(connection, &manifest.document_id)?.unwrap();
+            Ok(receipt.members[0]
+                .regions
+                .iter()
+                .find(|region| region.text == BODY)
+                .unwrap()
+                .id
+                .clone())
+        })
+        .unwrap();
+    filter_commands::apply(
+        &fixture.database,
+        &SetImageFiltersInput {
+            operation_id: "1".repeat(32),
+            document_id: manifest.document_id.clone(),
+            expected_revision: manifest.revision,
+            expected_filter_revision: 1,
+            include_interface: false,
+            overrides: vec![FilterChange {
+                region_id: old_region.clone(),
+                action: Some(RegionOverride::Exclude),
+            }],
+        },
+    )
+    .unwrap();
+    let filtered = extract(&fixture, &manifest, false);
+    assert!(!filtered.canonical.document.units[0].plain_text.contains(BODY));
+    persist(&fixture, &manifest, &filtered);
+
+    amend::apply(
+        &fixture.database,
+        &fixture.paths,
+        &AmendImageSetInput {
+            operation_id: "2".repeat(32),
+            document_id: manifest.document_id.clone(),
+            expected_revision: manifest.revision,
+            expected_filter_revision: 2,
+            members: vec![MemberEdit {
+                member_id: manifest.members[0].id.clone(),
+                quarter_turns: 1,
+                inclusion: None,
+            }],
+            append: Vec::new(),
+        },
+    )
+    .unwrap();
+    let rotated = fixture
+        .database
+        .with_connection(|connection| image_repository::load(connection, &manifest.document_id))
+        .unwrap();
+    let source = fixture.paths.resolve_relative(
+        &manifest::manifest_path(&rotated.document_id, &rotated.fingerprint().unwrap()).unwrap(),
+    );
+    let mut calls = 0;
+    let output = extract_with(
+        Some(&fixture.database),
+        AdapterRequest {
+            paths: &fixture.paths,
+            document_id: &rotated.document_id,
+            source_path: &source,
+            format: DocumentFormat::ImageBundle,
+            maximum_source_units: 128,
+            cancellation: &NotCanceled,
+        },
+        &mut |_| Ok(()),
+        Some("filter-fixture-v1"),
+        |_| {
+            calls += 1;
+            Ok(rotated_recognition())
+        },
+    )
+    .unwrap();
+    assert_eq!(calls, 1);
+    assert!(!output.canonical.document.units[0].plain_text.contains(BODY));
+    let Some(CompatibilityProjection::ImageSet(receipt)) = &output.compatibility else {
+        panic!("missing rotated image receipt");
+    };
+    let new_region = receipt.members[0]
+        .regions
+        .iter()
+        .find(|region| region.text == BODY)
+        .unwrap();
+    assert_eq!(new_region.override_action, Some(RegionOverride::Exclude));
+    assert_ne!(new_region.id, old_region);
+    persist(&fixture, &rotated, &output);
+    fixture
+        .database
+        .with_connection(|connection| {
+            let settings = storage::settings(connection, &rotated.document_id)?;
+            assert_eq!(settings.revision, 2);
+            assert_eq!(
+                settings.overrides.get(&new_region.id),
+                Some(&RegionOverride::Exclude)
+            );
+            assert!(!settings.overrides.contains_key(&old_region));
+            crate::database::validate_backup_lineage(connection)
+        })
+        .unwrap();
 }
