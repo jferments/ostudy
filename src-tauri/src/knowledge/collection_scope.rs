@@ -246,10 +246,7 @@ fn unit_dependencies_visible(
     Ok(true)
 }
 
-fn source_allowed(
-    member: &collections::SourceSetMemberDto,
-    source: &SourceRecord,
-) -> bool {
+fn source_allowed(member: &collections::SourceSetMemberDto, source: &SourceRecord) -> bool {
     source.kind == SourceKind::Document
         && source.document_id.as_deref() == Some(member.document_id.as_str())
         && source
@@ -258,17 +255,12 @@ fn source_allowed(
             .is_some_and(|locator| locator_allowed(member, locator))
 }
 
-fn locator_allowed(
-    member: &collections::SourceSetMemberDto,
-    locator: &SourceLocator,
-) -> bool {
+fn locator_allowed(member: &collections::SourceSetMemberDto, locator: &SourceLocator) -> bool {
     let kind = locator.unit_kind.as_str();
     !locator.unit_numbers.is_empty()
         && locator.unit_numbers.iter().all(|number| {
             member.ranges.iter().any(|range| {
-                range.unit_kind == kind
-                    && *number >= range.start_unit
-                    && *number <= range.end_unit
+                range.unit_kind == kind && *number >= range.start_unit && *number <= range.end_unit
             })
         })
 }
@@ -291,27 +283,33 @@ mod tests {
         value.to_string().repeat(32)
     }
 
-    fn seed_fixture(connection: &Connection) -> Result<(StudyScope, Vec<SourceRecord>), CommandError> {
+    fn seed_fixture(
+        connection: &Connection,
+    ) -> Result<(StudyScope, Vec<SourceRecord>), CommandError> {
         let document = id('d');
         let collection = id('c');
         let membership = id('m');
         let sha = "a".repeat(64);
-        connection.execute(
-            "INSERT INTO documents(
+        connection
+            .execute(
+                "INSERT INTO documents(
                  id,title,original_filename,mime_type,byte_size,sha256,source_relative_path,
                  lifecycle_state,created_at,updated_at,source_format,source_unit_kind,
                  source_unit_count,source_media_type
              ) VALUES(?1,'Reading','reading.pdf','application/pdf',100,?2,?3,
                  'ready',1,1,'pdf','page',2,'application/pdf')",
-            params![document, sha, format!("documents/{document}/source.pdf")],
-        ).map_err(CommandError::database)?;
-        connection.execute(
-            "INSERT INTO document_source_files(
+                params![document, sha, format!("documents/{document}/source.pdf")],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO document_source_files(
                  document_id,file_ordinal,original_filename,media_type,relative_path,
                  byte_size,sha256,created_at,updated_at
              ) VALUES(?1,1,'reading.pdf','application/pdf',?2,100,?3,1,1)",
-            params![document, format!("documents/{document}/source.pdf"), sha],
-        ).map_err(CommandError::database)?;
+                params![document, format!("documents/{document}/source.pdf"), sha],
+            )
+            .map_err(CommandError::database)?;
         let mut sources = Vec::new();
         for unit in 1..=2_i64 {
             let locator = SourceLocator::new(SourceUnitKind::Page, vec![unit], None)?;
@@ -319,21 +317,32 @@ mod tests {
                 serde_json::to_string(&locator).map_err(CommandError::serialization)?;
             let text = format!("page {unit}");
             let text_hash = super::super::contracts::hash(&text);
-            connection.execute(
-                "INSERT INTO document_source_units(
+            connection
+                .execute(
+                    "INSERT INTO document_source_units(
                      document_id,unit_number,unit_kind,label,title,plain_text,text_sha256,
                      source_file_ordinal,locator_json,created_at,updated_at
                  ) VALUES(?1,?2,'page',?3,NULL,?4,?5,1,?6,1,1)",
-                params![document, unit, format!("Page {unit}"), text, text_hash, locator_json],
-            ).map_err(CommandError::database)?;
-            connection.execute(
-                "INSERT INTO document_semantic_chunk_sources(
+                    params![
+                        document,
+                        unit,
+                        format!("Page {unit}"),
+                        text,
+                        text_hash,
+                        locator_json
+                    ],
+                )
+                .map_err(CommandError::database)?;
+            connection
+                .execute(
+                    "INSERT INTO document_semantic_chunk_sources(
                      document_id,chunk_index,text,full_text,source_locator_json,
                      visual_asset_ids_json,element_types_json,heading_context,token_estimate,
                      is_oversized,content_sha256,canonical_schema_version,created_at,updated_at
                  ) VALUES(?1,?2,?3,?3,?4,'[]','[\"paragraph\"]',NULL,2,0,?5,1,1,1)",
-                params![document, unit - 1, text, locator_json, text_hash],
-            ).map_err(CommandError::database)?;
+                    params![document, unit - 1, text, locator_json, text_hash],
+                )
+                .map_err(CommandError::database)?;
             let mut source = SourceRecord {
                 identity_version: 2,
                 id: String::new(),
@@ -358,24 +367,30 @@ mod tests {
             repository::publish_source(connection, &source, &(unit - 1).to_string(), 1)?;
             sources.push(source);
         }
-        connection.execute(
-            "INSERT INTO document_collections(
+        connection
+            .execute(
+                "INSERT INTO document_collections(
                  id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
              ) VALUES(?1,NULL,'Week 1',1000,NULL,1,1,1)",
-            [&collection],
-        ).map_err(CommandError::database)?;
-        connection.execute(
-            "INSERT INTO document_collection_memberships(
+                [&collection],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO document_collection_memberships(
                  id,collection_id,document_id,sort_order,created_at,updated_at,revision
              ) VALUES(?1,?2,?3,1000,1,1,1)",
-            params![membership, collection, document],
-        ).map_err(CommandError::database)?;
-        connection.execute(
-            "INSERT INTO document_collection_ranges(
+                params![membership, collection, document],
+            )
+            .map_err(CommandError::database)?;
+        connection
+            .execute(
+                "INSERT INTO document_collection_ranges(
                  id,membership_id,unit_kind,start_unit,end_unit,source_sha256,created_at
              ) VALUES(?1,?2,'page',1,1,?3,1)",
-            params![id('r'), membership, sha],
-        ).map_err(CommandError::database)?;
+                params![id('r'), membership, sha],
+            )
+            .map_err(CommandError::database)?;
         Ok((
             StudyScope::single(ScopeKind::Collection, Some(collection)),
             sources,
@@ -385,43 +400,53 @@ mod tests {
     #[test]
     fn collection_scope_admits_only_sources_inside_saved_ranges() {
         let database = Database::open_in_memory().unwrap();
-        database.with_connection(|connection| {
-            let (scope, sources) = seed_fixture(connection)?;
-            let entries = eligible_entries(connection, &scope)?;
-            assert!(entries.iter().any(|entry| entry.source_id == sources[0].id));
-            assert!(!entries.iter().any(|entry| entry.source_id == sources[1].id));
-            let seeds = document_seeds(connection, &scope)?;
-            assert_eq!(seeds.len(), 1);
-            assert_eq!(seeds[0].parent_key, "0");
-            Ok(())
-        }).unwrap();
+        database
+            .with_connection(|connection| {
+                let (scope, sources) = seed_fixture(connection)?;
+                let entries = eligible_entries(connection, &scope)?;
+                assert!(entries.iter().any(|entry| entry.source_id == sources[0].id));
+                assert!(!entries.iter().any(|entry| entry.source_id == sources[1].id));
+                let seeds = document_seeds(connection, &scope)?;
+                assert_eq!(seeds.len(), 1);
+                assert_eq!(seeds[0].parent_key, "0");
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[test]
     fn learning_context_stamp_rejects_membership_changes_after_hydration() {
         let database = Database::open_in_memory().unwrap();
-        database.with_connection(|connection| {
-            let (scope, sources) = seed_fixture(connection)?;
-            let context = learning_context::build(
-                connection,
-                LearningContextRequest {
-                    scope: &scope,
-                    include_conversations: false,
-                    candidates: &sources,
-                    policy: ContextPolicy::Retrieval,
-                    target_units: None,
-                    budget: ContextBudget { sources: 12, units: 768, bytes: 1024 * 1024 },
-                },
-            )?;
-            assert_eq!(context.sources.len(), 1);
-            connection.execute(
-                "UPDATE document_collection_organization SET revision=revision+1,updated_at=2
+        database
+            .with_connection(|connection| {
+                let (scope, sources) = seed_fixture(connection)?;
+                let context = learning_context::build(
+                    connection,
+                    LearningContextRequest {
+                        scope: &scope,
+                        include_conversations: false,
+                        candidates: &sources,
+                        policy: ContextPolicy::Retrieval,
+                        target_units: None,
+                        budget: ContextBudget {
+                            sources: 12,
+                            units: 768,
+                            bytes: 1024 * 1024,
+                        },
+                    },
+                )?;
+                assert_eq!(context.sources.len(), 1);
+                connection
+                    .execute(
+                        "UPDATE document_collection_organization SET revision=revision+1,updated_at=2
                  WHERE singleton_id=1",
-                [],
-            ).map_err(CommandError::database)?;
-            let error = context.stamp.ensure_current(connection).unwrap_err();
-            assert_eq!(error.code, "source_set_changed");
-            Ok(())
-        }).unwrap();
+                        [],
+                    )
+                    .map_err(CommandError::database)?;
+                let error = context.stamp.ensure_current(connection).unwrap_err();
+                assert_eq!(error.code, "source_set_changed");
+                Ok(())
+            })
+            .unwrap();
     }
 }

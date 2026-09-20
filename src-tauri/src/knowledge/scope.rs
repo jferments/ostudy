@@ -99,12 +99,14 @@ impl StudyScope {
         }
         match self.kind {
             ScopeKind::General | ScopeKind::Library if self.id.is_none() => Ok(()),
-            ScopeKind::Deck | ScopeKind::Document | ScopeKind::Guide | ScopeKind::Collection => validate_entity_id(
-                self.id
-                    .as_deref()
-                    .ok_or_else(|| invalid("Select study material."))?,
-                "study scope",
-            ),
+            ScopeKind::Deck | ScopeKind::Document | ScopeKind::Guide | ScopeKind::Collection => {
+                validate_entity_id(
+                    self.id
+                        .as_deref()
+                        .ok_or_else(|| invalid("Select study material."))?,
+                    "study scope",
+                )
+            }
             _ => Err(invalid("This study scope must not contain an entity ID.")),
         }
     }

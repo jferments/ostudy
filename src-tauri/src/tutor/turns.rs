@@ -68,9 +68,7 @@ pub(crate) fn begin(
     task: &DocumentTaskContext,
 ) -> Result<TurnIdentity, CommandError> {
     input.validate()?;
-    let request_hash = hash(
-        &serde_json::to_string(input).map_err(CommandError::serialization)?,
-    );
+    let request_hash = hash(&serde_json::to_string(input).map_err(CommandError::serialization)?);
     database.with_connection(|connection| {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
