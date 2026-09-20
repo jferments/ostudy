@@ -46,7 +46,7 @@ pub(crate) struct StudyGuideOverview {
     pub key_concepts: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StudyGuideSectionContent {
     pub overview: String,
@@ -1326,10 +1326,7 @@ mod tests {
                 term: "Preload".to_string(),
                 explanation: "Ventricular filling/stretch before systole.".to_string(),
             }],
-            process_steps: Vec::new(),
-            comparisons: Vec::new(),
-            common_misconceptions: Vec::new(),
-            visual_explanations: Vec::new(),
+            ..StudyGuideSectionContent::default()
         }
     }
 
