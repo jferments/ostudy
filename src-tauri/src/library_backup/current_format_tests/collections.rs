@@ -80,8 +80,9 @@ pub(super) fn verify(connection: &Connection) -> Result<(), CommandError> {
     assert_eq!(snapshot.members[0].ranges.len(), 1);
     assert_eq!(snapshot.members[0].ranges[0].start_unit, 1);
     collections::ensure_snapshot_current(connection, &snapshot)?;
-    let view = crate::knowledge::collection_view::load_in_for_preservation(connection, &super::id(520))?
-        .expect("collection synthesis should be retained");
+    let view =
+        crate::knowledge::collection_view::load_in_for_preservation(connection, &super::id(520))?
+            .expect("collection synthesis should be retained");
     assert!(!view.stale);
     assert_eq!(view.synthesis.snapshot_id, snapshot.snapshot_id);
     assert_eq!(connection.total_changes(), before);

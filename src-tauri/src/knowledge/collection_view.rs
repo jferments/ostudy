@@ -228,9 +228,8 @@ fn coverage_plan(
     }
     let mut candidates = Vec::with_capacity(source_ids.len());
     for id in &source_ids {
-        candidates.push(
-            repository::load_source(connection, id)?.ok_or_else(repository::stale_source)?,
-        );
+        candidates
+            .push(repository::load_source(connection, id)?.ok_or_else(repository::stale_source)?);
     }
     let mut all_units = BTreeSet::new();
     for source in &candidates {
@@ -271,10 +270,7 @@ fn coverage_plan(
                 &unit.id,
                 &unit.source_id,
                 &unit.source_hash,
-                hash(
-                    &serde_json::to_string(&unit.content)
-                        .map_err(CommandError::serialization)?,
-                ),
+                hash(&serde_json::to_string(&unit.content).map_err(CommandError::serialization)?),
             ))
         })
         .collect::<Result<Vec<_>, CommandError>>()?;
@@ -395,7 +391,8 @@ fn native_synthesis(
                 document_id: Some(member.document_id.clone()),
                 source_id: None,
                 unit_ids: Vec::new(),
-                detail: "This selected source currently contributes no admitted interpreted units.".to_string(),
+                detail: "This selected source currently contributes no admitted interpreted units."
+                    .to_string(),
             });
         }
     }
@@ -570,9 +567,7 @@ fn dependencies(plan: &CoveragePlan) -> Result<Vec<Dependency>, CommandError> {
         result.push(Dependency {
             kind: "document",
             id: member.document_id.clone(),
-            hash: hash(
-                &serde_json::to_string(member).map_err(CommandError::serialization)?,
-            ),
+            hash: hash(&serde_json::to_string(member).map_err(CommandError::serialization)?),
         });
     }
     for source in &plan.context.sources {
@@ -595,17 +590,15 @@ fn dependencies(plan: &CoveragePlan) -> Result<Vec<Dependency>, CommandError> {
         hash: plan.context.stamp.fingerprint().to_string(),
     });
     for disposition in &plan.snapshot.dispositions {
-        let encoded =
-            serde_json::to_string(disposition).map_err(CommandError::serialization)?;
+        let encoded = serde_json::to_string(disposition).map_err(CommandError::serialization)?;
         result.push(Dependency {
             kind: "disposition",
             id: hash(&encoded)[..32].to_string(),
             hash: hash(&encoded),
         });
     }
-    result.sort_by(|left, right| {
-        (left.kind, left.id.as_str()).cmp(&(right.kind, right.id.as_str()))
-    });
+    result
+        .sort_by(|left, right| (left.kind, left.id.as_str()).cmp(&(right.kind, right.id.as_str())));
     result.dedup_by(|left, right| left.kind == right.kind && left.id == right.id);
     Ok(result)
 }
@@ -642,7 +635,9 @@ fn validate_synthesis(synthesis: &CollectionSynthesis) -> Result<(), CommandErro
         || synthesis.learning_objectives.len() > 96
         || synthesis.relationships.len() > 256
     {
-        return Err(invalid("The collection synthesis exceeds its supported shape."));
+        return Err(invalid(
+            "The collection synthesis exceeds its supported shape.",
+        ));
     }
     let topic_ids = synthesis
         .topics
@@ -650,7 +645,9 @@ fn validate_synthesis(synthesis: &CollectionSynthesis) -> Result<(), CommandErro
         .map(|topic| topic.id.as_str())
         .collect::<HashSet<_>>();
     if topic_ids.len() != synthesis.topics.len() {
-        return Err(invalid("The collection synthesis repeats a topic identity."));
+        return Err(invalid(
+            "The collection synthesis repeats a topic identity.",
+        ));
     }
     for topic in &synthesis.topics {
         validate_entity_id(&topic.id, "collection synthesis topic")?;
@@ -709,8 +706,7 @@ mod tests {
         let document_id = id(document);
         let sha = document.to_string().repeat(64);
         let locator = SourceLocator::new(SourceUnitKind::Page, vec![1], None)?;
-        let locator_json =
-            serde_json::to_string(&locator).map_err(CommandError::serialization)?;
+        let locator_json = serde_json::to_string(&locator).map_err(CommandError::serialization)?;
         let source_id = database.with_connection(|connection| {
             connection
                 .execute(
@@ -807,8 +803,8 @@ mod tests {
     }
 
     fn fixture() -> Result<(Database, String, String, String, String), CommandError> {
-        let database = Database::open_in_memory()
-            .map_err(|message| CommandError::new("fixture", message))?;
+        let database =
+            Database::open_in_memory().map_err(|message| CommandError::new("fixture", message))?;
         let collection = id('c');
         database.with_connection(|connection| {
             connection
@@ -892,7 +888,10 @@ mod tests {
         database
             .with_connection(|connection| {
                 connection
-                    .execute("DELETE FROM knowledge_units WHERE source_id=?1", [&source_id])
+                    .execute(
+                        "DELETE FROM knowledge_units WHERE source_id=?1",
+                        [&source_id],
+                    )
                     .map_err(CommandError::database)?;
                 connection
                     .execute(
