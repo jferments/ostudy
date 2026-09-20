@@ -1,7 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { beginStudyTargetBundle, getStudyTargetBundle } from "./studyMaterials";
+import {
+  beginStudyTargetBundle,
+  composeStudyTargetBundle,
+  getStudyTargetBundle,
+} from "./studyMaterials";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -26,5 +30,11 @@ describe("study material IPC", () => {
     };
     await beginStudyTargetBundle(input);
     expect(invoke).toHaveBeenLastCalledWith("begin_study_target_bundle", { input });
+
+    const composeInput = { operationId: input.operationId };
+    await composeStudyTargetBundle(composeInput);
+    expect(invoke).toHaveBeenLastCalledWith("compose_study_target_bundle", {
+      input: composeInput,
+    });
   });
 });

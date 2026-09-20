@@ -13,6 +13,9 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use tauri::State;
 
+mod composition;
+pub(crate) use composition::compose_study_target_bundle;
+
 use crate::{
     collections::{self, SelectedDocumentInput, SourceSelectionInput, SourceSetSnapshotDto},
     database::Database,
@@ -773,7 +776,7 @@ fn active_deck_id(
     connection
         .query_row(
             "SELECT id FROM decks
-             WHERE id=?1 AND deleted_at IS NULL AND archived_at IS NULL",
+             WHERE id=?1 AND deleted_at IS NULL",
             [deck_id],
             |row| row.get(0),
         )

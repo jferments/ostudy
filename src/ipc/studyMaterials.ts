@@ -60,3 +60,13 @@ export async function beginStudyTargetBundle(
 ): Promise<StudyTargetBundleStatus> {
   return invoke<StudyTargetBundleStatus>("begin_study_target_bundle", { input });
 }
+
+export interface ComposeStudyTargetBundleInput {
+  operationId: string;
+}
+
+export async function composeStudyTargetBundle(
+  input: ComposeStudyTargetBundleInput,
+): Promise<StudyTargetBundleStatus> {
+  return invoke<StudyTargetBundleStatus>("compose_study_target_bundle", { input });
+}
