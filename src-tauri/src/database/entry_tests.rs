@@ -60,7 +60,7 @@ fn every_supported_entry_reaches_the_same_current_schema_and_then_is_a_no_op() {
 
 #[test]
 fn future_schema_error_identifies_running_build_and_preserves_input() {
-    let mut connection = fixture_at(MIGRATIONS.len());
+    let connection = fixture_at(MIGRATIONS.len());
     let future = LATEST_SCHEMA_VERSION + 1;
     connection
         .execute_batch(&format!(
