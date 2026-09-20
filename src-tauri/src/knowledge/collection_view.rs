@@ -19,7 +19,7 @@ use crate::{
 
 use super::{
     collection_scope,
-    contracts::{hash, invalid, KnowledgeUnit, ScopeKind, SourceRecord, StudyScope},
+    contracts::{hash, invalid, KnowledgeUnit, ScopeKind, StudyScope},
     evidence::Importance,
     learning_context::{
         self, ContextBudget, ContextPolicy, LearningContext, LearningContextRequest,
@@ -498,7 +498,7 @@ fn publish(
     reduced: bool,
 ) -> Result<(), CommandError> {
     let serialized = serde_json::to_string(synthesis).map_err(CommandError::serialization)?;
-    if serialized.as_bytes().len() > MAX_SYNTHESIS_BYTES {
+    if serialized.len() > MAX_SYNTHESIS_BYTES {
         return Err(CommandError::new(
             "collection_synthesis_too_large",
             "The compact collection synthesis exceeds its retained-storage limit. Split the material target explicitly.",

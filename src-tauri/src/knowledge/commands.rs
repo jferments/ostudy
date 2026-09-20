@@ -12,6 +12,7 @@ use crate::{
 
 use super::{
     adapters,
+    collection_view::{self, CollectionViewState},
     contracts::{ScopeChoice, SourceCitation},
     preparation::{self, PreparationPreview, PreparationScope, PrepareMaterialInput},
     preparation_store::{self, PreparationStatus},
@@ -139,4 +140,31 @@ pub fn clear_semantic_index(
     paths: State<'_, AppPaths>,
 ) -> Result<(), CommandError> {
     preparation::clear_index(database.inner(), paths.inner())
+}
+
+
+#[tauri::command]
+pub fn get_collection_synthesis(
+    database: State<'_, Database>,
+    collection_id: String,
+) -> Result<Option<CollectionViewState>, CommandError> {
+    collection_view::load(database.inner(), &collection_id)
+}
+
+#[tauri::command]
+pub async fn refresh_collection_synthesis(
+    app: AppHandle,
+    collection_id: String,
+) -> Result<CollectionViewState, CommandError> {
+    validate_entity_id(&collection_id, "document collection")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        collection_view::refresh_native(app.state::<Database>().inner(), &collection_id)
+    })
+    .await
+    .map_err(|_| {
+        CommandError::new(
+            "collection_synthesis_interrupted",
+            "The local collection synthesis was interrupted before publication.",
+        )
+    })?
 }

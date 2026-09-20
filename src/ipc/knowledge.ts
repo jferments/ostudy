@@ -28,6 +28,54 @@ export function scopeMembers(scope: StudyScope): MaterialScope[] {
   return [];
 }
 
+
+export type CollectionRelationshipKind = "complementary" | "contradictory" | "prerequisite";
+
+export interface CollectionRelationship {
+  id: string;
+  kind: CollectionRelationshipKind;
+  topicIds: string[];
+  supportUnitIds: string[];
+  note: string;
+}
+
+export interface CollectionTopic {
+  id: string;
+  title: string;
+  unitIds: string[];
+  supportSourceIds: string[];
+  supportDocumentIds: string[];
+  emphasisSourceIds: string[];
+}
+
+export interface CollectionGap {
+  kind: string;
+  count: number;
+  documentId: string | null;
+  sourceId: string | null;
+  unitIds: string[];
+  detail: string;
+}
+
+export interface CollectionSynthesis {
+  version: number;
+  collectionId: string;
+  snapshotId: string;
+  summary: string;
+  learningObjectives: string[];
+  topics: CollectionTopic[];
+  relationships: CollectionRelationship[];
+  gaps: CollectionGap[];
+  reductionStatus: string;
+}
+
+export interface CollectionViewState {
+  synthesis: CollectionSynthesis;
+  stale: boolean;
+  reduced: boolean;
+  analysisHash: string;
+}
+
 export interface ScopeChoice {
   scope: StudyScope;
   title: string;
@@ -90,6 +138,17 @@ export interface SemanticSearchResult {
   sources: SourceCitation[];
   eligibleEntries: number;
   embeddingSpace: string;
+}
+
+
+/** Reads the retained compact view only; this never calls a provider. */
+export async function getCollectionSynthesis(collectionId: string): Promise<CollectionViewState | null> {
+  return invoke<CollectionViewState | null>("get_collection_synthesis", { collectionId });
+}
+
+/** Rebuilds the compact view locally from retained knowledge and coverage receipts. */
+export async function refreshCollectionSynthesis(collectionId: string): Promise<CollectionViewState> {
+  return invoke<CollectionViewState>("refresh_collection_synthesis", { collectionId });
 }
 
 export async function listSemanticScopeChoices(): Promise<ScopeChoice[]> {
