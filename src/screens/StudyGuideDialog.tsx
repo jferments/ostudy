@@ -97,7 +97,7 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
       preparedExportId = prepared.preparedExport.id;
       if (prepared.mathSourceFallback && !await confirm({
         title: "Export math as source notation?",
-        description: "Equations in this PDF will use readable LaTeX source rather than typeset formulas. The study guide in oStudy keeps its typeset math.",
+        description: "Some equations use notation outside the native PDF math subset and will remain readable LaTeX source. The study guide in oStudy keeps its full typeset math.",
         confirmLabel: "Export PDF",
         cancelLabel: "Cancel",
       })) return;

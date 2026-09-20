@@ -16,17 +16,78 @@ fn fixture() -> EffectiveGuideExport {
     }
 }
 
+fn extracted_text(path: &Path) -> String {
+    let parsed = PdfDocument::new(PdfReader::new(Cursor::new(fs::read(path).unwrap())).unwrap());
+    (0..parsed.page_count().unwrap())
+        .map(|page| parsed.extract_text_from_page(page).unwrap().text)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
-fn document_pdf_math_export_discloses_source_and_keeps_equations_selectable() {
+fn supported_document_pdf_math_is_typeset_without_source_fallback_notice() {
     let export = fixture();
+    assert!(!math_source::requires_source_fallback(&export));
     let path = std::env::temp_dir().join(format!("ostudy-guide-math-{}.pdf", std::process::id()));
     render_study_guide_pdf(&export, &path).unwrap();
-    let parsed = PdfDocument::new(PdfReader::new(Cursor::new(fs::read(&path).unwrap())).unwrap());
-    let text = parsed.extract_text_from_page(0).unwrap().text;
+    let text = extracted_text(&path);
+    assert!(!text.contains("Math notation:"));
+    assert!(!text.contains(r"\frac{a}{b}"));
+    assert!(text.contains('a'));
+    assert!(text.contains('b'));
+    assert_eq!(export.overview, r"Solve \(\frac{a}{b}\).");
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn unsupported_document_pdf_math_preserves_source_and_discloses_fallback() {
+    let mut export = fixture();
+    export.overview = r"Review \(\overset{?}{x}\).".into();
+    assert!(math_source::requires_source_fallback(&export));
+    let path = std::env::temp_dir().join(format!(
+        "ostudy-guide-math-fallback-{}.pdf",
+        std::process::id()
+    ));
+    render_study_guide_pdf(&export, &path).unwrap();
+    let text = extracted_text(&path);
     assert!(text.contains("Math notation:"));
     assert!(text.contains("LaTeX source"));
-    assert!(text.contains(r"\frac{a}{b}"));
-    assert_eq!(export.overview, r"Solve \(\frac{a}{b}\).");
+    assert!(text.contains(r"\overset{?}{x}"));
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn wide_formula_uses_bounded_source_fallback_lines() {
+    let source = format!("\\(\\frac{{{}}}{{b}}\\)", "a".repeat(120));
+    let mut export = fixture();
+    export.overview = source.clone();
+    assert!(math_source::requires_source_fallback(&export));
+    let maximum_width = PAGE_WIDTH - (2.0 * MARGIN_X);
+    let lines = source_fallback_lines(&source, BODY_SIZE, maximum_width);
+    assert!(lines.len() > 1);
+    for line in lines {
+        let FlowLine::Inline(line) = line else {
+            panic!("source fallback must remain text");
+        };
+        assert!(line.width <= maximum_width);
+    }
+}
+
+#[test]
+fn unicode_prose_and_native_math_remain_selectable() {
+    let mut export = fixture();
+    export.overview = r"Пример: \(\alpha \le \beta\) и ΔP.".into();
+    assert!(!math_source::requires_source_fallback(&export));
+    let path = std::env::temp_dir().join(format!(
+        "ostudy-guide-unicode-math-{}.pdf",
+        std::process::id()
+    ));
+    render_study_guide_pdf(&export, &path).unwrap();
+    let text = extracted_text(&path);
+    assert!(text.contains("Пример"));
+    assert!(text.contains('α'));
+    assert!(text.contains('β'));
+    assert!(text.contains('≤'));
     fs::remove_file(path).unwrap();
 }
 
@@ -36,8 +97,10 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
     export.overview = "Plain prose".into();
     export.source_filename = r"\(filename\).pdf".into();
     assert!(!math_source::has_math(&export));
+    assert!(!math_source::requires_source_fallback(&export));
     export.guide_notes.push(r"\[x_i\]".into());
     assert!(math_source::has_math(&export));
+    assert!(!math_source::requires_source_fallback(&export));
     export.guide_notes.clear();
     export.sections.push(EffectiveExportSection {
         title: "Topic".into(),
@@ -54,8 +117,10 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
         figures: vec![],
     });
     assert!(math_source::has_math(&export));
+    assert!(!math_source::requires_source_fallback(&export));
     export.sections[0].body_lines = vec![ExportBlock::Paragraph("````\n$$code$$\n````".into())];
     assert!(!math_source::has_math(&export));
+    assert!(!math_source::requires_source_fallback(&export));
 }
 
 #[test]
