@@ -14,6 +14,8 @@ use crate::{
     documents::image_sets::{
         manifest::{self, ImageManifest, ImageMember, MANIFEST_MEDIA_TYPE},
         raster::{self, Raster},
+        receipt::{ChunkIdentity, ImageReceipt, MemberReceipt},
+        storage::FilterSettings,
     },
     error::CommandError,
     paths::AppPaths,
@@ -26,11 +28,17 @@ use super::{
     regions::Frame,
     AdapterExtraction, IDENTITY,
 };
+use crate::document_ingestion::contracts::CompatibilityProjection;
 
 pub(super) struct Projection {
     document_id: String,
     canonical: CanonicalIngestion,
     passages: Passages,
+    settings: FilterSettings,
+    receipt: ImageReceipt,
+    visual_keys: Vec<ChunkIdentity>,
+    receipt_bytes: usize,
+    receipt_regions: usize,
     previous: Option<Frame>,
     previous_targets: Vec<usize>,
     previous_visual: Option<usize>,
@@ -43,7 +51,7 @@ pub(super) struct Projection {
 }
 
 impl Projection {
-    pub(super) fn new(manifest: &ImageManifest, bytes: &[u8]) -> Result<Self, CommandError> {
+    pub(super) fn new(manifest: &ImageManifest, bytes: &[u8], settings: FilterSettings) -> Result<Self, CommandError> {
         let hash = sha256_hex(bytes);
         Ok(Self {
             document_id: manifest.document_id.clone(),
@@ -81,6 +89,15 @@ impl Projection {
                 semantic_chunks: Vec::new(),
             },
             passages: Passages::default(),
+            receipt: ImageReceipt {
+                version: 1, document_id: manifest.document_id.clone(),
+                manifest_sha256: manifest.fingerprint()?, filter_revision: settings.revision,
+                members: Vec::new(), chunks: Vec::new(),
+            },
+            settings,
+            visual_keys: Vec::new(),
+            receipt_bytes: 0,
+            receipt_regions: 0,
             previous: None,
             previous_targets: Vec::new(),
             previous_visual: None,
@@ -106,12 +123,13 @@ impl Projection {
     ) -> Result<(), CommandError> {
         let unit = index as i64 + 1;
         let label = format!("Image {unit}");
-        let frame = Frame::build(member, image, inclusion, result)?;
+        let frame = Frame::with_settings(member, image, inclusion, result, &self.settings)?;
+        let mut decisions = frame.decisions.clone();
         let alignment = Alignment::between(self.previous.as_ref(), &frame);
         self.unresolved += frame.unresolved;
         self.ambiguous += usize::from(alignment.ambiguous);
         let mut targets = Vec::new();
-        let mut excluded = Vec::new();
+        let mut excluded = frame.masked.clone();
         let document = &mut self.canonical.document;
         if let Some(result) = result {
             self.recognized += 1;
@@ -125,6 +143,9 @@ impl Projection {
                 targets.push(target);
                 if equivalent.is_some() {
                     self.duplicates += 1;
+                    if let Some(decision) = decisions.iter_mut().find(|decision| decision.id == region.id) {
+                        decision.equivalent_to = equivalent.clone();
+                    }
                     if !alignment.whole_image {
                         excluded.extend(region.strip);
                     }
@@ -187,77 +208,70 @@ impl Projection {
             &plain_text,
             1,
         ));
-        let asset_id = format!("image-member:{}", member.id);
-        let (png, width, height) = image.filtered_png(inclusion, &excluded)?;
-        let path = raster::retain_derivative(paths, &self.document_id, &member.id, &png)?;
-        let block_index = document.blocks.len() as i64;
-        let attributes = BTreeMap::from([
-            ("imageMemberId".to_string(), member.id.clone()),
-            ("quarterTurns".to_string(), member.quarter_turns.to_string()),
-            ("pixelContract".to_string(), member.pixel_contract.clone()),
-            ("alignmentContract".to_string(), CONTRACT.to_string()),
-            (
-                "ambiguousOverlap".to_string(),
-                alignment.ambiguous.to_string(),
-            ),
-        ]);
-        document.blocks.push(CanonicalBlock::new(
-            block_index,
-            result.map_or(0, |value| value.lines.len()) as i64,
-            unit,
-            CanonicalBlockRole::Image,
-            "",
-            None,
-            Vec::new(),
-            None,
-            None,
-            vec![asset_id.clone()],
-            attributes,
-        ));
-        document.assets.push(CanonicalAsset {
-            asset_id: asset_id.clone(),
-            source_unit_number: Some(unit),
-            block_index: Some(block_index),
-            role: CanonicalAssetRole::EmbeddedImage,
-            media_type: "image/png".to_string(),
-            relative_path: path,
-            byte_size: png.len() as i64,
-            sha256: sha256_hex(&png),
-            width: Some(i64::from(width)),
-            height: Some(i64::from(height)),
-            alt_text: Some(label),
-        });
-        let visual = alignment
-            .whole_image
-            .then_some(self.previous_visual)
-            .flatten();
-        self.previous_visual = if let Some(index) = visual {
-            add_occurrence(&mut self.canonical.semantic_chunks[index], unit)?;
-            Some(index)
-        } else {
-            let index = self.canonical.semantic_chunks.len();
-            let context = "[Image evidence; exact OCR passages are retained separately.]";
-            let locator = SourceLocator::with_evidence(
-                SourceUnitKind::Image,
-                vec![unit],
-                None,
-                vec![asset_id],
-                None,
-            )?;
-            self.canonical
-                .semantic_chunks
-                .push(CanonicalSemanticChunk::new(
-                    index as i64,
-                    context,
-                    context,
-                    locator,
-                    vec!["paragraph".to_string(), "image".to_string()],
-                    None,
-                    context.chars().count().div_ceil(4),
-                    false,
-                ));
-            Some(index)
+        let member_receipt = MemberReceipt {
+            member_id: member.id.clone(), width: image.dimensions().0,
+            height: image.dimensions().1, ocr_available: result.is_some(),
+            visual_withheld: frame.withhold_visual, regions: decisions,
         };
+        self.receipt_bytes = self.receipt_bytes.saturating_add(
+            serde_json::to_vec(&member_receipt).map_err(CommandError::serialization)?.len());
+        self.receipt_regions = self.receipt_regions.saturating_add(member_receipt.regions.len());
+        if self.receipt_bytes > crate::documents::image_sets::receipt::MAX_RECEIPT_BYTES - 4 * 1024 * 1024
+            || self.receipt_regions > crate::documents::image_sets::receipt::MAX_REGIONS {
+            return Err(super::invalid("The set exceeds its retained-region budget. Split it into smaller image sets; completed OCR was preserved."));
+        }
+        self.receipt.members.push(member_receipt);
+        if frame.withhold_visual {
+            self.previous_visual = None;
+        } else {
+            let (png, width, height) = image.filtered_png(inclusion, &excluded)?;
+            let asset_hash = sha256_hex(&png);
+            // Stable member identity keeps ownership separate from pixel reuse.
+            let asset_id = format!("image-member:{}", member.id);
+            let path = raster::retain_derivative(paths, &self.document_id, &member.id, &png)?;
+            let block_index = document.blocks.len() as i64;
+            let attributes = BTreeMap::from([
+                ("imageMemberId".to_string(), member.id.clone()),
+                ("quarterTurns".to_string(), member.quarter_turns.to_string()),
+                ("pixelContract".to_string(), member.pixel_contract.clone()),
+                ("alignmentContract".to_string(), CONTRACT.to_string()),
+                ("ambiguousOverlap".to_string(), alignment.ambiguous.to_string()),
+            ]);
+            document.blocks.push(CanonicalBlock::new(
+                block_index, result.map_or(0, |value| value.lines.len()) as i64, unit,
+                CanonicalBlockRole::Image, "", None, Vec::new(), None, None,
+                vec![asset_id.clone()], attributes,
+            ));
+            if !document.assets.iter().any(|asset| asset.asset_id == asset_id) {
+                document.assets.push(CanonicalAsset {
+                    asset_id: asset_id.clone(), source_unit_number: Some(unit), block_index: Some(block_index),
+                    role: CanonicalAssetRole::EmbeddedImage, media_type: "image/png".to_string(),
+                    relative_path: path, byte_size: png.len() as i64, sha256: asset_hash.clone(),
+                    width: Some(i64::from(width)), height: Some(i64::from(height)), alt_text: Some(label),
+                });
+            }
+            // Only identical *actual derivative bytes* share a visual projection.
+            // A previously masked overlap is not interchangeable with its original.
+            let visual = alignment.whole_image.then_some(self.previous_visual).flatten()
+                .filter(|index| self.visual_keys[*index].evidence_sha256 == asset_hash);
+            self.previous_visual = if let Some(index) = visual {
+                add_occurrence(&mut self.canonical.semantic_chunks[index], unit)?;
+                Some(index)
+            } else {
+                let index = self.canonical.semantic_chunks.len();
+                let context = "[Image evidence; exact OCR passages are retained separately.]";
+                let locator = SourceLocator::with_evidence(SourceUnitKind::Image, vec![unit], None, vec![asset_id], None)?;
+                self.canonical.semantic_chunks.push(CanonicalSemanticChunk::new(
+                    index as i64, context, context, locator,
+                    vec!["paragraph".to_string(), "image".to_string()], None,
+                    context.chars().count().div_ceil(4), false,
+                ));
+                self.visual_keys.push(ChunkIdentity {
+                    stable_key: format!("visual:{}", member.id), evidence_sha256: asset_hash, projection_sha256: String::new(),
+                });
+                Some(index)
+            };
+        }
         self.previous = Some(frame);
         self.previous_targets = targets;
         self.reused += usize::from(reused);
@@ -281,17 +295,23 @@ impl Projection {
                 .attributes
                 .insert(key.to_string(), value.to_string());
         }
-        let mut chunks = self.passages.finish()?;
+        let (mut chunks, mut keys) = self.passages.finish()?;
+        keys.append(&mut self.visual_keys);
+        self.receipt.chunks = keys;
         chunks.append(&mut self.canonical.semantic_chunks);
         for (index, chunk) in chunks.iter_mut().enumerate() {
             chunk.chunk_index = index as i64;
         }
+        for (key, chunk) in self.receipt.chunks.iter_mut().zip(&chunks) {
+            key.projection_sha256 = chunk.content_sha256.clone();
+        }
         self.canonical.semantic_chunks = chunks;
+        self.receipt.validate_projection(&self.canonical)?;
         self.canonical.validate()?;
         Ok(AdapterExtraction {
             identity: IDENTITY,
             canonical: self.canonical,
-            compatibility: None,
+            compatibility: Some(CompatibilityProjection::ImageSet(self.receipt)),
         })
     }
 }

@@ -47,7 +47,7 @@ pub(super) fn validate(connection: &Connection) -> Result<(), String> {
                         let id = region["sourceId"].as_str().ok_or_else(damaged)?;
                         if seen.insert(id) {
                             sources.push(
-                                repository::load_source(connection, id)
+                                repository::load_retained_source(connection, id)
                                     .map_err(|_| damaged())?
                                     .ok_or_else(damaged)?,
                             );

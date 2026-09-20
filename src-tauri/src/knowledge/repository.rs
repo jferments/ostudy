@@ -80,7 +80,17 @@ pub(crate) fn retire_missing_segments(
     Ok(())
 }
 
-pub(crate) fn load_source(
+/// Runtime admission excludes a pending image edit without deleting compatible
+/// retained interpretations. Startup validates retained records separately.
+pub(crate) fn load_source(connection: &Connection, id: &str) -> Result<Option<SourceRecord>, CommandError> {
+    let source = load_retained_source(connection, id)?;
+    if let Some(source) = source {
+        if super::image_sources::available(connection, &source)? { return Ok(Some(source)); }
+    }
+    Ok(None)
+}
+
+pub(crate) fn load_retained_source(
     connection: &Connection,
     id: &str,
 ) -> Result<Option<SourceRecord>, CommandError> {
@@ -106,6 +116,7 @@ pub(crate) fn source_is_current(
     connection: &Connection,
     source: &SourceRecord,
 ) -> Result<bool, CommandError> {
+    if !super::image_sources::available(connection, source)? { return Ok(false); }
     connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM knowledge_sources
@@ -145,6 +156,7 @@ pub(crate) fn extraction_available(
     connection: &Connection,
     source: &SourceRecord,
 ) -> Result<bool, CommandError> {
+    if !super::image_sources::available(connection, source)? { return Ok(false); }
     connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM knowledge_sources WHERE id=?1 AND active=1
@@ -161,6 +173,7 @@ pub(crate) fn extraction_is_current(
     source: &SourceRecord,
     contract: &str,
 ) -> Result<bool, CommandError> {
+    if !super::image_sources::available(connection, source)? { return Ok(false); }
     connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM knowledge_sources

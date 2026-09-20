@@ -174,9 +174,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0020_image_extraction.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 21,
+        name: "image_source_edits",
+        checksum: "0570850c02fb9e2fd5b987625bcfe96440c8cde828804eb5724974e33fb6f6aa",
+        sql: include_str!("../migrations/0021_image_source_edits.sql"),
+        rebuilds_tables: true,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 20;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 21;
 
 #[derive(Clone)]
 pub struct Database {
@@ -910,3 +917,7 @@ mod interactive_migration_tests;
 #[cfg(test)]
 #[path = "database/entry_tests.rs"]
 mod entry_tests;
+
+#[cfg(test)]
+#[path = "database/image_source_migration_tests.rs"]
+mod image_source_migration_tests;

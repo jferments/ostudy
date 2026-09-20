@@ -11,7 +11,7 @@ use crate::{
     documents::image_sets::{
         cache,
         manifest::{ImageManifest, MAX_MANIFEST_BYTES},
-        raster,
+        raster, storage,
     },
     error::CommandError,
     pdf_ocr_backend::{is_cancellation_error, regions::RegionOcrResult, PlatformOcrProvider},
@@ -28,9 +28,9 @@ mod projection;
 mod regions;
 
 pub(crate) const IDENTITY: DocumentAdapterIdentity = DocumentAdapterIdentity {
-    adapter_backend: "image-set-canonical-v2-overlap",
+    adapter_backend: "image-set-canonical-v3-filter",
     extraction_backend: "image-set-region-ocr-v1",
-    render_backend: Some("image-set-inclusion-render-v2-overlap"),
+    render_backend: Some("image-set-inclusion-render-v3-filter"),
 };
 
 pub(crate) struct ImageSetAdapter;
@@ -117,7 +117,10 @@ fn extract_with(
     {
         return Err(invalid("The image-set identity or source count changed."));
     }
-    let mut output = projection::Projection::new(&manifest, &bytes)?;
+    let settings = database.map(|database| database.with_connection(|connection| {
+        storage::settings(connection, request.document_id)
+    })).transpose()?.unwrap_or_default();
+    let mut output = projection::Projection::new(&manifest, &bytes, settings)?;
     for (index, member) in manifest.members.iter().enumerate() {
         request.cancellation.check()?;
         let image = raster::Raster::read(request.paths, member)?;
@@ -168,6 +171,8 @@ fn invalid(message: &str) -> CommandError {
     CommandError::new("invalid_image_set", message)
 }
 
+#[cfg(test)]
+mod filter_tests;
 #[cfg(test)]
 mod overlap_tests;
 #[cfg(test)]
