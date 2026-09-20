@@ -21,9 +21,9 @@ use crate::{
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
-pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 1;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 4;
-pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 1;
+pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 5;
+pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 2;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
 const MAX_OVERVIEW_CHARS: usize = 200_000;
@@ -63,6 +63,14 @@ pub(crate) struct StudyGuideSectionContent {
     #[serde(default)]
     pub common_misconceptions: Vec<String>,
     #[serde(default)]
+    pub callouts: Vec<StudyGuideCallout>,
+    #[serde(default)]
+    pub tables: Vec<StudyGuideTable>,
+    #[serde(default)]
+    pub worked_examples: Vec<StudyGuideWorkedExample>,
+    #[serde(default)]
+    pub retrieval_checks: Vec<StudyGuideRetrievalCheck>,
+    #[serde(default)]
     pub visual_explanations: Vec<StudyGuideVisualExplanation>,
 }
 
@@ -86,6 +94,51 @@ pub(crate) struct StudyGuideComparison {
     pub subject_a: String,
     pub subject_b: String,
     pub relationship: String,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum StudyGuideCalloutKind {
+    KeyIdea,
+    Warning,
+    Tip,
+    Note,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideCallout {
+    pub kind: StudyGuideCalloutKind,
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideTable {
+    pub title: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    #[serde(default)]
+    pub caption: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideWorkedExample {
+    pub title: String,
+    pub prompt: String,
+    pub steps: Vec<String>,
+    pub answer: String,
+    #[serde(default)]
+    pub takeaway: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct StudyGuideRetrievalCheck {
+    pub prompt: String,
+    pub answer: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -981,6 +1034,70 @@ fn normalize_section_content(
             MAX_SECTION_ITEMS,
             MAX_ITEM_CHARS,
         ),
+        callouts: content
+            .callouts
+            .into_iter()
+            .take(16)
+            .map(|value| StudyGuideCallout {
+                kind: value.kind,
+                title: normalize_text(&value.title, MAX_TERM_CHARS, ""),
+                body: normalize_text(&value.body, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| !value.title.is_empty() && !value.body.is_empty())
+            .collect(),
+        tables: content
+            .tables
+            .into_iter()
+            .take(8)
+            .map(|value| StudyGuideTable {
+                title: normalize_text(&value.title, MAX_TERM_CHARS, ""),
+                columns: normalize_table_cells(value.columns, 8, MAX_TERM_CHARS),
+                rows: value
+                    .rows
+                    .into_iter()
+                    .take(32)
+                    .map(|row| normalize_table_cells(row, 8, MAX_ITEM_CHARS))
+                    .collect(),
+                caption: normalize_text(&value.caption, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| {
+                value.columns.len() >= 2
+                    && value.columns.iter().all(|cell| !cell.is_empty())
+                    && !value.rows.is_empty()
+                    && value.rows.iter().all(|row| {
+                        row.len() == value.columns.len()
+                            && row.iter().all(|cell| !cell.is_empty())
+                    })
+            })
+            .collect(),
+        worked_examples: content
+            .worked_examples
+            .into_iter()
+            .take(8)
+            .map(|value| StudyGuideWorkedExample {
+                title: normalize_text(&value.title, MAX_TERM_CHARS, ""),
+                prompt: normalize_text(&value.prompt, MAX_ITEM_CHARS, ""),
+                steps: normalize_items(value.steps, 16, MAX_ITEM_CHARS),
+                answer: normalize_text(&value.answer, MAX_ITEM_CHARS, ""),
+                takeaway: normalize_text(&value.takeaway, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| {
+                !value.title.is_empty()
+                    && !value.prompt.is_empty()
+                    && !value.steps.is_empty()
+                    && !value.answer.is_empty()
+            })
+            .collect(),
+        retrieval_checks: content
+            .retrieval_checks
+            .into_iter()
+            .take(16)
+            .map(|value| StudyGuideRetrievalCheck {
+                prompt: normalize_text(&value.prompt, MAX_ITEM_CHARS, ""),
+                answer: normalize_text(&value.answer, MAX_ITEM_CHARS, ""),
+            })
+            .filter(|value| !value.prompt.is_empty() && !value.answer.is_empty())
+            .collect(),
         visual_explanations: content
             .visual_explanations
             .into_iter()
@@ -1243,11 +1360,44 @@ fn section_plain_text(content: &StudyGuideSectionContent) -> String {
         ));
     }
     lines.extend(content.common_misconceptions.iter().cloned());
+    for callout in &content.callouts {
+        lines.push(callout.title.clone());
+        lines.push(callout.body.clone());
+    }
+    for table in &content.tables {
+        lines.push(table.title.clone());
+        lines.push(table.columns.join(" | "));
+        lines.extend(table.rows.iter().map(|row| row.join(" | ")));
+        if !table.caption.is_empty() {
+            lines.push(table.caption.clone());
+        }
+    }
+    for example in &content.worked_examples {
+        lines.push(example.title.clone());
+        lines.push(example.prompt.clone());
+        lines.extend(example.steps.iter().cloned());
+        lines.push(example.answer.clone());
+        if !example.takeaway.is_empty() {
+            lines.push(example.takeaway.clone());
+        }
+    }
+    for check in &content.retrieval_checks {
+        lines.push(check.prompt.clone());
+        lines.push(check.answer.clone());
+    }
     for visual in &content.visual_explanations {
         lines.push(visual.title.clone());
         lines.push(visual.explanation.clone());
     }
     normalize_text(&lines.join("\n"), MAX_SECTION_TEXT_CHARS, "")
+}
+
+fn normalize_table_cells(values: Vec<String>, maximum: usize, maximum_chars: usize) -> Vec<String> {
+    values
+        .into_iter()
+        .take(maximum)
+        .map(|value| normalize_text(&value, maximum_chars, ""))
+        .collect()
 }
 
 fn normalize_items(values: Vec<String>, maximum: usize, maximum_chars: usize) -> Vec<String> {
@@ -1384,6 +1534,44 @@ mod tests {
             guide_display_summary(summary, &[section]),
             "This guide focuses on ASCVD risk reduction and related topics."
         );
+    }
+
+    #[test]
+    fn rich_semantic_blocks_normalize_without_losing_table_shape() {
+        let mut value = content();
+        value.callouts.push(StudyGuideCallout {
+            kind: StudyGuideCalloutKind::KeyIdea,
+            title: "Remember".to_string(),
+            body: "Preload describes filling before systole.".to_string(),
+        });
+        value.tables.push(StudyGuideTable {
+            title: "Comparison".to_string(),
+            columns: vec!["Concept".to_string(), "Meaning".to_string()],
+            rows: vec![vec!["Preload".to_string(), "Filling".to_string()]],
+            caption: "High-yield comparison.".to_string(),
+        });
+        value.worked_examples.push(StudyGuideWorkedExample {
+            title: "Reason through filling".to_string(),
+            prompt: "Venous return rises.".to_string(),
+            steps: vec!["More blood reaches the ventricle.".to_string()],
+            answer: "Preload rises.".to_string(),
+            takeaway: "Track cause before effect.".to_string(),
+        });
+        value.retrieval_checks.push(StudyGuideRetrievalCheck {
+            prompt: "What happens to preload?".to_string(),
+            answer: "It rises.".to_string(),
+        });
+        let normalized = normalize_section_content(value).unwrap();
+        assert_eq!(normalized.tables[0].rows[0].len(), 2);
+        let text = section_plain_text(&normalized);
+        for expected in [
+            "Remember",
+            "Comparison",
+            "Venous return rises.",
+            "What happens to preload?",
+        ] {
+            assert!(text.contains(expected));
+        }
     }
 
     #[test]
