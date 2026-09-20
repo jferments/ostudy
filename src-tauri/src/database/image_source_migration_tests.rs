@@ -55,7 +55,7 @@ fn document_image_schema21_preserves_owned_extractions_and_originals_on_upgrade(
             let version: i64 = connection
                 .query_row("PRAGMA user_version", [], |row| row.get(0))
                 .map_err(CommandError::database)?;
-            assert_eq!(version, 21);
+            assert_eq!(version, LATEST_SCHEMA_VERSION);
             cache::validate(connection)?;
             let before = connection.total_changes();
             initialize_connection(connection)
