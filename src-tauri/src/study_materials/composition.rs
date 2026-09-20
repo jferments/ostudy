@@ -28,9 +28,7 @@ use crate::{
     error::CommandError,
     knowledge::{
         assessment::{self, AssessmentRecord},
-        collection_view::{
-            self, CollectionRelationshipKind, CollectionSynthesis, CollectionViewState,
-        },
+        collection_view::{self, CollectionViewState},
     },
     scheduler::insert_new_schedule,
     util::{generate_id, unix_time_millis, validate_entity_id},

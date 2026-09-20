@@ -655,7 +655,7 @@ fn load_collection_guide_overlays(
                  ORDER BY created_at,id",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map(params![guide_id, target_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -672,7 +672,8 @@ fn load_collection_guide_overlays(
                     row.get::<_, i64>(11)?,
                 ))
             })
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let overlays = rows
             .map(|row| {
                 let (
                     id,
@@ -704,7 +705,8 @@ fn load_collection_guide_overlays(
                     updated_at,
                 })
             })
-            .collect()
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        Ok(overlays)
     })
 }
 

@@ -56,6 +56,67 @@ pub(super) fn segments(source: &str) -> Vec<MathSegment<'_>> {
     result
 }
 
+pub(super) fn has_math(export: &EffectiveGuideExport) -> bool {
+    if contains_math(&export.overview)
+        || export
+            .learning_objectives
+            .iter()
+            .any(|value| contains_math(value))
+        || export.key_concepts.iter().any(|value| contains_math(value))
+        || export.guide_notes.iter().any(|value| contains_math(value))
+    {
+        return true;
+    }
+    export.sections.iter().any(|section| {
+        contains_math(&section.title)
+            || section.notes.iter().any(|value| contains_math(value))
+            || section
+                .figures
+                .iter()
+                .any(|figure| contains_math(&figure.title) || contains_math(&figure.caption))
+            || section.body_lines.iter().any(|block| match block {
+                ExportBlock::Heading(value) | ExportBlock::Paragraph(value) => contains_math(value),
+                ExportBlock::Bullets(items) | ExportBlock::Numbered(items) => {
+                    items.iter().any(|value| contains_math(value))
+                }
+                ExportBlock::Terms(items) => items
+                    .iter()
+                    .any(|(term, explanation)| contains_math(term) || contains_math(explanation)),
+                ExportBlock::Callout { label, title, body } => {
+                    contains_math(label) || contains_math(title) || contains_math(body)
+                }
+                ExportBlock::Table {
+                    title,
+                    columns,
+                    rows,
+                    caption,
+                } => {
+                    contains_math(title)
+                        || columns.iter().any(|value| contains_math(value))
+                        || rows.iter().flatten().any(|value| contains_math(value))
+                        || contains_math(caption)
+                }
+                ExportBlock::WorkedExample {
+                    title,
+                    prompt,
+                    steps,
+                    answer,
+                    takeaway,
+                } => {
+                    contains_math(title)
+                        || contains_math(prompt)
+                        || steps.iter().any(|value| contains_math(value))
+                        || contains_math(answer)
+                        || contains_math(takeaway)
+                }
+                ExportBlock::RetrievalCheck { prompt, answer } => {
+                    contains_math(prompt) || contains_math(answer)
+                }
+                ExportBlock::Spacer => false,
+            })
+    })
+}
+
 pub(super) fn requires_source_fallback(export: &EffectiveGuideExport) -> bool {
     if unsupported(&export.overview)
         || export
