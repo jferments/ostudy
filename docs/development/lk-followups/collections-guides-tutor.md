@@ -1,8 +1,10 @@
 # PR #104 roadmap — collections, coherent study materials, PDF and Tutor organization
 
-Status: planning-only successor to PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not implement product behavior, authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
+Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Activation rule: implementation begins only after PR #103 is reviewed and merged. At activation, integrate the actual merged `main`, re-read the owning boundaries once, reconcile any renamed paths, and then proceed stage-by-stage. Do not stack product implementation on the unmerged PR #103 branch.
+Current boundary: **104-A** (folder/range persistence, native source-set resolution, typed IPC and preservation) is published on the PR branch; exact-head qualification and acceptance evidence are tracked in PR #104. **104-B** (folder UI and folder-scoped Tutor) is the next implementation boundary.
+
+Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
 ## Product result
 
@@ -129,7 +131,7 @@ Tests cover rename/move while a response is active, archive/delete during stale 
 
 Implement coherent vertical increments:
 
-1. **104-A:** folder/range persistence + resolver + preservation.
+1. **104-A:** folder/range persistence + resolver + preservation — implemented on the active branch; exact-head qualification is recorded in PR #104.
 2. **104-B:** folder UI + Tutor source selection.
 3. **104-C:** synthesis + coverage-aware LearningContext.
 4. **104-D:** study target/bundle persistence + safe publication/status UI.

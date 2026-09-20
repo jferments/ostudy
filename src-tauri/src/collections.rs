@@ -2028,3 +2028,7 @@ mod tests {
             .unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "collections/acceptance_tests.rs"]
+mod acceptance_tests;
