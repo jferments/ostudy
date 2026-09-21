@@ -25,7 +25,7 @@ use super::{
 };
 
 const STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS: usize = 2_200;
-const STUDY_GUIDE_REPAIR_COMPLETION_TOKENS: usize = 4_000;
+const STUDY_GUIDE_REPAIR_COMPLETION_TOKENS: usize = 3_200;
 const MAX_GLOBAL_CONTEXT_BYTES: usize = 18_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1082,6 +1082,13 @@ mod tests {
 
     #[test]
     fn collection_completion_plans_reserve_retry_headroom_before_input() {
+        assert_eq!(
+            DOCUMENT_GUIDE_COMPLETION_PLAN,
+            StudyGuideCompletionPlan {
+                initial_visible_tokens: 2_200,
+                repair_visible_tokens: 3_200,
+            }
+        );
         assert_eq!(
             COLLECTION_GUIDE_COMPLETION_PLANS[0],
             StudyGuideCompletionPlan {
