@@ -162,18 +162,6 @@ export interface DocumentStudyGuide {
   publishedAt: number;
 }
 
-/** Compatibility projection retained until the old inline library is removed. */
-export interface StudyGuideLibraryItem {
-  documentId: string;
-  documentTitle: string;
-  originalFilename: string;
-  sourceFormat: string;
-  sourceUnitKind: string;
-  sourceUnitCount: number;
-  guideRevision: number;
-  publishedAt: number;
-}
-
 export type StudyGuideLibrarySort =
   | "recent"
   | "oldest"
@@ -183,19 +171,6 @@ export type StudyGuideLibrarySort =
 export interface ListStudyGuidesInput {
   query: string;
   sort: StudyGuideLibrarySort;
-  offset: number;
-  limit: number;
-}
-
-export interface DocumentStudyGuidePageItem extends StudyGuideLibraryItem {
-  guideId: string;
-  sectionCount: number;
-  noteCount: number;
-}
-
-export interface DocumentStudyGuideLibraryPage {
-  items: DocumentStudyGuidePageItem[];
-  totalCount: number;
   offset: number;
   limit: number;
 }
@@ -319,25 +294,6 @@ export async function getDocumentStudyGuide(
 ): Promise<DocumentStudyGuide | null> {
   return invoke<DocumentStudyGuide | null>("get_document_study_guide", {
     input: { documentId },
-  });
-}
-
-export async function listDocumentStudyGuides(): Promise<StudyGuideLibraryItem[]> {
-  return invoke<StudyGuideLibraryItem[]>("list_document_study_guides", {
-    includeArchived: false,
-  });
-}
-
-export async function listDocumentStudyGuidePage(
-  input: Partial<ListStudyGuidesInput> = {},
-): Promise<DocumentStudyGuideLibraryPage> {
-  return invoke<DocumentStudyGuideLibraryPage>("list_document_study_guide_page", {
-    input: {
-      query: input.query ?? "",
-      sort: input.sort ?? "recent",
-      offset: input.offset ?? 0,
-      limit: input.limit ?? 40,
-    },
   });
 }
 
