@@ -292,7 +292,7 @@ describe("Document collections workspace", () => {
     } as unknown as DataTransfer;
 
     const dropTarget = await waitFor(() => {
-      const element = document.querySelector(`[data-document-folder-drop="${folderId}"]`);
+      const element = globalThis.document.querySelector(`[data-document-folder-drop="${folderId}"]`);
       expect(element).toBeTruthy();
       return element as HTMLElement;
     });

@@ -2,7 +2,7 @@
 
 Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Current boundary: **104-A** through **104-F** are implemented on the PR branch. The **104-G pre-terminal cross-stage audit is complete**: maintained user/development/architecture prose is reconciled to the implemented collection/guide/Tutor behavior, command coverage remains owned by the generated/static IPC contract rather than a hand-maintained duplicate list, backup/sync claims match their focused preservation/privacy tests, and no runtime control/helper was removed without proof of exclusive ownership. The branch is now at the candidate-freeze boundary for exact-head terminal Linux/Android qualification and human handoff.
+Current boundary: **104-A** through **104-F** remain implemented. Final manual acceptance exposed one collection-organization simplification before handoff: document folders are now intentionally **one level**, existing schema-25 test libraries flatten forward through schema 26, document cards can be dragged onto folders with Add source retained as the keyboard/touch fallback, and folder/dialog presentation has been simplified. The semantic boundary is unchanged: folder synthesis is a higher-level derived map over retained document knowledge, never a replacement for or reprocessing of the member documents. This acceptance repair is in draft qualification before the final human pass.
 
 Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
@@ -39,11 +39,11 @@ Expected owners to extend include current `knowledge/`, document repositories/co
 
 ## Contracts that must remain stable
 
-**Folder membership** is organization, not source ownership. One document can belong to multiple folders. Moving or deleting a membership does not silently move/delete the underlying document elsewhere.
+**Folder membership** is one-level organization, not source ownership. One document can belong to multiple folders. Dragging or adding a document creates only another membership reference; moving or deleting a membership does not move/delete the underlying document or invalidate its prepared semantic knowledge.
 
 **SourceSelection** records folders/materials/ranges/exclusions chosen by the learner. **SourceSetSnapshot** is the canonical, immutable resolution used for a specific operation. It binds resolved members, ranges, source/interpretation/filter revisions, exclusions, and authorization identity. Display names are never evidence identities.
 
-**CollectionSynthesis** stores compact topics, relationships, instructional emphasis, unresolved objectives, and dependency references. It does not copy every member fact, canonical block, or embedding into folder-owned storage.
+**CollectionSynthesis** is a higher-level map over the member documents' retained knowledge. It stores compact topics, cross-document relationships, instructional emphasis, unresolved objectives, gaps, and dependency references while factual support remains owned by the source document knowledge/evidence. It does not replace member representations, copy every fact/block/embedding into folder ownership, or require document re-extraction/reinterpretation when an already-prepared document is added to another folder.
 
 **StudyTarget** is explicitly a document or collection and owns output policy, exact source snapshot, artifact references, revision/suppression state, and retry-safe publication receipts. No synthetic source document is invented for a collection.
 
@@ -55,21 +55,21 @@ Expected owners to extend include current `knowledge/`, document repositories/co
 
 ### Persistence and native resolver
 
-Add a bounded folder hierarchy, organization revision, document membership, and range records through a forward migration. Support create/rename/archive/delete-folder and add/move/remove-membership with native validation, expected revisions, retry identities, cycle prevention, and bounded traversal.
+Persist one-level document folders, organization revision, document membership, and range records through forward migrations. Schema 26 flattens any pre-release nested rows from schema 25 and rejects future non-null parent relationships without rewriting migration 22. Support create/rename/archive/delete-folder and add/move/remove-membership with native validation, expected revisions, and retry identities.
 
 Ranges bind to actual source capabilities: page, slide, image occurrence, or stable section/block selectors where supported. Human-readable labels such as “Chapter 3” are display metadata unless backed by a precise selector. Overlapping intervals normalize deterministically; invalidated ranges become explicit after source revisions rather than being guessed.
 
-Resolve folder/material unions and exclusions in one native service. Deduplicate parent/child selection, repeated document references, and overlapping ranges before work/byte limits are enforced. Admit complete evidence dependencies together. If a requested claim depends on excluded evidence, omit/flag it or require explicit scope expansion; never silently widen permission.
+Resolve folder/material unions and exclusions in one native service. Deduplicate repeated document references across selected one-level folders and overlapping ranges before work/byte limits are enforced. Admit complete evidence dependencies together. If a requested claim depends on excluded evidence, omit/flag it or require explicit scope expansion; never silently widen permission.
 
 ### UI and Tutor
 
-Add folder Overview/Sources views, breadcrumbs, thumbnails, contextual operations, empty states, keyboard/touch move alternatives, and a range selector that exposes the precision the source actually supports. Browsing organization makes zero provider calls.
+Present a shallow folder list and one focused folder surface rather than subfolder/breadcrumb or duplicate Overview/Sources navigation. Existing documents can be dragged onto a folder on pointer-capable desktop UI; Add source remains the keyboard/touch fallback. Rename/archive/delete and reading-range controls stay contextual. Browsing or changing membership makes no provider request.
 
 Tutor uses the exact same resolver before retrieval and after hydration. Each turn stores its captured snapshot. Updated folder membership may affect later turns only under current authorization; in-flight and historical turns remain frozen.
 
 ### Focused tests
 
-Cover hierarchy cycles/depth, duplicate membership, overlapping/disjoint ranges, unsupported locator precision, stale revisions, exclusions at text/unit/image/summary/artifact layers, member changes during provider work, backup/restore, duplicate retries, and refresh failure after committed mutations. Adding an already prepared source must not rewrite its document knowledge or trigger interpretation.
+Cover one-level schema enforcement/flattening, duplicate membership, drag/add membership, overlapping/disjoint ranges, unsupported locator precision, stale revisions, exclusions at text/unit/image/summary/artifact layers, member changes during provider work, backup/restore, duplicate retries, and refresh failure after committed mutations. Adding the same already-prepared source to another folder must leave its source/knowledge/unit identities byte-for-byte stable and must not trigger interpretation.
 
 **Exit / AC-06:** collection organization and permission-safe Tutor selection work independently of automatic generation.
 
@@ -149,7 +149,7 @@ Implement coherent vertical increments:
 
 Each increment: inspect the owning boundary -> implement -> add focused regression coverage -> publish through expected-parent Git data -> verify remote head -> qualify the exact SHA. Add backup/privacy/schema support in the increment that introduces durable data, not at final cleanup.
 
-The pre-terminal audit reconciles user/development/architecture/reference documentation, relies on the maintained static IPC verifier for native/frontend command inventory, checks backup/sync claims against their owning tests, and removes only code proven dead by callers/tests. That audit is complete for this branch; no speculative runtime cleanup was introduced. Freeze this candidate before terminal qualification. Run maintained static/fast, authoritative Linux, Android compile/package, and emulator gates according to current repository policy; report live-provider, visual/accessibility, PDF rendering, and physical-device acceptance separately.
+The earlier pre-terminal audit remains valid outside this acceptance repair. Re-qualify the changed collection/schema/UI boundary with static/fast while draft, then perform the final manual collection pass. Only after that manual pass should the new candidate be frozen and the authoritative Linux/Android terminal gates run once. Report live-provider, visual/accessibility, PDF rendering, and physical-device acceptance separately.
 
 The end-to-end acceptance scenario uses overlapping screenshots, readings, slides, notes, and ranges in one Week 1 collection; creates one guide/deck; preserves edits while a source is added; proves excluded material cannot enter Tutor; exports PDF offline; organizes Tutor conversations; completes backup/restore; and adds the same prepared reading to Week 2 without re-extraction.
 

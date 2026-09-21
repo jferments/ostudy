@@ -106,7 +106,7 @@ export function DocumentCollectionsWorkspace({
   }
 
   function openRanges(membership: DocumentCollectionMembership): void {
-    const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
+    const ranges = organization?.ranges.filter((range) => range.membershipId === membership.id) ?? [];
     setDialog({
       kind: "ranges",
       membership,
