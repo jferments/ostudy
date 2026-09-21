@@ -82,10 +82,10 @@ mod tests {
         let before = catalog.prompt().unwrap();
         let unrelated = "Unselected source content. ".repeat(4_000);
         for index in 0..16 {
-            catalog.preparation.evidence_structures.push(structure(
-                &format!("unrelated-source-{index}"),
-                &unrelated,
-            ));
+            catalog
+                .preparation
+                .evidence_structures
+                .push(structure(&format!("unrelated-source-{index}"), &unrelated));
         }
         let native_fingerprint = catalog.fingerprint().unwrap();
         let after = catalog.prompt().unwrap();
@@ -129,7 +129,10 @@ mod tests {
                 })
                 .collect(),
         });
-        let expected = vec![structure(&primary, excerpt), structure(&dependency, excerpt)];
+        let expected = vec![
+            structure(&primary, excerpt),
+            structure(&dependency, excerpt),
+        ];
         catalog.preparation.evidence_structures = expected.clone();
         catalog.preparation.evidence_structures.push(structure(
             "unrelated",
