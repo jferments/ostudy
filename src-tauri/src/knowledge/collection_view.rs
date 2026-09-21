@@ -26,6 +26,7 @@ use crate::{
 };
 
 use super::{
+    authoring::KnowledgeCatalog,
     collection_scope,
     contracts::{hash, invalid, KnowledgeUnit, ScopeKind, StudyScope},
     evidence::Importance,
@@ -302,6 +303,61 @@ pub(crate) fn load(
     database.with_connection(|connection| load_in(connection, collection_id))
 }
 
+pub(crate) fn ensure_analysis_current(
+    connection: &Connection,
+    collection_id: &str,
+    analysis_hash: &str,
+) -> Result<(), CommandError> {
+    let state = load_in(connection, collection_id)?.ok_or_else(repository::stale_source)?;
+    if state.stale || state.analysis_hash != analysis_hash {
+        return Err(repository::stale_source());
+    }
+    Ok(())
+}
+
+pub(crate) fn guide_topic_catalogs(
+    database: &Database,
+    collection_id: &str,
+    synthesis: &CollectionSynthesis,
+) -> Result<Vec<KnowledgeCatalog>, CommandError> {
+    validate_entity_id(collection_id, "document collection")?;
+    validate_synthesis(synthesis)?;
+    let plan = database.with_connection(|connection| coverage_plan(connection, collection_id))?;
+    if plan.snapshot.snapshot_id != synthesis.snapshot_id {
+        return Err(repository::stale_source());
+    }
+    let units = plan
+        .context
+        .units
+        .iter()
+        .map(|unit| (unit.id.as_str(), unit))
+        .collect::<HashMap<_, _>>();
+    synthesis
+        .topics
+        .iter()
+        .map(|topic| {
+            let selected = topic
+                .unit_ids
+                .iter()
+                .map(|id| {
+                    units
+                        .get(id.as_str())
+                        .map(|unit| (*unit).clone())
+                        .ok_or_else(repository::stale_source)
+                })
+                .collect::<Result<Vec<_>, CommandError>>()?;
+            if selected.is_empty() {
+                return Err(repository::stale_source());
+            }
+            Ok(KnowledgeCatalog {
+                units: selected,
+                document_core_units: BTreeSet::new(),
+                preparation: plan.context.preparation.clone(),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 pub(crate) fn load_in_for_preservation(
     connection: &Connection,
@@ -561,22 +617,10 @@ fn native_synthesis(
         }
     }
 
-    let objective_limit = topics.len().min(96);
-    let learning_objectives = topics
-        .iter()
-        .take(objective_limit)
-        .map(|topic| format!("Review {}", topic.title))
-        .collect::<Vec<_>>();
-    if objective_limit < topics.len() {
-        gaps.push(CollectionGap {
-            kind: "objective_compaction".to_string(),
-            count: topics.len() - objective_limit,
-            document_id: None,
-            source_id: None,
-            unit_ids: Vec::new(),
-            detail: "All topics remain in the synthesis; the compact objective list intentionally does not repeat every topic.".to_string(),
-        });
-    }
+    // Native synthesis preserves the complete topic map but does not invent
+    // learner-facing objectives such as "Review X". A provider-authorized
+    // reduction may author real cross-document objectives later.
+    let learning_objectives = Vec::new();
     let summary = format!(
         "This collection currently contains {} interpreted topic{} across {} selected document{}; retained coverage gaps remain explicit and no topic count is a claim of exhaustive conceptual coverage.",
         topics.len(),
