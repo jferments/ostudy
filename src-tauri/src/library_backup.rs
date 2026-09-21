@@ -12,6 +12,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Component, Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
 
@@ -34,6 +35,7 @@ const MIN_SUPPORTED_BACKUP_VERSION: i64 = 1;
 const MAX_BACKUP_FILE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_DATABASE_SNAPSHOT_BYTES: usize = 1_500 * 1024 * 1024;
 const MAX_SINGLE_ASSET_BYTES: usize = 25 * 1024 * 1024;
+static BACKUP_VALIDATION_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const PACKAGE_SCHEMA: &str = r#"
 PRAGMA foreign_keys = ON;
 CREATE TABLE backup_metadata (
@@ -687,6 +689,14 @@ fn export_asset_files(
     Ok(())
 }
 
+fn backup_validation_temp_path(timestamp_ms: i64) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "ostudy-backup-validation-{}-{timestamp_ms}-{}.sqlite3",
+        std::process::id(),
+        BACKUP_VALIDATION_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 fn validate_backup_package(
     source: &Path,
     extract_database_to: Option<&Path>,
@@ -742,13 +752,7 @@ fn validate_backup_package(
     }
     let temporary = extract_database_to
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| {
-            std::env::temp_dir().join(format!(
-                "ostudy-backup-validation-{}-{}.sqlite3",
-                std::process::id(),
-                unix_time_millis().unwrap_or_default()
-            ))
-        });
+        .unwrap_or_else(|| backup_validation_temp_path(unix_time_millis().unwrap_or_default()));
     remove_file_if_exists(&temporary).map_err(CommandError::io)?;
     write_new_file(&temporary, &database_bytes)?;
     let snapshot = Connection::open_with_flags(&temporary, OpenFlags::SQLITE_OPEN_READ_ONLY)
@@ -1162,6 +1166,13 @@ mod tests {
             unix_time_millis().expect("clock")
         ));
         AppPaths::new(root).expect("paths")
+    }
+
+    #[test]
+    fn backup_validation_temp_paths_do_not_collide_within_one_millisecond() {
+        let first = backup_validation_temp_path(123);
+        let second = backup_validation_temp_path(123);
+        assert_ne!(first, second);
     }
 
     #[test]
