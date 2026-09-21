@@ -277,6 +277,16 @@ pub(crate) fn delete(
             .optional()
             .map_err(CommandError::database)?;
         let Some(revision) = revision else {
+            organization::record(
+                &tx,
+                &input.operation_id,
+                "delete_project",
+                "project",
+                &input.project_id,
+                &request_hash,
+                &serde_json::Value::Null,
+            )?;
+            tx.commit().map_err(CommandError::database)?;
             return Ok(());
         };
         if revision != input.expected_revision {
@@ -498,6 +508,89 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn missing_project_delete_reserves_its_retry_identity() {
+        let database = Database::open_in_memory().unwrap();
+        let operation_id = "8".repeat(32);
+        delete(
+            &database,
+            DeleteTutorProjectInput {
+                operation_id: operation_id.clone(),
+                project_id: "9".repeat(32),
+                expected_revision: 1,
+            },
+        )
+        .unwrap();
+
+        let mut reused = create_input('a');
+        reused.operation_id = operation_id;
+        assert!(create(&database, reused).is_err());
+    }
+
+    #[test]
+    fn project_default_changes_affect_only_future_chats_and_explicit_sources_win() {
+        let database = Database::open_in_memory().unwrap();
+        let created = create(&database, create_input('4')).unwrap();
+
+        let first = conversations::create_in_project(
+            &database,
+            CreateProjectConversationInput {
+                operation_id: "5".repeat(32),
+                project_id: created.id.clone(),
+                title: "First chat".into(),
+                scope: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(first.scope, general());
+
+        let updated = update(
+            &database,
+            UpdateTutorProjectInput {
+                operation_id: "6".repeat(32),
+                project_id: created.id.clone(),
+                expected_revision: created.revision,
+                title: created.title.clone(),
+                description: created.description.clone(),
+                instructions: created.instructions.clone(),
+                default_scope: StudyScope::single(ScopeKind::Library, None),
+            },
+        )
+        .unwrap();
+
+        let second = conversations::create_in_project(
+            &database,
+            CreateProjectConversationInput {
+                operation_id: "7".repeat(32),
+                project_id: updated.id.clone(),
+                title: "Second chat".into(),
+                scope: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            second.scope,
+            StudyScope::single(ScopeKind::Library, None)
+        );
+
+        let explicit = conversations::create_in_project(
+            &database,
+            CreateProjectConversationInput {
+                operation_id: "8".repeat(32),
+                project_id: updated.id,
+                title: "Explicit chat".into(),
+                scope: Some(general()),
+            },
+        )
+        .unwrap();
+        assert_eq!(explicit.scope, general());
+
+        let reloaded_first = database
+            .with_connection(|connection| conversations::load_summary(connection, &first.id))
+            .unwrap();
+        assert_eq!(reloaded_first.scope, general());
     }
 
     #[test]
