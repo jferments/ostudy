@@ -17,7 +17,7 @@ use crate::{
 use super::{
     context,
     contracts::{TutorMode, TutorTurn, TutorTurnInput},
-    conversations, focus, history, output, turns,
+    focus, history, output, turns,
 };
 
 pub(crate) async fn send(
@@ -39,16 +39,6 @@ pub(crate) async fn send(
         Some(id) => DocumentTaskContext::for_tutor_profile(database, id)?,
         None => load_tutor_task_context(database)?,
     };
-    let conversation = database.with_connection(|connection| {
-        conversations::load_summary(connection, &input.conversation_id)
-    })?;
-    let focused = focus::resolve(
-        database,
-        &conversation.scope,
-        input.focus.as_ref(),
-        input.mode,
-        &input.conversation_id,
-    )?;
     // Read the private rubric before admission marks an answer as running.
     // Admission independently verifies that the same question is pending.
     let quiz = input
@@ -62,6 +52,13 @@ pub(crate) async fn send(
         .transpose()?;
     let identity = turns::begin(database, &input, &task)?;
     let outcome = async {
+        let focused = focus::resolve(
+            database,
+            &identity.captured_scope,
+            input.focus.as_ref(),
+            input.mode,
+            &input.conversation_id,
+        )?;
         guard.progress("reading conversation", 0, 4);
         let remembered = if input.mode == TutorMode::Hint {
             history::HistorySnapshot::default()
@@ -94,11 +91,12 @@ pub(crate) async fn send(
             runtime,
             &task,
             context::StudyContextInput {
-                scope: &conversation.scope,
+                scope: &identity.captured_scope,
                 input: &input,
                 focus: &focused,
                 quiz: quiz.as_ref(),
                 history: remembered,
+                project_instructions: identity.project_instructions.as_deref(),
             },
             &guard.signal,
         )
@@ -124,7 +122,7 @@ pub(crate) async fn send(
         let mut answer = output::validate(
             value,
             input.mode,
-            &conversation.scope,
+            &identity.captured_scope,
             &context,
             quiz.as_ref(),
         )?;
@@ -141,7 +139,7 @@ pub(crate) async fn send(
         guard.check()?;
         let current_focus = focus::resolve(
             database,
-            &conversation.scope,
+            &identity.captured_scope,
             input.focus.as_ref(),
             input.mode,
             &input.conversation_id,

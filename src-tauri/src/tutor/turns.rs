@@ -18,7 +18,7 @@ use crate::{
 use super::{
     context::StudyContext,
     contracts::{PrivateQuiz, ProviderAnswer, QuizFeedback, TutorMode, TutorTurn, TutorTurnInput},
-    conversations, history,
+    conversations, history, projects,
 };
 
 #[derive(Clone, Debug)]
@@ -27,6 +27,8 @@ pub(crate) struct TurnIdentity {
     pub conversation_id: String,
     pub request_hash: String,
     pub accepted_revision: i64,
+    pub captured_scope: crate::knowledge::contracts::StudyScope,
+    pub project_instructions: Option<String>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -73,6 +75,8 @@ pub(crate) fn begin(
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         let conversation = conversations::load_summary(&transaction, &input.conversation_id)?;
+        let project_instructions =
+            projects::instructions(&transaction, conversation.project_id.as_deref())?;
         let mut request_value =
             serde_json::to_value(input).map_err(CommandError::serialization)?;
         let request_object = request_value
@@ -81,6 +85,14 @@ pub(crate) fn begin(
         request_object.insert(
             "capturedScope".to_string(),
             serde_json::to_value(&conversation.scope).map_err(CommandError::serialization)?,
+        );
+        request_object.insert(
+            "capturedProjectId".to_string(),
+            serde_json::to_value(&conversation.project_id).map_err(CommandError::serialization)?,
+        );
+        request_object.insert(
+            "capturedProjectInstructions".to_string(),
+            serde_json::to_value(&project_instructions).map_err(CommandError::serialization)?,
         );
         let request_json =
             serde_json::to_string(&request_value).map_err(CommandError::serialization)?;
@@ -120,7 +132,14 @@ pub(crate) fn begin(
         let accepted_revision = conversation.revision.checked_add(1)
             .ok_or_else(|| invalid("The conversation revision exceeded its supported range."))?;
         transaction.commit().map_err(CommandError::database)?;
-        Ok(TurnIdentity { id, conversation_id: input.conversation_id.clone(), request_hash, accepted_revision })
+        Ok(TurnIdentity {
+            id,
+            conversation_id: input.conversation_id.clone(),
+            request_hash,
+            accepted_revision,
+            captured_scope: conversation.scope,
+            project_instructions,
+        })
     })
 }
 

@@ -50,6 +50,7 @@ pub(crate) struct StudyContextInput<'a> {
     pub focus: &'a FocusedContent,
     pub quiz: Option<&'a PrivateQuiz>,
     pub history: HistorySnapshot,
+    pub project_instructions: Option<&'a str>,
 }
 
 pub(crate) async fn build(
@@ -66,13 +67,20 @@ pub(crate) async fn build(
         focus,
         quiz,
         mut history,
+        project_instructions,
     } = request;
     if focus.question_hint.is_some() {
         crate::knowledge::runtime::check_canceled(cancellation)?;
         if quiz.is_some() {
             return Err(super::focus::changed());
         }
-        return public_question_hint::build(task, input.mode, &input.text, focus);
+        return public_question_hint::build(
+            task,
+            input.mode,
+            &input.text,
+            focus,
+            project_instructions,
+        );
     }
     let mut sources = focus.sources.iter().take(4).cloned().collect::<Vec<_>>();
     let mut notice = String::new();
@@ -209,6 +217,7 @@ pub(crate) async fn build(
         });
         let payload = json!({
             "mode": input.mode, "request": input.text, "scope": scope,
+            "projectInstructions": project_instructions,
             "focus": focus.description(), "material": shared["sources"],
             "knowledgeUnits":shared["units"],"evidence":shared["evidence"],"preparation":preparation,
             "history": history.prompt(), "contextNotice": notice,

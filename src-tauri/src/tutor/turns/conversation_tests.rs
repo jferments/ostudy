@@ -82,6 +82,8 @@ fn conversational_question_publication_preserves_request_identity_and_private_ru
         conversation_id: conversation.id.clone(),
         request_hash: request_hash(&request).unwrap(),
         accepted_revision: conversation.revision,
+        captured_scope: conversation.scope.clone(),
+        project_instructions: None,
     };
     // Arrange an already-admitted request. Publication must change its output
     // kind without changing the request hash used for acknowledgement retries.
