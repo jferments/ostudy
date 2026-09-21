@@ -196,9 +196,12 @@ pub(crate) fn rename(
         let tx = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        if let Some(saved) =
-            organization::replay(&tx, &input.operation_id, "rename_conversation", &request_hash)?
-        {
+        if let Some(saved) = organization::replay(
+            &tx,
+            &input.operation_id,
+            "rename_conversation",
+            &request_hash,
+        )? {
             return Ok(saved);
         }
         let now = unix_time_millis()?;
@@ -331,7 +334,8 @@ pub(crate) fn set_archived(
         let tx = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        if let Some(saved) = organization::replay(&tx, &input.operation_id, action, &request_hash)? {
+        if let Some(saved) = organization::replay(&tx, &input.operation_id, action, &request_hash)?
+        {
             return Ok(saved);
         }
         let current = load_summary(&tx, &input.conversation_id)?;
@@ -524,7 +528,9 @@ fn validate_organization_input(
     validate_entity_id(operation_id, "Tutor organization operation")?;
     validate_entity_id(conversation_id, "conversation")?;
     if organization_revision < 1 {
-        return Err(invalid("The conversation organization revision is invalid."));
+        return Err(invalid(
+            "The conversation organization revision is invalid.",
+        ));
     }
     Ok(())
 }

@@ -207,7 +207,8 @@ pub(crate) fn set_archived(
         let tx = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
-        if let Some(saved) = organization::replay(&tx, &input.operation_id, action, &request_hash)? {
+        if let Some(saved) = organization::replay(&tx, &input.operation_id, action, &request_hash)?
+        {
             return Ok(saved);
         }
         let current = load(&tx, &input.project_id)?;
@@ -287,8 +288,11 @@ pub(crate) fn delete(
             params![now, input.project_id],
         )
         .map_err(CommandError::database)?;
-        tx.execute("DELETE FROM tutor_projects WHERE id=?1", [&input.project_id])
-            .map_err(CommandError::database)?;
+        tx.execute(
+            "DELETE FROM tutor_projects WHERE id=?1",
+            [&input.project_id],
+        )
+        .map_err(CommandError::database)?;
         organization::record(
             &tx,
             &input.operation_id,
@@ -327,7 +331,9 @@ pub(crate) fn active_default_scope(
 ) -> Result<StudyScope, CommandError> {
     let project = load(connection, project_id)?;
     if project.archived_at.is_some() {
-        return Err(invalid("Restore this Tutor project before starting or moving chats into it."));
+        return Err(invalid(
+            "Restore this Tutor project before starting or moving chats into it.",
+        ));
     }
     scope_documents(connection, &project.default_scope)?;
     Ok(project.default_scope)
@@ -344,7 +350,17 @@ pub(crate) fn instructions(
     Ok((!project.instructions.trim().is_empty()).then_some(project.instructions))
 }
 
-type RawProject = (String, String, String, String, String, i64, Option<i64>, i64, i64);
+type RawProject = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    Option<i64>,
+    i64,
+    i64,
+);
 
 fn raw_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawProject> {
     Ok((
