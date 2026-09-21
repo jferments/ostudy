@@ -21,7 +21,7 @@ On resumption, do one bounded state reconstruction:
 3. compare any PR-body ledger or remembered SHA with the remote head;
 4. identify the next unfinished acceptance boundary or first concrete failure.
 
-Then continue from that boundary. Do not repeat repository inventory, connector discovery, architecture surveys, or old failure analysis unless new evidence makes one of them necessary.
+Then continue from that boundary. When the PR/branch identity is already known, use direct PR and branch-ref reads rather than search/list calls to rediscover them, and group independent bounded reads in one Connector orchestration when practical. Do not repeat repository inventory, connector discovery, architecture surveys, or old failure analysis unless new evidence makes one of them necessary.
 
 Conversation and memory preserve intent. GitHub and exact-SHA qualification preserve implementation facts.
 
@@ -41,7 +41,7 @@ This checkpoint is progress metadata, not a source writer or branch lock. Create
 
 ## Tool and access discipline
 
-Discover each required GitHub action once in the available tool context and invoke the intended operation. A GET-only fetch action, unloaded mutation schema, missing local gh/token/toolchain, truncated tool output, queued runner, formatter failure, or stale PR ledger is not evidence that repository write access disappeared.
+Discover each required GitHub action once in the available tool context and invoke the intended operation. For a known PR, branch, or SHA, prefer direct reads over search/discovery; do not spend multiple calls asking GitHub to rediscover an identifier already in the active checkpoint. A GET-only fetch action, unloaded mutation schema, missing local gh/token/toolchain, truncated tool output, queued runner, formatter failure, or stale PR ledger is not evidence that repository write access disappeared.
 
 Distinguish:
 

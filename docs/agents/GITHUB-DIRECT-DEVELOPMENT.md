@@ -12,7 +12,7 @@ A human's local checkout and the commands supplied for local testing are not an 
 
 [Interruption recovery](RECOVERY-PROTOCOL.md) is part of this procedure. **ANCHORLINE RESET** is a recovery cue, not a Git operation: preserve useful work, perform one bounded authoritative state read, and continue the existing assignment. It never authorizes rollback, force-push, scope reduction, or project restart. Do not ask the human to repeat instructions that are already present or retrievable.
 
-After an interrupted response or resumed chat, resolve the actual PR/head, unresolved failure/review state, and exact-head qualification once. Compare remembered or PR-body SHAs to the remote head, record the next unfinished boundary, and proceed. Do not restart repository inventory, architecture discovery, or Connector schema discovery without new evidence that it is necessary.
+After an interrupted response or resumed chat, resolve the actual PR/head, unresolved failure/review state, and exact-head qualification once. Compare remembered or PR-body SHAs to the remote head, record the next unfinished boundary, and proceed. When the PR number and branch are already known, read the PR directly and read `git/ref/heads/<branch>` directly; do not use PR search, branch search, or commit search merely to learn the current tip. Bundle independent bounded reads in one Connector orchestration when practical. Do not restart repository inventory, architecture discovery, or Connector schema discovery without new evidence that it is necessary.
 
 For substantial work, surface brief progress after meaningful publication or a few tool operations. These updates do not require acknowledgement and never replace the final response. Every completed turn must return a substantive response with the verified published head, useful changes, actual tests and tested SHAs, unrun/failed gates, and the next unfinished boundary. Do not promise background continuation.
 
@@ -49,6 +49,22 @@ at their owning boundary rather than expanding infrastructure or weakening tests
 CI failure archives may carry an immutable `git archive` plus commit/tree hashes.
 Those are read-only copies of published source, useful for auxiliary inspection;
 they are not source writers, edited candidates, or proof of test success.
+
+### Efficient GitHub reads and publication
+
+Treat GitHub calls as a small evidence graph, not a browsing session.
+
+- **Known PR:** read the exact PR endpoint. Do not search for a PR whose number is already known.
+- **Known branch:** read the exact branch ref. Do not list/search commits or branches merely to discover its tip.
+- **Known SHA:** read commits, workflow runs, jobs, or files by that SHA. Do not fall back to branch-wide searches.
+- **Independent reads:** group the bounded PR/ref/review/Actions reads into one Connector orchestration when the tool surface allows it. Emit only the compact facts needed for the checkpoint rather than full payloads.
+- **No mid-composition polling:** resolve the expected parent at the start of one publication attempt, read every changed file from that exact parent, prepare the coherent candidate, then perform the one mandatory pre-update ref check. Re-reading the tip after every blob or edit creates stale-parent churn without increasing safety.
+- **Drift:** if the mandatory pre-update check finds a moved head, inspect the new linear commits once. Adopt coherent in-scope descendants or reconcile a real competing writer; do not repeatedly rebuild from successively stale SHAs. Two unexplained head moves without this agent's verified ref update are writer-contention evidence, not a reason to spin on more ref reads.
+- **Blob proportionality:** ordinary small UTF-8 files use the SHA returned by `create_blob` in the publication manifest. Independent Git-object SHA calculation is reserved for the large/critical full-file safety case required below; calculate it once for the final bytes, not repeatedly during drafting.
+
+For this workflow, treat a full-file replacement as **large** when it is 32 KiB or more, or when the connector/output path could truncate it. Treat it as **critical** when corruption could change migrations/schema/data integrity, source-publishing or CI policy, credentials/security boundaries, packaging/install behavior, or another explicitly identified high-consequence path. If in doubt about a genuinely high-consequence file, use the safer large/critical path; do not make every ordinary component file pay that cost.
+
+A normal publication attempt should therefore be one bounded orchestration: direct ref -> exact parent commit/tree -> exact changed files -> blobs -> tree -> candidate commit -> candidate diff review -> one pre-update ref check -> non-force ref update -> one post-update verification. The individual GitHub operations remain explicit evidence, but they should not be expanded into dozens of discovery calls.
 
 ### Bounded repair loop and publication checkpoint
 
@@ -97,17 +113,18 @@ message may replace available source publication with a claim of generic
 
 ## Expected-parent Git-data publication
 
-Use this sequence for every task-branch commit, including documentation commits:
+Use this sequence for every task-branch commit, including documentation commits. Resolve `H` at the start of the publication attempt itself rather than carrying forward a head discovered during earlier analysis:
 
 ```text
-read remote head H and its tree T
-→ read changed files at H
+direct-read remote head H and its tree T
+→ read changed files exactly at H
 → create_blob for each complete changed/new file
 → create_tree(base_tree_sha=T, reviewed entries)
 → create_commit(parent_sha=H, tree_sha=new tree)
-→ re-read remote ref; require H
+→ inspect H...candidate changed-file list/diff
+→ re-read remote ref once; require H
 → update_ref(new commit, force=false)
-→ re-read remote ref; require new commit
+→ re-read remote ref once; require new commit
 → reconcile the PR head and acceptance snapshot
 ```
 
