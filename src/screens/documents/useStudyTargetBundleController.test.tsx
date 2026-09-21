@@ -66,6 +66,30 @@ describe("study target bundle controller", () => {
     vi.mocked(studyMaterials.composeStudyTargetBundle).mockResolvedValue(complete);
   });
 
+  it("publishes the durable queued/running status while composition remains in flight", async () => {
+    let finish!: (value: studyMaterials.StudyTargetBundleStatus) => void;
+    vi.mocked(studyMaterials.composeStudyTargetBundle).mockReturnValueOnce(
+      new Promise((resolve) => { finish = resolve; }),
+    );
+    const { result } = renderHook(() => useStudyTargetBundleController({ target }));
+    await waitFor(() => expect(studyMaterials.getStudyTargetBundle).toHaveBeenCalledTimes(1));
+
+    let running!: Promise<boolean>;
+    await act(async () => {
+      running = result.current.run();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.status?.latestBatchState).toBe("queued"));
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => {
+      finish(complete);
+      await running;
+    });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.status?.latestBatchState).toBe("complete");
+  });
+
   it("reuses the same durable operation after an ambiguous compose response", async () => {
     const { result } = renderHook(() => useStudyTargetBundleController({ target }));
     await waitFor(() => expect(studyMaterials.getStudyTargetBundle).toHaveBeenCalledTimes(1));

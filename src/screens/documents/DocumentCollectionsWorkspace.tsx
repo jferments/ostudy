@@ -14,6 +14,7 @@ import { Button } from "../../ui/primitives/Button";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
+import { Progress } from "../../ui/primitives/Progress";
 import { Surface } from "../../ui/primitives/Surface";
 import { TextField } from "../../ui/primitives/TextField";
 import { hasDocumentFolderDrag, readDocumentFolderDrag } from "./documentFolderDrag";
@@ -64,16 +65,16 @@ export function DocumentCollectionsWorkspace({
 
   if (!organization) {
     return (
-      <section aria-label="Document folders" className="tw:mb-6 tw:grid tw:gap-3">
+      <section aria-label="Document collections" className="tw:mb-6 tw:grid tw:gap-3">
         <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
-          <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document folders</h2>
-          <Button size="small" disabled>New folder</Button>
+          <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
+          <Button size="small" disabled>New collection</Button>
         </div>
         {controller.error ? (
           <InlineNotice kind="error">
             {controller.error} <Button size="small" onClick={() => void controller.load()}>Retry</Button>
           </InlineNotice>
-        ) : <p role="status" className="tw:m-0 tw:text-sm tw:text-muted-foreground">Loading folders…</p>}
+        ) : <p role="status" className="tw:m-0 tw:text-sm tw:text-muted-foreground">Loading collections…</p>}
       </section>
     );
   }
@@ -85,9 +86,9 @@ export function DocumentCollectionsWorkspace({
 
   async function deleteCurrent(folder: DocumentCollection): Promise<void> {
     const approved = await confirm({
-      title: "Delete this document folder?",
-      description: "The folder and its memberships will be removed. Retained source documents and independently created study material are not deleted.",
-      confirmLabel: "Delete folder",
+      title: "Delete this document collection?",
+      description: "The collection and its memberships will be removed. Retained source documents and independently created study material are not deleted.",
+      confirmLabel: "Delete collection",
       destructive: true,
     });
     if (!approved) return;
@@ -97,8 +98,8 @@ export function DocumentCollectionsWorkspace({
   async function removeMembership(membership: DocumentCollectionMembership): Promise<void> {
     const document = documentById.get(membership.documentId);
     const approved = await confirm({
-      title: "Remove this source from the folder?",
-      description: `${document?.title ?? "This document"} remains in Documents and in any other folders that reference it.`,
+      title: "Remove this source from the collection?",
+      description: `${document?.title ?? "This document"} remains in Documents and in any other collections that reference it.`,
       confirmLabel: "Remove source",
       destructive: true,
     });
@@ -123,23 +124,23 @@ export function DocumentCollectionsWorkspace({
   }
 
   return (
-    <section aria-label="Document folders" className="tw:mb-6 tw:grid tw:gap-4">
+    <section aria-label="Document collections" className="tw:mb-6 tw:grid tw:gap-4">
       {controller.error ? <InlineNotice kind="error">{controller.error}</InlineNotice> : null}
       {!current ? (
         <>
           <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
-            <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document folders</h2>
+            <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
             <Button
               size="small"
               disabled={controller.busy}
               onClick={() => { setDialog({ kind: "create", name: "" }); setDialogError(null); }}
             >
-              + New folder
+              + New collection
             </Button>
           </div>
           <label className="tw:flex tw:min-h-11 tw:w-fit tw:items-center tw:gap-2 tw:text-sm">
             <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived folders
+            Show archived collections
           </label>
           {folders.length ? (
             <div className="tw:grid tw:gap-2 tw:sm:grid-cols-2 tw:xl:grid-cols-3">
@@ -156,14 +157,14 @@ export function DocumentCollectionsWorkspace({
             </div>
           ) : (
             <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
-              {showArchived ? "No folders yet." : "No active folders yet."}
+              {showArchived ? "No collections yet." : "No active collections yet."}
             </p>
           )}
         </>
       ) : (
         <>
           <div>
-            <Button size="small" variant="text" onClick={() => setSelectedId(null)}>← Folders</Button>
+            <Button size="small" variant="text" onClick={() => setSelectedId(null)}>← Collections</Button>
           </div>
           <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3">
             <h2 className="tw:m-0 tw:min-w-0 tw:wrap-anywhere tw:text-lg tw:font-semibold">{current.name}</h2>
@@ -300,6 +301,7 @@ function CollectionStudyMaterials({ status, loading, busy, error, onRun, onOpenD
           {action}
         </Button>
       </div>
+      {busy ? <CollectionBundleProgress status={status} /> : null}
       <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-2 tw:text-sm" aria-live="polite">
         <ArtifactStatus label="Flashcards" artifact={status?.flashcards ?? null} openLabel="Open Flashcards deck"
           onOpen={status?.deckId && onOpenDeck ? () => onOpenDeck(status.deckId as string) : undefined} />
@@ -310,6 +312,57 @@ function CollectionStudyMaterials({ status, loading, busy, error, onRun, onOpenD
       {error ? <InlineNotice kind="warning">{error}</InlineNotice> : null}
     </Surface>
   );
+}
+
+function CollectionBundleProgress({ status }: { status: StudyTargetBundleStatus | null }) {
+  const active = bundleProgress(status);
+  return (
+    <div className="tw:grid tw:gap-2" role="status" aria-live="polite">
+      <div className="tw:flex tw:items-center tw:justify-between tw:gap-3 tw:text-sm">
+        <span>{active.title}</span>
+        <span className="tw:text-muted-foreground">{active.label}</span>
+      </div>
+      <Progress
+        value={active.value}
+        max={active.max}
+        label="Collection study-material generation progress"
+        valueText={active.label}
+      />
+    </div>
+  );
+}
+
+function bundleProgress(status: StudyTargetBundleStatus | null): {
+  title: string;
+  label: string;
+  value: number | null;
+  max: number;
+} {
+  if (!status) return { title: "Preparing study materials", label: "Starting…", value: null, max: 100 };
+  const guide = status.studyGuide;
+  if (guide.state === "running" || guide.state === "committing") {
+    const determinate = guide.totalUnits > 0;
+    return {
+      title: "Writing collection study guide",
+      label: determinate ? `${guide.completedUnits} / ${guide.totalUnits}` : "Working…",
+      value: determinate ? guide.completedUnits : null,
+      max: determinate ? guide.totalUnits : 100,
+    };
+  }
+  const cards = status.flashcards;
+  if (cards.state === "running" || cards.state === "committing") {
+    const determinate = cards.totalUnits > 0;
+    return {
+      title: "Building collection flashcards",
+      label: determinate ? `${cards.completedUnits} / ${cards.totalUnits}` : "Working…",
+      value: determinate ? cards.completedUnits : null,
+      max: determinate ? cards.totalUnits : 100,
+    };
+  }
+  if (cards.state === "succeeded" && guide.state === "pending") {
+    return { title: "Preparing collection study guide", label: "Working…", value: null, max: 100 };
+  }
+  return { title: "Preparing study materials", label: "Working…", value: null, max: 100 };
 }
 
 function ArtifactStatus({ label, artifact, openLabel, onOpen }: {
@@ -403,7 +456,7 @@ function FolderSources({ folder, organization, documents, onAdd, onRanges, onMov
             </div>
           </Surface>
         );
-      }) : <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">No sources in this folder yet.</p>}
+      }) : <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">No sources in this collection yet.</p>}
     </section>
   );
 }
@@ -441,7 +494,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
   const close = () => { if (!busy) { setDialog(null); setError(null); } };
 
   if (dialog.kind === "create" || dialog.kind === "rename") {
-    const title = dialog.kind === "create" ? "Create document folder" : "Rename document folder";
+    const title = dialog.kind === "create" ? "Create document collection" : "Rename document collection";
     return (
       <Dialog title={title} onClose={close} busy={busy} width="small">
         <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
@@ -468,7 +521,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
     const already = new Set(organization.memberships.filter((entry) => entry.collectionId === currentFolderId).map((entry) => entry.documentId));
     const choices = documents.filter((document) => !already.has(document.id));
     return (
-      <Dialog title="Add source to folder" onClose={close} busy={busy} width="small">
+      <Dialog title="Add source to collection" onClose={close} busy={busy} width="small">
         <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
           <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-sm tw:font-medium">
             Document
@@ -477,7 +530,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
               {choices.map((document) => <option key={document.id} value={document.id}>{document.title}</option>)}
             </NativeSelect>
           </label>
-          {!choices.length ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Every retained document is already in this folder.</p> : null}
+          {!choices.length ? <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">Every retained document is already in this collection.</p> : null}
           {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
           <DialogActions>
             <Button onClick={close}>Cancel</Button>
@@ -494,12 +547,12 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
   if (dialog.kind === "move-source") {
     const choices = organization.collections.filter((folder) => folder.id !== dialog.membership.collectionId);
     return (
-      <Dialog title="Move source to another folder" onClose={close} busy={busy} width="small">
+      <Dialog title="Move source to another collection" onClose={close} busy={busy} width="small">
         <div data-collection-dialog-body className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
           <label className="tw:grid tw:min-w-0 tw:gap-2 tw:text-sm tw:font-medium">
             Destination
             <NativeSelect value={dialog.targetCollectionId} onChange={(event) => setDialog({ ...dialog, targetCollectionId: event.target.value })}>
-              <option value="">Select a folder…</option>
+              <option value="">Select a collection…</option>
               {choices.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
             </NativeSelect>
           </label>

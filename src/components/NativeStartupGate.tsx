@@ -1,25 +1,23 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { getSettings } from "../ipc/settings";
-import { Button } from "../ui/primitives/Button";
-import { InlineNotice } from "../ui/primitives/InlineNotice";
 import { BrandMark } from "./Brand";
 
 const STARTUP_POLL_INTERVAL_MS = 40;
 const STARTUP_ATTEMPT_TIMEOUT_MS = 750;
-const STARTUP_TIMEOUT_MS = 30_000;
+const STARTUP_SLOW_NOTICE_MS = 30_000;
 
-type StartupGateState = "waiting" | "ready" | "error";
+type StartupGateState = "waiting" | "slow" | "ready";
 
 export async function waitForNativeStartup(
-  timeoutMs = STARTUP_TIMEOUT_MS,
+  timeoutMs: number | null = null,
   attemptTimeoutMs = STARTUP_ATTEMPT_TIMEOUT_MS,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = timeoutMs === null ? null : Date.now() + timeoutMs;
   let lastError: unknown = null;
 
-  while (Date.now() < deadline) {
-    const remaining = Math.max(1, deadline - Date.now());
+  while (deadline === null || Date.now() < deadline) {
+    const remaining = deadline === null ? attemptTimeoutMs : Math.max(1, deadline - Date.now());
     try {
       const ready = await withTimeout(
         getSettings().then(() => true),
@@ -30,10 +28,11 @@ export async function waitForNativeStartup(
       lastError = error;
     }
 
-    if (Date.now() < deadline) {
-      await new Promise<void>((resolve) =>
-        window.setTimeout(resolve, Math.min(STARTUP_POLL_INTERVAL_MS, deadline - Date.now())),
-      );
+    if (deadline === null || Date.now() < deadline) {
+      const delay = deadline === null
+        ? STARTUP_POLL_INTERVAL_MS
+        : Math.min(STARTUP_POLL_INTERVAL_MS, Math.max(1, deadline - Date.now()));
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
     }
   }
 
@@ -63,18 +62,19 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let disposed = false;
+    const slowNotice = window.setTimeout(() => {
+      if (!disposed) setState((current) => current === "waiting" ? "slow" : current);
+    }, STARTUP_SLOW_NOTICE_MS);
     void waitForNativeStartup()
       .then(() => {
         if (!disposed) setState("ready");
       })
       .catch((error: unknown) => {
-        if (!disposed) {
-          console.error("Native startup readiness failed:", error);
-          setState("error");
-        }
+        if (!disposed) console.error("Native startup readiness failed:", error);
       });
     return () => {
       disposed = true;
+      window.clearTimeout(slowNotice);
     };
   }, []);
 
@@ -82,23 +82,13 @@ export function NativeStartupGate({ children }: { children: ReactNode }) {
 
   return (
     <div className="tw:grid tw:min-h-dvh tw:place-content-center tw:gap-4 tw:bg-background tw:p-8 tw:text-center tw:text-foreground">
-      {state === "waiting" ? (
-        <>
-          <div className="tw:mx-auto"><BrandMark /></div>
-          <h1 className="tw:m-0">Opening ostudy</h1>
-          <p className="tw:m-0 tw:text-muted-foreground">Preparing your library…</p>
-        </>
-      ) : (
-        <>
-          <h1 className="tw:m-0">ostudy could not finish starting</h1>
-          <InlineNotice kind="error">
-            Native startup did not become ready. Restart the app; your library was not intentionally reset.
-          </InlineNotice>
-          <Button variant="primary" onClick={() => window.location.reload()}>
-            Try again
-          </Button>
-        </>
-      )}
+      <div className="tw:mx-auto"><BrandMark /></div>
+      <h1 className="tw:m-0">{state === "slow" ? "Still opening ostudy" : "Opening ostudy"}</h1>
+      <p className="tw:m-0 tw:max-w-xl tw:text-muted-foreground">
+        {state === "slow"
+          ? "Preparing this library is taking longer than usual. ostudy will open automatically when native startup finishes."
+          : "Preparing your library…"}
+      </p>
     </div>
   );
 }

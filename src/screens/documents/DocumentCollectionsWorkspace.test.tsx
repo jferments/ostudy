@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as collections from "../../ipc/collections";
@@ -182,10 +182,10 @@ function renderWorkspace({
 }
 
 describe("Document collections workspace", () => {
-  it("browses folders locally and exposes canonical source ranges without resolving or preparing them", async () => {
+  it("browses collections locally and exposes canonical source ranges without resolving or preparing them", async () => {
     renderWorkspace();
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
-    expect(screen.getByRole("button", { name: "← Folders" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "← Collections" })).toBeTruthy();
     expect(screen.queryByText(/subfolder/iu)).toBeNull();
     expect(screen.queryByText(/Folder organization is local/iu)).toBeNull();
     expect((await screen.findAllByText("Pages 1–3")).length).toBeGreaterThan(0);
@@ -214,6 +214,44 @@ describe("Document collections workspace", () => {
         revision: 1,
         expectedOrganizationRevision: 2,
       });
+    });
+  });
+
+  it("shows determinate collection-generation progress from durable artifact status", async () => {
+    let finish!: (value: studyMaterials.StudyTargetBundleStatus) => void;
+    const running = {
+      ...bundleStatus,
+      deckId: null,
+      guideId: null,
+      guideRevision: null,
+      latestBatchState: "composing",
+      flashcards: { ...bundleStatus.flashcards, state: "succeeded", artifactId: "9".repeat(32) },
+      studyGuide: {
+        ...bundleStatus.studyGuide,
+        state: "running",
+        artifactId: null,
+        totalUnits: 8,
+        completedUnits: 3,
+      },
+    };
+    vi.mocked(studyMaterials.beginStudyTargetBundle).mockResolvedValueOnce(running);
+    vi.mocked(studyMaterials.composeStudyTargetBundle).mockReturnValueOnce(
+      new Promise((resolve) => { finish = resolve; }),
+    );
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
+
+    expect(await screen.findByText("Writing collection study guide")).toBeTruthy();
+    expect(screen.getByText("3 / 8")).toBeTruthy();
+    const progress = screen.getByRole("progressbar", { name: "Collection study-material generation progress" });
+    expect(progress.getAttribute("aria-valuenow")).toBe("3");
+    expect(progress.getAttribute("aria-valuemax")).toBe("8");
+
+    await act(async () => {
+      finish(bundleStatus);
+      await Promise.resolve();
     });
   });
 
@@ -250,8 +288,8 @@ describe("Document collections workspace", () => {
 
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("button", { name: "+ New folder" }));
-    const dialog = await screen.findByRole("dialog", { name: "Create document folder" });
+    fireEvent.click(await screen.findByRole("button", { name: "+ New collection" }));
+    const dialog = await screen.findByRole("dialog", { name: "Create document collection" });
     expect(dialog.getAttribute("data-width")).toBe("small");
     const body = dialog.querySelector("[data-collection-dialog-body]");
     expect(body?.className).toContain("tw:p-4");

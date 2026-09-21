@@ -10,6 +10,8 @@ import {
   type StudyTargetRef,
 } from "../../ipc/studyMaterials";
 
+const STATUS_POLL_INTERVAL_MS = 400;
+
 const TERMINAL_BATCH_STATES = new Set([
   "complete",
   "partial",
@@ -86,6 +88,31 @@ export function useStudyTargetBundleController({
     return () => { readSequence.current += 1; };
   }, [load]);
 
+  useEffect(() => {
+    if (!busy || !target) return;
+    let disposed = false;
+    let polling = false;
+    const poll = async () => {
+      if (disposed || polling) return;
+      polling = true;
+      try {
+        const next = await getStudyTargetBundle({ target });
+        if (!disposed && next) setStatus(next);
+      } catch {
+        // The composing command owns the terminal error. A transient status read
+        // must not replace it or stop the durable operation.
+      } finally {
+        polling = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => { void poll(); }, STATUS_POLL_INTERVAL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [busy, target?.id, target?.kind]);
+
   async function reconcileCommitted(message: string): Promise<void> {
     if (!changed) return;
     try {
@@ -106,12 +133,13 @@ export function useStudyTargetBundleController({
     setError(null);
     readSequence.current += 1;
     try {
-      await beginStudyTargetBundle({
+      const begun = await beginStudyTargetBundle({
         operationId,
         target,
         outputPolicy: { flashcards: true, studyGuide: true },
         recreateArtifacts: suppressedArtifacts(status),
       });
+      setStatus(begun);
       const result = await composeStudyTargetBundle({ operationId });
       receipt.current = null;
       setStatus(result);
