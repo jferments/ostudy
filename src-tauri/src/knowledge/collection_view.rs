@@ -44,9 +44,9 @@ const MAX_COVERAGE_UNITS: usize = 16_384;
 const MAX_TOPICS: usize = MAX_COVERAGE_UNITS;
 const MAX_SYNTHESIS_BYTES: usize = 8 * 1024 * 1024;
 const GUIDE_TARGET_SECTION_COUNT: usize = 48;
-const GUIDE_BASE_TOPICS_PER_SECTION: usize = 32;
-const GUIDE_MAX_TOPICS_PER_SECTION: usize = 64;
-const GUIDE_MAX_UNITS_PER_SECTION: usize = 64;
+const GUIDE_BASE_TOPICS_PER_SECTION: usize = 12;
+const GUIDE_MAX_TOPICS_PER_SECTION: usize = 24;
+const GUIDE_MAX_UNITS_PER_SECTION: usize = 48;
 const MAX_REDUCTION_DIGEST_BYTES: usize = 48_000;
 const REDUCTION_VISIBLE_TOKENS: usize = 4_096;
 
@@ -465,7 +465,7 @@ fn guide_window_context(topics: &[&CollectionTopic]) -> String {
             let summary = if topic.summary.trim().is_empty() {
                 "Use the retained knowledge units to explain this concept.".to_string()
             } else {
-                topic.summary.chars().take(320).collect::<String>()
+                topic.summary.chars().take(200).collect::<String>()
             };
             format!("• {} — {}", topic.title, summary)
         })

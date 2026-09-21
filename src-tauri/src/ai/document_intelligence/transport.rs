@@ -169,26 +169,45 @@ async fn request_json_inner(
     }
 }
 
-fn ensure_context_budget(
+const CONSERVATIVE_TEXT_BYTES_PER_TOKEN: usize = 2;
+const IMAGE_CONTEXT_RESERVE_TOKENS: usize = 8_192;
+const REQUEST_CONTEXT_RESERVE_TOKENS: usize = 1_024;
+
+pub(super) fn ensure_context_budget(
     task: &DocumentTaskContext,
     request: &JsonTaskRequest<'_>,
 ) -> Result<(), CommandError> {
     let system =
         crate::ai::structured_output::system_with_schema(request.system_prompt, request.schema);
-    let upper_bound = system
-        .len()
-        .saturating_add(request.user_text.len())
-        .saturating_add(request.images.len().saturating_mul(8192))
+    let upper_bound = conservative_text_tokens(&system)
+        .saturating_add(conservative_text_tokens(request.user_text))
+        .saturating_add(
+            request
+                .images
+                .len()
+                .saturating_mul(IMAGE_CONTEXT_RESERVE_TOKENS),
+        )
         .saturating_add(request.max_tokens)
-        .saturating_add(1024);
+        .saturating_add(REQUEST_CONTEXT_RESERVE_TOKENS);
     if task
         .context_window_tokens()
         .is_some_and(|limit| upper_bound > limit)
     {
-        return Err(CommandError::new("ai_document_context_budget",
-            "This learning request exceeds the model's conservative context budget after reserving its output contract and completion. No provider request was sent."));
+        return Err(CommandError::new(
+            "ai_document_context_budget",
+            "This bounded learning request still does not fit the selected model context after reserving its output contract and completion. No provider request was sent.",
+        ));
     }
     Ok(())
+}
+
+fn conservative_text_tokens(text: &str) -> usize {
+    // The context limit is expressed in TOKENS, while Rust string lengths are
+    // UTF-8 BYTES. Comparing them directly made ordinary English/JSON requests
+    // appear roughly 2–4x larger than they are. Two UTF-8 bytes per token is
+    // deliberately conservative for mixed prose/JSON while remaining in the
+    // same unit as the provider context window.
+    text.len().div_ceil(CONSERVATIVE_TEXT_BYTES_PER_TOKEN)
 }
 
 fn ensure_request_size(body: &Value) -> Result<(), CommandError> {
@@ -354,5 +373,17 @@ mod tests {
             bytes: b"not an image".to_vec(),
         }];
         assert!(multimodal_user_parts("source", &images).is_err());
+    }
+}
+
+
+#[cfg(test)]
+mod context_budget_tests {
+    use super::*;
+
+    #[test]
+    fn text_budget_estimate_converts_bytes_to_tokens_instead_of_comparing_units_directly() {
+        assert_eq!(conservative_text_tokens(&"a".repeat(20_000)), 10_000);
+        assert_eq!(conservative_text_tokens("αβγδ"), 4);
     }
 }

@@ -1141,7 +1141,8 @@ fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> Str
         })
         .map(|relationship| relationship.note.trim())
         .filter(|note| !note.is_empty())
-        .take(8)
+        .map(|note| note.chars().take(240).collect::<String>())
+        .take(6)
         .collect::<Vec<_>>();
     notes.dedup();
     if notes.is_empty() {

@@ -21,11 +21,12 @@ use super::{
     support::{
         bounded_diagnostic, collapse_contract_error, output_error, retryable_contract_error,
     },
-    transport::{request_json, JsonTaskRequest},
+    transport::{ensure_context_budget, request_json, JsonTaskRequest},
 };
 
 const STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS: usize = 2_200;
 const STUDY_GUIDE_REPAIR_COMPLETION_TOKENS: usize = 4_000;
+const COLLECTION_GUIDE_VISIBLE_COMPLETION_CANDIDATES: [usize; 4] = [1_800, 1_400, 1_000, 700];
 const MAX_GLOBAL_CONTEXT_BYTES: usize = 18_000;
 
 const MAX_OVERVIEW_CHARS: usize = 320;
@@ -101,7 +102,16 @@ pub(crate) async fn generate_study_guide_topic_section(
         "Use visualExplanations only for the images actually attached to this request."
     };
     let user = format!("{user}\n{visual_instruction}\n\nShared knowledge catalog (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nGenerate content from these knowledge units while checking their original evidence and preserving qualifications. Return content plus knowledgeUnitIds naming only the units actually explained. Do not select every unit by default. These IDs are internal metadata, not guide prose.", protocol::catalog_prompt(knowledge)?);
-    request_study_guide_section_with_retry(runtime, task, &system, &user, images, knowledge).await
+    request_study_guide_section_with_retry(
+        runtime,
+        task,
+        &system,
+        &user,
+        images,
+        knowledge,
+        STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS,
+    )
+    .await
 }
 
 pub(crate) async fn generate_collection_study_guide_topic_section(
@@ -120,15 +130,112 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         ));
     }
     let system = collection_study_guide_system_prompt();
-    let user = format!(
-        "Collection: {collection_title}\nSection anchor: {topic_title}\nConcepts grouped into this outline section:\n{topic_summary}\nRelated cross-document context: {relationship_context}\n\nWrite one READABLE STUDY-GUIDE SECTION that synthesizes the CORE IDEAS represented by this bounded outline window from the retained knowledge catalog below. The section anchor is a heading hint, not permission to ignore the other listed concepts. The collection synthesis is organizational context only; every factual statement must remain supported by the supplied knowledge/evidence. overview should be a short narrative of roughly 2–4 complete sentences that explains the topic rather than saying 'Review' or listing labels. keyPoints should contain the highest-yield supported facts. Include importantTerms when terminology or definitions are supported. Use explanations for mechanisms and cause/effect, processSteps for real sequences, comparisons/tables for meaningful distinctions, and workedExamples/retrievalChecks only when supported. Do not expose processing state, coverage receipts, missing-guide diagnostics, source IDs, or internal gap messages. Do not fill categories with boilerplate. Use [] for categories that add no value. Select knowledgeUnitIds only from the supplied catalog.\n\nShared retained knowledge catalog:\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>",
-        protocol::catalog_prompt(knowledge)?,
-    );
-    let section =
-        request_study_guide_section_with_retry(runtime, task, &system, &user, &[], knowledge)
-            .await?;
+    let (user, bounded_knowledge, visible_completion_tokens) =
+        fit_collection_guide_request(
+            task,
+            &system,
+            collection_title,
+            topic_title,
+            topic_summary,
+            relationship_context,
+            knowledge,
+        )?;
+    if bounded_knowledge.units.len() < knowledge.units.len() {
+        crate::logging::info_target(
+            "ai.document.study_guide",
+            "collection_guide_catalog_budgeted",
+            "Budgeted one collection-guide section to the selected model context without rejecting the aggregate collection.",
+            json!({
+                "availableUnits": knowledge.units.len(),
+                "selectedUnits": bounded_knowledge.units.len(),
+                "contextWindowTokens": task.context_window_tokens(),
+                "visibleCompletionTokens": visible_completion_tokens,
+            }),
+        );
+    }
+    let section = request_study_guide_section_with_retry(
+        runtime,
+        task,
+        &system,
+        &user,
+        &[],
+        &bounded_knowledge,
+        visible_completion_tokens,
+    )
+    .await?;
     validate_collection_section_quality(&section.content)?;
     Ok(section)
+}
+
+fn fit_collection_guide_request(
+    task: &DocumentTaskContext,
+    system: &str,
+    collection_title: &str,
+    topic_title: &str,
+    topic_summary: &str,
+    relationship_context: &str,
+    knowledge: &KnowledgeCatalog,
+) -> Result<(String, KnowledgeCatalog, usize), CommandError> {
+    let mut last_budget_error = None;
+    for visible_completion_tokens in COLLECTION_GUIDE_VISIBLE_COMPLETION_CANDIDATES {
+        let mut bounded = knowledge.clone();
+        loop {
+            let user = collection_study_guide_user_prompt(
+                collection_title,
+                topic_title,
+                topic_summary,
+                relationship_context,
+                &bounded,
+            )?;
+            let schema = protocol::schema(&bounded, false);
+            let request = JsonTaskRequest {
+                system_prompt: system,
+                user_text: &user,
+                schema: &schema,
+                max_tokens: task.completion_token_ceiling(visible_completion_tokens),
+                images: &[],
+            };
+            match ensure_context_budget(task, &request) {
+                Ok(()) => return Ok((user, bounded, visible_completion_tokens)),
+                Err(error)
+                    if error.code == "ai_document_context_budget" && bounded.units.len() > 1 =>
+                {
+                    last_budget_error = Some(error);
+                    let next_len = bounded
+                        .units
+                        .len()
+                        .saturating_mul(3)
+                        .div_ceil(4)
+                        .max(1);
+                    bounded.units.truncate(next_len);
+                }
+                Err(error) if error.code == "ai_document_context_budget" => {
+                    last_budget_error = Some(error);
+                    break;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Err(last_budget_error.unwrap_or_else(|| {
+        CommandError::new(
+            "ai_document_context_budget",
+            "The selected model context is too small for even one bounded collection-guide section.",
+        )
+    }))
+}
+
+fn collection_study_guide_user_prompt(
+    collection_title: &str,
+    topic_title: &str,
+    topic_summary: &str,
+    relationship_context: &str,
+    knowledge: &KnowledgeCatalog,
+) -> Result<String, CommandError> {
+    Ok(format!(
+        "Collection: {collection_title}\nSection anchor: {topic_title}\nConcepts grouped into this outline section:\n{topic_summary}\nRelated cross-document context: {relationship_context}\n\nWrite one READABLE STUDY-GUIDE SECTION that synthesizes the CORE IDEAS represented by this bounded outline window from the retained knowledge catalog below. The section anchor is a heading hint, not permission to ignore the other listed concepts. The collection synthesis is organizational context only; every factual statement must remain supported by the supplied knowledge/evidence. overview should be a short narrative of roughly 2–4 complete sentences that explains the topic rather than saying 'Review' or listing labels. keyPoints should contain the highest-yield supported facts. Include importantTerms when terminology or definitions are supported. Use explanations for mechanisms and cause/effect, processSteps for real sequences, comparisons/tables for meaningful distinctions, and workedExamples/retrievalChecks only when supported. Do not expose processing state, coverage receipts, missing-guide diagnostics, source IDs, or internal gap messages. Do not fill categories with boilerplate. Use [] for categories that add no value. Select knowledgeUnitIds only from the supplied catalog.\n\nShared retained knowledge catalog:\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>",
+        protocol::catalog_prompt(knowledge)?,
+    ))
 }
 
 fn collection_study_guide_system_prompt() -> String {
@@ -165,9 +272,10 @@ async fn request_study_guide_section_with_retry(
     user: &str,
     images: &[SourcePageImage],
     knowledge: &KnowledgeCatalog,
+    visible_completion_tokens: usize,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let schema = protocol::schema(knowledge, !images.is_empty());
-    let maximum_tokens = task.completion_token_ceiling(STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS);
+    let maximum_tokens = task.completion_token_ceiling(visible_completion_tokens);
     let raw = request_json(
         runtime,
         task,
@@ -200,7 +308,11 @@ async fn request_study_guide_section_with_retry(
                 "study_guide_repair_started",
                 "One bounded guide repair will run; provider content is not logged.",
                 json!({"code":error.code,"detail":bounded_diagnostic(&error.message,400),
-                    "hasRepairCandidate":draft.is_some(),"maximumOutput":task.completion_token_ceiling(STUDY_GUIDE_REPAIR_COMPLETION_TOKENS)}),
+                    "hasRepairCandidate":draft.is_some(),"maximumOutput":task.completion_token_ceiling(
+                        STUDY_GUIDE_REPAIR_COMPLETION_TOKENS.min(
+                            visible_completion_tokens.saturating_add(1_000)
+                        )
+                    )}),
             );
             let candidate = draft.map_or_else(String::new, |value| {
                 format!("\n<invalid-guide-candidate>\n{value}\n</invalid-guide-candidate>")
@@ -213,7 +325,10 @@ async fn request_study_guide_section_with_retry(
                     system_prompt: system,
                     user_text: &repaired,
                     schema: &schema,
-                    max_tokens: task.completion_token_ceiling(STUDY_GUIDE_REPAIR_COMPLETION_TOKENS),
+                    max_tokens: task.completion_token_ceiling(
+                        STUDY_GUIDE_REPAIR_COMPLETION_TOKENS
+                            .min(visible_completion_tokens.saturating_add(1_000)),
+                    ),
                     images,
                 },
             )
@@ -884,6 +999,31 @@ mod tests {
         assert_eq!(
             root["properties"]["callouts"]["items"]["additionalProperties"],
             false
+        );
+    }
+
+    #[test]
+    fn collection_request_budget_can_reduce_catalog_without_changing_source_authority() {
+        let knowledge = crate::knowledge::authoring::tests::catalog_fixture();
+        let mut expanded = knowledge.clone();
+        expanded.units = (0..24)
+            .map(|index| {
+                let mut unit = knowledge.units[0].clone();
+                unit.id = format!("{:032x}", index + 1);
+                unit.content.title = format!("Concept {index}");
+                unit.content.statement = "Supported explanation. ".repeat(60);
+                unit
+            })
+            .collect();
+        let mut bounded = expanded.clone();
+        while protocol::catalog_prompt(&bounded).unwrap().len() > 6_000 {
+            bounded.units.pop();
+        }
+        assert!(!bounded.units.is_empty());
+        assert!(bounded.units.len() < expanded.units.len());
+        assert_eq!(
+            bounded.units[0].content.statement,
+            expanded.units[0].content.statement
         );
     }
 
