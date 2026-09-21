@@ -30,7 +30,6 @@ describe("document collection IPC", () => {
     const create = {
       operationId: "1".repeat(32),
       name: "Week 1",
-      parentId: null,
       expectedOrganizationRevision: 1,
     };
     await createDocumentCollection(create);
@@ -40,7 +39,6 @@ describe("document collection IPC", () => {
       operationId: "2".repeat(32),
       collectionId: "a".repeat(32),
       name: "Week 1",
-      parentId: "b".repeat(32),
       archived: false,
       revision: 1,
       expectedOrganizationRevision: 2,

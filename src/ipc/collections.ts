@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 
 export interface DocumentCollection {
   id: string;
-  parentId: string | null;
   name: string;
   sortOrder: number;
   archivedAt: number | null;
@@ -93,13 +92,11 @@ interface OrganizationMutationBase {
 
 export interface CreateDocumentCollectionInput extends OrganizationMutationBase {
   name: string;
-  parentId: string | null;
 }
 
 export interface UpdateDocumentCollectionInput extends OrganizationMutationBase {
   collectionId: string;
   name: string;
-  parentId: string | null;
   archived: boolean;
   revision: number;
 }

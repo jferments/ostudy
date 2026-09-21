@@ -5,6 +5,7 @@ import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as platformFiles from "../platform/files";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
+import { DOCUMENT_FOLDER_DRAG_TYPE } from "./documents/documentFolderDrag";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
@@ -410,6 +411,28 @@ describe("DocumentsScreen", () => {
         "Study guide revision 4 created. Open it from Study Guides.",
       );
     });
+  });
+
+  it("exposes ready document content as a folder drag source without making row actions the drag handle", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    const source = document.querySelector(`[data-document-drag-source="${documentId}"]`) as HTMLElement;
+    expect(source).toBeTruthy();
+    expect(source.getAttribute("draggable")).toBe("true");
+
+    const values = new Map<string, string>();
+    const transfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      get types() { return Array.from(values.keys()); },
+      setData(type: string, value: string) { values.set(type, value); },
+      getData(type: string) { return values.get(type) ?? ""; },
+    } as unknown as DataTransfer;
+    fireEvent.dragStart(source, { dataTransfer: transfer });
+    expect(transfer.getData(DOCUMENT_FOLDER_DRAG_TYPE)).toBe(documentId);
+    expect(transfer.effectAllowed).toBe("copy");
   });
 
   it("opens the managed source through the compact View action", async () => {

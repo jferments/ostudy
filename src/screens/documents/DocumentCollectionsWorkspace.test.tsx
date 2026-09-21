@@ -36,7 +36,6 @@ const organization: collections.DocumentCollectionOrganization = {
   revision: 2,
   collections: [{
     id: folderId,
-    parentId: null,
     name: "Week 1",
     sortOrder: 1000,
     archivedAt: null,
@@ -141,10 +140,11 @@ beforeEach(() => {
     ...organization,
     revision: 3,
     collections: [...organization.collections, {
-      id: "1".repeat(32), parentId: null, name: "Week 2", sortOrder: 2000,
+      id: "1".repeat(32), name: "Week 2", sortOrder: 2000,
       archivedAt: null, createdAt: 2, updatedAt: 2, revision: 1,
     }],
   });
+  vi.mocked(collections.addDocumentCollectionMembership).mockResolvedValue(organization);
   vi.mocked(collections.setDocumentCollectionRanges).mockResolvedValue(organization);
   vi.mocked(studyMaterials.getStudyTargetBundle).mockResolvedValue(null);
   vi.mocked(studyMaterials.beginStudyTargetBundle).mockResolvedValue({
@@ -185,8 +185,9 @@ describe("Document collections workspace", () => {
   it("browses folders locally and exposes canonical source ranges without resolving or preparing them", async () => {
     renderWorkspace();
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
-    expect(screen.getByRole("navigation", { name: "Document folder breadcrumbs" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "Sources" }));
+    expect(screen.getByRole("button", { name: "← Folders" })).toBeTruthy();
+    expect(screen.queryByText(/subfolder/iu)).toBeNull();
+    expect(screen.queryByText(/Folder organization is local/iu)).toBeNull();
     expect((await screen.findAllByText("Pages 1–3")).length).toBeGreaterThan(0);
     expect(collections.getDocumentCollectionOrganization).toHaveBeenCalledTimes(1);
     await waitFor(() => {
@@ -251,6 +252,10 @@ describe("Document collections workspace", () => {
     renderWorkspace();
     fireEvent.click(await screen.findByRole("button", { name: "+ New folder" }));
     const dialog = await screen.findByRole("dialog", { name: "Create document folder" });
+    expect(dialog.getAttribute("data-width")).toBe("small");
+    const body = dialog.querySelector("[data-collection-dialog-body]");
+    expect(body?.className).toContain("tw:p-4");
+    expect(body?.className).toContain("tw:min-w-0");
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), {
       target: { value: "Week 2" },
     });
@@ -259,9 +264,52 @@ describe("Document collections workspace", () => {
     expect(collections.createDocumentCollection).toHaveBeenCalledWith(expect.objectContaining({
       operationId: "f".repeat(32),
       name: "Week 2",
-      parentId: null,
-      expectedOrganizationRevision: 2,
+        expectedOrganizationRevision: 2,
     }));
     expect(collections.getDocumentCollectionOrganization).toHaveBeenCalledTimes(1);
   });
+
+  it("adds an existing document by dropping it on a folder without source resolution or preparation", async () => {
+    const empty = { ...organization, revision: 3, memberships: [], ranges: [] };
+    const added = {
+      ...empty,
+      revision: 4,
+      memberships: [{ ...organization.memberships[0], collectionId: folderId }],
+    };
+    vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValueOnce(empty);
+    vi.mocked(collections.addDocumentCollectionMembership).mockResolvedValueOnce(added);
+    renderWorkspace();
+
+    const values = new Map<string, string>([
+      ["application/x-ostudy-document-id", documentId],
+    ]);
+    const transfer = {
+      effectAllowed: "copy",
+      dropEffect: "none",
+      get types() { return Array.from(values.keys()); },
+      setData(type: string, value: string) { values.set(type, value); },
+      getData(type: string) { return values.get(type) ?? ""; },
+    } as unknown as DataTransfer;
+
+    const dropTarget = await waitFor(() => {
+      const element = document.querySelector(`[data-document-folder-drop="${folderId}"]`);
+      expect(element).toBeTruthy();
+      return element as HTMLElement;
+    });
+    fireEvent.dragOver(dropTarget, { dataTransfer: transfer });
+    fireEvent.drop(dropTarget, { dataTransfer: transfer });
+
+    await waitFor(() => {
+      expect(collections.addDocumentCollectionMembership).toHaveBeenCalledWith({
+        operationId: "f".repeat(32),
+        collectionId: folderId,
+        documentId,
+        expectedOrganizationRevision: 3,
+      });
+    });
+    expect(collections.resolveDocumentSourceSelection).not.toHaveBeenCalled();
+    expect(studyMaterials.beginStudyTargetBundle).not.toHaveBeenCalled();
+    expect(studyMaterials.composeStudyTargetBundle).not.toHaveBeenCalled();
+  });
+
 });

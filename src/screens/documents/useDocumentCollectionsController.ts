@@ -65,30 +65,28 @@ export function useDocumentCollectionsController() {
     }
   }
 
-  function createFolder(name: string, parentId: string | null): Promise<boolean> {
+  function createFolder(name: string): Promise<boolean> {
     const normalized = name.trim();
     return mutate(
-      JSON.stringify(["create", parentId, normalized]),
+      JSON.stringify(["create", normalized]),
       (operationId, expectedOrganizationRevision) => createDocumentCollection({
-        operationId, name: normalized, parentId, expectedOrganizationRevision,
+        operationId, name: normalized, expectedOrganizationRevision,
       }),
     );
   }
 
   function updateFolder(
     folder: DocumentCollection,
-    patch: { name?: string; parentId?: string | null; archived?: boolean },
+    patch: { name?: string; archived?: boolean },
   ): Promise<boolean> {
     const name = patch.name?.trim() ?? folder.name;
-    const parentId = patch.parentId === undefined ? folder.parentId : patch.parentId;
     const archived = patch.archived ?? folder.archivedAt !== null;
     return mutate(
-      JSON.stringify(["update", folder.id, folder.revision, name, parentId, archived]),
+      JSON.stringify(["update", folder.id, folder.revision, name, archived]),
       (operationId, expectedOrganizationRevision) => updateDocumentCollection({
         operationId,
         collectionId: folder.id,
         name,
-        parentId,
         archived,
         revision: folder.revision,
         expectedOrganizationRevision,
@@ -109,6 +107,11 @@ export function useDocumentCollectionsController() {
   }
 
   function addDocument(folderId: string, documentId: string): Promise<boolean> {
+    if (organization?.memberships.some(
+      (membership) => membership.collectionId === folderId && membership.documentId === documentId,
+    )) {
+      return Promise.resolve(true);
+    }
     return mutate(
       JSON.stringify(["add", folderId, documentId]),
       (operationId, expectedOrganizationRevision) => addDocumentCollectionMembership({

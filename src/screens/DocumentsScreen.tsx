@@ -18,6 +18,7 @@ import { GenerationSummary } from "./documents/GenerationSummary";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
+import { beginDocumentFolderDrag, isInteractiveDocumentDragOrigin } from "./documents/documentFolderDrag";
 import { documentStyles as styles } from "./documents/presentation";
 
 interface DocumentsScreenProps {
@@ -152,7 +153,18 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
             });
             return (
               <Surface as="article" key={document.id} className={styles.card}>
-                <div className={styles.cardMain}>
+                <div
+                  className={`${styles.cardMain} tw:cursor-grab tw:active:cursor-grabbing`}
+                  data-document-drag-source={document.id}
+                  draggable={document.lifecycleState !== "processing"}
+                  onDragStart={(event) => {
+                    if (isInteractiveDocumentDragOrigin(event.target)) {
+                      event.preventDefault();
+                      return;
+                    }
+                    beginDocumentFolderDrag(event.dataTransfer, document.id);
+                  }}
+                >
                   <div className={styles.titleRow}>
                     <h2>{document.title}</h2>
                     <Badge tone={document.lifecycleState === "ready" ? "success" : document.lifecycleState === "processing" ? "accent" : "warning"}>
