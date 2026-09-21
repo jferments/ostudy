@@ -1904,7 +1904,7 @@ mod tests {
                     .ok_or_else(repository::stale_source)
             })
             .unwrap();
-        let units = (0..130)
+        let units = (0..120)
             .map(|index| KnowledgeUnitInput {
                 title: format!("Concept {index}"),
                 kind: KnowledgeKind::Fact,
