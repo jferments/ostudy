@@ -237,8 +237,7 @@ fn fit_collection_guide_request(
                 // Admit the input only when the larger repair attempt also fits.
                 // Output completion takes priority over stuffing more retained
                 // catalog units into one request.
-                max_tokens: task
-                    .completion_token_ceiling(completion_plan.repair_visible_tokens),
+                max_tokens: task.completion_token_ceiling(completion_plan.repair_visible_tokens),
                 images: &[],
             };
             match ensure_context_budget(task, &request) {
@@ -311,8 +310,7 @@ async fn request_study_guide_section_with_retry(
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let AuthoringEvidence { images, knowledge } = evidence;
     let schema = protocol::schema(knowledge, !images.is_empty());
-    let maximum_tokens =
-        task.completion_token_ceiling(completion_plan.initial_visible_tokens);
+    let maximum_tokens = task.completion_token_ceiling(completion_plan.initial_visible_tokens);
     let request = JsonTaskRequest {
         system_prompt: system,
         user_text: user,
@@ -366,8 +364,7 @@ async fn request_study_guide_section_with_retry(
                 system_prompt: system,
                 user_text: &repaired,
                 schema: &schema,
-                max_tokens: task
-                    .completion_token_ceiling(completion_plan.repair_visible_tokens),
+                max_tokens: task.completion_token_ceiling(completion_plan.repair_visible_tokens),
                 images,
             };
             match cancellation {
