@@ -428,7 +428,10 @@ fn project_missing() -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::knowledge::contracts::ScopeKind;
+    use crate::{
+        knowledge::contracts::ScopeKind,
+        tutor::{contracts::CreateProjectConversationInput, conversations},
+    };
 
     fn general() -> StudyScope {
         StudyScope::single(ScopeKind::General, None)
@@ -495,5 +498,42 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn deleting_project_ungroups_chats_without_rewriting_their_sources() {
+        let database = Database::open_in_memory().unwrap();
+        let project = create(&database, create_input('e')).unwrap();
+        let conversation = conversations::create_in_project(
+            &database,
+            CreateProjectConversationInput {
+                operation_id: "f".repeat(32),
+                project_id: project.id.clone(),
+                title: "Hemodynamics".into(),
+                scope: None,
+            },
+        )
+        .unwrap();
+        let original_scope = conversation.scope.clone();
+
+        delete(
+            &database,
+            DeleteTutorProjectInput {
+                operation_id: "1".repeat(32),
+                project_id: project.id,
+                expected_revision: project.revision,
+            },
+        )
+        .unwrap();
+
+        let saved = database
+            .with_connection(|connection| conversations::load_summary(connection, &conversation.id))
+            .unwrap();
+        assert_eq!(saved.project_id, None);
+        assert_eq!(saved.scope, original_scope);
+        assert_eq!(
+            saved.organization_revision,
+            conversation.organization_revision + 1
+        );
     }
 }

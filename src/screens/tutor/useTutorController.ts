@@ -452,6 +452,7 @@ export function useTutorController() {
   ): Promise<boolean> {
     if (organizationMutating.current) return false;
     organizationMutating.current = true;
+    detailLane.invalidate();
     setOrganizing(true);
     setError(null);
     const operationId = operationFor(key);

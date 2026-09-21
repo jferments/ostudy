@@ -405,6 +405,34 @@ describe("Tutor project organization", () => {
     expect(result.current.detail?.conversation.title).toBe("Renamed");
   });
 
+  it("does not let a stale refresh overwrite a committed organization change", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+
+    let finishRefresh!: (value: ConversationDetail) => void;
+    vi.mocked(getTutorConversation).mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+    let refreshing!: Promise<void>;
+    await act(async () => {
+      refreshing = result.current.refresh();
+      await Promise.resolve();
+    });
+
+    vi.mocked(renameTutorConversation).mockResolvedValueOnce({
+      ...detail.conversation,
+      title: "Renamed after refresh started",
+      organizationRevision: detail.conversation.organizationRevision + 1,
+    });
+    await act(async () => {
+      await result.current.renameConversation(result.current.detail!.conversation, "Renamed after refresh started");
+    });
+    await act(async () => {
+      finishRefresh(detail);
+      await refreshing;
+    });
+
+    expect(result.current.detail?.conversation.title).toBe("Renamed after refresh started");
+  });
+
   it("allows organization changes while a tutor turn is still in flight", async () => {
     let release!: (value: TutorTurn) => void;
     vi.mocked(sendTutorTurn).mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));

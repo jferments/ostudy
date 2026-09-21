@@ -167,3 +167,37 @@ fn selecting_a_deck_does_not_admit_other_decks_that_share_its_document() {
     assert!(keys.iter().any(|key| key.source_id == card_sources[0].id));
     assert!(!keys.iter().any(|key| key.source_id == card_sources[1].id));
 }
+
+
+#[test]
+fn shared_tutor_project_membership_never_grants_cross_chat_retrieval() {
+    let (database, first, _, _) = super::authoring::tests::fixture();
+    let outside = other_document(&database, &first, 'd');
+    let selected: StudyScope = serde_json::from_value(json!({
+        "kind":"document","id":first.owner_id
+    })).unwrap();
+    let other_scope: StudyScope = serde_json::from_value(json!({
+        "kind":"document","id":outside.owner_id
+    })).unwrap();
+    let selected_chat = conversation(&database, &selected, 'e');
+    let outside_chat = conversation(&database, &other_scope, 'f');
+    let project_id = "1".repeat(32);
+
+    database.with_connection(|connection| {
+        connection.execute(
+            "INSERT INTO tutor_projects(
+                 id,title,description,instructions,default_scope_json,created_at,updated_at
+             ) VALUES(?1,'Shared project','','',?2,1,1)",
+            params![project_id, serde_json::to_string(&selected).unwrap()],
+        ).map_err(CommandError::database)?;
+        connection.execute(
+            "UPDATE tutor_conversations SET project_id=?1 WHERE id IN (?2,?3)",
+            params![project_id, "e".repeat(32), "f".repeat(32)],
+        ).map_err(CommandError::database)?;
+        Ok(())
+    }).unwrap();
+
+    let eligible = retrieval::eligible_entries(&database, &selected, true).unwrap();
+    assert!(eligible.iter().any(|entry| entry.source_id == selected_chat));
+    assert!(!eligible.iter().any(|entry| entry.source_id == outside_chat));
+}
