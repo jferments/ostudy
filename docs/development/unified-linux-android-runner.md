@@ -31,7 +31,7 @@ Canonical VM resources:
 ```text
 Guest OS:   Ubuntu 24.04 LTS x86_64
 RAM:        64 GiB requested
-vCPUs:      16
+vCPUs:      32
 Disk:       150 GiB qcow2
 Swap:       16 GiB
 CPU mode:   host-passthrough

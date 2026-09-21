@@ -245,7 +245,7 @@ requireText("check-static.sh", checkStatic, [
   "pnpm exec tsc",
   "cargo fmt",
 ]);
-requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps.sh", "pnpm test", "cargo check"]);
+requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps.sh", "pnpm test", "cargo clippy", "test-native-contracts.sh"]);
 requireText("check.sh", checkFull, ["install-native-deps.sh", "pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
 requireText("read-only check workflow", checkWorkflow, [

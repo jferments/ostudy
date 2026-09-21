@@ -92,7 +92,7 @@ cd ~/code/ostudy
 OSTUDY_VM_RAM_GIB=64 \
 OSTUDY_VM_DISK_GIB=150 \
 OSTUDY_VM_SWAP_GIB=16 \
-OSTUDY_VM_VCPUS=16 \
+OSTUDY_VM_VCPUS=32 \
 OSTUDY_VM_SSH_PUBLIC_KEY="$HOME/.ssh/ostudy-ci-unified.pub" \
   ./scripts/runner/host-preflight.sh
 ```
@@ -105,12 +105,31 @@ Create the VM:
 OSTUDY_VM_RAM_GIB=64 \
 OSTUDY_VM_DISK_GIB=150 \
 OSTUDY_VM_SWAP_GIB=16 \
-OSTUDY_VM_VCPUS=16 \
+OSTUDY_VM_VCPUS=32 \
 OSTUDY_VM_SSH_PUBLIC_KEY="$HOME/.ssh/ostudy-ci-unified.pub" \
   ./scripts/runner/create-unified-runner-vm.sh
 ```
 
 The creator defines independent qcow2 storage, UEFI, `host-passthrough`, the private NAT interface, no host filesystem/device passthrough, `ostudy-admin`, and the unprivileged `ostudy-runner` account.
+
+### Increase an existing runner to 32 vCPUs
+
+For an already-created `ostudy-ci-unified` VM, do not rebuild the guest. First ensure GitHub shows the runner idle, then shut the VM down and update its persistent libvirt CPU maximum and configured count:
+
+```bash
+virsh --connect qemu:///system shutdown ostudy-ci-unified
+virsh --connect qemu:///system domstate ostudy-ci-unified
+# Continue only after the state is "shut off".
+
+virsh --connect qemu:///system setvcpus ostudy-ci-unified 32 --maximum --config
+virsh --connect qemu:///system setvcpus ostudy-ci-unified 32 --config
+virsh --connect qemu:///system start ostudy-ci-unified
+
+virsh --connect qemu:///system vcpucount ostudy-ci-unified
+```
+
+The runner service is configured to restart with the guest. After GitHub shows it Online/Idle again, run `scripts/runner/guest-preflight.sh` or the normal repository `Check` and require the guest to report at least 32 vCPUs.
+
 
 Verify before bootstrap:
 

@@ -97,6 +97,10 @@ PY
 library_name="$(basename -- "$LIBRARY_PATH")"
 installed_library="$PDFIUM_DEST/$library_name"
 provenance="$PDFIUM_DEST/PROVENANCE.env"
+cache_root="${OSTUDY_NATIVE_DEPS_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ostudy/native-deps}"
+cache_dir="$cache_root/pdfium/$PDFIUM_BUILD/$TARGET/$EXPECTED_SHA"
+cached_library="$cache_dir/$library_name"
+cached_provenance="$cache_dir/PROVENANCE.env"
 
 if [[ -n "${OSTUDY_PDFIUM_PATH:-}" ]]; then
   explicit="$OSTUDY_PDFIUM_PATH"
@@ -117,6 +121,21 @@ else
     if grep -Fqx "library_sha256=$installed_sha" "$provenance"; then
       reuse=1
       printf 'OK   PDFium %s for %s is already staged and verified.\n' "$PDFIUM_BUILD" "$TARGET"
+    fi
+  fi
+
+  if (( reuse == 0 )) && [[ -f "$cached_library" && -f "$cached_provenance" ]] \
+    && grep -Fqx "target=$TARGET" "$cached_provenance" \
+    && grep -Fqx "archive_sha256=$EXPECTED_SHA" "$cached_provenance"; then
+    cached_sha="$(hash_file "$cached_library")"
+    if grep -Fqx "library_sha256=$cached_sha" "$cached_provenance"; then
+      rm -rf -- "$PDFIUM_DEST"
+      mkdir -p "$PDFIUM_DEST"
+      cp "$cached_library" "$installed_library"
+      cp "$cached_provenance" "$provenance"
+      reuse=1
+      printf 'OK   PDFium %s for %s restored from verified runner cache %s.\n' \
+        "$PDFIUM_BUILD" "$TARGET" "$cache_dir"
     fi
   fi
 
@@ -158,7 +177,12 @@ library=$library_name
 library_sha256=$library_sha
 source=$BASE_URL/$ARCHIVE
 EOF
-    printf 'OK   PDFium %s staged at %s\n' "$PDFIUM_BUILD" "$installed_library"
+    rm -rf -- "$cache_dir"
+    mkdir -p "$cache_dir"
+    cp "$installed_library" "$cached_library"
+    cp "$provenance" "$cached_provenance"
+    printf 'OK   PDFium %s staged at %s and cached at %s\n' \
+      "$PDFIUM_BUILD" "$installed_library" "$cache_dir"
   fi
 fi
 
