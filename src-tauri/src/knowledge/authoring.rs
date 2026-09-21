@@ -29,6 +29,8 @@ pub(crate) const AUTHORING_VERSION: i64 = 3;
 pub(crate) const CARD_SUPPORT_KEY: &str = "_ostudyKnowledge";
 const MAX_AUTHORING_SOURCES: usize = 100_000;
 
+mod prompt;
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct UnitSupport {
@@ -92,7 +94,7 @@ impl KnowledgeCatalog {
                 "documentCore":self.document_core_units.contains(&unit.id),
             }))
         }).collect::<Result<Vec<_>, CommandError>>()?;
-        serde_json::to_string(&json!({"preparation":self.preparation,"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
+        serde_json::to_string(&json!({"preparation":prompt::preparation(self),"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
             "trust":"Knowledge statements and priorities are model interpretations. Evidence is literal source material. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."}))
             .map_err(CommandError::serialization)
     }

@@ -1,0 +1,200 @@
+//! Request-only projection of preparation metadata. A collection's complete
+//! evidence store is not the context of every individual authoring window.
+//! Keep all structures for the selected claims' primary and supporting sources;
+//! never mutate persisted evidence or clip the structure of an admitted table.
+
+use std::collections::BTreeSet;
+
+use serde_json::{json, Value};
+
+use super::KnowledgeCatalog;
+
+pub(super) fn preparation(catalog: &KnowledgeCatalog) -> Value {
+    let mut sources = BTreeSet::new();
+    for unit in &catalog.units {
+        sources.insert(unit.source_id.as_str());
+        if let Some(grounding) = &unit.content.grounding {
+            sources.extend(
+                grounding
+                    .evidence
+                    .iter()
+                    .map(|reference| reference.source_id.as_str()),
+            );
+        }
+    }
+    let summary = &catalog.preparation;
+    let structures = summary
+        .evidence_structures
+        .iter()
+        .filter(|value| {
+            value
+                .get("sourceId")
+                .and_then(Value::as_str)
+                .is_some_and(|id| sources.contains(id))
+        })
+        .collect::<Vec<_>>();
+    // The counters still describe preparation of the selected source set, not
+    // a claim that the smaller authoring window covers the entire collection.
+    json!({
+        "unpreparedSources": summary.unprepared_sources,
+        "unresolvedRegions": summary.unresolved_regions,
+        "unreadableRegions": summary.unreadable_regions,
+        "rejectedProposals": summary.rejected_proposals,
+        "legacyCoverageSources": summary.legacy_coverage_sources,
+        "omittedSources": summary.omitted_sources,
+        "omittedUnits": summary.omitted_units,
+        "evidenceStructures": structures,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::knowledge::{
+        authoring::tests::catalog_fixture,
+        contracts::ContentOrigin,
+        evidence::{EvidenceReference, EvidenceSelector, Grounding, Importance, EVIDENCE_VERSION},
+    };
+
+    fn structure(source: &str, text: &str) -> Value {
+        json!({
+            "sourceId": source,
+            "occurrenceId": format!("occurrence-{source}"),
+            "payloadHash": "c".repeat(64),
+            "payload": {"version": 1, "table": {
+                "rows": 1, "columns": 2, "columnHeaders": ["Condition", "Outcome"],
+                "cells": [{"row": 0, "column": 0, "rowSpan": 1, "columnSpan": 2,
+                    "header": false, "text": text, "bounds": null}]
+            }},
+            "location": {"unitNumber": 1},
+            "links": [{"kind": "footnote", "targetNode": 2}],
+        })
+    }
+
+    #[test]
+    fn unrelated_collection_growth_does_not_inflate_any_authoring_request() {
+        let mut catalog = catalog_fixture();
+        catalog.preparation.evidence_structures = vec![structure(
+            &catalog.units[0].source_id,
+            "The qualification must remain complete.",
+        )];
+        catalog.preparation.unresolved_regions = 2;
+        let before = catalog.prompt().unwrap();
+        let unrelated = "Unselected source content. ".repeat(4_000);
+        for index in 0..16 {
+            catalog.preparation.evidence_structures.push(structure(
+                &format!("unrelated-source-{index}"),
+                &unrelated,
+            ));
+        }
+        let native_fingerprint = catalog.fingerprint().unwrap();
+        let after = catalog.prompt().unwrap();
+        assert_eq!(after, before);
+        assert_eq!(catalog.preparation.evidence_structures.len(), 17);
+        assert_eq!(catalog.fingerprint().unwrap(), native_fingerprint);
+        let mut old_payload: Value = serde_json::from_str(&after).unwrap();
+        old_payload["preparation"] = serde_json::to_value(&catalog.preparation).unwrap();
+        assert!(old_payload.to_string().len() > after.len() * 100);
+        println!(
+            "authoring payload regression: old={} bytes, scoped={} bytes",
+            old_payload.to_string().len(),
+            after.len()
+        );
+    }
+
+    #[test]
+    fn cross_source_support_and_complete_table_structure_survive_projection() {
+        let mut catalog = catalog_fixture();
+        let primary = catalog.units[0].source_id.clone();
+        let dependency = "d".repeat(32);
+        let excerpt = "Only when the source condition holds.";
+        catalog.units[0].content.qualifications = vec![excerpt.to_string()];
+        catalog.units[0].content.grounding = Some(Grounding {
+            version: EVIDENCE_VERSION,
+            importance: Importance::Core,
+            evidence: [primary.clone(), dependency.clone()]
+                .into_iter()
+                .enumerate()
+                .map(|(index, source_id)| EvidenceReference {
+                    id: format!("evidence-{index}"),
+                    source_id,
+                    source_hash: "f".repeat(64),
+                    selector: EvidenceSelector::Text {
+                        start_byte: 0,
+                        end_byte: excerpt.len(),
+                    },
+                    excerpt: excerpt.to_string(),
+                    locator: None,
+                    origin: ContentOrigin::SourceDocument,
+                })
+                .collect(),
+        });
+        let expected = vec![structure(&primary, excerpt), structure(&dependency, excerpt)];
+        catalog.preparation.evidence_structures = expected.clone();
+        catalog.preparation.evidence_structures.push(structure(
+            "unrelated",
+            "This is not evidence for the selected claim.",
+        ));
+        let selected = catalog.select(&[catalog.units[0].id.clone()], 1).unwrap();
+        let value: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
+        assert_eq!(value["preparation"]["evidenceStructures"], json!(expected));
+        assert_eq!(value["units"][0]["qualifications"], json!([excerpt]));
+        assert_eq!(value["evidence"].as_array().unwrap().len(), 2);
+        for evidence in value["evidence"].as_array().unwrap() {
+            assert_eq!(evidence["text"], excerpt);
+        }
+        assert_eq!(
+            catalog.select(&[catalog.units[0].id.clone()], 1).unwrap(),
+            selected
+        );
+    }
+
+    #[test]
+    fn reducing_a_catalog_also_reduces_its_structural_payload() {
+        let mut catalog = catalog_fixture();
+        let mut second = catalog.units[0].clone();
+        second.id = "2".repeat(32);
+        second.source_id = "3".repeat(32);
+        catalog.units.push(second);
+        catalog.preparation.evidence_structures = catalog
+            .units
+            .iter()
+            .map(|unit| structure(&unit.source_id, &unit.content.statement))
+            .collect();
+        let full: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
+        assert_eq!(
+            full["preparation"]["evidenceStructures"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        catalog.units.truncate(1);
+        let bounded: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
+        let structures = bounded["preparation"]["evidenceStructures"]
+            .as_array()
+            .unwrap();
+        assert_eq!(structures.len(), 1);
+        assert_eq!(structures[0]["sourceId"], catalog.units[0].source_id);
+        assert!(bounded.to_string().len() < full.to_string().len());
+        catalog.units.clear();
+        assert_eq!(preparation(&catalog)["evidenceStructures"], json!([]));
+        assert_eq!(catalog.preparation.evidence_structures.len(), 2);
+    }
+
+    #[test]
+    fn preparation_counters_are_preserved_without_serializing_unrelated_structures() {
+        let mut catalog = catalog_fixture();
+        catalog.preparation.unprepared_sources = 1;
+        catalog.preparation.unresolved_regions = 2;
+        catalog.preparation.unreadable_regions = 3;
+        catalog.preparation.rejected_proposals = 4;
+        catalog.preparation.legacy_coverage_sources = 5;
+        catalog.preparation.omitted_sources = 6;
+        catalog.preparation.omitted_units = 7;
+        assert_eq!(
+            preparation(&catalog),
+            serde_json::to_value(&catalog.preparation).unwrap()
+        );
+    }
+}
