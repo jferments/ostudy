@@ -1,18 +1,26 @@
-# PR #105 roadmap — responsive lessons, retained narration, PowerPoint and final data consolidation
+# PR #105 roadmap — deferred lessons, retained narration, and PowerPoint
 
-Status: planning-only successor to PR #104. Owned stages: **LK-10 through LK-13**. This roadmap supersedes the earlier planning draft on this branch where scope differs. It does not implement product behavior, authorize provider spending, inspect a personal library, retire migrations, or authorize merge.
+Status: **DEFERRED planning reference** after PR #104. Owned future stages: **LK-10 through LK-12**. This branch remains open as the preserved implementation specification for responsive lessons, retained narration/TTS, and local editable PowerPoint export. It is not active implementation work and does not block post-#104 stabilization, release-readiness, installer, or developer-tooling work.
 
-Activation rule: implement only after PR #103 and PR #104 are reviewed and merged. Integrate the then-current merged `main`, verify the actual source-set/coverage/bundle/guide/Tutor contracts once, reconcile owner paths, and continue stage-by-stage. Do not stack implementation on an unfinished predecessor branch.
+Activation rule: do not implement this PR until the human explicitly resumes it. At that time, retarget/integrate the then-current merged `main`, re-read the production schema/release contracts established after PR #104, reconcile actual owner/test paths once, and continue stage-by-stage. Do not assume the schema, provider catalog, or packaging state recorded when this plan was first written is still current.
+
+## Scope boundary after deferral
+
+PR #105 retains:
+
+- **LK-10:** responsive text-first lessons, transcript, checks/Tutor context, progress, and lesson plans;
+- **LK-11:** retained narration, speech settings, cost-safe voice changes, and playback lifecycle;
+- **LK-12:** local editable PowerPoint export with speaker notes and optional already-retained narration.
+
+PR #105 no longer owns the current production-baseline/migration consolidation that was previously called LK-13. That work moves to PR #106 so oStudy can establish a safe post-#104 production lineage before it is used for important real study data.
+
+Future lesson/narration/PPTX persistence must extend the production baseline that exists when #105 is resumed using ordinary reviewed forward migrations. Each feature stage owns its own backup/restore, transfer, compatibility, and migration coverage. #105 must not perform another wholesale migration-history consolidation merely because it adds new tables.
+
+Not included: STT/transcription, voice cloning, speech grading, video export, a general slide editor, article generation, automatic image-occlusion authoring, Tutor deck-writing tools, a new scheduler/grader, cloud presentation conversion, or hidden provider spending.
 
 ## Product result
 
-A learner can generate a source-grounded lesson from the same shared knowledge used by cards, guides, and Tutor; read a responsive text-first transcript on desktop or mobile; answer safe embedded checks; ask contextual Tutor questions; and resume progress after restart. Optional authorized narration is synthesized once, retained as owned media, replayed offline, and changed cost-safely without rewriting the lesson. The same lesson exports locally to an editable `.pptx` with correctly assigned speaker notes and optional already-retained narration.
-
-After the final schema-bearing feature stabilizes, this PR also owns **LK-13**: one curated current-format baseline, isolated conversion proof, privacy-safe actual-library adoption, integrated backup/transfer verification, and retirement/archive of obsolete migration/readers only after recovery is proven.
-
-Not included: STT/transcription, voice cloning, speech grading, video export, a general slide editor, article generation, automatic image-occlusion authoring, Tutor deck-writing tools, a new scheduler/grader, cloud presentation conversion, or a second baseline consolidation in PR #106.
-
-## Architecture and durable contracts
+A learner can generate a source-grounded lesson from the same shared knowledge used by cards, guides, and Tutor; read a responsive text-first transcript on desktop or mobile; answer safe embedded checks; ask contextual Tutor questions; and resume progress after restart. Optional authorized narration is synthesized once, retained as owned media, replayed offline, and changed cost-safely without rewriting the lesson. The same saved lesson exports locally to an editable `.pptx` with correctly assigned speaker notes and optional already-retained narration.
 
 Dependency direction remains:
 
@@ -25,10 +33,11 @@ SourceSetSnapshot + CollectionSynthesis + LearningContext
   -> local LessonExportSnapshot -> editable PPTX
 
 all durable feature contracts
-  -> final current-format baseline + preservation/adoption
+  -> ordinary forward migrations from the production baseline
+  -> complete backup/restore and transfer verification for the new data
 ```
 
-Rust/SQLite owns durable identities, validation, progress, publication, lifecycle, and current-format admission. React uses typed `src/ipc/` gateways and existing navigation/platform ports. Provider HTTP and credentials stay in the native AI gateway. Layout changes, playback, resume, and export do not authorize provider calls.
+Rust/SQLite owns durable identities, validation, progress, publication, lifecycle, and schema admission. React uses typed `src/ipc/` gateways and existing navigation/platform ports. Provider HTTP and credentials stay in the native AI gateway. Layout changes, playback, resume, and export do not authorize provider calls.
 
 **LessonRevision** contains immutable source/coverage identity, objectives, ordered scenes/beats, semantic visual blocks, script segments, support links, and question references. Scene/beat IDs do not depend on screen size.
 
@@ -44,7 +53,7 @@ Rust/SQLite owns durable identities, validation, progress, publication, lifecycl
 
 ### Persistence and coordinated authoring
 
-Add current lesson/revision/plan/progress storage with stable IDs, bounded payloads, native validators, forward migrations, and retry-safe publication. Begin with deterministic fixtures that can publish/list/open/reopen a text-only lesson before integrating provider generation.
+Add lesson/revision/plan/progress storage with stable IDs, bounded payloads, native validators, **forward migrations from the current production baseline**, and retry-safe publication. Begin with deterministic fixtures that can publish/list/open/reopen a text-only lesson before integrating provider generation.
 
 Plan objectives, prerequisites, depth, and coverage from LearningContext. Author each beat's teaching blocks, script, and check opportunity together so the channels cannot drift silently. Preserve qualifications, conditions, units, polarity, exceptions, and source support. Failed candidates may be repaired independently; valid siblings survive.
 
@@ -64,15 +73,15 @@ Define answer privacy across every channel: visible content, transcript, caption
 
 Tutor receives current scene/beat plus the permitted source snapshot. Replies and assistance do not rewrite the saved lesson. Add Lessons library/player through existing navigation and Back restoration. Bundle integration exposes Lesson status only after text-only behavior qualifies.
 
-Focused tests: transaction rollback, duplicate operation IDs, stale source revisions, all semantic block types, narrow/wide/enlarged layouts, no-provider resize, question parity/no-FSRS writes, answer sentinel leakage across DTO/media channels, stale-attempt resume, Tutor exclusions, restart/backup/restore, keyboard/touch/Back.
+Focused tests include transaction rollback, duplicate operation IDs, stale source revisions, semantic block types, narrow/wide/enlarged layouts, no-provider resize, question parity/no-FSRS writes, answer-sentinel leakage across DTO/media channels, stale-attempt resume, Tutor exclusions, restart, backup/restore, keyboard/touch/Back, and migration from the then-supported production lineage.
 
-**Exit / AC-11:** a complete text-first lesson is readable, resumable, source-grounded, answer-safe, and useful without speech configuration.
+**Exit / AC-11:** a complete text-first lesson is readable, resumable, source-grounded, answer-safe, recoverable, and useful without speech configuration.
 
 ## LK-11 — retained narration and cost-safe playback
 
 ### Capability and settings
 
-At implementation time, verify the selected speech route/catalog and supported controls against current official provider documentation plus one deliberately authorized bounded live request. The requested design target is OpenRouter `hexgrad/kokoro-82m` with `af_river` (River), but route availability, encoding, controls, limits, producer revision, and pricing are evidence to establish—not assumptions.
+At implementation time, verify the selected speech route/catalog and supported controls against current official provider documentation plus one deliberately authorized bounded live request. The previously requested design target was OpenRouter `hexgrad/kokoro-82m` with `af_river` (River), but route availability, encoding, controls, limits, producer revision, and pricing are evidence to establish at implementation time—not durable assumptions.
 
 Keep binary speech transport separate from text/structured-output decoding. Add narration role/provider/model/voice settings and cached capability metadata. Opening Settings or saving a voice never synthesizes audio. Preview synthesis is explicit and observes privacy/budget/credential boundaries. Do not assume upstream idempotency or exactly-once billing.
 
@@ -90,7 +99,7 @@ Implement Read/Listen, play/pause, scene/beat seek, local speed/volume, transcri
 
 Paid retained media is not LRU cache. Full backup owns active and explicitly retained previous narration. Storage pressure stops optional new synthesis rather than deleting owned transcript/audio. Deliberate removal warns about regeneration cost.
 
-Focused tests: mocked capability/error boundaries, request counts, concurrent matching work, partial failure, cancellation, lost response, corrupt/truncated audio, disk full, crash boundaries, voice race, switch-back zero calls, single-segment invalidation, offline replay/seek/speed, reveal privacy, backup/restore, managed-file integrity. Live pronunciation and physical-device listening remain separate observed gates.
+Focused tests include mocked capability/error boundaries, request counts, concurrent matching work, partial failure, cancellation, lost response, corrupt/truncated audio, disk full, crash boundaries, voice race, switch-back zero calls, single-segment invalidation, offline replay/seek/speed, reveal privacy, backup/restore, managed-file integrity, and forward-migration compatibility. Live pronunciation and physical-device listening remain separate observed gates.
 
 **Exit / AC-12:** saved narration is reusable offline, voice changes are cost-safe, and playback lifecycle does not mutate lesson meaning.
 
@@ -108,47 +117,27 @@ Learner export excludes answers/solution audio by default. Any instructor/answer
 
 Rust authorizes a frozen bounded snapshot. Serialize locally, validate OOXML container/relationships/size, and use existing prepared external-file staging/save/share lifecycle with operation identity and crash cleanup. Reject macros, executable relationships, and arbitrary remote resources.
 
-Tests: OOXML structure, notes mapping, continuation layout, media relationships, editability expectations, clipping, source text, answer disclosure, no-provider counters, crash cleanup, and actual Microsoft PowerPoint/LibreOffice interoperability where environments are available.
+Tests include OOXML structure, notes mapping, continuation layout, media relationships, editability expectations, clipping, source text, answer disclosure, no-provider counters, crash cleanup, and actual Microsoft PowerPoint/LibreOffice interoperability where environments are available.
 
 **Exit / AC-13:** unchanged lesson re-export works offline with zero provider calls and correctly mapped editable content/notes/audio.
 
-## LK-13 — final current-format baseline, actual-library adoption, and migration retirement
+## Production-baseline dependency inherited from PR #106
 
-LK-13 occurs **after LK-12 freezes the last schema-bearing contracts**. It is part of PR #105, not deferred to PR #106.
+When #105 is eventually resumed, first read the actual merged production baseline, supported forward-migration lineage, backup/restore formats, application identities, and release/install contracts established after PR #104. New lesson/narration schema changes extend that lineage; they do not replace it.
 
-### Freeze contracts and build one curated baseline
+Every new durable kind introduced here must be covered by:
 
-Inventory the exact current schema, indexes, triggers, constraints, FTS configuration, payload versions, managed-file kinds, repair ledger, backup/sync formats, and current readers. Construct a curated fresh baseline with explicit lineage/baseline identity where needed. Prove structural and behavioral equivalence to a database migrated through every supported retained development transition.
+- fresh-install schema creation;
+- supported upgrade from the then-current released lineage;
+- complete-library backup/restore;
+- content-only transfer and trusted-device admission policy where applicable;
+- unknown/future/tampered input refusal;
+- managed-file preservation and deletion semantics;
+- exact-source qualification.
 
-Do not concatenate old SQL, rewrite released migration bytes/checksums, or relabel an incompatible database. Current-to-current admission must be a verified no-op; unknown/future/tampered/corrupt input remains fail-closed.
+If future feature work reveals a real defect in the production baseline, add a small reviewed forward repair. Do not rewrite released migration bytes/checksums or reopen historical-development cleanup merely to make the migration directory look shorter.
 
-### Convert isolated copies first
-
-Use known forward migrations plus narrowly scoped payload converters on isolated synthetic and restored-copy fixtures. Preserve primary identities, card/question content, schedules/due state, reviews/attempts, drafts, annotations, source/evidence identity, image/filter state, collection/bundle state, Tutor scopes, lessons/progress, and retained narration bytes/receipts.
-
-Preservation receipts compare typed values and managed-file hashes, not row counts alone. Fault-inject interruption, disk full, corrupt asset, duplicate invocation, activation boundaries, and successful mutation followed by refresh failure. Migration performs no extraction, LLM, or speech calls.
-
-### Actual-library adoption
-
-Provide the maintained local backup/inspection/conversion/verification workflow only after the converter is qualified. Personal data stays on the user's machine. Record privacy-safe evidence: exact converter/build SHA, input lineage/version/ledger summary, verified complete-backup and asset-manifest identity, preservation digest, allowed transformations, output identity, successful reopen, representative functional checks, and restore of a new current backup.
-
-Repository/CI tests cannot claim this human gate. Until it is performed, do not retire the recovery path required by the user's retained library.
-
-### Archive obsolete runtime machinery after adoption
-
-Only after adoption evidence, move superseded migration/converter/fixture material into a versioned historical archive outside normal startup/compile/package paths, with source SHA, immutable hashes, and an explicit offline historical-backup recovery entry point. Archive is not destruction; backup files remain valid recovery inputs.
-
-Remove obsolete runtime version branches/readers in one coordinated change and prove normal startup no longer loads the archived chain. Future schema changes resume as small forward migrations from the new baseline.
-
-### Integrated backup/transfer
-
-Repeat complete-library backup/restore across documents/evidence, cards/questions/history, collections/bundles, guides, Tutor, lessons/progress, and retained audio. Content-only transfer keeps fresh schedules and excludes donor private history. Trusted-device sync explicitly negotiates supported lesson/media graph versions or rejects before partial application.
-
-**Exit / AC-14:** one qualified current runtime/baseline exists, actual retained-library adoption is recorded separately from synthetic evidence, and historical backups still have a tested explicit recovery route.
-
-## Delivery increments and PR #106 handoff
-
-Implement coherent increments:
+## Delivery increments when resumed
 
 1. **105-A:** lesson persistence + deterministic text fixture.
 2. **105-B:** coordinated authoring + responsive player/transcript.
@@ -156,13 +145,21 @@ Implement coherent increments:
 4. **105-D:** speech capability/settings/segmentation.
 5. **105-E:** retained audio + voice switching + playback/lifecycle.
 6. **105-F:** local PPTX serializer/layout/export.
-7. **105-G:** final contract freeze + curated baseline/equivalence.
-8. **105-H:** staged converter/preservation + authorized actual-library adoption.
-9. **105-I:** archive obsolete runtime machinery + integrated restore/transfer.
-10. **105-J:** broad source/docs audit, exact-head terminal qualification, and handoff.
+7. **105-G:** broad source/data/docs/compatibility audit, exact-head terminal qualification, and handoff.
 
-Every increment gets focused native/UI/preservation tests before publication. Finish broad source/docs/compatibility review before terminal qualification. Run exact-head static/fast, full Linux, Android compile/package, and emulator gates under current repository policy. Record live speech, physical Android, visual/accessibility, office interoperability, and actual-library acceptance separately.
+Every increment gets focused native/UI/preservation tests before publication. Finish broad source/docs/compatibility review before terminal qualification. Run exact-head static/fast, full Linux, Android compile/package, and emulator gates under the repository policy current at that time. Record live speech, physical Android, visual/accessibility, and office interoperability separately.
 
-Handoff to PR #106 only the **merged contracts and evidence**: final baseline identity, current readers/writers, archive/recovery entry point, adoption receipt, active schema/payload versions, platform/manual limitations, test entry points, exact merge SHA, and a bounded issue register. PR #106 audits and repairs residual defects; it does not perform a second baseline consolidation.
+## Resume handoff
 
-Proposed PR title: **feat(lessons): responsive lessons, retained narration, local PowerPoint and final data baseline**.
+Until explicitly resumed, this PR is a design reference only. No product acceptance is claimed.
+
+On resume, the first bounded reconstruction must record:
+
+- current `main` and the production release/baseline contract;
+- active schema/payload versions and supported upgrade lineage;
+- current lesson-adjacent owner paths after intervening work;
+- provider/model availability verified at that time;
+- current platform/manual limitations;
+- focused test entry points and required terminal gates.
+
+Proposed implementation title when resumed: **feat(lessons): responsive lessons, retained narration and local PowerPoint**.
