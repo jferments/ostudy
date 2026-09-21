@@ -124,7 +124,7 @@ direct-read remote head H and its tree T
 → inspect H...candidate changed-file list/diff
 → re-read remote ref once; require H
 → update_ref(new commit, force=false)
-→ re-read remote ref once; require new commit
+→ re-read remote ref; require new commit (one post-update verification)
 → reconcile the PR head and acceptance snapshot
 ```
 
