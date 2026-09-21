@@ -85,9 +85,9 @@ When a gate fails, inspect the exact tested SHA, bounded logs/evidence, and smal
 
 Screens render data and intent. Controllers coordinate workflow identity, stale-read policy, mutations, and reconciliation. Typed native calls stay under `src/ipc/`; shared `src/ui/` does not import feature IPC/controllers/Tauri APIs. `src/platform/` owns presentation-facing OS integration.
 
-Use shared overlays, focus/Back handling, keyboard alternatives, CSS Modules, semantic tokens, and responsive patterns. Preserve compact touch targets, enlarged text, themes, safe areas, reduced motion, and dirty-state guards. Independent async reads use independent lanes. A committed mutation must remain distinguishable from a following failed refresh.
+Use shared overlays, focus/Back handling, keyboard alternatives, the committed Tailwind/semantic-token presentation layer, and responsive patterns. Feature code should use the shared UI facades rather than restoring retired CSS-Module/global-stage ownership. Preserve compact touch targets, enlarged text, themes, safe areas, reduced motion, and dirty-state guards. Independent async reads use independent lanes. A committed mutation must remain distinguishable from a following failed refresh.
 
-Current main information architecture is Flashcards, Study Guides, Documents, Analytics, and Settings. Flashcards has Decks and Search/Filter. Card templates live in Settings. Transfer is contextual. Practice is an internal contextual workflow. Do not restore retired permanent tabs or empty-state clutter because an old stage document still contains them.
+Current main information architecture is Flashcards, Study Guides, Documents, Tutor, Analytics, and Settings. Compact navigation keeps the first five destinations in the bottom bar with Settings in the app-bar gear. Flashcards has Decks and Search/Filter. Card templates live in Settings. Transfer is contextual. Practice is an internal contextual workflow. Do not restore retired permanent tabs, a More destination, or empty-state clutter because an old stage document still contains them.
 
 ## Native data and learning changes
 

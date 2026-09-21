@@ -2,7 +2,7 @@
 
 Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Current boundary: **104-A** (folder/range persistence/resolution), **104-B** (folder UI plus folder-scoped Tutor), **104-C** (compact synthesis plus complete range-safe coverage), **104-D** (durable StudyTarget bundles plus safe publication/status), **104-E** (rich guide semantics/viewer/professional local PDF), and **104-F** (Tutor projects and conversation organization) are implemented on the PR branch. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-G** cross-stage audit and terminal qualification is the next boundary.
+Current boundary: **104-A** through **104-F** are implemented on the PR branch. The **104-G pre-terminal cross-stage audit is complete**: maintained user/development/architecture prose is reconciled to the implemented collection/guide/Tutor behavior, command coverage remains owned by the generated/static IPC contract rather than a hand-maintained duplicate list, backup/sync claims match their focused preservation/privacy tests, and no runtime control/helper was removed without proof of exclusive ownership. The branch is now at the candidate-freeze boundary for exact-head terminal Linux/Android qualification and human handoff.
 
 Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
@@ -145,11 +145,11 @@ Implement coherent vertical increments:
 4. **104-D:** study target/bundle persistence + safe publication/status UI — implemented on the active branch; exact-head qualification is recorded in PR #104.
 5. **104-E:** semantic guide viewer + PDF capability/renderer work — implemented on the active branch; exact-head Static/Fast qualification is recorded in PR #104.
 6. **104-F:** Tutor project/menu integration — implemented on the active branch; exact-head qualification is recorded in PR #104.
-7. **104-G:** cross-stage audit, exact-head terminal qualification, and human handoff — next boundary.
+7. **104-G:** pre-terminal cross-stage audit complete; exact-head terminal Linux/Android qualification and human handoff are the remaining boundary.
 
 Each increment: inspect the owning boundary -> implement -> add focused regression coverage -> publish through expected-parent Git data -> verify remote head -> qualify the exact SHA. Add backup/privacy/schema support in the increment that introduces durable data, not at final cleanup.
 
-Before terminal qualification, reconcile user/development/architecture/reference documentation, native command inventories, backup/sync claims, and proven dead controls/helpers. Then freeze the candidate. Run maintained static/fast, authoritative Linux, Android compile/package, and emulator gates according to current repository policy; report live-provider, visual/accessibility, PDF rendering, and physical-device acceptance separately.
+The pre-terminal audit reconciles user/development/architecture/reference documentation, relies on the maintained static IPC verifier for native/frontend command inventory, checks backup/sync claims against their owning tests, and removes only code proven dead by callers/tests. That audit is complete for this branch; no speculative runtime cleanup was introduced. Freeze this candidate before terminal qualification. Run maintained static/fast, authoritative Linux, Android compile/package, and emulator gates according to current repository policy; report live-provider, visual/accessibility, PDF rendering, and physical-device acceptance separately.
 
 The end-to-end acceptance scenario uses overlapping screenshots, readings, slides, notes, and ranges in one Week 1 collection; creates one guide/deck; preserves edits while a source is added; proves excluded material cannot enter Tutor; exports PDF offline; organizes Tutor conversations; completes backup/restore; and adds the same prepared reading to Week 2 without re-extraction.
 

@@ -1,10 +1,10 @@
 # Study guides
 
-A study guide is a source-grounded learning artifact built from a retained document's learning plan. It brings together a concise overview, learning objectives, key concepts, ordered topic sections, source labels, and links to relevant flashcards. It is not a replacement for checking the original source.
+A study guide is a source-grounded learning artifact built from retained source knowledge. Individual-document guides use that document's learning plan; collection guides use the exact authorized folder/range snapshot and its compact cross-document synthesis. Both bring together an overview, learning objectives, key concepts, ordered sections, source labels, and links to relevant flashcards. A guide is not a replacement for checking the original sources.
 
 ## Create and find a guide
 
-Configure a suitable AI profile in Settings → AI/LLM, then open **Documents**, upload a supported source, and use **Generate study guide** beside it. A guide can exist without a flashcard deck; flashcards can also exist without a guide.
+Configure a suitable AI profile in Settings → AI/LLM. For one retained document, open **Documents**, upload a supported source, and use **Generate study guide** beside it. For a document folder, open the folder's **Study materials** panel and choose **Create study materials** or **Update study materials**; the collection target owns one collection guide alongside one ordinary flashcard deck. A document guide can exist without a flashcard deck, and the two collection artifacts retain independent publication/failure state.
 
 Open **Study Guides** from the main navigation. Its library supports **Search guides** by title, filename, or format; Newest/Oldest/Title sorting; Refresh; and pagination when needed. Library rows show summary information rather than loading every guide body just to list them.
 
@@ -56,7 +56,7 @@ The normal prepared-file and platform save boundary controls the final destinati
 
 ## Regeneration, stopping, and failures
 
-Use the guide-generation action for the source in Documents to regenerate. While work is active, the **Generating study guide…** button includes a red stop-sign icon; click that same button to stop. There is no separate stop button in Documents. You can navigate to other sections while it runs and return to its current state. Cancellation is deliberate and cooperative; do not interpret the stop request as an instruction to delete the source or already committed learning artifacts.
+For an individual document, use its guide-generation action in Documents to regenerate. For a collection guide, use the folder's **Update study materials** workflow so the target reconciles its current exact source snapshot without creating a second guide identity. While document-guide work is active, the **Generating study guide…** button includes a red stop-sign icon; click that same button to stop. There is no separate permanent stop button in Documents. You can navigate to other sections while it runs and return to its current state. Cancellation is deliberate and cooperative; do not interpret the stop request as an instruction to delete the source or already committed learning artifacts.
 
 A complete new generated revision is validated before atomic publication. Failed/canceled regeneration leaves the previous active guide available. Nonfatal recoveries remain in diagnostics; terminal failures remain visible after refresh or navigation. Compatible checkpoints may reduce repeated work; changes to source, backend, prompt, or schema can invalidate them. Restart recovery never silently authorizes a new provider transmission.
 
@@ -64,7 +64,7 @@ A complete new generated revision is validated before atomic publication. Failed
 
 The library's delete action asks for confirmation. It removes generated guide revisions, guide-specific section overrides/conflicts, saved guide-generation checkpoints/jobs, and prepared PDF exports according to the native lifecycle.
 
-It preserves the source document, shared learning plan, linked flashcards, and stable guide/topic notes so a new guide can be generated later. This is not the same as permanently deleting the source document, which has a broader document-owned cleanup scope. Read the confirmation rather than assuming a generic trash icon always means the same operation.
+For an individual-document guide, deletion preserves the source document, shared learning plan, linked flashcards, and stable guide/topic notes so a new guide can be generated later. For a collection target, deleting its guide records explicit suppression and does not delete the folder, member documents, ordinary target deck, learner schedules, or reviews; **Recreate study materials** is a new deliberate publication request. Neither action is the same as permanently deleting source material. Read the confirmation rather than assuming a generic trash icon always means the same operation.
 
 ## Protect and report
 

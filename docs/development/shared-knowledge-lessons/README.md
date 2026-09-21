@@ -13,13 +13,13 @@ No LK-05 or later product implementation belongs to this branch.
 
 ## Successor delivery split
 
-The remaining approved roadmap is parked in dedicated planning PRs. They intentionally target the frozen `agent/lk-successor-planning-base` branch while PR #103 is being reviewed, so opening them does not start the main-targeted shared-runner product checks.
+The successor split remains the authority for scope, but its lifecycle has advanced beyond the original planning-only state. PR #104 is the active successor and has implemented LK-05–LK-09; its remaining boundary is final cross-stage/terminal qualification and handoff. PR #105 and PR #106 remain successor scopes and must not be treated as implemented merely because their planning records exist.
 
-| Successor | Scope | Roadmap |
-| --- | --- | --- |
-| [PR #104](https://github.com/jferments/ostudy/pull/104) | LK-05–LK-09: folders/ranges, collection synthesis, coherent bundles, rich guide/PDF, Tutor organization | `docs/development/lk-followups/collections-guides-tutor.md` |
-| [PR #105](https://github.com/jferments/ostudy/pull/105) | LK-10–LK-13: responsive lessons, retained narration, PowerPoint, final current-format baseline/adoption | `docs/development/lk-followups/lessons-narration.md` |
-| [PR #106](https://github.com/jferments/ostudy/pull/106) | LK-14 plus residual evidence-backed schema/code/docs/workflow cleanup and integrated qualification | `docs/development/lk-followups/consolidation-qualification.md` |
+| Successor | Current status | Scope | Roadmap |
+| --- | --- | --- | --- |
+| [PR #104](https://github.com/jferments/ostudy/pull/104) | Active; LK-05–LK-09 implemented, terminal qualification/handoff remaining | folders/ranges, collection synthesis, coherent bundles, rich guide/PDF, Tutor organization | `docs/development/lk-followups/collections-guides-tutor.md` |
+| [PR #105](https://github.com/jferments/ostudy/pull/105) | Planned successor after PR #104 | LK-10–LK-13: responsive lessons, retained narration, PowerPoint, final current-format baseline/adoption | `docs/development/lk-followups/lessons-narration.md` |
+| [PR #106](https://github.com/jferments/ostudy/pull/106) | Planned successor after its predecessors | LK-14 plus residual evidence-backed schema/code/docs/workflow cleanup and integrated qualification | `docs/development/lk-followups/consolidation-qualification.md` |
 
 Each successor is activated only after its predecessors are merged. Activation means retargeting that PR to the then-current `main`, integrating the merged predecessor source, reconciling actual owner/test paths once, and then resuming implementation from its first unfinished acceptance boundary.
 
@@ -46,9 +46,11 @@ image collection intake
 
 Rust and SQLite remain authoritative for durable identities, validation, current-format admission, evidence ownership, question evaluation, publication, backup, and deletion. React renders typed intent/results through `src/ipc/` and feature controllers. Provider HTTP remains in the native AI gateway. No alternate source publisher, graph service, hidden cloud converter, or second scheduler was introduced.
 
-## Current durable contracts
+## PR #103 durable contracts
 
-- Current public-lineage schema on this branch is **21**. Historical migrations/checksums remain unchanged.
+The bullets below deliberately describe the closed PR #103 boundary, not current `main` or an active successor branch.
+
+- PR #103's public-lineage schema is **21**. Historical migrations/checksums in that tranche remain unchanged.
 - Migration 18 adds immutable canonical evidence payloads, document-owned occurrences, and structure links.
 - Migrations 19–21 add ordered image-set ownership/manifests, extraction receipts/cache, and revision-safe image edit/filter state.
 - Typed knowledge detail and region coverage retain versioned validation and fail-closed startup/restore admission.
