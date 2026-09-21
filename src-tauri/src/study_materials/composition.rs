@@ -27,11 +27,14 @@ use crate::{
     database::Database,
     document_citations,
     document_domain::SourceLocator,
-    document_study_guides::{StudyGuideComparison, StudyGuideOverview, StudyGuideSectionContent},
+    document_study_guides::{
+        StudyGuideComparison, StudyGuideOverview, StudyGuideSectionContent, StudyGuideTerm,
+    },
     error::CommandError,
     knowledge::{
         assessment::{self, AssessmentRecord},
         collection_view::{self, CollectionViewState},
+        contracts::KnowledgeKind,
     },
     scheduler::insert_new_schedule,
     task_cancellation::CancellationSignal,
@@ -1061,14 +1064,27 @@ async fn compose_collection_guide(
             catalog,
         )
         .await?;
+        let mut content = generated.content;
+        if content.important_terms.is_empty() {
+            content.important_terms = catalog
+                .units
+                .iter()
+                .filter(|unit| unit.content.kind == KnowledgeKind::Definition)
+                .take(8)
+                .map(|unit| StudyGuideTerm {
+                    term: unit.content.title.clone(),
+                    explanation: unit.content.statement.clone(),
+                })
+                .collect();
+        }
         let content_hash = hash_text(
-            &serde_json::to_string(&(&topic.title, &generated.content))
+            &serde_json::to_string(&(&topic.title, &content))
                 .map_err(CommandError::serialization)?,
         );
         sections.push(CollectionGuideSection {
             block_key: topic.id.clone(),
             title: topic.title.clone(),
-            content: generated.content,
+            content,
             content_hash,
             source_document_id: None,
             source_document_title: None,
@@ -1190,22 +1206,38 @@ fn build_collection_guide_content(
             "No readable study-guide sections could be authored from the retained collection knowledge.",
         ));
     }
-    let summary = if view.synthesis.summary.trim().is_empty() {
+    let generated_narrative = sections
+        .iter()
+        .take(2)
+        .map(|section| section.content.overview.trim())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let summary = if view.reduced && !view.synthesis.summary.trim().is_empty() {
+        view.synthesis.summary.clone()
+    } else if !generated_narrative.is_empty() {
+        generated_narrative.chars().take(1_200).collect()
+    } else {
         format!(
             "This study guide organizes the retained knowledge from {} selected document{} into connected collection-level topics.",
             claim.snapshot.members.len(),
             if claim.snapshot.members.len() == 1 { "" } else { "s" },
         )
-    } else {
-        view.synthesis.summary.clone()
     };
+    let learning_objectives = view
+        .synthesis
+        .learning_objectives
+        .iter()
+        .filter(|objective| !objective.trim().to_ascii_lowercase().starts_with("review "))
+        .cloned()
+        .collect();
     let content = CollectionGuideContent {
         schema_version: COLLECTION_GUIDE_SCHEMA_VERSION,
         collection_id: claim.target.id.clone(),
         title: collection_title,
         overview: StudyGuideOverview {
             summary,
-            learning_objectives: view.synthesis.learning_objectives.clone(),
+            learning_objectives,
             key_concepts: view
                 .synthesis
                 .topics

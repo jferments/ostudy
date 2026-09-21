@@ -439,7 +439,7 @@ function FolderSources({ folder, organization, documents, onAdd, onRanges, onMov
 }) {
   const memberships = organization.memberships.filter((entry) => entry.collectionId === folder.id);
   return (
-    <section className="tw:grid tw:gap-3" aria-label="Folder sources">
+    <section className="tw:grid tw:gap-3" aria-label="Collection sources">
       <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
         <h3 className="tw:m-0 tw:text-base tw:font-semibold">Sources</h3>
         <Button size="small" disabled={disabled} onClick={onAdd}>Add source</Button>
