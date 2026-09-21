@@ -7,6 +7,7 @@ import {
   createTutorConversation,
   createTutorProject,
   createTutorProjectConversation,
+  deleteTutorConversation,
   deleteTutorProject,
   getTutorConversation,
   listTutorConversations,
@@ -97,6 +98,7 @@ beforeEach(() => {
     organizationRevision: conversation.organizationRevision + 1,
     archivedAt: input.archived ? 2 : null,
   }));
+  vi.mocked(deleteTutorConversation).mockResolvedValue(undefined);
   vi.mocked(deleteTutorProject).mockResolvedValue(undefined);
   vi.mocked(sendTutorTurn).mockResolvedValue(turn);
 });
@@ -431,6 +433,32 @@ describe("Tutor project organization", () => {
     });
 
     expect(result.current.detail?.conversation.title).toBe("Renamed after refresh started");
+  });
+
+  it("keeps a committed delete authoritative when an older refresh resolves later", async () => {
+    const { result } = renderHook(useTutorController);
+    await act(async () => { await result.current.selectConversation(conversation.id); });
+
+    let finishRefresh!: (value: ConversationDetail) => void;
+    vi.mocked(getTutorConversation).mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+    let refreshing!: Promise<void>;
+    await act(async () => {
+      refreshing = result.current.refresh();
+      await Promise.resolve();
+    });
+
+    const deleting = result.current.detail!.conversation;
+    await act(async () => { await result.current.removeConversation(deleting); });
+    expect(result.current.detail).toBeNull();
+    await act(async () => {
+      finishRefresh(detail);
+      await refreshing;
+    });
+    expect(result.current.detail).toBeNull();
+    expect(deleteTutorConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: deleting.id,
+      expectedOrganizationRevision: deleting.organizationRevision,
+    }));
   });
 
   it("allows organization changes while a tutor turn is still in flight", async () => {

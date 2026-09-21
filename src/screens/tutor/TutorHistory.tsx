@@ -384,22 +384,25 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
 
         {activeProjects.map((project) => <ProjectGroup key={project.id} project={project} />)}
 
-        <section className={styles.historyGroup} aria-label="Ungrouped conversations">
-          <div className={styles.historyGroupHeader}><strong>Ungrouped</strong></div>
-          {ungrouped.map((conversation) => (
-            <ConversationRow
-              key={conversation.id}
-              tutor={tutor}
-              conversation={conversation}
-              switchLocked={switchLocked}
-              organizationLocked={organizationLocked}
-              onSelected={onSelected}
-              onRename={setRenameTarget}
-              onMove={setMoveTarget}
-            />
-          ))}
-          {!ungrouped.length ? <p className={styles.historyMeta}>No ungrouped chats.</p> : null}
-        </section>
+        {ungrouped.length ? (
+          <section className={styles.historyGroup} aria-label="Ungrouped conversations">
+            <div className={styles.historyGroupHeader}><strong>Ungrouped</strong></div>
+            {ungrouped.map((conversation) => (
+              <ConversationRow
+                key={conversation.id}
+                tutor={tutor}
+                conversation={conversation}
+                switchLocked={switchLocked}
+                organizationLocked={organizationLocked}
+                onSelected={onSelected}
+                onRename={setRenameTarget}
+                onMove={setMoveTarget}
+              />
+            ))}
+          </section>
+        ) : !activeProjects.length && !archivedProjects.length && !archivedConversations.length ? (
+          <p className={styles.muted}>Your conversations and projects appear here.</p>
+        ) : null}
 
         {archivedProjects.length ? (
           <Disclosure title={`Archived projects (${archivedProjects.length})`}>
