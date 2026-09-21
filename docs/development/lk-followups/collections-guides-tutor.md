@@ -2,7 +2,7 @@
 
 Status: active implementation successor to merged PR #103. Owned stages: **LK-05 through LK-09**. This roadmap does not authorize merge, inspect a personal library, or re-open LK-01 through LK-04.
 
-Current boundary: **104-A** (folder/range persistence/resolution), **104-B** (folder UI plus folder-scoped Tutor), **104-C** (compact synthesis plus complete range-safe coverage), **104-D** (durable StudyTarget bundles plus safe publication/status), and **104-E** (rich guide semantics/viewer/professional local PDF) are implemented on the PR branch. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-F** Tutor project/menu integration is the next implementation boundary.
+Current boundary: **104-A** (folder/range persistence/resolution), **104-B** (folder UI plus folder-scoped Tutor), **104-C** (compact synthesis plus complete range-safe coverage), **104-D** (durable StudyTarget bundles plus safe publication/status), **104-E** (rich guide semantics/viewer/professional local PDF), and **104-F** (Tutor projects and conversation organization) are implemented on the PR branch. Exact-head qualification and acceptance evidence are tracked in PR #104; **104-G** cross-stage audit and terminal qualification is the next boundary.
 
 Activation is complete against the actual merged `main`. Continue stage-by-stage on the existing PR #104 branch; do not rebase this work onto the historical PR #103 branch.
 
@@ -121,15 +121,19 @@ Tests cover long headings, nested structure, multi-page tables, repeated headers
 
 ## LK-09 — Tutor projects and conversation management
 
-Persist Tutor project title, description/instructions, archive state, default SourceSelection, and organization revision. Conversations gain optional project membership and their own title/archive revision. Add focused Rename, Move, Archive, Delete commands with expected revisions and retry identities.
+Implemented in 104-F on schema 25. Tutor projects persist title, description/instructions, archive state, default study scope and revision. Conversations retain a separate organization revision/archive state and optional project membership; retry-safe Rename, Move, Archive/Restore, Delete, project create/edit/archive/delete, and project-chat creation live behind typed native commands.
 
-New conversations inherit current project defaults. Moving an existing conversation preserves its current sources unless the learner explicitly applies destination defaults. Project default changes affect future choices, never historical turn snapshots. Common project membership does not opt conversations into cross-chat retrieval.
+New project chats resolve the project's current defaults at creation time unless the learner explicitly selected replacement sources. Moving an existing conversation preserves its current sources unless **Use destination project's current default sources** is explicitly selected. Editing project defaults affects future project chats only. Changing Sources from a project conversation creates a new chat in that same project with the explicit override.
 
-Use the existing overflow menu, confirmation, focus, touch, and Back infrastructure. Project deletion defaults to moving conversations to ungrouped; deleting a conversation does not delete independently created study materials.
+Each admitted Tutor turn freezes its source scope in `captured_scope_json` and captures current project instructions in the immutable request snapshot before provider work. The schema-25 migration backfills pre-project turns from their then-current conversation scope. Rename/move/project changes use organization revisions independent of message revisioning, so organization changes cannot invalidate an already admitted response or rewrite historical authority.
 
-Tests cover rename/move while a response is active, archive/delete during stale refresh, duplicate retry, source-default changes, exclusion preservation, committed write followed by refresh failure, compact/wide/touch/keyboard behavior, backup/deletion semantics, and explicit sync privacy boundaries.
+Project membership is not retrieval consent. Conversation retrieval continues to require the existing per-conversation permission and explicit current-interaction opt-in, compares against the historical turn's frozen exact scope, and never admits another chat merely because both belong to one project. Collection scopes remain source-only for conversation retrieval.
 
-**Exit / AC-10:** Tutor organization works without changing historical source scopes or enabling deferred model-writing tools.
+The UI uses the shared overflow menu, Dialog/Sheet, confirmation and responsive overlay infrastructure. Project deletion moves its conversations to Ungrouped without changing their sources; conversation deletion remains chat-only. Whole-library backup preserves project/default/organization state, while trusted-device sync strips projects, organization receipts, chats and semantic chat copies.
+
+Focused regressions cover project/default persistence and retry identity, project deletion/ungrouping, moving with and without explicit default application, project instructions, pre-project migration freezing, organization during an admitted response, stale-read invalidation, same-project retrieval isolation, full backup preservation, and sync exclusion. The shared overflow primitives retain their existing compact/coarse-pointer/keyboard/focus behavior.
+
+**Exit / AC-10:** implemented. Tutor organization works without changing historical source scopes, implicitly enabling cross-chat retrieval, or enabling deferred model-writing tools.
 
 ## Delivery sequence and qualification
 
@@ -140,8 +144,8 @@ Implement coherent vertical increments:
 3. **104-C:** synthesis + coverage-aware LearningContext — implemented on the active branch; exact-head qualification is recorded in PR #104.
 4. **104-D:** study target/bundle persistence + safe publication/status UI — implemented on the active branch; exact-head qualification is recorded in PR #104.
 5. **104-E:** semantic guide viewer + PDF capability/renderer work — implemented on the active branch; exact-head Static/Fast qualification is recorded in PR #104.
-6. **104-F:** Tutor project/menu integration — next implementation boundary.
-7. **104-G:** cross-stage audit, exact-head terminal qualification, and human handoff.
+6. **104-F:** Tutor project/menu integration — implemented on the active branch; exact-head qualification is recorded in PR #104.
+7. **104-G:** cross-stage audit, exact-head terminal qualification, and human handoff — next boundary.
 
 Each increment: inspect the owning boundary -> implement -> add focused regression coverage -> publish through expected-parent Git data -> verify remote head -> qualify the exact SHA. Add backup/privacy/schema support in the increment that introduces durable data, not at final cleanup.
 

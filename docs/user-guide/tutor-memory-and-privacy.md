@@ -16,6 +16,18 @@ If optional search is not configured or is temporarily unavailable, Tutor can st
 
 Nonfatal processing details stay in diagnostics rather than interrupting chat. A failed message remains available. **Try again** retries the latest confirmed failed response; **Check response** reconciles an uncertain acknowledgement without submitting a duplicate. Reopen Practice for a new hint rather than replaying an old card's hint from chat history. Advanced controls are under **Chat settings**, not in the main chat.
 
+## Projects and conversation organization
+
+Tutor projects organize related chats without merging them. Create a project from the conversation pane, give it an optional description and Tutor instructions, and choose default sources. New chats started inside that project inherit the project's **current** defaults. Project instructions are learner-authored preferences for explanation style, emphasis, or study approach; they are not evidence and cannot override source, privacy, hidden-answer, quiz, or output-safety rules.
+
+Each conversation still owns its own source selection. Changing project defaults does not rewrite an existing chat, and moving a chat into another project preserves its sources by default. **Use destination project's current default sources** is an explicit opt-in during Move. Changing Sources on a project chat starts a new chat in the same project with that explicit source selection rather than mutating the older transcript.
+
+Conversation and project actions live in their overflow menus. You can Rename, Move, Archive/Restore, or Delete a chat, and Edit, Archive/Restore, or Delete a project. Deleting a project moves its chats to **Ungrouped**; it does not delete their messages or independently created documents, cards, guides, or review history. Deleting a conversation removes only that chat.
+
+Project membership is organization, not retrieval permission. Chats in the same project are not searched merely because they share a project. Cross-chat semantic retrieval still requires the existing per-conversation retrieval permission plus the explicit **Search permitted conversations in this material selection** opt-in, and the historical turn must match the exact captured material scope.
+
+Rename, Move, Archive, and project-organization changes use a separate organization revision from Tutor message revisioning. An already admitted response therefore keeps the project instructions and source scope captured when that turn started even if organization changes while the provider is working.
+
 ## Conversation memory
 
 Open a saved conversation, open **Chat settings**, and expand **Conversation memory**. These settings are local; reading or changing them does not contact a provider.
@@ -40,15 +52,15 @@ Inactive or deleted sources are excluded immediately from retrieval. A durable q
 
 ## Full backup versus device sync
 
-A **full-library backup** retains conversations, private quiz data, memory preferences/cutoffs, source records, knowledge units, and artifact links. Treat the backup as sensitive personal data: it is not an application-encrypted chat export. Saved API keys are not included.
+A **full-library backup** retains Tutor projects, project defaults/instructions, conversation organization, conversations, private quiz data, memory preferences/cutoffs, source records, knowledge units, and artifact links. Treat the backup as sensitive personal data: it is not an application-encrypted chat export. Saved API keys are not included.
 
 Device-local vector caches are not included. Restoration removes the pre-restore cache and marks completed preparation receipts as requiring a rebuild. Compatible stored knowledge is reused when the receiving device processes selected material or sends a grounded chat; any required indexing uses the chosen embedding model. Startup never silently contacts an AI provider. Schema-10 backups can be restored and migrated to schema 11 after migration-ledger validation.
 
-**Device sync** has no conversation-sharing category. Chats, summaries, private quiz data, and semantic copies of messages are removed from the transfer snapshot, not merely ignored by the receiving merge engine. The copied SQLite file is compacted/checkpointed so deleted private text is not left in transmitted free pages or a stale journal view. The live library is not sanitized or erased.
+**Device sync** has no conversation-sharing category. Tutor projects, project instructions/defaults, organization-operation receipts, chats, summaries, private quiz data, and semantic copies of messages are removed from the transfer snapshot, not merely ignored by the receiving merge engine. The copied SQLite file is compacted/checkpointed so deleted private text is not left in transmitted free pages or a stale journal view. The live library is not sanitized or erased.
 
 The current sync contract also excludes the new derived knowledge-source/unit/link graph, which does not yet have its own merge policy. Selected documents, canonical processing data, guides, and cards continue through their existing sync domains. The receiving device can index its saved source text on chat use. Because sync currently excludes the authoritative interpretation graph, generating artifacts from transferred sources can require knowledge extraction; this is different from a full backup or reuse of a document processed on the same device. Full backups, unlike device sync, preserve the complete knowledge graph.
 
-New multi-source conversations require a build that understands selection scopes. This extension adds no database migration, but switching to an older binary does not make its scope parser understand those conversations. Preserve a compatible full-library backup before testing unmerged versions.
+New multi-source conversations require a build that understands selection scopes. Tutor projects add schema 25, including project/default organization state, per-conversation organization revision, and a frozen source-scope field for historical turns. An older binary cannot safely interpret or downgrade that schema. Preserve a compatible full-library backup before testing unmerged versions.
 
 ## Vector backend
 
