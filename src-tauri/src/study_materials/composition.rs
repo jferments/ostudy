@@ -18,6 +18,7 @@ use crate::{
     ai::{
         document_intelligence::{
             generate_collection_study_guide_topic_section, load_document_task_context,
+            CollectionStudyGuideAuthoring,
         },
         document_provider, AiRuntimeState,
     },
@@ -1058,10 +1059,12 @@ async fn compose_collection_guide(
             runtime,
             &task,
             &collection_title,
-            &window.title,
-            &window.topic_context,
-            &relationship_context,
-            &window.catalog,
+            CollectionStudyGuideAuthoring {
+                topic_title: &window.title,
+                topic_summary: &window.topic_context,
+                relationship_context: &relationship_context,
+                knowledge: &window.catalog,
+            },
             &signal,
         )
         .await?;

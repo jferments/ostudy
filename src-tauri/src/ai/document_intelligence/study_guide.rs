@@ -17,7 +17,6 @@ use crate::{
 use super::super::AiRuntimeState;
 use super::{
     context::DocumentTaskContext,
-    contracts::SourcePageImage,
     evidence::AuthoringEvidence,
     support::{
         bounded_diagnostic, collapse_contract_error, output_error, retryable_contract_error,
@@ -60,6 +59,13 @@ const MAX_VISUAL_EXPLANATIONS: usize = 2;
 const MAX_VISUAL_TITLE_CHARS: usize = 120;
 const MAX_VISUAL_EXPLANATION_CHARS: usize = 500;
 const MAX_GENERATED_SECTION_CHARS: usize = 4_200;
+
+pub(crate) struct CollectionStudyGuideAuthoring<'a> {
+    pub(crate) topic_title: &'a str,
+    pub(crate) topic_summary: &'a str,
+    pub(crate) relationship_context: &'a str,
+    pub(crate) knowledge: &'a KnowledgeCatalog,
+}
 
 /// Generate one source-grounded guide section for one stable learning topic.
 ///
@@ -108,8 +114,7 @@ pub(crate) async fn generate_study_guide_topic_section(
         task,
         &system,
         &user,
-        images,
-        knowledge,
+        AuthoringEvidence { images, knowledge },
         STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS,
         None,
     )
@@ -120,12 +125,15 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     collection_title: &str,
-    topic_title: &str,
-    topic_summary: &str,
-    relationship_context: &str,
-    knowledge: &KnowledgeCatalog,
+    authoring: CollectionStudyGuideAuthoring<'_>,
     cancellation: &CancellationSignal,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
+    let CollectionStudyGuideAuthoring {
+        topic_title,
+        topic_summary,
+        relationship_context,
+        knowledge,
+    } = authoring;
     if knowledge.units.is_empty() {
         return Err(CommandError::new(
             "collection_study_guide_topic_has_no_knowledge",
@@ -160,8 +168,10 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         task,
         &system,
         &user,
-        &[],
-        &bounded_knowledge,
+        AuthoringEvidence {
+            images: &[],
+            knowledge: &bounded_knowledge,
+        },
         visible_completion_tokens,
         Some(cancellation),
     )
@@ -261,11 +271,11 @@ async fn request_study_guide_section_with_retry(
     task: &DocumentTaskContext,
     system: &str,
     user: &str,
-    images: &[SourcePageImage],
-    knowledge: &KnowledgeCatalog,
+    evidence: AuthoringEvidence<'_>,
     visible_completion_tokens: usize,
     cancellation: Option<&CancellationSignal>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
+    let AuthoringEvidence { images, knowledge } = evidence;
     let schema = protocol::schema(knowledge, !images.is_empty());
     let maximum_tokens = task.completion_token_ceiling(visible_completion_tokens);
     let request = JsonTaskRequest {
