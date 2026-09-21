@@ -14,8 +14,8 @@ if (rootIndex >= 0 && !process.argv[rootIndex + 1]) {
 
 const requirements = new Map([
   ["AGENTS.md", ["ANCHORLINE RESET", "never means", "Do not ask the human to repeat", "docs/agents/RECOVERY-PROTOCOL.md"]],
-  ["docs/agents/RECOVERY-PROTOCOL.md", ["One bounded resumption read", "Keep an active checkpoint", "Tool and access discipline", "direct PR and branch-ref reads", "Progress and response discipline", "Workflow success and gate coverage are separate facts"]],
-  ["docs/agents/GITHUB-DIRECT-DEVELOPMENT.md", ["Interruption-resilient execution", "Efficient GitHub reads and publication", "Known branch", "No mid-composition polling", "Blob proportionality", "ANCHORLINE RESET", "Do not ask the human to repeat", "substantive response"]],
+  ["docs/agents/RECOVERY-PROTOCOL.md", ["One bounded resumption read", "Keep an active checkpoint", "Tool and access discipline", "direct PR and branch-ref reads", "ambiguous acknowledgement", "Progress and response discipline", "Workflow success and gate coverage are separate facts"]],
+  ["docs/agents/GITHUB-DIRECT-DEVELOPMENT.md", ["Interruption-resilient execution", "Efficient GitHub reads and publication", "Known branch", "No mid-composition polling", "Blob proportionality", "Ambiguous mutation recovery", "Publication checkpointing", "ANCHORLINE RESET", "Do not ask the human to repeat", "substantive response"]],
   ["docs/agents/GITHUB-CONNECTOR.md", ["session-local action exposure", "does not revoke repository permission", "Do not rediscover a working action surface"]],
   ["docs/agents/COMMAND-RUNBOOK.md", ["verify-agent-recovery-policy.mjs"]],
   ["scripts/check-static.sh", ["verify-agent-recovery-policy.mjs"]],

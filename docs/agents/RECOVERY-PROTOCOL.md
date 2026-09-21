@@ -51,7 +51,7 @@ Distinguish:
 4. verified branch publication;
 5. qualification on the exact published SHA.
 
-When a real operation fails, report the operation, target, exact error, and which neighboring capabilities still work. Do not generalize a narrow failure into “GitHub is unavailable,” make a no-op access-test commit, or switch execution systems unless the human requested that change.
+When a real operation fails, report the operation, target, exact error, and which neighboring capabilities still work. A transport/protocol disconnect after mutation is an **ambiguous acknowledgement**: direct-read the affected ref/object once before retrying, adopt a verified coherent publication if it landed, or reuse acknowledged Git-object SHAs and resume from the first unconfirmed step if the ref stayed unchanged. Never replay the whole mutation batch blindly. Do not generalize a narrow failure into “GitHub is unavailable,” make a no-op access-test commit, or switch execution systems unless the human requested that change.
 
 ## Progress and response discipline
 

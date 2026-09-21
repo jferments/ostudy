@@ -61,10 +61,12 @@ Treat GitHub calls as a small evidence graph, not a browsing session.
 - **No mid-composition polling:** resolve the expected parent at the start of one publication attempt, read every changed file from that exact parent, prepare the coherent candidate, then perform the one mandatory pre-update ref check. Re-reading the tip after every blob or edit creates stale-parent churn without increasing safety.
 - **Drift:** if the mandatory pre-update check finds a moved head, inspect the new linear commits once. Adopt coherent in-scope descendants or reconcile a real competing writer; do not repeatedly rebuild from successively stale SHAs. Two unexplained head moves without this agent's verified ref update are writer-contention evidence, not a reason to spin on more ref reads.
 - **Blob proportionality:** ordinary small UTF-8 files use the SHA returned by `create_blob` in the publication manifest. Independent Git-object SHA calculation is reserved for the large/critical full-file safety case required below; calculate it once for the final bytes, not repeatedly during drafting.
+- **Ambiguous mutation recovery:** a Connector transport/protocol error after a mutation may mean GitHub accepted one or more Git objects even though the orchestration returned no acknowledgement. Treat that result as ambiguous success, not confirmed failure. Direct-read the affected branch ref once and inspect any already-returned candidate/object SHA needed to resolve the last confirmed step. If the ref advanced, verify parent/tree/path set and adopt the coherent in-scope publication. If the ref did not advance, reuse acknowledged blob/tree/commit SHAs and resume from the first unconfirmed Git-data step. Never blindly replay the entire mutation batch.
+- **Publication checkpointing:** when a publication creates more than four blobs, contains a large/critical replacement, or has already encountered a transport disconnect, split publication at the verified blob-manifest boundary. One bounded Connector call creates/verifies blobs and emits path/mode/blob SHAs; a second bounded call creates tree/commit, reviews the candidate, performs the expected-parent check, updates the ref, and verifies publication. Do not keep a large mutation fan-out and the ref update inside one fragile orchestration.
 
 For this workflow, treat a full-file replacement as **large** when it is 32 KiB or more, or when the connector/output path could truncate it. Treat it as **critical** when corruption could change migrations/schema/data integrity, source-publishing or CI policy, credentials/security boundaries, packaging/install behavior, or another explicitly identified high-consequence path. If in doubt about a genuinely high-consequence file, use the safer large/critical path; do not make every ordinary component file pay that cost.
 
-A normal publication attempt should therefore be one bounded orchestration: direct ref -> exact parent commit/tree -> exact changed files -> blobs -> tree -> candidate commit -> candidate diff review -> one pre-update ref check -> non-force ref update -> one post-update verification. The individual GitHub operations remain explicit evidence, but they should not be expanded into dozens of discovery calls.
+A normal small publication may therefore be one bounded orchestration: direct ref -> exact parent commit/tree -> exact changed files -> blobs -> tree -> candidate commit -> candidate diff review -> one pre-update ref check -> non-force ref update -> one post-update verification. Use the blob-manifest checkpoint above for higher-fan-out, large/critical, or previously ambiguous publication. The individual GitHub operations remain explicit evidence, but they should not be expanded into dozens of discovery calls.
 
 ### Bounded repair loop and publication checkpoint
 
@@ -98,9 +100,7 @@ optional research, rechecking dependencies or reviewing unrelated files.
 
 A truncated response is a presentation limit. Read the needed range or reuse the
 concrete identifier already returned; do not re-discover the connector or rebuild
-the project state. After an ambiguous mutation acknowledgement, make one targeted
-read of the affected object/ref before deciding whether a retry is necessary.
-Do not blindly repeat writes or abandon a known candidate that GitHub can read.
+the project state. After an ambiguous mutation acknowledgement or Connector transport/protocol disconnect, apply **Ambiguous mutation recovery** above before deciding whether a retry is necessary. Do not blindly repeat writes, discard acknowledged Git objects, or abandon a known candidate that GitHub can read.
 Actual head drift is different: inspect the competing commit and reconcile writer
 ownership before continuing, without force-pushing or silently replacing a tree.
 
@@ -134,7 +134,7 @@ Use ordinary UTF-8 source, not an opaque patch payload, task-specific applicator
 
 A Contents API update protects one blob, not the complete branch parent, and is not the normal publication path for this workflow. Do not fall back to sequential per-file writes because the Git-data sequence appears verbose.
 
-If a write returns no usable acknowledgement, read GitHub before retrying. A created blob/tree/commit is not branch publication until the ref points to it. A verified commit is not a passing test. Do not reissue an ambiguous mutation blindly or create a competing branch to work around uncertainty.
+If a write returns no usable acknowledgement or ends in a transport/protocol disconnect, apply **Ambiguous mutation recovery** before retrying. A created blob/tree/commit is not branch publication until the ref points to it. A verified commit is not a passing test. Do not reissue an ambiguous mutation blindly, discard acknowledged Git objects, or create a competing branch to work around uncertainty.
 
 ## Optional user-authorized commit batches and communication
 
