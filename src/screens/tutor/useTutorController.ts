@@ -5,8 +5,27 @@ import { getAiTaskDefaults, listAiProviderProfiles, type AiProviderProfileSummar
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import { cancelLearningTask, listSemanticScopeChoices, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
 import {
-  createTutorConversation, deleteTutorConversation, getTutorConversation, listTutorConversations, sendTutorTurn,
-  type ConversationDetail, type ConversationSummary, type TutorMode, type TutorTarget, type TutorTurn, type TutorTurnInput,
+  createTutorConversation,
+  createTutorProject,
+  createTutorProjectConversation,
+  deleteTutorConversation,
+  deleteTutorProject,
+  getTutorConversation,
+  listTutorConversations,
+  listTutorProjects,
+  moveTutorConversation,
+  renameTutorConversation,
+  sendTutorTurn,
+  setTutorConversationArchived,
+  setTutorProjectArchived,
+  updateTutorProject,
+  type ConversationDetail,
+  type ConversationSummary,
+  type TutorMode,
+  type TutorProject,
+  type TutorTarget,
+  type TutorTurn,
+  type TutorTurnInput,
 } from "../../ipc/tutor";
 import { useMaterialPreparation } from "./useMaterialPreparation";
 
@@ -17,14 +36,46 @@ function scopeUsesCollection(scope: StudyScope): boolean {
     || (scope.kind === "selection" && scope.members.some((member) => member.kind === "collection"));
 }
 
+interface PendingConversationCreate {
+  operationId: string;
+  scope: StudyScope;
+  title: string;
+  projectId: string | null;
+  projectScopeOverride: StudyScope | null;
+}
+
+export interface TutorProjectValues {
+  title: string;
+  description: string;
+  instructions: string;
+  defaultScope: StudyScope;
+}
+
+function orderConversations(values: ConversationSummary[]): ConversationSummary[] {
+  return [...values].sort((left, right) => {
+    const archive = Number(left.archivedAt !== null) - Number(right.archivedAt !== null);
+    return archive || right.updatedAt - left.updatedAt || left.id.localeCompare(right.id);
+  });
+}
+
+function orderProjects(values: TutorProject[]): TutorProject[] {
+  return [...values].sort((left, right) => {
+    const archive = Number(left.archivedAt !== null) - Number(right.archivedAt !== null);
+    return archive || left.title.localeCompare(right.title) || left.id.localeCompare(right.id);
+  });
+}
+
 /** A single mounted owner retains in-flight operations across route/panel changes. */
 export function useTutorController() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [projects, setProjects] = useState<TutorProject[]>([]);
   const [profiles, setProfiles] = useState<AiProviderProfileSummary[]>([]);
   const [choices, setChoices] = useState<ScopeChoice[]>([]);
   const [detail, setDetailState] = useState<ConversationDetail | null>(null);
   const current = useRef<ConversationDetail | null>(null);
   const [scope, setScope] = useState<StudyScope>(GENERAL);
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
+  const [projectScopeOverride, setProjectScopeOverride] = useState<StudyScope | null>(null);
   const [target, setTarget] = useState<TutorTarget | null>(null);
   const [includeConversations, setConversationInclusion] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -33,14 +84,16 @@ export function useTutorController() {
   const [defaultTutorProfileId, setDefaultTutorProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [pending, setPendingState] = useState<TutorTurnInput | null>(null);
   const pendingRef = useRef<TutorTurnInput | null>(null);
-  const creating = useRef<Parameters<typeof createTutorConversation>[0] | null>(null);
-  const deleting = useRef<{ conversationId: string; operationId: string } | null>(null);
+  const creating = useRef<PendingConversationCreate | null>(null);
+  const organizationOperations = useRef(new Map<string, string>());
   const active = useRef<string | null>(null);
   const mutating = useRef(false);
+  const organizationMutating = useRef(false);
   const alive = useRef(true);
   const bootstrapLane = useRequestLane();
   const detailLane = useRequestLane();
@@ -63,16 +116,49 @@ export function useTutorController() {
     setPendingState(value);
   }
 
+  function applyConversationSummary(value: ConversationSummary): void {
+    setConversations((saved) => orderConversations([value, ...saved.filter((entry) => entry.id !== value.id)]));
+    const selected = current.current;
+    if (selected?.conversation.id === value.id) {
+      setDetail({ ...selected, conversation: value });
+      setScope(value.scope);
+    }
+  }
+
+  function applyProjectSummary(value: TutorProject): void {
+    setProjects((saved) => orderProjects([value, ...saved.filter((entry) => entry.id !== value.id)]));
+  }
+
+  function operationFor(key: string): string {
+    const existing = organizationOperations.current.get(key);
+    if (existing) return existing;
+    const operationId = createOperationId();
+    organizationOperations.current.set(key, operationId);
+    return operationId;
+  }
+
+  function organizationFailureIsFinal(code: string | null): boolean {
+    return code !== null && (code.startsWith("invalid_") || [
+      "tutor_project_changed",
+      "tutor_project_missing",
+      "tutor_conversation_changed",
+      "tutor_conversation_organization_changed",
+      "tutor_conversation_missing",
+      "tutor_turn_running",
+    ].includes(code));
+  }
+
   const initialize = useCallback(async () => {
     const token = bootstrapLane.begin();
     setLoading(true);
     try {
       // Only local reads: entering Tutor never probes a provider or uploads a library.
-      const [saved, available, materials, defaults] = await Promise.all([
-        listTutorConversations(), listAiProviderProfiles(), listSemanticScopeChoices(), getAiTaskDefaults(),
+      const [saved, savedProjects, available, materials, defaults] = await Promise.all([
+        listTutorConversations(), listTutorProjects(), listAiProviderProfiles(), listSemanticScopeChoices(), getAiTaskDefaults(),
       ]);
       if (!bootstrapLane.isCurrent(token)) return;
-      setConversations(saved);
+      setConversations(orderConversations(saved));
+      setProjects(orderProjects(savedProjects));
       setProfiles(available);
       setChoices(materials);
       // null is a live default assignment, not a copy of the old default ID.
@@ -107,7 +193,7 @@ export function useTutorController() {
   }
 
   function canSwitch(): boolean {
-    if (mutating.current || pendingRef.current || creating.current || preparation.locked) {
+    if (mutating.current || organizationMutating.current || pendingRef.current || creating.current || preparation.locked) {
       setError("Resolve the current request before changing conversations. Closing the panel does not discard it.");
       return false;
     }
@@ -123,6 +209,8 @@ export function useTutorController() {
       if (!detailLane.isCurrent(token)) return;
       setDetail(value);
       setScope(value.conversation.scope);
+      setDraftProjectId(null);
+      setProjectScopeOverride(null);
       setConversationInclusion(false);
       setTarget(null);
       setDraft("");
@@ -142,6 +230,29 @@ export function useTutorController() {
     setLoading(false);
     setDetail(null);
     setScope(next);
+    setDraftProjectId(null);
+    setProjectScopeOverride(null);
+    setConversationInclusion(false);
+    setTarget(null);
+    setDraft("");
+    setError(null);
+    setNeedsRefresh(false);
+  }
+
+  function newConversationInProject(projectId: string): void {
+    if (!canSwitch()) return;
+    const project = projects.find((entry) => entry.id === projectId && entry.archivedAt === null);
+    if (!project) {
+      setError("Restore this Tutor project before starting a new chat in it.");
+      return;
+    }
+    detailLane.invalidate();
+    historyLane.invalidate();
+    setLoading(false);
+    setDetail(null);
+    setScope(project.defaultScope);
+    setDraftProjectId(project.id);
+    setProjectScopeOverride(null);
     setConversationInclusion(false);
     setTarget(null);
     setDraft("");
@@ -151,9 +262,20 @@ export function useTutorController() {
 
   function changeSources(next: StudyScope): void {
     if (!canSwitch()) return;
+    const projectId = draftProjectId ?? current.current?.conversation.projectId ?? null;
     const text = draft;
-    newConversation(next);
+    detailLane.invalidate();
+    historyLane.invalidate();
+    setLoading(false);
+    setDetail(null);
+    setScope(next);
+    setDraftProjectId(projectId);
+    setProjectScopeOverride(projectId ? next : null);
+    setConversationInclusion(false);
+    setTarget(null);
     setDraft(text);
+    setError(null);
+    setNeedsRefresh(false);
   }
 
   function settleDraft(state: TutorTurn["state"], text: string): void {
@@ -236,11 +358,33 @@ export function useTutorController() {
       let value = current.current;
       if (!value) {
         creating.current ??= {
-          operationId: createOperationId(), scope,
+          operationId: createOperationId(),
+          scope,
           title: (target?.title || text.trim() || "Study conversation").slice(0, 200),
+          projectId: draftProjectId,
+          projectScopeOverride,
         };
-        const conversation = await createTutorConversation(creating.current);
+        const planned = creating.current;
+        const conversation = planned.projectId
+          ? await createTutorProjectConversation({
+              operationId: planned.operationId,
+              projectId: planned.projectId,
+              title: planned.title,
+              scope: planned.projectScopeOverride,
+            })
+          : await createTutorConversation({
+              operationId: planned.operationId,
+              scope: planned.scope,
+              title: planned.title,
+            });
         creating.current = null;
+        setDraftProjectId(null);
+        setProjectScopeOverride(null);
+        setScope(conversation.scope);
+        setConversations((saved) => orderConversations([
+          conversation,
+          ...saved.filter((entry) => entry.id !== conversation.id),
+        ]));
         value = { conversation, turns: [], hasEarlierTurns: false };
         setDetail(value);
       }
@@ -301,47 +445,177 @@ export function useTutorController() {
     } catch (failure: unknown) { if (historyLane.isCurrent(token)) setError(getErrorMessage(failure)); }
   }
 
-  async function removeConversation(): Promise<void> {
-    const value = current.current;
-    if (!value || !canSwitch()) return;
-    mutating.current = true;
-    detailLane.invalidate();
-    setBusy(true);
-    const operation = deleting.current?.conversationId === value.conversation.id
-      ? deleting.current
-      : { conversationId: value.conversation.id, operationId: createOperationId() };
-    deleting.current = operation;
+  async function runOrganization<T>(
+    key: string,
+    mutation: (operationId: string) => Promise<T>,
+    apply: (value: T) => void,
+  ): Promise<boolean> {
+    if (organizationMutating.current) return false;
+    organizationMutating.current = true;
+    setOrganizing(true);
+    setError(null);
+    const operationId = operationFor(key);
     try {
-      await deleteTutorConversation({
-        operationId: operation.operationId,
-        conversationId: value.conversation.id,
-        expectedRevision: value.conversation.revision,
-        expectedOrganizationRevision: value.conversation.organizationRevision,
-      });
-      deleting.current = null;
-      setDetail(null);
-      setConversations((saved) => saved.filter((entry) => entry.id !== value.conversation.id));
-      setDraft("");
-      setError(null);
+      const value = await mutation(operationId);
+      if (!alive.current) return false;
+      organizationOperations.current.delete(key);
+      apply(value);
+      return true;
     } catch (failure: unknown) {
+      if (!alive.current) return false;
       const code = getErrorCode(failure);
-      if (code && (code.startsWith("invalid_") || [
-        "tutor_conversation_changed",
-        "tutor_conversation_organization_changed",
-        "tutor_conversation_missing",
-        "tutor_turn_running",
-      ].includes(code))) deleting.current = null;
+      if (organizationFailureIsFinal(code)) organizationOperations.current.delete(key);
       setError(getErrorMessage(failure));
+      return false;
+    } finally {
+      organizationMutating.current = false;
+      if (alive.current) setOrganizing(false);
     }
-    finally { mutating.current = false; setBusy(false); }
+  }
+
+  async function createProject(values: TutorProjectValues): Promise<boolean> {
+    const key = `create-project:${JSON.stringify(values)}`;
+    return runOrganization(
+      key,
+      (operationId) => createTutorProject({ operationId, ...values }),
+      applyProjectSummary,
+    );
+  }
+
+  async function updateProject(project: TutorProject, values: TutorProjectValues): Promise<boolean> {
+    const key = `update-project:${project.id}:${project.revision}:${JSON.stringify(values)}`;
+    return runOrganization(
+      key,
+      (operationId) => updateTutorProject({
+        operationId,
+        projectId: project.id,
+        expectedRevision: project.revision,
+        ...values,
+      }),
+      applyProjectSummary,
+    );
+  }
+
+  async function setProjectArchived(project: TutorProject, archived: boolean): Promise<boolean> {
+    const key = `archive-project:${project.id}:${project.revision}:${archived}`;
+    return runOrganization(
+      key,
+      (operationId) => setTutorProjectArchived({
+        operationId,
+        projectId: project.id,
+        expectedRevision: project.revision,
+        archived,
+      }),
+      applyProjectSummary,
+    );
+  }
+
+  async function removeProject(project: TutorProject): Promise<boolean> {
+    const key = `delete-project:${project.id}:${project.revision}`;
+    return runOrganization(
+      key,
+      (operationId) => deleteTutorProject({
+        operationId,
+        projectId: project.id,
+        expectedRevision: project.revision,
+      }),
+      () => {
+        setProjects((saved) => saved.filter((entry) => entry.id !== project.id));
+        const detach = (entry: ConversationSummary): ConversationSummary => entry.projectId === project.id
+          ? { ...entry, projectId: null, organizationRevision: entry.organizationRevision + 1 }
+          : entry;
+        setConversations((saved) => orderConversations(saved.map(detach)));
+        const selected = current.current;
+        if (selected?.conversation.projectId === project.id) {
+          setDetail({ ...selected, conversation: detach(selected.conversation) });
+        }
+        if (draftProjectId === project.id) {
+          setDraftProjectId(null);
+          setProjectScopeOverride(null);
+        }
+      },
+    );
+  }
+
+  async function renameConversation(conversation: ConversationSummary, title: string): Promise<boolean> {
+    const normalized = title.trim();
+    const key = `rename-conversation:${conversation.id}:${conversation.organizationRevision}:${normalized}`;
+    return runOrganization(
+      key,
+      (operationId) => renameTutorConversation({
+        operationId,
+        conversationId: conversation.id,
+        expectedOrganizationRevision: conversation.organizationRevision,
+        title: normalized,
+      }),
+      applyConversationSummary,
+    );
+  }
+
+  async function moveConversation(
+    conversation: ConversationSummary,
+    projectId: string | null,
+    applyProjectDefault: boolean,
+  ): Promise<boolean> {
+    const key = `move-conversation:${conversation.id}:${conversation.organizationRevision}:${projectId ?? "ungrouped"}:${applyProjectDefault}`;
+    return runOrganization(
+      key,
+      (operationId) => moveTutorConversation({
+        operationId,
+        conversationId: conversation.id,
+        expectedOrganizationRevision: conversation.organizationRevision,
+        projectId,
+        applyProjectDefault,
+      }),
+      applyConversationSummary,
+    );
+  }
+
+  async function setConversationArchived(conversation: ConversationSummary, archived: boolean): Promise<boolean> {
+    const key = `archive-conversation:${conversation.id}:${conversation.organizationRevision}:${archived}`;
+    return runOrganization(
+      key,
+      (operationId) => setTutorConversationArchived({
+        operationId,
+        conversationId: conversation.id,
+        expectedOrganizationRevision: conversation.organizationRevision,
+        archived,
+      }),
+      applyConversationSummary,
+    );
+  }
+
+  async function removeConversation(conversation = current.current?.conversation ?? null): Promise<boolean> {
+    if (!conversation) return false;
+    const key = `delete-conversation:${conversation.id}:${conversation.revision}:${conversation.organizationRevision}`;
+    return runOrganization(
+      key,
+      (operationId) => deleteTutorConversation({
+        operationId,
+        conversationId: conversation.id,
+        expectedRevision: conversation.revision,
+        expectedOrganizationRevision: conversation.organizationRevision,
+      }),
+      () => {
+        setConversations((saved) => saved.filter((entry) => entry.id !== conversation.id));
+        if (current.current?.conversation.id === conversation.id) {
+          setDetail(null);
+          setDraftProjectId(null);
+          setProjectScopeOverride(null);
+          setDraft("");
+        }
+      },
+    );
   }
 
   return {
-    conversations, profiles, choices, detail, scope, target, panelOpen, draft, profileId, defaultTutorProfileId,
-    loading, busy, error, pending, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
+    conversations, projects, profiles, choices, detail, scope, draftProjectId, target, panelOpen, draft, profileId, defaultTutorProfileId,
+    loading, busy, organizing, error, pending, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
-    newConversation, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
-    send, retryPending, cancel, loadEarlier, removeConversation,
+    newConversation, newConversationInProject, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
+    send, retryPending, cancel, loadEarlier,
+    createProject, updateProject, setProjectArchived, removeProject,
+    renameConversation, moveConversation, setConversationArchived, removeConversation,
   };
 }
 
