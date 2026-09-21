@@ -78,29 +78,34 @@ node ./scripts/verify-external-file-streaming.mjs
 ./scripts/install-native-deps.sh --pdfium-only
 export OSTUDY_PDFIUM_PATH="$ROOT_DIR/src-tauri/resources/native/pdfium/libpdfium.so"
 
-printf '\nType-checking shared frontend...\n'
-pnpm exec tsc -b --pretty false
+if [[ "${OSTUDY_LINUX_FULL_PASSED:-0}" == "1" ]]; then
+  printf '\nREUSE Shared TypeScript, Vitest, host Rust compile/lint, and Rust test coverage from the successful Linux full gate in this exact workflow.\n'
+else
+  printf '\nType-checking shared frontend...\n'
+  pnpm exec tsc -b --pretty false
 
-printf '\nRunning Vitest with up to %s workers...\n' "$VITEST_MAX_WORKERS"
-pnpm exec vitest run --maxWorkers "$VITEST_MAX_WORKERS"
+  printf '\nRunning Vitest with up to %s workers...\n' "$VITEST_MAX_WORKERS"
+  pnpm exec vitest run --maxWorkers "$VITEST_MAX_WORKERS"
 
-printf '\nChecking Rust with %s compiler jobs...\n' "$CARGO_BUILD_JOBS"
-cargo check \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-targets \
-  --all-features \
-  --jobs "$CARGO_BUILD_JOBS"
+  printf '\nChecking Rust with %s compiler jobs...\n' "$CARGO_BUILD_JOBS"
+  cargo check \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-targets \
+    --all-features \
+    --jobs "$CARGO_BUILD_JOBS"
 
-printf '\nRunning Rust tests with %s compiler jobs and %s test threads...\n' \
-  "$CARGO_BUILD_JOBS" "$OSTUDY_ANDROID_JOBS"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --jobs "$CARGO_BUILD_JOBS" \
-  -- \
-  --test-threads "$OSTUDY_ANDROID_JOBS"
+  printf '\nRunning Rust tests with %s compiler jobs and %s test threads...\n' \
+    "$CARGO_BUILD_JOBS" "$OSTUDY_ANDROID_JOBS"
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --jobs "$CARGO_BUILD_JOBS" \
+    -- \
+    --test-threads "$OSTUDY_ANDROID_JOBS"
+
+fi
 
 # tauri.settings.gradle and the private-plugin inclusion it contains are
 # transient Tauri CLI build state. They are intentionally ignored by Git and

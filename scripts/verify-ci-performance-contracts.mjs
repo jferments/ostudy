@@ -16,6 +16,9 @@ const [
   ciTestTmpdir,
   ciCapture,
   checkFull,
+  checkWorkflow,
+  androidTest,
+  androidSmokeSetup,
   installer,
   guestPreflight,
   storageReport,
@@ -31,6 +34,9 @@ const [
     read("scripts", "lib", "ci-test-tmpdir.bash"),
     read("scripts", "run-ci-captured.sh"),
     read("scripts", "check.sh"),
+    read(".github", "workflows", "check.yml"),
+    read("scripts", "android-test.sh"),
+    read("scripts", "lib", "android-emulator-smoke-setup.bash"),
     read("scripts", "install-native-deps.sh"),
     read("scripts", "runner", "guest-preflight.sh"),
     read("scripts", "runner", "report-storage.sh"),
@@ -108,6 +114,30 @@ requireText("captured timing transport", ciCapture, [
   "qualification phase timings",
   "grep '^TIMING '",
 ]);
+requireText("full avoids duplicate library suite", checkFull, [
+  'step "Rust integration and migration-fixture tests"',
+  "--test document_artifact_metadata_migration7",
+  "--test document_citation_migration6",
+  "--test study_guide_migration5",
+  'step "Rust binary tests"',
+  'step "Rust documentation tests"',
+]);
+if (checkFull.includes('step "Rust unit, integration, and migration-fixture tests"')) {
+  failures.push("full qualification must not rerun the complete Rust library suite after fast qualification");
+}
+requireText("same-job all-full reuse markers", checkWorkflow, [
+  "OSTUDY_LINUX_FULL_PASSED",
+  "OSTUDY_ANDROID_COMPILE_PASSED",
+]);
+requireText("Android shared-check reuse", androidTest, [
+  "OSTUDY_LINUX_FULL_PASSED",
+  "REUSE Shared TypeScript, Vitest, host Rust compile/lint, and Rust test coverage",
+]);
+requireText("Android smoke build reuse", androidSmokeSetup, [
+  "OSTUDY_ANDROID_COMPILE_PASSED",
+  "REUSE x86_64 Android smoke APK and instrumentation package",
+]);
+
 requireText("PDFium cache", installer, [
   "OSTUDY_NATIVE_DEPS_CACHE_DIR",
   "cached_library",
