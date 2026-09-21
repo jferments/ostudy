@@ -1062,6 +1062,7 @@ async fn compose_collection_guide(
             &window.topic_context,
             &relationship_context,
             &window.catalog,
+            &signal,
         )
         .await?;
         let mut content = generated.content;

@@ -62,15 +62,12 @@ impl AiGateway {
         maximum_content_bytes: usize,
     ) -> Result<Value, AiGatewayError> {
         let Some(cancellation) = current_signal() else {
-            return self
-                .post_json(
-                    url,
-                    bearer,
-                    body,
-                    inactivity_timeout_ms,
-                    maximum_content_bytes,
-                )
-                .await;
+            return Err(error(
+                "ai_document_task_scope_missing",
+                "A document AI request was started outside its cancellable document task scope.",
+                false,
+                None,
+            ));
         };
 
         record_current_provider_request();

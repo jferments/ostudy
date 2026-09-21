@@ -60,6 +60,24 @@ async fn ordinary_json_remains_non_streaming_inside_a_document_task() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn document_transport_requires_a_cancellable_document_scope() {
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    let failure = gateway
+        .post_document_json(
+            Url::parse("http://127.0.0.1:9/should-not-contact")
+                .expect("mock URL should parse"),
+            None,
+            &json!({ "model": "test" }),
+            1,
+            1_024,
+        )
+        .await
+        .expect_err("an unscoped document request must fail before transport");
+
+    assert_eq!(failure.safe.code, "ai_document_task_scope_missing");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn document_cancellation_interrupts_initial_header_wait() {
     const DOCUMENT_ID: &str = "gateway-cancel-before-headers";
     let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
