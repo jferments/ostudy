@@ -376,7 +376,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod context_budget_tests {
     use super::*;

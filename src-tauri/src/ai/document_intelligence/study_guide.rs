@@ -130,16 +130,15 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         ));
     }
     let system = collection_study_guide_system_prompt();
-    let (user, bounded_knowledge, visible_completion_tokens) =
-        fit_collection_guide_request(
-            task,
-            &system,
-            collection_title,
-            topic_title,
-            topic_summary,
-            relationship_context,
-            knowledge,
-        )?;
+    let (user, bounded_knowledge, visible_completion_tokens) = fit_collection_guide_request(
+        task,
+        &system,
+        collection_title,
+        topic_title,
+        topic_summary,
+        relationship_context,
+        knowledge,
+    )?;
     if bounded_knowledge.units.len() < knowledge.units.len() {
         crate::logging::info_target(
             "ai.document.study_guide",
@@ -201,12 +200,7 @@ fn fit_collection_guide_request(
                     if error.code == "ai_document_context_budget" && bounded.units.len() > 1 =>
                 {
                     last_budget_error = Some(error);
-                    let next_len = bounded
-                        .units
-                        .len()
-                        .saturating_mul(3)
-                        .div_ceil(4)
-                        .max(1);
+                    let next_len = bounded.units.len().saturating_mul(3).div_ceil(4).max(1);
                     bounded.units.truncate(next_len);
                 }
                 Err(error) if error.code == "ai_document_context_budget" => {
@@ -308,11 +302,11 @@ async fn request_study_guide_section_with_retry(
                 "study_guide_repair_started",
                 "One bounded guide repair will run; provider content is not logged.",
                 json!({"code":error.code,"detail":bounded_diagnostic(&error.message,400),
-                    "hasRepairCandidate":draft.is_some(),"maximumOutput":task.completion_token_ceiling(
-                        STUDY_GUIDE_REPAIR_COMPLETION_TOKENS.min(
-                            visible_completion_tokens.saturating_add(1_000)
-                        )
-                    )}),
+                "hasRepairCandidate":draft.is_some(),"maximumOutput":task.completion_token_ceiling(
+                    STUDY_GUIDE_REPAIR_COMPLETION_TOKENS.min(
+                        visible_completion_tokens.saturating_add(1_000)
+                    )
+                )}),
             );
             let candidate = draft.map_or_else(String::new, |value| {
                 format!("\n<invalid-guide-candidate>\n{value}\n</invalid-guide-candidate>")
