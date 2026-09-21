@@ -570,10 +570,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(
-            second.scope,
-            StudyScope::single(ScopeKind::Library, None)
-        );
+        assert_eq!(second.scope, StudyScope::single(ScopeKind::Library, None));
 
         let explicit = conversations::create_in_project(
             &database,
