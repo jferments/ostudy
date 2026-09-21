@@ -45,11 +45,11 @@ This is the minimum maintained gate for documentation-only work.
 
 ### `check-fast.sh`
 
-Adds high-return deterministic tests such as the complete frontend/controller/component suite and locked warning-free Rust compilation. A single native inventory pass proves the critical document/Tutor/backup/migration contract families still exist, then one complete Rust library-test process executes all library tests in parallel instead of serially re-launching Cargo for overlapping filters; the maintained document-metadata integration binary runs separately. On the isolated CI guest, disposable test temporary files use RAM-backed `/dev/shm` when at least 4 GiB is free, while Cargo/package caches remain persistent on disk. This is the automatic draft-PR product gate.
+Adds high-return deterministic tests such as the complete frontend/controller/component suite, locked Rust compilation/lint-oriented checks, and focused native/document/platform contracts selected by the wrapper. This is the automatic draft-PR product gate.
 
 ### `check.sh`
 
-The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint coverage, the integration-test targets plus binary/doctest coverage not owned by the fast library harness, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows. It does not rerun the complete Rust library suite after the exact-tree fast boundary has already passed.
+The authoritative Linux/shared qualification. It includes the fast/static foundations plus the maintained complete native/frontend build and integration suite: native dependency verification, production frontend build, warning-free Rust lint/test coverage, migrations/repairs and public-schema compatibility, package/import/backup/restore behavior, scheduling/practice/analytics/deletion invariants, AI/document/Study Guide/sync contracts, standalone Tauri build, built-binary startup/persistence/adoption smoke, and native WebDriver workflows.
 
 The current public migration registry is defined by `src-tauri/src/database.rs` (schema version 17 at the LK-02 checkpoint). Public-lineage startup and backup admission require an exact known migration-ledger prefix with matching SQLite `user_version` before conversion writes. Older pre-public v26 terminology belongs to the historical adoption input, not to the current public schema.
 
@@ -152,7 +152,7 @@ all-full
 
 Automatic and manual runs have separate contexts/concurrency so a diagnostic dispatch does not replace the required automatic PR check.
 
-For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke. Within the same successful exact-SHA `all-full` job, Android compile reuses shared TypeScript/Vitest/host-Rust coverage established by Linux full, and emulator smoke reuses the x86_64 smoke-bridge application/instrumentation APKs produced by Android compile. Standalone Android gates remain self-contained and execute/build those prerequisites themselves.
+For non-preflight gates, static qualification is the first substantive source boundary. `all-full` then performs runner/KVM/dependency preflight, authoritative Linux `check.sh`, Android compile/package, and API 36 emulator smoke. Within one successful exact-SHA `all-full` job, Android compile reuses the shared TypeScript/Vitest/host-Rust coverage already established by Linux full, and emulator smoke reuses the x86_64 smoke-bridge APK/instrumentation package produced by Android compile. Standalone Android gates remain self-contained.
 
 Every run records the tested SHA and selected gate and produces machine-readable/bounded qualification/failure evidence. That evidence is persisted on the self-hosted runner rather than uploaded to GitHub Actions storage. A run qualifies only the SHA it actually checked out. A later source push requires new product qualification; a PR-body-only edit does not.
 

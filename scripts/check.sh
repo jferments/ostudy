@@ -16,8 +16,6 @@ source "$SCRIPT_DIR/cargo-target.sh"
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/qualification-timing.bash"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/ci-test-tmpdir.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -42,16 +40,12 @@ if [[ "${OSTUDY_ALLOW_QUALIFICATION_REUSE:-0}" == "1" ]] \
   exit 0
 fi
 
-ostudy_prepare_ci_test_tmpdir full
 prepare_cargo_target "$ROOT_DIR"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/build-state.sh"
 
 WORKTREE_BASELINE="$(mktemp -t ostudy-full-worktree.XXXXXXXX)"
-cleanup_worktree_baseline() {
-  rm -f -- "$WORKTREE_BASELINE"
-  ostudy_cleanup_ci_test_tmpdir
-}
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
 trap cleanup_worktree_baseline EXIT
 ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
 
@@ -104,32 +98,8 @@ pnpm run build
 step "Rust linting"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
-step "Rust integration and migration-fixture tests"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --test document_artifact_metadata_migration7 \
-  --test document_citation_migration6 \
-  --test study_guide_migration5 \
-  -- \
-  --test-threads "$CARGO_BUILD_JOBS"
-
-step "Rust binary tests"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --bins \
-  -- \
-  --test-threads "$CARGO_BUILD_JOBS"
-
-step "Rust documentation tests"
-cargo test \
-  --manifest-path src-tauri/Cargo.toml \
-  --locked \
-  --all-features \
-  --doc
+step "Rust unit, integration, and migration-fixture tests"
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 
 step "Standalone Tauri build"
 pnpm tauri build --debug --no-bundle --ci -- --locked

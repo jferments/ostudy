@@ -12,13 +12,6 @@ const [
   checkFast,
   timing,
   nativeContracts,
-  fastNativeInventory,
-  ciTestTmpdir,
-  ciCapture,
-  checkFull,
-  checkWorkflow,
-  androidTest,
-  androidSmokeSetup,
   installer,
   guestPreflight,
   storageReport,
@@ -30,13 +23,6 @@ const [
     read("scripts", "check-fast.sh"),
     read("scripts", "lib", "qualification-timing.bash"),
     read("scripts", "test-native-contracts.sh"),
-    read("scripts", "verify-fast-native-contracts.sh"),
-    read("scripts", "lib", "ci-test-tmpdir.bash"),
-    read("scripts", "run-ci-captured.sh"),
-    read("scripts", "check.sh"),
-    read(".github", "workflows", "check.yml"),
-    read("scripts", "android-test.sh"),
-    read("scripts", "lib", "android-emulator-smoke-setup.bash"),
     read("scripts", "install-native-deps.sh"),
     read("scripts", "runner", "guest-preflight.sh"),
     read("scripts", "runner", "report-storage.sh"),
@@ -81,63 +67,6 @@ requireText("native contract helper", nativeContracts, [
   "matched no tests",
   "did not execute every selected test",
 ]);
-
-requireText("fast native inventory", fastNativeInventory, [
-  "--list",
-  "database::entry_tests::",
-  "knowledge::",
-  "library_backup::image_set_backup_tests::",
-  "public_migration_checksum_and_future_version_are_enforced",
-]);
-requireText("CI tmpfs test workspace", ciTestTmpdir, [
-  "/dev/shm",
-  "OSTUDY_CI_USE_TMPFS",
-  "4 * 1024 * 1024",
-  "export TMPDIR",
-]);
-requireText("fast tmpfs and consolidated Rust execution", checkFast, [
-  "ostudy_prepare_ci_test_tmpdir fast",
-  'step "Critical native contract inventory"',
-  'step "Rust library contract suite"',
-  '--test-threads "$CARGO_BUILD_JOBS"',
-]);
-const fastCargoTestCalls = checkFast.match(/\bcargo test\b/gu) ?? [];
-if (fastCargoTestCalls.length !== 2) {
-  failures.push(`fast qualification must contain exactly two cargo test commands after inventory, found ${fastCargoTestCalls.length}`);
-}
-requireText("full tmpfs and timing", checkFull, [
-  "ostudy_prepare_ci_test_tmpdir full",
-  "ostudy_timing_init full",
-  "ostudy_timing_finish_total passed",
-]);
-requireText("captured timing transport", ciCapture, [
-  "qualification phase timings",
-  "grep '^TIMING '",
-]);
-requireText("full avoids duplicate library suite", checkFull, [
-  'step "Rust integration and migration-fixture tests"',
-  "--test document_artifact_metadata_migration7",
-  "--test document_citation_migration6",
-  "--test study_guide_migration5",
-  'step "Rust binary tests"',
-  'step "Rust documentation tests"',
-]);
-if (checkFull.includes('step "Rust unit, integration, and migration-fixture tests"')) {
-  failures.push("full qualification must not rerun the complete Rust library suite after fast qualification");
-}
-requireText("same-job all-full reuse markers", checkWorkflow, [
-  "OSTUDY_LINUX_FULL_PASSED",
-  "OSTUDY_ANDROID_COMPILE_PASSED",
-]);
-requireText("Android shared-check reuse", androidTest, [
-  "OSTUDY_LINUX_FULL_PASSED",
-  "REUSE Shared TypeScript, Vitest, host Rust compile/lint, and Rust test coverage",
-]);
-requireText("Android smoke build reuse", androidSmokeSetup, [
-  "OSTUDY_ANDROID_COMPILE_PASSED",
-  "REUSE x86_64 Android smoke APK and instrumentation package",
-]);
-
 requireText("PDFium cache", installer, [
   "OSTUDY_NATIVE_DEPS_CACHE_DIR",
   "cached_library",

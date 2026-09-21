@@ -214,12 +214,6 @@ ostudy_replay_command_for_step() {
     "Rust warnings-as-errors lint gate"|"Rust linting")
       printf 'cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings'
       ;;
-    "Critical native contract inventory")
-      printf './scripts/verify-fast-native-contracts.sh'
-      ;;
-    "Rust library contract suite")
-      printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib -- --nocapture'
-      ;;
     "External file transfer and recovery contracts")
       printf 'cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib external_file_ -- --nocapture'
       ;;

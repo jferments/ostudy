@@ -16,8 +16,6 @@ source "$SCRIPT_DIR/cargo-target.sh"
 source "$SCRIPT_DIR/lib/diagnostics.bash"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/qualification-timing.bash"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/ci-test-tmpdir.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check-fast.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -31,10 +29,7 @@ cd "$ROOT_DIR"
 ostudy_timing_init fast
 
 WORKTREE_BASELINE="$(mktemp -t ostudy-fast-worktree.XXXXXXXX)"
-cleanup_worktree_baseline() {
-  rm -f -- "$WORKTREE_BASELINE"
-  ostudy_cleanup_ci_test_tmpdir
-}
+cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
 trap cleanup_worktree_baseline EXIT
 ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
 
@@ -58,8 +53,6 @@ if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   ostudy_timing_finish_total reused
   exit 0
 fi
-
-ostudy_prepare_ci_test_tmpdir fast
 
 step "Static qualification"
 if [[ "${OSTUDY_STATIC_CHECK_PASSED:-0}" == "1" ]] \
@@ -89,26 +82,113 @@ pnpm test
 step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
-step "Critical native contract inventory"
-bash "$SCRIPT_DIR/verify-fast-native-contracts.sh"
+step "Current-format entry and preservation contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" database::entry_tests:: current_format_tests::
 
-step "Rust library contract suite"
+step "External file transfer and recovery contracts"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
   --locked \
   --all-features \
   --lib \
-  -- \
-  --test-threads "$CARGO_BUILD_JOBS"
+  external_file_
+
+step "Document domain and persistence contracts"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  document_
+
+step "Ordered image-set source and backup contracts"
+bash "$SCRIPT_DIR/test-native-contracts.sh" documents::image_sets:: library_backup::image_set_backup_tests::
+
+step "Tutor, shared knowledge, privacy, and managed-media portability contracts"
+for test_filter in tutor:: knowledge:: task_activity:: task_cancellation:: device_sync::scope:: device_sync::package:: library_backup::media_backup_tests library_backup::tutor_backup_tests; do
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    "$test_filter"
+done
+
+step "Stage 10 rich-content and document-lifecycle regressions"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  cards::content::tests::accepts_versioned_tables_tasks_and_subscripts \
+  -- --exact
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  documents::lifecycle::tests::startup_interruption_preserves_ready_state_for_a_guide_only_document \
+  -- --exact
+
+step "Native rich-document compatibility"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  cards::
+
+step "Interactive question authoring and migration preservation"
+for test_filter in authoring::card_commands::interactive:: database::interactive_migration_tests:: practice::question_attempts:: asset_lifecycle::question_attempt_assets_keep_images_referenced asset_lifecycle::occlusion::; do
+  cargo test \
+    --manifest-path src-tauri/Cargo.toml \
+    --locked \
+    --all-features \
+    --lib \
+    "$test_filter"
+done
 
 step "Document metadata migration regression"
 cargo test \
   --manifest-path src-tauri/Cargo.toml \
   --locked \
   --all-features \
-  --test document_artifact_metadata_migration7 \
-  -- \
-  --test-threads "$CARGO_BUILD_JOBS"
+  --test document_artifact_metadata_migration7
+
+step "PDF extraction, rendering, and OCR contracts"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  pdf_
+
+step "Latest-schema migration contract"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::tests::latest_schema_is_idempotent_and_public_baseline_fixture_is_immutable \
+  -- --exact
+
+step "Anki APKG staging migration regression"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::tests::anki_apkg_migration_preserves_existing_staging_rows_and_accepts_apkg \
+  -- --exact
+
+step "Public migration immutability contract"
+cargo test \
+  --manifest-path src-tauri/Cargo.toml \
+  --locked \
+  --all-features \
+  --lib \
+  database::tests::public_migration_checksum_and_future_version_are_enforced \
+  -- --exact
 
 ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
 ostudy_timing_finish_step passed
