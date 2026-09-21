@@ -561,9 +561,10 @@ fn decode_collection_guide_content(
             section.block_key != "coverage"
                 && !section.title.trim().eq_ignore_ascii_case("Coverage notes")
         });
-        content.overview.learning_objectives.retain(|objective| {
-            !objective.trim().to_ascii_lowercase().starts_with("review ")
-        });
+        content
+            .overview
+            .learning_objectives
+            .retain(|objective| !objective.trim().to_ascii_lowercase().starts_with("review "));
         return Ok(content);
     }
     let synthesis: CollectionSynthesis =
