@@ -342,7 +342,7 @@ pub(crate) fn guide_topic_catalogs(
                 .map(|id| {
                     units
                         .get(id.as_str())
-                        .map(|unit| (*unit).clone())
+                        .map(|unit| (**unit).clone())
                         .ok_or_else(repository::stale_source)
                 })
                 .collect::<Result<Vec<_>, CommandError>>()?;
