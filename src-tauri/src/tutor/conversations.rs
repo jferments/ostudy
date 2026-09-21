@@ -85,6 +85,7 @@ pub(crate) fn create_in_project(
             let saved = load_summary(&transaction, &id)?;
             if saved.project_id.as_deref() != Some(input.project_id.as_str())
                 || saved.title != input.title.trim()
+                || input.scope.as_ref().is_some_and(|scope| &saved.scope != scope)
             {
                 return Err(invalid(
                     "This conversation operation was already used for different input.",
@@ -92,7 +93,14 @@ pub(crate) fn create_in_project(
             }
             return Ok(saved);
         }
-        let scope = projects::active_default_scope(&transaction, &input.project_id)?;
+        let project_default = projects::active_default_scope(&transaction, &input.project_id)?;
+        let scope = match &input.scope {
+            Some(scope) => {
+                crate::knowledge::adapters::scope_documents(&transaction, scope)?;
+                scope.clone()
+            }
+            None => project_default,
+        };
         let id = generate_id(&transaction)?;
         let now = unix_time_millis()?;
         let scope_json = serde_json::to_string(&scope).map_err(CommandError::serialization)?;

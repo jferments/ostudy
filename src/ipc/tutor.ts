@@ -148,6 +148,7 @@ export async function createTutorProjectConversation(input: {
   operationId: string;
   projectId: string;
   title: string;
+  scope: StudyScope | null;
 }): Promise<ConversationSummary> {
   return invoke<ConversationSummary>("create_tutor_project_conversation", { input });
 }

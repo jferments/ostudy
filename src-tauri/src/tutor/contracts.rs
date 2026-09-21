@@ -275,13 +275,18 @@ pub struct CreateProjectConversationInput {
     pub operation_id: String,
     pub project_id: String,
     pub title: String,
+    pub scope: Option<StudyScope>,
 }
 
 impl CreateProjectConversationInput {
     pub(crate) fn validate(&self) -> Result<(), CommandError> {
         validate_entity_id(&self.operation_id, "conversation operation")?;
         validate_entity_id(&self.project_id, "Tutor project")?;
-        bounded(&self.title, 200, "conversation title", false)
+        bounded(&self.title, 200, "conversation title", false)?;
+        if let Some(scope) = &self.scope {
+            scope.validate()?;
+        }
+        Ok(())
     }
 }
 
