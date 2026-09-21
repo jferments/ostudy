@@ -33,7 +33,7 @@ requireText("static timing", checkStatic, [
 requireText("fast timing", checkFast, [
   "qualification-timing.bash",
   "ostudy_timing_init fast",
-  'step "Rust compile and warnings-as-errors lint gate"',
+  'step "Rust warnings-as-errors lint gate"',
   "cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings",
 ]);
 if (

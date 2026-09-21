@@ -79,7 +79,7 @@ printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 step "React tests"
 pnpm test
 
-step "Rust compile and warnings-as-errors lint gate"
+step "Rust warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
 step "Current-format entry and preservation contracts"
