@@ -1,0 +1,108 @@
+"""Behavioral regressions for content-free generation accounting and migration 27."""
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import sqlite3
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("generation_usage", ROOT / "scripts/generation-usage.py")
+USAGE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(USAGE)
+
+
+class GenerationUsageTests(unittest.TestCase):
+    def test_input_and_output_percentages_have_independent_denominators(self):
+        report = USAGE.summarize({"operationId": "a" * 32, "requests": [
+            {"stage": "knowledge_extraction", "inputTokens": 800, "outputTokens": 100,
+             "reasoningTokens": 20, "cachedInputTokens": 600, "totalTokens": 900,
+             "attempt": 1, "status": "response"},
+            {"stage": "collection_guide_authoring", "inputTokens": 200, "outputTokens": 400,
+             "reasoningTokens": 100, "cachedInputTokens": 0, "totalTokens": 600,
+             "attempt": 2, "status": "response"},
+        ]})
+        rows = {row["stage"]: row for row in report["stages"]}
+        self.assertEqual(rows["knowledge_extraction"]["percentOfReportedInput"], 80)
+        self.assertEqual(rows["knowledge_extraction"]["percentOfReportedOutput"], 20)
+        self.assertEqual(report["totals"]["inputTokens"], 1000)
+        self.assertEqual(report["totals"]["outputTokens"], 500)
+        self.assertEqual(report["totals"]["totalTokens"], 1500)
+        self.assertEqual(report["totals"]["reasoningPercentOfCoveredOutput"], 24)
+        self.assertEqual(report["totals"]["cacheReadPercentOfCoveredInput"], 60)
+        self.assertEqual(report["totals"]["repeatedLogicalRequests"], 1)
+        self.assertTrue(report["usageComplete"])
+
+    def test_unknown_usage_is_not_zero_or_fictitious_cache_savings(self):
+        report = USAGE.summarize({"requests": [
+            {"stage": "knowledge_extraction", "inputTokens": 100, "outputTokens": 20,
+             "cachedInputTokens": None, "reasoningTokens": None, "status": "response"},
+            {"stage": "collection_guide_authoring", "inputTokens": None,
+             "outputTokens": None, "status": "interrupted"},
+        ], "localReuse": [{"stage": "collection_guide_authoring", "count": 4}]})
+        self.assertFalse(report["usageComplete"])
+        self.assertEqual(report["totals"]["inputTokensMissingRequests"], 1)
+        self.assertIsNone(report["totals"]["cacheReadPercentOfCoveredInput"])
+        self.assertIsNone(report["totals"]["reasoningPercentOfCoveredOutput"])
+        self.assertEqual(report["localReuse"][0]["count"], 4)
+        self.assertIn("reported usage only", USAGE.render(report))
+
+    def test_zero_request_reuse_has_no_token_percentages(self):
+        report = USAGE.summarize({"requests": [], "localReuse": [{"stage": "collection_guide", "count": 1}]})
+        self.assertEqual(report["totals"]["inputTokens"], 0)
+        self.assertEqual(report["totals"]["outputTokens"], 0)
+        self.assertEqual(report["stages"], [])
+        self.assertTrue(report["usageComplete"])
+
+    def test_migration_preserves_unknown_usage_and_source_owned_cache_lifetime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "library.sqlite3"
+            connection = sqlite3.connect(path)
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.executescript("""
+                CREATE TABLE documents(id TEXT PRIMARY KEY);
+                CREATE TABLE document_collections(id TEXT PRIMARY KEY);
+                CREATE TABLE knowledge_sources(id TEXT PRIMARY KEY,content_hash TEXT,active INTEGER,extraction_contract TEXT);
+                CREATE TABLE study_target_guides(id TEXT PRIMARY KEY);
+            """)
+            sql = (ROOT / "src-tauri/migrations/0027_generation_reuse_and_usage.sql").read_text()
+            connection.executescript(sql)
+            operation = "a" * 32
+            collection = "b" * 32
+            source = "c" * 32
+            key = "d" * 64
+            connection.execute("INSERT INTO document_collections VALUES(?)", (collection,))
+            connection.execute("INSERT INTO knowledge_sources VALUES(?,?,1,'v1')", (source, "e" * 64))
+            connection.execute("INSERT INTO generation_operations VALUES(?,?,NULL,?,1,NULL,'running')",
+                               (operation, "collection_bundle", collection))
+            connection.execute("""INSERT INTO generation_requests(
+                id,operation_id,stage,request_key,attempt,provider,model,status,started_at,payload_bytes_json,max_output_tokens
+                ) VALUES(?,?,?, ?,1,'test','test','started',1,'{}',6144)""",
+                               ("f" * 32, operation, "collection_guide_authoring", key))
+            connection.execute("INSERT INTO collection_guide_checkpoints VALUES(?,?,?,?,?,1)",
+                               (key, collection, "e" * 64, '{}', "e" * 64))
+            connection.execute("INSERT INTO collection_guide_checkpoint_sources VALUES(?,?)", (key, source))
+            connection.commit()
+            before = hashlib.sha256(path.read_bytes()).hexdigest()
+            report = USAGE.summarize(USAGE.read_database(path, operation, False))
+            self.assertFalse(report["usageComplete"])
+            self.assertEqual(report["totals"]["failedOrInterruptedRequests"], 1)
+            self.assertEqual(before, hashlib.sha256(path.read_bytes()).hexdigest())
+            connection.execute("UPDATE knowledge_sources SET content_hash=? WHERE id=?", ("9" * 64, source))
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM collection_guide_checkpoints").fetchone()[0], 0)
+            connection.execute("DELETE FROM document_collections WHERE id=?", (collection,))
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM generation_requests").fetchone()[0], 0)
+            connection.close()
+
+    def test_report_does_not_add_reasoning_or_cached_tokens_to_totals(self):
+        data = {"requests": [{"stage": "guide", "inputTokens": 10, "outputTokens": 5,
+                              "reasoningTokens": 3, "cachedInputTokens": 8, "totalTokens": 15}]}
+        report = USAGE.summarize(data)
+        self.assertEqual(report["totals"]["totalTokens"], 15)
+        self.assertEqual(report["totals"]["inputTokens"] + report["totals"]["outputTokens"], 15)
+        json.dumps(report, allow_nan=False)
+
+
+if __name__ == "__main__":
+    unittest.main()

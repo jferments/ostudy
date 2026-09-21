@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Read-only, content-free generation usage report (Python standard library).
+
+Percentages use provider-reported input/output totals independently. Missing
+usage is never imputed as zero. Reasoning is a subset of output, and cache reads
+are a subset of input; neither is added to total tokens a second time.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import defaultdict
+import json
+from pathlib import Path
+import sqlite3
+import sys
+from typing import Any
+
+FIELDS = ("inputTokens", "outputTokens", "reasoningTokens", "cachedInputTokens",
+          "cacheWriteTokens", "totalTokens", "cost")
+
+
+def percentage(numerator: int | float, denominator: int | float) -> float | None:
+    return 100.0 * numerator / denominator if denominator else None
+
+
+def valid_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+
+
+def summarize(data: dict[str, Any]) -> dict[str, Any]:
+    requests = data.get("requests", [])
+    if not isinstance(requests, list):
+        raise ValueError("requests must be an array")
+    stages: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in requests:
+        if not isinstance(row, dict) or not isinstance(row.get("stage"), str):
+            raise ValueError("each request requires a stage")
+        stages[row["stage"]].append(row)
+
+    def totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {"requests": len(rows)}
+        for field in FIELDS:
+            known = [row[field] for row in rows if valid_number(row.get(field))]
+            result[field] = sum(known) if known else (0 if not rows else None)
+            result[field + "MissingRequests"] = len(rows) - len(known)
+        result["failedOrInterruptedRequests"] = sum(
+            row.get("status") in ("failed", "interrupted", "started") for row in rows)
+        repeated = [row for row in rows if row.get("attempt", 1) > 1]
+        result["repeatedLogicalRequests"] = len(repeated)
+        result["repeatReportedInputTokens"] = sum(
+            row["inputTokens"] for row in repeated if valid_number(row.get("inputTokens")))
+        result["repeatReportedOutputTokens"] = sum(
+            row["outputTokens"] for row in repeated if valid_number(row.get("outputTokens")))
+        cache_pairs = [row for row in rows if valid_number(row.get("inputTokens"))
+                       and valid_number(row.get("cachedInputTokens"))]
+        result["cacheReadPercentOfCoveredInput"] = percentage(
+            sum(row["cachedInputTokens"] for row in cache_pairs),
+            sum(row["inputTokens"] for row in cache_pairs))
+        result["cacheReadCoverageRequests"] = len(cache_pairs)
+        reasoning_pairs = [row for row in rows if valid_number(row.get("outputTokens"))
+                           and valid_number(row.get("reasoningTokens"))]
+        result["reasoningPercentOfCoveredOutput"] = percentage(
+            sum(row["reasoningTokens"] for row in reasoning_pairs),
+            sum(row["outputTokens"] for row in reasoning_pairs))
+        result["reasoningCoverageRequests"] = len(reasoning_pairs)
+        result["inconsistentUsageRequests"] = sum(
+            (valid_number(row.get("cachedInputTokens"))
+             and valid_number(row.get("inputTokens"))
+             and row["cachedInputTokens"] > row["inputTokens"])
+            or (valid_number(row.get("reasoningTokens"))
+                and valid_number(row.get("outputTokens"))
+                and row["reasoningTokens"] > row["outputTokens"])
+            for row in rows)
+        return result
+
+    overall = totals(requests)
+    results = []
+    for stage, rows in sorted(stages.items()):
+        values = totals(rows)
+        values["stage"] = stage
+        values["percentOfReportedInput"] = percentage(
+            values["inputTokens"] or 0, overall["inputTokens"] or 0)
+        values["percentOfReportedOutput"] = percentage(
+            values["outputTokens"] or 0, overall["outputTokens"] or 0)
+        results.append(values)
+    return {
+        "schemaVersion": 1,
+        "operationId": data.get("operationId"),
+        "totals": overall,
+        "stages": results,
+        "localReuse": data.get("localReuse", []),
+        "usageComplete": not overall["inputTokensMissingRequests"]
+                         and not overall["outputTokensMissingRequests"],
+        "notes": [
+            "Stage percentages are shares of REPORTED input and output, separately.",
+            "Missing/failed/interrupted usage is unknown, not zero. This is not a complete bill when usage is missing.",
+            "Reasoning is contained in output; cached input is contained in input. Cache and reasoning rates use only requests reporting both fields.",
+            "Local reuse means no provider request. Provider prompt caching still incurs a request.",
+            "Payload byte counts and textTokenEstimate are diagnostic estimates, never substituted for provider tokens.",
+            "Attempt ordinals group the same logical section, or identical wire requests when no section identity is available.",
+        ],
+        "requests": requests,
+    }
+
+
+def read_database(path: Path, operation: str | None, all_operations: bool) -> dict[str, Any]:
+    path = path.expanduser().resolve(strict=True)
+    uri = path.as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("BEGIN")
+        connection.row_factory = sqlite3.Row
+        if not all_operations and operation is None:
+            row = connection.execute(
+                "SELECT id FROM generation_operations ORDER BY started_at DESC,id DESC LIMIT 1").fetchone()
+            operation = row[0] if row else None
+        if not all_operations and operation is None:
+            return {"operationId": None, "requests": [], "localReuse": []}
+        where = "" if all_operations else "WHERE operation_id=?"
+        args = () if all_operations else (operation,)
+        rows = connection.execute(f"""
+            SELECT id AS requestId,operation_id AS operationId,stage,attempt,provider,model,status,
+                   input_tokens AS inputTokens,output_tokens AS outputTokens,
+                   reasoning_tokens AS reasoningTokens,cached_input_tokens AS cachedInputTokens,
+                   cache_write_tokens AS cacheWriteTokens,total_tokens AS totalTokens,cost,
+                   response_id AS responseId,finish_reason AS finishReason,error_code AS errorCode,
+                   payload_bytes_json AS payloadBytesJson,max_output_tokens AS maxOutputTokens,
+                   started_at AS startedAt,finished_at AS finishedAt
+            FROM generation_requests {where} ORDER BY started_at,id
+        """, args).fetchall()
+        reuse = connection.execute(f"""
+            SELECT stage,COUNT(*) AS count FROM generation_reuse_events {where}
+            GROUP BY stage ORDER BY stage
+        """, args).fetchall()
+        return {"operationId": "all" if all_operations else operation,
+                "requests": [dict(row) for row in rows],
+                "localReuse": [dict(row) for row in reuse]}
+
+
+def list_operations(path: Path) -> list[dict[str, Any]]:
+    uri = path.expanduser().resolve(strict=True).as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        connection.row_factory = sqlite3.Row
+        return [dict(row) for row in connection.execute("""
+            SELECT id,purpose,state,started_at AS startedAt,finished_at AS finishedAt
+            FROM generation_operations ORDER BY started_at DESC,id DESC LIMIT 50
+        """)]
+
+
+def render(report: dict[str, Any]) -> str:
+    def number(value: Any) -> str:
+        return "unknown" if value is None else f"{value:,.0f}"
+
+    def percent(value: Any) -> str:
+        return "n/a" if value is None else f"{value:.2f}%"
+
+    lines = [f"Generation operation: {report['operationId']}",
+             "Stage                         Requests       Input    Input %      Output   Output %"]
+    for row in report["stages"]:
+        lines.append(f"{row['stage']:<29} {row['requests']:>8} "
+                     f"{number(row['inputTokens']):>11} {percent(row['percentOfReportedInput']):>10} "
+                     f"{number(row['outputTokens']):>11} {percent(row['percentOfReportedOutput']):>10}")
+    total = report["totals"]
+    lines.extend(["", f"Reported input: {number(total['inputTokens'])}; output: {number(total['outputTokens'])}",
+                  f"Requests missing input/output usage: {total['inputTokensMissingRequests']}/{total['outputTokensMissingRequests']}",
+                  f"Failed, interrupted or unfinished requests: {total['failedOrInterruptedRequests']}",
+                  f"Repeated logical requests: {total['repeatedLogicalRequests']}",
+                  f"Cache reads: {number(total['cachedInputTokens'])} tokens; covered-input rate: {percent(total['cacheReadPercentOfCoveredInput'])} ({total['cacheReadCoverageRequests']} requests)",
+                  f"Reasoning: {number(total['reasoningTokens'])} tokens; covered-output share: {percent(total['reasoningPercentOfCoveredOutput'])} ({total['reasoningCoverageRequests']} requests)",
+                  f"Local reuse: {json.dumps(report['localReuse'], ensure_ascii=False)}", "",
+                  "Usage complete: " + ("yes" if report["usageComplete"] else "NO; percentages cover reported usage only"),
+                  *report["notes"]])
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--database", type=Path, help="Existing library.sqlite3; opened read-only")
+    source.add_argument("--input-json", type=Path, help="Content-free native diagnostic report")
+    parser.add_argument("--operation", help="Operation ID; defaults to latest")
+    parser.add_argument("--all", action="store_true", help="Aggregate all retained operations")
+    parser.add_argument("--list", action="store_true", help="List the 50 latest operations")
+    parser.add_argument("--json", action="store_true", help="Machine-readable report including request records")
+    args = parser.parse_args()
+    try:
+        if args.operation and args.all:
+            parser.error("--operation and --all cannot be combined")
+        if args.list:
+            if args.database is None:
+                parser.error("--list requires --database")
+            print(json.dumps(list_operations(args.database), indent=2))
+            return 0
+        if args.input_json:
+            data = json.loads(args.input_json.read_text(encoding="utf-8"))
+        else:
+            data = read_database(args.database, args.operation, args.all)
+        report = summarize(data)
+        print(json.dumps(report, indent=2, allow_nan=False) if args.json else render(report))
+        return 0
+    except (OSError, sqlite3.Error, ValueError, KeyError, TypeError) as error:
+        print(f"Could not read generation diagnostics: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
