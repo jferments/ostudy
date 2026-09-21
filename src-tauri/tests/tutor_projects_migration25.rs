@@ -39,7 +39,8 @@ fn schema_24() -> Connection {
 }
 
 #[test]
-fn migration_25_freezes_preexisting_turn_scope_before_project_moves_can_change_conversation_scope() {
+fn migration_25_freezes_preexisting_turn_scope_before_project_moves_can_change_conversation_scope()
+{
     let connection = schema_24();
     let conversation_id = "a".repeat(32);
     let turn_id = "b".repeat(32);

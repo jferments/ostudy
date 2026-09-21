@@ -39,26 +39,49 @@ fn full_backup_preserves_conversations_and_memory_policy_but_discards_old_vector
     let guard = apply_pending_restore(&target_paths).unwrap().unwrap();
     assert!(!cache.exists());
     let restored = Database::open(target_paths.database_path()).unwrap();
-    restored.with_connection(|connection| {
-        let row:(String,i64,i64,i64,String,i64)=connection.query_row(
-            "SELECT summary_text,history_enabled,retrieval_enabled,memory_start_sequence,
+    restored
+        .with_connection(|connection| {
+            let row: (String, i64, i64, i64, String, i64) = connection
+                .query_row(
+                    "SELECT summary_text,history_enabled,retrieval_enabled,memory_start_sequence,
                     project_id,organization_revision
              FROM tutor_conversations",
-            [],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?)),
-        ).map_err(CommandError::database)?;
-        assert_eq!(row,("Preserved summary".to_string(),1,1,2,"b".repeat(32),4));
-        let project:(String,String,String,i64)=connection.query_row(
-            "SELECT title,description,instructions,revision FROM tutor_projects",
-            [],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)),
-        ).map_err(CommandError::database)?;
-        assert_eq!(project,(
-            "Cardiology project".to_string(),
-            "Preserved description".to_string(),
-            "Preserved project instructions".to_string(),
-            3
-        ));
-        Ok(())
-    }).unwrap();
+                    [],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                        ))
+                    },
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                row,
+                ("Preserved summary".to_string(), 1, 1, 2, "b".repeat(32), 4)
+            );
+            let project: (String, String, String, i64) = connection
+                .query_row(
+                    "SELECT title,description,instructions,revision FROM tutor_projects",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                project,
+                (
+                    "Cardiology project".to_string(),
+                    "Preserved description".to_string(),
+                    "Preserved project instructions".to_string(),
+                    3
+                )
+            );
+            Ok(())
+        })
+        .unwrap();
     drop(restored);
     guard.commit();
     drop(source);
