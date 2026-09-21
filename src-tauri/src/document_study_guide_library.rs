@@ -237,7 +237,6 @@ pub(crate) fn list_study_guides(
     })
 }
 
-
 const UNIFIED_GUIDE_ROWS_SQL: &str = r#"
 WITH guide_rows AS (
     SELECT
@@ -354,13 +353,12 @@ WHERE (
     };
 
     database.with_connection(|connection| {
-        let count_sql = format!("{UNIFIED_GUIDE_ROWS_SQL}\nSELECT COUNT(*) FROM guide_rows\n{filter}");
+        let count_sql =
+            format!("{UNIFIED_GUIDE_ROWS_SQL}\nSELECT COUNT(*) FROM guide_rows\n{filter}");
         let total_count = connection
-            .query_row(
-                &count_sql,
-                params![normalized_query, pattern],
-                |row| row.get::<_, i64>(0),
-            )
+            .query_row(&count_sql, params![normalized_query, pattern], |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(CommandError::database)?;
 
         let sql = format!(

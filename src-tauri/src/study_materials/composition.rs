@@ -1075,10 +1075,42 @@ async fn compose_collection_guide(
         let p2 = indices.get(2).copied();
         let p3 = indices.get(3).copied();
         let (r0, r1, r2, r3) = tokio::join!(
-            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p0),
-            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p1),
-            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p2),
-            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p3),
+            collection_guide_slot(
+                runtime,
+                &task,
+                &collection_title,
+                &view,
+                &windows,
+                &signal,
+                p0
+            ),
+            collection_guide_slot(
+                runtime,
+                &task,
+                &collection_title,
+                &view,
+                &windows,
+                &signal,
+                p1
+            ),
+            collection_guide_slot(
+                runtime,
+                &task,
+                &collection_title,
+                &view,
+                &windows,
+                &signal,
+                p2
+            ),
+            collection_guide_slot(
+                runtime,
+                &task,
+                &collection_title,
+                &view,
+                &windows,
+                &signal,
+                p3
+            ),
         );
         for (index, result) in [r0, r1, r2, r3].into_iter().flatten() {
             sections[index] = Some(result?);
