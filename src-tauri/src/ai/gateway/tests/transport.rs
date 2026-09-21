@@ -64,8 +64,7 @@ async fn document_transport_requires_a_cancellable_document_scope() {
     let gateway = AiGateway::new().expect("gateway should initialize");
     let failure = gateway
         .post_document_json(
-            Url::parse("http://127.0.0.1:9/should-not-contact")
-                .expect("mock URL should parse"),
+            Url::parse("http://127.0.0.1:9/should-not-contact").expect("mock URL should parse"),
             None,
             &json!({ "model": "test" }),
             1,

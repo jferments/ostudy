@@ -22,9 +22,7 @@ use super::{
     support::{
         bounded_diagnostic, collapse_contract_error, output_error, retryable_contract_error,
     },
-    transport::{
-        ensure_context_budget, request_json, request_json_cancellable, JsonTaskRequest,
-    },
+    transport::{ensure_context_budget, request_json, request_json_cancellable, JsonTaskRequest},
 };
 
 const STUDY_GUIDE_VISIBLE_COMPLETION_TOKENS: usize = 2_200;
