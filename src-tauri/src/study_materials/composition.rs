@@ -1125,7 +1125,10 @@ fn collection_title(database: &Database, collection_id: &str) -> Result<String, 
 }
 
 fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> String {
-    let wanted = topic_ids.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
+    let wanted = topic_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::HashSet<_>>();
     let mut notes = view
         .synthesis
         .relationships

@@ -362,7 +362,10 @@ pub(crate) fn guide_section_windows(
                 .map(|locator| locator.first())
                 .or_else(|| source.segment_key.parse::<i64>().ok())
                 .unwrap_or(i64::MAX);
-            (source.id.as_str(), (document, unit, source.segment_key.as_str()))
+            (
+                source.id.as_str(),
+                (document, unit, source.segment_key.as_str()),
+            )
         })
         .collect::<HashMap<_, _>>();
     let units = plan
@@ -419,10 +422,7 @@ fn guide_window_topic_limit(topic_count: usize) -> usize {
     }
     topic_count
         .div_ceil(GUIDE_TARGET_SECTION_COUNT)
-        .clamp(
-            GUIDE_BASE_TOPICS_PER_SECTION,
-            GUIDE_MAX_TOPICS_PER_SECTION,
-        )
+        .clamp(GUIDE_BASE_TOPICS_PER_SECTION, GUIDE_MAX_TOPICS_PER_SECTION)
 }
 
 fn topic_source_position(
@@ -1916,19 +1916,16 @@ mod tests {
                 details: None,
             })
             .collect::<Vec<_>>();
-        repository::publish_units(&database, &source, &hash("many-topic-contract"), units)
-            .unwrap();
+        repository::publish_units(&database, &source, &hash("many-topic-contract"), units).unwrap();
 
         let state = refresh_native(&database, &collection).unwrap();
         assert!(state.synthesis.topics.len() > 96);
         let windows = guide_section_windows(&database, &collection, &state.synthesis).unwrap();
         assert!(windows.len() < state.synthesis.topics.len());
-        assert!(windows
-            .iter()
-            .all(|window| !window.topic_ids.is_empty()
-                && window.topic_ids.len() <= GUIDE_MAX_TOPICS_PER_SECTION
-                && !window.catalog.units.is_empty()
-                && window.catalog.units.len() <= GUIDE_MAX_UNITS_PER_SECTION));
+        assert!(windows.iter().all(|window| !window.topic_ids.is_empty()
+            && window.topic_ids.len() <= GUIDE_MAX_TOPICS_PER_SECTION
+            && !window.catalog.units.is_empty()
+            && window.catalog.units.len() <= GUIDE_MAX_UNITS_PER_SECTION));
 
         let represented = windows
             .iter()
