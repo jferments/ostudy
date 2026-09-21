@@ -50,13 +50,10 @@ requireText("timing helper", timing, [
   "ostudy_timing_finish_total",
 ]);
 requireText("native contract helper", nativeContracts, [
-  "test result: ok",
-  "matched no executed tests",
+  "-- --list --color never",
+  "matched no tests",
   "did not execute every selected test",
 ]);
-if (nativeContracts.includes("-- --list")) {
-  failures.push("native contract helper must not invoke Cargo a second time only to list matching tests");
-}
 requireText("PDFium cache", installer, [
   "OSTUDY_NATIVE_DEPS_CACHE_DIR",
   "cached_library",
