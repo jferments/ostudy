@@ -39,10 +39,14 @@ use super::{
 };
 
 const VIEW_VERSION: i64 = 1;
-const MAX_TOPICS: usize = 1_024;
 const MAX_COVERAGE_SOURCES: usize = 2_048;
 const MAX_COVERAGE_UNITS: usize = 16_384;
-const MAX_SYNTHESIS_BYTES: usize = 2 * 1024 * 1024;
+const MAX_TOPICS: usize = MAX_COVERAGE_UNITS;
+const MAX_SYNTHESIS_BYTES: usize = 8 * 1024 * 1024;
+const GUIDE_TARGET_SECTION_COUNT: usize = 48;
+const GUIDE_BASE_TOPICS_PER_SECTION: usize = 32;
+const GUIDE_MAX_TOPICS_PER_SECTION: usize = 64;
+const GUIDE_MAX_UNITS_PER_SECTION: usize = 64;
 const MAX_REDUCTION_DIGEST_BYTES: usize = 48_000;
 const REDUCTION_VISIBLE_TOKENS: usize = 4_096;
 
@@ -113,6 +117,14 @@ pub(crate) struct CollectionViewState {
     pub stale: bool,
     pub reduced: bool,
     pub analysis_hash: String,
+}
+
+pub(crate) struct CollectionGuideWindow {
+    pub block_key: String,
+    pub title: String,
+    pub topic_ids: Vec<String>,
+    pub topic_context: String,
+    pub catalog: KnowledgeCatalog,
 }
 
 struct CoveragePlan {
@@ -315,47 +327,208 @@ pub(crate) fn ensure_analysis_current(
     Ok(())
 }
 
-pub(crate) fn guide_topic_catalogs(
+pub(crate) fn guide_section_windows(
     database: &Database,
     collection_id: &str,
     synthesis: &CollectionSynthesis,
-) -> Result<Vec<KnowledgeCatalog>, CommandError> {
+) -> Result<Vec<CollectionGuideWindow>, CommandError> {
     validate_entity_id(collection_id, "document collection")?;
     validate_synthesis(synthesis)?;
     let plan = database.with_connection(|connection| coverage_plan(connection, collection_id))?;
     if plan.snapshot.snapshot_id != synthesis.snapshot_id {
         return Err(repository::stale_source());
     }
+
+    let document_order = plan
+        .snapshot
+        .members
+        .iter()
+        .enumerate()
+        .map(|(index, member)| (member.document_id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let source_positions = plan
+        .context
+        .sources
+        .iter()
+        .map(|source| {
+            let document = source
+                .document_id
+                .as_deref()
+                .and_then(|id| document_order.get(id).copied())
+                .unwrap_or(usize::MAX);
+            let unit = source
+                .locator
+                .as_ref()
+                .map(|locator| locator.first())
+                .or_else(|| source.segment_key.parse::<i64>().ok())
+                .unwrap_or(i64::MAX);
+            (source.id.as_str(), (document, unit, source.segment_key.as_str()))
+        })
+        .collect::<HashMap<_, _>>();
     let units = plan
         .context
         .units
         .iter()
         .map(|unit| (unit.id.as_str(), unit))
         .collect::<HashMap<_, _>>();
-    synthesis
-        .topics
+
+    let mut topics = synthesis.topics.iter().collect::<Vec<_>>();
+    topics.sort_by(|left, right| {
+        topic_source_position(left, &source_positions)
+            .cmp(&topic_source_position(right, &source_positions))
+            .then_with(|| left.title.cmp(&right.title))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+
+    let topic_limit = guide_window_topic_limit(topics.len());
+    let mut windows = Vec::new();
+    for topic_window in topics.chunks(topic_limit) {
+        let topic_ids = topic_window
+            .iter()
+            .map(|topic| topic.id.clone())
+            .collect::<Vec<_>>();
+        let title = guide_window_title(topic_window);
+        let topic_context = guide_window_context(topic_window);
+        let selected_units = guide_window_units(topic_window, &units)?;
+        if selected_units.is_empty() {
+            return Err(repository::stale_source());
+        }
+        let block_key = hash(
+            &serde_json::to_string(&("collection-guide-window-v1", &topic_ids))
+                .map_err(CommandError::serialization)?,
+        )[..32]
+            .to_string();
+        windows.push(CollectionGuideWindow {
+            block_key,
+            title,
+            topic_ids,
+            topic_context,
+            catalog: KnowledgeCatalog {
+                units: selected_units,
+                document_core_units: BTreeSet::new(),
+                preparation: plan.context.preparation.clone(),
+            },
+        });
+    }
+    Ok(windows)
+}
+
+fn guide_window_topic_limit(topic_count: usize) -> usize {
+    if topic_count == 0 {
+        return 1;
+    }
+    topic_count
+        .div_ceil(GUIDE_TARGET_SECTION_COUNT)
+        .clamp(
+            GUIDE_BASE_TOPICS_PER_SECTION,
+            GUIDE_MAX_TOPICS_PER_SECTION,
+        )
+}
+
+fn topic_source_position(
+    topic: &CollectionTopic,
+    source_positions: &HashMap<&str, (usize, i64, &str)>,
+) -> (usize, i64, String) {
+    topic
+        .support_source_ids
+        .iter()
+        .filter_map(|id| source_positions.get(id.as_str()))
+        .map(|(document, unit, segment)| (*document, *unit, (*segment).to_string()))
+        .min()
+        .unwrap_or((usize::MAX, i64::MAX, String::new()))
+}
+
+fn guide_window_title(topics: &[&CollectionTopic]) -> String {
+    if topics.len() == 1 {
+        return topics[0].title.clone();
+    }
+    if topics.len() == 2 {
+        return format!("{} and {}", topics[0].title, topics[1].title);
+    }
+    topics
+        .iter()
+        .max_by_key(|topic| {
+            (
+                topic.support_document_ids.len(),
+                topic.unit_ids.len(),
+                topic.emphasis_source_ids.len(),
+            )
+        })
+        .map(|topic| topic.title.clone())
+        .unwrap_or_else(|| "Core concepts".to_string())
+}
+
+fn guide_window_context(topics: &[&CollectionTopic]) -> String {
+    topics
         .iter()
         .map(|topic| {
-            let selected = topic
+            let summary = if topic.summary.trim().is_empty() {
+                "Use the retained knowledge units to explain this concept.".to_string()
+            } else {
+                topic.summary.chars().take(320).collect::<String>()
+            };
+            format!("• {} — {}", topic.title, summary)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn guide_window_units(
+    topics: &[&CollectionTopic],
+    units: &HashMap<&str, &KnowledgeUnit>,
+) -> Result<Vec<KnowledgeUnit>, CommandError> {
+    let mut by_topic = topics
+        .iter()
+        .map(|topic| {
+            let mut values = topic
                 .unit_ids
                 .iter()
                 .map(|id| {
                     units
                         .get(id.as_str())
-                        .map(|unit| (**unit).clone())
+                        .copied()
                         .ok_or_else(repository::stale_source)
                 })
                 .collect::<Result<Vec<_>, CommandError>>()?;
-            if selected.is_empty() {
-                return Err(repository::stale_source());
-            }
-            Ok(KnowledgeCatalog {
-                units: selected,
-                document_core_units: BTreeSet::new(),
-                preparation: plan.context.preparation.clone(),
-            })
+            values.sort_by(|left, right| {
+                guide_unit_priority(left)
+                    .cmp(&guide_unit_priority(right))
+                    .then_with(|| left.content.title.cmp(&right.content.title))
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            Ok(values)
         })
-        .collect()
+        .collect::<Result<Vec<_>, CommandError>>()?;
+
+    let mut selected = Vec::new();
+    let mut seen = HashSet::new();
+    let longest = by_topic.iter().map(Vec::len).max().unwrap_or(0);
+    'rounds: for round in 0..longest {
+        for values in &mut by_topic {
+            if let Some(unit) = values.get(round) {
+                if seen.insert(unit.id.clone()) {
+                    selected.push((*unit).clone());
+                    if selected.len() == GUIDE_MAX_UNITS_PER_SECTION {
+                        break 'rounds;
+                    }
+                }
+            }
+        }
+    }
+    Ok(selected)
+}
+
+fn guide_unit_priority(unit: &KnowledgeUnit) -> u8 {
+    if unit
+        .content
+        .grounding
+        .as_ref()
+        .is_some_and(|grounding| grounding.importance == Importance::Core)
+    {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(test)]
@@ -558,12 +731,6 @@ fn native_synthesis(
         if !sources.contains_key(unit.source_id.as_str()) {
             return Err(repository::stale_source());
         }
-    }
-    if topics.len() > MAX_TOPICS {
-        return Err(CommandError::new(
-            "collection_synthesis_partition_required",
-            "The selected collection has too many distinct interpreted topics for one compact synthesis. Split the material target explicitly.",
-        ));
     }
     let topics = topics
         .into_iter()
@@ -1715,6 +1882,64 @@ mod tests {
         assert!(refreshed.reduced);
         assert_eq!(refreshed.synthesis.reduction_status, "reduced");
         assert_eq!(refreshed.analysis_hash, plan.analysis_hash);
+    }
+
+    #[test]
+    fn large_topic_catalogs_are_windowed_into_readable_guide_sections_instead_of_rejected() {
+        let (database, collection, first, _, _) = fixture().unwrap();
+        let first_source = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT id FROM knowledge_sources WHERE document_id=?1 AND active=1",
+                        [&first],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        let source = database
+            .with_connection(|connection| {
+                repository::load_source(connection, &first_source)?
+                    .ok_or_else(repository::stale_source)
+            })
+            .unwrap();
+        let units = (0..130)
+            .map(|index| KnowledgeUnitInput {
+                title: format!("Concept {index}"),
+                kind: KnowledgeKind::Fact,
+                statement: format!("Supported statement {index}."),
+                qualifications: Vec::new(),
+                topic: format!("Distinct topic {index}"),
+                supporting_excerpt: source.text.clone(),
+                grounding: None,
+                details: None,
+            })
+            .collect::<Vec<_>>();
+        repository::publish_units(&database, &source, &hash("many-topic-contract"), units)
+            .unwrap();
+
+        let state = refresh_native(&database, &collection).unwrap();
+        assert!(state.synthesis.topics.len() > 96);
+        let windows = guide_section_windows(&database, &collection, &state.synthesis).unwrap();
+        assert!(windows.len() < state.synthesis.topics.len());
+        assert!(windows
+            .iter()
+            .all(|window| !window.topic_ids.is_empty()
+                && window.topic_ids.len() <= GUIDE_MAX_TOPICS_PER_SECTION
+                && !window.catalog.units.is_empty()
+                && window.catalog.units.len() <= GUIDE_MAX_UNITS_PER_SECTION));
+
+        let represented = windows
+            .iter()
+            .flat_map(|window| window.topic_ids.iter().cloned())
+            .collect::<HashSet<_>>();
+        assert_eq!(represented.len(), state.synthesis.topics.len());
+        assert!(state
+            .synthesis
+            .topics
+            .iter()
+            .all(|topic| represented.contains(&topic.id)));
     }
 
     #[test]

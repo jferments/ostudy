@@ -48,7 +48,6 @@ use super::{
 
 const MAX_COLLECTION_SOURCE_NOTES: usize = 10_000;
 const COLLECTION_GUIDE_SCHEMA_VERSION: i64 = 2;
-const MAX_COLLECTION_GUIDE_SECTIONS: usize = 96;
 const MAX_COLLECTION_GUIDE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -994,20 +993,15 @@ async fn compose_collection_guide(
             "This collection has no retained interpreted topics available for a study guide.",
         ));
     }
-    if native.synthesis.topics.len() > MAX_COLLECTION_GUIDE_SECTIONS {
+    let native_windows =
+        collection_view::guide_section_windows(database, &claim.target.id, &native.synthesis)?;
+    if native_windows.is_empty() {
         return Err(CommandError::new(
-            "study_target_partition_required",
-            "The collection contains too many distinct topics for one readable study guide. Narrow the collection ranges.",
+            "collection_study_guide_empty",
+            "This collection has no retained interpreted material available for a study guide.",
         ));
     }
-
-    let work_total = native.synthesis.topics.len().saturating_add(1);
-    begin_artifact_job(
-        database,
-        operation_id,
-        StudyTargetArtifactKind::StudyGuide,
-        work_total,
-    )?;
+    let work_total = native_windows.len().saturating_add(1);
 
     let mut task = load_document_task_context(database)?;
     let capabilities = document_provider::load_document_provider_capabilities(
@@ -1026,6 +1020,20 @@ async fn compose_collection_guide(
             "The collection changed while its study guide was being organized.",
         ));
     }
+    let windows =
+        collection_view::guide_section_windows(database, &claim.target.id, &view.synthesis)?;
+    if windows.len() != native_windows.len() {
+        return Err(CommandError::new(
+            "source_set_changed",
+            "The collection outline changed while its study guide was being organized.",
+        ));
+    }
+    begin_artifact_job(
+        database,
+        operation_id,
+        StudyTargetArtifactKind::StudyGuide,
+        work_total,
+    )?;
     update_artifact_progress(
         database,
         operation_id,
@@ -1033,17 +1041,9 @@ async fn compose_collection_guide(
         1,
     )?;
 
-    let catalogs =
-        collection_view::guide_topic_catalogs(database, &claim.target.id, &view.synthesis)?;
     let collection_title = collection_title(database, &claim.target.id)?;
-    let mut sections = Vec::with_capacity(view.synthesis.topics.len().saturating_add(1));
-    for (index, (topic, catalog)) in view
-        .synthesis
-        .topics
-        .iter()
-        .zip(catalogs.iter())
-        .enumerate()
-    {
+    let mut sections = Vec::with_capacity(windows.len().saturating_add(1));
+    for (index, window) in windows.iter().enumerate() {
         task.ensure_current(database)?;
         database.with_connection(|connection| {
             collections::ensure_snapshot_current(connection, &claim.snapshot)?;
@@ -1053,20 +1053,21 @@ async fn compose_collection_guide(
                 &view.analysis_hash,
             )
         })?;
-        let relationship_context = relationship_context(&view, &topic.id);
+        let relationship_context = relationship_context(&view, &window.topic_ids);
         let generated = generate_collection_study_guide_topic_section(
             runtime,
             &task,
             &collection_title,
-            &topic.title,
-            &topic.summary,
+            &window.title,
+            &window.topic_context,
             &relationship_context,
-            catalog,
+            &window.catalog,
         )
         .await?;
         let mut content = generated.content;
         if content.important_terms.is_empty() {
-            content.important_terms = catalog
+            content.important_terms = window
+                .catalog
                 .units
                 .iter()
                 .filter(|unit| unit.content.kind == KnowledgeKind::Definition)
@@ -1078,12 +1079,12 @@ async fn compose_collection_guide(
                 .collect();
         }
         let content_hash = hash_text(
-            &serde_json::to_string(&(&topic.title, &content))
+            &serde_json::to_string(&(&window.title, &content))
                 .map_err(CommandError::serialization)?,
         );
         sections.push(CollectionGuideSection {
-            block_key: topic.id.clone(),
-            title: topic.title.clone(),
+            block_key: window.block_key.clone(),
+            title: window.title.clone(),
             content,
             content_hash,
             source_document_id: None,
@@ -1123,12 +1124,18 @@ fn collection_title(database: &Database, collection_id: &str) -> Result<String, 
     })
 }
 
-fn relationship_context(view: &CollectionViewState, topic_id: &str) -> String {
+fn relationship_context(view: &CollectionViewState, topic_ids: &[String]) -> String {
+    let wanted = topic_ids.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
     let mut notes = view
         .synthesis
         .relationships
         .iter()
-        .filter(|relationship| relationship.topic_ids.iter().any(|id| id == topic_id))
+        .filter(|relationship| {
+            relationship
+                .topic_ids
+                .iter()
+                .any(|id| wanted.contains(id.as_str()))
+        })
         .map(|relationship| relationship.note.trim())
         .filter(|note| !note.is_empty())
         .take(8)
@@ -1154,6 +1161,12 @@ fn build_collection_guide_content(
         .iter()
         .map(|topic| (topic.id.as_str(), topic.title.as_str()))
         .collect::<BTreeMap<_, _>>();
+
+    let key_concepts = sections
+        .iter()
+        .map(|section| section.title.clone())
+        .take(48)
+        .collect::<Vec<_>>();
 
     let comparisons = view
         .synthesis
@@ -1238,13 +1251,7 @@ fn build_collection_guide_content(
         overview: StudyGuideOverview {
             summary,
             learning_objectives,
-            key_concepts: view
-                .synthesis
-                .topics
-                .iter()
-                .map(|topic| topic.title.clone())
-                .take(48)
-                .collect(),
+            key_concepts,
         },
         sections,
         // Gaps remain durable internal metadata for honest coverage accounting.
