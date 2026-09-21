@@ -551,7 +551,9 @@ fn decode_collection_guide_content(
     title: &str,
     content_json: &str,
 ) -> Result<composition::CollectionGuideContent, CommandError> {
-    if let Ok(mut content) = serde_json::from_str::<composition::CollectionGuideContent>(content_json) {
+    if let Ok(mut content) =
+        serde_json::from_str::<composition::CollectionGuideContent>(content_json)
+    {
         // Older collection-guide revisions could expose internal coverage
         // diagnostics as a synthetic learner-visible section. Keep the durable
         // metadata but never surface that implementation detail in the guide.

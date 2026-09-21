@@ -125,7 +125,8 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         protocol::catalog_prompt(knowledge)?,
     );
     let section =
-        request_study_guide_section_with_retry(runtime, task, &system, &user, &[], knowledge).await?;
+        request_study_guide_section_with_retry(runtime, task, &system, &user, &[], knowledge)
+            .await?;
     validate_collection_section_quality(&section.content)?;
     Ok(section)
 }
@@ -892,11 +893,14 @@ mod tests {
         assert!(prompt.contains("readable teaching outline"));
         assert!(prompt.contains("Never reduce a section to 'Review <topic>'"));
         assert!(prompt.contains("Never") || prompt.contains("never"));
-        assert!(validate_collection_section_quality(&StudyGuideSectionContent {
-            overview: "Review preload.".to_string(),
-            key_points: vec!["Review preload.".to_string()],
-            ..Default::default()
-        }).is_err());
+        assert!(
+            validate_collection_section_quality(&StudyGuideSectionContent {
+                overview: "Review preload.".to_string(),
+                key_points: vec!["Review preload.".to_string()],
+                ..Default::default()
+            })
+            .is_err()
+        );
         assert!(validate_collection_section_quality(&StudyGuideSectionContent {
             overview: "Preload describes ventricular filling before systole and helps connect venous return to subsequent stroke volume within the supported physiologic context.".to_string(),
             key_points: vec![

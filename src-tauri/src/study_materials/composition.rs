@@ -27,9 +27,7 @@ use crate::{
     database::Database,
     document_citations,
     document_domain::SourceLocator,
-    document_study_guides::{
-        StudyGuideComparison, StudyGuideOverview, StudyGuideSectionContent,
-    },
+    document_study_guides::{StudyGuideComparison, StudyGuideOverview, StudyGuideSectionContent},
     error::CommandError,
     knowledge::{
         assessment::{self, AssessmentRecord},
@@ -210,7 +208,15 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
                     "That study-material operation is no longer available.",
                 )
             })?;
-        let (target_id, state, snapshot_json, provider_authorized, kind, document_id, collection_id) = row;
+        let (
+            target_id,
+            state,
+            snapshot_json,
+            provider_authorized,
+            kind,
+            document_id,
+            collection_id,
+        ) = row;
         let target_kind = match kind.as_str() {
             "document" => StudyTargetKind::Document,
             "collection" => StudyTargetKind::Collection,
@@ -1009,8 +1015,8 @@ async fn compose_collection_guide(
     )?;
     task.apply_provider_capabilities(&capabilities);
     let signal = CancellationSignal::new();
-    let view =
-        collection_view::ensure_reduced(database, runtime, &task, &claim.target.id, &signal).await?;
+    let view = collection_view::ensure_reduced(database, runtime, &task, &claim.target.id, &signal)
+        .await?;
     if view.stale || view.synthesis.snapshot_id != claim.snapshot.snapshot_id {
         return Err(CommandError::new(
             "source_set_changed",
@@ -1028,7 +1034,13 @@ async fn compose_collection_guide(
         collection_view::guide_topic_catalogs(database, &claim.target.id, &view.synthesis)?;
     let collection_title = collection_title(database, &claim.target.id)?;
     let mut sections = Vec::with_capacity(view.synthesis.topics.len().saturating_add(1));
-    for (index, (topic, catalog)) in view.synthesis.topics.iter().zip(catalogs.iter()).enumerate() {
+    for (index, (topic, catalog)) in view
+        .synthesis
+        .topics
+        .iter()
+        .zip(catalogs.iter())
+        .enumerate()
+    {
         task.ensure_current(database)?;
         database.with_connection(|connection| {
             collections::ensure_snapshot_current(connection, &claim.snapshot)?;
@@ -1107,7 +1119,8 @@ fn relationship_context(view: &CollectionViewState, topic_id: &str) -> String {
         .collect::<Vec<_>>();
     notes.dedup();
     if notes.is_empty() {
-        "No additional validated cross-document relationship was retained for this topic.".to_string()
+        "No additional validated cross-document relationship was retained for this topic."
+            .to_string()
     } else {
         notes.join(" ")
     }
