@@ -245,7 +245,7 @@ requireText("check-static.sh", checkStatic, [
   "pnpm exec tsc",
   "cargo fmt",
 ]);
-requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps.sh", "pnpm test", "cargo clippy", "test-native-contracts.sh"]);
+requireText("check-fast.sh", checkFast, ["check-static.sh", "install-native-deps.sh", "pnpm test", "cargo clippy", "verify-fast-native-contracts.sh", "Rust library contract suite"]);
 requireText("check.sh", checkFull, ["install-native-deps.sh", "pnpm run build", "cargo clippy", "cargo test", "smoke-native.sh"]);
 requireText("check-changed.sh", checkChanged, ["vitest run --changed", "cargo test", "check-fast.sh", "iteration aid"]);
 requireText("read-only check workflow", checkWorkflow, [
@@ -319,6 +319,8 @@ for (const requiredPath of [
   "scripts/check-static.sh",
   "scripts/check-fast.sh",
   "scripts/check.sh",
+  "scripts/verify-fast-native-contracts.sh",
+  "scripts/lib/ci-test-tmpdir.bash",
   "scripts/check-changed.sh",
   "scripts/runner/ci-runtime-preflight.sh",
   "scripts/runner/install-service-hardening.sh",
@@ -334,6 +336,8 @@ for (const requiredPath of [
   "scripts/verify-xberg-dependency-policy.mjs",
   "scripts/log-run.py",
   "tests/scripts/test_log_run.py",
+  "tests/scripts/test_fast_native_contract_inventory.py",
+  "tests/scripts/test_ci_tmpdir.py",
   "tests/scripts/test_check_gate_selection.py",
   "tests/scripts/test_pr_contract.py",
   "tests/scripts/test_agent_workflow_policy.py",

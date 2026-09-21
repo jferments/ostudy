@@ -82,7 +82,16 @@ if [[ -z "$log_size" ]]; then
   log_size=0
 fi
 
+emit_phase_timings() {
+  if grep -q '^TIMING ' "$LOG_FILE"; then
+    printf '%s\n' '--- qualification phase timings ---'
+    grep '^TIMING ' "$LOG_FILE"
+    printf '%s\n' '--- end qualification phase timings ---'
+  fi
+}
+
 if (( status == 0 )); then
+  emit_phase_timings
   printf 'OK   Qualification command passed; full output retained in %s (%s bytes).\n' "$LOG_FILE" "$log_size"
   if (( log_size > 0 )); then
     printf '%s\n' '--- bounded success tail ---'
@@ -92,6 +101,7 @@ if (( status == 0 )); then
   exit 0
 fi
 
+emit_phase_timings >&2
 printf 'ERROR Qualification command failed with exit %s; full output retained in %s (%s bytes).\n' \
   "$status" "$LOG_FILE" "$log_size" >&2
 if (( log_size > 0 )); then

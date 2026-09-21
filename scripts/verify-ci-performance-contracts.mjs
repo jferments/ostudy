@@ -12,6 +12,10 @@ const [
   checkFast,
   timing,
   nativeContracts,
+  fastNativeInventory,
+  ciTestTmpdir,
+  ciCapture,
+  checkFull,
   installer,
   guestPreflight,
   storageReport,
@@ -23,6 +27,10 @@ const [
     read("scripts", "check-fast.sh"),
     read("scripts", "lib", "qualification-timing.bash"),
     read("scripts", "test-native-contracts.sh"),
+    read("scripts", "verify-fast-native-contracts.sh"),
+    read("scripts", "lib", "ci-test-tmpdir.bash"),
+    read("scripts", "run-ci-captured.sh"),
+    read("scripts", "check.sh"),
     read("scripts", "install-native-deps.sh"),
     read("scripts", "runner", "guest-preflight.sh"),
     read("scripts", "runner", "report-storage.sh"),
@@ -66,6 +74,39 @@ requireText("native contract helper", nativeContracts, [
   "-- --list --color never",
   "matched no tests",
   "did not execute every selected test",
+]);
+
+requireText("fast native inventory", fastNativeInventory, [
+  "--list",
+  "database::entry_tests::",
+  "knowledge::",
+  "library_backup::image_set_backup_tests::",
+  "public_migration_checksum_and_future_version_are_enforced",
+]);
+requireText("CI tmpfs test workspace", ciTestTmpdir, [
+  "/dev/shm",
+  "OSTUDY_CI_USE_TMPFS",
+  "4 * 1024 * 1024",
+  "export TMPDIR",
+]);
+requireText("fast tmpfs and consolidated Rust execution", checkFast, [
+  "ostudy_prepare_ci_test_tmpdir fast",
+  'step "Critical native contract inventory"',
+  'step "Rust library contract suite"',
+  '--test-threads "$CARGO_BUILD_JOBS"',
+]);
+const fastCargoTestCalls = checkFast.match(/\bcargo test\b/gu) ?? [];
+if (fastCargoTestCalls.length !== 2) {
+  failures.push(`fast qualification must contain exactly two cargo test commands after inventory, found ${fastCargoTestCalls.length}`);
+}
+requireText("full tmpfs and timing", checkFull, [
+  "ostudy_prepare_ci_test_tmpdir full",
+  "ostudy_timing_init full",
+  "ostudy_timing_finish_total passed",
+]);
+requireText("captured timing transport", ciCapture, [
+  "qualification phase timings",
+  "grep '^TIMING '",
 ]);
 requireText("PDFium cache", installer, [
   "OSTUDY_NATIVE_DEPS_CACHE_DIR",

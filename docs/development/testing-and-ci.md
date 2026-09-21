@@ -45,7 +45,7 @@ This is the minimum maintained gate for documentation-only work.
 
 ### `check-fast.sh`
 
-Adds high-return deterministic tests such as the complete frontend/controller/component suite, locked Rust compilation/lint-oriented checks, and focused native/document/platform contracts selected by the wrapper. This is the automatic draft-PR product gate.
+Adds high-return deterministic tests such as the complete frontend/controller/component suite and locked warning-free Rust compilation. A single native inventory pass proves the critical document/Tutor/backup/migration contract families still exist, then one complete Rust library-test process executes all library tests in parallel instead of serially re-launching Cargo for overlapping filters; the maintained document-metadata integration binary runs separately. On the isolated CI guest, disposable test temporary files use RAM-backed `/dev/shm` when at least 4 GiB is free, while Cargo/package caches remain persistent on disk. This is the automatic draft-PR product gate.
 
 ### `check.sh`
 
