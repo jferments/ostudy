@@ -13,6 +13,7 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { EmptyState } from "../../ui/primitives/EmptyState";
 import { PageScaffold, PageHeader } from "../../ui/patterns/WorkspacePatterns";
 import { TutorChatSettings } from "./TutorChatSettings";
+import { TutorHistory } from "./TutorHistory";
 import { useTutor } from "./TutorContext";
 import { TutorMarkdown } from "./TutorMarkdown";
 import { TutorSources } from "./TutorSources";
@@ -44,7 +45,9 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       : members.length === 1
         ? tutor.choices.find((choice) => sameStudyScope(choice.scope, members[0]))?.title ?? "Selected source"
         : null;
-  const headingContext = tutor.target?.title ?? sourceLabel;
+  const projectLabel = tutor.projects.find((project) => project.id === tutor.detail?.conversation.projectId)?.title;
+  const materialLabel = tutor.target?.title ?? sourceLabel;
+  const headingContext = [projectLabel, materialLabel].filter(Boolean).join(" · ") || null;
   const inlineHistory = showHistory && layoutMode !== "compact" && !hintOnly;
 
   useEffect(() => {
@@ -90,35 +93,9 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     void tutor.send(hintOnly ? "hint" : question ? "answer" : "explain");
   }
 
-  function history() {
-    const conversations = tutor.detail && !tutor.conversations.some((saved) => saved.id === tutor.detail?.conversation.id)
-      ? [tutor.detail.conversation, ...tutor.conversations]
-      : tutor.conversations;
-    return (
-      <nav className={styles.history} aria-label="Conversations">
-        <Button disabled={locked} onClick={() => { tutor.newConversation(); setHistoryOpen(false); }}>
-          <Icon name="plus" /> New chat
-        </Button>
-        {!conversations.length ? <p className={styles.muted}>Your conversations appear here.</p> : null}
-        {conversations.map((saved) => (
-          <Button
-            variant="ghost"
-            key={saved.id}
-            className={styles.historyItem}
-            aria-current={tutor.detail?.conversation.id === saved.id ? "page" : undefined}
-            disabled={locked}
-            onClick={() => { void tutor.selectConversation(saved.id); setHistoryOpen(false); }}
-          >
-            {saved.title}
-          </Button>
-        ))}
-      </nav>
-    );
-  }
-
   return (
     <section className={inlineHistory ? styles.withHistory : styles.workspace} aria-label={hintOnly ? "Flashcard hints" : "Tutor conversation"}>
-      {inlineHistory ? <aside className={styles.historyPane}>{history()}</aside> : null}
+      {inlineHistory ? <aside className={styles.historyPane}><TutorHistory tutor={tutor} /></aside> : null}
       <div className={styles.chat}>
         {!hintOnly ? (
           <header className={styles.chatHeader}>
@@ -269,7 +246,11 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           <p className={styles.disclosure}>Sending uses your selected AI and embedding services with relevant material. Charges may apply. AI can make mistakes.</p>
         </form>
       </div>
-      {historyOpen && !hintOnly ? <Sheet title="Conversations" onClose={() => setHistoryOpen(false)}>{history()}</Sheet> : null}
+      {historyOpen && !hintOnly ? (
+        <Sheet title="Conversations" onClose={() => setHistoryOpen(false)}>
+          <TutorHistory tutor={tutor} onSelected={() => setHistoryOpen(false)} />
+        </Sheet>
+      ) : null}
       {sourcesOpen && !hintOnly ? (
         <TutorSources
           key={studyScopeKey(tutor.scope)}

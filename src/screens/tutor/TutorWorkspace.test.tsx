@@ -12,9 +12,14 @@ import {
   type SourceCitation,
 } from "../../ipc/knowledge";
 import {
+  createTutorProject,
   getTutorConversation,
   listTutorConversations,
+  listTutorProjects,
+  moveTutorConversation,
   type ConversationDetail,
+  type ConversationSummary,
+  type TutorProject,
 } from "../../ipc/tutor";
 import { TutorContext } from "./TutorContext";
 import { TutorWorkspace } from "./TutorWorkspace";
@@ -39,10 +44,19 @@ vi.mock("../../ipc/knowledge", async (importOriginal) => {
 });
 vi.mock("../../ipc/tutor", () => ({
   createTutorConversation: vi.fn(),
+  createTutorProject: vi.fn(),
+  createTutorProjectConversation: vi.fn(),
   deleteTutorConversation: vi.fn(),
+  deleteTutorProject: vi.fn(),
   getTutorConversation: vi.fn(),
   listTutorConversations: vi.fn(),
+  listTutorProjects: vi.fn(),
+  moveTutorConversation: vi.fn(),
+  renameTutorConversation: vi.fn(),
   sendTutorTurn: vi.fn(),
+  setTutorConversationArchived: vi.fn(),
+  setTutorProjectArchived: vi.fn(),
+  updateTutorProject: vi.fn(),
 }));
 vi.mock("../../ui/overlays/overlayContext", () => ({ useConfirm: () => async () => true }));
 vi.mock("./TutorMemoryControls", () => ({ TutorMemoryControls: () => null }));
@@ -67,6 +81,29 @@ const citation: SourceCitation = {
   origin: "source_document",
   contentHash: "d".repeat(64),
 };
+const project: TutorProject = {
+  id: "7".repeat(32),
+  title: "Cardiology",
+  description: "Hemodynamics",
+  instructions: "Explain mechanisms first.",
+  defaultScope: scope,
+  revision: 1,
+  archivedAt: null,
+  createdAt: 1,
+  updatedAt: 1,
+};
+const projectConversation: ConversationSummary = {
+  id: "8".repeat(32),
+  title: "Project geometry",
+  scope,
+  projectId: project.id,
+  revision: 1,
+  organizationRevision: 1,
+  archivedAt: null,
+  createdAt: 1,
+  updatedAt: 2,
+};
+
 const detail: ConversationDetail = {
   conversation: {
     id: "e".repeat(32),
@@ -122,6 +159,9 @@ beforeEach(() => {
   vi.mocked(listAiProviderProfiles).mockResolvedValue([]);
   vi.mocked(listSemanticScopeChoices).mockResolvedValue([{ scope, title: "Geometry" }]);
   vi.mocked(listTutorConversations).mockResolvedValue([]);
+  vi.mocked(listTutorProjects).mockResolvedValue([]);
+  vi.mocked(createTutorProject).mockResolvedValue(project);
+  vi.mocked(moveTutorConversation).mockResolvedValue({ ...projectConversation, organizationRevision: 2 });
   vi.mocked(getSemanticPreparation).mockResolvedValue(null);
   vi.mocked(getTutorConversation).mockResolvedValue(detail);
 });
@@ -194,6 +234,50 @@ describe("Tutor workspace consent and source reads", () => {
     expect(controller.draft).toBe("Compare the ideas");
     expect(detail.conversation.scope).toEqual(scope);
     expect(previewSemanticPreparation).not.toHaveBeenCalled();
+    expect(prepareSemanticMaterial).not.toHaveBeenCalled();
+  });
+
+  it("groups project chats and exposes project actions through the shared overflow menu", async () => {
+    vi.mocked(listTutorProjects).mockResolvedValue([project]);
+    vi.mocked(listTutorConversations).mockResolvedValue([projectConversation]);
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    expect(screen.getByRole("button", { name: "Project geometry" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cardiology project actions" }));
+    expect(await screen.findByRole("menuitem", { name: "Edit project" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Archive project" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete project" })).toBeTruthy();
+  });
+
+  it("moves a project conversation without applying destination defaults unless explicitly selected", async () => {
+    vi.mocked(listTutorProjects).mockResolvedValue([project]);
+    vi.mocked(listTutorConversations).mockResolvedValue([projectConversation]);
+    vi.mocked(getTutorConversation).mockResolvedValue({ ...detail, conversation: projectConversation });
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    fireEvent.click(screen.getByRole("button", { name: "Project geometry actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    const destination = screen.getByRole("combobox", { name: "Destination project" });
+    fireEvent.change(destination, { target: { value: "" } });
+    expect(screen.getByRole("checkbox", { name: "Use destination project's current default sources" }).getAttribute("aria-checked")).toBe("false");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Move conversation" })); });
+    expect(moveTutorConversation).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: projectConversation.id,
+      projectId: null,
+      applyProjectDefault: false,
+    }));
+  });
+
+  it("creates a Tutor project locally without preparing material or sending a Tutor turn", async () => {
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Cardiology" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create project" })); });
+    expect(createTutorProject).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Cardiology",
+      defaultScope: { kind: "general", id: null },
+    }));
     expect(prepareSemanticMaterial).not.toHaveBeenCalled();
   });
 

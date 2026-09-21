@@ -8,8 +8,24 @@ import { Button } from "../../ui/primitives/Button";
 import { styles } from "./presentation";
 
 /** Selection is local-only. Applying creates a new scope, never edits a saved chat's permissions. */
-export function TutorSources({ scope, choices, onApply, onClose }: {
-  scope: StudyScope; choices: ScopeChoice[]; onApply: (scope: StudyScope) => void; onClose: () => void;
+export function TutorSources({
+  scope,
+  choices,
+  onApply,
+  onClose,
+  title = "Sources",
+  description = "Choose study material to ground this conversation. No selection means general discussion.",
+  note = "Changing sources starts a new chat; previous chats keep their sources. Saved knowledge is reused. Selecting material here sends nothing.",
+  applyLabel = "Use sources",
+}: {
+  scope: StudyScope;
+  choices: ScopeChoice[];
+  onApply: (scope: StudyScope) => void;
+  onClose: () => void;
+  title?: string;
+  description?: string;
+  note?: string;
+  applyLabel?: string;
 }) {
   const id = useId();
   const [selected, setSelected] = useState<MaterialScope[]>(() => scopeMembers(scope));
@@ -29,7 +45,7 @@ export function TutorSources({ scope, choices, onApply, onClose }: {
     if (next.length > 16) { setError("Select at most 16 sources for one conversation."); return; }
     setSelected(next); setError(null);
   }
-  return <Dialog title="Sources" description="Choose study material to ground this conversation. No selection means general discussion." onClose={onClose} width="medium">
+  return <Dialog title={title} description={description} onClose={onClose} width="medium">
     <label className={styles.field} htmlFor={`${id}-search`}>Find material
       <TextField id={`${id}-search`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
     </label>
@@ -43,12 +59,12 @@ export function TutorSources({ scope, choices, onApply, onClose }: {
       })}
       {!available.length ? <p className={styles.muted}>Import a document or create flashcards to add study sources.</p> : null}
     </div>
-    <p className={styles.muted}>{selected.length} selected. Changing sources starts a new chat; previous chats keep their sources. Saved knowledge is reused. Selecting material here sends nothing.</p>
+    <p className={styles.muted}>{selected.length} selected. {note}</p>
     {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
     <DialogActions>
       <Button onClick={() => { setSelected([]); setError(null); }}>Clear selection</Button>
       <Button onClick={onClose}>Cancel</Button>
-      <Button variant="primary" onClick={() => { onApply(selectedScope(selected)); onClose(); }}>Use sources</Button>
+      <Button variant="primary" onClick={() => { onApply(selectedScope(selected)); onClose(); }}>{applyLabel}</Button>
     </DialogActions>
   </Dialog>;
 }
