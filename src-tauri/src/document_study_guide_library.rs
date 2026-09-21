@@ -73,12 +73,47 @@ pub(crate) struct StudyGuideLibraryPage {
     pub limit: i64,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UnifiedStudyGuideLibraryItem {
+    pub guide_id: String,
+    pub target_kind: String,
+    pub target_id: String,
+    pub title: String,
+    pub original_filename: Option<String>,
+    pub source_format: Option<String>,
+    pub source_unit_kind: Option<String>,
+    pub source_unit_count: Option<i64>,
+    pub source_count: i64,
+    pub guide_revision: i64,
+    pub section_count: i64,
+    pub note_count: i64,
+    pub published_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UnifiedStudyGuideLibraryPage {
+    pub items: Vec<UnifiedStudyGuideLibraryItem>,
+    pub total_count: i64,
+    pub offset: i64,
+    pub limit: i64,
+}
+
 #[tauri::command]
 pub(crate) fn list_document_study_guide_page(
     database: State<'_, Database>,
     input: ListDocumentStudyGuidesInput,
 ) -> Result<StudyGuideLibraryPage, CommandError> {
     list_study_guides(database.inner(), input)
+}
+
+#[tauri::command]
+pub(crate) fn list_study_guide_page(
+    database: State<'_, Database>,
+    input: ListDocumentStudyGuidesInput,
+) -> Result<UnifiedStudyGuideLibraryPage, CommandError> {
+    list_unified_study_guides(database.inner(), input)
 }
 
 pub(crate) fn list_study_guides(
@@ -194,6 +229,177 @@ pub(crate) fn list_study_guides(
             .collect::<Result<Vec<_>, _>>()
             .map_err(CommandError::database)?;
         Ok(StudyGuideLibraryPage {
+            items,
+            total_count,
+            offset: input.offset,
+            limit: input.limit,
+        })
+    })
+}
+
+
+const UNIFIED_GUIDE_ROWS_SQL: &str = r#"
+WITH guide_rows AS (
+    SELECT
+        guide.id AS guide_id,
+        'document' AS target_kind,
+        document.id AS target_id,
+        document.title AS title,
+        document.original_filename AS original_filename,
+        document.source_format AS source_format,
+        document.source_unit_kind AS source_unit_kind,
+        document.source_unit_count AS source_unit_count,
+        1 AS source_count,
+        guide.revision AS guide_revision,
+        (
+            SELECT COUNT(*)
+            FROM document_study_guide_sections section
+            WHERE section.guide_id = guide.id
+        ) AS section_count,
+        (
+            SELECT COUNT(*)
+            FROM document_study_guide_overlays overlay
+            WHERE overlay.document_id = document.id
+              AND overlay.state <> 'discarded'
+              AND (overlay.guide_id IS NULL OR overlay.guide_id = guide.id)
+        ) AS note_count,
+        guide.published_at AS published_at
+    FROM document_study_guides guide
+    JOIN documents document ON document.id = guide.document_id
+    WHERE guide.state = 'active'
+
+    UNION ALL
+
+    SELECT
+        guide.id AS guide_id,
+        'collection' AS target_kind,
+        collection.id AS target_id,
+        collection.name AS title,
+        NULL AS original_filename,
+        NULL AS source_format,
+        NULL AS source_unit_kind,
+        NULL AS source_unit_count,
+        (
+            SELECT COUNT(*)
+            FROM document_collection_memberships membership
+            WHERE membership.collection_id = collection.id
+        ) AS source_count,
+        guide.revision AS guide_revision,
+        COALESCE(json_array_length(json_extract(guide.content_json, '$.sections')), 0)
+            AS section_count,
+        (
+            SELECT COUNT(*)
+            FROM study_target_guide_overlays overlay
+            WHERE overlay.target_id = target.id
+              AND overlay.guide_id = guide.id
+              AND overlay.state <> 'discarded'
+        ) AS note_count,
+        guide.published_at AS published_at
+    FROM study_target_guides guide
+    JOIN study_targets target ON target.id = guide.target_id
+    JOIN document_collections collection ON collection.id = target.collection_id
+    WHERE guide.state = 'active'
+      AND target.target_kind = 'collection'
+)
+"#;
+
+pub(crate) fn list_unified_study_guides(
+    database: &Database,
+    input: ListDocumentStudyGuidesInput,
+) -> Result<UnifiedStudyGuideLibraryPage, CommandError> {
+    let query = input.query.trim();
+    if query.chars().count() > MAX_QUERY_CHARS {
+        return Err(CommandError::new(
+            "study_guide_search_too_long",
+            "Study-guide search text is too long.",
+        ));
+    }
+    if input.offset < 0 || input.offset > MAX_OFFSET {
+        return Err(CommandError::new(
+            "invalid_study_guide_page",
+            "The requested Study Guides page was invalid.",
+        ));
+    }
+    if input.limit < 1 || input.limit > MAX_PAGE_SIZE {
+        return Err(CommandError::new(
+            "invalid_study_guide_page",
+            "The requested Study Guides page size was invalid.",
+        ));
+    }
+
+    let normalized_query = query.to_ascii_lowercase();
+    let pattern = format!("%{}%", escape_like(&normalized_query));
+    let filter = r#"
+WHERE (
+    ?1 = ''
+    OR lower(title) LIKE ?2 ESCAPE '!'
+    OR lower(COALESCE(original_filename, '')) LIKE ?2 ESCAPE '!'
+    OR lower(COALESCE(source_format, '')) LIKE ?2 ESCAPE '!'
+    OR (target_kind = 'collection' AND 'document collection' LIKE ?2 ESCAPE '!')
+)
+"#;
+    let order = match input.sort {
+        StudyGuideLibrarySort::Recent => {
+            "published_at DESC, title COLLATE NOCASE, target_kind, target_id"
+        }
+        StudyGuideLibrarySort::Oldest => {
+            "published_at ASC, title COLLATE NOCASE, target_kind, target_id"
+        }
+        StudyGuideLibrarySort::TitleAsc => {
+            "title COLLATE NOCASE ASC, published_at DESC, target_kind, target_id"
+        }
+        StudyGuideLibrarySort::TitleDesc => {
+            "title COLLATE NOCASE DESC, published_at DESC, target_kind, target_id"
+        }
+    };
+
+    database.with_connection(|connection| {
+        let count_sql = format!("{UNIFIED_GUIDE_ROWS_SQL}\nSELECT COUNT(*) FROM guide_rows\n{filter}");
+        let total_count = connection
+            .query_row(
+                &count_sql,
+                params![normalized_query, pattern],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(CommandError::database)?;
+
+        let sql = format!(
+            "{UNIFIED_GUIDE_ROWS_SQL}
+SELECT guide_id,target_kind,target_id,title,original_filename,source_format,
+       source_unit_kind,source_unit_count,source_count,guide_revision,
+       section_count,note_count,published_at
+FROM guide_rows
+{filter}
+ORDER BY {order}
+LIMIT ?3 OFFSET ?4"
+        );
+        let mut statement = connection.prepare(&sql).map_err(CommandError::database)?;
+        let rows = statement
+            .query_map(
+                params![normalized_query, pattern, input.limit, input.offset],
+                |row| {
+                    Ok(UnifiedStudyGuideLibraryItem {
+                        guide_id: row.get(0)?,
+                        target_kind: row.get(1)?,
+                        target_id: row.get(2)?,
+                        title: row.get(3)?,
+                        original_filename: row.get(4)?,
+                        source_format: row.get(5)?,
+                        source_unit_kind: row.get(6)?,
+                        source_unit_count: row.get(7)?,
+                        source_count: row.get(8)?,
+                        guide_revision: row.get(9)?,
+                        section_count: row.get(10)?,
+                        note_count: row.get(11)?,
+                        published_at: row.get(12)?,
+                    })
+                },
+            )
+            .map_err(CommandError::database)?;
+        let items = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        Ok(UnifiedStudyGuideLibraryPage {
             items,
             total_count,
             offset: input.offset,
@@ -328,6 +534,81 @@ mod tests {
         .expect("sorted page should load");
         assert_eq!(sorted.total_count, 2);
         assert_eq!(sorted.items[0].document_title, "Cardiac output");
+    }
+
+    #[test]
+    fn unified_library_includes_collection_guides_in_global_search_and_sort() {
+        let database = Database::open_in_memory().expect("database should open");
+        insert_guide(&database, '1', "Zebra physiology", "zebra.pdf", 20);
+        database
+            .with_connection(|connection| {
+                let collection_id = "c".repeat(32);
+                let target_id = "d".repeat(32);
+                let guide_id = "e".repeat(32);
+                connection
+                    .execute(
+                        "INSERT INTO document_collections(
+                             id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
+                         ) VALUES(?1,NULL,'Week 1 physiology',1000,NULL,1,1,1)",
+                        [&collection_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO study_targets(
+                             id,target_kind,collection_id,created_at,updated_at
+                         ) VALUES(?1,'collection',?2,1,1)",
+                        params![target_id, collection_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO study_target_guides(
+                             id,target_id,batch_id,revision,source_snapshot_id,
+                             synthesis_analysis_hash,content_json,content_hash,state,
+                             created_at,updated_at,published_at
+                         ) VALUES(?1,?2,NULL,2,?3,NULL,?4,?5,'active',1,1,30)",
+                        params![
+                            guide_id,
+                            target_id,
+                            "f".repeat(64),
+                            r#"{"schemaVersion":2,"collectionId":"cccccccccccccccccccccccccccccccc","title":"Week 1 physiology","overview":{"summary":"Overview","learningObjectives":[],"keyConcepts":[]},"sections":[{},{}],"coverageNotes":[]}"#,
+                            "a".repeat(64),
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .expect("collection guide fixture should insert");
+
+        let page = list_unified_study_guides(
+            &database,
+            ListDocumentStudyGuidesInput {
+                query: "week 1".to_string(),
+                sort: StudyGuideLibrarySort::Recent,
+                offset: 0,
+                limit: 40,
+            },
+        )
+        .expect("unified page should load");
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.items[0].target_kind, "collection");
+        assert_eq!(page.items[0].title, "Week 1 physiology");
+        assert_eq!(page.items[0].section_count, 2);
+
+        let all = list_unified_study_guides(
+            &database,
+            ListDocumentStudyGuidesInput {
+                query: String::new(),
+                sort: StudyGuideLibrarySort::Recent,
+                offset: 0,
+                limit: 40,
+            },
+        )
+        .expect("all guides should load");
+        assert_eq!(all.total_count, 2);
+        assert_eq!(all.items[0].target_kind, "collection");
+        assert_eq!(all.items[1].target_kind, "document");
     }
 
     #[test]

@@ -187,10 +187,35 @@ export interface ListStudyGuidesInput {
   limit: number;
 }
 
-export interface StudyGuidePageItem extends StudyGuideLibraryItem {
+export interface DocumentStudyGuidePageItem extends StudyGuideLibraryItem {
   guideId: string;
   sectionCount: number;
   noteCount: number;
+}
+
+export interface DocumentStudyGuideLibraryPage {
+  items: DocumentStudyGuidePageItem[];
+  totalCount: number;
+  offset: number;
+  limit: number;
+}
+
+export type StudyGuideTargetKind = "document" | "collection";
+
+export interface StudyGuidePageItem {
+  guideId: string;
+  targetKind: StudyGuideTargetKind;
+  targetId: string;
+  title: string;
+  originalFilename: string | null;
+  sourceFormat: string | null;
+  sourceUnitKind: string | null;
+  sourceUnitCount: number | null;
+  sourceCount: number;
+  guideRevision: number;
+  sectionCount: number;
+  noteCount: number;
+  publishedAt: number;
 }
 
 export interface StudyGuideLibraryPage {
@@ -305,8 +330,21 @@ export async function listDocumentStudyGuides(): Promise<StudyGuideLibraryItem[]
 
 export async function listDocumentStudyGuidePage(
   input: Partial<ListStudyGuidesInput> = {},
+): Promise<DocumentStudyGuideLibraryPage> {
+  return invoke<DocumentStudyGuideLibraryPage>("list_document_study_guide_page", {
+    input: {
+      query: input.query ?? "",
+      sort: input.sort ?? "recent",
+      offset: input.offset ?? 0,
+      limit: input.limit ?? 40,
+    },
+  });
+}
+
+export async function listStudyGuidePage(
+  input: Partial<ListStudyGuidesInput> = {},
 ): Promise<StudyGuideLibraryPage> {
-  return invoke<StudyGuideLibraryPage>("list_document_study_guide_page", {
+  return invoke<StudyGuideLibraryPage>("list_study_guide_page", {
     input: {
       query: input.query ?? "",
       sort: input.sort ?? "recent",

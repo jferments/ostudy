@@ -43,9 +43,9 @@ const MAX_COVERAGE_SOURCES: usize = 2_048;
 const MAX_COVERAGE_UNITS: usize = 16_384;
 const MAX_TOPICS: usize = MAX_COVERAGE_UNITS;
 const MAX_SYNTHESIS_BYTES: usize = 8 * 1024 * 1024;
-const GUIDE_TARGET_SECTION_COUNT: usize = 48;
-const GUIDE_BASE_TOPICS_PER_SECTION: usize = 12;
-const GUIDE_MAX_TOPICS_PER_SECTION: usize = 24;
+const GUIDE_TARGET_SECTION_COUNT: usize = 24;
+const GUIDE_BASE_TOPICS_PER_SECTION: usize = 18;
+const GUIDE_MAX_TOPICS_PER_SECTION: usize = 28;
 const GUIDE_MAX_UNITS_PER_SECTION: usize = 48;
 const MAX_REDUCTION_DIGEST_BYTES: usize = 48_000;
 const REDUCTION_VISIBLE_TOKENS: usize = 4_096;
@@ -1882,6 +1882,14 @@ mod tests {
         assert!(refreshed.reduced);
         assert_eq!(refreshed.synthesis.reduction_status, "reduced");
         assert_eq!(refreshed.analysis_hash, plan.analysis_hash);
+    }
+
+    #[test]
+    fn collection_guide_windowing_bounds_provider_request_count_without_losing_topics() {
+        assert_eq!(guide_window_topic_limit(0), 1);
+        assert_eq!(guide_window_topic_limit(12), GUIDE_BASE_TOPICS_PER_SECTION);
+        assert_eq!(guide_window_topic_limit(120), GUIDE_BASE_TOPICS_PER_SECTION);
+        assert_eq!(guide_window_topic_limit(600), 25);
     }
 
     #[test]

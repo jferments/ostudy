@@ -43,7 +43,6 @@ mod math_layout;
 mod math_source;
 
 const EXPORT_PURPOSE: &str = "study_guide_pdf";
-const COLLECTION_EXPORT_PURPOSE: &str = "collection_study_guide_pdf";
 const PAGE_WIDTH: f64 = 595.0;
 const PAGE_HEIGHT: f64 = 842.0;
 const MARGIN_X: f64 = 54.0;
@@ -306,7 +305,7 @@ pub(crate) fn prepare_collection_study_guide_pdf(
             connection,
             paths.inner(),
             &input.operation_id,
-            COLLECTION_EXPORT_PURPOSE,
+            EXPORT_PURPOSE,
         )
     })? {
         return Ok(PreparedStudyGuidePdfDto {
@@ -360,7 +359,7 @@ pub(crate) fn prepare_collection_study_guide_pdf(
             paths.inner(),
             RegisterPreparedExport {
                 id: &input.operation_id,
-                purpose: COLLECTION_EXPORT_PURPOSE,
+                purpose: EXPORT_PURPOSE,
                 suggested_filename: &suggested_filename,
                 media_type: "application/pdf",
                 relative_path: &relative,
@@ -2140,6 +2139,16 @@ mod tests {
         assert!(text.contains("Cardiovascular Physiology"));
         assert!(text.contains("β preload – naïve"));
         fs::remove_file(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod export_contract_tests {
+    use super::EXPORT_PURPOSE;
+
+    #[test]
+    fn document_and_collection_guides_share_the_schema_supported_pdf_purpose() {
+        assert_eq!(EXPORT_PURPOSE, "study_guide_pdf");
     }
 }
 

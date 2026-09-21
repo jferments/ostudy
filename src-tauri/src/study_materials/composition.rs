@@ -1043,8 +1043,22 @@ async fn compose_collection_guide(
     )?;
 
     let collection_title = collection_title(database, &claim.target.id)?;
-    let mut sections = Vec::with_capacity(windows.len().saturating_add(1));
-    for (index, window) in windows.iter().enumerate() {
+    let parallelism = crate::ai::concurrency::document_request_parallelism(&task.network_scope)
+        .clamp(1, windows.len().max(1));
+    crate::logging::info_target(
+        "ai.document.study_guide",
+        "collection_guide_execution_plan",
+        "Prepared independent collection-guide section requests with bounded provider concurrency.",
+        serde_json::json!({
+            "sections": windows.len(),
+            "parallelism": parallelism,
+            "networkScope": task.network_scope.as_str(),
+        }),
+    );
+    let mut sections = vec![None; windows.len()];
+    let mut cursor = 0_usize;
+    let mut completed_sections = 0_usize;
+    while cursor < windows.len() {
         task.ensure_current(database)?;
         database.with_connection(|connection| {
             collections::ensure_snapshot_current(connection, &claim.snapshot)?;
@@ -1054,59 +1068,120 @@ async fn compose_collection_guide(
                 &view.analysis_hash,
             )
         })?;
-        let relationship_context = relationship_context(&view, &window.topic_ids);
-        let generated = generate_collection_study_guide_topic_section(
-            runtime,
-            &task,
-            &collection_title,
-            CollectionStudyGuideAuthoring {
-                topic_title: &window.title,
-                topic_summary: &window.topic_context,
-                relationship_context: &relationship_context,
-                knowledge: &window.catalog,
-            },
-            &signal,
-        )
-        .await?;
-        let mut content = generated.content;
-        if content.important_terms.is_empty() {
-            content.important_terms = window
-                .catalog
-                .units
-                .iter()
-                .filter(|unit| unit.content.kind == KnowledgeKind::Definition)
-                .take(8)
-                .map(|unit| StudyGuideTerm {
-                    term: unit.content.title.clone(),
-                    explanation: unit.content.statement.clone(),
-                })
-                .collect();
-        }
-        let content_hash = hash_text(
-            &serde_json::to_string(&(&window.title, &content))
-                .map_err(CommandError::serialization)?,
+        let end = cursor.saturating_add(parallelism).min(windows.len());
+        let indices = (cursor..end).collect::<Vec<_>>();
+        let p0 = indices.first().copied();
+        let p1 = indices.get(1).copied();
+        let p2 = indices.get(2).copied();
+        let p3 = indices.get(3).copied();
+        let (r0, r1, r2, r3) = tokio::join!(
+            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p0),
+            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p1),
+            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p2),
+            collection_guide_slot(runtime, &task, &collection_title, &view, &windows, &signal, p3),
         );
-        sections.push(CollectionGuideSection {
-            block_key: window.block_key.clone(),
-            title: window.title.clone(),
-            content,
-            content_hash,
-            source_document_id: None,
-            source_document_title: None,
-            source_guide_id: None,
-            source_topic_id: None,
-            source_locator: None,
-        });
-        update_artifact_progress(
-            database,
-            operation_id,
-            StudyTargetArtifactKind::StudyGuide,
-            index.saturating_add(2),
-        )?;
+        for (index, result) in [r0, r1, r2, r3].into_iter().flatten() {
+            sections[index] = Some(result?);
+            completed_sections = completed_sections.saturating_add(1);
+            update_artifact_progress(
+                database,
+                operation_id,
+                StudyTargetArtifactKind::StudyGuide,
+                completed_sections.saturating_add(1),
+            )?;
+        }
+        task.ensure_current(database)?;
+        database.with_connection(|connection| {
+            collections::ensure_snapshot_current(connection, &claim.snapshot)?;
+            collection_view::ensure_analysis_current(
+                connection,
+                &claim.target.id,
+                &view.analysis_hash,
+            )
+        })?;
+        cursor = end;
     }
+    let sections = sections
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            CommandError::new(
+                "collection_study_guide_incomplete",
+                "A collection study-guide section was not completed.",
+            )
+        })?;
 
     let content = build_collection_guide_content(claim, &view, collection_title, sections)?;
     publish_collection_guide(database, operation_id, claim, &view, &content, work_total)
+}
+
+async fn collection_guide_slot(
+    runtime: &AiRuntimeState,
+    task: &crate::ai::document_intelligence::DocumentTaskContext,
+    collection_title: &str,
+    view: &CollectionViewState,
+    windows: &[collection_view::CollectionGuideWindow],
+    signal: &CancellationSignal,
+    index: Option<usize>,
+) -> Option<(usize, Result<CollectionGuideSection, CommandError>)> {
+    let index = index?;
+    let window = windows.get(index)?;
+    Some((
+        index,
+        author_collection_guide_window(runtime, task, collection_title, view, window, signal).await,
+    ))
+}
+
+async fn author_collection_guide_window(
+    runtime: &AiRuntimeState,
+    task: &crate::ai::document_intelligence::DocumentTaskContext,
+    collection_title: &str,
+    view: &CollectionViewState,
+    window: &collection_view::CollectionGuideWindow,
+    signal: &CancellationSignal,
+) -> Result<CollectionGuideSection, CommandError> {
+    let relationship_context = relationship_context(view, &window.topic_ids);
+    let generated = generate_collection_study_guide_topic_section(
+        runtime,
+        task,
+        collection_title,
+        CollectionStudyGuideAuthoring {
+            topic_title: &window.title,
+            topic_summary: &window.topic_context,
+            relationship_context: &relationship_context,
+            knowledge: &window.catalog,
+        },
+        signal,
+    )
+    .await?;
+    let mut content = generated.content;
+    if content.important_terms.is_empty() {
+        content.important_terms = window
+            .catalog
+            .units
+            .iter()
+            .filter(|unit| unit.content.kind == KnowledgeKind::Definition)
+            .take(8)
+            .map(|unit| StudyGuideTerm {
+                term: unit.content.title.clone(),
+                explanation: unit.content.statement.clone(),
+            })
+            .collect();
+    }
+    let content_hash = hash_text(
+        &serde_json::to_string(&(&window.title, &content)).map_err(CommandError::serialization)?,
+    );
+    Ok(CollectionGuideSection {
+        block_key: window.block_key.clone(),
+        title: window.title.clone(),
+        content,
+        content_hash,
+        source_document_id: None,
+        source_document_title: None,
+        source_guide_id: None,
+        source_topic_id: None,
+        source_locator: None,
+    })
 }
 
 fn collection_title(database: &Database, collection_id: &str) -> Result<String, CommandError> {

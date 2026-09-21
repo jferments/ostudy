@@ -366,6 +366,7 @@ pub fn run() {
             document_study_guide_commands::read_document_source_asset,
             document_study_guide_commands::list_document_study_guides,
             document_study_guide_library::list_document_study_guide_page,
+            document_study_guide_library::list_study_guide_page,
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,
