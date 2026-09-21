@@ -291,8 +291,11 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
   const organizationLocked = tutor.loading || tutor.organizing;
   const activeProjects = tutor.projects.filter((project) => project.archivedAt === null);
   const archivedProjects = tutor.projects.filter((project) => project.archivedAt !== null);
-  const activeConversations = tutor.conversations.filter((conversation) => conversation.archivedAt === null);
-  const archivedConversations = tutor.conversations.filter((conversation) => conversation.archivedAt !== null);
+  const conversations = tutor.detail && !tutor.conversations.some((saved) => saved.id === tutor.detail?.conversation.id)
+    ? [tutor.detail.conversation, ...tutor.conversations]
+    : tutor.conversations;
+  const activeConversations = conversations.filter((conversation) => conversation.archivedAt === null);
+  const archivedConversations = conversations.filter((conversation) => conversation.archivedAt !== null);
   const ungrouped = activeConversations.filter((conversation) => conversation.projectId === null);
 
   function conversationsFor(projectId: string): ConversationSummary[] {

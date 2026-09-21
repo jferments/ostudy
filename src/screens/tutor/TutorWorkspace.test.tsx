@@ -242,6 +242,7 @@ describe("Tutor workspace consent and source reads", () => {
     vi.mocked(listTutorConversations).mockResolvedValue([projectConversation]);
     render(<Harness />);
     await act(async () => { await controller.initialize(); });
+    fireEvent.click(screen.getByRole("button", { name: "Conversations" }));
     expect(screen.getByRole("button", { name: "Project geometry" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Cardiology project actions" }));
     expect(await screen.findByRole("menuitem", { name: "Edit project" })).toBeTruthy();
@@ -255,6 +256,7 @@ describe("Tutor workspace consent and source reads", () => {
     vi.mocked(getTutorConversation).mockResolvedValue({ ...detail, conversation: projectConversation });
     render(<Harness />);
     await act(async () => { await controller.initialize(); });
+    fireEvent.click(screen.getByRole("button", { name: "Conversations" }));
     fireEvent.click(screen.getByRole("button", { name: "Project geometry actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
     const destination = screen.getByRole("combobox", { name: "Destination project" });
@@ -271,6 +273,7 @@ describe("Tutor workspace consent and source reads", () => {
   it("creates a Tutor project locally without preparing material or sending a Tutor turn", async () => {
     render(<Harness />);
     await act(async () => { await controller.initialize(); });
+    fireEvent.click(screen.getByRole("button", { name: "Conversations" }));
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Cardiology" } });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Create project" })); });
