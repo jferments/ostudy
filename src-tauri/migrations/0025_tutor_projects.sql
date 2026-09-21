@@ -25,6 +25,16 @@ ALTER TABLE tutor_conversations ADD COLUMN archived_at INTEGER;
 CREATE INDEX tutor_conversations_project_idx
     ON tutor_conversations(project_id, archived_at, updated_at DESC, id);
 
+ALTER TABLE tutor_turns ADD COLUMN captured_scope_json TEXT
+    CHECK(captured_scope_json IS NULL OR
+          (json_valid(captured_scope_json) AND length(captured_scope_json) <= 1024));
+UPDATE tutor_turns
+SET captured_scope_json = (
+    SELECT scope_json FROM tutor_conversations
+    WHERE tutor_conversations.id = tutor_turns.conversation_id
+)
+WHERE captured_scope_json IS NULL;
+
 CREATE TABLE tutor_organization_operations (
     operation_id TEXT PRIMARY KEY CHECK(length(operation_id) = 32),
     action TEXT NOT NULL CHECK(action IN (

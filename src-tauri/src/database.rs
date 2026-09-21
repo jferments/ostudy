@@ -205,7 +205,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 25,
         name: "tutor_projects",
-        checksum: "134d2833abfd406c2a0b97fe3303f8d702f016673b55e71fc57be43d5b2ac297",
+        checksum: "a0c2ca312db766069477190fba79b80d2917f2461e996b2809986e9805c30f6b",
         sql: include_str!("../migrations/0025_tutor_projects.sql"),
         rebuilds_tables: false,
     },

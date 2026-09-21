@@ -44,7 +44,7 @@ pub(crate) fn enumerate_sources(
                 .prepare(
                     "SELECT t.conversation_id, t.id FROM tutor_turns t
                      JOIN tutor_conversations c ON c.id = t.conversation_id
-                     WHERE COALESCE(json_extract(t.request_json, '$.capturedScope'), c.scope_json) = ?1
+                     WHERE COALESCE(t.captured_scope_json, json_extract(t.request_json, '$.capturedScope'), c.scope_json) = ?1
                        AND t.state = 'complete' AND t.evidence_current = 1
                        AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence
                      ORDER BY c.id, t.sequence LIMIT 100001",

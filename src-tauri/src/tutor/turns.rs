@@ -96,6 +96,8 @@ pub(crate) fn begin(
         );
         let request_json =
             serde_json::to_string(&request_value).map_err(CommandError::serialization)?;
+        let captured_scope_json =
+            serde_json::to_string(&conversation.scope).map_err(CommandError::serialization)?;
         if conversation.revision != input.expected_revision {
             return Err(conversations::changed());
         }
@@ -118,11 +120,11 @@ pub(crate) fn begin(
         transaction.execute(
             "INSERT INTO tutor_turns (
                  id, conversation_id, operation_id, sequence, request_hash, request_json,
-                 mode, user_text, state, answered_question_id, profile_id, profile_revision,
-                 provider_kind, model_id, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'running', ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                 captured_scope_json, mode, user_text, state, answered_question_id, profile_id,
+                 profile_revision, provider_kind, model_id, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'running', ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
             params![id, input.conversation_id, input.operation_id, sequence, request_hash,
-                request_json, input.mode.as_str(), input.text, input.question_id,
+                request_json, captured_scope_json, input.mode.as_str(), input.text, input.question_id,
                 task.profile_id, task.profile_revision, task.provider_kind, task.model_id, now],
         ).map_err(CommandError::database)?;
         transaction.execute(
