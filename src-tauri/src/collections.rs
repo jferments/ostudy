@@ -496,13 +496,7 @@ fn update_collection(
             "UPDATE document_collections
              SET name=?1,archived_at=?2,updated_at=?3,revision=revision+1
              WHERE id=?4 AND revision=?5",
-            params![
-                name,
-                archived_at,
-                now,
-                input.collection_id,
-                input.revision
-            ],
+            params![name, archived_at, now, input.collection_id, input.revision],
         )
         .map_err(CommandError::database)?;
     if changed != 1 {
@@ -1810,7 +1804,7 @@ mod tests {
                 let input = CreateDocumentCollectionInput {
                     operation_id: id('1'),
                     name: "Week 1".into(),
-                        expected_organization_revision: 1,
+                    expected_organization_revision: 1,
                 };
                 let created = create_collection(connection, input.clone())?;
                 let replay = create_collection(connection, input)?;

@@ -198,7 +198,7 @@ fn archived_collection_remains_explicitly_resolvable() {
                     operation_id: id('3'),
                     collection_id: folder.id.clone(),
                     name: folder.name,
-                            archived: true,
+                    archived: true,
                     revision: folder.revision,
                     expected_organization_revision: organization.revision,
                 },

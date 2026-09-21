@@ -62,7 +62,9 @@ fn migration_26_flattens_existing_document_folders_and_prevents_new_nesting() {
         .unwrap();
 
     connection
-        .execute_batch(include_str!("../migrations/0026_single_level_document_collections.sql"))
+        .execute_batch(include_str!(
+            "../migrations/0026_single_level_document_collections.sql"
+        ))
         .unwrap();
 
     let (parent_id, revision): (Option<String>, i64) = connection
