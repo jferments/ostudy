@@ -61,6 +61,11 @@ elif (( root_free_gib >= 25 )); then
 else
   fail "root filesystem has only ${root_free_gib} GiB free; minimum safe threshold is 25 GiB"
 fi
+if [[ "${OSTUDY_REPORT_STORAGE:-0}" == 1 || "$root_free_gib" -lt 60 ]]; then
+  if ! bash "$SCRIPT_DIR/report-storage.sh"; then
+    warn "runner storage inventory failed; qualification continues because the inventory is diagnostic only"
+  fi
+fi
 
 swap_kib="$(awk 'NR > 1 {sum += $3} END {print sum + 0}' /proc/swaps)"
 swap_gib=$((swap_kib / 1024 / 1024))

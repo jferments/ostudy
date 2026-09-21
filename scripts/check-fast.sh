@@ -14,6 +14,8 @@ source "$SCRIPT_DIR/check-state.sh"
 source "$SCRIPT_DIR/cargo-target.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/diagnostics.bash"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/qualification-timing.bash"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 export OSTUDY_QUALIFICATION_COMMAND="./scripts/check-fast.sh"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
@@ -24,6 +26,7 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   exit 2
 fi
 cd "$ROOT_DIR"
+ostudy_timing_init fast
 
 WORKTREE_BASELINE="$(mktemp -t ostudy-fast-worktree.XXXXXXXX)"
 cleanup_worktree_baseline() { rm -f -- "$WORKTREE_BASELINE"; }
@@ -34,17 +37,20 @@ CURRENT_STEP="initialization"
 step() {
   if [[ "$CURRENT_STEP" != initialization ]]; then
     ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+    ostudy_timing_finish_step passed
   fi
   CURRENT_STEP="$*"
   ostudy_reset_worktree_baseline "$WORKTREE_BASELINE"
+  ostudy_timing_start_step "$CURRENT_STEP"
   printf '\n\033[1;34m==> %s\033[0m\n' "$CURRENT_STEP"
 }
-trap 'status=$?; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
+trap 'status=$?; ostudy_timing_finish_step failed; ostudy_timing_finish_total failed; ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP" || true; printf "\n\033[1;31mFAST CHECK FAILED during: %s (exit %s)\033[0m\n" "$CURRENT_STEP" "$status" >&2; ostudy_capture_failure_artifacts "$CURRENT_STEP" "$status"; exit "$status"' ERR
 
 if [[ "${OSTUDY_FORCE_CHECK:-0}" != "1" ]] \
   && ostudy_frontend_prerequisites_present \
   && ostudy_check_stamp_is_current fast; then
   printf '\n\033[1;32mREUSE Fast qualification already passed for this exact source tree.\033[0m\n'
+  ostudy_timing_finish_total reused
   exit 0
 fi
 
@@ -73,10 +79,7 @@ printf 'Cargo parallel jobs: %s\n' "$CARGO_BUILD_JOBS"
 step "React tests"
 pnpm test
 
-step "Rust compile check"
-cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
-
-step "Rust warnings-as-errors lint gate"
+step "Rust compile and warnings-as-errors lint gate"
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
 
 step "Current-format entry and preservation contracts"
@@ -188,6 +191,8 @@ cargo test \
   -- --exact
 
 ostudy_assert_worktree_unchanged "$WORKTREE_BASELINE" "$CURRENT_STEP"
+ostudy_timing_finish_step passed
 ostudy_write_check_stamp fast
+ostudy_timing_finish_total passed
 trap - ERR
 printf '\n\033[1;32mFast ostudy checks passed.\033[0m\n'
