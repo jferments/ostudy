@@ -77,11 +77,13 @@ pub(crate) fn list(database: &Database) -> Result<Vec<TutorProject>, CommandErro
                  LIMIT 500",
             )
             .map_err(CommandError::database)?;
-        statement
+        let rows = statement
             .query_map([], raw_project)
-            .map_err(CommandError::database)?
+            .map_err(CommandError::database)?;
+        let projects = rows
             .map(|row| decode_project(row.map_err(CommandError::database)?))
-            .collect()
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        Ok(projects)
     })
 }
 
