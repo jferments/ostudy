@@ -4,7 +4,7 @@
 //! bytes or prepared knowledge. Reading ranges bind to canonical source-unit
 //! identities and to the document SHA that was current when the range was saved.
 
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -18,7 +18,6 @@ use crate::{
 };
 
 const MAX_COLLECTION_NAME_CHARS: usize = 120;
-const MAX_COLLECTION_DEPTH: usize = 8;
 const MAX_COLLECTIONS: usize = 500;
 const MAX_MEMBERSHIPS: usize = 4_096;
 const MAX_SELECTION_COLLECTIONS: usize = 64;
@@ -33,7 +32,6 @@ const ORDER_STEP: i64 = 1_000;
 #[serde(rename_all = "camelCase")]
 pub struct DocumentCollectionDto {
     pub id: String,
-    pub parent_id: Option<String>,
     pub name: String,
     pub sort_order: i64,
     pub archived_at: Option<i64>,
@@ -80,7 +78,6 @@ pub struct DocumentCollectionOrganizationDto {
 pub struct CreateDocumentCollectionInput {
     pub operation_id: String,
     pub name: String,
-    pub parent_id: Option<String>,
     pub expected_organization_revision: i64,
 }
 
@@ -90,7 +87,6 @@ pub struct UpdateDocumentCollectionInput {
     pub operation_id: String,
     pub collection_id: String,
     pub name: String,
-    pub parent_id: Option<String>,
     pub archived: bool,
     pub revision: i64,
     pub expected_organization_revision: i64,
@@ -251,7 +247,6 @@ pub fn create_document_collection(
     input: CreateDocumentCollectionInput,
 ) -> Result<DocumentCollectionOrganizationDto, CommandError> {
     validate_operation_id(&input.operation_id)?;
-    validate_optional_id(input.parent_id.as_deref(), "parent document collection")?;
     database.with_connection(|connection| create_collection(connection, input))
 }
 
@@ -262,7 +257,6 @@ pub fn update_document_collection(
 ) -> Result<DocumentCollectionOrganizationDto, CommandError> {
     validate_operation_id(&input.operation_id)?;
     validate_entity_id(&input.collection_id, "document collection")?;
-    validate_optional_id(input.parent_id.as_deref(), "parent document collection")?;
     database.with_connection(|connection| update_collection(connection, input))
 }
 
@@ -340,22 +334,21 @@ fn load_organization(
     let collections = {
         let mut statement = connection
             .prepare(
-                "SELECT id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
+                "SELECT id,name,sort_order,archived_at,created_at,updated_at,revision
                  FROM document_collections
-                 ORDER BY parent_id IS NOT NULL,parent_id,sort_order,name COLLATE NOCASE,id",
+                 ORDER BY sort_order,name COLLATE NOCASE,id",
             )
             .map_err(CommandError::database)?;
         let rows = statement
             .query_map([], |row| {
                 Ok(DocumentCollectionDto {
                     id: row.get(0)?,
-                    parent_id: row.get(1)?,
-                    name: row.get(2)?,
-                    sort_order: row.get(3)?,
-                    archived_at: row.get(4)?,
-                    created_at: row.get(5)?,
-                    updated_at: row.get(6)?,
-                    revision: row.get(7)?,
+                    name: row.get(1)?,
+                    sort_order: row.get(2)?,
+                    archived_at: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    revision: row.get(6)?,
                 })
             })
             .map_err(CommandError::database)?
@@ -450,15 +443,12 @@ fn create_collection(
         ));
     }
     let id = generate_id(&tx)?;
-    let mut parents = collection_parent_map(&tx)?;
-    parents.insert(id.clone(), input.parent_id.clone());
-    validate_hierarchy(&parents)?;
-    let sort_order = next_collection_order(&tx, input.parent_id.as_deref())?;
+    let sort_order = next_collection_order(&tx)?;
     tx.execute(
         "INSERT INTO document_collections(
              id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
-         ) VALUES(?1,?2,?3,?4,NULL,?5,?5,1)",
-        params![id, input.parent_id, name, sort_order, now],
+         ) VALUES(?1,NULL,?2,?3,NULL,?4,?4,1)",
+        params![id, name, sort_order, now],
     )
     .map_err(CommandError::database)?;
     bump_organization(&tx, input.expected_organization_revision, now)?;
@@ -500,17 +490,13 @@ fn update_collection(
         Some(revision) if revision != input.revision => return Err(collection_changed()),
         Some(_) => {}
     }
-    let mut parents = collection_parent_map(&tx)?;
-    parents.insert(input.collection_id.clone(), input.parent_id.clone());
-    validate_hierarchy(&parents)?;
     let archived_at = if input.archived { Some(now) } else { None };
     let changed = tx
         .execute(
             "UPDATE document_collections
-             SET parent_id=?1,name=?2,archived_at=?3,updated_at=?4,revision=revision+1
-             WHERE id=?5 AND revision=?6",
+             SET name=?1,archived_at=?2,updated_at=?3,revision=revision+1
+             WHERE id=?4 AND revision=?5",
             params![
-                input.parent_id,
                 name,
                 archived_at,
                 now,
@@ -559,18 +545,6 @@ fn delete_collection(
         None => return Err(collection_not_found()),
         Some(revision) if revision != input.revision => return Err(collection_changed()),
         Some(_) => {}
-    }
-    let child_count: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM document_collections WHERE parent_id=?1",
-            [&input.collection_id],
-            |row| row.get(0),
-        )
-        .map_err(CommandError::database)?;
-    if child_count != 0 {
-        return Err(invalid(
-            "Move or delete nested document folders before deleting this folder.",
-        ));
     }
     let deleted = tx
         .execute(
@@ -842,9 +816,7 @@ pub(crate) fn resolve_selection(
 ) -> Result<SourceSetSnapshotDto, CommandError> {
     canonicalize_selection(&mut input)?;
     let organization_revision = organization_revision(connection)?;
-    let parents = collection_parent_map(connection)?;
-    validate_hierarchy(&parents)?;
-    let selected_collections = expand_collection_ids(connection, &input.collection_ids)?;
+    let selected_collections = selected_collection_ids(connection, &input.collection_ids)?;
     let membership_sources = load_membership_sources(connection, &selected_collections)?;
 
     #[derive(Default)]
@@ -1088,44 +1060,15 @@ fn canonicalize_selection(input: &mut SourceSelectionInput) -> Result<(), Comman
     Ok(())
 }
 
-fn expand_collection_ids(
+fn selected_collection_ids(
     connection: &Connection,
-    roots: &[String],
+    collection_ids: &[String],
 ) -> Result<BTreeSet<String>, CommandError> {
-    let mut children: HashMap<String, Vec<String>> = HashMap::new();
-    let mut known = HashSet::new();
-    let mut statement = connection
-        .prepare("SELECT id,parent_id FROM document_collections")
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        })
-        .map_err(CommandError::database)?;
-    for row in rows {
-        let (id, parent) = row.map_err(CommandError::database)?;
-        known.insert(id.clone());
-        if let Some(parent) = parent {
-            children.entry(parent).or_default().push(id);
-        }
+    let selected = collection_ids.iter().cloned().collect::<BTreeSet<_>>();
+    for collection_id in &selected {
+        require_collection(connection, collection_id)?;
     }
-
-    let mut expanded = BTreeSet::new();
-    let mut stack = roots.to_vec();
-    while let Some(id) = stack.pop() {
-        if !known.contains(&id) {
-            return Err(collection_not_found());
-        }
-        if expanded.insert(id.clone()) {
-            if expanded.len() > MAX_COLLECTIONS {
-                return Err(invalid("The selected folder hierarchy is too large."));
-            }
-            if let Some(next) = children.get(&id) {
-                stack.extend(next.iter().cloned());
-            }
-        }
-    }
-    Ok(expanded)
+    Ok(selected)
 }
 
 fn load_membership_sources(
@@ -1401,56 +1344,11 @@ fn require_collection(connection: &Connection, collection_id: &str) -> Result<()
     }
 }
 
-fn collection_parent_map(
-    connection: &Connection,
-) -> Result<BTreeMap<String, Option<String>>, CommandError> {
-    let mut statement = connection
-        .prepare("SELECT id,parent_id FROM document_collections ORDER BY id")
-        .map_err(CommandError::database)?;
-    let rows = statement
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .map_err(CommandError::database)?
-        .collect::<Result<BTreeMap<_, _>, _>>()
-        .map_err(CommandError::database)?;
-    Ok(rows)
-}
-
-fn validate_hierarchy(parents: &BTreeMap<String, Option<String>>) -> Result<(), CommandError> {
-    if parents.len() > MAX_COLLECTIONS {
-        return Err(invalid(
-            "The document library contains too many collections.",
-        ));
-    }
-    for id in parents.keys() {
-        let mut seen = HashSet::new();
-        let mut current = Some(id.as_str());
-        let mut depth = 0usize;
-        while let Some(node) = current {
-            if !seen.insert(node.to_string()) {
-                return Err(invalid("Document folders cannot contain themselves."));
-            }
-            depth += 1;
-            if depth > MAX_COLLECTION_DEPTH {
-                return Err(invalid("Document folders are nested too deeply."));
-            }
-            current = parents.get(node).and_then(|value| value.as_deref());
-            if current.is_some_and(|parent| !parents.contains_key(parent)) {
-                return Err(collection_not_found());
-            }
-        }
-    }
-    Ok(())
-}
-
-fn next_collection_order(
-    connection: &Connection,
-    parent_id: Option<&str>,
-) -> Result<i64, CommandError> {
+fn next_collection_order(connection: &Connection) -> Result<i64, CommandError> {
     connection
         .query_row(
-            "SELECT COALESCE(MAX(sort_order),0)+?1
-             FROM document_collections WHERE parent_id IS ?2",
-            params![ORDER_STEP, parent_id],
+            "SELECT COALESCE(MAX(sort_order),0)+?1 FROM document_collections",
+            [ORDER_STEP],
             |row| row.get(0),
         )
         .map_err(CommandError::database)
@@ -1566,13 +1464,6 @@ fn store_receipt<T: Serialize>(
 
 fn validate_operation_id(value: &str) -> Result<(), CommandError> {
     validate_entity_id(value, "document collection operation")
-}
-
-fn validate_optional_id(value: Option<&str>, label: &str) -> Result<(), CommandError> {
-    if let Some(value) = value {
-        validate_entity_id(value, label)?;
-    }
-    Ok(())
 }
 
 fn validate_name(value: String) -> Result<String, CommandError> {
@@ -1727,48 +1618,31 @@ mod tests {
             CreateDocumentCollectionInput {
                 operation_id: id(operation),
                 name: name.into(),
-                parent_id: None,
                 expected_organization_revision: revision,
             },
         )
     }
 
     #[test]
-    fn nested_cycles_are_native_rules() {
+    fn collections_are_single_level_and_ordered_globally() {
         let database = Database::open_in_memory().unwrap();
         database
             .with_connection(|connection| {
-                let first = create_root(connection, '1', "One", 1)?;
-                let root = first.collections[0].clone();
-                let second = create_collection(
-                    connection,
-                    CreateDocumentCollectionInput {
-                        operation_id: id('2'),
-                        name: "Two".into(),
-                        parent_id: Some(root.id.clone()),
-                        expected_organization_revision: first.revision,
-                    },
-                )?;
-                let child = second
-                    .collections
-                    .iter()
-                    .find(|collection| collection.name == "Two")
-                    .unwrap()
-                    .clone();
-                let error = update_collection(
-                    connection,
-                    UpdateDocumentCollectionInput {
-                        operation_id: id('3'),
-                        collection_id: root.id,
-                        name: root.name,
-                        parent_id: Some(child.id),
-                        archived: false,
-                        revision: root.revision,
-                        expected_organization_revision: second.revision,
-                    },
-                )
-                .unwrap_err();
-                assert_eq!(error.code, "invalid_document_collection");
+                let first = create_root(connection, '1', "Week 1", 1)?;
+                let second = create_root(connection, '2', "Week 2", first.revision)?;
+                assert_eq!(second.collections.len(), 2);
+                assert_eq!(second.collections[0].sort_order, ORDER_STEP);
+                assert_eq!(second.collections[1].sort_order, ORDER_STEP * 2);
+
+                let trigger_error = connection
+                    .execute(
+                        "UPDATE document_collections SET parent_id=?1 WHERE id=?2",
+                        params![second.collections[0].id, second.collections[1].id],
+                    )
+                    .unwrap_err();
+                assert!(trigger_error
+                    .to_string()
+                    .contains("document_collections_parent_must_be_null"));
                 Ok(())
             })
             .unwrap();
@@ -1855,42 +1729,43 @@ mod tests {
     }
 
     #[test]
-    fn parent_child_selection_deduplicates_and_excludes_ranges() {
+    fn multiple_selected_folders_deduplicate_shared_documents_and_exclude_ranges() {
         let database = Database::open_in_memory().unwrap();
         database
             .with_connection(|connection| {
                 let document = id('d');
                 seed_document(connection, &document, 5, 'a')?;
-                let root_organization = create_root(connection, '1', "Course", 1)?;
-                let root = root_organization.collections[0].clone();
-                let child_organization = create_collection(
-                    connection,
-                    CreateDocumentCollectionInput {
-                        operation_id: id('2'),
-                        name: "Week 1".into(),
-                        parent_id: Some(root.id.clone()),
-                        expected_organization_revision: root_organization.revision,
-                    },
-                )?;
-                let child = child_organization
+                let first = create_root(connection, '1', "Week 1", 1)?;
+                let first_folder = first.collections[0].clone();
+                let second = create_root(connection, '2', "Week 2", first.revision)?;
+                let second_folder = second
                     .collections
                     .iter()
-                    .find(|collection| collection.name == "Week 1")
+                    .find(|collection| collection.name == "Week 2")
                     .unwrap()
                     .clone();
-                let organization = add_membership(
+                let with_first = add_membership(
                     connection,
                     AddDocumentCollectionMembershipInput {
                         operation_id: id('3'),
-                        collection_id: child.id.clone(),
+                        collection_id: first_folder.id.clone(),
                         document_id: document.clone(),
-                        expected_organization_revision: child_organization.revision,
+                        expected_organization_revision: second.revision,
+                    },
+                )?;
+                let organization = add_membership(
+                    connection,
+                    AddDocumentCollectionMembershipInput {
+                        operation_id: id('4'),
+                        collection_id: second_folder.id.clone(),
+                        document_id: document.clone(),
+                        expected_organization_revision: with_first.revision,
                     },
                 )?;
                 let snapshot = resolve_selection(
                     connection,
                     SourceSelectionInput {
-                        collection_ids: vec![root.id, child.id],
+                        collection_ids: vec![first_folder.id, second_folder.id],
                         documents: vec![],
                         exclusions: vec![SelectedDocumentInput {
                             document_id: document,
@@ -1903,7 +1778,7 @@ mod tests {
                     },
                 )?;
                 assert_eq!(snapshot.members.len(), 1);
-                assert_eq!(snapshot.members[0].collection_references.len(), 1);
+                assert_eq!(snapshot.members[0].collection_references.len(), 2);
                 assert_eq!(
                     snapshot.members[0].ranges,
                     vec![
@@ -1935,8 +1810,7 @@ mod tests {
                 let input = CreateDocumentCollectionInput {
                     operation_id: id('1'),
                     name: "Week 1".into(),
-                    parent_id: None,
-                    expected_organization_revision: 1,
+                        expected_organization_revision: 1,
                 };
                 let created = create_collection(connection, input.clone())?;
                 let replay = create_collection(connection, input)?;

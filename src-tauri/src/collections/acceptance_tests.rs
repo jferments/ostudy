@@ -84,7 +84,6 @@ fn create_root(
         CreateDocumentCollectionInput {
             operation_id: id(operation),
             name: name.into(),
-            parent_id: None,
             expected_organization_revision: revision,
         },
     )
@@ -155,64 +154,21 @@ fn seed_prepared_knowledge(
 }
 
 #[test]
-fn hierarchy_depth_and_self_parenting_are_native_limits() {
+fn one_level_collection_contract_rejects_nested_storage() {
     let database = Database::open_in_memory().unwrap();
     database
         .with_connection(|connection| {
-            let mut organization = create_root(connection, '1', "Root", 1)?;
-            let root = organization.collections[0].clone();
-            let mut parent_id = root.id.clone();
-            for (index, operation) in ['2', '3', '4', '5', '6', '7', '8'].into_iter().enumerate() {
-                let name = format!("Level {}", index + 2);
-                organization = create_collection(
-                    connection,
-                    CreateDocumentCollectionInput {
-                        operation_id: id(operation),
-                        name: name.clone(),
-                        parent_id: Some(parent_id),
-                        expected_organization_revision: organization.revision,
-                    },
-                )?;
-                parent_id = organization
-                    .collections
-                    .iter()
-                    .find(|collection| collection.name == name)
-                    .unwrap()
-                    .id
-                    .clone();
-            }
-            let too_deep = create_collection(
-                connection,
-                CreateDocumentCollectionInput {
-                    operation_id: id('9'),
-                    name: "Too deep".into(),
-                    parent_id: Some(parent_id),
-                    expected_organization_revision: organization.revision,
-                },
-            )
-            .unwrap_err();
-            assert_eq!(too_deep.code, "invalid_document_collection");
-
-            let current_root = organization
-                .collections
-                .iter()
-                .find(|collection| collection.id == root.id)
-                .unwrap()
-                .clone();
-            let self_parent = update_collection(
-                connection,
-                UpdateDocumentCollectionInput {
-                    operation_id: id('a'),
-                    collection_id: root.id.clone(),
-                    name: root.name,
-                    parent_id: Some(root.id),
-                    archived: false,
-                    revision: current_root.revision,
-                    expected_organization_revision: organization.revision,
-                },
-            )
-            .unwrap_err();
-            assert_eq!(self_parent.code, "invalid_document_collection");
+            let organization = create_root(connection, '1', "Week 1", 1)?;
+            let first = organization.collections[0].clone();
+            let error = connection
+                .execute(
+                    "UPDATE document_collections SET parent_id=?1 WHERE id=?2",
+                    params![first.id, first.id],
+                )
+                .unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("document_collections_parent_must_be_null"));
             Ok(())
         })
         .unwrap();
@@ -242,8 +198,7 @@ fn archived_collection_remains_explicitly_resolvable() {
                     operation_id: id('3'),
                     collection_id: folder.id.clone(),
                     name: folder.name,
-                    parent_id: None,
-                    archived: true,
+                            archived: true,
                     revision: folder.revision,
                     expected_organization_revision: organization.revision,
                 },
