@@ -175,7 +175,6 @@ fn fit_collection_guide_request(
     relationship_context: &str,
     knowledge: &KnowledgeCatalog,
 ) -> Result<(String, KnowledgeCatalog, usize), CommandError> {
-    let mut last_budget_error = None;
     for visible_completion_tokens in COLLECTION_GUIDE_VISIBLE_COMPLETION_CANDIDATES {
         let mut bounded = knowledge.clone();
         loop {
@@ -199,24 +198,18 @@ fn fit_collection_guide_request(
                 Err(error)
                     if error.code == "ai_document_context_budget" && bounded.units.len() > 1 =>
                 {
-                    last_budget_error = Some(error);
                     let next_len = bounded.units.len().saturating_mul(3).div_ceil(4).max(1);
                     bounded.units.truncate(next_len);
                 }
-                Err(error) if error.code == "ai_document_context_budget" => {
-                    last_budget_error = Some(error);
-                    break;
-                }
+                Err(error) if error.code == "ai_document_context_budget" => break,
                 Err(error) => return Err(error),
             }
         }
     }
-    Err(last_budget_error.unwrap_or_else(|| {
-        CommandError::new(
-            "ai_document_context_budget",
-            "The selected model context is too small for even one bounded collection-guide section.",
-        )
-    }))
+    Err(CommandError::new(
+        "ai_document_context_budget",
+        "The selected model context is too small for even one bounded collection-guide section.",
+    ))
 }
 
 fn collection_study_guide_user_prompt(
