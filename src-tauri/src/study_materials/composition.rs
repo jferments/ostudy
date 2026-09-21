@@ -15,6 +15,12 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::{
+    ai::{
+        document_intelligence::{
+            generate_collection_study_guide_topic_section, load_document_task_context,
+        },
+        document_provider, AiRuntimeState,
+    },
     authoring::card_commands::interactive,
     cards::questions::ValidatedQuestion,
     collections::{self, SourceSetMemberDto, SourceSetSnapshotDto},
@@ -22,7 +28,6 @@ use crate::{
     document_citations,
     document_domain::SourceLocator,
     document_study_guides::{
-        load_active_document_study_guide, StudyGuideCallout, StudyGuideCalloutKind,
         StudyGuideComparison, StudyGuideOverview, StudyGuideSectionContent,
     },
     error::CommandError,
@@ -31,6 +36,7 @@ use crate::{
         collection_view::{self, CollectionViewState},
     },
     scheduler::insert_new_schedule,
+    task_cancellation::CancellationSignal,
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
@@ -41,7 +47,7 @@ use super::{
 
 const MAX_COLLECTION_SOURCE_NOTES: usize = 10_000;
 const COLLECTION_GUIDE_SCHEMA_VERSION: i64 = 1;
-const MAX_COLLECTION_GUIDE_SECTIONS: usize = 1_024;
+const MAX_COLLECTION_GUIDE_SECTIONS: usize = 96;
 const MAX_COLLECTION_GUIDE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,6 +86,7 @@ struct BatchClaim {
     target_id: String,
     target: StudyTargetRef,
     snapshot: SourceSetSnapshotDto,
+    provider_authorized: bool,
     claimed: bool,
 }
 
@@ -113,15 +120,17 @@ struct CopiedNote {
 }
 
 #[tauri::command]
-pub(crate) fn compose_study_target_bundle(
+pub(crate) async fn compose_study_target_bundle(
     database: State<'_, Database>,
+    runtime: State<'_, AiRuntimeState>,
     input: ComposeStudyTargetBundleInput,
 ) -> Result<StudyTargetBundleStatus, CommandError> {
-    compose(database.inner(), input)
+    compose(database.inner(), Some(runtime.inner()), input).await
 }
 
-fn compose(
+async fn compose(
     database: &Database,
+    runtime: Option<&AiRuntimeState>,
     input: ComposeStudyTargetBundleInput,
 ) -> Result<StudyTargetBundleStatus, CommandError> {
     validate_entity_id(&input.operation_id, "study target operation")?;
@@ -150,7 +159,13 @@ fn compose(
                 compose_collection_flashcards(database, &input.operation_id, &claim)
             }
             (StudyTargetKind::Collection, StudyTargetArtifactKind::StudyGuide) => {
-                compose_collection_guide(database, &input.operation_id, &claim)
+                let runtime = runtime.ok_or_else(|| {
+                    CommandError::new(
+                        "study_target_provider_runtime_missing",
+                        "Collection study-guide authoring requires the configured AI runtime.",
+                    )
+                })?;
+                compose_collection_guide(database, runtime, &input.operation_id, &claim).await
             }
         };
         if let Err(error) = result {
@@ -169,7 +184,7 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
             .map_err(CommandError::database)?;
         let row = tx
             .query_row(
-                "SELECT b.target_id,b.state,b.source_snapshot_json,
+                "SELECT b.target_id,b.state,b.source_snapshot_json,b.provider_authorized,
                         t.target_kind,t.document_id,t.collection_id
                  FROM study_target_batches b
                  JOIN study_targets t ON t.id=b.target_id
@@ -180,9 +195,10 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Option<String>>(6)?,
                     ))
                 },
             )
@@ -194,7 +210,7 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
                     "That study-material operation is no longer available.",
                 )
             })?;
-        let (target_id, state, snapshot_json, kind, document_id, collection_id) = row;
+        let (target_id, state, snapshot_json, provider_authorized, kind, document_id, collection_id) = row;
         let target_kind = match kind.as_str() {
             "document" => StudyTargetKind::Document,
             "collection" => StudyTargetKind::Collection,
@@ -237,6 +253,7 @@ fn claim_batch(database: &Database, operation_id: &str) -> Result<BatchClaim, Co
                 id: target_source_id,
             },
             snapshot,
+            provider_authorized: provider_authorized != 0,
             claimed,
         })
     })
@@ -943,32 +960,128 @@ fn attach_target_citation(
     Ok(())
 }
 
-fn compose_collection_guide(
+async fn compose_collection_guide(
     database: &Database,
+    runtime: &AiRuntimeState,
     operation_id: &str,
     claim: &BatchClaim,
 ) -> Result<(), CommandError> {
-    let view = collection_view::refresh_native(database, &claim.target.id)?;
+    if !claim.provider_authorized {
+        return Err(CommandError::new(
+            "study_target_provider_not_authorized",
+            "Collection study-guide generation was not authorized for provider work.",
+        ));
+    }
+    let native = collection_view::refresh_native(database, &claim.target.id)?;
+    if native.stale || native.synthesis.snapshot_id != claim.snapshot.snapshot_id {
+        return Err(CommandError::new(
+            "source_set_changed",
+            "The collection changed before its study guide could be authored.",
+        ));
+    }
+    if native.synthesis.topics.is_empty() {
+        return Err(CommandError::new(
+            "collection_study_guide_empty",
+            "This collection has no retained interpreted topics available for a study guide.",
+        ));
+    }
+    if native.synthesis.topics.len() > MAX_COLLECTION_GUIDE_SECTIONS {
+        return Err(CommandError::new(
+            "study_target_partition_required",
+            "The collection contains too many distinct topics for one readable study guide. Narrow the collection ranges.",
+        ));
+    }
+
+    let work_total = native.synthesis.topics.len().saturating_add(1);
+    begin_artifact_job(
+        database,
+        operation_id,
+        StudyTargetArtifactKind::StudyGuide,
+        work_total,
+    )?;
+
+    let mut task = load_document_task_context(database)?;
+    let capabilities = document_provider::load_document_provider_capabilities(
+        database,
+        &task.profile_id,
+        &task.provider_kind,
+        &task.model_id,
+    )?;
+    task.apply_provider_capabilities(&capabilities);
+    let signal = CancellationSignal::new();
+    let view =
+        collection_view::ensure_reduced(database, runtime, &task, &claim.target.id, &signal).await?;
     if view.stale || view.synthesis.snapshot_id != claim.snapshot.snapshot_id {
         return Err(CommandError::new(
             "source_set_changed",
-            "The collection changed before its study guide could be published.",
+            "The collection changed while its study guide was being organized.",
         ));
     }
-    let content = build_collection_guide_content(database, claim, &view)?;
-    publish_collection_guide(database, operation_id, claim, &view, &content)
+    update_artifact_progress(
+        database,
+        operation_id,
+        StudyTargetArtifactKind::StudyGuide,
+        1,
+    )?;
+
+    let catalogs =
+        collection_view::guide_topic_catalogs(database, &claim.target.id, &view.synthesis)?;
+    let collection_title = collection_title(database, &claim.target.id)?;
+    let mut sections = Vec::with_capacity(view.synthesis.topics.len().saturating_add(1));
+    for (index, (topic, catalog)) in view.synthesis.topics.iter().zip(catalogs.iter()).enumerate() {
+        task.ensure_current(database)?;
+        database.with_connection(|connection| {
+            collections::ensure_snapshot_current(connection, &claim.snapshot)?;
+            collection_view::ensure_analysis_current(
+                connection,
+                &claim.target.id,
+                &view.analysis_hash,
+            )
+        })?;
+        let relationship_context = relationship_context(&view, &topic.id);
+        let generated = generate_collection_study_guide_topic_section(
+            runtime,
+            &task,
+            &collection_title,
+            &topic.title,
+            &topic.summary,
+            &relationship_context,
+            catalog,
+        )
+        .await?;
+        let content_hash = hash_text(
+            &serde_json::to_string(&(&topic.title, &generated.content))
+                .map_err(CommandError::serialization)?,
+        );
+        sections.push(CollectionGuideSection {
+            block_key: topic.id.clone(),
+            title: topic.title.clone(),
+            content: generated.content,
+            content_hash,
+            source_document_id: None,
+            source_document_title: None,
+            source_guide_id: None,
+            source_topic_id: None,
+            source_locator: None,
+        });
+        update_artifact_progress(
+            database,
+            operation_id,
+            StudyTargetArtifactKind::StudyGuide,
+            index.saturating_add(2),
+        )?;
+    }
+
+    let content = build_collection_guide_content(claim, &view, collection_title, sections)?;
+    publish_collection_guide(database, operation_id, claim, &view, &content, work_total)
 }
 
-fn build_collection_guide_content(
-    database: &Database,
-    claim: &BatchClaim,
-    view: &CollectionViewState,
-) -> Result<CollectionGuideContent, CommandError> {
-    let collection_title = database.with_connection(|connection| {
+fn collection_title(database: &Database, collection_id: &str) -> Result<String, CommandError> {
+    database.with_connection(|connection| {
         connection
             .query_row(
                 "SELECT name FROM document_collections WHERE id=?1",
-                [claim.target.id.as_str()],
+                [collection_id],
                 |row| row.get::<_, String>(0),
             )
             .optional()
@@ -979,115 +1092,39 @@ fn build_collection_guide_content(
                     "That document collection is no longer available.",
                 )
             })
-    })?;
-    let topic_order = view
+    })
+}
+
+fn relationship_context(view: &CollectionViewState, topic_id: &str) -> String {
+    let mut notes = view
         .synthesis
-        .topics
+        .relationships
         .iter()
-        .enumerate()
-        .map(|(index, topic)| {
-            (
-                normalize_guide_topic(&topic.title),
-                (index, topic.id.clone()),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
+        .filter(|relationship| relationship.topic_ids.iter().any(|id| id == topic_id))
+        .map(|relationship| relationship.note.trim())
+        .filter(|note| !note.is_empty())
+        .take(8)
+        .collect::<Vec<_>>();
+    notes.dedup();
+    if notes.is_empty() {
+        "No additional validated cross-document relationship was retained for this topic.".to_string()
+    } else {
+        notes.join(" ")
+    }
+}
+
+fn build_collection_guide_content(
+    claim: &BatchClaim,
+    view: &CollectionViewState,
+    collection_title: String,
+    mut sections: Vec<CollectionGuideSection>,
+) -> Result<CollectionGuideContent, CommandError> {
     let topic_titles = view
         .synthesis
         .topics
         .iter()
         .map(|topic| (topic.id.as_str(), topic.title.as_str()))
         .collect::<BTreeMap<_, _>>();
-    let mut pending = Vec::<(usize, String, usize, CollectionGuideSection)>::new();
-    let mut coverage_notes = view
-        .synthesis
-        .gaps
-        .iter()
-        .map(|gap| gap.detail.trim().to_string())
-        .filter(|detail| !detail.is_empty())
-        .collect::<Vec<_>>();
-
-    for member in &claim.snapshot.members {
-        let document_title = database.with_connection(|connection| {
-            connection
-                .query_row(
-                    "SELECT title FROM documents WHERE id=?1 AND archived_at IS NULL",
-                    [member.document_id.as_str()],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(CommandError::database)
-        })?;
-        let Some(document_title) = document_title else {
-            coverage_notes.push("A selected source is no longer available.".to_string());
-            continue;
-        };
-        let Some(guide) = load_active_document_study_guide(database, &member.document_id)? else {
-            coverage_notes.push(format!(
-                "{document_title} has no active source study guide, so it contributes collection coverage but no lower-quality substitute section was invented."
-            ));
-            continue;
-        };
-        let mut admitted = 0_usize;
-        for section in guide.sections {
-            if !locator_allowed(member, &section.source_locator) {
-                continue;
-            }
-            admitted += 1;
-            let normalized = normalize_guide_topic(&section.title);
-            let (topic_index, synthesis_topic_id) = topic_order
-                .get(&normalized)
-                .cloned()
-                .unwrap_or((usize::MAX - 1, "source".to_string()));
-            let block_key = format!("{synthesis_topic_id}:{}", section.topic_id);
-            let block_hash = hash_text(
-                &serde_json::to_string(&(
-                    &member.document_id,
-                    &section.title,
-                    &section.content_hash,
-                    &section.source_locator,
-                ))
-                .map_err(CommandError::serialization)?,
-            );
-            pending.push((
-                topic_index,
-                document_title.clone(),
-                section.sort_index,
-                CollectionGuideSection {
-                    block_key,
-                    title: section.title,
-                    content: section.content,
-                    content_hash: block_hash,
-                    source_document_id: Some(member.document_id.clone()),
-                    source_document_title: Some(document_title.clone()),
-                    source_guide_id: Some(guide.id.clone()),
-                    source_topic_id: Some(section.topic_id),
-                    source_locator: Some(section.source_locator),
-                },
-            ));
-        }
-        if admitted == 0 {
-            coverage_notes.push(format!(
-                "{document_title} has no active study-guide section wholly inside the collection's authorized reading range."
-            ));
-        }
-    }
-    pending.sort_by(|left, right| {
-        (&left.0, &left.1, &left.2, &left.3.block_key).cmp(&(
-            &right.0,
-            &right.1,
-            &right.2,
-            &right.3.block_key,
-        ))
-    });
-    if pending.len() > MAX_COLLECTION_GUIDE_SECTIONS {
-        return Err(CommandError::new(
-            "study_target_partition_required",
-            "The collection contains too many source-guide sections for one readable guide. Narrow the collection ranges.",
-        ));
-    }
-    let mut sections = pending.into_iter().map(|value| value.3).collect::<Vec<_>>();
-    disambiguate_collection_section_titles(&mut sections);
 
     let comparisons = view
         .synthesis
@@ -1109,83 +1146,64 @@ fn build_collection_guide_content(
                 relationship: relationship.note.clone(),
             })
         })
+        .take(16)
         .collect::<Vec<_>>();
     if !comparisons.is_empty() {
         let content = StudyGuideSectionContent {
-            overview: "Use these source-supported connections to compare related topics across the collection.".to_string(),
+            overview: "These relationships connect concepts that appear across the selected documents. Use them to compare mechanisms, prerequisites, contrasts, or conflicts without collapsing the underlying source distinctions.".to_string(),
             comparisons,
             ..Default::default()
         };
         sections.push(collection_semantic_section(
             "connections",
-            "Connections across sources",
+            "Connections across the collection",
             content,
         )?);
     }
 
+    let mut coverage_notes = view
+        .synthesis
+        .gaps
+        .iter()
+        .map(|gap| gap.detail.trim().to_string())
+        .filter(|detail| !detail.is_empty())
+        .collect::<Vec<_>>();
     coverage_notes.sort();
     coverage_notes.dedup();
-    if !coverage_notes.is_empty() {
-        let visible = coverage_notes.iter().take(16).cloned().collect::<Vec<_>>();
-        let omitted = coverage_notes.len().saturating_sub(visible.len());
-        let mut callouts = visible
-            .into_iter()
-            .map(|body| StudyGuideCallout {
-                kind: StudyGuideCalloutKind::Note,
-                title: "Coverage note".to_string(),
-                body,
-            })
-            .collect::<Vec<_>>();
-        if omitted > 0 {
-            callouts.push(StudyGuideCallout {
-                kind: StudyGuideCalloutKind::Note,
-                title: "Additional coverage notes".to_string(),
-                body: format!(
-                    "{omitted} additional coverage note{} remain recorded in the collection synthesis.",
-                    if omitted == 1 { "" } else { "s" }
-                ),
-            });
-        }
-        let content = StudyGuideSectionContent {
-            overview: "Coverage limits remain explicit rather than being silently filled with invented material.".to_string(),
-            callouts,
-            ..Default::default()
-        };
-        sections.push(collection_semantic_section(
-            "coverage",
-            "Coverage notes",
-            content,
-        )?);
-    }
 
-    let overview_summary = if view.synthesis.reduction_status == "reduced"
-        && !view.synthesis.summary.trim().is_empty()
-    {
-        view.synthesis.summary.clone()
-    } else {
+    if sections.is_empty() {
+        return Err(CommandError::new(
+            "collection_study_guide_empty",
+            "No readable study-guide sections could be authored from the retained collection knowledge.",
+        ));
+    }
+    let summary = if view.synthesis.summary.trim().is_empty() {
         format!(
-            "A source-grounded study guide for {collection_title}, organized from {} selected document{} without replacing their individual study-guide generation.",
+            "This study guide organizes the retained knowledge from {} selected document{} into connected collection-level topics.",
             claim.snapshot.members.len(),
-            if claim.snapshot.members.len() == 1 { "" } else { "s" }
+            if claim.snapshot.members.len() == 1 { "" } else { "s" },
         )
+    } else {
+        view.synthesis.summary.clone()
     };
-    let key_concepts = view
-        .synthesis
-        .topics
-        .iter()
-        .map(|topic| topic.title.clone())
-        .take(48)
-        .collect();
     let content = CollectionGuideContent {
         schema_version: COLLECTION_GUIDE_SCHEMA_VERSION,
         collection_id: claim.target.id.clone(),
         title: collection_title,
         overview: StudyGuideOverview {
-            summary: overview_summary,
+            summary,
             learning_objectives: view.synthesis.learning_objectives.clone(),
-            key_concepts,
+            key_concepts: view
+                .synthesis
+                .topics
+                .iter()
+                .map(|topic| topic.title.clone())
+                .take(48)
+                .collect(),
         },
         sections,
+        // Gaps remain durable internal metadata for honest coverage accounting.
+        // They are deliberately not promoted into learner-visible guide sections.
         coverage_notes,
     };
     let serialized = serde_json::to_vec(&content).map_err(CommandError::serialization)?;
@@ -1218,50 +1236,13 @@ fn collection_semantic_section(
     })
 }
 
-fn disambiguate_collection_section_titles(sections: &mut [CollectionGuideSection]) {
-    let mut counts = BTreeMap::<String, usize>::new();
-    for section in sections.iter() {
-        *counts
-            .entry(section.title.trim().to_ascii_lowercase())
-            .or_default() += 1;
-    }
-    for section in sections {
-        if counts
-            .get(&section.title.trim().to_ascii_lowercase())
-            .copied()
-            .unwrap_or_default()
-            > 1
-        {
-            if let Some(document_title) = section.source_document_title.as_deref() {
-                section.title = format!("{} — {document_title}", section.title);
-            }
-        }
-    }
-}
-
-fn normalize_guide_topic(value: &str) -> String {
-    let mut output = String::new();
-    let mut separator = false;
-    for character in value.trim().chars().flat_map(char::to_lowercase) {
-        if character.is_alphanumeric() {
-            if separator && !output.is_empty() {
-                output.push(' ');
-            }
-            output.push(character);
-            separator = false;
-        } else {
-            separator = true;
-        }
-    }
-    output
-}
-
 fn publish_collection_guide(
     database: &Database,
     operation_id: &str,
     claim: &BatchClaim,
     view: &CollectionViewState,
     content: &CollectionGuideContent,
+    work_total: usize,
 ) -> Result<(), CommandError> {
     let content_json = serde_json::to_string(content).map_err(CommandError::serialization)?;
     let content_hash = hash_text(&content_json);
@@ -1270,6 +1251,7 @@ fn publish_collection_guide(
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(CommandError::database)?;
         collections::ensure_snapshot_current(&tx, &claim.snapshot)?;
+        collection_view::ensure_analysis_current(&tx, &claim.target.id, &view.analysis_hash)?;
         if view.synthesis.snapshot_id != claim.snapshot.snapshot_id {
             return Err(CommandError::new(
                 "source_set_changed",
@@ -1293,8 +1275,8 @@ fn publish_collection_guide(
                     operation_id,
                     StudyTargetArtifactKind::StudyGuide,
                     guide_id,
-                    content.sections.len(),
-                    content.sections.len(),
+                    work_total,
+                    work_total,
                     now,
                 )?;
                 tx.commit().map_err(CommandError::database)?;
@@ -1347,8 +1329,8 @@ fn publish_collection_guide(
             operation_id,
             StudyTargetArtifactKind::StudyGuide,
             &guide_id,
-            content.sections.len(),
-            content.sections.len(),
+            work_total,
+            work_total,
             now,
         )?;
         tx.execute(
@@ -1423,6 +1405,49 @@ fn collection_block_hashes(
         result.insert(section.block_key.clone(), section.content_hash.clone());
     }
     Ok(result)
+}
+
+fn begin_artifact_job(
+    database: &Database,
+    operation_id: &str,
+    kind: StudyTargetArtifactKind,
+    total: usize,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(CommandError::database)?;
+        set_job_running(&tx, operation_id, kind, total, now)?;
+        tx.commit().map_err(CommandError::database)
+    })
+}
+
+fn update_artifact_progress(
+    database: &Database,
+    operation_id: &str,
+    kind: StudyTargetArtifactKind,
+    completed: usize,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    let changed = database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE study_target_artifact_jobs
+                 SET completed_units=?1,updated_at=?2
+                 WHERE batch_id=?3 AND artifact_kind=?4 AND state='running'
+                   AND total_units>=?1 AND completed_units<=?1",
+                params![to_i64(completed)?, now, operation_id, kind.as_db()],
+            )
+            .map_err(CommandError::database)
+    })?;
+    if changed != 1 {
+        return Err(CommandError::new(
+            "study_target_job_changed",
+            "The study-material progress record changed while collection authoring was running.",
+        ));
+    }
+    Ok(())
 }
 
 fn set_job_running(
@@ -1896,12 +1921,13 @@ mod tests {
         fixture: &BundleFixture,
         operation_id: &str,
     ) -> StudyTargetBundleStatus {
-        compose(
+        tauri::async_runtime::block_on(compose(
             &fixture.database,
+            None,
             ComposeStudyTargetBundleInput {
                 operation_id: operation_id.to_string(),
             },
-        )
+        ))
         .expect("bundle should compose")
     }
 

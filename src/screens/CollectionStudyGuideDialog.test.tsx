@@ -42,7 +42,7 @@ const guide: studyMaterials.CollectionStudyGuide = {
       learningObjectives: ["Compare preload and afterload."],
       keyConcepts: ["Preload", "Afterload"],
     },
-    coverageNotes: [],
+    coverageNotes: ["Prepared knowledge exists without a current internal coverage receipt."],
     sections: [{
       blockKey: "f".repeat(32),
       title: "Preload",
@@ -131,6 +131,9 @@ it("renders collection sections through the shared semantic reader with one over
   expect(screen.getByText("Hemodynamic comparison")).toBeTruthy();
   expect(screen.getByText("Remember")).toBeTruthy();
   expect(screen.getByText("What raises preload?")).toBeTruthy();
+  expect(screen.getByText("Source-grounded sections synthesized from the collection’s retained document knowledge.")).toBeTruthy();
+  expect(screen.queryByText(/Prepared knowledge exists without/iu)).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Coverage notes" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Open source" })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: /Section actions for Preload/u }));

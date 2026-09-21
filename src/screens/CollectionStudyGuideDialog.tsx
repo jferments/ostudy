@@ -170,7 +170,7 @@ export function CollectionStudyGuideDialog({
   return (
     <InlineWorkspace
       title={`Study guide · ${collectionTitle}`}
-      description="Source-grounded sections composed from the collection’s authorized document guides."
+      description="Source-grounded sections synthesized from the collection’s retained document knowledge."
       onClose={onClose}
       closeLabel="Close collection study guide"
       className={styles.workspace}

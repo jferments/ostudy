@@ -21,9 +21,7 @@ const MAX_COLLECTION_OVERLAY_TEXT_CHARS: usize = 500_000;
 use crate::{
     collections::{self, SelectedDocumentInput, SourceSelectionInput, SourceSetSnapshotDto},
     database::Database,
-    document_study_guides::{
-        StudyGuideCallout, StudyGuideCalloutKind, StudyGuideOverview, StudyGuideSectionContent,
-    },
+    document_study_guides::{StudyGuideOverview, StudyGuideSectionContent},
     error::CommandError,
     knowledge::collection_view::CollectionSynthesis,
     util::{generate_id, unix_time_millis, validate_entity_id},
@@ -587,36 +585,6 @@ fn decode_collection_guide_content(
             })
         })
         .collect::<Result<Vec<_>, CommandError>>()?;
-    if !synthesis.gaps.is_empty() {
-        let content = StudyGuideSectionContent {
-            overview: "Coverage limits remain explicit for this earlier collection-guide revision."
-                .to_string(),
-            callouts: synthesis
-                .gaps
-                .iter()
-                .take(16)
-                .map(|gap| StudyGuideCallout {
-                    kind: StudyGuideCalloutKind::Note,
-                    title: "Coverage note".to_string(),
-                    body: gap.detail.clone(),
-                })
-                .collect(),
-            ..Default::default()
-        };
-        let content_hash =
-            hash_bytes(&serde_json::to_vec(&content).map_err(CommandError::serialization)?);
-        sections.push(composition::CollectionGuideSection {
-            block_key: "coverage".to_string(),
-            title: "Coverage notes".to_string(),
-            content,
-            content_hash,
-            source_document_id: None,
-            source_document_title: None,
-            source_guide_id: None,
-            source_topic_id: None,
-            source_locator: None,
-        });
-    }
     Ok(composition::CollectionGuideContent {
         schema_version: 0,
         collection_id: collection_id.to_string(),
@@ -900,11 +868,13 @@ fn begin_bundle(
             .map_err(CommandError::database)?;
         }
 
+        let provider_authorized =
+            input.target.kind == StudyTargetKind::Collection && input.output_policy.study_guide;
         tx.execute(
             "INSERT INTO study_target_batches(
                  operation_id,target_id,request_sha256,source_snapshot_id,source_snapshot_json,
                  output_policy_json,provider_authorized,state,created_at,updated_at
-             ) VALUES(?1,?2,?3,?4,?5,?6,0,'queued',?7,?7)",
+             ) VALUES(?1,?2,?3,?4,?5,?6,?7,'queued',?8,?8)",
             params![
                 input.operation_id,
                 target.id,
@@ -912,6 +882,7 @@ fn begin_bundle(
                 snapshot.snapshot_id,
                 snapshot_json,
                 policy_json,
+                i64::from(provider_authorized),
                 now
             ],
         )
