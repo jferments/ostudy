@@ -10,7 +10,7 @@ STORAGE_DIR="${OSTUDY_VM_STORAGE_DIR:-/var/lib/libvirt/images/$VM_NAME}"
 RAM_GIB="${OSTUDY_VM_RAM_GIB:-64}"
 DISK_GIB="${OSTUDY_VM_DISK_GIB:-150}"
 SWAP_GIB="${OSTUDY_VM_SWAP_GIB:-16}"
-VCPUS="${OSTUDY_VM_VCPUS:-16}"
+VCPUS="${OSTUDY_VM_VCPUS:-32}"
 ADMIN_USER="${OSTUDY_VM_ADMIN_USER:-ostudy-admin}"
 RUNNER_USER="${OSTUDY_VM_RUNNER_USER:-ostudy-runner}"
 SSH_PUBLIC_KEY_PATH="${OSTUDY_VM_SSH_PUBLIC_KEY:-$HOME/.ssh/ostudy-ci-unified.pub}"
@@ -29,7 +29,7 @@ Configuration is supplied through environment variables:
   OSTUDY_VM_RAM_GIB              default: 64
   OSTUDY_VM_DISK_GIB             default: 150
   OSTUDY_VM_SWAP_GIB             default: 16
-  OSTUDY_VM_VCPUS                default: 16
+  OSTUDY_VM_VCPUS                default: 32
   OSTUDY_VM_SSH_PUBLIC_KEY       default: ~/.ssh/ostudy-ci-unified.pub
   OSTUDY_VM_STORAGE_DIR          default: /var/lib/libvirt/images/<vm-name>
   OSTUDY_LIBVIRT_URI             default: qemu:///system

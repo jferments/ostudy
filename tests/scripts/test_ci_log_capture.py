@@ -53,6 +53,18 @@ class CiLogCaptureTests(unittest.TestCase):
         self.assertIn("FINAL_SUCCESS_MARKER", completed.stdout)
         self.assertLess(len(completed.stdout.encode("utf-8")), 1024)
 
+    def test_phase_timings_escape_the_bounded_success_tail(self) -> None:
+        completed, raw_log = self.run_capture(
+            "printf 'TIMING scope=fast status=passed elapsed_seconds=17 phase=React tests\\n'; "
+            "for i in $(seq 1 200); do printf 'after-timing-%03d-xxxxxxxxxxxxxxxxxxxxxxxx\\n' \"$i\"; done; "
+            "printf 'FINAL_TIMING_MARKER\\n'"
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("TIMING scope=fast status=passed elapsed_seconds=17 phase=React tests", raw_log)
+        self.assertIn("qualification phase timings", completed.stdout)
+        self.assertIn("elapsed_seconds=17 phase=React tests", completed.stdout)
+        self.assertIn("FINAL_TIMING_MARKER", completed.stdout)
+
     def test_long_running_command_emits_metadata_only_heartbeats(self) -> None:
         completed, raw_log = self.run_capture(
             "printf 'EARLY_HEARTBEAT_MARKER\\n'; "

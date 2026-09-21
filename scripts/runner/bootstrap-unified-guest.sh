@@ -125,7 +125,7 @@ sudo install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0750 \
   "$RUNNER_HOME/.config/pnpm" \
   "$RUNNER_HOME/actions-runner" \
   "$RUNNER_HOME/.cache/ostudy/cargo-target" \
-  "$RUNNER_HOME/.cache/gradle" \
+  "$RUNNER_HOME/.cache/ostudy/gradle" \
   "$RUNNER_HOME/.cache/pnpm/store" \
   "$RUNNER_HOME/.cargo" \
   "$RUNNER_HOME/.rustup" \
@@ -245,7 +245,7 @@ ANDROID_HOME=$ANDROID_HOME_VALUE
 ANDROID_SDK_ROOT=$ANDROID_HOME_VALUE
 RUSTUP_HOME=$RUNNER_HOME/.rustup
 CARGO_HOME=$RUNNER_HOME/.cargo
-GRADLE_USER_HOME=$RUNNER_HOME/.cache/gradle
+GRADLE_USER_HOME=$RUNNER_HOME/.cache/ostudy/gradle
 PNPM_HOME=$PNPM_HOME_VALUE
 OSTUDY_CARGO_TARGET_DIR=$RUNNER_HOME/.cache/ostudy/cargo-target
 PATH=$RUNNER_PATH
@@ -283,7 +283,7 @@ runner_env=(
   ANDROID_SDK_ROOT="$ANDROID_HOME_VALUE"
   RUSTUP_HOME="$RUNNER_HOME/.rustup"
   CARGO_HOME="$RUNNER_HOME/.cargo"
-  GRADLE_USER_HOME="$RUNNER_HOME/.cache/gradle"
+  GRADLE_USER_HOME="$RUNNER_HOME/.cache/ostudy/gradle"
   PNPM_HOME="$PNPM_HOME_VALUE"
   OSTUDY_CARGO_TARGET_DIR="$RUNNER_HOME/.cache/ostudy/cargo-target"
   PATH="$RUNNER_PATH"
