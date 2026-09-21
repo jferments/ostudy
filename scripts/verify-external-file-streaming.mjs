@@ -24,6 +24,7 @@ const mobileStub = await read("src-tauri/src/platform/mobile_stub.rs");
 const desktopAdapter = await read("src-tauri/src/platform/desktop/external_files.rs");
 const checkStatic = await read("scripts/check-static.sh");
 const checkFast = await read("scripts/check-fast.sh");
+const fastNativeInventory = await read("scripts/verify-fast-native-contracts.sh");
 const androidTest = await read("scripts/android-test.sh");
 const androidBuild = await read("scripts/android-build.sh");
 
@@ -222,10 +223,13 @@ for (const token of [
   'step "Rust warnings-as-errors lint gate"',
   "cargo clippy",
   "-D warnings",
-  'step "External file transfer and recovery contracts"',
-  "external_file_",
+  'step "Critical native contract inventory"',
+  'step "Rust library contract suite"',
 ]) {
   expectContains(checkFast, token, `fast qualification invariant ${token}`);
+}
+for (const token of ["external_file_"]) {
+  expectContains(fastNativeInventory, token, `fast native inventory invariant ${token}`);
 }
 
 for (const [path, text] of [
