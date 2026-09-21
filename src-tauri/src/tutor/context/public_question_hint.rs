@@ -159,7 +159,7 @@ mod tests {
         assert!(request_text(TutorMode::Hint, "Help", &value, None).is_err());
         value.private_answer = None;
         value.hidden = false;
-        assert!(request_text(TutorMode::Hint, "Help", &value).is_err());
+        assert!(request_text(TutorMode::Hint, "Help", &value, None).is_err());
         assert!(request_text(TutorMode::Explain, "Help", &focus(), None).is_err());
     }
 }

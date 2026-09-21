@@ -51,6 +51,7 @@ async fn excluded_focused_image_is_never_loaded_or_sent() {
             focus: &focus,
             quiz: None,
             history: history::HistorySnapshot::default(),
+            project_instructions: None,
         },
         &CancellationSignal::new(),
     )
@@ -119,6 +120,7 @@ async fn late_reinterpretation_cannot_publish_a_tutor_turn_over_unchanged_source
             focus: &focus,
             quiz: None,
             history: history::HistorySnapshot::default(),
+            project_instructions: None,
         },
         &CancellationSignal::new(),
     )

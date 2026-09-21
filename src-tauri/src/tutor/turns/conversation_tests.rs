@@ -151,6 +151,8 @@ fn organization_changes_do_not_invalidate_an_admitted_response() {
         conversation_id: conversation.id.clone(),
         request_hash: request_hash(&request).unwrap(),
         accepted_revision: conversation.revision,
+        captured_scope: conversation.scope.clone(),
+        project_instructions: None,
     };
     db.with_connection(|connection| {
         connection.execute(
