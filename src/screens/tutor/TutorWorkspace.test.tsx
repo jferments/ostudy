@@ -58,7 +58,11 @@ vi.mock("../../ipc/tutor", () => ({
   setTutorProjectArchived: vi.fn(),
   updateTutorProject: vi.fn(),
 }));
-vi.mock("../../ui/overlays/overlayContext", () => ({ useConfirm: () => async () => true }));
+vi.mock("../../ui/overlays/overlayContext", () => ({
+  useConfirm: () => async () => true,
+  useOverlayParentId: () => null,
+  useOverlayContext: () => ({ register: () => () => undefined, isTop: () => true }),
+}));
 vi.mock("./TutorMemoryControls", () => ({ TutorMemoryControls: () => null }));
 vi.mock("../../ui/overlays/Dialog", () => ({
   Dialog: ({ title, children }: { title: string; children: ReactNode }) => (
