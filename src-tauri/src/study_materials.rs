@@ -1370,6 +1370,72 @@ mod tests {
     }
 
     #[test]
+    fn collection_guide_decoder_hides_internal_coverage_and_placeholder_review_objectives() {
+        let content = composition::CollectionGuideContent {
+            schema_version: 2,
+            collection_id: "c".repeat(32),
+            title: "Gut bacteria".to_string(),
+            overview: StudyGuideOverview {
+                summary: "A readable overview.".to_string(),
+                learning_objectives: vec![
+                    "Review bacteriophage biology".to_string(),
+                    "Compare bacteriophage replication strategies.".to_string(),
+                ],
+                key_concepts: vec!["Bacteriophages".to_string()],
+            },
+            sections: vec![
+                composition::CollectionGuideSection {
+                    block_key: "topic".to_string(),
+                    title: "Bacteriophage biology".to_string(),
+                    content: StudyGuideSectionContent {
+                        overview: "Bacteriophages are viruses that infect bacteria and can follow distinct replication strategies.".to_string(),
+                        key_points: vec![
+                            "Phages require bacterial hosts for replication.".to_string(),
+                            "Replication strategies can differ in timing and host-cell outcome.".to_string(),
+                        ],
+                        ..Default::default()
+                    },
+                    content_hash: "a".repeat(64),
+                    source_document_id: None,
+                    source_document_title: None,
+                    source_guide_id: None,
+                    source_topic_id: None,
+                    source_locator: None,
+                },
+                composition::CollectionGuideSection {
+                    block_key: "coverage".to_string(),
+                    title: "Coverage notes".to_string(),
+                    content: StudyGuideSectionContent {
+                        overview: "Internal coverage diagnostics.".to_string(),
+                        ..Default::default()
+                    },
+                    content_hash: "b".repeat(64),
+                    source_document_id: None,
+                    source_document_title: None,
+                    source_guide_id: None,
+                    source_topic_id: None,
+                    source_locator: None,
+                },
+            ],
+            coverage_notes: vec![
+                "Prepared knowledge exists without the current native coverage receipt.".to_string(),
+            ],
+        };
+        let encoded = serde_json::to_string(&content).unwrap();
+        let decoded =
+            decode_collection_guide_content(&content.collection_id, &content.title, &encoded)
+                .unwrap();
+
+        assert_eq!(decoded.sections.len(), 1);
+        assert_eq!(decoded.sections[0].title, "Bacteriophage biology");
+        assert_eq!(
+            decoded.overview.learning_objectives,
+            vec!["Compare bacteriophage replication strategies.".to_string()]
+        );
+        assert_eq!(decoded.coverage_notes.len(), 1);
+    }
+
+    #[test]
     fn collection_guide_overlays_reject_unsupported_rich_content_before_persistence() {
         let database = Database::open_in_memory().unwrap();
         let error = save_collection_overlay(
