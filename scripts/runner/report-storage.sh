@@ -43,7 +43,14 @@ measure() {
   fi
 }
 
-measure "Cargo target" "${OSTUDY_CARGO_TARGET_DIR:-$HOME/.cache/ostudy/cargo-target}"
+cargo_target="${OSTUDY_CARGO_TARGET_DIR:-$HOME/.cache/ostudy/cargo-target}"
+measure "Cargo target" "$cargo_target"
+measure "Cargo host debug" "$cargo_target/debug"
+measure "Cargo host incremental" "$cargo_target/debug/incremental"
+for rust_target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
+  measure "Cargo $rust_target" "$cargo_target/$rust_target"
+  measure "Cargo $rust_target inc" "$cargo_target/$rust_target/debug/incremental"
+done
 measure "Gradle active" "${GRADLE_USER_HOME:-$HOME/.cache/gradle}"
 if [[ "${GRADLE_USER_HOME:-$HOME/.cache/gradle}" != "$HOME/.cache/gradle" ]]; then
   measure "Gradle legacy" "$HOME/.cache/gradle"

@@ -7,8 +7,18 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const read = (...parts) => readFile(join(root, ...parts), "utf8");
 
-const [checkStatic, checkFast, timing, nativeContracts, installer, guestPreflight, storageReport] =
-  await Promise.all([
+const [
+  checkStatic,
+  checkFast,
+  timing,
+  nativeContracts,
+  installer,
+  guestPreflight,
+  storageReport,
+  createVm,
+  hostPreflight,
+  bootstrapGuest,
+] = await Promise.all([
     read("scripts", "check-static.sh"),
     read("scripts", "check-fast.sh"),
     read("scripts", "lib", "qualification-timing.bash"),
@@ -16,6 +26,9 @@ const [checkStatic, checkFast, timing, nativeContracts, installer, guestPrefligh
     read("scripts", "install-native-deps.sh"),
     read("scripts", "runner", "guest-preflight.sh"),
     read("scripts", "runner", "report-storage.sh"),
+    read("scripts", "runner", "create-unified-runner-vm.sh"),
+    read("scripts", "runner", "host-preflight.sh"),
+    read("scripts", "runner", "bootstrap-unified-guest.sh"),
   ]);
 
 const failures = [];
@@ -66,9 +79,19 @@ requireText("runner storage report", guestPreflight, [
   "report-storage.sh",
   "root_free_gib",
 ]);
+requireText("32-vCPU VM creation default", createVm, ['OSTUDY_VM_VCPUS:-32', "default: 32"]);
+requireText("32-vCPU host preflight default", hostPreflight, ['OSTUDY_VM_VCPUS:-32']);
+requireText("32-vCPU guest preflight default", guestPreflight, ['OSTUDY_VM_VCPUS:-32']);
+requireText("unified Gradle cache", bootstrapGuest, ["$RUNNER_HOME/.cache/ostudy/gradle"]);
+if (bootstrapGuest.includes("$RUNNER_HOME/.cache/gradle")) {
+  failures.push("runner bootstrap must not create or advertise the legacy duplicate Gradle cache");
+}
+
 requireText("bounded storage inventory", storageReport, [
   "OSTUDY_STORAGE_DU_TIMEOUT_SECONDS",
   "Cargo target",
+  "Cargo host incremental",
+  "x86_64-linux-android",
   "Gradle active",
   "Android SDK",
   "Actions work",
