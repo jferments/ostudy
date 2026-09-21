@@ -9,9 +9,23 @@ fn fixture() -> Database {
     let database = Database::open_in_memory().unwrap();
     database.with_connection(|connection| {
         connection.execute(
-            "INSERT INTO tutor_conversations (id,operation_id,title,scope_json,summary_text,retrieval_enabled,created_at,updated_at)
-             VALUES (?1,?1,'Private chat','{\"kind\":\"general\",\"id\":null}',?2,1,1,1)",
-            params!["a".repeat(32),PRIVATE_TEXT],
+            "INSERT INTO tutor_projects(
+                 id,title,description,instructions,default_scope_json,created_at,updated_at
+             ) VALUES(?1,'Private project',?2,?2,'{\"kind\":\"general\",\"id\":null}',1,1)",
+            params!["e".repeat(32), PRIVATE_TEXT],
+        ).map_err(CommandError::database)?;
+        connection.execute(
+            "INSERT INTO tutor_organization_operations(
+                 operation_id,action,target_kind,target_id,request_hash,result_json,created_at
+             ) VALUES(?1,'update_project','project',?2,?3,?4,1)",
+            params!["f".repeat(32),"e".repeat(32),"c".repeat(64),
+                serde_json::json!({"private":PRIVATE_TEXT}).to_string()],
+        ).map_err(CommandError::database)?;
+        connection.execute(
+            "INSERT INTO tutor_conversations (
+                 id,operation_id,title,scope_json,summary_text,retrieval_enabled,project_id,created_at,updated_at
+             ) VALUES (?1,?1,'Private chat','{\"kind\":\"general\",\"id\":null}',?2,1,?3,1,1)",
+            params!["a".repeat(32),PRIVATE_TEXT,"e".repeat(32)],
         ).map_err(CommandError::database)?;
         connection.execute(
             "INSERT INTO tutor_turns (id,conversation_id,operation_id,sequence,request_hash,request_json,
@@ -50,6 +64,8 @@ fn every_valid_sync_selection_excludes_chat_and_semantic_projection_rows() {
             .with_connection(|connection| {
                 sanitize_snapshot(connection, selection)?;
                 for table in [
+                    "tutor_organization_operations",
+                    "tutor_projects",
                     "tutor_turn_sources",
                     "tutor_turns",
                     "tutor_conversations",
