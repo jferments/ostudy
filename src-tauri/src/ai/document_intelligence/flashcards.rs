@@ -360,9 +360,7 @@ mod tests {
         );
         let encoded = schema.to_string();
         let unit_ids = schema
-            .pointer(
-                "/properties/cards/items/oneOf/0/properties/knowledgeUnitIds/items",
-            )
+            .pointer("/properties/cards/items/oneOf/0/properties/knowledgeUnitIds/items")
             .unwrap();
         assert_eq!(unit_ids["pattern"], "^K(?:0|[1-9][0-9]*)$");
         assert!(unit_ids.get("enum").is_none());
