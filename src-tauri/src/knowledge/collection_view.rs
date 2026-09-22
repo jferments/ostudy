@@ -549,7 +549,7 @@ fn stable_guide_topic_windows<'a>(topics: &[&'a CollectionTopic]) -> Vec<Vec<&'a
 fn guide_window_anchor(topic_id: &str) -> bool {
     let digest = hash(&format!("collection-guide-window-anchor-v1:{topic_id}"));
     let prefix = u16::from_str_radix(&digest[..4], 16).unwrap_or_default();
-    prefix % GUIDE_WINDOW_ANCHOR_MODULUS == 0
+    prefix.is_multiple_of(GUIDE_WINDOW_ANCHOR_MODULUS)
 }
 
 fn topic_source_position(
