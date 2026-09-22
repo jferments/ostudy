@@ -135,13 +135,17 @@ pub(crate) struct DocumentTaskUsageDelta {
 
 #[derive(Clone, Debug)]
 struct ActiveDocumentTask {
+    document_id: String,
+    diagnostics: Arc<Mutex<Option<crate::ai::generation::Operation>>>,
     signal: CancellationSignal,
     progress: Arc<Mutex<DocumentTaskProgress>>,
 }
 
 impl ActiveDocumentTask {
-    fn new(started_at: i64) -> Self {
+    fn new(document_id: &str, started_at: i64) -> Self {
         Self {
+            document_id: document_id.to_string(),
+            diagnostics: Arc::new(Mutex::new(None)),
             signal: CancellationSignal::new(),
             progress: Arc::new(Mutex::new(DocumentTaskProgress::new(started_at))),
         }
@@ -162,7 +166,7 @@ impl ActiveDocumentTasks {
                 "Flashcard generation is already running for this PDF.",
             ));
         }
-        let task = ActiveDocumentTask::new(unix_time_millis()?);
+        let task = ActiveDocumentTask::new(document_id, unix_time_millis()?);
         tasks.insert(document_id.to_string(), task.clone());
         Ok(task)
     }
@@ -252,7 +256,35 @@ where
         signal: task.signal.clone(),
     };
     let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
-    CURRENT_DOCUMENT_TASK.scope(task, future).await
+    let result = CURRENT_DOCUMENT_TASK.scope(task.clone(), future).await;
+    if let Ok(mut diagnostic) = task.diagnostics.lock() {
+        if let Some(operation) = diagnostic.as_mut() {
+            operation.finish(result.is_ok());
+        }
+    }
+    result
+}
+
+/// Bind once to the real document task so all phases and cloned model contexts
+/// share one durable operation, including failures and cancellation.
+pub(crate) fn generation_context(
+    database: &crate::database::Database,
+) -> Result<Option<crate::ai::generation::Context>, CommandError> {
+    CURRENT_DOCUMENT_TASK
+        .try_with(|task| {
+            let mut diagnostic = task.diagnostics.lock().map_err(|_| registry_error())?;
+            if diagnostic.is_none() {
+                *diagnostic = Some(crate::ai::generation::Operation::begin(
+                    database,
+                    None,
+                    Some(&task.document_id),
+                    None,
+                    "document_generation",
+                )?);
+            }
+            Ok(diagnostic.as_ref().map(|operation| operation.context()))
+        })
+        .unwrap_or(Ok(None))
 }
 
 pub(crate) fn current_signal() -> Option<CancellationSignal> {

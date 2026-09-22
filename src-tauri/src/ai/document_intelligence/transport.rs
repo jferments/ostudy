@@ -27,33 +27,39 @@ pub(crate) struct JsonTaskRequest<'a> {
     pub images: &'a [SourcePageImage],
 }
 
-pub(super) async fn request_json(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    request: JsonTaskRequest<'_>,
-) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, None, true).await
+// Capture the compiled call site synchronously. #[track_caller] on an async
+// function would lose this attribution when its future is polled.
+#[track_caller]
+pub(super) fn request_json<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    request: JsonTaskRequest<'a>,
+) -> impl std::future::Future<Output = Result<Value, CommandError>> + 'a {
+    let stage = crate::ai::generation::stage(std::panic::Location::caller().file());
+    request_json_inner(runtime, task, request, None, true, stage)
 }
 
-pub(crate) async fn request_json_cancellable(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    request: JsonTaskRequest<'_>,
-    cancellation: &CancellationSignal,
-) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, Some(cancellation), true).await
+#[track_caller]
+pub(crate) fn request_json_cancellable<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    request: JsonTaskRequest<'a>,
+    cancellation: &'a CancellationSignal,
+) -> impl std::future::Future<Output = Result<Value, CommandError>> + 'a {
+    let stage = crate::ai::generation::stage(std::panic::Location::caller().file());
+    request_json_inner(runtime, task, request, Some(cancellation), true, stage)
 }
 
-/// A caller that promises at most one provider request can opt out of the
-/// provider-dialect compatibility retry while keeping the same cancellation,
-/// response-size and structured-output validation boundary.
-pub(crate) async fn request_json_cancellable_single_attempt(
-    runtime: &AiRuntimeState,
-    task: &DocumentTaskContext,
-    request: JsonTaskRequest<'_>,
-    cancellation: &CancellationSignal,
-) -> Result<Value, CommandError> {
-    request_json_inner(runtime, task, request, Some(cancellation), false).await
+/// Opt out of dialect retries while retaining accounting for the single attempt.
+#[track_caller]
+pub(crate) fn request_json_cancellable_single_attempt<'a>(
+    runtime: &'a AiRuntimeState,
+    task: &'a DocumentTaskContext,
+    request: JsonTaskRequest<'a>,
+    cancellation: &'a CancellationSignal,
+) -> impl std::future::Future<Output = Result<Value, CommandError>> + 'a {
+    let stage = crate::ai::generation::stage(std::panic::Location::caller().file());
+    request_json_inner(runtime, task, request, Some(cancellation), false, stage)
 }
 
 async fn request_json_inner(
@@ -62,6 +68,7 @@ async fn request_json_inner(
     request: JsonTaskRequest<'_>,
     cancellation: Option<&CancellationSignal>,
     allow_compatibility_retry: bool,
+    stage: &str,
 ) -> Result<Value, CommandError> {
     ensure_context_budget(task, &request)?;
     crate::logging::debug_target("ai.contract", "structured_request_prepared",
@@ -100,66 +107,25 @@ async fn request_json_inner(
         ensure_request_size(compatibility)?;
     }
 
-    let first = if let Some(cancellation) = cancellation {
-        runtime
-            .gateway
-            .post_task_json(
-                prepared.url.clone(),
-                bearer,
-                &prepared.body,
-                profile.request_timeout_ms,
-                MAX_COMPLETION_BYTES,
-                cancellation,
-            )
-            .await
-    } else {
-        runtime
-            .gateway
-            .post_document_json(
-                prepared.url.clone(),
-                bearer,
-                &prepared.body,
-                profile.request_timeout_ms,
-                MAX_COMPLETION_BYTES,
-            )
-            .await
-    };
+    let first = execute_request(
+        runtime, task, &prepared.body, prepared.url.clone(), bearer, cancellation, stage,
+    )
+    .await;
     let response = match first {
         Err(first_error)
-            if allow_compatibility_retry && first_error.safe.code == "ai_http_bad_request" =>
+            if allow_compatibility_retry && first_error.code == "ai_http_bad_request" =>
         {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
-                if let Some(cancellation) = cancellation {
-                    runtime
-                        .gateway
-                        .post_task_json(
-                            prepared.url.clone(),
-                            bearer,
-                            compatibility,
-                            profile.request_timeout_ms,
-                            MAX_COMPLETION_BYTES,
-                            cancellation,
-                        )
-                        .await
-                } else {
-                    runtime
-                        .gateway
-                        .post_document_json(
-                            prepared.url.clone(),
-                            bearer,
-                            compatibility,
-                            profile.request_timeout_ms,
-                            MAX_COMPLETION_BYTES,
-                        )
-                        .await
-                }
+                execute_request(
+                    runtime, task, compatibility, prepared.url.clone(), bearer, cancellation, stage,
+                )
+                .await
             } else {
                 Err(first_error)
             }
         }
         other => other,
-    }
-    .map_err(gateway_to_command)?;
+    }?;
 
     record_document_usage(task, &response);
     ensure_document_response_complete(&response)?;
@@ -167,6 +133,42 @@ async fn request_json_inner(
         Ok(value) => Ok(value),
         Err(failure) => Err(output_error(failure.message)),
     }
+}
+
+/// One invocation is exactly one physical transport attempt, not one logical
+/// authoring call. Record before sending, including compatibility/repair attempts.
+async fn execute_request(
+    runtime: &AiRuntimeState,
+    task: &DocumentTaskContext,
+    body: &Value,
+    url: url::Url,
+    bearer: Option<&str>,
+    cancellation: Option<&CancellationSignal>,
+    stage: &str,
+) -> Result<Value, CommandError> {
+    let mut attempt = task.diagnostics.as_ref().map(|context| {
+        context.start_attempt(stage, body, task.diagnostic_window_key.as_deref(), &task.provider_kind)
+    }).transpose()?;
+    let result = if let Some(cancellation) = cancellation {
+        runtime.gateway.post_task_json(
+            url, bearer, body, task.profile().request_timeout_ms,
+            MAX_COMPLETION_BYTES, cancellation,
+        ).await
+    } else {
+        runtime.gateway.post_document_json(
+            url, bearer, body, task.profile().request_timeout_ms, MAX_COMPLETION_BYTES,
+        ).await
+    };
+    if let Some(attempt) = attempt.as_mut() {
+        match &result {
+            Ok(response) => attempt.response(response),
+            Err(error) => attempt.failed(&error.safe.code),
+        }
+    }
+    if result.is_err() {
+        task.record_request_usage(None);
+    }
+    result.map_err(gateway_to_command)
 }
 
 const CONSERVATIVE_TEXT_BYTES_PER_TOKEN: usize = 2;

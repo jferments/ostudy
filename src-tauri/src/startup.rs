@@ -98,6 +98,8 @@ fn initialize(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         .map_err(|error| io::Error::other(error.message))?;
     document_artifacts::reconcile_interrupted_document_artifact_jobs(&database)
         .map_err(|error| io::Error::other(error.message))?;
+    crate::ai::generation::reconcile_startup(&database)
+        .map_err(|error| io::Error::other(error.message))?;
     crate::study_materials::reconcile_startup(&database)
         .map_err(|error| io::Error::other(error.message))?;
     document_operations::reconcile_deleted_document_trash(&paths)

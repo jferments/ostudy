@@ -36,6 +36,8 @@ pub(crate) struct DocumentTaskContext {
     credential_storage: CredentialStorage,
     capabilities: DocumentProviderCapabilities,
     usage: Arc<Mutex<DocumentUsageAccumulator>>,
+    pub(crate) diagnostics: Option<crate::ai::generation::Context>,
+    pub(crate) diagnostic_window_key: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -216,6 +218,8 @@ fn context_from_request(
         credential_storage: request.credential_storage,
         capabilities,
         usage: Arc::new(Mutex::new(DocumentUsageAccumulator::default())),
+        diagnostics: crate::task_cancellation::generation_context(database)?,
+        diagnostic_window_key: None,
     })
 }
 
