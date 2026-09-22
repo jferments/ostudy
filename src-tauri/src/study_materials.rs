@@ -13,8 +13,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
-pub(crate) mod composition;
 mod cancellation;
+pub(crate) mod composition;
 mod reuse;
 
 const MAX_COLLECTION_OVERLAY_DOC_BYTES: usize = 2 * 1024 * 1024;
