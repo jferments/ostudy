@@ -374,6 +374,17 @@ fn build_repair_request(
     (user, schema)
 }
 
+pub(super) struct WindowRunContext<'a> {
+    pub database: &'a Database,
+    pub sources: &'a [SourceRecord],
+    pub contract: &'a str,
+    pub catalog: &'a EvidenceCatalog,
+    pub cancellation: &'a CancellationSignal,
+    pub retry_partial: bool,
+    pub diagnostics: Option<&'a crate::ai::generation::Context>,
+    pub logical_key: Option<&'a str>,
+}
+
 /// Tests inject only the provider boundary; they exercise the real decoder,
 /// evidence validation, concurrency checks and SQLite publication.
 #[cfg(test)]
@@ -391,34 +402,39 @@ where
     Fut: Future<Output = Result<Value, CommandError>>,
 {
     run_window_scoped(
-        database,
-        sources,
-        contract,
-        catalog,
-        cancellation,
-        retry_partial,
-        None,
-        None,
+        WindowRunContext {
+            database,
+            sources,
+            contract,
+            catalog,
+            cancellation,
+            retry_partial,
+            diagnostics: None,
+            logical_key: None,
+        },
         call,
     )
     .await
 }
 
 async fn run_window_scoped<F, Fut>(
-    database: &Database,
-    sources: &[SourceRecord],
-    contract: &str,
-    catalog: &EvidenceCatalog,
-    cancellation: &CancellationSignal,
-    retry_partial: bool,
-    diagnostics: Option<&crate::ai::generation::Context>,
-    logical_key: Option<&str>,
+    input: WindowRunContext<'_>,
     mut call: F,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError>
 where
     F: FnMut(WindowCall) -> Fut,
     Fut: Future<Output = Result<Value, CommandError>>,
 {
+    let WindowRunContext {
+        database,
+        sources,
+        contract,
+        catalog,
+        cancellation,
+        retry_partial,
+        diagnostics,
+        logical_key,
+    } = input;
     let mut checkpoint = analysis_store::Checkpoint::open(database, sources, contract)?;
     let mut previous = checkpoint.load()?;
     if let Some(report) = previous.as_ref() {

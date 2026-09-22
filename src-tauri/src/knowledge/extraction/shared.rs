@@ -38,14 +38,16 @@ where
         subscriber,
         |signal| async move {
             run_window_scoped(
-                input.database,
-                input.sources,
-                input.contract,
-                input.catalog,
-                &signal,
-                input.retry_partial,
-                input.diagnostics,
-                input.logical_key,
+                WindowRunContext {
+                    database: input.database,
+                    sources: input.sources,
+                    contract: input.contract,
+                    catalog: input.catalog,
+                    cancellation: &signal,
+                    retry_partial: input.retry_partial,
+                    diagnostics: input.diagnostics,
+                    logical_key: input.logical_key,
+                },
                 call,
             )
             .await

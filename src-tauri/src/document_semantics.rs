@@ -285,7 +285,6 @@ fn build_semantic_windows_internal(
         if end == start {
             end = start + 1;
             token_total = units[start].token_estimate.max(1).min(max_tokens);
-            complexity_total = units[start].complexity_estimate.max(1).min(max_tokens);
             source_units.extend(units[start].unit_numbers.iter().copied().take(max_units));
         }
 
