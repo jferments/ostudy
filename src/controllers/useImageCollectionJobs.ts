@@ -40,10 +40,8 @@ interface Session {
   needsGuide: boolean;
 }
 interface Services {
-  acquire: () => boolean;
-  release: () => void;
   changed: () => Promise<void>;
-  activeDocument: (id: string | null, guide: boolean) => void;
+  activeDocument: (id: string, guide: boolean, active: boolean) => void;
   showToast: ShowToast;
 }
 
@@ -64,12 +62,6 @@ export function useImageCollectionJobs(services: Services) {
 
   const drain = useCallback(async (session: Session): Promise<void> => {
     if (session.running) return;
-    if (!service.current.acquire()) {
-      session.value.phase = "failed";
-      session.value.error = "Another document is processing. These selections are retained; retry when it finishes.";
-      publish(session);
-      return;
-    }
     session.running = true;
     session.stopped = false;
     session.value.error = null;
@@ -130,7 +122,7 @@ export function useImageCollectionJobs(services: Services) {
           session.batches.shift(); // Release browser File references after durable ownership.
           session.needsCards = true;
           session.needsGuide = true;
-          service.current.activeDocument(result.documentId, false);
+          service.current.activeDocument(result.documentId, false, true);
           publish(session);
           await service.current.changed();
         }
@@ -138,7 +130,7 @@ export function useImageCollectionJobs(services: Services) {
         if (!id || session.stopped) break;
         if (session.needsCards) {
           session.value.phase = "cards";
-          service.current.activeDocument(id, false);
+          service.current.activeDocument(id, false, true);
           publish(session);
           // Native preparation and relevance selection, never user region editing.
           // Additional generation requires the amended canonical source first.
@@ -156,6 +148,7 @@ export function useImageCollectionJobs(services: Services) {
             if (!document.generatedDeckId || getErrorCode(error) !== "document_no_additional_cards") throw error;
           }
           session.needsCards = false;
+          service.current.activeDocument(id, false, false);
           await service.current.changed();
           service.current.showToast(count > 0 ? "success" : "info", count > 0
             ? `Created ${count} flashcards from the image collection.`
@@ -166,10 +159,11 @@ export function useImageCollectionJobs(services: Services) {
         if (session.batches.length > 0) continue;
         if (session.needsGuide && !session.stopped) {
           session.value.phase = "guide";
-          service.current.activeDocument(id, true);
+          service.current.activeDocument(id, true, true);
           publish(session);
           await generateDocumentStudyGuide(id);
           session.needsGuide = false;
+          service.current.activeDocument(id, true, false);
           await service.current.changed();
           service.current.showToast("success", "Study guide created from the image collection.");
         }
@@ -185,8 +179,10 @@ export function useImageCollectionJobs(services: Services) {
       if (!canceled) service.current.showToast("error", session.value.error ?? "Image processing failed.");
     } finally {
       session.running = false;
-      service.current.activeDocument(null, false);
-      service.current.release();
+      if (session.value.documentId) {
+        service.current.activeDocument(session.value.documentId, false, false);
+        service.current.activeDocument(session.value.documentId, true, false);
+      }
       publish(session);
       await service.current.changed();
     }

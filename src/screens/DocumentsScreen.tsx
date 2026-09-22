@@ -34,9 +34,9 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     <DocumentsScreen {...props} />
   </DocumentJobsProvider>;
   const {
-    documents, generationProgress, clockNow, isLoading, isUploading, busyDocumentId,
-    cancelingDocumentId, deletingDocumentId, guideGeneratingDocumentId, cancelingGuideDocumentId,
-    errorMessage, hasProcessingDocument, uploadDocument, retry, generateMore,
+    documents, generationProgress, clockNow, isLoading, isUploading, busyDocumentIds,
+    cancelingDocumentIds, deletingDocumentIds, guideGeneratingDocumentIds,
+    cancelingGuideDocumentIds, errorMessage, uploadDocument, retry, generateMore,
     generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
   } = jobs;
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
@@ -79,15 +79,13 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
           <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2">
             <Button
               variant="secondary"
-              disabled={isUploading || hasProcessingDocument || busyDocumentId !== null}
+              disabled={isUploading}
               onClick={() => setImageWorkspaceDocumentId(null)}
             >
               Upload images
             </Button>
-            <Button variant="primary"
-              disabled={isUploading || busyDocumentId !== null || deletingDocumentId !== null || guideGeneratingDocumentId !== null}
-              onClick={() => void uploadDocument()}>
-              {isUploading ? "Processing document…" : "Upload document"}
+            <Button variant="primary" disabled={isUploading} onClick={() => void uploadDocument()}>
+              {isUploading ? "Choose a document…" : "Upload document"}
             </Button>
           </div>
         }
@@ -114,10 +112,12 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
       ) : (
         <div className={styles.list}>
           {looseDocuments.map((document) => {
-            const guideGenerating = guideGeneratingDocumentId === document.id;
-            const busy = busyDocumentId === document.id || deletingDocumentId === document.id || guideGenerating;
-            const canceling = cancelingDocumentId === document.id;
-            const cancelingGuide = cancelingGuideDocumentId === document.id;
+            const guideGenerating = guideGeneratingDocumentIds.has(document.id);
+            const cardBusy = busyDocumentIds.has(document.id);
+            const deleting = deletingDocumentIds.has(document.id);
+            const busy = cardBusy || deleting || guideGenerating;
+            const canceling = cancelingDocumentIds.has(document.id);
+            const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
             const live = generationProgress[document.id] ?? null;
             const canRetry = document.generatedDeckId === null && document.lifecycleState !== "processing";
             const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
@@ -127,7 +127,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
               id: "view", label: document.sourceFormat === "image_bundle" ? "View collection" : "View", placement: "always-visible",
               onSelect: () => document.sourceFormat === "image_bundle"
                 ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
-              disabled: document.sourceFormat === "image_bundle" ? deletingDocumentId === document.id : busy,
+              disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
             });
             if (document.lifecycleState === "processing") actions.push({
               id: "stop-generation", label: canceling ? "Stopping…" : "Stop generation",
@@ -141,24 +141,24 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
               destructive: guideGenerating, placement: "always-visible",
               variant: guideGenerating ? "secondary" : "primary",
               onSelect: () => void (guideGenerating ? stopStudyGuide(document) : generateStudyGuide(document)),
-              disabled: guideGenerating ? cancelingGuide : busy || isUploading,
+              disabled: guideGenerating ? cancelingGuide : busy,
             });
             if (canRetry) actions.push({
-              id: "retry", label: busyDocumentId === document.id ? "Retrying…" : "Retry generation",
+              id: "retry", label: cardBusy ? "Retrying…" : "Retry generation",
               placement: "always-visible", variant: "primary",
-              onSelect: () => void retry(document), disabled: busy || isUploading,
+              onSelect: () => void retry(document), disabled: busy,
             });
             if (canGenerateMore) actions.push({
-              id: "generate-more", label: busyDocumentId === document.id ? "Generating…" : "Generate more cards",
+              id: "generate-more", label: cardBusy ? "Generating…" : "Generate more cards",
               placement: "wide-and-medium", variant: "primary",
-              onSelect: () => void generateMore(document), disabled: busy || isUploading,
+              onSelect: () => void generateMore(document), disabled: busy,
             });
             if (document.lifecycleState !== "processing") actions.push({
               id: "delete", label: "Delete document",
               description: "Permanently delete this managed source and document-owned derivatives.",
               placement: "wide-and-medium", presentation: "icon", icon: "delete", destructive: true,
-              onSelect: () => void deleteDocument(document), disabled: busy || isUploading,
-              loading: deletingDocumentId === document.id,
+              onSelect: () => void deleteDocument(document), disabled: busy,
+              loading: deleting,
             });
             return (
               <Surface as="article" key={document.id} className={styles.card}>

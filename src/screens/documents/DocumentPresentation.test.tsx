@@ -8,9 +8,9 @@ import { DocumentsScreen } from "../DocumentsScreen";
 vi.mock("../../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../../ipc/documents", () => ({
   listDocuments: vi.fn(), getDocumentGenerationProgress: vi.fn(),
-  importPdfAndGenerateFlashcards: vi.fn(), retryPdfFlashcardGeneration: vi.fn(),
-  generateMorePdfFlashcards: vi.fn(), cancelPdfFlashcardGeneration: vi.fn(),
-  openDocumentSource: vi.fn(), deletePdfDocument: vi.fn(),
+  importDocument: vi.fn(), retryDocumentFlashcardGeneration: vi.fn(),
+  generateMoreDocumentFlashcards: vi.fn(), cancelDocumentFlashcardGeneration: vi.fn(),
+  openDocumentSource: vi.fn(), deleteDocument: vi.fn(),
 }));
 vi.mock("../../ipc/studyGuides", () => ({ generateDocumentStudyGuide: vi.fn(), cancelDocumentStudyGuideGeneration: vi.fn() }));
 vi.mock("../../ipc/collections", () => ({
@@ -89,7 +89,7 @@ describe("Document job presentation", () => {
     const before = makeDocument({ generatedDeckId: null, analysisPendingItems: 4 });
     const after = makeDocument({ analysisPendingItems: 4 });
     vi.mocked(documentIpc.listDocuments).mockResolvedValueOnce([before]).mockResolvedValue([after]);
-    vi.mocked(documentIpc.retryPdfFlashcardGeneration).mockResolvedValue({
+    vi.mocked(documentIpc.retryDocumentFlashcardGeneration).mockResolvedValue({
       document: after, deckId: after.generatedDeckId!, createdNoteCount: 6, createdCardCount: 7, skippedDuplicateCount: 0,
     });
     const toast = renderDocuments();

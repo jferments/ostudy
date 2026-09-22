@@ -12,12 +12,12 @@ vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   getDocumentGenerationProgress: vi.fn(),
-  importPdfAndGenerateFlashcards: vi.fn(),
-  retryPdfFlashcardGeneration: vi.fn(),
-  generateMorePdfFlashcards: vi.fn(),
-  cancelPdfFlashcardGeneration: vi.fn(),
+  importDocument: vi.fn(),
+  retryDocumentFlashcardGeneration: vi.fn(),
+  generateMoreDocumentFlashcards: vi.fn(),
+  cancelDocumentFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(),
-  deletePdfDocument: vi.fn(),
+  deleteDocument: vi.fn(),
 }));
 vi.mock("../ipc/studyGuides", () => ({
   generateDocumentStudyGuide: vi.fn(),
@@ -123,7 +123,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
     vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
-    vi.mocked(documentIpc.cancelPdfFlashcardGeneration).mockResolvedValue(undefined);
+    vi.mocked(documentIpc.cancelDocumentFlashcardGeneration).mockResolvedValue(undefined);
     vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
   });
 
@@ -149,7 +149,10 @@ describe("DocumentsScreen", () => {
       sha256: "0".repeat(64),
       expiresAt: Date.now() + 60_000,
     });
-    vi.mocked(documentIpc.importPdfAndGenerateFlashcards).mockResolvedValue({
+    vi.mocked(documentIpc.importDocument).mockResolvedValue({
+      documentId,
+    });
+    vi.mocked(documentIpc.retryDocumentFlashcardGeneration).mockResolvedValue({
       document: completed,
       deckId: completed.generatedDeckId ?? "",
       createdNoteCount: 6,
@@ -168,9 +171,10 @@ describe("DocumentsScreen", () => {
       expect(platformFiles.selectExternalImport).toHaveBeenCalledWith("document");
       expect(showToast).toHaveBeenCalledWith(
         "info",
-        "Document processing started. Live stage, source-unit, request, and token progress will appear here.",
+        "Document processing started. You can add more documents while this job runs.",
       );
-      expect(documentIpc.importPdfAndGenerateFlashcards).toHaveBeenCalledWith("1".repeat(32));
+      expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
+      expect(documentIpc.retryDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
@@ -245,6 +249,21 @@ describe("DocumentsScreen", () => {
     expect((await screen.findAllByText("Recovering OCR 5/12")).length).toBeGreaterThan(0);
   });
 
+  it("keeps upload controls available while another document is processing", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({
+        lifecycleState: "processing",
+        generatedDeckId: null,
+        completedAt: null,
+      }),
+    ]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    expect(screen.getByRole("button", { name: "Upload document" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Upload images" })).not.toBeDisabled();
+  });
+
   it("keeps a failed document in the library and offers a direct retry", async () => {
     const failed = makeDocument({
       lifecycleState: "failed",
@@ -256,7 +275,7 @@ describe("DocumentsScreen", () => {
     });
     const completed = makeDocument();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([failed]);
-    vi.mocked(documentIpc.retryPdfFlashcardGeneration).mockResolvedValue({
+    vi.mocked(documentIpc.retryDocumentFlashcardGeneration).mockResolvedValue({
       document: completed,
       deckId: completed.generatedDeckId ?? "",
       createdNoteCount: 6,
@@ -269,7 +288,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry generation" }));
 
     await waitFor(() => {
-      expect(documentIpc.retryPdfFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.retryDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
   });
@@ -350,7 +369,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop generation" }));
 
     await waitFor(() => {
-      expect(documentIpc.cancelPdfFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.cancelDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("info", "Stopping the current AI request…");
     });
     expect(screen.getByRole("button", { name: "Stopping…" })).toBeTruthy();
@@ -360,7 +379,7 @@ describe("DocumentsScreen", () => {
   it("generates an additional coverage pass into the existing deck", async () => {
     const existing = makeDocument();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([existing]);
-    vi.mocked(documentIpc.generateMorePdfFlashcards).mockResolvedValue({
+    vi.mocked(documentIpc.generateMoreDocumentFlashcards).mockResolvedValue({
       documentId,
       deckId: existing.generatedDeckId ?? "",
       createdNoteCount: 4,
@@ -373,7 +392,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate more cards" }));
 
     await waitFor(() => {
-      expect(documentIpc.generateMorePdfFlashcards).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.generateMoreDocumentFlashcards).toHaveBeenCalledWith(documentId);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
@@ -451,7 +470,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([makeDocument()])
       .mockResolvedValue([]);
-    vi.mocked(documentIpc.deletePdfDocument).mockResolvedValue({
+    vi.mocked(documentIpc.deleteDocument).mockResolvedValue({
       documentId,
       preservedDeckCitationCount: 1,
     });
@@ -467,7 +486,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete document" }));
 
     await waitFor(() => {
-      expect(documentIpc.deletePdfDocument).toHaveBeenCalledWith(documentId, 2);
+      expect(documentIpc.deleteDocument).toHaveBeenCalledWith(documentId, 2);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith(
         "success",
@@ -485,7 +504,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([withoutDeck])
       .mockResolvedValue([]);
-    vi.mocked(documentIpc.deletePdfDocument).mockResolvedValue({
+    vi.mocked(documentIpc.deleteDocument).mockResolvedValue({
       documentId,
       preservedDeckCitationCount: 0,
     });

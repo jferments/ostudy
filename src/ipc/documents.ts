@@ -202,12 +202,3 @@ export async function deleteDocument(
     input: { documentId, revision },
   });
 }
-
-// Temporary source-compatible aliases while remaining call sites move from
-// PDF-specific names to the format-neutral API above.
-export const importPdfAndGenerateFlashcards = importDocumentAndGenerateFlashcards;
-export const retryPdfFlashcardGeneration = retryDocumentFlashcardGeneration;
-export const generateMorePdfFlashcards = generateMoreDocumentFlashcards;
-export const cancelPdfFlashcardGeneration = cancelDocumentFlashcardGeneration;
-export const deletePdfDocument = deleteDocument;
-export type DeletePdfDocumentResult = DeleteDocumentResult;

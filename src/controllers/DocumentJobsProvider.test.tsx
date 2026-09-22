@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: mocks.list, getDocumentGenerationProgress: mocks.progress,
-  cancelPdfFlashcardGeneration: mocks.cancelDocument, deletePdfDocument: vi.fn(),
-  generateMorePdfFlashcards: vi.fn(), importPdfAndGenerateFlashcards: vi.fn(),
-  openDocumentSource: vi.fn(), retryPdfFlashcardGeneration: vi.fn(),
+  cancelDocumentFlashcardGeneration: mocks.cancelDocument, deleteDocument: vi.fn(),
+  generateMoreDocumentFlashcards: vi.fn(), importDocument: vi.fn(),
+  openDocumentSource: vi.fn(), retryDocumentFlashcardGeneration: vi.fn(),
 }));
 vi.mock("../ipc/studyGuides", () => ({
   generateDocumentStudyGuide: mocks.guide, cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
@@ -35,7 +35,7 @@ function DocumentsRoute() {
   return <section aria-label="Documents route">
     <button onClick={() => { void jobs.generateStudyGuide(document); }}>Generate guide</button>
     <button onClick={() => { void jobs.stopStudyGuide(document); }}>Stop guide</button>
-    <span role="status">{jobs.guideGeneratingDocumentId ? "Guide running" : "Idle"}</span>
+    <span role="status">{jobs.guideGeneratingDocumentIds.has(document.id) ? "Guide running" : "Idle"}</span>
     {jobs.errorMessage ? <p role="alert">{jobs.errorMessage}</p> : null}
     <button onClick={() => { void jobs.refreshDocuments(); }}>Refresh documents</button>
   </section>;
