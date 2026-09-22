@@ -13,15 +13,23 @@ fn document_generation_accounts_for_every_attempt_and_preserves_unknown_usage() 
     let mut operation = Operation::begin(&database, None, None, None, "fixture").unwrap();
     let context = operation.context();
     let key = hash(b"window");
-    let mut first = context.start_attempt("guide_authoring", &request(), Some(&key), "openrouter").unwrap();
+    let mut first = context
+        .start_attempt("guide_authoring", &request(), Some(&key), "openrouter")
+        .unwrap();
     first.response(&json!({"id":"provider-first","usage":{
         "prompt_tokens":800,"completion_tokens":200,"total_tokens":1000,
         "prompt_tokens_details":{"cached_tokens":600},
         "completion_tokens_details":{"reasoning_tokens":50},"cost":0.012
     },"choices":[{"finish_reason":"length","message":{"content":"PRIVATE OUTPUT"}}]}));
-    let mut second = context.start_attempt("guide_authoring", &request(), Some(&key), "openrouter").unwrap();
+    let mut second = context
+        .start_attempt("guide_authoring", &request(), Some(&key), "openrouter")
+        .unwrap();
     second.failed("ai_timeout");
-    drop(context.start_attempt("knowledge_extraction", &request(), None, "openrouter").unwrap());
+    drop(
+        context
+            .start_attempt("knowledge_extraction", &request(), None, "openrouter")
+            .unwrap(),
+    );
     operation.finish(false);
     database.with_connection(|connection| {
         let row: (i64,i64,i64,i64,i64,String) = connection.query_row(
@@ -57,23 +65,34 @@ fn document_generation_accounts_for_every_attempt_and_preserves_unknown_usage() 
 #[test]
 fn document_generation_interruption_and_startup_reconciliation_do_not_invent_zero_tokens() {
     let database = Database::open_in_memory().unwrap();
-    let operation = Operation::begin(&database,None,None,None,"abandoned").unwrap();
+    let operation = Operation::begin(&database, None, None, None, "abandoned").unwrap();
     let context = operation.context();
-    let attempt = context.start_attempt("flashcard_authoring",&request(),None,"openrouter").unwrap();
+    let attempt = context
+        .start_attempt("flashcard_authoring", &request(), None, "openrouter")
+        .unwrap();
     // Simulate process loss without running destructors. Startup owns recovery.
     std::mem::forget(attempt);
     std::mem::forget(operation);
     reconcile_startup(&database).unwrap();
-    database.with_connection(|connection| {
-        let row: (String,Option<i64>) = connection.query_row(
-            "SELECT status,input_tokens FROM generation_requests",[],|row|Ok((row.get(0)?,row.get(1)?)),
-        ).map_err(CommandError::database)?;
-        assert_eq!(row,("interrupted".into(),None));
-        let state: String = connection.query_row("SELECT state FROM generation_operations",[],|row|row.get(0))
-            .map_err(CommandError::database)?;
-        assert_eq!(state,"interrupted");
-        Ok(())
-    }).unwrap();
+    database
+        .with_connection(|connection| {
+            let row: (String, Option<i64>) = connection
+                .query_row(
+                    "SELECT status,input_tokens FROM generation_requests",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(row, ("interrupted".into(), None));
+            let state: String = connection
+                .query_row("SELECT state FROM generation_operations", [], |row| {
+                    row.get(0)
+                })
+                .map_err(CommandError::database)?;
+            assert_eq!(state, "interrupted");
+            Ok(())
+        })
+        .unwrap();
 }
 
 #[test]
@@ -83,12 +102,23 @@ fn document_generation_payload_parts_are_content_free_and_owner_stages_are_expli
         {"role":"user","content":"<ostudy-knowledge>{\"units\":[{\"statement\":\"PRIVATE\"}],\"evidence\":[\"SECRET\"],\"preparation\":{\"evidenceStructures\":[\"TABLE\"]}}</ostudy-knowledge>"}
     ],"response_format":{"type":"json_schema","json_schema":{"type":"object"}}});
     let report = payload::measure(&body).unwrap();
-    assert!(report["embeddedSchemaBytes"].as_u64().unwrap()>0);
-    assert!(report["wireSchemaBytes"].as_u64().unwrap()>0);
-    assert!(report["userParts"]["structuralEvidence"].as_u64().unwrap()>0);
-    for secret in ["PRIVATE","SECRET","TABLE"] { assert!(!report.to_string().contains(secret)); }
-    assert_eq!(stage("src-tauri/src/knowledge/extraction.rs"),"knowledge_extraction");
-    assert_eq!(stage("src-tauri\\src\\knowledge\\collection_view.rs"),"collection_synthesis");
-    assert_eq!(stage("src-tauri/src/ai/document_intelligence/study_guide.rs"),"guide_authoring");
-    assert_eq!(stage("unrecognized.rs"),"unclassified");
+    assert!(report["embeddedSchemaBytes"].as_u64().unwrap() > 0);
+    assert!(report["wireSchemaBytes"].as_u64().unwrap() > 0);
+    assert!(report["userParts"]["structuralEvidence"].as_u64().unwrap() > 0);
+    for secret in ["PRIVATE", "SECRET", "TABLE"] {
+        assert!(!report.to_string().contains(secret));
+    }
+    assert_eq!(
+        stage("src-tauri/src/knowledge/extraction.rs"),
+        "knowledge_extraction"
+    );
+    assert_eq!(
+        stage("src-tauri\\src\\knowledge\\collection_view.rs"),
+        "collection_synthesis"
+    );
+    assert_eq!(
+        stage("src-tauri/src/ai/document_intelligence/study_guide.rs"),
+        "guide_authoring"
+    );
+    assert_eq!(stage("unrecognized.rs"), "unclassified");
 }

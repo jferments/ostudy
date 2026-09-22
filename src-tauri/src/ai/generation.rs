@@ -1,6 +1,6 @@
 //! Durable, content-free accounting for each physical generation request.
 //! Provider usage is authoritative. Payload sizes are separate diagnostics.
-use std::fmt;
+use std::{fmt, future::Future};
 
 use rusqlite::{params, TransactionBehavior};
 use serde_json::{json, Value};
@@ -20,6 +20,14 @@ mod tests;
 pub(crate) struct Context {
     database: Database,
     pub(crate) operation_id: String,
+}
+
+#[derive(Clone)]
+struct RequestScope {
+    context: Context,
+    stage: String,
+    logical_key: Option<String>,
+    provider: String,
 }
 
 impl fmt::Debug for Context {
@@ -81,12 +89,16 @@ impl Operation {
             Ok(id)
         })?;
         crate::logging::info_target(
-            "ai.generation", "generation_operation_started",
+            "ai.generation",
+            "generation_operation_started",
             "Started durable generation accounting; source and prompt content are not recorded.",
             json!({"operationId": operation_id, "purpose": purpose}),
         );
         Ok(Self {
-            context: Context { database: database.clone(), operation_id },
+            context: Context {
+                database: database.clone(),
+                operation_id,
+            },
             finished: false,
         })
     }
@@ -106,16 +118,19 @@ impl Operation {
         }
         self.finished = true;
         let result = self.context.database.with_connection(|connection| {
-            connection.execute(
-                "UPDATE generation_operations SET state=?1,finished_at=?2
+            connection
+                .execute(
+                    "UPDATE generation_operations SET state=?1,finished_at=?2
                  WHERE id=?3 AND state='running'",
-                params![state, unix_time_millis()?, self.context.operation_id],
-            ).map_err(CommandError::database)?;
+                    params![state, unix_time_millis()?, self.context.operation_id],
+                )
+                .map_err(CommandError::database)?;
             Ok(())
         });
         warn_accounting(result);
         crate::logging::info_target(
-            "ai.generation", "generation_operation_finished",
+            "ai.generation",
+            "generation_operation_finished",
             "Generation accounting is available through scripts/generation-usage.py.",
             json!({"operationId": self.context.operation_id, "state": state}),
         );
@@ -143,62 +158,159 @@ impl Context {
         provider: &str,
     ) -> Result<Attempt, CommandError> {
         let bytes = serde_json::to_vec(body).map_err(CommandError::serialization)?;
-        let request_key = logical_key.map(str::to_string).unwrap_or_else(|| hash(&bytes));
+        let request_key = logical_key
+            .map(str::to_string)
+            .unwrap_or_else(|| hash(&bytes));
         let sizes = payload::measure(body)?;
         let id = self.database.with_connection(|connection| {
             let tx = connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(CommandError::database)?;
             let id = generate_id(&tx)?;
-            let attempt: i64 = tx.query_row(
-                "SELECT COALESCE(MAX(attempt),0)+1 FROM generation_requests
+            let attempt: i64 = tx
+                .query_row(
+                    "SELECT COALESCE(MAX(attempt),0)+1 FROM generation_requests
                  WHERE operation_id=?1 AND stage=?2 AND request_key=?3",
-                params![self.operation_id, stage, request_key], |row| row.get(0),
-            ).map_err(CommandError::database)?;
+                    params![self.operation_id, stage, request_key],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
             tx.execute(
                 "INSERT INTO generation_requests
                  (id,operation_id,stage,request_key,attempt,provider,model,status,
                   started_at,payload_bytes_json,max_output_tokens)
                  VALUES(?1,?2,?3,?4,?5,?6,?7,'started',?8,?9,?10)",
-                params![id, self.operation_id, stage, request_key, attempt,
+                params![
+                    id,
+                    self.operation_id,
+                    stage,
+                    request_key,
+                    attempt,
                     provider,
-                    body.get("model").and_then(Value::as_str).unwrap_or("unknown"),
-                    unix_time_millis()?, sizes.to_string(),
-                    body.get("max_tokens").and_then(Value::as_i64).unwrap_or(0)],
-            ).map_err(CommandError::database)?;
+                    body.get("model")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown"),
+                    unix_time_millis()?,
+                    sizes.to_string(),
+                    body.get("max_tokens").and_then(Value::as_i64).unwrap_or(0)
+                ],
+            )
+            .map_err(CommandError::database)?;
             tx.commit().map_err(CommandError::database)?;
             Ok(id)
         })?;
-        Ok(Attempt { context: self.clone(), id, finished: false })
+        Ok(Attempt {
+            context: self.clone(),
+            id,
+            finished: false,
+        })
     }
 
+    pub(crate) fn reused(&self, stage: &str, cache_key: &str) {
+        warn_accounting(self.database.with_connection(|connection| {
+            connection
+                .execute(
+                    "INSERT INTO generation_reuse_events(operation_id,stage,cache_key,created_at)
+                     VALUES(?1,?2,?3,?4)",
+                    params![self.operation_id, stage, cache_key, unix_time_millis()?],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        }));
+    }
+}
 
+tokio::task_local! {
+    static CURRENT_REQUEST: RequestScope;
+}
+
+pub(crate) async fn scoped_request<F: Future>(
+    context: Option<Context>,
+    stage: &str,
+    logical_key: Option<&str>,
+    provider: &str,
+    future: F,
+) -> F::Output {
+    let Some(context) = context else {
+        return future.await;
+    };
+    CURRENT_REQUEST
+        .scope(
+            RequestScope {
+                context,
+                stage: stage.to_string(),
+                logical_key: logical_key.map(str::to_string),
+                provider: provider.to_string(),
+            },
+            future,
+        )
+        .await
+}
+
+pub(crate) fn start_current_attempt(body: &Value) -> Option<Attempt> {
+    let result = CURRENT_REQUEST
+        .try_with(|scope| {
+            scope.context.start_attempt(
+                &scope.stage,
+                body,
+                scope.logical_key.as_deref(),
+                &scope.provider,
+            )
+        })
+        .ok()?;
+    match result {
+        Ok(attempt) => Some(attempt),
+        Err(error) => {
+            warn_accounting(Err(error));
+            None
+        }
+    }
 }
 
 impl Attempt {
     pub(crate) fn response(&mut self, response: &Value) {
         let usage = super::gateway::normalized_usage(response);
         let number = |pointer: &str| -> Option<i64> {
-            usage.as_ref().and_then(|value| value.pointer(pointer))
-                .and_then(Value::as_i64).filter(|value| *value >= 0)
+            usage
+                .as_ref()
+                .and_then(|value| value.pointer(pointer))
+                .and_then(Value::as_i64)
+                .filter(|value| *value >= 0)
         };
-        let cost = usage.as_ref().and_then(|value| value.get("cost"))
-            .and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
+        let cost = usage
+            .as_ref()
+            .and_then(|value| value.get("cost"))
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value >= 0.0);
         let result = self.context.database.with_connection(|connection| {
-            connection.execute(
-                "UPDATE generation_requests SET status='response',finished_at=?1,
+            connection
+                .execute(
+                    "UPDATE generation_requests SET status='response',finished_at=?1,
                  input_tokens=?2,output_tokens=?3,reasoning_tokens=?4,cached_input_tokens=?5,
                  cache_write_tokens=?6,total_tokens=?7,cost=?8,response_id=?9,finish_reason=?10,
                  payload_bytes_json=json_set(payload_bytes_json,'$.response',json(?11))
                  WHERE id=?12 AND status='started'",
-                params![unix_time_millis()?, number("/prompt_tokens"), number("/completion_tokens"),
-                    number("/completion_tokens_details/reasoning_tokens"),
-                    number("/prompt_tokens_details/cached_tokens"),
-                    number("/prompt_tokens_details/cache_write_tokens"), number("/total_tokens"), cost,
-                    bounded(response.get("id").and_then(Value::as_str), 256),
-                    bounded(response.pointer("/choices/0/finish_reason").and_then(Value::as_str), 80),
-                    payload::response_measure(response).to_string(), self.id],
-            ).map_err(CommandError::database)?;
+                    params![
+                        unix_time_millis()?,
+                        number("/prompt_tokens"),
+                        number("/completion_tokens"),
+                        number("/completion_tokens_details/reasoning_tokens"),
+                        number("/prompt_tokens_details/cached_tokens"),
+                        number("/prompt_tokens_details/cache_write_tokens"),
+                        number("/total_tokens"),
+                        cost,
+                        bounded(response.get("id").and_then(Value::as_str), 256),
+                        bounded(
+                            response
+                                .pointer("/choices/0/finish_reason")
+                                .and_then(Value::as_str),
+                            80
+                        ),
+                        payload::response_measure(response).to_string(),
+                        self.id
+                    ],
+                )
+                .map_err(CommandError::database)?;
             Ok(())
         });
         self.finished = true;
@@ -210,31 +322,45 @@ impl Attempt {
     }
 
     fn end(&mut self, status: &str, code: Option<&str>) {
-        if self.finished { return; }
+        if self.finished {
+            return;
+        }
         self.finished = true;
         warn_accounting(self.context.database.with_connection(|connection| {
-            connection.execute(
-                "UPDATE generation_requests SET status=?1,error_code=?2,finished_at=?3
+            connection
+                .execute(
+                    "UPDATE generation_requests SET status=?1,error_code=?2,finished_at=?3
                  WHERE id=?4 AND status='started'",
-                params![status, bounded(code, 80), unix_time_millis()?, self.id],
-            ).map_err(CommandError::database)?;
+                    params![status, bounded(code, 80), unix_time_millis()?, self.id],
+                )
+                .map_err(CommandError::database)?;
             Ok(())
         }));
     }
 }
 
 impl Drop for Attempt {
-    fn drop(&mut self) { self.end("interrupted", None); }
+    fn drop(&mut self) {
+        self.end("interrupted", None);
+    }
 }
 
 pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError> {
     database.with_connection(|connection| {
         let tx = connection.transaction().map_err(CommandError::database)?;
         let now = unix_time_millis()?;
-        tx.execute("UPDATE generation_requests SET status='interrupted',finished_at=?1
-                    WHERE status='started'", [now]).map_err(CommandError::database)?;
-        tx.execute("UPDATE generation_operations SET state='interrupted',finished_at=?1
-                    WHERE state='running'", [now]).map_err(CommandError::database)?;
+        tx.execute(
+            "UPDATE generation_requests SET status='interrupted',finished_at=?1
+                    WHERE status='started'",
+            [now],
+        )
+        .map_err(CommandError::database)?;
+        tx.execute(
+            "UPDATE generation_operations SET state='interrupted',finished_at=?1
+                    WHERE state='running'",
+            [now],
+        )
+        .map_err(CommandError::database)?;
         tx.commit().map_err(CommandError::database)
     })
 }
@@ -254,7 +380,9 @@ pub(crate) fn stage(file: &str) -> &'static str {
     }
 }
 
-pub(crate) fn hash(bytes: &[u8]) -> String { format!("{:x}", Sha256::digest(bytes)) }
+pub(crate) fn hash(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
 
 fn bounded(value: Option<&str>, maximum: usize) -> Option<String> {
     value.map(|value| value.chars().take(maximum).collect())
@@ -263,9 +391,11 @@ fn bounded(value: Option<&str>, maximum: usize) -> Option<String> {
 fn warn_accounting(result: Result<(), CommandError>) {
     if let Err(error) = result {
         crate::logging::warn_target(
-            "ai.generation", "generation_accounting_incomplete",
+            "ai.generation",
+            "generation_accounting_incomplete",
             "A diagnostic write failed; paid output and committed artifacts were not discarded.",
             json!({"code": error.code}),
         );
     }
 }
+

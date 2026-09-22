@@ -70,7 +70,6 @@ impl AiGateway {
             ));
         };
 
-        record_current_provider_request();
         let first = self
             .post_sse_chat_json(
                 url.clone(),
@@ -104,7 +103,6 @@ impl AiGateway {
                     _ = cancellation.canceled() => return Err(canceled_error()),
                     _ = sleep(delay) => {}
                 }
-                record_current_provider_request();
                 match self
                     .post_sse_chat_json(
                         url.clone(),
@@ -154,6 +152,42 @@ impl AiGateway {
     }
 
     async fn post_sse_chat_json(
+        &self,
+        url: Url,
+        bearer: Option<&str>,
+        body: &Value,
+        inactivity_timeout_ms: i64,
+        maximum_content_bytes: usize,
+        cancellation: &CancellationSignal,
+    ) -> Result<Value, AiGatewayError> {
+        if cancellation.is_canceled() {
+            return Err(canceled_error());
+        }
+        record_current_provider_request();
+        let mut attempt = crate::ai::generation::start_current_attempt(body);
+        let result = self
+            .post_sse_chat_json_inner(
+                url,
+                bearer,
+                body,
+                inactivity_timeout_ms,
+                maximum_content_bytes,
+                cancellation,
+            )
+            .await;
+        if let Some(attempt) = attempt.as_mut() {
+            match &result {
+                Ok(response) => attempt.response(response),
+                Err(error) => attempt.failed(&error.safe.code),
+            }
+        }
+        if result.is_err() {
+            record_current_usage(Default::default());
+        }
+        result
+    }
+
+    async fn post_sse_chat_json_inner(
         &self,
         url: Url,
         bearer: Option<&str>,

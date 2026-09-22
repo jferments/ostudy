@@ -108,7 +108,13 @@ async fn request_json_inner(
     }
 
     let first = execute_request(
-        runtime, task, &prepared.body, prepared.url.clone(), bearer, cancellation, stage,
+        runtime,
+        task,
+        &prepared.body,
+        prepared.url.clone(),
+        bearer,
+        cancellation,
+        stage,
     )
     .await;
     let response = match first {
@@ -117,7 +123,13 @@ async fn request_json_inner(
         {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
                 execute_request(
-                    runtime, task, compatibility, prepared.url.clone(), bearer, cancellation, stage,
+                    runtime,
+                    task,
+                    compatibility,
+                    prepared.url.clone(),
+                    bearer,
+                    cancellation,
+                    stage,
                 )
                 .await
             } else {
@@ -135,8 +147,8 @@ async fn request_json_inner(
     }
 }
 
-/// One invocation is exactly one physical transport attempt, not one logical
-/// authoring call. Record before sending, including compatibility/repair attempts.
+/// Bind logical stage/window attribution around the gateway. The gateway owns
+/// physical-attempt accounting because its bounded retry can send more than once.
 async fn execute_request(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
@@ -146,25 +158,40 @@ async fn execute_request(
     cancellation: Option<&CancellationSignal>,
     stage: &str,
 ) -> Result<Value, CommandError> {
-    let mut attempt = task.diagnostics.as_ref().map(|context| {
-        context.start_attempt(stage, body, task.diagnostic_window_key.as_deref(), &task.provider_kind)
-    }).transpose()?;
-    let result = if let Some(cancellation) = cancellation {
-        runtime.gateway.post_task_json(
-            url, bearer, body, task.profile().request_timeout_ms,
-            MAX_COMPLETION_BYTES, cancellation,
-        ).await
-    } else {
-        runtime.gateway.post_document_json(
-            url, bearer, body, task.profile().request_timeout_ms, MAX_COMPLETION_BYTES,
-        ).await
-    };
-    if let Some(attempt) = attempt.as_mut() {
-        match &result {
-            Ok(response) => attempt.response(response),
-            Err(error) => attempt.failed(&error.safe.code),
+    let future = async {
+        if let Some(cancellation) = cancellation {
+            runtime
+                .gateway
+                .post_task_json(
+                    url,
+                    bearer,
+                    body,
+                    task.profile().request_timeout_ms,
+                    MAX_COMPLETION_BYTES,
+                    cancellation,
+                )
+                .await
+        } else {
+            runtime
+                .gateway
+                .post_document_json(
+                    url,
+                    bearer,
+                    body,
+                    task.profile().request_timeout_ms,
+                    MAX_COMPLETION_BYTES,
+                )
+                .await
         }
-    }
+    };
+    let result = crate::ai::generation::scoped_request(
+        task.diagnostics.clone(),
+        stage,
+        task.diagnostic_window_key.as_deref(),
+        &task.provider_kind,
+        future,
+    )
+    .await;
     if result.is_err() {
         task.record_request_usage(None);
     }
