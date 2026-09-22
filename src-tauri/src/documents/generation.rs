@@ -1,10 +1,13 @@
 use crate::{
-    ai::AiRuntimeState, database::Database,
+    ai::AiRuntimeState,
+    database::Database,
     document_initial_generation::{
         process_and_generate_initial_flashcards, process_reserved_initial_flashcards,
     },
     error::CommandError,
-    paths::AppPaths, pdf_render_backend::PdfRenderRuntime, util::validate_entity_id,
+    paths::AppPaths,
+    pdf_render_backend::PdfRenderRuntime,
+    util::validate_entity_id,
 };
 
 use super::{
@@ -17,8 +20,8 @@ pub(crate) fn validate_retry_pdf_flashcard_generation(
     document_id: &str,
 ) -> Result<(), CommandError> {
     validate_entity_id(document_id, "document")?;
-    let document =
-        database.with_connection(|connection| repository::load_document(connection, document_id))?;
+    let document = database
+        .with_connection(|connection| repository::load_document(connection, document_id))?;
     if document.dto.generated_deck_id.is_some() {
         return Err(CommandError::new(
             "document_already_generated",
@@ -35,15 +38,8 @@ pub(crate) async fn retry_pdf_flashcard_generation(
     render_runtime: PdfRenderRuntime,
     input: RetryPdfGenerationInput,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
-    retry_pdf_flashcard_generation_inner(
-        database,
-        paths,
-        runtime,
-        render_runtime,
-        input,
-        false,
-    )
-    .await
+    retry_pdf_flashcard_generation_inner(database, paths, runtime, render_runtime, input, false)
+        .await
 }
 
 pub(crate) async fn retry_reserved_pdf_flashcard_generation(
@@ -53,15 +49,8 @@ pub(crate) async fn retry_reserved_pdf_flashcard_generation(
     render_runtime: PdfRenderRuntime,
     input: RetryPdfGenerationInput,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
-    retry_pdf_flashcard_generation_inner(
-        database,
-        paths,
-        runtime,
-        render_runtime,
-        input,
-        true,
-    )
-    .await
+    retry_pdf_flashcard_generation_inner(database, paths, runtime, render_runtime, input, true)
+        .await
 }
 
 async fn retry_pdf_flashcard_generation_inner(

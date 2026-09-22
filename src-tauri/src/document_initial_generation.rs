@@ -79,15 +79,7 @@ pub(crate) async fn process_and_generate_initial_flashcards(
     render_runtime: PdfRenderRuntime,
     document_id: &str,
 ) -> Result<InitialGenerationResult, CommandError> {
-    process_initial_flashcards(
-        database,
-        paths,
-        runtime,
-        render_runtime,
-        document_id,
-        false,
-    )
-    .await
+    process_initial_flashcards(database, paths, runtime, render_runtime, document_id, false).await
 }
 
 pub(crate) async fn process_reserved_initial_flashcards(
@@ -97,15 +89,7 @@ pub(crate) async fn process_reserved_initial_flashcards(
     render_runtime: PdfRenderRuntime,
     document_id: &str,
 ) -> Result<InitialGenerationResult, CommandError> {
-    process_initial_flashcards(
-        database,
-        paths,
-        runtime,
-        render_runtime,
-        document_id,
-        true,
-    )
-    .await
+    process_initial_flashcards(database, paths, runtime, render_runtime, document_id, true).await
 }
 
 async fn process_initial_flashcards(
