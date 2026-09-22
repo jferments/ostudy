@@ -9,8 +9,8 @@ use serde::Serialize;
 
 use crate::{
     ai::{
-        embeddings::{self, Purpose},
-        AiRuntimeState,
+        embeddings::{self, EmbeddingDiagnostics, Purpose},
+        generation, AiRuntimeState,
     },
     database::Database,
     error::CommandError,
@@ -56,6 +56,7 @@ pub(crate) async fn retrieve(
     include_conversations: bool,
     query: &str,
     cancellation: &CancellationSignal,
+    diagnostics: Option<&generation::Context>,
 ) -> Result<RetrievalResult, CommandError> {
     scope.validate()?;
     bounded(query, 8_000, "semantic search query", false)?;
@@ -70,6 +71,7 @@ pub(crate) async fn retrieve(
             signal: cancellation,
             expected_revision: None,
             expected_embedding: None,
+            diagnostics: diagnostics.cloned(),
         },
     )
     .await?;
@@ -88,6 +90,10 @@ pub(crate) async fn retrieve(
         Purpose::Query,
         &[query.to_string()],
         cancellation,
+        diagnostics.map(|context| EmbeddingDiagnostics {
+            context,
+            stage: "embedding_query",
+        }),
     )
     .await?;
     let eligible = eligible_entries(database, scope, include_conversations)?;

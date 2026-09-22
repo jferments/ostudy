@@ -728,7 +728,11 @@ pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError>
 pub(crate) fn sanitize_for_device_transfer(connection: &Connection) -> Result<(), CommandError> {
     connection
         .execute_batch(
-            "DELETE FROM study_target_artifact_jobs;
+            "DELETE FROM collection_guide_checkpoint_sources;
+             DELETE FROM collection_guide_checkpoints;
+             DELETE FROM collection_guide_manifests;
+             DELETE FROM collection_reduction_receipts;
+             DELETE FROM study_target_artifact_jobs;
              DELETE FROM study_target_batches;",
         )
         .map_err(CommandError::database)

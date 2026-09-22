@@ -1,4 +1,4 @@
-"""Behavioral regressions for content-free generation accounting and migration 27."""
+"""Behavioral regressions for content-free generation accounting and reuse diagnostics."""
 import hashlib
 import importlib.util
 import json
@@ -47,6 +47,58 @@ class GenerationUsageTests(unittest.TestCase):
         self.assertIsNone(report["totals"]["reasoningPercentOfCoveredOutput"])
         self.assertEqual(report["localReuse"][0]["count"], 4)
         self.assertIn("reported usage only", USAGE.render(report))
+
+    def test_stage_with_entirely_missing_usage_is_unknown_not_zero_percent(self):
+        report = USAGE.summarize({"requests": [
+            {"stage": "guide_authoring", "inputTokens": 120, "outputTokens": 30,
+             "attempt": 1, "status": "response"},
+            {"stage": "embedding_indexing", "inputTokens": None, "outputTokens": None,
+             "attempt": 1, "status": "interrupted"},
+        ]})
+        rows = {row["stage"]: row for row in report["stages"]}
+        self.assertIsNone(rows["embedding_indexing"]["inputTokens"])
+        self.assertIsNone(rows["embedding_indexing"]["percentOfReportedInput"])
+        self.assertIsNone(rows["embedding_indexing"]["percentOfReportedOutput"])
+
+    def test_retry_shares_and_payload_byte_diagnostics_are_separate_from_token_shares(self):
+        report = USAGE.summarize({"requests": [
+            {"stage": "guide_authoring", "inputTokens": 100, "outputTokens": 20,
+             "attempt": 1, "status": "failed",
+             "payloadBytesJson": json.dumps({
+                 "serializedRequestBytes": 1000,
+                 "systemInstructionBytes": 100,
+                 "userParts": {"knowledgeUnits": 400, "embeddingInput": 0},
+             })},
+            {"stage": "guide_authoring", "inputTokens": 100, "outputTokens": 30,
+             "attempt": 2, "status": "response",
+             "payloadBytesJson": {
+                 "serializedRequestBytes": 1200,
+                 "systemInstructionBytes": 100,
+                 "userParts": {"knowledgeUnits": 500, "embeddingInput": 0},
+                 "response": {"visibleContentBytes": 300},
+             }},
+        ]})
+        total = report["totals"]
+        self.assertEqual(total["repeatInputPercentOfReportedInput"], 50)
+        self.assertEqual(total["repeatOutputPercentOfReportedOutput"], 60)
+        payload = report["payloadByteDiagnostics"]
+        self.assertEqual(payload["coverageRequests"], 2)
+        self.assertEqual(payload["serializedRequestBytes"], 2200)
+        self.assertEqual(payload["inputParts"]["knowledgeUnits"]["bytes"], 900)
+        self.assertEqual(payload["visibleResponseBytes"], 300)
+
+    def test_all_operation_report_attributes_provider_tokens_to_each_operation(self):
+        report = USAGE.summarize({"operationId": "all", "requests": [
+            {"operationId": "a" * 32, "stage": "guide_authoring",
+             "inputTokens": 900, "outputTokens": 100, "attempt": 1, "status": "response"},
+            {"operationId": "b" * 32, "stage": "embedding_indexing",
+             "inputTokens": 100, "outputTokens": 0, "attempt": 1, "status": "response"},
+        ]})
+        rows = {row["operationId"]: row for row in report["operations"]}
+        self.assertEqual(rows["a" * 32]["percentOfReportedInput"], 90)
+        self.assertEqual(rows["a" * 32]["percentOfReportedOutput"], 100)
+        self.assertEqual(rows["b" * 32]["percentOfReportedInput"], 10)
+        self.assertEqual(rows["b" * 32]["percentOfReportedOutput"], 0)
 
     def test_zero_request_reuse_has_no_token_percentages(self):
         report = USAGE.summarize({"requests": [], "localReuse": [{"stage": "collection_guide", "count": 1}]})

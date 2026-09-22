@@ -27,6 +27,12 @@ use super::{
 
 pub(crate) use super::providers::embeddings::EmbeddingPurpose as Purpose;
 
+#[derive(Clone, Copy)]
+pub(crate) struct EmbeddingDiagnostics<'a> {
+    pub context: &'a super::generation::Context,
+    pub stage: &'static str,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct EmbeddingContext {
     pub request: ProfileRequestSnapshot,
@@ -131,6 +137,7 @@ pub(crate) async fn embed(
     purpose: Purpose,
     inputs: &[String],
     cancellation: &CancellationSignal,
+    diagnostics: Option<EmbeddingDiagnostics<'_>>,
 ) -> Result<Vec<Vec<f32>>, CommandError> {
     ensure_context_current(database, context)?;
     check_canceled(cancellation)?;
@@ -145,16 +152,32 @@ pub(crate) async fn embed(
         .as_ref()
         .map(|secret| secret.as_utf8())
         .transpose()?;
+    let mut attempt = diagnostics
+        .map(|diagnostics| {
+            diagnostics.context.start_attempt(
+                diagnostics.stage,
+                &prepared.body,
+                None,
+                profile.provider_kind.as_str(),
+            )
+        })
+        .transpose()?;
     let response = tokio::select! {
-        _ = cancellation.canceled() => return Err(canceled()),
+        _ = cancellation.canceled() => Err(canceled()),
         response = runtime.gateway.post_json(
             prepared.url,
             bearer,
             &prepared.body,
             profile.request_timeout_ms,
             MAX_EMBEDDING_RESPONSE_BYTES,
-        ) => response.map_err(|failure| CommandError::new(failure.safe.code, failure.safe.message))?,
+        ) => response.map_err(|failure| CommandError::new(failure.safe.code, failure.safe.message)),
     };
+    match (&mut attempt, &response) {
+        (Some(attempt), Ok(response)) => attempt.non_generative_response(response),
+        (Some(attempt), Err(error)) => attempt.failed(&error.code),
+        (None, _) => {}
+    }
+    let response = response?;
     ensure_context_current(database, context)?;
     check_canceled(cancellation)?;
     decode_embeddings(&response, inputs.len(), context.options.dimensions)
@@ -229,6 +252,7 @@ pub async fn test_embedding_profile(
             "Water freezes at its freezing point.".to_string(),
         ],
         &cancellation,
+        None,
     )
     .await?;
     let query = embed(
@@ -238,6 +262,7 @@ pub async fn test_embedding_profile(
         EmbeddingPurpose::Query,
         &["How many sides does a triangle have?".to_string()],
         &cancellation,
+        None,
     )
     .await?;
     let dimensions = documents[0].len();

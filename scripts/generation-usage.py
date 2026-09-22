@@ -17,6 +17,24 @@ from typing import Any
 
 FIELDS = ("inputTokens", "outputTokens", "reasoningTokens", "cachedInputTokens",
           "cacheWriteTokens", "totalTokens", "cost")
+INPUT_PAYLOAD_FIELDS = {
+    "systemInstructions": ("systemInstructionBytes",),
+    "embeddedSchema": ("embeddedSchemaBytes",),
+    "wireSchema": ("wireSchemaBytes",),
+    "knowledgeUnits": ("userParts", "knowledgeUnits"),
+    "groundingEvidence": ("userParts", "groundingEvidence"),
+    "structuralEvidence": ("userParts", "structuralEvidence"),
+    "sourceEvidence": ("userParts", "sourceEvidence"),
+    "sourceWindow": ("userParts", "sourceWindow"),
+    "collectionDigest": ("userParts", "collectionDigest"),
+    "learningPlan": ("userParts", "learningPlan"),
+    "outline": ("userParts", "outline"),
+    "repairDraft": ("userParts", "repairDraft"),
+    "repairTargets": ("userParts", "repairTargets"),
+    "embeddingInput": ("userParts", "embeddingInput"),
+    "otherUserText": ("userParts", "otherUserText"),
+    "imageUrls": ("imageUrlBytes",),
+}
 
 
 def percentage(numerator: int | float, denominator: int | float) -> float | None:
@@ -71,6 +89,12 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
                 and valid_number(row.get("outputTokens"))
                 and row["reasoningTokens"] > row["outputTokens"])
             for row in rows)
+        result["repeatInputPercentOfReportedInput"] = percentage(
+            result["repeatReportedInputTokens"],
+            result["inputTokens"] or 0)
+        result["repeatOutputPercentOfReportedOutput"] = percentage(
+            result["repeatReportedOutputTokens"],
+            result["outputTokens"] or 0)
         return result
 
     overall = totals(requests)
@@ -78,17 +102,128 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
     for stage, rows in sorted(stages.items()):
         values = totals(rows)
         values["stage"] = stage
-        values["percentOfReportedInput"] = percentage(
-            values["inputTokens"] or 0, overall["inputTokens"] or 0)
-        values["percentOfReportedOutput"] = percentage(
-            values["outputTokens"] or 0, overall["outputTokens"] or 0)
+        values["percentOfReportedInput"] = (
+            None if values["inputTokens"] is None else
+            percentage(values["inputTokens"], overall["inputTokens"] or 0))
+        values["percentOfReportedOutput"] = (
+            None if values["outputTokens"] is None else
+            percentage(values["outputTokens"], overall["outputTokens"] or 0))
         results.append(values)
+
+    def payload_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        totals_by_part = {name: 0 for name in INPUT_PAYLOAD_FIELDS}
+        serialized_request_bytes = 0
+        visible_response_bytes = 0
+        coverage = 0
+        for row in rows:
+            payload = row.get("payloadBytesJson")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    payload = None
+            if not isinstance(payload, dict):
+                continue
+            coverage += 1
+            serialized = payload.get("serializedRequestBytes")
+            if valid_number(serialized):
+                serialized_request_bytes += serialized
+            visible = payload.get("response", {}).get("visibleContentBytes")
+            if valid_number(visible):
+                visible_response_bytes += visible
+            for name, path in INPUT_PAYLOAD_FIELDS.items():
+                value: Any = payload
+                for part in path:
+                    value = value.get(part) if isinstance(value, dict) else None
+                if valid_number(value):
+                    totals_by_part[name] += value
+        return {
+            "coverageRequests": coverage,
+            "serializedRequestBytes": serialized_request_bytes,
+            "inputParts": {
+                name: {
+                    "bytes": value,
+                    "percentOfSerializedRequestBytes": percentage(
+                        value, serialized_request_bytes),
+                }
+                for name, value in totals_by_part.items()
+            },
+            "visibleResponseBytes": visible_response_bytes,
+        }
+
+    payload_diagnostics = payload_summary(requests)
+    for values in results:
+        values["payloadByteDiagnostics"] = payload_summary(stages[values["stage"]])
+
+    def request_summary(row: dict[str, Any]) -> dict[str, Any]:
+        payload = row.get("payloadBytesJson")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = None
+        return {
+            "requestId": row.get("requestId"),
+            "operationId": row.get("operationId"),
+            "stage": row.get("stage"),
+            "attempt": row.get("attempt"),
+            "requestKey": row.get("requestKey"),
+            "status": row.get("status"),
+            "inputTokens": row.get("inputTokens"),
+            "outputTokens": row.get("outputTokens"),
+            "cachedInputTokens": row.get("cachedInputTokens"),
+            "reasoningTokens": row.get("reasoningTokens"),
+            "cost": row.get("cost"),
+            "serializedRequestBytes": (
+                payload.get("serializedRequestBytes")
+                if isinstance(payload, dict) else None),
+        }
+
+    largest_input = [
+        request_summary(row)
+        for row in sorted(
+            (row for row in requests if valid_number(row.get("inputTokens"))),
+            key=lambda row: row["inputTokens"],
+            reverse=True,
+        )[:20]
+    ]
+    largest_output = [
+        request_summary(row)
+        for row in sorted(
+            (row for row in requests if valid_number(row.get("outputTokens"))),
+            key=lambda row: row["outputTokens"],
+            reverse=True,
+        )[:20]
+    ]
+
+    operations: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in requests:
+        operation_id = row.get("operationId")
+        if isinstance(operation_id, str):
+            operations[operation_id].append(row)
+    operation_results = []
+    for operation_id, rows in sorted(operations.items()):
+        values = totals(rows)
+        values["operationId"] = operation_id
+        values["percentOfReportedInput"] = (
+            None if values["inputTokens"] is None else
+            percentage(values["inputTokens"], overall["inputTokens"] or 0))
+        values["percentOfReportedOutput"] = (
+            None if values["outputTokens"] is None else
+            percentage(values["outputTokens"], overall["outputTokens"] or 0))
+        values["payloadByteDiagnostics"] = payload_summary(rows)
+        operation_results.append(values)
+
     return {
         "schemaVersion": 1,
         "operationId": data.get("operationId"),
         "totals": overall,
         "stages": results,
+        "operations": operation_results,
         "localReuse": data.get("localReuse", []),
+        "payloadByteDiagnostics": payload_diagnostics,
+        "largestReportedInputRequests": largest_input,
+        "largestReportedOutputRequests": largest_output,
         "usageComplete": not overall["inputTokensMissingRequests"]
                          and not overall["outputTokensMissingRequests"],
         "notes": [
@@ -96,7 +231,7 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
             "Missing/failed/interrupted usage is unknown, not zero. This is not a complete bill when usage is missing.",
             "Reasoning is contained in output; cached input is contained in input. Cache and reasoning rates use only requests reporting both fields.",
             "Local reuse means no provider request. Provider prompt caching still incurs a request.",
-            "Payload byte counts and textTokenEstimate are diagnostic estimates, never substituted for provider tokens.",
+            "Payload byte categories are NON-BILLING diagnostics. Input-part percentages use serialized request bytes; visible response bytes are reported separately and are never substituted for provider-reported token shares.",
             "Attempt ordinals group the same logical section, or identical wire requests when no section identity is available.",
         ],
         "requests": requests,
@@ -124,13 +259,15 @@ def read_database(path: Path, operation: str | None, all_operations: bool) -> di
                    reasoning_tokens AS reasoningTokens,cached_input_tokens AS cachedInputTokens,
                    cache_write_tokens AS cacheWriteTokens,total_tokens AS totalTokens,cost,
                    response_id AS responseId,finish_reason AS finishReason,error_code AS errorCode,
+                   request_key AS requestKey,
                    payload_bytes_json AS payloadBytesJson,max_output_tokens AS maxOutputTokens,
                    started_at AS startedAt,finished_at AS finishedAt
             FROM generation_requests {where} ORDER BY started_at,id
         """, args).fetchall()
         reuse = connection.execute(f"""
-            SELECT stage,COUNT(*) AS count FROM generation_reuse_events {where}
-            GROUP BY stage ORDER BY stage
+            SELECT operation_id AS operationId,stage,COUNT(*) AS count
+            FROM generation_reuse_events {where}
+            GROUP BY operation_id,stage ORDER BY operation_id,stage
         """, args).fetchall()
         return {"operationId": "all" if all_operations else operation,
                 "requests": [dict(row) for row in rows],
@@ -165,10 +302,14 @@ def render(report: dict[str, Any]) -> str:
     lines.extend(["", f"Reported input: {number(total['inputTokens'])}; output: {number(total['outputTokens'])}",
                   f"Requests missing input/output usage: {total['inputTokensMissingRequests']}/{total['outputTokensMissingRequests']}",
                   f"Failed, interrupted or unfinished requests: {total['failedOrInterruptedRequests']}",
-                  f"Repeated logical requests: {total['repeatedLogicalRequests']}",
+                  f"Repeated logical requests: {total['repeatedLogicalRequests']} "
+                  f"(input share {percent(total['repeatInputPercentOfReportedInput'])}; "
+                  f"output share {percent(total['repeatOutputPercentOfReportedOutput'])})",
                   f"Cache reads: {number(total['cachedInputTokens'])} tokens; covered-input rate: {percent(total['cacheReadPercentOfCoveredInput'])} ({total['cacheReadCoverageRequests']} requests)",
                   f"Reasoning: {number(total['reasoningTokens'])} tokens; covered-output share: {percent(total['reasoningPercentOfCoveredOutput'])} ({total['reasoningCoverageRequests']} requests)",
-                  f"Local reuse: {json.dumps(report['localReuse'], ensure_ascii=False)}", "",
+                  f"Local reuse: {json.dumps(report['localReuse'], ensure_ascii=False)}",
+                  f"Payload byte diagnostics: "
+                  f"{json.dumps(report['payloadByteDiagnostics'], ensure_ascii=False)}", "",
                   "Usage complete: " + ("yes" if report["usageComplete"] else "NO; percentages cover reported usage only"),
                   *report["notes"]])
     return "\n".join(lines)

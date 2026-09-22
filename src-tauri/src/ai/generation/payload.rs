@@ -76,6 +76,22 @@ pub(super) fn measure(body: &Value) -> Result<Value, CommandError> {
     ] {
         user_parts.insert(key.into(), json!(block(&user, tag).map_or(0, str::len)));
     }
+    if let Some(input) = body.get("input") {
+        let (count, bytes) = match input {
+            Value::String(text) => (1, text.len()),
+            Value::Array(items) => (
+                items.len(),
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::len)
+                    .sum::<usize>(),
+            ),
+            _ => (0, 0),
+        };
+        user_parts.insert("embeddingInput".into(), json!(bytes));
+        user_parts.insert("embeddingInputCount".into(), json!(count));
+    }
     let classified = user_parts.values().filter_map(Value::as_u64).sum::<u64>() as usize;
     user_parts.insert(
         "otherUserText".into(),

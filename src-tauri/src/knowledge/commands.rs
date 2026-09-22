@@ -6,7 +6,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
-    ai::{document_intelligence, AiRuntimeState},
+    ai::{document_intelligence, generation, AiRuntimeState},
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -114,6 +114,14 @@ pub async fn search_semantic_material(
         &format!("search:{}", input.operation_id),
         false,
     )?;
+    let mut diagnostics = generation::Operation::begin(
+        database.inner(),
+        Some(&input.operation_id),
+        None,
+        None,
+        "semantic_search",
+    )?;
+    let context = diagnostics.context();
     let result = retrieval::retrieve(
         database.inner(),
         paths.inner(),
@@ -122,8 +130,11 @@ pub async fn search_semantic_material(
         input.selection.include_conversations,
         &input.query,
         &guard.signal,
+        Some(&context),
     )
-    .await?;
+    .await;
+    diagnostics.finish(result.is_ok());
+    let result = result?;
     Ok(RetrievalPreview {
         sources: result
             .hits
@@ -193,7 +204,16 @@ pub async fn prepare_collection_synthesis(
         false,
     )?;
     guard.progress("organizing collection", 0, 1);
-    let task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut diagnostics = generation::Operation::begin(
+        database.inner(),
+        Some(&input.operation_id),
+        None,
+        Some(&input.collection_id),
+        "collection_synthesis",
+    )?;
+    let context = diagnostics.context();
+    let mut task = document_intelligence::load_document_task_context(database.inner())?;
+    task.diagnostics = Some(context);
     let state = collection_view::ensure_reduced(
         database.inner(),
         runtime.inner(),
@@ -201,7 +221,9 @@ pub async fn prepare_collection_synthesis(
         &input.collection_id,
         &guard.signal,
     )
-    .await?;
+    .await;
+    diagnostics.finish(state.is_ok());
+    let state = state?;
     guard.progress("ready", 1, 1);
     Ok(state)
 }

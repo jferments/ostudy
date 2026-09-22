@@ -11,8 +11,8 @@ use super::{
 };
 use crate::{
     ai::{
-        embeddings::{self, Purpose},
-        AiRuntimeState,
+        embeddings::{self, EmbeddingDiagnostics, Purpose},
+        generation, AiRuntimeState,
     },
     database::Database,
     error::CommandError,
@@ -35,6 +35,7 @@ pub(crate) struct IndexSelection<'a> {
     pub signal: &'a CancellationSignal,
     pub expected_revision: Option<&'a str>,
     pub expected_embedding: Option<&'a str>,
+    pub diagnostics: Option<generation::Context>,
 }
 
 pub(crate) fn scope_revision(entries: &[IndexKey]) -> Result<String, CommandError> {
@@ -60,6 +61,7 @@ pub(crate) async fn ensure_scope(
         signal,
         expected_revision,
         expected_embedding,
+        diagnostics,
     } = selection;
     scope.validate()?;
     if scope.kind == ScopeKind::General {
@@ -142,6 +144,10 @@ pub(crate) async fn ensure_scope(
             Purpose::Document,
             &texts,
             signal,
+            diagnostics.as_ref().map(|context| EmbeddingDiagnostics {
+                context,
+                stage: "embedding_indexing",
+            }),
         )
         .await?;
         check_canceled(signal)?;
@@ -196,6 +202,7 @@ pub(crate) async fn document_best_effort(
             signal,
             expected_revision: None,
             expected_embedding: None,
+            diagnostics: crate::task_cancellation::generation_context(database)?,
         },
     )
     .await

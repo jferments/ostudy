@@ -269,6 +269,16 @@ pub(crate) fn start_current_attempt(body: &Value) -> Option<Attempt> {
 
 impl Attempt {
     pub(crate) fn response(&mut self, response: &Value) {
+        self.finish_response(response, false);
+    }
+
+    /// Embedding APIs do not emit completion/reasoning tokens. Recording a
+    /// provider response as zero-output is protocol semantics, not imputation.
+    pub(crate) fn non_generative_response(&mut self, response: &Value) {
+        self.finish_response(response, true);
+    }
+
+    fn finish_response(&mut self, response: &Value, non_generative: bool) {
         let usage = super::gateway::normalized_usage(response);
         let number = |pointer: &str| -> Option<i64> {
             usage
@@ -277,6 +287,12 @@ impl Attempt {
                 .and_then(Value::as_i64)
                 .filter(|value| *value >= 0)
         };
+        let output_tokens = number("/completion_tokens").or(non_generative.then_some(0));
+        let reasoning_tokens =
+            number("/completion_tokens_details/reasoning_tokens").or(non_generative.then_some(0));
+        let total_tokens = number("/total_tokens").or_else(|| {
+            number("/prompt_tokens").map(|input| input.saturating_add(output_tokens.unwrap_or(0)))
+        });
         let cost = usage
             .as_ref()
             .and_then(|value| value.get("cost"))
@@ -293,11 +309,11 @@ impl Attempt {
                     params![
                         unix_time_millis()?,
                         number("/prompt_tokens"),
-                        number("/completion_tokens"),
-                        number("/completion_tokens_details/reasoning_tokens"),
+                        output_tokens,
+                        reasoning_tokens,
                         number("/prompt_tokens_details/cached_tokens"),
                         number("/prompt_tokens_details/cache_write_tokens"),
-                        number("/total_tokens"),
+                        total_tokens,
                         cost,
                         bounded(response.get("id").and_then(Value::as_str), 256),
                         bounded(
@@ -343,6 +359,17 @@ impl Drop for Attempt {
     fn drop(&mut self) {
         self.end("interrupted", None);
     }
+}
+
+/// Generation ledgers are local diagnostics. Device-sync packages do not
+/// transfer provider usage, request fingerprints, or reuse history.
+pub(crate) fn sanitize_for_device_transfer(
+    connection: &rusqlite::Connection,
+) -> Result<(), CommandError> {
+    connection
+        .execute("DELETE FROM generation_operations", [])
+        .map_err(CommandError::database)?;
+    Ok(())
 }
 
 pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError> {

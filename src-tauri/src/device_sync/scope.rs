@@ -552,6 +552,7 @@ pub(crate) fn sanitize_snapshot(
     // AI subdomains own their own SQLite schema and transfer-table identity.
     // Sync asks them for a safe transfer projection rather than duplicating
     // provider/probe schema knowledge here.
+    crate::ai::generation::sanitize_for_device_transfer(connection)?;
     crate::ai::probes::sanitize_for_device_transfer(connection)?;
     crate::ai::profiles::sanitize_for_device_transfer(connection, selection.api_settings)?;
 

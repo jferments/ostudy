@@ -123,6 +123,7 @@ pub(crate) async fn build(
             input.include_conversations && input.mode != TutorMode::Hint,
             &query,
             cancellation,
+            None,
         )
         .await;
         merge_optional_retrieval(&mut sources, &mut notice, result)?;

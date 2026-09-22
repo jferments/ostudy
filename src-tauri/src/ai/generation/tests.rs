@@ -132,6 +132,44 @@ fn document_generation_payload_parts_are_content_free_and_owner_stages_are_expli
     assert_eq!(stage("unrecognized.rs"), "unclassified");
 }
 
+#[test]
+fn embedding_accounting_records_non_generative_output_and_content_free_input_size() {
+    let database = Database::open_in_memory().unwrap();
+    let mut operation = Operation::begin(&database, None, None, None, "embedding_fixture").unwrap();
+    let context = operation.context();
+    let body = json!({
+        "model": "embedding-model",
+        "input": ["PRIVATE EMBEDDING TEXT", "SECOND PRIVATE INPUT"]
+    });
+    let mut attempt = context
+        .start_attempt("embedding_indexing", &body, None, "openrouter")
+        .unwrap();
+    attempt.non_generative_response(&json!({
+        "id": "embedding-response",
+        "usage": {"prompt_tokens": 42, "total_tokens": 42}
+    }));
+    operation.finish(true);
+    database
+        .with_connection(|connection| {
+            let values: (i64, i64, i64, String) = connection
+                .query_row(
+                    "SELECT input_tokens,output_tokens,reasoning_tokens,payload_bytes_json
+                     FROM generation_requests WHERE response_id='embedding-response'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!((values.0, values.1, values.2), (42, 0, 0));
+            assert!(!values.3.contains("PRIVATE EMBEDDING TEXT"));
+            assert!(!values.3.contains("SECOND PRIVATE INPUT"));
+            let payload: Value = serde_json::from_str(&values.3).unwrap();
+            assert_eq!(payload["userParts"]["embeddingInputCount"], 2);
+            assert!(payload["userParts"]["embeddingInput"].as_u64().unwrap() > 0);
+            Ok(())
+        })
+        .unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn physical_gateway_retry_records_two_attempts_for_one_logical_request() {
     const DOCUMENT_ID: &str = "generation-ledger-retry";
