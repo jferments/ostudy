@@ -188,6 +188,8 @@ async fn analyze(
             catalog: &catalog,
             authorization: &authorization,
             retry_partial,
+            diagnostics: task.diagnostics.as_ref(),
+            logical_key: task.diagnostic_window_key.as_deref(),
         },
         cancellation,
         |call| {
@@ -363,6 +365,7 @@ fn build_repair_request(
 
 /// Tests inject only the provider boundary; they exercise the real decoder,
 /// evidence validation, concurrency checks and SQLite publication.
+#[cfg(test)]
 async fn run_window<F, Fut>(
     database: &Database,
     sources: &[SourceRecord],
@@ -370,6 +373,35 @@ async fn run_window<F, Fut>(
     catalog: &EvidenceCatalog,
     cancellation: &CancellationSignal,
     retry_partial: bool,
+    call: F,
+) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError>
+where
+    F: FnMut(WindowCall) -> Fut,
+    Fut: Future<Output = Result<Value, CommandError>>,
+{
+    run_window_scoped(
+        database,
+        sources,
+        contract,
+        catalog,
+        cancellation,
+        retry_partial,
+        None,
+        None,
+        call,
+    )
+    .await
+}
+
+async fn run_window_scoped<F, Fut>(
+    database: &Database,
+    sources: &[SourceRecord],
+    contract: &str,
+    catalog: &EvidenceCatalog,
+    cancellation: &CancellationSignal,
+    retry_partial: bool,
+    diagnostics: Option<&crate::ai::generation::Context>,
+    logical_key: Option<&str>,
     mut call: F,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError>
 where
@@ -434,9 +466,9 @@ where
             Ok(report) => report,
             Err(error) if recoverable_envelope(&error) => {
                 if !crate::ai::generation::reserve_recovery(
-                    task.diagnostics.as_ref(),
+                    diagnostics,
                     "knowledge_extraction",
-                    task.diagnostic_window_key.as_deref(),
+                    logical_key,
                     crate::ai::generation::RecoveryReason::ContractRepair,
                     &error.code,
                 ) {
@@ -461,9 +493,9 @@ where
     let repair_allowed = !report.is_complete()
         && !already_retried
         && crate::ai::generation::reserve_recovery(
-            task.diagnostics.as_ref(),
+            diagnostics,
             "knowledge_extraction",
-            task.diagnostic_window_key.as_deref(),
+            logical_key,
             crate::ai::generation::RecoveryReason::ContractRepair,
             "partial_coverage",
         );

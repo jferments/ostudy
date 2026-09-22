@@ -10,6 +10,8 @@ pub(super) struct Window<'a> {
     pub catalog: &'a EvidenceCatalog,
     pub authorization: &'a str,
     pub retry_partial: bool,
+    pub diagnostics: Option<&'a crate::ai::generation::Context>,
+    pub logical_key: Option<&'a str>,
 }
 
 pub(super) async fn run<F, Fut>(
@@ -35,13 +37,15 @@ where
         &identity,
         subscriber,
         |signal| async move {
-            run_window(
+            run_window_scoped(
                 input.database,
                 input.sources,
                 input.contract,
                 input.catalog,
                 &signal,
                 input.retry_partial,
+                input.diagnostics,
+                input.logical_key,
                 call,
             )
             .await
@@ -73,6 +77,8 @@ mod tests {
             catalog: &catalog,
             authorization: &authorization,
             retry_partial: false,
+            diagnostics: None,
+            logical_key: None,
         };
         let signal = CancellationSignal::new();
         let release = tokio::sync::Notify::new();
