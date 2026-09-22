@@ -1,6 +1,6 @@
 //! Provider-neutral artifact authoring over shared, native-grounded knowledge.
 
-use crate::error::CommandError;
+use crate::{error::CommandError, task_cancellation::CancellationSignal};
 
 use super::AiRuntimeState;
 
@@ -47,6 +47,7 @@ pub(crate) async fn generate_document_artifact_metadata(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     outline: &DocumentOutline,
+    cancellation: &CancellationSignal,
 ) -> Result<DocumentArtifactMetadataCandidate, CommandError> {
-    artifact_metadata::request_document_artifact_metadata(runtime, task, outline).await
+    artifact_metadata::request_document_artifact_metadata(runtime, task, outline, cancellation).await
 }

@@ -1,13 +1,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::{ai::AiRuntimeState, error::CommandError};
+use crate::{
+    ai::AiRuntimeState,
+    error::CommandError,
+    task_cancellation::CancellationSignal,
+};
 
 use super::{
     context::DocumentTaskContext,
     contracts::DocumentOutline,
     support::{bounded_diagnostic, output_error},
-    transport::{request_json, JsonTaskRequest},
+    transport::{request_json_cancellable, JsonTaskRequest},
 };
 
 pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 1;
@@ -37,6 +41,7 @@ pub(super) async fn request_document_artifact_metadata(
     runtime: &AiRuntimeState,
     task: &DocumentTaskContext,
     outline: &DocumentOutline,
+    cancellation: &CancellationSignal,
 ) -> Result<DocumentArtifactMetadataCandidate, CommandError> {
     let schema = artifact_metadata_schema();
     let system = artifact_metadata_system_prompt();
@@ -44,7 +49,7 @@ pub(super) async fn request_document_artifact_metadata(
         "<ostudy-validated-learning-plan>\n{}\n</ostudy-validated-learning-plan>\n\nReturn concise subject-centered display metadata for this learning material.",
         bounded_learning_plan_context(outline)?,
     );
-    request_json(
+    request_json_cancellable(
         runtime,
         task,
         JsonTaskRequest {
@@ -54,6 +59,7 @@ pub(super) async fn request_document_artifact_metadata(
             max_tokens: task.completion_token_ceiling(ARTIFACT_METADATA_VISIBLE_COMPLETION_TOKENS),
             images: &[],
         },
+        cancellation,
     )
     .await
     .and_then(decode_artifact_metadata)

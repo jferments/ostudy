@@ -182,11 +182,13 @@ pub(crate) fn schedule_document_postprocessing(app: AppHandle, document_id: Stri
             }
         };
         let diagnostics = operation.context();
+        let signal = CancellationSignal::new();
         let metadata_result = enrich_document_artifact_metadata(
             database.inner(),
             runtime.inner(),
             &document_id,
             Some(diagnostics.clone()),
+            &signal,
         )
         .await;
         if let Err(error) = &metadata_result {
@@ -198,7 +200,6 @@ pub(crate) fn schedule_document_postprocessing(app: AppHandle, document_id: Stri
             );
         }
 
-        let signal = CancellationSignal::new();
         let indexing_result = crate::knowledge::indexing::index_document(
             database.inner(),
             paths.inner(),
@@ -225,6 +226,7 @@ async fn enrich_document_artifact_metadata(
     runtime: &AiRuntimeState,
     document_id: &str,
     diagnostics: Option<generation::Context>,
+    cancellation: &CancellationSignal,
 ) -> Result<(), CommandError> {
     let snapshot = load_metadata_enrichment_snapshot(database, document_id)?;
     let outline: DocumentOutline =
@@ -275,9 +277,13 @@ async fn enrich_document_artifact_metadata(
     )?;
     task.apply_provider_capabilities(&capabilities);
     task.diagnostics = diagnostics;
-    let candidate =
-        document_intelligence::generate_document_artifact_metadata(runtime, &task, &outline)
-            .await?;
+    let candidate = document_intelligence::generate_document_artifact_metadata(
+        runtime,
+        &task,
+        &outline,
+        cancellation,
+    )
+    .await?;
     task.ensure_current(database)?;
 
     database.with_connection(|connection| {
