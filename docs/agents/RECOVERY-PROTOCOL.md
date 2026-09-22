@@ -41,7 +41,7 @@ This checkpoint is progress metadata, not a source writer or branch lock. Create
 
 ## Tool and access discipline
 
-Discover each required GitHub action once in the available tool context and invoke the intended operation. For a known PR, branch, or SHA, prefer direct reads over search/discovery; do not spend multiple calls asking GitHub to rediscover an identifier already in the active checkpoint. A GET-only fetch action, unloaded mutation schema, missing local gh/token/toolchain, truncated tool output, queued runner, formatter failure, or stale PR ledger is not evidence that repository write access disappeared.
+Discover each required GitHub action once in the available tool context and invoke the intended operation. For a known PR, branch, or SHA, prefer direct reads over search/discovery; do not spend multiple calls asking GitHub to rediscover an identifier already in the active checkpoint. Keep Connector orchestration intentionally bounded: prefer at most four concrete GitHub operations per orchestration, split high-fan-out blob creation into small batches, and preserve each acknowledged path/mode/blob SHA in the active publication checkpoint. Build tree/commit/ref publication in a separate bounded step. If a platform or Code Mode tool-call ceiling stops an orchestration, treat it like an interrupted mutation batch rather than a reason to restart: direct-read the affected ref once, keep every acknowledged Git object, and resume at the first unconfirmed operation. Do not replay the whole fan-out script. A GET-only fetch action, unloaded mutation schema, missing local gh/token/toolchain, truncated tool output, queued runner, formatter failure, or stale PR ledger is not evidence that repository write access disappeared.
 
 Distinguish:
 

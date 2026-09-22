@@ -265,8 +265,7 @@ fn build_semantic_windows_internal(
         while end < units.len() {
             let unit = &units[end];
             let next_tokens = token_total.saturating_add(unit.token_estimate.max(1));
-            let next_complexity =
-                complexity_total.saturating_add(unit.complexity_estimate.max(1));
+            let next_complexity = complexity_total.saturating_add(unit.complexity_estimate.max(1));
             let mut next_units = source_units.clone();
             next_units.extend(unit.unit_numbers.iter().copied());
 
@@ -443,13 +442,7 @@ fn semantic_complexity_penalty(chunk: &SemanticChunk) -> usize {
             _ => 0,
         })
         .sum::<usize>();
-    role_penalty.saturating_add(
-        chunk
-            .source_locator
-            .asset_ids
-            .len()
-            .saturating_mul(700),
-    )
+    role_penalty.saturating_add(chunk.source_locator.asset_ids.len().saturating_mul(700))
 }
 
 fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {

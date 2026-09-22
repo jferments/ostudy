@@ -565,8 +565,7 @@ pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usiz
             while end < sources.len() && end - start < EXTRACTION_BATCH_SOURCES {
                 let next = &sources[end];
                 let next_chars = next.text.chars().count();
-                let next_complexity =
-                    extraction_complexity_units(&next.text, next.images.len());
+                let next_complexity = extraction_complexity_units(&next.text, next.images.len());
                 let same = next.id == sources[start].id
                     || (next.kind == SourceKind::Document
                         && sources[start].kind == SourceKind::Document
