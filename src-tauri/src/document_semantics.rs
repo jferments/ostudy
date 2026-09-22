@@ -393,14 +393,17 @@ fn build_source_units<'a>(
         let source_complexity_estimate =
             source_token_estimate.saturating_add(semantic_complexity_penalty(chunk));
         let token_segments = source_token_estimate.div_ceil(max_tokens).max(1);
-        let complexity_segments = source_complexity_estimate.div_ceil(max_tokens).max(1);
         let unit_segments = chunk
             .source_locator
             .unit_numbers
             .len()
             .div_ceil(max_units)
             .max(1);
-        let segment_count = token_segments.max(complexity_segments).max(unit_segments);
+        // Complexity controls how many already-bounded chunks can share a request.
+        // It must not fragment one visual/table/equation chunk by itself: that
+        // duplicates the same structural/image evidence across requests and can
+        // increase both provider work and token cost.
+        let segment_count = token_segments.max(unit_segments);
         let text_segments = split_text_into_segments(&chunk.full_text, segment_count);
 
         for segment_index in 0..segment_count {
@@ -765,8 +768,12 @@ mod tests {
         )
         .unwrap();
         let windows = build_semantic_windows(&[chunk(0, &[1], 200), visual], 1_000, 4, 0);
+        let visual_window = windows
+            .iter()
+            .find(|window| window.source_locator.unit_numbers.contains(&2))
+            .expect("the visual source unit should remain represented");
         assert_eq!(
-            windows[0].source_locator.asset_ids,
+            visual_window.source_locator.asset_ids,
             vec!["unit-render:000002"]
         );
     }
