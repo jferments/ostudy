@@ -286,7 +286,8 @@ describe("DocumentsScreen", () => {
     const { showToast } = renderDocuments();
 
     expect(await screen.findByText(failed.safeErrorMessage)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Retry generation" }));
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Retry generation"));
 
     await waitFor(() => {
       expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);

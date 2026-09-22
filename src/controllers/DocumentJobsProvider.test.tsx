@@ -47,7 +47,7 @@ function DocumentsRoute() {
   if (!jobs) throw new Error("Missing job owner");
   return <section aria-label="Documents route">
     <button onClick={() => { void jobs.stopStudyGuide(document); }}>Stop guide</button>
-    <span role="status">{jobs.guideGeneratingDocumentIds.has(document.id) ? "Guide running" : "Idle"}</span>
+    <span role="status">{jobs.guideGeneratingDocumentIds.has(retryDocument.id) ? "Guide running" : "Idle"}</span>
     {jobs.errorMessage ? <p role="alert">{jobs.errorMessage}</p> : null}
     <button onClick={() => { void jobs.retry(retryDocument); }}>Retry cards</button>
     <button onClick={() => { void jobs.refreshDocuments(); }}>Refresh documents</button>
@@ -102,7 +102,7 @@ describe("application-lifetime document jobs", () => {
     }];
     fireEvent.click(screen.getByRole("button", { name: "Refresh documents" }));
     await waitFor(() => expect(mocks.guide).toHaveBeenCalledWith(retryDocument.id));
-    expect(screen.getByRole("status").textContent).toBe("Guide running");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Guide running"));
 
     fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
     expect(mocks.cancelGuide).not.toHaveBeenCalled();

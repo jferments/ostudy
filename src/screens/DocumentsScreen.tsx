@@ -230,23 +230,25 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                   actions={actions}
                   className={styles.actions}
                 />
-                <MetadataDialog
-                  open={generationInfoDocumentId === document.id}
-                  title={`${document.title} generation info`}
-                  description="Source, processing, and latest generation details for this document."
-                  onClose={() => setGenerationInfoDocumentId(null)}
-                >
-                  <MetadataList>
-                    <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />
-                    <MetadataItem label={sourceUnitHeading(document.sourceUnitKind)} value={formatSourceUnitMetric(document)} />
-                    <MetadataItem label="Processing time" value={formatProcessingDuration(document.processingDurationMs)} />
-                    <MetadataItem label="API tokens" value={formatApiTokens(document, live)} />
-                    <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
-                    <MetadataItem label="Created" value={formatDate(document.createdAt)} />
-                    <MetadataItem label="SHA-256" value={document.sha256} />
-                  </MetadataList>
-                  <GenerationSummary report={document.generationSummary} />
-                </MetadataDialog>
+                {generationInfoDocumentId === document.id ? (
+                  <MetadataDialog
+                    open
+                    title={`${document.title} generation info`}
+                    description="Source, processing, and latest generation details for this document."
+                    onClose={() => setGenerationInfoDocumentId(null)}
+                  >
+                    <MetadataList>
+                      <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />
+                      <MetadataItem label={sourceUnitHeading(document.sourceUnitKind)} value={formatSourceUnitMetric(document)} />
+                      <MetadataItem label="Processing time" value={formatProcessingDuration(document.processingDurationMs)} />
+                      <MetadataItem label="API tokens" value={formatApiTokens(document, live)} />
+                      <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
+                      <MetadataItem label="Created" value={formatDate(document.createdAt)} />
+                      <MetadataItem label="SHA-256" value={document.sha256} />
+                    </MetadataList>
+                    <GenerationSummary report={document.generationSummary} />
+                  </MetadataDialog>
+                ) : null}
               </Surface>
             );
           })}

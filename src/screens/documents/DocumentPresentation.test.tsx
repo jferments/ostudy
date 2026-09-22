@@ -86,40 +86,75 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
   vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
+  vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
+  vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockResolvedValue({ revision: 1 } as studyGuideIpc.DocumentStudyGuide);
   vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
 });
 
 describe("Document job presentation", () => {
   it("keeps nonfatal analysis details out of cards and successful generation toasts", async () => {
-    const before = makeDocument({ generatedDeckId: null, analysisPendingItems: 4 });
+    const before = makeDocument({ generatedDeckId: null, generatedCardCount: 0, analysisPendingItems: 4 });
     const after = makeDocument({ analysisPendingItems: 4 });
-    vi.mocked(documentIpc.listDocuments).mockResolvedValueOnce([before]).mockResolvedValue([after]);
-    vi.mocked(documentIpc.retryDocumentFlashcardGeneration).mockResolvedValue({
-      document: after, deckId: after.generatedDeckId!, createdNoteCount: 6, createdCardCount: 7, skippedDuplicateCount: 0,
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([before]);
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
+      vi.mocked(documentIpc.listDocuments).mockResolvedValue([after]);
     });
     const toast = renderDocuments();
-    fireEvent.click(await screen.findByRole("button", { name: "Retry generation" }));
-    await waitFor(() => expect(toast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck."));
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Retry generation"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(
+      "success",
+      "Created 7 flashcards in a new deck.",
+    ));
     expect(screen.queryByText(/Analysis is partial|knowledge proposals|source dispositions/iu)).toBeNull();
     expect(JSON.stringify(toast.mock.calls)).not.toMatch(/partial|unresolved/iu);
   });
 
-  it("uses the red stop-sign icon in one generating button and cancels there", async () => {
+  it("offers automatic study-guide stop only through the overflow menu", async () => {
+    const before = makeDocument({ generatedDeckId: null, generatedCardCount: 0 });
+    const after = makeDocument();
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([before]);
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
+      vi.mocked(documentIpc.listDocuments).mockResolvedValue([after]);
+    });
     vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockReturnValue(new Promise(() => {}));
     renderDocuments();
-    fireEvent.click(await screen.findByRole("button", { name: "Generate study guide" }));
-    const generating = await screen.findByRole("button", { name: "Generating study guide…" });
-    expect(generating.querySelector('[data-tone="danger"] svg')).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^Stop study guide$/u })).toBeNull();
-    fireEvent.click(generating);
-    await waitFor(() => expect(studyGuideIpc.cancelDocumentStudyGuideGeneration).toHaveBeenCalledWith(documentId));
-    expect(screen.getByRole("button", { name: "Stopping study guide…" }).hasAttribute("disabled")).toBe(true);
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Retry generation"));
+    await waitFor(() => expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId));
+
+    expect(screen.queryByRole("button", { name: /study guide/iu })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Stop study guide generation"));
+    await waitFor(() => expect(
+      studyGuideIpc.cancelDocumentStudyGuideGeneration,
+    ).toHaveBeenCalledWith(documentId));
   });
 
-  it("keeps terminal failure explanations visible", async () => {
-    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockRejectedValue(new Error("The provider could not finish the guide."));
+  it("keeps automatic guide failures visible without hiding saved flashcards", async () => {
+    const before = makeDocument({ generatedDeckId: null, generatedCardCount: 0 });
+    const after = makeDocument();
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([before]);
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
+      vi.mocked(documentIpc.listDocuments).mockResolvedValue([after]);
+    });
+    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockRejectedValue(
+      new Error("The provider could not finish the guide."),
+    );
     renderDocuments();
-    fireEvent.click(await screen.findByRole("button", { name: "Generate study guide" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("The provider could not finish the guide."));
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    fireEvent.click(await screen.findByText("Retry generation"));
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(
+      "Flashcards were saved, but automatic Study Guide generation failed",
+    ));
+    expect(screen.getByText("7 cards")).toBeTruthy();
   });
 });
