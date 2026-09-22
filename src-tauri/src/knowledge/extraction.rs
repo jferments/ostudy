@@ -190,7 +190,6 @@ async fn analyze(
                 let cancellation = &call.cancellation;
                 task.ensure_current(database)?;
                 check_canceled(cancellation)?;
-                crate::task_cancellation::record_current_provider_request();
                 // The shared transport now budgets the actual schema-bearing prompt
                 // for knowledge, guide and every other document task consistently.
                 let value = request_json_cancellable(

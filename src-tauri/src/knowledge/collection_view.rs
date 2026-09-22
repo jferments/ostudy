@@ -21,7 +21,7 @@ use crate::{
     collections::{self, SourceSelectionInput, SourceSetSnapshotDto},
     database::Database,
     error::CommandError,
-    task_cancellation::{record_current_provider_request, CancellationSignal},
+    task_cancellation::CancellationSignal,
     util::{unix_time_millis, validate_entity_id},
 };
 
@@ -213,7 +213,6 @@ pub(crate) async fn ensure_reduced(
     let user = format!(
         "Organize this balanced cross-document digest from a complete permitted collection catalog. Every collection topic is represented at least once, but individual topics may have additional units outside this bounded digest. Preserve polarity, conditions, units, exceptions, and contradictions exactly. Instructional emphasis is advisory and is not factual corroboration. Return exactly one concise topic summary for every supplied topic, with only the supplied unit IDs that support that summary. Return broad learning objectives and only complementary, contrast, contradictory, or prerequisite relationships supported by supplied unit IDs. Do not merge conflicting claims, invent facts, infer learner mastery, or treat repetition as independent corroboration.\n<collection-digest>\n{digest}\n</collection-digest>"
     );
-    record_current_provider_request();
     let response = request_json_cancellable_single_attempt(
         runtime,
         task,
