@@ -14,12 +14,18 @@ use crate::{
         STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
-    knowledge::{authoring::KnowledgeCatalog, collection_view::CollectionGuideWindow},
+    knowledge::{
+        authoring::KnowledgeCatalog,
+        collection_view::{CollectionGuideWindow, CollectionViewState},
+    },
     util::unix_time_millis,
 };
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
+
+use super::composition::{CollectionGuideContent, COLLECTION_GUIDE_SCHEMA_VERSION};
 
 const COLLECTION_SECTION_CACHE_VERSION: i64 = 1;
+const COLLECTION_GUIDE_MANIFEST_VERSION: i64 = 1;
 
 pub(crate) fn guide_contract(task: &DocumentTaskContext) -> Result<String, CommandError> {
     Ok(generation::hash(
@@ -59,6 +65,104 @@ pub(crate) fn section_key(
         .map_err(CommandError::serialization)?
         .as_bytes(),
     ))
+}
+
+pub(crate) fn manifest_key(
+    task: &DocumentTaskContext,
+    collection_title: &str,
+    view: &CollectionViewState,
+    section_keys: &[String],
+) -> Result<String, CommandError> {
+    Ok(generation::hash(
+        serde_json::to_string(&(
+            "collection-guide-manifest",
+            COLLECTION_GUIDE_MANIFEST_VERSION,
+            COLLECTION_GUIDE_SCHEMA_VERSION,
+            guide_contract(task)?,
+            collection_title,
+            &view.synthesis,
+            section_keys,
+        ))
+        .map_err(CommandError::serialization)?
+        .as_bytes(),
+    ))
+}
+
+pub(crate) fn load_guide(
+    database: &Database,
+    target_id: &str,
+    collection_id: &str,
+    snapshot_id: &str,
+    analysis_hash: &str,
+    request_key: &str,
+    diagnostics: Option<&generation::Context>,
+) -> Result<Option<String>, CommandError> {
+    let stored = database.with_connection(|connection| {
+        let row = connection
+            .query_row(
+                "SELECT g.id,g.content_json,g.content_hash
+                 FROM study_target_guides g
+                 JOIN collection_guide_manifests m ON m.guide_id=g.id
+                 WHERE g.target_id=?1 AND g.state='active'
+                   AND g.source_snapshot_id=?2
+                   AND g.synthesis_analysis_hash=?3
+                   AND m.request_key=?4",
+                params![target_id, snapshot_id, analysis_hash, request_key],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(CommandError::database)?;
+        let Some((guide_id, serialized, expected_hash)) = row else {
+            return Ok(None);
+        };
+        if generation::hash(serialized.as_bytes()) != expected_hash {
+            return Ok(None);
+        }
+        let content: CollectionGuideContent = match serde_json::from_str(&serialized) {
+            Ok(content) => content,
+            Err(_) => return Ok(None),
+        };
+        if content.schema_version != COLLECTION_GUIDE_SCHEMA_VERSION
+            || content.collection_id != collection_id
+            || content.sections.is_empty()
+            || content.sections.iter().any(|section| {
+                validate_study_guide_section_content(section.content.clone()).is_err()
+            })
+        {
+            return Ok(None);
+        }
+        Ok(Some(guide_id))
+    })?;
+    if stored.is_some() {
+        if let Some(diagnostics) = diagnostics {
+            diagnostics.reused("complete_guide", request_key);
+        }
+    }
+    Ok(stored)
+}
+
+pub(crate) fn save_manifest(
+    tx: &Transaction<'_>,
+    guide_id: &str,
+    request_key: &str,
+    now: i64,
+) -> Result<(), CommandError> {
+    tx.execute(
+        "INSERT INTO collection_guide_manifests(guide_id,request_key,created_at)
+         VALUES(?1,?2,?3)
+         ON CONFLICT(guide_id) DO UPDATE SET
+             request_key=excluded.request_key,
+             created_at=excluded.created_at",
+        params![guide_id, request_key, now],
+    )
+    .map_err(CommandError::database)?;
+    Ok(())
 }
 
 pub(crate) fn load_section(
@@ -336,6 +440,139 @@ mod tests {
                     )
                     .map_err(CommandError::database)?;
                 assert_eq!(remaining, 0);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn whole_guide_manifest_reuses_only_the_matching_active_guide() {
+        use crate::document_study_guides::StudyGuideOverview;
+        use super::super::composition::CollectionGuideSection;
+
+        let database = Database::open_in_memory().unwrap();
+        let collection_id = "c".repeat(32);
+        let target_id = "t".repeat(32);
+        let guide_id = "g".repeat(32);
+        let snapshot_id = "s".repeat(64);
+        let analysis_hash = "a".repeat(64);
+        let request_key = "r".repeat(64);
+        let content = CollectionGuideContent {
+            schema_version: COLLECTION_GUIDE_SCHEMA_VERSION,
+            collection_id: collection_id.clone(),
+            title: "Reuse fixture".to_string(),
+            overview: StudyGuideOverview {
+                summary: "A retained collection overview.".to_string(),
+                learning_objectives: Vec::new(),
+                key_concepts: vec!["Triangles".to_string()],
+            },
+            sections: vec![CollectionGuideSection {
+                block_key: "triangles".to_string(),
+                title: "Triangles".to_string(),
+                content: StudyGuideSectionContent {
+                    overview: "Triangles have three connected sides and three vertices.".to_string(),
+                    key_points: vec![
+                        "A triangle has three sides.".to_string(),
+                        "Its sides meet at three vertices.".to_string(),
+                    ],
+                    ..Default::default()
+                },
+                content_hash: "h".repeat(64),
+                source_document_id: None,
+                source_document_title: None,
+                source_guide_id: None,
+                source_topic_id: None,
+                source_locator: None,
+            }],
+            coverage_notes: Vec::new(),
+        };
+        let serialized = serde_json::to_string(&content).unwrap();
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO document_collections(
+                             id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
+                         ) VALUES(?1,NULL,'Reuse fixture',1000,NULL,1,1,1)",
+                        [&collection_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO study_targets(
+                             id,target_kind,collection_id,created_at,updated_at
+                         ) VALUES(?1,'collection',?2,1,1)",
+                        params![target_id, collection_id],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO study_target_guides(
+                             id,target_id,batch_id,revision,source_snapshot_id,
+                             synthesis_analysis_hash,content_json,content_hash,state,
+                             created_at,updated_at,published_at
+                         ) VALUES(?1,?2,NULL,1,?3,?4,?5,?6,'active',1,1,1)",
+                        params![
+                            guide_id,
+                            target_id,
+                            snapshot_id,
+                            analysis_hash,
+                            serialized,
+                            generation::hash(serialized.as_bytes()),
+                        ],
+                    )
+                    .map_err(CommandError::database)?;
+                connection
+                    .execute(
+                        "INSERT INTO collection_guide_manifests(guide_id,request_key,created_at)
+                         VALUES(?1,?2,1)",
+                        params![guide_id, request_key],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+
+        let mut operation =
+            generation::Operation::begin(&database, None, None, Some(&collection_id), "fixture")
+                .unwrap();
+        let context = operation.context();
+        assert_eq!(
+            load_guide(
+                &database,
+                &target_id,
+                &collection_id,
+                &snapshot_id,
+                &analysis_hash,
+                &request_key,
+                Some(&context),
+            )
+            .unwrap(),
+            Some(guide_id)
+        );
+        assert!(load_guide(
+            &database,
+            &target_id,
+            &collection_id,
+            &snapshot_id,
+            &analysis_hash,
+            &"z".repeat(64),
+            Some(&context),
+        )
+        .unwrap()
+        .is_none());
+        operation.finish(true);
+        database
+            .with_connection(|connection| {
+                let count: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM generation_reuse_events
+                         WHERE operation_id=?1 AND stage='complete_guide'",
+                        [context.operation_id.as_str()],
+                        |row| row.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(count, 1);
                 Ok(())
             })
             .unwrap();

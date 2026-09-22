@@ -223,9 +223,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0027_generation_reuse_and_usage.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 28,
+        name: "collection_reduction_request_identity",
+        checksum: "149d3697a2ab6d2a7daa6724f5a6a0cc6e91bf9a6f40007c411b07445842f25c",
+        sql: include_str!("../migrations/0028_collection_reduction_request_identity.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 27;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 28;
 
 #[derive(Clone)]
 pub struct Database {

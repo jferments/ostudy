@@ -48,7 +48,7 @@ use super::{
 };
 
 const MAX_COLLECTION_SOURCE_NOTES: usize = 10_000;
-const COLLECTION_GUIDE_SCHEMA_VERSION: i64 = 2;
+pub(crate) const COLLECTION_GUIDE_SCHEMA_VERSION: i64 = 2;
 const MAX_COLLECTION_GUIDE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1052,6 +1052,54 @@ async fn compose_collection_guide(
             "The collection outline changed while its study guide was being organized.",
         ));
     }
+    let collection_title = collection_title(database, &claim.target.id)?;
+    let section_keys = windows
+        .iter()
+        .map(|window| {
+            let relationship_context = relationship_context(&view, &window.topic_ids);
+            reuse::section_key(
+                &task,
+                &claim.target.id,
+                &collection_title,
+                window,
+                &relationship_context,
+            )
+        })
+        .collect::<Result<Vec<_>, CommandError>>()?;
+    let manifest_key = reuse::manifest_key(&task, &collection_title, &view, &section_keys)?;
+    if let Some(guide_id) = reuse::load_guide(
+        database,
+        &claim.target_id,
+        &claim.target.id,
+        &claim.snapshot.snapshot_id,
+        &view.analysis_hash,
+        &manifest_key,
+        task.diagnostics.as_ref(),
+    )? {
+        database.with_connection(|connection| {
+            let tx = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(CommandError::database)?;
+            collections::ensure_snapshot_current(&tx, &claim.snapshot)?;
+            collection_view::ensure_analysis_current(
+                &tx,
+                &claim.target.id,
+                &view.analysis_hash,
+            )?;
+            succeed_job(
+                &tx,
+                operation_id,
+                StudyTargetArtifactKind::StudyGuide,
+                &guide_id,
+                work_total,
+                work_total,
+                unix_time_millis()?,
+            )?;
+            tx.commit().map_err(CommandError::database)
+        })?;
+        return Ok(());
+    }
+
     begin_artifact_job(
         database,
         operation_id,
@@ -1065,7 +1113,6 @@ async fn compose_collection_guide(
         1,
     )?;
 
-    let collection_title = collection_title(database, &claim.target.id)?;
     let parallelism = crate::ai::concurrency::document_request_parallelism(&task.network_scope)
         .clamp(1, windows.len().max(1));
     crate::logging::info_target(
@@ -1144,7 +1191,15 @@ async fn compose_collection_guide(
         })?;
 
     let content = build_collection_guide_content(claim, &view, collection_title, sections)?;
-    publish_collection_guide(database, operation_id, claim, &view, &content, work_total)
+    publish_collection_guide(
+        database,
+        operation_id,
+        claim,
+        &view,
+        &content,
+        work_total,
+        &manifest_key,
+    )
 }
 
 struct CollectionGuideAuthoringContext<'a> {
@@ -1449,6 +1504,7 @@ fn publish_collection_guide(
     view: &CollectionViewState,
     content: &CollectionGuideContent,
     work_total: usize,
+    manifest_key: &str,
 ) -> Result<(), CommandError> {
     let content_json = serde_json::to_string(content).map_err(CommandError::serialization)?;
     let content_hash = hash_text(&content_json);
@@ -1476,6 +1532,7 @@ fn publish_collection_guide(
             .map_err(CommandError::database)?;
         if let Some((guide_id, old_hash)) = existing.as_ref() {
             if *old_hash == content_hash {
+                reuse::save_manifest(&tx, guide_id, manifest_key, now)?;
                 succeed_job(
                     &tx,
                     operation_id,
@@ -1530,6 +1587,7 @@ fn publish_collection_guide(
         if let Some((old_id, _)) = existing.as_ref() {
             reconcile_collection_overlays(&tx, old_id, &guide_id, content, now)?;
         }
+        reuse::save_manifest(&tx, &guide_id, manifest_key, now)?;
         succeed_job(
             &tx,
             operation_id,

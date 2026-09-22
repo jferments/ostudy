@@ -49,6 +49,7 @@ const GUIDE_MAX_TOPICS_PER_SECTION: usize = 28;
 const GUIDE_MAX_UNITS_PER_SECTION: usize = 48;
 const MAX_REDUCTION_DIGEST_BYTES: usize = 48_000;
 const REDUCTION_VISIBLE_TOKENS: usize = 4_096;
+const REDUCTION_CONTRACT_VERSION: i64 = 1;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -163,7 +164,7 @@ pub(crate) fn refresh_native(
         return Ok(current);
     }
     let synthesis = native_synthesis(collection_id, &plan)?;
-    publish(database, &plan, &synthesis, false)?;
+    publish(database, &plan, &synthesis, false, None)?;
     load_published(database, collection_id)
 }
 
@@ -182,12 +183,7 @@ pub(crate) async fn ensure_reduced(
     check_canceled(signal)?;
     task.ensure_current(database)?;
     let plan = database.with_connection(|connection| coverage_plan(connection, collection_id))?;
-    if let Some(current) = current_for_plan(database, collection_id, &plan)? {
-        if current.reduced {
-            return Ok(current);
-        }
-    }
-
+    let current = current_for_plan(database, collection_id, &plan)?;
     let mut synthesis = native_synthesis(collection_id, &plan)?;
     let output_tokens = task.completion_token_ceiling(REDUCTION_VISIBLE_TOKENS);
     let digest_budget = task
@@ -204,7 +200,7 @@ pub(crate) async fn ensure_reduced(
             "The optional cross-document reducer was skipped because every selected topic could not be represented safely inside one bounded digest. The complete native topic catalog remains available.",
         );
         synthesis.reduction_status = "native_digest_omitted".to_string();
-        publish(database, &plan, &synthesis, false)?;
+        publish(database, &plan, &synthesis, false, None)?;
         return load_published(database, collection_id);
     };
 
@@ -213,6 +209,19 @@ pub(crate) async fn ensure_reduced(
     let user = format!(
         "Organize this balanced cross-document digest from a complete permitted collection catalog. Every collection topic is represented at least once, but individual topics may have additional units outside this bounded digest. Preserve polarity, conditions, units, exceptions, and contradictions exactly. Instructional emphasis is advisory and is not factual corroboration. Return exactly one concise topic summary for every supplied topic, with only the supplied unit IDs that support that summary. Return broad learning objectives and only complementary, contrast, contradictory, or prerequisite relationships supported by supplied unit IDs. Do not merge conflicting claims, invent facts, infer learner mastery, or treat repetition as independent corroboration.\n<collection-digest>\n{digest}\n</collection-digest>"
     );
+    let reduction_key = reduction_request_key(task, &plan, &user, &schema, output_tokens)?;
+    if reduction_receipt_exists(database, collection_id, &reduction_key)?
+        && current_reduction_request_key(database, collection_id)?.as_deref()
+            == Some(reduction_key.as_str())
+    {
+        if let Some(current) = current {
+            if let Some(diagnostics) = task.diagnostics.as_ref() {
+                diagnostics.reused("collection_synthesis", &reduction_key);
+            }
+            return Ok(current);
+        }
+    }
+
     let response = request_json_cancellable_single_attempt(
         runtime,
         task,
@@ -228,44 +237,150 @@ pub(crate) async fn ensure_reduced(
     .await;
     ensure_plan_current(database, task, &plan, signal)?;
 
-    let reduced = match response.and_then(|value| parse_reduction(value, &allowed)) {
-        Ok(reduction) => {
-            for summary in reduction.topic_summaries {
-                let topic = synthesis
-                    .topics
-                    .iter_mut()
-                    .find(|topic| topic.id == summary.topic_id)
-                    .ok_or_else(|| {
-                        invalid("The collection reducer referenced an unknown topic.")
-                    })?;
-                topic.summary = summary.summary;
-                topic.summary_support_unit_ids = summary.support_unit_ids;
+    let (reduced, persist_receipt) = match response {
+        Ok(value) => match parse_reduction(value, &allowed) {
+            Ok(reduction) => {
+                for summary in reduction.topic_summaries {
+                    let topic = synthesis
+                        .topics
+                        .iter_mut()
+                        .find(|topic| topic.id == summary.topic_id)
+                        .ok_or_else(|| {
+                            invalid("The collection reducer referenced an unknown topic.")
+                        })?;
+                    topic.summary = summary.summary;
+                    topic.summary_support_unit_ids = summary.support_unit_ids;
+                }
+                synthesis.summary = reduction.summary;
+                synthesis.learning_objectives = reduction.learning_objectives;
+                synthesis.relationships = reduction.relationships;
+                synthesis.reduction_status = "reduced".to_string();
+                (true, true)
             }
-            synthesis.summary = reduction.summary;
-            synthesis.learning_objectives = reduction.learning_objectives;
-            synthesis.relationships = reduction.relationships;
-            synthesis.reduction_status = "reduced".to_string();
-            true
-        }
+            Err(error) => {
+                record_reduction_fallback(collection_id, &mut synthesis, &error, true);
+                (false, true)
+            }
+        },
         Err(error) if error.code == "ai_request_canceled" => return Err(error),
+        Err(error) if stable_reduction_failure(&error) => {
+            record_reduction_fallback(collection_id, &mut synthesis, &error, true);
+            (false, true)
+        }
         Err(error) => {
-            crate::logging::warn_target(
-                "ai.knowledge.collection",
-                "knowledge_collection_reduction_fallback",
-                "The optional collection reducer failed; complete native synthesis remains available.",
-                json!({"collection":collection_id,"code":error.code}),
-            );
-            record_reduction_gap(
-                &mut synthesis,
-                "synthesis_reduction_failed",
-                "The optional cross-document reducer failed validation or provider execution. The complete native topic catalog remains available without provider-authored relationships.",
-            );
-            synthesis.reduction_status = "native_reducer_failed".to_string();
-            false
+            record_reduction_fallback(collection_id, &mut synthesis, &error, false);
+            (false, false)
         }
     };
-    publish(database, &plan, &synthesis, reduced)?;
+    publish(
+        database,
+        &plan,
+        &synthesis,
+        reduced,
+        persist_receipt.then_some(reduction_key.as_str()),
+    )?;
     load_published(database, collection_id)
+}
+
+fn reduction_request_key(
+    task: &DocumentTaskContext,
+    plan: &CoveragePlan,
+    user: &str,
+    schema: &Value,
+    output_tokens: usize,
+) -> Result<String, CommandError> {
+    Ok(hash(
+        &serde_json::to_string(&(
+            "collection-reducer",
+            REDUCTION_CONTRACT_VERSION,
+            task.contract_identity()?,
+            &plan.analysis_hash,
+            user,
+            schema,
+            output_tokens,
+        ))
+        .map_err(CommandError::serialization)?,
+    ))
+}
+
+fn reduction_receipt_exists(
+    database: &Database,
+    collection_id: &str,
+    request_key: &str,
+) -> Result<bool, CommandError> {
+    database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM collection_reduction_receipts
+                     WHERE collection_id=?1 AND request_key=?2
+                 )",
+                params![collection_id, request_key],
+                |row| row.get(0),
+            )
+            .map_err(CommandError::database)
+    })
+}
+
+fn current_reduction_request_key(
+    database: &Database,
+    collection_id: &str,
+) -> Result<Option<String>, CommandError> {
+    database.with_connection(|connection| {
+        connection
+            .query_row(
+                "SELECT reduction_request_key FROM knowledge_collection_views
+                 WHERE collection_id=?1 AND stale=0",
+                [collection_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map(|value| value.flatten())
+            .map_err(CommandError::database)
+    })
+}
+
+fn stable_reduction_failure(error: &CommandError) -> bool {
+    matches!(
+        error.code.as_str(),
+        "ai_document_output_truncated"
+            | "ai_document_output_invalid"
+            | "ai_empty_response"
+            | "ai_content_policy_rejected"
+    )
+}
+
+fn record_reduction_fallback(
+    collection_id: &str,
+    synthesis: &mut CollectionSynthesis,
+    error: &CommandError,
+    stable: bool,
+) {
+    crate::logging::warn_target(
+        "ai.knowledge.collection",
+        "knowledge_collection_reduction_fallback",
+        "The optional collection reducer was not admitted; complete native synthesis remains available.",
+        json!({"collection":collection_id,"code":error.code,"stable":stable}),
+    );
+    record_reduction_gap(
+        synthesis,
+        if stable {
+            "synthesis_reduction_rejected"
+        } else {
+            "synthesis_reduction_failed"
+        },
+        if stable {
+            "The optional cross-document reducer returned a completed but unusable result. The complete native synthesis is retained and this exact reducer request will not be repaid."
+        } else {
+            "The optional cross-document reducer failed during provider execution. The complete native synthesis remains available and a later operation may retry."
+        },
+    );
+    synthesis.reduction_status = if stable {
+        "native_reducer_rejected"
+    } else {
+        "native_reducer_failed"
+    }
+    .to_string();
 }
 
 fn ensure_plan_current(
@@ -870,6 +985,7 @@ fn publish(
     plan: &CoveragePlan,
     synthesis: &CollectionSynthesis,
     reduced: bool,
+    reduction_receipt: Option<&str>,
 ) -> Result<(), CommandError> {
     let serialized = serde_json::to_string(synthesis).map_err(CommandError::serialization)?;
     if serialized.len() > MAX_SYNTHESIS_BYTES {
@@ -890,8 +1006,8 @@ fn publish(
             .execute(
                 "INSERT INTO knowledge_collection_views(
                      collection_id,snapshot_id,analysis_hash,view_version,synthesis_json,
-                     reduced,stale,created_at,updated_at
-                 ) VALUES(?1,?2,?3,1,?4,?5,0,?6,?6)
+                     reduced,stale,created_at,updated_at,reduction_request_key
+                 ) VALUES(?1,?2,?3,1,?4,?5,0,?6,?6,?7)
                  ON CONFLICT(collection_id) DO UPDATE SET
                      snapshot_id=excluded.snapshot_id,
                      analysis_hash=excluded.analysis_hash,
@@ -899,7 +1015,8 @@ fn publish(
                      synthesis_json=excluded.synthesis_json,
                      reduced=excluded.reduced,
                      stale=0,
-                     updated_at=excluded.updated_at",
+                     updated_at=excluded.updated_at,
+                     reduction_request_key=excluded.reduction_request_key",
                 params![
                     synthesis.collection_id,
                     plan.snapshot.snapshot_id,
@@ -907,6 +1024,7 @@ fn publish(
                     serialized,
                     i64::from(reduced),
                     now,
+                    reduction_receipt,
                 ],
             )
             .map_err(CommandError::database)?;
@@ -928,6 +1046,16 @@ fn publish(
                         dependency.id,
                         dependency.hash
                     ],
+                )
+                .map_err(CommandError::database)?;
+        }
+        if let Some(request_key) = reduction_receipt {
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO collection_reduction_receipts(
+                         collection_id,request_key,created_at
+                     ) VALUES(?1,?2,?3)",
+                    params![synthesis.collection_id, request_key, now],
                 )
                 .map_err(CommandError::database)?;
         }
