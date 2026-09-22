@@ -178,8 +178,7 @@ async fn analyze(
     );
     let output_tokens = task.completion_token_ceiling(EXTRACTION_COMPLETION_TOKENS);
     let mut request_task = task.clone();
-    request_task.diagnostic_window_key =
-        Some(analysis_store::window_id(&pending, &contract)?);
+    request_task.diagnostic_window_key = Some(analysis_store::window_id(&pending, &contract)?);
     let task = &request_task;
     let outcome = shared::run(
         shared::Window {

@@ -56,7 +56,6 @@ async fn mixed_window_preserves_good_sibling_then_resumes_only_rejected_slot() {
     .unwrap();
 }
 
-
 #[test]
 fn targeted_repair_keeps_original_aliases_and_excludes_unrelated_evidence() {
     let (_, mut source, _, _) = fixture();
@@ -92,7 +91,9 @@ fn targeted_repair_keeps_original_aliases_and_excludes_unrelated_evidence() {
     assert!(user.contains(&format!("\"id\":\"{alias}\"")));
     assert!(!user.contains("\"id\":\"E0\""));
     let allowed = schema
-        .pointer("/properties/repairs/items/properties/unit/anyOf/0/properties/evidenceIds/items/enum")
+        .pointer(
+            "/properties/repairs/items/properties/unit/anyOf/0/properties/evidenceIds/items/enum",
+        )
         .and_then(Value::as_array)
         .unwrap();
     assert!(allowed.iter().any(|value| value == &json!(alias)));

@@ -229,10 +229,7 @@ impl EvidenceCatalog {
             .filter(|index| Self::alias(*index) == alias && *index < self.entries.len())
     }
 
-    pub(crate) fn aliases_for_positions(
-        &self,
-        positions: &BTreeSet<usize>,
-    ) -> Vec<String> {
+    pub(crate) fn aliases_for_positions(&self, positions: &BTreeSet<usize>) -> Vec<String> {
         positions
             .iter()
             .copied()
