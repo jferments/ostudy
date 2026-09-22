@@ -73,9 +73,9 @@ impl Context {
     }
 
     fn logical_request_key(&self, stage: &str, logical_key: Option<&str>) -> String {
-        if let Some(key) = logical_key.filter(|key| {
-            key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit())
-        }) {
+        if let Some(key) = logical_key
+            .filter(|key| key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        {
             return key.to_ascii_lowercase();
         }
         hash(
@@ -370,10 +370,7 @@ pub(crate) fn reserve_recovery(
     }
 }
 
-pub(crate) fn reserve_current_recovery(
-    reason: RecoveryReason,
-    trigger_code: &str,
-) -> bool {
+pub(crate) fn reserve_current_recovery(reason: RecoveryReason, trigger_code: &str) -> bool {
     CURRENT_REQUEST
         .try_with(|scope| {
             scope.context.reserve_recovery(

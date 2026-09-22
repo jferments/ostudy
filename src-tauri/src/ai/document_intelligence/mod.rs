@@ -49,5 +49,6 @@ pub(crate) async fn generate_document_artifact_metadata(
     outline: &DocumentOutline,
     cancellation: &CancellationSignal,
 ) -> Result<DocumentArtifactMetadataCandidate, CommandError> {
-    artifact_metadata::request_document_artifact_metadata(runtime, task, outline, cancellation).await
+    artifact_metadata::request_document_artifact_metadata(runtime, task, outline, cancellation)
+        .await
 }

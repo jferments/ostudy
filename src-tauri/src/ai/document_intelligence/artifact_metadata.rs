@@ -1,11 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::{
-    ai::AiRuntimeState,
-    error::CommandError,
-    task_cancellation::CancellationSignal,
-};
+use crate::{ai::AiRuntimeState, error::CommandError, task_cancellation::CancellationSignal};
 
 use super::{
     context::DocumentTaskContext,
