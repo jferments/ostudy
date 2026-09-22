@@ -1,5 +1,6 @@
 import type { DocumentSummary } from "../../ipc/documents";
 import type { DocumentLearningPlan, SourceLocator } from "../../ipc/studyGuides";
+import { Disclosure } from "../../ui/primitives/FormControls";
 
 export function CheckedLearningPlanPanel({
   document,
@@ -13,11 +14,15 @@ export function CheckedLearningPlanPanel({
   const remaining = Math.max(total - completed, 0);
 
   return (
-    <details className="tw:mt-3 tw:rounded-lg tw:border tw:border-solid tw:border-primary/20 tw:bg-accent/20 tw:p-3">
-      <summary className="tw:cursor-pointer tw:select-none tw:text-sm tw:font-medium tw:text-primary">
-        Checked learning plan ready · {plan.topics.length} topic{plan.topics.length === 1 ? "" : "s"}
-      </summary>
-      <div className="tw:mt-3 tw:grid tw:min-w-0 tw:gap-4">
+    <Disclosure
+      className="tw:mt-3 tw:border-primary/20 tw:bg-accent/20"
+      title={(
+        <span className="tw:text-sm tw:font-medium tw:text-primary">
+          Checked learning plan ready · {plan.topics.length} topic{plan.topics.length === 1 ? "" : "s"}
+        </span>
+      )}
+    >
+      <div className="tw:grid tw:min-w-0 tw:gap-4 tw:px-3 tw:pb-3">
         <p className="tw:m-0 tw:text-sm tw:leading-relaxed tw:text-muted-foreground">
           This read-only plan has already passed native source-grounding checks. Flashcard authoring
           and final curation are still running; nothing shown here is a provisional learner card.
@@ -73,7 +78,7 @@ export function CheckedLearningPlanPanel({
           </section>
         ) : null}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 
