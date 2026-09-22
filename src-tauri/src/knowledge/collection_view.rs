@@ -43,9 +43,9 @@ const MAX_COVERAGE_SOURCES: usize = 2_048;
 const MAX_COVERAGE_UNITS: usize = 16_384;
 const MAX_TOPICS: usize = MAX_COVERAGE_UNITS;
 const MAX_SYNTHESIS_BYTES: usize = 8 * 1024 * 1024;
-const GUIDE_TARGET_SECTION_COUNT: usize = 24;
-const GUIDE_BASE_TOPICS_PER_SECTION: usize = 18;
+const GUIDE_MIN_TOPICS_PER_SECTION: usize = 16;
 const GUIDE_MAX_TOPICS_PER_SECTION: usize = 28;
+const GUIDE_WINDOW_ANCHOR_MODULUS: u16 = 12;
 const GUIDE_MAX_UNITS_PER_SECTION: usize = 48;
 const MAX_REDUCTION_DIGEST_BYTES: usize = 48_000;
 const REDUCTION_VISIBLE_TOKENS: usize = 4_096;
@@ -497,16 +497,15 @@ pub(crate) fn guide_section_windows(
             .then_with(|| left.id.cmp(&right.id))
     });
 
-    let topic_limit = guide_window_topic_limit(topics.len());
     let mut windows = Vec::new();
-    for topic_window in topics.chunks(topic_limit) {
+    for topic_window in stable_guide_topic_windows(&topics) {
         let topic_ids = topic_window
             .iter()
             .map(|topic| topic.id.clone())
             .collect::<Vec<_>>();
-        let title = guide_window_title(topic_window);
-        let topic_context = guide_window_context(topic_window);
-        let selected_units = guide_window_units(topic_window, &units)?;
+        let title = guide_window_title(&topic_window);
+        let topic_context = guide_window_context(&topic_window);
+        let selected_units = guide_window_units(&topic_window, &units)?;
         if selected_units.is_empty() {
             return Err(repository::stale_source());
         }
@@ -530,13 +529,30 @@ pub(crate) fn guide_section_windows(
     Ok(windows)
 }
 
-fn guide_window_topic_limit(topic_count: usize) -> usize {
-    if topic_count == 0 {
-        return 1;
+fn stable_guide_topic_windows<'a>(
+    topics: &[&'a CollectionTopic],
+) -> Vec<Vec<&'a CollectionTopic>> {
+    let mut windows = Vec::new();
+    let mut current = Vec::new();
+    for topic in topics {
+        current.push(*topic);
+        let boundary = current.len() >= GUIDE_MIN_TOPICS_PER_SECTION
+            && (current.len() >= GUIDE_MAX_TOPICS_PER_SECTION
+                || guide_window_anchor(&topic.id));
+        if boundary {
+            windows.push(std::mem::take(&mut current));
+        }
     }
-    topic_count
-        .div_ceil(GUIDE_TARGET_SECTION_COUNT)
-        .clamp(GUIDE_BASE_TOPICS_PER_SECTION, GUIDE_MAX_TOPICS_PER_SECTION)
+    if !current.is_empty() {
+        windows.push(current);
+    }
+    windows
+}
+
+fn guide_window_anchor(topic_id: &str) -> bool {
+    let digest = hash(&format!("collection-guide-window-anchor-v1:{topic_id}"));
+    let prefix = u16::from_str_radix(&digest[..4], 16).unwrap_or_default();
+    prefix % GUIDE_WINDOW_ANCHOR_MODULUS == 0
 }
 
 fn topic_source_position(
@@ -1640,6 +1656,33 @@ mod tests {
         value.to_string().repeat(32)
     }
 
+    fn install_reducer_profile(
+        database: &Database,
+        base_url: &str,
+        marker: char,
+    ) -> DocumentTaskContext {
+        let profile_id = id(marker);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO ai_provider_profiles (
+                             id,display_name,normalized_name,provider_kind,base_url,model_id,
+                             auth_mode,enabled,allow_insecure_http,request_timeout_ms,
+                             credential_storage,credential_epoch,revision,created_at,updated_at,
+                             reasoning_effort
+                         ) VALUES (?1,'Collection reducer test','collection reducer test',
+                                   'llama_cpp',?2,'fixture','none',1,0,5000,
+                                   'none',0,1,1,1,'none')",
+                        params![profile_id, base_url],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
+        DocumentTaskContext::for_tutor_profile(database, &profile_id).unwrap()
+    }
+
     fn seed_document(
         database: &Database,
         collection: &str,
@@ -1940,27 +1983,8 @@ mod tests {
         })
         .to_string();
         let (base_url, server) = spawn_collection_completion(provider_content);
-        let profile_id = id('9');
-        database
-            .with_connection(|connection| {
-                connection
-                    .execute(
-                        "INSERT INTO ai_provider_profiles (
-                             id,display_name,normalized_name,provider_kind,base_url,model_id,
-                             auth_mode,enabled,allow_insecure_http,request_timeout_ms,
-                             credential_storage,credential_epoch,revision,created_at,updated_at,
-                             reasoning_effort
-                         ) VALUES (?1,'Collection reducer test','collection reducer test',
-                                   'llama_cpp',?2,'fixture','none',1,0,5000,
-                                   'none',0,1,1,1,'none')",
-                        params![profile_id, base_url],
-                    )
-                    .map_err(CommandError::database)?;
-                Ok(())
-            })
-            .unwrap();
         let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
-        let task = DocumentTaskContext::for_tutor_profile(&database, &profile_id).unwrap();
+        let task = install_reducer_profile(&database, &base_url, '9');
 
         let (first, first_requests) = tauri::async_runtime::block_on(run_document_task(
             "collection-reducer-request-count",
@@ -1997,6 +2021,49 @@ mod tests {
     }
 
     #[test]
+    fn stable_reducer_rejection_is_receipted_and_not_repaid() {
+        let (database, collection, _, _, _) = fixture().unwrap();
+        let (base_url, server) = spawn_collection_completion("{}".to_string());
+        let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
+        let task = install_reducer_profile(&database, &base_url, '8');
+
+        let (first, first_requests) = tauri::async_runtime::block_on(run_document_task(
+            "collection-reducer-rejected-first",
+            async {
+                let signal = current_signal().expect("document task signal should exist");
+                let state =
+                    ensure_reduced(&database, &runtime, &task, &collection, &signal).await?;
+                let requests = document_task_progress("collection-reducer-rejected-first")
+                    .map(|progress| progress.provider_request_count)
+                    .unwrap_or_default();
+                Ok((state, requests))
+            },
+        ))
+        .unwrap();
+        server.join().expect("single rejected reducer request should finish");
+        assert!(!first.reduced);
+        assert_eq!(first.synthesis.reduction_status, "native_reducer_rejected");
+        assert_eq!(first_requests, 1);
+
+        let (reused, reused_requests) = tauri::async_runtime::block_on(run_document_task(
+            "collection-reducer-rejected-reuse",
+            async {
+                let signal = current_signal().expect("document task signal should exist");
+                let state =
+                    ensure_reduced(&database, &runtime, &task, &collection, &signal).await?;
+                let requests = document_task_progress("collection-reducer-rejected-reuse")
+                    .map(|progress| progress.provider_request_count)
+                    .unwrap_or_default();
+                Ok((state, requests))
+            },
+        ))
+        .unwrap();
+        assert!(!reused.reduced);
+        assert_eq!(reused.synthesis.reduction_status, "native_reducer_rejected");
+        assert_eq!(reused_requests, 0);
+    }
+
+    #[test]
     fn local_refresh_preserves_current_reduced_projection_without_provider_work() {
         let (database, collection, _, _, _) = fixture().unwrap();
         let plan = database
@@ -2012,11 +2079,51 @@ mod tests {
     }
 
     #[test]
-    fn collection_guide_windowing_bounds_provider_request_count_without_losing_topics() {
-        assert_eq!(guide_window_topic_limit(0), 1);
-        assert_eq!(guide_window_topic_limit(12), GUIDE_BASE_TOPICS_PER_SECTION);
-        assert_eq!(guide_window_topic_limit(120), GUIDE_BASE_TOPICS_PER_SECTION);
-        assert_eq!(guide_window_topic_limit(600), 25);
+    fn collection_guide_windowing_is_content_defined_and_local_edits_preserve_later_boundaries() {
+        let topic = |index: usize| CollectionTopic {
+            id: format!("{index:032x}"),
+            title: format!("Topic {index}"),
+            summary: String::new(),
+            summary_support_unit_ids: Vec::new(),
+            unit_ids: Vec::new(),
+            support_source_ids: Vec::new(),
+            support_document_ids: Vec::new(),
+            emphasis_source_ids: Vec::new(),
+        };
+        let base = (0..80).map(topic).collect::<Vec<_>>();
+        let base_refs = base.iter().collect::<Vec<_>>();
+        let base_windows = stable_guide_topic_windows(&base_refs);
+        assert!(base_windows.len() >= 3);
+        assert!(base_windows.iter().all(|window| {
+            !window.is_empty() && window.len() <= GUIDE_MAX_TOPICS_PER_SECTION
+        }));
+        let base_boundaries = base_windows
+            .iter()
+            .filter_map(|window| window.last().map(|topic| topic.id.clone()))
+            .collect::<Vec<_>>();
+
+        let inserted = topic(10_000);
+        let mut edited_refs = base.iter().collect::<Vec<_>>();
+        edited_refs.insert(2, &inserted);
+        let edited_boundaries = stable_guide_topic_windows(&edited_refs)
+            .iter()
+            .filter_map(|window| window.last().map(|topic| topic.id.clone()))
+            .collect::<HashSet<_>>();
+        let preserved = base_boundaries
+            .iter()
+            .filter(|boundary| edited_boundaries.contains(boundary.as_str()))
+            .count();
+        assert!(
+            preserved + 1 >= base_boundaries.len(),
+            "a local insertion should not shift every later provider window"
+        );
+
+        let large = (0..600).map(topic).collect::<Vec<_>>();
+        let large_refs = large.iter().collect::<Vec<_>>();
+        assert!(
+            stable_guide_topic_windows(&large_refs).len() <= 25,
+            "stable partitioning should not increase the previous large-collection request target"
+        );
     }
 
     #[test]
