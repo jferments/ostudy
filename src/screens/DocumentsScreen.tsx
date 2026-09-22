@@ -129,7 +129,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
               label: document.sourceFormat === "image_bundle" ? "View image collection" : "View",
               placement: "always-visible",
               presentation: "icon",
-              icon: "open",
+              icon: "view",
               onSelect: () => document.sourceFormat === "image_bundle"
                 ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
               disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
