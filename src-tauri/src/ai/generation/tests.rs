@@ -166,9 +166,8 @@ async fn physical_gateway_retry_records_two_attempts_for_one_logical_request() {
     });
 
     let database = Database::open_in_memory().expect("database should open");
-    let mut operation =
-        Operation::begin(&database, None, None, None, "gateway_retry_fixture")
-            .expect("diagnostic operation should begin");
+    let mut operation = Operation::begin(&database, None, None, None, "gateway_retry_fixture")
+        .expect("diagnostic operation should begin");
     let diagnostic_context = operation.context();
     let request_key = hash(b"retry-window");
     let gateway = AiGateway::new().expect("gateway should initialize");

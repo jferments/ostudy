@@ -398,4 +398,3 @@ fn warn_accounting(result: Result<(), CommandError>) {
         );
     }
 }
-
