@@ -278,6 +278,7 @@ pub fn run() {
             ui_checkpoint::clear_ui_checkpoint,
             external_file_streaming::stream_select_and_stage_external_import,
             external_file_images::stage_image_collection_file,
+            external_file_images::stage_image_collection_file_chunk,
             external_files::release_staged_external_import,
             external_file_streaming::stream_publish_prepared_export,
             external_file_commands::share_prepared_export,

@@ -165,7 +165,6 @@ export function ImageSetWorkspace({ documentId, onClose }: ImageSetWorkspaceProp
         </div> : null}
         {job?.error ? <InlineNotice kind="error">{savedId ? "Your images are saved. " : ""}{job.error}</InlineNotice> : null}
         {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
-        {documentJobs?.errorMessage ? <InlineNotice kind="error">{documentJobs.errorMessage}</InlineNotice> : null}
       </div>
     </InlineWorkspace>
   );

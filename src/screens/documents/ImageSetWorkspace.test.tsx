@@ -107,6 +107,16 @@ beforeEach(() => {
 });
 
 describe("automatic image collections", () => {
+  it("does not leak an unrelated document-provider error into image upload", async () => {
+    mocks.list.mockRejectedValueOnce(new Error(
+      "The provider ended the streamed document request with finish_reason=content_filter.",
+    ));
+    open();
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled());
+    expect(screen.queryByText(/finish_reason=content_filter/u)).toBeNull();
+    expect(screen.getByRole("button", { name: "Select images" })).toBeTruthy();
+  });
+
   it("accepts multiple files and automatically creates cards and a guide without preparation controls", async () => {
     open();
     const input = screen.getByLabelText("Choose images") as HTMLInputElement;
@@ -148,6 +158,49 @@ describe("automatic image collections", () => {
     expect(mocks.guide).toHaveBeenCalledTimes(2);
     fireEvent.paste(document, { clipboardData: { files: [], items: [{ kind: "string", type: "text/plain" }] } });
     expect(mocks.stage).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps staging alive after leaving the image workspace", async () => {
+    const staging = deferred<{
+      id: string;
+      displayName: string;
+      purpose: "image";
+      detectedKind: "png";
+      mediaType: string;
+      byteSize: number;
+      sha256: string;
+      expiresAt: number;
+    }>();
+    mocks.stage.mockReturnValueOnce(staging.promise);
+    open();
+    select([image("slow.png")]);
+    await waitFor(() => expect(mocks.stage).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to Documents" }));
+    expect(screen.getByText("Another page")).toBeTruthy();
+    await act(async () => {
+      staging.resolve({
+        id: mocks.stage.mock.calls[0][1],
+        displayName: "slow.png",
+        purpose: "image",
+        detectedKind: "png",
+        mediaType: "image/png",
+        byteSize: 6,
+        sha256: "d".repeat(64),
+        expiresAt: 9999999999999,
+      });
+      await staging.promise;
+    });
+
+    await waitFor(() => expect(mocks.import).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.cards).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.guide).toHaveBeenCalledTimes(1));
+    expect(mocks.cancel).not.toHaveBeenCalled();
+    expect(mocks.cancelGuide).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open collection" }));
+    await ready();
+    expect(screen.getByRole("button", { name: "View source-0.png" })).toBeTruthy();
   });
 
   it("retains additions during generation and completes after leaving the upload page", async () => {
