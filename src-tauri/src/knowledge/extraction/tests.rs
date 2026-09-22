@@ -307,3 +307,28 @@ async fn explicit_empty_disposition_reuses_without_inventing_knowledge() {
 
 #[path = "reuse_tests.rs"]
 mod reuse_tests;
+
+#[test]
+fn complexity_aware_batching_splits_fragmented_text_without_losing_sources() {
+    let (_, source, _, _) = fixture();
+    let mut sources = Vec::new();
+    for index in 0..4 {
+        let mut source = source.clone();
+        source.segment_key = format!("complexity-{index}");
+        source.text = "concept ".repeat(375);
+        sources.push(source);
+    }
+    assert_eq!(
+        sources
+            .iter()
+            .map(|source| source.text.chars().count())
+            .sum::<usize>(),
+        EXTRACTION_BATCH_CHARS
+    );
+    let ranges = batch_ranges(&sources);
+    assert_eq!(ranges, vec![0..3, 3..4]);
+    assert_eq!(
+        ranges.iter().map(|range| range.len()).sum::<usize>(),
+        sources.len()
+    );
+}

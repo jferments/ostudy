@@ -178,10 +178,12 @@ async fn generate_more_impl(
         load_existing_coverage(database, &context.deck_id, MAX_EXISTING_COVERAGE_CHARS)?;
     let second_pass_outline = second_pass_outline(outline, &existing_coverage);
 
+    let generation_source_token_budget =
+        document_scale::generation_source_token_budget(plan, &task.question_policy)?;
     let windows = build_partitioned_semantic_windows(
         &chunks,
         plan,
-        plan.generation_window_max_tokens,
+        generation_source_token_budget,
         plan.generation_window_max_units,
         plan.generation_window_overlap_tokens,
     );
@@ -211,7 +213,7 @@ async fn generate_more_impl(
     crate::logging::info(
         "document_ai_additional_scale_plan",
         format!(
-            "document={} format={} provider={} model={} scale={} units={} source_tokens={} generation_windows={} card_capacity={} estimated_job_tokens={} ceiling={} context={} calibration_samples={}",
+            "document={} format={} provider={} model={} scale={} units={} source_tokens={} generation_windows={} generation_source_token_budget={} card_capacity={} estimated_job_tokens={} ceiling={} context={} calibration_samples={}",
             input.document_id,
             source.format.as_str(),
             task.provider_kind,
@@ -220,6 +222,7 @@ async fn generate_more_impl(
             source.unit_count,
             estimated_source_tokens,
             windows.len(),
+            generation_source_token_budget,
             budget.generation_card_capacity,
             budget.estimated_tokens,
             budget.ceiling_tokens,

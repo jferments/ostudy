@@ -31,7 +31,18 @@ use std::{
 
 pub(crate) const EXTRACTION_BATCH_SOURCES: usize = 12;
 pub(crate) const EXTRACTION_BATCH_CHARS: usize = 12000;
+pub(crate) const EXTRACTION_BATCH_COMPLEXITY_UNITS: usize = 16_000;
 pub(crate) const EXTRACTION_COMPLETION_TOKENS: usize = 6000;
+const EVIDENCE_SPAN_COMPLEXITY_UNITS: usize = 160;
+const IMAGE_COMPLEXITY_UNITS: usize = 2_500;
+
+pub(crate) fn extraction_complexity_units(text: &str, image_count: usize) -> usize {
+    let characters = text.chars().count();
+    let evidence_spans = super::evidence::text_ranges(text).len();
+    characters
+        .saturating_add(evidence_spans.saturating_mul(EVIDENCE_SPAN_COMPLEXITY_UNITS))
+        .saturating_add(image_count.saturating_mul(IMAGE_COMPLEXITY_UNITS))
+}
 pub(crate) fn extraction_contract(task: &DocumentTaskContext) -> Result<String, CommandError> {
     Ok(hash(&format!(
         "native-evidence-v2|knowledge-extraction-v{EXTRACTION_PROMPT_VERSION}|{}",
@@ -548,10 +559,14 @@ pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usiz
     while start < sources.len() {
         let mut end = start + 1;
         let mut chars = sources[start].text.chars().count();
+        let mut complexity =
+            extraction_complexity_units(&sources[start].text, sources[start].images.len());
         if sources[start].images.is_empty() {
             while end < sources.len() && end - start < EXTRACTION_BATCH_SOURCES {
                 let next = &sources[end];
                 let next_chars = next.text.chars().count();
+                let next_complexity =
+                    extraction_complexity_units(&next.text, next.images.len());
                 let same = next.id == sources[start].id
                     || (next.kind == SourceKind::Document
                         && sources[start].kind == SourceKind::Document
@@ -559,10 +574,13 @@ pub(crate) fn batch_ranges(sources: &[SourceRecord]) -> Vec<std::ops::Range<usiz
                 if !same
                     || !next.images.is_empty()
                     || chars.saturating_add(next_chars) > EXTRACTION_BATCH_CHARS
+                    || complexity.saturating_add(next_complexity)
+                        > EXTRACTION_BATCH_COMPLEXITY_UNITS
                 {
                     break;
                 }
                 chars += next_chars;
+                complexity = complexity.saturating_add(next_complexity);
                 end += 1;
             }
         }

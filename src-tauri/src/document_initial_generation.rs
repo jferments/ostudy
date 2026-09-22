@@ -213,10 +213,12 @@ pub(crate) async fn process_and_generate_initial_flashcards(
         scale_plan.outline_window_max_units,
         scale_plan.outline_window_overlap_tokens,
     );
+    let generation_source_token_budget =
+        document_scale::generation_source_token_budget(scale_plan, &task.question_policy)?;
     let generation_windows = build_partitioned_semantic_windows(
         &chunks,
         scale_plan,
-        scale_plan.generation_window_max_tokens,
+        generation_source_token_budget,
         scale_plan.generation_window_max_units,
         scale_plan.generation_window_overlap_tokens,
     );
@@ -255,6 +257,7 @@ pub(crate) async fn process_and_generate_initial_flashcards(
             "semanticImages": semantic_work.images,
             "estimateBasis": "uncached semantic analysis, bounded repair, knowledge reduction, metadata, artifact authoring and curation; not a billing quote",
             "generationWindows": generation_windows.len(),
+            "generationSourceTokenBudget": generation_source_token_budget,
             "cardCapacity": budget.generation_card_capacity,
             "estimatedJobTokens": budget.estimated_tokens,
             "contextWindowTokens": budget.context_window_tokens,

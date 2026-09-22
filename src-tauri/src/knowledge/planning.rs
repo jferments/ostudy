@@ -3,7 +3,10 @@
 use super::{
     adapters::split_text,
     contracts::MAX_SOURCE_CHARS,
-    extraction::{EXTRACTION_BATCH_CHARS, EXTRACTION_BATCH_SOURCES},
+    extraction::{
+        extraction_complexity_units, EXTRACTION_BATCH_CHARS, EXTRACTION_BATCH_COMPLEXITY_UNITS,
+        EXTRACTION_BATCH_SOURCES,
+    },
 };
 use crate::document_semantics::SemanticChunk;
 
@@ -17,6 +20,7 @@ pub(crate) struct SemanticWorkEstimate {
 pub(crate) fn estimate(chunks: &[SemanticChunk], attach_images: bool) -> SemanticWorkEstimate {
     let mut result = SemanticWorkEstimate::default();
     let mut packed_chars = 0usize;
+    let mut packed_complexity = 0usize;
     let mut packed_sources = 0usize;
     for chunk in chunks {
         let parts = split_text(&chunk.full_text, MAX_SOURCE_CHARS);
@@ -35,19 +39,25 @@ pub(crate) fn estimate(chunks: &[SemanticChunk], attach_images: bool) -> Semanti
                         result.requests += 1;
                         packed_sources = 0;
                         packed_chars = 0;
+                        packed_complexity = 0;
                     }
                     result.requests += 1;
                 } else {
+                    let complexity = extraction_complexity_units(&part, 0);
                     if packed_sources > 0
                         && (packed_sources == EXTRACTION_BATCH_SOURCES
-                            || packed_chars + chars > EXTRACTION_BATCH_CHARS)
+                            || packed_chars + chars > EXTRACTION_BATCH_CHARS
+                            || packed_complexity.saturating_add(complexity)
+                                > EXTRACTION_BATCH_COMPLEXITY_UNITS)
                     {
                         result.requests += 1;
                         packed_sources = 0;
                         packed_chars = 0;
+                        packed_complexity = 0;
                     }
                     packed_sources += 1;
                     packed_chars += chars;
+                    packed_complexity = packed_complexity.saturating_add(complexity);
                 }
             }
             if attach_images {

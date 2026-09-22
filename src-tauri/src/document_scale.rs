@@ -10,8 +10,10 @@
 use std::fmt;
 
 use crate::{
-    ai::document_provider::DocumentProviderCapabilities, document_cost::DocumentCostCalibration,
+    ai::document_provider::DocumentProviderCapabilities,
+    document_cost::DocumentCostCalibration,
     error::CommandError,
+    knowledge::assessment::policy::{GenerationPolicy, QuestionFamily},
 };
 
 pub(crate) const LARGE_DOCUMENT_UNIT_THRESHOLD: usize = 50;
@@ -28,6 +30,45 @@ pub(crate) fn generation_visible_completion_tokens(maximum_cards: usize) -> usiz
     2_048_usize
         .saturating_add(maximum_cards.saturating_mul(384))
         .clamp(2_048, 8_192)
+}
+
+pub(crate) fn generation_source_token_budget(
+    plan: DocumentScalePlan,
+    policy: &GenerationPolicy,
+) -> Result<usize, CommandError> {
+    policy.validate()?;
+    let weight = |family| usize::from(*policy.weights.get(&family).unwrap_or(&0));
+    let compound_weight = [
+        QuestionFamily::SelectAll,
+        QuestionFamily::Matching,
+        QuestionFamily::Grouping,
+        QuestionFamily::Ordering,
+    ]
+    .into_iter()
+    .map(weight)
+    .sum::<usize>();
+    let simpler_weight = [
+        QuestionFamily::Recall,
+        QuestionFamily::SingleChoice,
+        QuestionFamily::TrueFalse,
+    ]
+    .into_iter()
+    .map(weight)
+    .sum::<usize>();
+
+    let percentage = if policy.max_compound_items > 12 && compound_weight >= simpler_weight {
+        65
+    } else if policy.max_compound_items > 8 || compound_weight > simpler_weight {
+        80
+    } else {
+        100
+    };
+    Ok(plan
+        .generation_window_max_tokens
+        .saturating_mul(percentage)
+        .div_ceil(100)
+        .max(MIN_GENERATION_SOURCE_TOKENS)
+        .min(plan.generation_window_max_tokens))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -350,6 +391,35 @@ mod tests {
             structured_output: StructuredOutputStrategy::JsonSchema,
             reasoning: None,
         }
+    }
+
+    #[test]
+    fn complexity_aware_generation_budget_preserves_default_and_splits_compound_heavy_policies() {
+        let plan = DocumentScalePlan::for_provider(55, "openrouter");
+        let default_policy = GenerationPolicy::default();
+        assert_eq!(
+            generation_source_token_budget(plan, &default_policy).unwrap(),
+            plan.generation_window_max_tokens
+        );
+
+        let mut compound = default_policy;
+        compound.max_compound_items = 12;
+        compound.weights.insert(QuestionFamily::Recall, 5);
+        compound.weights.insert(QuestionFamily::SingleChoice, 5);
+        compound.weights.insert(QuestionFamily::TrueFalse, 0);
+        compound.weights.insert(QuestionFamily::Matching, 40);
+        compound.weights.insert(QuestionFamily::Grouping, 30);
+        compound.weights.insert(QuestionFamily::Ordering, 20);
+        assert_eq!(
+            generation_source_token_budget(plan, &compound).unwrap(),
+            plan.generation_window_max_tokens * 80 / 100
+        );
+
+        compound.max_compound_items = 16;
+        assert_eq!(
+            generation_source_token_budget(plan, &compound).unwrap(),
+            plan.generation_window_max_tokens * 65 / 100
+        );
     }
 
     #[test]

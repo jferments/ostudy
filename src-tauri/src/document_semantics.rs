@@ -68,6 +68,7 @@ struct SourceUnit<'a> {
     unit_numbers: Vec<i64>,
     text: String,
     token_estimate: usize,
+    complexity_estimate: usize,
 }
 
 pub(crate) fn build_partitioned_semantic_windows(
@@ -258,20 +259,26 @@ fn build_semantic_windows_internal(
     while start < units.len() {
         let mut end = start;
         let mut token_total = 0_usize;
+        let mut complexity_total = 0_usize;
         let mut source_units = BTreeSet::new();
 
         while end < units.len() {
             let unit = &units[end];
             let next_tokens = token_total.saturating_add(unit.token_estimate.max(1));
+            let next_complexity =
+                complexity_total.saturating_add(unit.complexity_estimate.max(1));
             let mut next_units = source_units.clone();
             next_units.extend(unit.unit_numbers.iter().copied());
 
-            let would_exceed =
-                end > start && (next_tokens > max_tokens || next_units.len() > max_units);
+            let would_exceed = end > start
+                && (next_tokens > max_tokens
+                    || next_complexity > max_tokens
+                    || next_units.len() > max_units);
             if would_exceed {
                 break;
             }
             token_total = next_tokens;
+            complexity_total = next_complexity;
             source_units = next_units;
             end += 1;
         }
@@ -279,6 +286,7 @@ fn build_semantic_windows_internal(
         if end == start {
             end = start + 1;
             token_total = units[start].token_estimate.max(1).min(max_tokens);
+            complexity_total = units[start].complexity_estimate.max(1).min(max_tokens);
             source_units.extend(units[start].unit_numbers.iter().copied().take(max_units));
         }
 
@@ -384,14 +392,17 @@ fn build_source_units<'a>(
     for chunk in chunks {
         let text_token_estimate = chunk.full_text.chars().count().max(1).div_ceil(4);
         let source_token_estimate = chunk.token_estimate.max(text_token_estimate).max(1);
+        let source_complexity_estimate =
+            source_token_estimate.saturating_add(semantic_complexity_penalty(chunk));
         let token_segments = source_token_estimate.div_ceil(max_tokens).max(1);
+        let complexity_segments = source_complexity_estimate.div_ceil(max_tokens).max(1);
         let unit_segments = chunk
             .source_locator
             .unit_numbers
             .len()
             .div_ceil(max_units)
             .max(1);
-        let segment_count = token_segments.max(unit_segments);
+        let segment_count = token_segments.max(complexity_segments).max(unit_segments);
         let text_segments = split_text_into_segments(&chunk.full_text, segment_count);
 
         for segment_index in 0..segment_count {
@@ -405,6 +416,7 @@ fn build_source_units<'a>(
                 segment_count,
             );
             let distributed_estimate = source_token_estimate.div_ceil(segment_count);
+            let distributed_complexity = source_complexity_estimate.div_ceil(segment_count);
             let segment_estimate = text.chars().count().div_ceil(4).max(distributed_estimate);
             units.push(SourceUnit {
                 chunk,
@@ -413,10 +425,31 @@ fn build_source_units<'a>(
                 unit_numbers,
                 text,
                 token_estimate: segment_estimate.clamp(1, max_tokens),
+                complexity_estimate: distributed_complexity.clamp(1, max_tokens),
             });
         }
     }
     units
+}
+
+fn semantic_complexity_penalty(chunk: &SemanticChunk) -> usize {
+    let role_penalty = chunk
+        .element_types
+        .iter()
+        .map(|role| match role.as_str() {
+            "table" | "equation" | "key_value" => 600_usize,
+            "code_block" | "image" | "image_description" => 450,
+            "list_item" | "footnote" | "endnote" => 120,
+            _ => 0,
+        })
+        .sum::<usize>();
+    role_penalty.saturating_add(
+        chunk
+            .source_locator
+            .asset_ids
+            .len()
+            .saturating_mul(700),
+    )
 }
 
 fn split_text_into_segments(value: &str, segment_count: usize) -> Vec<String> {
@@ -638,6 +671,26 @@ mod tests {
             .iter()
             .all(|window| window.source_locator.unit_numbers.len() <= 3));
         assert_eq!(windows[0].last_chunk_index, windows[1].first_chunk_index);
+    }
+
+    #[test]
+    fn structured_complexity_splits_dense_windows_without_losing_source_units() {
+        let plain = (0..3)
+            .map(|index| chunk(index, &[index + 1], 600))
+            .collect::<Vec<_>>();
+        assert_eq!(build_semantic_windows(&plain, 2_000, 10, 0).len(), 1);
+
+        let mut structured = plain;
+        for chunk in &mut structured {
+            chunk.element_types = vec!["table".to_string()];
+        }
+        let windows = build_semantic_windows(&structured, 2_000, 10, 0);
+        assert_eq!(windows.len(), 3);
+        let covered = windows
+            .iter()
+            .flat_map(|window| window.source_locator.unit_numbers.iter().copied())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(covered, BTreeSet::from([1, 2, 3]));
     }
 
     #[test]
