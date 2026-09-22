@@ -264,7 +264,8 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
                     let outcome = if retry_partial {
                         retry_units_batch(database, paths, runtime, task, group, cancellation).await
                     } else {
-                        ensure_units_batch(database, paths, runtime, task, group, cancellation).await
+                        ensure_units_batch(database, paths, runtime, task, group, cancellation)
+                            .await
                     };
                     (index, outcome)
                 }

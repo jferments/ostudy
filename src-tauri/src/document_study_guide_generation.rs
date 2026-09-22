@@ -309,11 +309,8 @@ async fn generate_missing_topics(
             async move { (index, generate_slot(execution, catalogs, index).await) }
         },
         |(index, result)| {
-            let control = consume_completed_topic(
-                index,
-                result,
-                &mut first_failure,
-                |index, section| {
+            let control =
+                consume_completed_topic(index, result, &mut first_failure, |index, section| {
                     let topic = &execution.plan.topics[index];
                     persist_checkpoint_best_effort(
                         execution.database,
@@ -332,8 +329,7 @@ async fn generate_missing_topics(
                         completed,
                     )
                     .map(|_| ())
-                },
-            );
+                });
             Ok::<QueueControl, CommandError>(control)
         },
     )
