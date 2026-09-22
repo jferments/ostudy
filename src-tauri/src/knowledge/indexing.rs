@@ -21,6 +21,7 @@ use crate::{
 };
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
+use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
 // Only missing-vector catch-up is serialized, not chat/interpretation. No
@@ -180,19 +181,66 @@ pub(crate) async fn ensure_scope(
     Ok(())
 }
 
-pub(crate) async fn document_best_effort(
+pub(crate) fn schedule_document_best_effort(app: AppHandle, document_id: String) {
+    tauri::async_runtime::spawn(async move {
+        let database = app.state::<Database>();
+        let paths = app.state::<AppPaths>();
+        let runtime = app.state::<AiRuntimeState>();
+        let mut operation = match generation::Operation::begin(
+            database.inner(),
+            None,
+            Some(&document_id),
+            None,
+            "document_indexing",
+        ) {
+            Ok(operation) => operation,
+            Err(error) => {
+                crate::logging::debug_target(
+                    "ai.knowledge.index",
+                    "knowledge_index_background_not_started",
+                    "Deferred indexing did not start; saved knowledge remains available and search can catch up later.",
+                    json!({"document":document_id,"code":error.code}),
+                );
+                return;
+            }
+        };
+        let diagnostics = operation.context();
+        let signal = CancellationSignal::new();
+        let result = index_document(
+            database.inner(),
+            paths.inner(),
+            runtime.inner(),
+            &document_id,
+            &signal,
+            Some(diagnostics),
+        )
+        .await;
+        operation.finish(result.is_ok());
+        if let Err(error) = result {
+            crate::logging::warn_target(
+                "ai.knowledge.index",
+                "knowledge_index_deferred",
+                "Knowledge is saved. Search indexing will catch up on use without repeating interpretation.",
+                json!({"document":document_id,"code":error.code}),
+            );
+        }
+    });
+}
+
+async fn index_document(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     document_id: &str,
     signal: &CancellationSignal,
+    diagnostics: Option<generation::Context>,
 ) -> Result<(), CommandError> {
     let scope = StudyScope {
         members: Vec::new(),
         kind: ScopeKind::Document,
         id: Some(document_id.to_string()),
     };
-    match ensure_scope(
+    ensure_scope(
         database,
         paths,
         runtime,
@@ -202,20 +250,10 @@ pub(crate) async fn document_best_effort(
             signal,
             expected_revision: None,
             expected_embedding: None,
-            diagnostics: crate::task_cancellation::generation_context(database)?,
+            diagnostics,
         },
     )
     .await
-    {
-        Ok(()) => Ok(()),
-        Err(error) if error.code == "ai_request_canceled" => Err(error),
-        Err(error) => {
-            crate::logging::warn_target("ai.knowledge.index","knowledge_index_deferred",
-                "Knowledge is saved. Search indexing will catch up on use without repeating interpretation.",
-                json!({"document":document_id,"code":error.code}));
-            Ok(())
-        }
-    }
 }
 fn ensure_default_current(
     database: &Database,

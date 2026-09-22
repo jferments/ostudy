@@ -1,6 +1,6 @@
 use rusqlite::OptionalExtension;
 use serde::Deserialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
@@ -87,6 +87,7 @@ struct StoredGuideDocument {
 
 #[tauri::command]
 pub(crate) async fn generate_document_study_guide(
+    app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
@@ -104,7 +105,11 @@ pub(crate) async fn generate_document_study_guide(
             "document_study_guide_canceled",
             CANCELED_MESSAGE,
         )),
-        other => other,
+        Ok(value) => {
+            crate::knowledge::indexing::schedule_document_best_effort(app, document_id);
+            Ok(value)
+        }
+        Err(error) => Err(error),
     }
 }
 

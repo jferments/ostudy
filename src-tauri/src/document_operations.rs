@@ -47,6 +47,7 @@ pub struct DeleteDocumentResultDto {
 /// be stopped through the matching document task identity.
 #[tauri::command]
 pub async fn run_document_flashcard_generation(
+    app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
@@ -69,7 +70,11 @@ pub async fn run_document_flashcard_generation(
         Err(error) if error.code == "ai_request_canceled" => {
             Err(documents::flashcard_generation_canceled_error())
         }
-        other => other,
+        Ok(value) => {
+            crate::knowledge::indexing::schedule_document_best_effort(app, document_id);
+            Ok(value)
+        }
+        Err(error) => Err(error),
     }
 }
 
