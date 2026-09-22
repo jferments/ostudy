@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
+import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 const documentIpcMocks = vi.hoisted(() => ({
@@ -126,10 +127,12 @@ describe("DocumentsScreen live generation progress", () => {
     });
 
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect((await screen.findAllByText("Generating cards")).length).toBeGreaterThan(0);
@@ -152,10 +155,12 @@ describe("DocumentsScreen live generation progress", () => {
     ]);
 
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect(await screen.findByText("Window 4 of 10 · sections 13–18.")).toBeTruthy();
@@ -170,10 +175,12 @@ describe("DocumentsScreen live generation progress", () => {
     });
 
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect(await screen.findByText("Responsive · output 2m ago")).toBeTruthy();
@@ -181,10 +188,12 @@ describe("DocumentsScreen live generation progress", () => {
 
   it("shows stage, window progress, elapsed runtime, requests, retries, reasoning and cache usage", async () => {
     render(
-      <DocumentsScreen
-        refreshDecks={vi.fn().mockResolvedValue(undefined)}
-        showToast={vi.fn()}
-      />,
+      <OverlayProvider>
+        <DocumentsScreen
+          refreshDecks={vi.fn().mockResolvedValue(undefined)}
+          showToast={vi.fn()}
+        />
+      </OverlayProvider>,
     );
 
     expect(await screen.findByText("low · 2.0k")).toBeTruthy();
