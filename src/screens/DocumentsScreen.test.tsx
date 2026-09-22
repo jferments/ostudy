@@ -153,13 +153,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.importDocument).mockResolvedValue({
       documentId,
     });
-    vi.mocked(documentIpc.retryDocumentFlashcardGeneration).mockResolvedValue({
-      document: completed,
-      deckId: completed.generatedDeckId ?? "",
-      createdNoteCount: 6,
-      createdCardCount: 7,
-      skippedDuplicateCount: 1,
-    });
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
     vi.mocked(documentIpc.listDocuments)
       .mockResolvedValueOnce([])
       .mockResolvedValue([completed]);
@@ -175,7 +169,7 @@ describe("DocumentsScreen", () => {
         "Document processing started. You can add more documents while this job runs.",
       );
       expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32));
-      expect(documentIpc.retryDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(refreshDecks).toHaveBeenCalled();
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
@@ -278,12 +272,8 @@ describe("DocumentsScreen", () => {
     });
     const completed = makeDocument();
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([failed]);
-    vi.mocked(documentIpc.retryDocumentFlashcardGeneration).mockResolvedValue({
-      document: completed,
-      deckId: completed.generatedDeckId ?? "",
-      createdNoteCount: 6,
-      createdCardCount: 7,
-      skippedDuplicateCount: 0,
+    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
+      vi.mocked(documentIpc.listDocuments).mockResolvedValue([completed]);
     });
     const { showToast } = renderDocuments();
 
@@ -291,7 +281,7 @@ describe("DocumentsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry generation" }));
 
     await waitFor(() => {
-      expect(documentIpc.retryDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
+      expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
   });

@@ -178,13 +178,16 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   }, [documents, refreshDecks, showToast]);
 
   async function startBackgroundFlashcardGeneration(documentId: string): Promise<void> {
-    backgroundFlashcardIds.current.add(documentId);
     try {
       await startDocumentFlashcardGeneration(documentId);
     } catch (error) {
-      backgroundFlashcardIds.current.delete(documentId);
       throw error;
     }
+    // Native Start does not acknowledge until the cancellation identity and
+    // durable processing state both exist. Track terminal observation only
+    // after that acknowledgement so the pre-start failed/ready row cannot be
+    // mistaken for this new job's result.
+    backgroundFlashcardIds.current.add(documentId);
     try {
       await refreshDocuments();
     } catch (error: unknown) {
