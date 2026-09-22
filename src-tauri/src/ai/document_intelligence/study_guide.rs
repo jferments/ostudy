@@ -1241,9 +1241,11 @@ mod tests {
 
     #[test]
     fn soft_style_target_does_not_reject_or_truncate_valid_content() {
-        let overview =
-            "Preload reflects ventricular filling before systole and helps explain changes in stroke volume. "
-                .repeat(5);
+        let overview = [
+            "Preload reflects ventricular filling before systole and helps explain changes in stroke volume.";
+            5
+        ]
+        .join(" ");
         assert!(overview.chars().count() > MAX_OVERVIEW_CHARS);
         let result = parse_study_guide_section(json!({
             "overview": overview,
