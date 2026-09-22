@@ -31,10 +31,6 @@ vi.mock("../ipc/studyGuides", async () => {
   };
 });
 
-vi.mock("../ui/overlays/overlayContext", () => ({
-  useConfirm: () => vi.fn().mockResolvedValue(false),
-}));
-
 const document: DocumentSummary = {
   id: "0123456789abcdef0123456789abcdef",
   title: "Physiology",
