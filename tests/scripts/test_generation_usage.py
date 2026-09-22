@@ -34,6 +34,21 @@ class GenerationUsageTests(unittest.TestCase):
         self.assertEqual(report["totals"]["repeatedLogicalRequests"], 1)
         self.assertTrue(report["usageComplete"])
 
+    def test_operation_wall_clock_uses_durable_operation_bounds(self):
+        report = USAGE.summarize({
+            "operationId": "a" * 32,
+            "operation": {
+                "id": "a" * 32,
+                "purpose": "document_generation",
+                "state": "succeeded",
+                "startedAt": 1_000,
+                "finishedAt": 13_500,
+            },
+            "requests": [],
+        })
+        self.assertEqual(report["wallClockMs"], 12_500)
+        self.assertIn("Operation wall clock: 12.50s", USAGE.render(report))
+
     def test_unknown_usage_is_not_zero_or_fictitious_cache_savings(self):
         report = USAGE.summarize({"requests": [
             {"stage": "knowledge_extraction", "inputTokens": 100, "outputTokens": 20,

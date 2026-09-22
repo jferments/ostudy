@@ -243,9 +243,19 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         values["payloadByteDiagnostics"] = payload_summary(rows)
         operation_results.append(values)
 
+    operation = data.get("operation")
+    wall_clock_ms = None
+    if isinstance(operation, dict):
+        started = operation.get("startedAt")
+        finished = operation.get("finishedAt")
+        if valid_number(started) and valid_number(finished) and finished >= started:
+            wall_clock_ms = finished - started
+
     return {
         "schemaVersion": 1,
         "operationId": data.get("operationId"),
+        "operation": operation,
+        "wallClockMs": wall_clock_ms,
         "totals": overall,
         "stages": results,
         "operations": operation_results,
@@ -280,7 +290,13 @@ def read_database(path: Path, operation: str | None, all_operations: bool) -> di
                 "SELECT id FROM generation_operations ORDER BY started_at DESC,id DESC LIMIT 1").fetchone()
             operation = row[0] if row else None
         if not all_operations and operation is None:
-            return {"operationId": None, "requests": [], "localReuse": []}
+            return {"operationId": None, "operation": None, "requests": [], "localReuse": []}
+        operation_row = None
+        if not all_operations:
+            operation_row = connection.execute("""
+                SELECT id,purpose,state,started_at AS startedAt,finished_at AS finishedAt
+                FROM generation_operations WHERE id=?
+            """, (operation,)).fetchone()
         where = "" if all_operations else "WHERE operation_id=?"
         args = () if all_operations else (operation,)
         rows = connection.execute(f"""
@@ -300,6 +316,7 @@ def read_database(path: Path, operation: str | None, all_operations: bool) -> di
             GROUP BY operation_id,stage ORDER BY operation_id,stage
         """, args).fetchall()
         return {"operationId": "all" if all_operations else operation,
+                "operation": dict(operation_row) if operation_row is not None else None,
                 "requests": [dict(row) for row in rows],
                 "localReuse": [dict(row) for row in reuse]}
 
@@ -322,7 +339,10 @@ def render(report: dict[str, Any]) -> str:
     def percent(value: Any) -> str:
         return "n/a" if value is None else f"{value:.2f}%"
 
+    wall_clock = report.get("wallClockMs")
+    wall_clock_label = "unknown" if wall_clock is None else f"{wall_clock / 1000:.2f}s"
     lines = [f"Generation operation: {report['operationId']}",
+             f"Operation wall clock: {wall_clock_label}",
              "Stage                         Requests       Input    Input %      Output   Output %"]
     for row in report["stages"]:
         lines.append(f"{row['stage']:<29} {row['requests']:>8} "

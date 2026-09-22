@@ -121,6 +121,71 @@ A useful token-spike investigation is:
 7. Use `payloadByteDiagnostics` on the expensive stage/request to distinguish source/evidence/schema/repair inflation. Treat these as byte diagnostics only.
 8. If retries dominate, diagnose their safe error / finish reason before raising token ceilings or request counts.
 
+## P7 regression and performance acceptance
+
+Performance acceptance compares like-for-like runs. Do not compare a cold first run
+with a warm provider-cache run, a checkpoint resume, or an unchanged local-reuse
+run and call the difference an optimization.
+
+Generate content-free reports for the baseline and current implementation:
+
+```bash
+python3 scripts/generation-usage.py --database /path/to/baseline/library.sqlite3 \
+  --operation <baseline-operation-id> --json > baseline-cold.json
+python3 scripts/generation-usage.py --database /path/to/current/library.sqlite3 \
+  --operation <current-operation-id> --json > current-cold.json
+```
+
+The report now includes the durable generation-operation wall-clock when both
+`started_at` and `finished_at` are available. Provider token usage remains
+authoritative for token comparisons; incomplete usage is not treated as zero.
+
+Copy
+`src-tauri/tests/fixtures/document-generation/quality-acceptance-template.json`
+and replace its placeholder scores with benchmark or human-review evidence for
+the same source/model/provider configuration. Scores are normalized to 0–1.
+The applicable quality floor is:
+
+- source fidelity;
+- important-topic coverage;
+- preserved qualifications and units;
+- answer-key correctness;
+- useful question-type diversity;
+- visual/table interpretation when the benchmark actually contains those
+  materials.
+
+Card count is not a quality metric.
+
+Evaluate one run class at a time:
+
+```bash
+python3 scripts/generation-acceptance.py \
+  --baseline baseline-cold.json \
+  --current current-cold.json \
+  --run-class cold \
+  --quality quality-cold.json \
+  --require-ready \
+  --json
+
+# Repeat separately for:
+#   --run-class warm
+#   --run-class resume
+#   --run-class unchanged
+```
+
+`acceptanceReady` requires successful operations, complete provider usage,
+known operation wall-clock, complete applicable quality evidence, and no quality
+regression. The approximately 50% reductions in full processing time and reported
+token use are reported separately as engineering targets. Missing those targets
+does not authorize dropping requested content, weakening grounding, or reducing
+the quality rubric.
+
+For the 55-page performance case that motivated this work, compare the same
+source with the same model/provider configuration. Preserve the original
+approximately 17-minute / 2.3-million-reported-token observation as baseline
+evidence; do not recreate or round it into invented precision if the original
+content-free report is unavailable.
+
 ## Reuse and invalidation invariants
 
 Never reuse a cached result merely because its JSON parses.
