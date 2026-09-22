@@ -28,7 +28,9 @@ vi.mock("../../ipc/documents", () => ({
   importDocument: vi.fn(), openDocumentSource: vi.fn(),
 }));
 vi.mock("../../ipc/studyGuides", () => ({
-  generateDocumentStudyGuide: mocks.guide, cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
+  generateDocumentStudyGuide: mocks.guide,
+  cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
+  getDocumentLearningPlan: vi.fn().mockResolvedValue(null),
 }));
 
 const id = "a".repeat(32);

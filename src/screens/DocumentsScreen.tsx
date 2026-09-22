@@ -15,6 +15,7 @@ import {
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
+import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
 import { DocumentCollectionsWorkspace } from "./documents/DocumentCollectionsWorkspace";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
@@ -34,7 +35,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     <DocumentsScreen {...props} />
   </DocumentJobsProvider>;
   const {
-    documents, generationProgress, clockNow, isLoading, isUploading, busyDocumentIds,
+    documents, generationProgress, learningPlans, clockNow, isLoading, isUploading, busyDocumentIds,
     cancelingDocumentIds, deletingDocumentIds, guideGeneratingDocumentIds,
     cancelingGuideDocumentIds, errorMessage, uploadDocument, retry, generateMore,
     generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
@@ -119,6 +120,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
             const canceling = cancelingDocumentIds.has(document.id);
             const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
             const live = generationProgress[document.id] ?? null;
+            const learningPlan = learningPlans[document.id] ?? null;
             const canRetry = document.generatedDeckId === null && document.lifecycleState !== "processing";
             const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
             const canGenerateGuide = document.lifecycleState !== "processing";
@@ -204,7 +206,14 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                     <span className={styles.filename}>{document.originalFilename}</span>
                     <span className={styles.cardCount}>{document.generatedCardCount} card{document.generatedCardCount === 1 ? "" : "s"}</span>
                   </div>
-                  {document.lifecycleState === "processing" ? <GenerationProgressPanel document={document} progress={live} now={clockNow} /> : null}
+                  {document.lifecycleState === "processing" ? (
+                    <>
+                      <GenerationProgressPanel document={document} progress={live} now={clockNow} />
+                      {learningPlan ? (
+                        <CheckedLearningPlanPanel document={document} plan={learningPlan} />
+                      ) : null}
+                    </>
+                  ) : null}
                   {document.safeErrorMessage ? <InlineNotice kind="warning" className="tw:mt-4">{document.safeErrorMessage}</InlineNotice> : null}
                   {!document.generatedDeckId && document.generatedCardCount > 0 && document.lifecycleState === "ready" ? (
                     <p className={styles.deckNote}>The previous generated deck was deleted. Retry generation to create a new deck from the retained document.</p>

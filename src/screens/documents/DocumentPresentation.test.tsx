@@ -13,7 +13,11 @@ vi.mock("../../ipc/documents", () => ({
   generateMoreDocumentFlashcards: vi.fn(), cancelDocumentFlashcardGeneration: vi.fn(),
   openDocumentSource: vi.fn(), deleteDocument: vi.fn(),
 }));
-vi.mock("../../ipc/studyGuides", () => ({ generateDocumentStudyGuide: vi.fn(), cancelDocumentStudyGuideGeneration: vi.fn() }));
+vi.mock("../../ipc/studyGuides", () => ({
+  generateDocumentStudyGuide: vi.fn(),
+  cancelDocumentStudyGuideGeneration: vi.fn(),
+  getDocumentLearningPlan: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("../../ipc/collections", () => ({
   getDocumentCollectionOrganization: vi.fn().mockResolvedValue({
     revision: 1, collections: [], memberships: [], ranges: [],

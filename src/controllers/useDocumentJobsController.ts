@@ -13,7 +13,12 @@ import {
   type DocumentGenerationProgress,
   type DocumentSummary,
 } from "../ipc/documents";
-import { cancelDocumentStudyGuideGeneration, generateDocumentStudyGuide } from "../ipc/studyGuides";
+import {
+  cancelDocumentStudyGuideGeneration,
+  generateDocumentStudyGuide,
+  getDocumentLearningPlan,
+  type DocumentLearningPlan,
+} from "../ipc/studyGuides";
 import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
 import { useRequestLane } from "./requestLane";
@@ -45,6 +50,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   const [generationProgress, setGenerationProgress] = useState<
     Record<string, DocumentGenerationProgress | null>
   >({});
+  const [learningPlans, setLearningPlans] = useState<Record<string, DocumentLearningPlan | null>>({});
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -84,11 +90,20 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   const refreshLiveProgress = useCallback(async () => {
     const token = progressLane.begin();
     const active = latestDocuments.current.filter((document) => document.lifecycleState === "processing");
-    const entries = await Promise.all(active.map(async (document) => [
-      document.id, await getDocumentGenerationProgress(document.id).catch(() => null),
-    ] as const));
+    const entries = await Promise.all(active.map(async (document) => {
+      const [progress, plan] = await Promise.all([
+        getDocumentGenerationProgress(document.id).catch(() => null),
+        getDocumentLearningPlan(document.id).catch(() => null),
+      ]);
+      return [document.id, progress, plan] as const;
+    }));
     if (alive.current && progressLane.isCurrent(token)) {
-      setGenerationProgress(Object.fromEntries(entries));
+      setGenerationProgress(Object.fromEntries(entries.map(([id, progress]) => [id, progress])));
+      setLearningPlans((current) => {
+        const next = { ...current };
+        for (const [id, , plan] of entries) next[id] = plan;
+        return next;
+      });
       setClockNow(Date.now());
     }
   }, [progressLane]);
@@ -427,6 +442,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   return {
     documents,
     generationProgress,
+    learningPlans,
     clockNow,
     isLoading,
     isUploading,

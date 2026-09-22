@@ -23,6 +23,7 @@ vi.mock("../ipc/documents", () => ({
 vi.mock("../ipc/studyGuides", () => ({
   generateDocumentStudyGuide: vi.fn(),
   cancelDocumentStudyGuideGeneration: vi.fn(),
+  getDocumentLearningPlan: vi.fn(),
 }));
 vi.mock("../ipc/common", async (importOriginal) => {
   const original = await importOriginal<typeof import("../ipc/common")>();
@@ -126,6 +127,7 @@ describe("DocumentsScreen", () => {
     vi.mocked(documentIpc.openDocumentSource).mockResolvedValue(undefined);
     vi.mocked(documentIpc.cancelDocumentFlashcardGeneration).mockResolvedValue(undefined);
     vi.mocked(studyGuideIpc.cancelDocumentStudyGuideGeneration).mockResolvedValue(undefined);
+    vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue(null);
   });
 
   it("shows a simple upload-first empty state without archive controls", async () => {
@@ -284,6 +286,57 @@ describe("DocumentsScreen", () => {
       expect(documentIpc.startDocumentFlashcardGeneration).toHaveBeenCalledWith(documentId);
       expect(showToast).toHaveBeenCalledWith("success", "Created 7 flashcards in a new deck.");
     });
+  });
+
+  it("shows a checked learning plan while final flashcard work remains", async () => {
+    const processing = makeDocument({
+      lifecycleState: "processing",
+      generatedDeckId: null,
+      generatedCardCount: 0,
+      generationWindowCount: 8,
+      generationCompletedWindowCount: 3,
+      completedAt: null,
+    });
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([processing]);
+    vi.mocked(studyGuideIpc.getDocumentLearningPlan).mockResolvedValue({
+      id: "e".repeat(32),
+      documentId,
+      revision: 1,
+      compilerVersion: 1,
+      outlineFingerprint: "f".repeat(64),
+      planFingerprint: "1".repeat(64),
+      summary: "Cardiac output depends on heart rate and stroke volume.",
+      learningObjectives: ["Explain the determinants of cardiac output."],
+      keyConcepts: ["cardiac output", "stroke volume"],
+      topics: [{
+        id: "2".repeat(32),
+        parentTopicId: null,
+        sortIndex: 0,
+        title: "Cardiac output",
+        summary: "Relates flow to rate and stroke volume.",
+        learningObjectives: ["Relate heart rate and stroke volume to output."],
+        keyConcepts: ["CO = HR × SV"],
+        sourceLocator: {
+          unitKind: "page",
+          unitNumbers: [2, 3],
+          sectionLabel: "Hemodynamics",
+          assetIds: [],
+        },
+        evidenceChunkIndices: [1],
+        evidenceHashes: ["3".repeat(64)],
+        evidenceHash: "4".repeat(64),
+        anchorHash: "5".repeat(64),
+      }],
+    });
+    renderDocuments();
+
+    const summary = await screen.findByText("Checked learning plan ready · 1 topic");
+    fireEvent.click(summary);
+    expect(await screen.findByText(
+      "Cardiac output depends on heart rate and stroke volume.",
+    )).toBeTruthy();
+    expect(screen.getByText("Card authoring: 3 of 8 windows finished · 5 remaining.")).toBeTruthy();
+    expect(screen.getByText(/nothing shown here is a provisional learner card/i)).toBeTruthy();
   });
 
   it("shows a lightweight local-processing phase before source-unit metadata is committed", async () => {

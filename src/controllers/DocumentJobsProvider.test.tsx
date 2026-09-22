@@ -6,7 +6,7 @@ import { DocumentJobsProvider, useDocumentJobs } from "./DocumentJobsProvider";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(), guide: vi.fn(), cancelGuide: vi.fn(), cancelDocument: vi.fn(),
-  progress: vi.fn(), start: vi.fn(), legacyCards: vi.fn(), toast: vi.fn(),
+  progress: vi.fn(), plan: vi.fn(), start: vi.fn(), legacyCards: vi.fn(), toast: vi.fn(),
   refreshDecks: vi.fn(), confirm: vi.fn(),
 }));
 vi.mock("../ipc/documents", () => ({
@@ -17,7 +17,9 @@ vi.mock("../ipc/documents", () => ({
   retryDocumentFlashcardGeneration: mocks.legacyCards,
 }));
 vi.mock("../ipc/studyGuides", () => ({
-  generateDocumentStudyGuide: mocks.guide, cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
+  generateDocumentStudyGuide: mocks.guide,
+  cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
+  getDocumentLearningPlan: mocks.plan,
 }));
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ui/overlays/overlayContext", () => ({ useConfirm: () => mocks.confirm }));
@@ -68,6 +70,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([document]);
   mocks.progress.mockResolvedValue(null);
+  mocks.plan.mockResolvedValue(null);
   mocks.cancelGuide.mockResolvedValue(undefined);
   mocks.cancelDocument.mockResolvedValue(undefined);
   mocks.start.mockResolvedValue(undefined);

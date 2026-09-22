@@ -22,6 +22,14 @@ vi.mock("../platform/files", () => ({
   selectExternalImport: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("../ipc/studyGuides", async () => {
+  const actual = await vi.importActual<typeof import("../ipc/studyGuides")>("../ipc/studyGuides");
+  return {
+    ...actual,
+    getDocumentLearningPlan: vi.fn().mockResolvedValue(null),
+  };
+});
+
 vi.mock("../ui/overlays/overlayContext", () => ({
   useConfirm: () => vi.fn().mockResolvedValue(false),
 }));
