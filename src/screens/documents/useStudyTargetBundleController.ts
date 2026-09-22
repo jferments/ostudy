@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createOperationId, getErrorMessage } from "../../ipc/common";
+import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import {
   beginStudyTargetBundle,
+  cancelStudyTargetBundle,
   composeStudyTargetBundle,
   getStudyTargetBundle,
   type StudyTargetArtifactKind,
@@ -56,7 +57,9 @@ export function useStudyTargetBundleController({
   const [status, setStatus] = useState<StudyTargetBundleStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelingRef = useRef(false);
   const readSequence = useRef(0);
   const receipt = useRef<{ key: string; operationId: string } | null>(null);
 
@@ -144,7 +147,7 @@ export function useStudyTargetBundleController({
       receipt.current = null;
       setStatus(result);
       const failure = durableFailure(result);
-      if (failure) setError(failure);
+      setError(failure && !cancelingRef.current ? failure : null);
       await reconcileCommitted("Study materials were saved");
       return true;
     } catch (failure: unknown) {
@@ -156,16 +159,45 @@ export function useStudyTargetBundleController({
         && TERMINAL_BATCH_STATES.has(durable.latestBatchState)
       ) {
         receipt.current = null;
-        setError(durableFailure(durable));
+        setError(durable.latestBatchState === "canceled" ? null : durableFailure(durable));
         await reconcileCommitted("Study materials were saved");
+        return true;
+      }
+      const code = getErrorCode(failure);
+      if (cancelingRef.current && (
+        code === "ai_request_canceled"
+        || code === "study_target_generation_canceled"
+        || code === "study_target_generation_not_running"
+      )) {
+        setError(null);
         return true;
       }
       setError(getErrorMessage(failure));
       return false;
     } finally {
       setBusy(false);
+      cancelingRef.current = false;
+      setCanceling(false);
     }
   }
 
-  return { status, loading, busy, error, load, run };
+  async function stop(): Promise<void> {
+    if (!target || !busy || canceling) return;
+    const operationId = receipt.current?.operationId ?? status?.latestOperationId;
+    if (!operationId) return;
+    cancelingRef.current = true;
+    setCanceling(true);
+    setError(null);
+    try {
+      await cancelStudyTargetBundle(operationId);
+    } catch (failure: unknown) {
+      if (getErrorCode(failure) !== "study_target_generation_not_running") {
+        cancelingRef.current = false;
+        setCanceling(false);
+        setError(getErrorMessage(failure));
+      }
+    }
+  }
+
+  return { status, loading, busy, canceling, error, load, run, stop };
 }

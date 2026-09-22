@@ -22,6 +22,7 @@ vi.mock("../../ipc/studyMaterials", () => ({
   getStudyTargetBundle: vi.fn(),
   beginStudyTargetBundle: vi.fn(),
   composeStudyTargetBundle: vi.fn(),
+  cancelStudyTargetBundle: vi.fn(),
 }));
 vi.mock("../../ipc/common", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../ipc/common")>();
@@ -38,7 +39,6 @@ const organization: collections.DocumentCollectionOrganization = {
     id: folderId,
     name: "Week 1",
     sortOrder: 1000,
-    archivedAt: null,
     createdAt: 1,
     updatedAt: 1,
     revision: 1,
@@ -141,7 +141,7 @@ beforeEach(() => {
     revision: 3,
     collections: [...organization.collections, {
       id: "1".repeat(32), name: "Week 2", sortOrder: 2000,
-      archivedAt: null, createdAt: 2, updatedAt: 2, revision: 1,
+createdAt: 2, updatedAt: 2, revision: 1,
     }],
   });
   vi.mocked(collections.addDocumentCollectionMembership).mockResolvedValue(organization);
@@ -157,6 +157,7 @@ beforeEach(() => {
     studyGuide: { ...bundleStatus.studyGuide, state: "pending", artifactId: null },
   });
   vi.mocked(studyMaterials.composeStudyTargetBundle).mockResolvedValue(bundleStatus);
+  vi.mocked(studyMaterials.cancelStudyTargetBundle).mockResolvedValue(undefined);
 });
 
 function renderWorkspace({
@@ -184,8 +185,8 @@ function renderWorkspace({
 describe("Document collections workspace", () => {
   it("browses collections locally and exposes canonical source ranges without resolving or preparing them", async () => {
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
-    expect(screen.getByRole("button", { name: "← Collections" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Week 1" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "← Collections" })).toBeNull();
     expect(screen.queryByText(/subfolder/iu)).toBeNull();
     expect(screen.queryByText(/Folder organization is local/iu)).toBeNull();
     expect((await screen.findAllByText("Pages 1–3")).length).toBeGreaterThan(0);
@@ -240,7 +241,7 @@ describe("Document collections workspace", () => {
     );
     renderWorkspace();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+    await screen.findByRole("heading", { name: "Week 1" });
     fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
 
     expect(await screen.findByText("Writing collection study guide")).toBeTruthy();
@@ -255,13 +256,43 @@ describe("Document collections workspace", () => {
     });
   });
 
+  it("stops the active native collection operation without leaving the page", async () => {
+    let finish!: (value: studyMaterials.StudyTargetBundleStatus) => void;
+    const running = {
+      ...bundleStatus,
+      latestBatchState: "composing",
+      flashcards: { ...bundleStatus.flashcards, state: "succeeded" },
+      studyGuide: { ...bundleStatus.studyGuide, state: "running", totalUnits: 5, completedUnits: 2 },
+    };
+    vi.mocked(studyMaterials.beginStudyTargetBundle).mockResolvedValueOnce(running);
+    vi.mocked(studyMaterials.composeStudyTargetBundle).mockReturnValueOnce(
+      new Promise((resolve) => { finish = resolve; }),
+    );
+    renderWorkspace();
+
+    await screen.findByRole("heading", { name: "Week 1" });
+    fireEvent.click(screen.getByRole("button", { name: "Create study materials" }));
+    const stop = await screen.findByRole("button", { name: "Stop collection generation" });
+    fireEvent.click(stop);
+
+    await waitFor(() => {
+      expect(studyMaterials.cancelStudyTargetBundle).toHaveBeenCalledWith("f".repeat(32));
+    });
+
+    await act(async () => {
+      finish({ ...running, latestBatchState: "canceled",
+        studyGuide: { ...running.studyGuide, state: "canceled" } });
+      await Promise.resolve();
+    });
+  });
+
   it("creates one coherent bundle and opens its ordinary flashcard deck from compact status", async () => {
     const refreshDecks = vi.fn().mockResolvedValue([]);
     const onOpenDeck = vi.fn();
     const onOpenGuide = vi.fn();
     renderWorkspace({ refreshDecks, onOpenDeck, onOpenGuide });
 
-    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+    await screen.findByRole("heading", { name: "Week 1" });
     fireEvent.click(await screen.findByRole("button", { name: "Create study materials" }));
 
     await waitFor(() => {
@@ -298,7 +329,7 @@ describe("Document collections workspace", () => {
       target: { value: "Week 2" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("button", { name: /Week 2/ })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Week 2" })).toBeTruthy();
     expect(collections.createDocumentCollection).toHaveBeenCalledWith(expect.objectContaining({
       operationId: "f".repeat(32),
       name: "Week 2",

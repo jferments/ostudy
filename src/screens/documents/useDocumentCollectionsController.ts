@@ -77,17 +77,15 @@ export function useDocumentCollectionsController() {
 
   function updateFolder(
     folder: DocumentCollection,
-    patch: { name?: string; archived?: boolean },
+    patch: { name?: string },
   ): Promise<boolean> {
     const name = patch.name?.trim() ?? folder.name;
-    const archived = patch.archived ?? folder.archivedAt !== null;
     return mutate(
-      JSON.stringify(["update", folder.id, folder.revision, name, archived]),
+      JSON.stringify(["update", folder.id, folder.revision, name]),
       (operationId, expectedOrganizationRevision) => updateDocumentCollection({
         operationId,
         collectionId: folder.id,
         name,
-        archived,
         revision: folder.revision,
         expectedOrganizationRevision,
       }),

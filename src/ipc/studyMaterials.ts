@@ -182,3 +182,7 @@ export async function composeStudyTargetBundle(
 ): Promise<StudyTargetBundleStatus> {
   return invoke<StudyTargetBundleStatus>("compose_study_target_bundle", { input });
 }
+
+export async function cancelStudyTargetBundle(operationId: string): Promise<void> {
+  return invoke<void>("cancel_study_target_bundle", { input: { operationId } });
+}

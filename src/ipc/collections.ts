@@ -4,7 +4,6 @@ export interface DocumentCollection {
   id: string;
   name: string;
   sortOrder: number;
-  archivedAt: number | null;
   createdAt: number;
   updatedAt: number;
   revision: number;
@@ -97,7 +96,6 @@ export interface CreateDocumentCollectionInput extends OrganizationMutationBase 
 export interface UpdateDocumentCollectionInput extends OrganizationMutationBase {
   collectionId: string;
   name: string;
-  archived: boolean;
   revision: number;
 }
 

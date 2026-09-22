@@ -34,7 +34,6 @@ pub struct DocumentCollectionDto {
     pub id: String,
     pub name: String,
     pub sort_order: i64,
-    pub archived_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
     pub revision: i64,
@@ -87,7 +86,6 @@ pub struct UpdateDocumentCollectionInput {
     pub operation_id: String,
     pub collection_id: String,
     pub name: String,
-    pub archived: bool,
     pub revision: i64,
     pub expected_organization_revision: i64,
 }
@@ -334,7 +332,7 @@ fn load_organization(
     let collections = {
         let mut statement = connection
             .prepare(
-                "SELECT id,name,sort_order,archived_at,created_at,updated_at,revision
+                "SELECT id,name,sort_order,created_at,updated_at,revision
                  FROM document_collections
                  ORDER BY sort_order,name COLLATE NOCASE,id",
             )
@@ -345,10 +343,9 @@ fn load_organization(
                     id: row.get(0)?,
                     name: row.get(1)?,
                     sort_order: row.get(2)?,
-                    archived_at: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
-                    revision: row.get(6)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    revision: row.get(5)?,
                 })
             })
             .map_err(CommandError::database)?
@@ -446,8 +443,8 @@ fn create_collection(
     let sort_order = next_collection_order(&tx)?;
     tx.execute(
         "INSERT INTO document_collections(
-             id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
-         ) VALUES(?1,NULL,?2,?3,NULL,?4,?4,1)",
+             id,parent_id,name,sort_order,created_at,updated_at,revision
+         ) VALUES(?1,NULL,?2,?3,?4,?4,1)",
         params![id, name, sort_order, now],
     )
     .map_err(CommandError::database)?;
@@ -490,13 +487,12 @@ fn update_collection(
         Some(revision) if revision != input.revision => return Err(collection_changed()),
         Some(_) => {}
     }
-    let archived_at = if input.archived { Some(now) } else { None };
     let changed = tx
         .execute(
             "UPDATE document_collections
-             SET name=?1,archived_at=?2,updated_at=?3,revision=revision+1
-             WHERE id=?4 AND revision=?5",
-            params![name, archived_at, now, input.collection_id, input.revision],
+             SET name=?1,updated_at=?2,revision=revision+1
+             WHERE id=?3 AND revision=?4",
+            params![name, now, input.collection_id, input.revision],
         )
         .map_err(CommandError::database)?;
     if changed != 1 {

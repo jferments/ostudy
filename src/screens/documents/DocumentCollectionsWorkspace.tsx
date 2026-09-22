@@ -10,8 +10,8 @@ import type { DocumentSummary } from "../../ipc/documents";
 import type { StudyTargetArtifactStatus, StudyTargetBundleStatus } from "../../ipc/studyMaterials";
 import { Dialog, DialogActions } from "../../ui/overlays/Dialog";
 import { useConfirm } from "../../ui/overlays/overlayContext";
+import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
-import { Checkbox } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
@@ -24,7 +24,7 @@ import { useStudyTargetBundleController } from "./useStudyTargetBundleController
 type CollectionDialog =
   | { kind: "create"; name: string }
   | { kind: "rename"; folder: DocumentCollection; name: string }
-  | { kind: "add-source"; documentId: string }
+  | { kind: "add-source"; folderId: string; documentId: string }
   | { kind: "move-source"; membership: DocumentCollectionMembership; targetCollectionId: string }
   | { kind: "ranges"; membership: DocumentCollectionMembership; value: string };
 
@@ -33,35 +33,33 @@ export function DocumentCollectionsWorkspace({
   refreshDecks,
   onOpenDeck,
   onOpenGuide,
+  onContainedDocumentIdsChange,
 }: {
   documents: DocumentSummary[];
   refreshDecks?: () => Promise<unknown>;
   onOpenDeck?: (deckId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
+  onContainedDocumentIdsChange?: (documentIds: string[]) => void;
 }) {
   const controller = useDocumentCollectionsController();
   const confirm = useConfirm();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
   const [dialog, setDialog] = useState<CollectionDialog | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const organization = controller.organization;
-  const bundle = useStudyTargetBundleController({
-    target: selectedId ? { kind: "collection", id: selectedId } : null,
-    changed: refreshDecks,
-    refreshKey: organization?.revision ?? null,
-  });
-
-  useEffect(() => {
-    if (selectedId && organization && !organization.collections.some((folder) => folder.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [organization, selectedId]);
-
   const documentById = useMemo(
     () => new Map(documents.map((document) => [document.id, document])),
     [documents],
   );
+
+  useEffect(() => {
+    if (!organization) {
+      onContainedDocumentIdsChange?.([]);
+      return;
+    }
+    onContainedDocumentIdsChange?.(
+      [...new Set(organization.memberships.map((membership) => membership.documentId))],
+    );
+  }, [onContainedDocumentIdsChange, organization]);
 
   if (!organization) {
     return (
@@ -79,10 +77,8 @@ export function DocumentCollectionsWorkspace({
     );
   }
 
-  const current = selectedId
-    ? organization.collections.find((folder) => folder.id === selectedId) ?? null
-    : null;
-  const folders = visibleFolders(organization.collections, showArchived);
+  const folders = [...organization.collections]
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
 
   async function deleteCurrent(folder: DocumentCollection): Promise<void> {
     const approved = await confirm({
@@ -91,8 +87,7 @@ export function DocumentCollectionsWorkspace({
       confirmLabel: "Delete collection",
       destructive: true,
     });
-    if (!approved) return;
-    if (await controller.deleteFolder(folder)) setSelectedId(null);
+    if (approved) await controller.deleteFolder(folder);
   }
 
   async function removeMembership(membership: DocumentCollectionMembership): Promise<void> {
@@ -107,7 +102,7 @@ export function DocumentCollectionsWorkspace({
   }
 
   function openRanges(membership: DocumentCollectionMembership): void {
-    const ranges = organization?.ranges.filter((range) => range.membershipId === membership.id) ?? [];
+    const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
     setDialog({
       kind: "ranges",
       membership,
@@ -124,94 +119,52 @@ export function DocumentCollectionsWorkspace({
   }
 
   return (
-    <section aria-label="Document collections" className="tw:mb-6 tw:grid tw:gap-4">
+    <section aria-label="Document collections" className="tw:mb-8 tw:grid tw:gap-4">
+      <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+        <div className="tw:grid tw:gap-1">
+          <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
+          <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+            Organize related sources and generate collection-wide study materials without leaving Documents.
+          </p>
+        </div>
+        <Button
+          size="small"
+          disabled={controller.busy}
+          onClick={() => { setDialog({ kind: "create", name: "" }); setDialogError(null); }}
+        >
+          + New collection
+        </Button>
+      </div>
       {controller.error ? <InlineNotice kind="error">{controller.error}</InlineNotice> : null}
-      {!current ? (
-        <>
-          <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
-            <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
-            <Button
-              size="small"
-              disabled={controller.busy}
-              onClick={() => { setDialog({ kind: "create", name: "" }); setDialogError(null); }}
-            >
-              + New collection
-            </Button>
-          </div>
-          <label className="tw:flex tw:min-h-11 tw:w-fit tw:items-center tw:gap-2 tw:text-sm">
-            <Checkbox checked={showArchived} onCheckedChange={setShowArchived} />
-            Show archived collections
-          </label>
-          {folders.length ? (
-            <div className="tw:grid tw:gap-2 tw:sm:grid-cols-2 tw:xl:grid-cols-3">
-              {folders.map((folder) => (
-                <FolderTile
-                  key={folder.id}
-                  folder={folder}
-                  organization={organization}
-                  disabled={controller.busy}
-                  onDropDocument={(documentId) => addDroppedDocument(folder.id, documentId)}
-                  onOpen={() => setSelectedId(folder.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
-              {showArchived ? "No collections yet." : "No active collections yet."}
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <div>
-            <Button size="small" variant="text" onClick={() => setSelectedId(null)}>← Collections</Button>
-          </div>
-          <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3">
-            <h2 className="tw:m-0 tw:min-w-0 tw:wrap-anywhere tw:text-lg tw:font-semibold">{current.name}</h2>
-            <div className="tw:flex tw:flex-wrap tw:gap-2">
-              <Button size="small" disabled={controller.busy}
-                onClick={() => { setDialog({ kind: "rename", folder: current, name: current.name }); setDialogError(null); }}>
-                Rename
-              </Button>
-              <Button size="small" disabled={controller.busy}
-                onClick={() => void controller.updateFolder(current, { archived: current.archivedAt === null })}>
-                {current.archivedAt ? "Restore" : "Archive"}
-              </Button>
-              <Button size="small" variant="dangerGhost" disabled={controller.busy}
-                onClick={() => void deleteCurrent(current)}>
-                Delete
-              </Button>
-            </div>
-          </div>
-          <CollectionStudyMaterials
-            status={bundle.status}
-            loading={bundle.loading}
-            busy={bundle.busy}
-            error={bundle.error}
-            onRun={() => void bundle.run()}
-            onOpenDeck={onOpenDeck}
-            onOpenGuide={onOpenGuide}
-          />
-          <FolderDropZone
-            folderId={current.id}
-            disabled={controller.busy}
-            onDropDocument={(documentId) => addDroppedDocument(current.id, documentId)}
-          >
-            <FolderSources
-              folder={current}
-              organization={organization}
-              documents={documentById}
-              onAdd={() => { setDialog({ kind: "add-source", documentId: "" }); setDialogError(null); }}
-              onRanges={openRanges}
-              onMove={(membership) => {
-                setDialog({ kind: "move-source", membership, targetCollectionId: "" });
-                setDialogError(null);
-              }}
-              onRemove={(membership) => void removeMembership(membership)}
-              disabled={controller.busy}
-            />
-          </FolderDropZone>
-        </>
+      {folders.length ? folders.map((folder) => (
+        <CollectionPanel
+          key={folder.id}
+          folder={folder}
+          organization={organization}
+          documents={documentById}
+          mutationBusy={controller.busy}
+          refreshDecks={refreshDecks}
+          onOpenDeck={onOpenDeck}
+          onOpenGuide={onOpenGuide}
+          onRename={() => {
+            setDialog({ kind: "rename", folder, name: folder.name });
+            setDialogError(null);
+          }}
+          onDelete={() => void deleteCurrent(folder)}
+          onAdd={() => {
+            setDialog({ kind: "add-source", folderId: folder.id, documentId: "" });
+            setDialogError(null);
+          }}
+          onRanges={openRanges}
+          onMove={(membership) => {
+            setDialog({ kind: "move-source", membership, targetCollectionId: "" });
+            setDialogError(null);
+          }}
+          onRemove={(membership) => void removeMembership(membership)}
+          onDropDocument={(documentId) => addDroppedDocument(folder.id, documentId)}
+        />
+      )) : (
+        <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">No collections yet.</p>
       )}
       {dialog ? (
         <CollectionEditorDialog
@@ -220,7 +173,6 @@ export function DocumentCollectionsWorkspace({
           organization={organization}
           documents={documents}
           documentById={documentById}
-          currentFolderId={current?.id ?? null}
           error={dialogError}
           setError={setDialogError}
           busy={controller.busy}
@@ -232,6 +184,91 @@ export function DocumentCollectionsWorkspace({
         />
       ) : null}
     </section>
+  );
+}
+
+function CollectionPanel({
+  folder,
+  organization,
+  documents,
+  mutationBusy,
+  refreshDecks,
+  onOpenDeck,
+  onOpenGuide,
+  onRename,
+  onDelete,
+  onAdd,
+  onRanges,
+  onMove,
+  onRemove,
+  onDropDocument,
+}: {
+  folder: DocumentCollection;
+  organization: DocumentCollectionOrganization;
+  documents: Map<string, DocumentSummary>;
+  mutationBusy: boolean;
+  refreshDecks?: () => Promise<unknown>;
+  onOpenDeck?: (deckId: string) => void;
+  onOpenGuide?: (collectionId: string, title: string) => void;
+  onRename: () => void;
+  onDelete: () => void;
+  onAdd: () => void;
+  onRanges: (membership: DocumentCollectionMembership) => void;
+  onMove: (membership: DocumentCollectionMembership) => void;
+  onRemove: (membership: DocumentCollectionMembership) => void;
+  onDropDocument: (documentId: string) => void;
+}) {
+  const bundle = useStudyTargetBundleController({
+    target: { kind: "collection", id: folder.id },
+    changed: refreshDecks,
+    refreshKey: organization.revision,
+  });
+  const memberships = organization.memberships.filter((entry) => entry.collectionId === folder.id);
+
+  return (
+    <Surface as="article" className="tw:grid tw:min-w-0 tw:gap-4 tw:p-4">
+      <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-start tw:justify-between tw:gap-3">
+        <div className="tw:grid tw:min-w-0 tw:gap-1">
+          <h3 className="tw:m-0 tw:wrap-anywhere tw:text-base tw:font-semibold">{folder.name}</h3>
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {memberships.length} source{memberships.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="tw:flex tw:flex-wrap tw:gap-2">
+          <Button size="small" disabled={mutationBusy} onClick={onRename}>Rename</Button>
+          <Button size="small" variant="dangerGhost" disabled={mutationBusy} onClick={onDelete}>
+            Delete
+          </Button>
+        </div>
+      </div>
+      <CollectionStudyMaterials
+        status={bundle.status}
+        loading={bundle.loading}
+        busy={bundle.busy}
+        canceling={bundle.canceling}
+        error={bundle.error}
+        onRun={() => void bundle.run()}
+        onStop={() => void bundle.stop()}
+        onOpenDeck={onOpenDeck}
+        onOpenGuide={onOpenGuide}
+      />
+      <FolderDropZone
+        folderId={folder.id}
+        disabled={mutationBusy}
+        onDropDocument={onDropDocument}
+      >
+        <FolderSources
+          folder={folder}
+          organization={organization}
+          documents={documents}
+          onAdd={onAdd}
+          onRanges={onRanges}
+          onMove={onMove}
+          onRemove={onRemove}
+          disabled={mutationBusy}
+        />
+      </FolderDropZone>
+    </Surface>
   );
 }
 
@@ -276,18 +313,30 @@ function FolderDropZone({ folderId, disabled, onDropDocument, children }: {
   );
 }
 
-function CollectionStudyMaterials({ status, loading, busy, error, onRun, onOpenDeck, onOpenGuide }: {
+function CollectionStudyMaterials({
+  status,
+  loading,
+  busy,
+  canceling,
+  error,
+  onRun,
+  onStop,
+  onOpenDeck,
+  onOpenGuide,
+}: {
   status: StudyTargetBundleStatus | null;
   loading: boolean;
   busy: boolean;
+  canceling: boolean;
   error: string | null;
   onRun: () => void;
+  onStop: () => void;
   onOpenDeck?: (deckId: string) => void;
   onOpenGuide?: (collectionId: string, title: string) => void;
 }) {
   const action = bundleActionLabel(status, busy);
   return (
-    <Surface as="section" className="tw:grid tw:gap-3 tw:p-3" aria-label="Collection study materials">
+    <Surface as="section" className="tw:grid tw:gap-3 tw:bg-muted/20 tw:p-3" aria-label="Collection study materials">
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
         <div className="tw:grid tw:min-w-0 tw:gap-1">
           <strong className="tw:text-sm">Study materials</strong>
@@ -297,9 +346,22 @@ function CollectionStudyMaterials({ status, loading, busy, error, onRun, onOpenD
                 : "One ordinary flashcard deck and one collection study guide."}
           </span>
         </div>
-        <Button size="small" variant={status ? "secondary" : "primary"} loading={busy} disabled={loading} onClick={onRun}>
-          {action}
-        </Button>
+        {busy ? (
+          <Button
+            size="small"
+            variant="dangerSecondary"
+            disabled={canceling}
+            aria-label={canceling ? "Stopping collection generation" : "Stop collection generation"}
+            onClick={onStop}
+          >
+            <Icon name="stop" size={16} />
+            {canceling ? "Stopping…" : "Stop"}
+          </Button>
+        ) : (
+          <Button size="small" variant={status ? "secondary" : "primary"} disabled={loading} onClick={onRun}>
+            {action}
+          </Button>
+        )}
       </div>
       {busy ? <CollectionBundleProgress status={status} /> : null}
       <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-x-5 tw:gap-y-2 tw:text-sm" aria-live="polite">
@@ -403,30 +465,6 @@ function bundleActionLabel(status: StudyTargetBundleStatus | null, busy: boolean
   return "Update study materials";
 }
 
-function FolderTile({ folder, organization, disabled, onDropDocument, onOpen }: {
-  folder: DocumentCollection;
-  organization: DocumentCollectionOrganization;
-  disabled: boolean;
-  onDropDocument: (documentId: string) => void;
-  onOpen: () => void;
-}) {
-  const members = organization.memberships.filter((entry) => entry.collectionId === folder.id).length;
-  return (
-    <FolderDropZone folderId={folder.id} disabled={disabled} onDropDocument={onDropDocument}>
-      <Surface className="tw:grid tw:gap-2 tw:p-3">
-        <Button variant="ghost" className="tw:h-auto tw:min-h-11 tw:justify-start tw:whitespace-normal tw:text-left" onClick={onOpen}>
-          <span className="tw:grid tw:min-w-0 tw:gap-1">
-            <strong className="tw:wrap-anywhere">{folder.name}</strong>
-            <small className="tw:text-muted-foreground">
-              {members} source{members === 1 ? "" : "s"}{folder.archivedAt ? " · Archived" : ""}
-            </small>
-          </span>
-        </Button>
-      </Surface>
-    </FolderDropZone>
-  );
-}
-
 function FolderSources({ folder, organization, documents, onAdd, onRanges, onMove, onRemove, disabled }: {
   folder: DocumentCollection;
   organization: DocumentCollectionOrganization;
@@ -475,18 +513,17 @@ function SourceTile({ document, rangeLabel: label }: { document: DocumentSummary
   );
 }
 
-function CollectionEditorDialog({ dialog, setDialog, organization, documents, documentById, currentFolderId, error, setError, busy, onCreate, onUpdate, onAdd, onMove, onRanges }: {
+function CollectionEditorDialog({ dialog, setDialog, organization, documents, documentById, error, setError, busy, onCreate, onUpdate, onAdd, onMove, onRanges }: {
   dialog: CollectionDialog;
   setDialog: (value: CollectionDialog | null) => void;
   organization: DocumentCollectionOrganization;
   documents: DocumentSummary[];
   documentById: Map<string, DocumentSummary>;
-  currentFolderId: string | null;
   error: string | null;
   setError: (value: string | null) => void;
   busy: boolean;
   onCreate: (name: string) => Promise<boolean>;
-  onUpdate: (folder: DocumentCollection, patch: { name?: string; archived?: boolean }) => Promise<boolean>;
+  onUpdate: (folder: DocumentCollection, patch: { name?: string }) => Promise<boolean>;
   onAdd: (folderId: string, documentId: string) => Promise<boolean>;
   onMove: (membership: DocumentCollectionMembership, target: string) => Promise<boolean>;
   onRanges: (membership: DocumentCollectionMembership, ranges: SourceRangeInput[]) => Promise<boolean>;
@@ -517,8 +554,11 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
   }
 
   if (dialog.kind === "add-source") {
-    if (!currentFolderId) return null;
-    const already = new Set(organization.memberships.filter((entry) => entry.collectionId === currentFolderId).map((entry) => entry.documentId));
+    const already = new Set(
+      organization.memberships
+        .filter((entry) => entry.collectionId === dialog.folderId)
+        .map((entry) => entry.documentId),
+    );
     const choices = documents.filter((document) => !already.has(document.id));
     return (
       <Dialog title="Add source to collection" onClose={close} busy={busy} width="small">
@@ -535,7 +575,7 @@ function CollectionEditorDialog({ dialog, setDialog, organization, documents, do
           <DialogActions>
             <Button onClick={close}>Cancel</Button>
             <Button variant="primary" disabled={!dialog.documentId} loading={busy} onClick={() => void (async () => {
-              const ok = await onAdd(currentFolderId, dialog.documentId);
+              const ok = await onAdd(dialog.folderId, dialog.documentId);
               if (ok) close();
             })()}>Add source</Button>
           </DialogActions>
@@ -641,7 +681,3 @@ function capitalize(value: string): string {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
-function visibleFolders(folders: DocumentCollection[], showArchived: boolean): DocumentCollection[] {
-  return folders.filter((folder) => showArchived || folder.archivedAt === null)
-    .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
-}

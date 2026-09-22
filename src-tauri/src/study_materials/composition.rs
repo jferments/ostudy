@@ -43,8 +43,8 @@ use crate::{
 };
 
 use super::{
-    load_bundle_status, reuse, StudyTargetArtifactKind, StudyTargetBundleStatus, StudyTargetKind,
-    StudyTargetRef,
+    cancellation, load_bundle_status, reuse, StudyTargetArtifactKind, StudyTargetBundleStatus,
+    StudyTargetKind, StudyTargetRef,
 };
 
 const MAX_COLLECTION_SOURCE_NOTES: usize = 10_000;
@@ -80,6 +80,12 @@ pub(crate) struct CollectionGuideSection {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ComposeStudyTargetBundleInput {
+    pub operation_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct CancelStudyTargetBundleInput {
     pub operation_id: String,
 }
 
@@ -129,6 +135,16 @@ pub(crate) async fn compose_study_target_bundle(
     compose(database.inner(), Some(runtime.inner()), input).await
 }
 
+#[tauri::command]
+pub(crate) fn cancel_study_target_bundle(
+    database: State<'_, Database>,
+    input: CancelStudyTargetBundleInput,
+) -> Result<(), CommandError> {
+    validate_entity_id(&input.operation_id, "study target operation")?;
+    cancellation::cancel(&input.operation_id)?;
+    cancel_active_jobs(database.inner(), &input.operation_id)
+}
+
 async fn compose(
     database: &Database,
     runtime: Option<&AiRuntimeState>,
@@ -139,6 +155,8 @@ async fn compose(
     if !claim.claimed {
         return status_for_claim(database, &claim);
     }
+    let _active = cancellation::Guard::begin(&input.operation_id)?;
+    let signal = _active.signal();
 
     if let Err(error) = database.with_connection(|connection| {
         collections::ensure_snapshot_current(connection, &claim.snapshot)
@@ -149,6 +167,10 @@ async fn compose(
     }
 
     for kind in pending_artifacts(database, &input.operation_id)? {
+        if signal.is_canceled() {
+            cancel_active_jobs(database, &input.operation_id)?;
+            break;
+        }
         let result = match (claim.target.kind, kind) {
             (StudyTargetKind::Document, StudyTargetArtifactKind::Flashcards) => {
                 adopt_document_flashcards(database, &input.operation_id, &claim)
@@ -157,7 +179,7 @@ async fn compose(
                 adopt_document_guide(database, &input.operation_id, &claim)
             }
             (StudyTargetKind::Collection, StudyTargetArtifactKind::Flashcards) => {
-                compose_collection_flashcards(database, &input.operation_id, &claim)
+                compose_collection_flashcards(database, &input.operation_id, &claim, &signal)
             }
             (StudyTargetKind::Collection, StudyTargetArtifactKind::StudyGuide) => {
                 let runtime = runtime.ok_or_else(|| {
@@ -180,6 +202,7 @@ async fn compose(
                             &input.operation_id,
                             &claim,
                             &diagnostics.context(),
+                            &signal,
                         )
                         .await;
                         diagnostics.finish(result.is_ok());
@@ -190,10 +213,18 @@ async fn compose(
             }
         };
         if let Err(error) = result {
+            if canceled_error(&error) {
+                record_artifact_canceled(database, &input.operation_id, kind, &error)?;
+                cancel_active_jobs(database, &input.operation_id)?;
+                break;
+            }
             record_artifact_failure(database, &input.operation_id, kind, &error)?;
         }
     }
 
+    if signal.is_canceled() {
+        cancel_active_jobs(database, &input.operation_id)?;
+    }
     finalize_batch(database, &input.operation_id)?;
     status_for_claim(database, &claim)
 }
@@ -429,7 +460,9 @@ fn compose_collection_flashcards(
     database: &Database,
     operation_id: &str,
     claim: &BatchClaim,
+    signal: &CancellationSignal,
 ) -> Result<(), CommandError> {
+    ensure_bundle_running(signal)?;
     database.with_connection(|connection| {
         let tx = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -454,6 +487,7 @@ fn compose_collection_flashcards(
 
         let mut completed = 0_usize;
         for candidate in &candidates {
+            ensure_bundle_running(signal)?;
             if origin_exists(&tx, &claim.target_id, &candidate.note_id)? {
                 completed += 1;
                 continue;
@@ -491,6 +525,7 @@ fn compose_collection_flashcards(
             completed += 1;
         }
 
+        ensure_bundle_running(signal)?;
         succeed_job(
             &tx,
             operation_id,
@@ -995,7 +1030,9 @@ async fn compose_collection_guide(
     operation_id: &str,
     claim: &BatchClaim,
     diagnostics: &generation::Context,
+    signal: &CancellationSignal,
 ) -> Result<(), CommandError> {
+    ensure_bundle_running(signal)?;
     if !claim.provider_authorized {
         return Err(CommandError::new(
             "study_target_provider_not_authorized",
@@ -1035,9 +1072,9 @@ async fn compose_collection_guide(
     task.apply_provider_capabilities(&capabilities);
     task.diagnostics = Some(diagnostics.clone());
     let guide_contract = reuse::guide_contract(&task)?;
-    let signal = CancellationSignal::new();
-    let view = collection_view::ensure_reduced(database, runtime, &task, &claim.target.id, &signal)
-        .await?;
+    let view =
+        collection_view::ensure_reduced(database, runtime, &task, &claim.target.id, signal).await?;
+    ensure_bundle_running(signal)?;
     if view.stale || view.synthesis.snapshot_id != claim.snapshot.snapshot_id {
         return Err(CommandError::new(
             "source_set_changed",
@@ -1128,7 +1165,7 @@ async fn compose_collection_guide(
         guide_contract: &guide_contract,
         collection_title: &collection_title,
         view: &view,
-        signal: &signal,
+        signal,
     };
     let mut sections = vec![None; windows.len()];
     let mut cursor = 0_usize;
@@ -1176,6 +1213,7 @@ async fn compose_collection_guide(
         })?;
         cursor = end;
     }
+    ensure_bundle_running(signal)?;
     let sections = sections
         .into_iter()
         .collect::<Option<Vec<_>>>()
@@ -1187,6 +1225,7 @@ async fn compose_collection_guide(
         })?;
 
     let content = build_collection_guide_content(claim, &view, collection_title, sections)?;
+    ensure_bundle_running(signal)?;
     publish_collection_guide(
         database,
         operation_id,
@@ -1772,6 +1811,66 @@ fn succeed_job(
     Ok(())
 }
 
+fn canceled_error(error: &CommandError) -> bool {
+    matches!(
+        error.code.as_str(),
+        "ai_request_canceled" | "study_target_generation_canceled"
+    )
+}
+
+fn ensure_bundle_running(signal: &CancellationSignal) -> Result<(), CommandError> {
+    if signal.is_canceled() {
+        Err(CommandError::new(
+            "study_target_generation_canceled",
+            "Collection study-material generation was stopped.",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn record_artifact_canceled(
+    database: &Database,
+    operation_id: &str,
+    kind: StudyTargetArtifactKind,
+    error: &CommandError,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    let code = error.code.chars().take(80).collect::<String>();
+    let message = error.message.chars().take(1000).collect::<String>();
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE study_target_artifact_jobs
+                 SET state='canceled',safe_error_code=?1,safe_error_message=?2,
+                     updated_at=?3,completed_at=?3
+                 WHERE batch_id=?4 AND artifact_kind=?5
+                   AND state IN('pending','running')",
+                params![code, message, now, operation_id, kind.as_db()],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
+fn cancel_active_jobs(database: &Database, operation_id: &str) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE study_target_artifact_jobs
+                 SET state='canceled',
+                     safe_error_code='study_target_generation_canceled',
+                     safe_error_message='Collection study-material generation was stopped. Completed checkpoints remain reusable.',
+                     updated_at=?1,completed_at=?1
+                 WHERE batch_id=?2 AND state IN('pending','running')",
+                params![now, operation_id],
+            )
+            .map_err(CommandError::database)?;
+        Ok(())
+    })
+}
+
 fn record_artifact_failure(
     database: &Database,
     operation_id: &str,
@@ -1843,14 +1942,20 @@ fn finalize_batch(database: &Database, operation_id: &str) -> Result<(), Command
             .iter()
             .filter(|(state, _, _)| matches!(state.as_str(), "succeeded" | "suppressed"))
             .count();
+        let canceled_count = rows
+            .iter()
+            .filter(|(state, _, _)| state == "canceled")
+            .count();
         let failure_count = rows
             .iter()
-            .filter(|(state, _, _)| matches!(state.as_str(), "failed" | "canceled" | "interrupted"))
+            .filter(|(state, _, _)| matches!(state.as_str(), "failed" | "interrupted"))
             .count();
-        let state = if failure_count == 0 {
+        let state = if failure_count == 0 && canceled_count == 0 {
             "complete"
         } else if success_count > 0 {
             "partial"
+        } else if failure_count == 0 && canceled_count > 0 {
+            "canceled"
         } else {
             "failed"
         };

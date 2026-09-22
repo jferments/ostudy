@@ -43,6 +43,9 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     string | null | undefined
   >(undefined);
   const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
+  const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
+  const contained = new Set(containedDocumentIds);
+  const looseDocuments = documents.filter((document) => !contained.has(document.id));
 
   if (collectionGuide) {
     return (
@@ -95,16 +98,22 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
         refreshDecks={props.refreshDecks}
         onOpenDeck={props.onOpenDeck}
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
+        onContainedDocumentIdsChange={setContainedDocumentIds}
       />
       <div className={styles.toolbar}>
-        <span className={styles.count}>{documents.length} document{documents.length === 1 ? "" : "s"}</span>
+        <strong>Loose documents</strong>
+        <span className={styles.count}>{looseDocuments.length} document{looseDocuments.length === 1 ? "" : "s"}</span>
       </div>
       {errorMessage ? <InlineNotice kind="error" className="tw:mb-5">{errorMessage}</InlineNotice> : null}
       {isLoading ? <LoadingState label="Loading document library…" /> : documents.length === 0 ? (
         <EmptyState title="No documents yet" description="Upload a course handout, chapter, presentation, or study packet to create learning materials." />
+      ) : looseDocuments.length === 0 ? (
+        <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
+          Every document is currently organized into a collection.
+        </p>
       ) : (
         <div className={styles.list}>
-          {documents.map((document) => {
+          {looseDocuments.map((document) => {
             const guideGenerating = guideGeneratingDocumentId === document.id;
             const busy = busyDocumentId === document.id || deletingDocumentId === document.id || guideGenerating;
             const canceling = cancelingDocumentId === document.id;

@@ -327,6 +327,7 @@ pub fn run() {
             study_materials::discard_collection_study_guide_overlay,
             study_materials::begin_study_target_bundle,
             study_materials::composition::compose_study_target_bundle,
+            study_materials::composition::cancel_study_target_bundle,
             tutor::commands::list_tutor_projects,
             tutor::commands::create_tutor_project,
             tutor::commands::update_tutor_project,

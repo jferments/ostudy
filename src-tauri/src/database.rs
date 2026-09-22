@@ -230,9 +230,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0028_collection_reduction_request_identity.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 29,
+        name: "remove_document_collection_archiving",
+        checksum: "6b8c1d36c82d505a0e754c781fb63bbfb5e402d9bd4ea08dfb5aa2d7a8df57f8",
+        sql: include_str!("../migrations/0029_remove_document_collection_archiving.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 28;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 29;
 
 #[derive(Clone)]
 pub struct Database {

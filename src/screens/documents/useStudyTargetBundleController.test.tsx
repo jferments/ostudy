@@ -8,6 +8,7 @@ import { useStudyTargetBundleController } from "./useStudyTargetBundleController
 vi.mock("../../ipc/studyMaterials", () => ({
   beginStudyTargetBundle: vi.fn(),
   composeStudyTargetBundle: vi.fn(),
+  cancelStudyTargetBundle: vi.fn(),
   getStudyTargetBundle: vi.fn(),
 }));
 vi.mock("../../ipc/common", async (importOriginal) => {
@@ -64,6 +65,7 @@ describe("study target bundle controller", () => {
     vi.mocked(studyMaterials.getStudyTargetBundle).mockResolvedValue(null);
     vi.mocked(studyMaterials.beginStudyTargetBundle).mockResolvedValue(queued);
     vi.mocked(studyMaterials.composeStudyTargetBundle).mockResolvedValue(complete);
+    vi.mocked(studyMaterials.cancelStudyTargetBundle).mockResolvedValue(undefined);
   });
 
   it("publishes the durable queued/running status while composition remains in flight", async () => {
@@ -88,6 +90,42 @@ describe("study target bundle controller", () => {
     });
     expect(result.current.busy).toBe(false);
     expect(result.current.status?.latestBatchState).toBe("complete");
+  });
+
+  it("cancels the exact running operation and keeps completed durable work reusable", async () => {
+    let finish!: (value: studyMaterials.StudyTargetBundleStatus) => void;
+    vi.mocked(studyMaterials.composeStudyTargetBundle).mockReturnValueOnce(
+      new Promise((resolve) => { finish = resolve; }),
+    );
+    const { result } = renderHook(() => useStudyTargetBundleController({ target }));
+    await waitFor(() => expect(studyMaterials.getStudyTargetBundle).toHaveBeenCalledTimes(1));
+
+    let running!: Promise<boolean>;
+    await act(async () => {
+      running = result.current.run();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.busy).toBe(true));
+
+    await act(async () => {
+      await result.current.stop();
+    });
+    expect(studyMaterials.cancelStudyTargetBundle).toHaveBeenCalledWith("o".repeat(32));
+    expect(result.current.canceling).toBe(true);
+
+    const canceled = {
+      ...queued,
+      latestBatchState: "canceled",
+      flashcards: { ...queued.flashcards, state: "canceled" },
+      studyGuide: { ...queued.studyGuide, state: "canceled" },
+    };
+    await act(async () => {
+      finish(canceled);
+      await running;
+    });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.canceling).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 
   it("reuses the same durable operation after an ambiguous compose response", async () => {
