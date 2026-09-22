@@ -260,8 +260,10 @@ describe("DocumentsScreen", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    expect(screen.getByRole("button", { name: "Upload document" })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: "Upload images" })).not.toBeDisabled();
+    expect((screen.getByRole("button", { name: "Upload document" }) as HTMLButtonElement).disabled)
+      .toBe(false);
+    expect((screen.getByRole("button", { name: "Upload images" }) as HTMLButtonElement).disabled)
+      .toBe(false);
   });
 
   it("keeps a failed document in the library and offers a direct retry", async () => {
