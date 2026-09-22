@@ -529,16 +529,13 @@ pub(crate) fn guide_section_windows(
     Ok(windows)
 }
 
-fn stable_guide_topic_windows<'a>(
-    topics: &[&'a CollectionTopic],
-) -> Vec<Vec<&'a CollectionTopic>> {
+fn stable_guide_topic_windows<'a>(topics: &[&'a CollectionTopic]) -> Vec<Vec<&'a CollectionTopic>> {
     let mut windows = Vec::new();
     let mut current = Vec::new();
     for topic in topics {
         current.push(*topic);
         let boundary = current.len() >= GUIDE_MIN_TOPICS_PER_SECTION
-            && (current.len() >= GUIDE_MAX_TOPICS_PER_SECTION
-                || guide_window_anchor(&topic.id));
+            && (current.len() >= GUIDE_MAX_TOPICS_PER_SECTION || guide_window_anchor(&topic.id));
         if boundary {
             windows.push(std::mem::take(&mut current));
         }
@@ -2040,7 +2037,9 @@ mod tests {
             },
         ))
         .unwrap();
-        server.join().expect("single rejected reducer request should finish");
+        server
+            .join()
+            .expect("single rejected reducer request should finish");
         assert!(!first.reduced);
         assert_eq!(first.synthesis.reduction_status, "native_reducer_rejected");
         assert_eq!(first_requests, 1);
@@ -2094,9 +2093,9 @@ mod tests {
         let base_refs = base.iter().collect::<Vec<_>>();
         let base_windows = stable_guide_topic_windows(&base_refs);
         assert!(base_windows.len() >= 3);
-        assert!(base_windows.iter().all(|window| {
-            !window.is_empty() && window.len() <= GUIDE_MAX_TOPICS_PER_SECTION
-        }));
+        assert!(base_windows
+            .iter()
+            .all(|window| { !window.is_empty() && window.len() <= GUIDE_MAX_TOPICS_PER_SECTION }));
         let base_boundaries = base_windows
             .iter()
             .filter_map(|window| window.last().map(|topic| topic.id.clone()))
