@@ -2537,7 +2537,7 @@ mod tests {
             &claim,
             &CancellationSignal::new(),
         )
-            .expect("flashcards should publish");
+        .expect("flashcards should publish");
         record_artifact_failure(
             &fixture.database,
             &operation_id,
