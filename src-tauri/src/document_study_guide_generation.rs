@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     ai::{
+        concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
             generate_study_guide_topic_section, AuthoringEvidence, DocumentTaskContext,
             SourcePageImage,
@@ -32,7 +33,6 @@ use crate::{
     util::unix_time_millis,
 };
 
-const CLOUD_GUIDE_PARALLELISM: usize = 4;
 const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v3-explicit-output-contract";
 
 #[derive(Clone, Debug)]
@@ -154,12 +154,9 @@ pub(crate) async fn execute_study_guide_generation(
         .enumerate()
         .filter_map(|(index, value)| value.is_none().then_some(index))
         .collect::<Vec<_>>();
-    let parallelism = if execution.task.network_scope == "cloud" {
-        CLOUD_GUIDE_PARALLELISM
-    } else {
-        1
-    }
-    .clamp(1, execution.plan.topics.len());
+    let parallelism =
+        crate::ai::concurrency::document_request_parallelism(&execution.task.network_scope)
+            .clamp(1, execution.plan.topics.len().max(1));
 
     crate::logging::debug_target(
         "ai.document.study_guide",
@@ -302,70 +299,77 @@ async fn generate_missing_topics(
     parallelism: usize,
     cached: usize,
 ) -> Result<(), CommandError> {
-    let mut cursor = 0_usize;
     let mut completed = cached;
-    while cursor < missing.len() {
-        let end = cursor.saturating_add(parallelism).min(missing.len());
-        let batch = &missing[cursor..end];
-        let i0 = batch.first().copied();
-        let i1 = batch.get(1).copied();
-        let i2 = batch.get(2).copied();
-        let i3 = batch.get(3).copied();
-        let (r0, r1, r2, r3) = tokio::join!(
-            generate_slot(execution, catalogs, i0),
-            generate_slot(execution, catalogs, i1),
-            generate_slot(execution, catalogs, i2),
-            generate_slot(execution, catalogs, i3),
-        );
-
-        let results = [r0, r1, r2, r3].into_iter().flatten().collect::<Vec<_>>();
-        retain_successful_topics(results, |index, section| {
-            let topic = &execution.plan.topics[index];
-            persist_checkpoint_best_effort(
-                execution.database,
-                execution.document_id,
-                contract_key,
-                topic,
-                &section,
+    let mut first_failure: Option<(usize, CommandError)> = None;
+    run_bounded_provider_queue(
+        missing.len(),
+        parallelism,
+        |queue_index| {
+            let index = missing[queue_index];
+            async move { (index, generate_slot(execution, catalogs, index).await) }
+        },
+        |(index, result)| {
+            let control = consume_completed_topic(
+                index,
+                result,
+                &mut first_failure,
+                |index, section| {
+                    let topic = &execution.plan.topics[index];
+                    persist_checkpoint_best_effort(
+                        execution.database,
+                        execution.document_id,
+                        contract_key,
+                        topic,
+                        &section,
+                    );
+                    resolved[index] = Some(section);
+                    completed = completed.saturating_add(1);
+                    transition_document_artifact_job(
+                        execution.database,
+                        execution.job_id,
+                        DocumentArtifactJobState::Generating,
+                        DocumentArtifactJobState::Generating,
+                        completed,
+                    )
+                    .map(|_| ())
+                },
             );
-            resolved[index] = Some(section);
-            completed = completed.saturating_add(1);
-            transition_document_artifact_job(
-                execution.database,
-                execution.job_id,
-                DocumentArtifactJobState::Generating,
-                DocumentArtifactJobState::Generating,
-                completed,
-            )
-            .map(|_| ())
-        })?;
-        cursor = end;
-    }
-    Ok(())
+            Ok::<QueueControl, CommandError>(control)
+        },
+    )
+    .await?;
+    first_failure.map_or(Ok(()), |(_, error)| Err(error))
 }
 
-/// Every completed provider request is accounted for before propagating failure.
-/// A low-index failure must not discard paid, valid higher-index siblings.
-fn retain_successful_topics<T>(
-    mut results: Vec<(usize, Result<T, CommandError>)>,
+/// Consume every completed provider request, including siblings that finish
+/// after one slot fails. Returning Stop prevents new dispatch while the queue
+/// still drains already-started work so successful paid output is checkpointed.
+fn consume_completed_topic<T>(
+    index: usize,
+    result: Result<T, CommandError>,
+    first_failure: &mut Option<(usize, CommandError)>,
     mut save: impl FnMut(usize, T) -> Result<(), CommandError>,
-) -> Result<(), CommandError> {
-    results.sort_by_key(|(index, _)| *index);
-    let mut first_failure = None;
-    for (index, result) in results {
-        if let Err(error) = result.and_then(|section| save(index, section)) {
-            first_failure.get_or_insert(error);
+) -> QueueControl {
+    match result.and_then(|section| save(index, section)) {
+        Ok(()) => QueueControl::Continue,
+        Err(error) => {
+            let replace = match first_failure.as_ref() {
+                None => true,
+                Some((failed_index, _)) => index < *failed_index,
+            };
+            if replace {
+                *first_failure = Some((index, error));
+            }
+            QueueControl::Stop
         }
     }
-    first_failure.map_or(Ok(()), Err)
 }
 
 async fn generate_slot(
     execution: &StudyGuideGenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
-    index: Option<usize>,
-) -> Option<(usize, Result<GroundedStudyGuideSection, CommandError>)> {
-    let index = index?;
+    index: usize,
+) -> Result<GroundedStudyGuideSection, CommandError> {
     let topic = &execution.plan.topics[index];
     let evidence = &execution.evidence[index];
     let result = async {
@@ -406,7 +410,7 @@ async fn generate_slot(
             ),
         )
     });
-    Some((index, result))
+    result
 }
 
 fn validate_execution(execution: &StudyGuideGenerationExecution<'_>) -> Result<(), CommandError> {
@@ -669,36 +673,41 @@ mod tests {
     #[test]
     fn failed_topic_does_not_discard_successful_parallel_siblings() {
         let mut saved = Vec::new();
-        let failure = retain_successful_topics(
-            vec![
-                (2, Ok("later")),
-                (0, Err(CommandError::new("bad_section", "invalid"))),
-                (1, Ok("middle")),
-            ],
-            |index, content| {
+        let mut first_failure = None;
+        for (index, result) in [
+            (2, Ok("later")),
+            (0, Err(CommandError::new("bad_section", "invalid"))),
+            (1, Ok("middle")),
+        ] {
+            let _ = consume_completed_topic(index, result, &mut first_failure, |index, content| {
                 saved.push((index, content));
                 Ok(())
-            },
-        )
-        .unwrap_err();
-        assert_eq!(failure.code, "bad_section");
+            });
+        }
+        saved.sort_by_key(|(index, _)| *index);
+        assert_eq!(first_failure.unwrap().1.code, "bad_section");
         assert_eq!(saved, vec![(1, "middle"), (2, "later")]);
     }
     #[test]
     fn checkpoint_projection_error_does_not_skip_remaining_successes() {
         let mut visited = Vec::new();
-        let result = retain_successful_topics(
-            vec![(0, Ok("first")), (1, Ok("second"))],
-            |index, content| {
-                visited.push(content);
-                if index == 0 {
-                    Err(CommandError::new("projection_failed", "failed"))
-                } else {
-                    Ok(())
-                }
-            },
-        );
-        assert_eq!(result.unwrap_err().code, "projection_failed");
+        let mut first_failure = None;
+        for (index, content) in [(0, "first"), (1, "second")] {
+            let _ = consume_completed_topic(
+                index,
+                Ok(content),
+                &mut first_failure,
+                |index, content| {
+                    visited.push(content);
+                    if index == 0 {
+                        Err(CommandError::new("projection_failed", "failed"))
+                    } else {
+                        Ok(())
+                    }
+                },
+            );
+        }
+        assert_eq!(first_failure.unwrap().1.code, "projection_failed");
         assert_eq!(visited, vec!["first", "second"]);
     }
 }

@@ -16,6 +16,7 @@ use tauri::State;
 
 use crate::{
     ai::{
+        concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
             generate_collection_study_guide_topic_section, load_document_task_context,
             CollectionStudyGuideAuthoring,
@@ -1168,50 +1169,72 @@ async fn compose_collection_guide(
         signal,
     };
     let mut sections = vec![None; windows.len()];
-    let mut cursor = 0_usize;
     let mut completed_sections = 0_usize;
-    while cursor < windows.len() {
-        task.ensure_current(database)?;
-        database.with_connection(|connection| {
-            collections::ensure_snapshot_current(connection, &claim.snapshot)?;
-            collection_view::ensure_analysis_current(
-                connection,
-                &claim.target.id,
-                &view.analysis_hash,
-            )
-        })?;
-        let end = cursor.saturating_add(parallelism).min(windows.len());
-        let indices = (cursor..end).collect::<Vec<_>>();
-        let p0 = indices.first().copied();
-        let p1 = indices.get(1).copied();
-        let p2 = indices.get(2).copied();
-        let p3 = indices.get(3).copied();
-        let (r0, r1, r2, r3) = tokio::join!(
-            collection_guide_slot(&authoring, &windows, p0),
-            collection_guide_slot(&authoring, &windows, p1),
-            collection_guide_slot(&authoring, &windows, p2),
-            collection_guide_slot(&authoring, &windows, p3),
-        );
-        for (index, result) in [r0, r1, r2, r3].into_iter().flatten() {
-            sections[index] = Some(result?);
-            completed_sections = completed_sections.saturating_add(1);
-            update_artifact_progress(
-                database,
-                operation_id,
-                StudyTargetArtifactKind::StudyGuide,
-                completed_sections.saturating_add(1),
-            )?;
-        }
-        task.ensure_current(database)?;
-        database.with_connection(|connection| {
-            collections::ensure_snapshot_current(connection, &claim.snapshot)?;
-            collection_view::ensure_analysis_current(
-                connection,
-                &claim.target.id,
-                &view.analysis_hash,
-            )
-        })?;
-        cursor = end;
+    let mut first_error: Option<(usize, CommandError)> = None;
+    run_bounded_provider_queue(
+        windows.len(),
+        parallelism,
+        |index| {
+            let authoring = &authoring;
+            let windows = &windows;
+            async move {
+                let result = async {
+                    ensure_bundle_running(authoring.signal)?;
+                    authoring.task.ensure_current(authoring.database)?;
+                    authoring.database.with_connection(|connection| {
+                        collections::ensure_snapshot_current(connection, &claim.snapshot)?;
+                        collection_view::ensure_analysis_current(
+                            connection,
+                            &claim.target.id,
+                            &authoring.view.analysis_hash,
+                        )
+                    })?;
+                    let section =
+                        author_collection_guide_window(authoring, &windows[index]).await?;
+                    authoring.task.ensure_current(authoring.database)?;
+                    authoring.database.with_connection(|connection| {
+                        collections::ensure_snapshot_current(connection, &claim.snapshot)?;
+                        collection_view::ensure_analysis_current(
+                            connection,
+                            &claim.target.id,
+                            &authoring.view.analysis_hash,
+                        )
+                    })?;
+                    Ok(section)
+                }
+                .await;
+                (index, result)
+            }
+        },
+        |(index, result)| {
+            let control = match result {
+                Ok(section) => {
+                    sections[index] = Some(section);
+                    completed_sections = completed_sections.saturating_add(1);
+                    match update_artifact_progress(
+                        database,
+                        operation_id,
+                        StudyTargetArtifactKind::StudyGuide,
+                        completed_sections.saturating_add(1),
+                    ) {
+                        Ok(()) => QueueControl::Continue,
+                        Err(error) => {
+                            remember_collection_guide_error(&mut first_error, index, error);
+                            QueueControl::Stop
+                        }
+                    }
+                }
+                Err(error) => {
+                    remember_collection_guide_error(&mut first_error, index, error);
+                    QueueControl::Stop
+                }
+            };
+            Ok::<QueueControl, CommandError>(control)
+        },
+    )
+    .await?;
+    if let Some((_, error)) = first_error {
+        return Err(error);
     }
     ensure_bundle_running(signal)?;
     let sections = sections
@@ -1247,17 +1270,18 @@ struct CollectionGuideAuthoringContext<'a> {
     signal: &'a CancellationSignal,
 }
 
-async fn collection_guide_slot(
-    authoring: &CollectionGuideAuthoringContext<'_>,
-    windows: &[collection_view::CollectionGuideWindow],
-    index: Option<usize>,
-) -> Option<(usize, Result<CollectionGuideSection, CommandError>)> {
-    let index = index?;
-    let window = windows.get(index)?;
-    Some((
-        index,
-        author_collection_guide_window(authoring, window).await,
-    ))
+fn remember_collection_guide_error(
+    first_error: &mut Option<(usize, CommandError)>,
+    index: usize,
+    error: CommandError,
+) {
+    let replace = match first_error.as_ref() {
+        None => true,
+        Some((failed_index, _)) => index < *failed_index,
+    };
+    if replace {
+        *first_error = Some((index, error));
+    }
 }
 
 async fn author_collection_guide_window(
