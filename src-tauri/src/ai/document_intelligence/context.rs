@@ -48,12 +48,19 @@ struct DocumentUsageAccumulator {
 }
 
 impl DocumentTaskContext {
-    pub(crate) fn for_tutor_profile(
+    pub(crate) fn for_profile(
         database: &Database,
         profile_id: &str,
     ) -> Result<Self, CommandError> {
         context_from_request(database, load_profile_request(database, profile_id)?)?
             .with_saved_capabilities(database)
+    }
+
+    pub(crate) fn for_tutor_profile(
+        database: &Database,
+        profile_id: &str,
+    ) -> Result<Self, CommandError> {
+        Self::for_profile(database, profile_id)
     }
 
     fn with_saved_capabilities(mut self, database: &Database) -> Result<Self, CommandError> {

@@ -21,7 +21,6 @@ use crate::{
 };
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
-use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
 // Only missing-vector catch-up is serialized, not chat/interpretation. No
@@ -181,53 +180,7 @@ pub(crate) async fn ensure_scope(
     Ok(())
 }
 
-pub(crate) fn schedule_document_best_effort(app: AppHandle, document_id: String) {
-    tauri::async_runtime::spawn(async move {
-        let database = app.state::<Database>();
-        let paths = app.state::<AppPaths>();
-        let runtime = app.state::<AiRuntimeState>();
-        let mut operation = match generation::Operation::begin(
-            database.inner(),
-            None,
-            Some(&document_id),
-            None,
-            "document_indexing",
-        ) {
-            Ok(operation) => operation,
-            Err(error) => {
-                crate::logging::debug_target(
-                    "ai.knowledge.index",
-                    "knowledge_index_background_not_started",
-                    "Deferred indexing did not start; saved knowledge remains available and search can catch up later.",
-                    json!({"document":document_id,"code":error.code}),
-                );
-                return;
-            }
-        };
-        let diagnostics = operation.context();
-        let signal = CancellationSignal::new();
-        let result = index_document(
-            database.inner(),
-            paths.inner(),
-            runtime.inner(),
-            &document_id,
-            &signal,
-            Some(diagnostics),
-        )
-        .await;
-        operation.finish(result.is_ok());
-        if let Err(error) = result {
-            crate::logging::warn_target(
-                "ai.knowledge.index",
-                "knowledge_index_deferred",
-                "Knowledge is saved. Search indexing will catch up on use without repeating interpretation.",
-                json!({"document":document_id,"code":error.code}),
-            );
-        }
-    });
-}
-
-async fn index_document(
+pub(crate) async fn index_document(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,

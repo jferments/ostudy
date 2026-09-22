@@ -71,7 +71,7 @@ pub async fn run_document_flashcard_generation(
             Err(documents::flashcard_generation_canceled_error())
         }
         Ok(value) => {
-            crate::knowledge::indexing::schedule_document_best_effort(app, document_id);
+            crate::document_outline_service::schedule_document_postprocessing(app, document_id);
             Ok(value)
         }
         Err(error) => Err(error),

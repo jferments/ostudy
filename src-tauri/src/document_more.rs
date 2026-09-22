@@ -107,7 +107,7 @@ pub async fn generate_more_pdf_flashcards(
             CANCELED_MESSAGE,
         )),
         Ok(value) => {
-            crate::knowledge::indexing::schedule_document_best_effort(app, document_id);
+            crate::document_outline_service::schedule_document_postprocessing(app, document_id);
             Ok(value)
         }
         Err(error) => Err(error),
