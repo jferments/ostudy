@@ -8,16 +8,86 @@
 
 use std::{
     future::Future,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, LazyLock,
+    },
+};
+
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+use crate::{
+    error::CommandError,
+    task_cancellation::{current_signal, CancellationSignal},
 };
 
 pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 4;
+pub(crate) const CLOUD_GLOBAL_PROVIDER_PARALLELISM: usize = 6;
+const USER_MANAGED_GLOBAL_PROVIDER_PARALLELISM: usize = 1;
 
 pub(crate) fn document_request_parallelism(network_scope: &str) -> usize {
     match network_scope {
         "cloud" => CLOUD_DOCUMENT_PARALLELISM,
         _ => 1,
     }
+}
+
+#[derive(Debug)]
+struct ProviderLanes {
+    cloud: Arc<Semaphore>,
+    user_managed: Arc<Semaphore>,
+}
+
+impl ProviderLanes {
+    fn new(cloud_slots: usize) -> Self {
+        Self {
+            cloud: Arc::new(Semaphore::new(cloud_slots.max(1))),
+            user_managed: Arc::new(Semaphore::new(USER_MANAGED_GLOBAL_PROVIDER_PARALLELISM)),
+        }
+    }
+
+    fn lane(&self, network_scope: &str) -> Arc<Semaphore> {
+        match network_scope {
+            "cloud" => self.cloud.clone(),
+            _ => self.user_managed.clone(),
+        }
+    }
+
+    async fn acquire(
+        &self,
+        network_scope: &str,
+        cancellation: Option<&CancellationSignal>,
+    ) -> Result<OwnedSemaphorePermit, CommandError> {
+        let acquire = self.lane(network_scope).acquire_owned();
+        let signal = cancellation.cloned().or_else(current_signal);
+        match signal {
+            Some(signal) => tokio::select! {
+                _ = signal.canceled() => Err(CommandError::new(
+                    "ai_request_canceled",
+                    "The AI request was canceled before a provider slot became available.",
+                )),
+                permit = acquire => permit.map_err(|_| provider_lane_closed()),
+            },
+            None => acquire.await.map_err(|_| provider_lane_closed()),
+        }
+    }
+}
+
+static PROVIDER_LANES: LazyLock<ProviderLanes> =
+    LazyLock::new(|| ProviderLanes::new(CLOUD_GLOBAL_PROVIDER_PARALLELISM));
+
+pub(crate) async fn acquire_provider_slot(
+    network_scope: &str,
+    cancellation: Option<&CancellationSignal>,
+) -> Result<OwnedSemaphorePermit, CommandError> {
+    PROVIDER_LANES.acquire(network_scope, cancellation).await
+}
+
+fn provider_lane_closed() -> CommandError {
+    CommandError::new(
+        "ai_provider_lane_closed",
+        "The provider concurrency lane closed unexpectedly.",
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,6 +189,50 @@ mod tests {
         assert_eq!(document_request_parallelism("cloud"), 4);
         assert_eq!(document_request_parallelism("local"), 1);
         assert_eq!(document_request_parallelism("lan"), 1);
+    }
+
+    #[tokio::test]
+    async fn global_provider_lane_bounds_cloud_overlap_and_serializes_user_managed_servers() {
+        async fn observed_max(lanes: &ProviderLanes, scope: &str) -> usize {
+            let active = AtomicUsize::new(0);
+            let maximum = AtomicUsize::new(0);
+            run_bounded_provider_queue(
+                6,
+                4,
+                |_| {
+                    let active = &active;
+                    let maximum = &maximum;
+                    async move {
+                        let _permit = lanes.acquire(scope, None).await.unwrap();
+                        let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        maximum.fetch_max(now, Ordering::SeqCst);
+                        for _ in 0..32 {
+                            tokio::task::yield_now().await;
+                        }
+                        active.fetch_sub(1, Ordering::SeqCst);
+                    }
+                },
+                |_| Ok::<QueueControl, ()>(QueueControl::Continue),
+            )
+            .await
+            .unwrap();
+            maximum.load(Ordering::SeqCst)
+        }
+
+        let lanes = ProviderLanes::new(2);
+        assert_eq!(observed_max(&lanes, "cloud").await, 2);
+        assert_eq!(observed_max(&lanes, "local").await, 1);
+        assert_eq!(observed_max(&lanes, "lan").await, 1);
+    }
+
+    #[tokio::test]
+    async fn canceling_while_waiting_for_a_provider_lane_does_not_start_work() {
+        let lanes = ProviderLanes::new(1);
+        let _held = lanes.acquire("cloud", None).await.unwrap();
+        let signal = CancellationSignal::new();
+        signal.cancel();
+        let error = lanes.acquire("cloud", Some(&signal)).await.unwrap_err();
+        assert_eq!(error.code, "ai_request_canceled");
     }
 
     #[tokio::test]
