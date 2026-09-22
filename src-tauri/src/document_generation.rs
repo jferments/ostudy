@@ -10,7 +10,10 @@ use std::time::Instant;
 use serde_json::Value;
 
 use crate::{
-    ai::{document_intelligence, AiRuntimeState},
+    ai::{
+        concurrency::{run_bounded_provider_queue, QueueControl},
+        document_intelligence, AiRuntimeState,
+    },
     database::Database,
     document_card_topics::report,
     document_checkpoints,
@@ -179,105 +182,98 @@ pub(crate) async fn execute_generation_windows(
     }
     document_store::update_generation_progress(input.database, input.document_id, completed)?;
 
-    let mut cursor = 0_usize;
-    while cursor < missing.len() {
-        let batch_size = parallelism;
-        let end = (cursor + batch_size).min(missing.len());
-        let batch = &missing[cursor..end];
-        let first = &input.windows[batch[0]];
-        let last = &input.windows[*batch.last().unwrap_or(&batch[0])];
+    if let (Some(first_position), Some(last_position)) =
+        (missing.first().copied(), missing.last().copied())
+    {
+        let first = &input.windows[first_position];
+        let last = &input.windows[last_position];
         let first_locator = first.source_locator();
         let last_locator = last.source_locator();
         set_current_task_phase_range(
             "generating",
-            (
-                Some(batch[0] + 1),
-                batch.last().map(|position| *position + 1),
-            ),
+            (Some(first_position + 1), Some(last_position + 1)),
             completed,
             input.windows.len(),
             Some(first_locator.first()),
             Some(last_locator.last()),
             Some(first.partition_index + 1),
         );
+    }
 
-        let mut images = Vec::with_capacity(batch.len());
-        for position in batch.iter().copied() {
-            let window = &input.windows[position];
-            document_store::mark_window_running(
-                input.database,
-                input.document_id,
-                input.job_id,
-                window.window_index,
-            )?;
-            images.push(if input.task.include_page_images {
-                document_store::load_window_images(
-                    input.paths,
-                    &source_assets,
-                    window,
-                    input.plan.max_images_per_window,
-                )?
-            } else {
-                Vec::new()
-            });
-        }
-
-        let p0 = batch.first().copied();
-        let p1 = batch.get(1).copied();
-        let p2 = batch.get(2).copied();
-        let p3 = batch.get(3).copied();
-        let empty: &[document_intelligence::SourcePageImage] = &[];
-        let i0 = images.first().map(Vec::as_slice).unwrap_or(empty);
-        let i1 = images.get(1).map(Vec::as_slice).unwrap_or(empty);
-        let i2 = images.get(2).map(Vec::as_slice).unwrap_or(empty);
-        let i3 = images.get(3).map(Vec::as_slice).unwrap_or(empty);
-        let (r0, r1, r2, r3) = tokio::join!(
-            generation_slot(&input, &catalogs, p0, i0),
-            generation_slot(&input, &catalogs, p1, i1),
-            generation_slot(&input, &catalogs, p2, i2),
-            generation_slot(&input, &catalogs, p3, i3),
-        );
-
-        let mut first_error = None;
-        for (position, result) in [r0, r1, r2, r3].into_iter().flatten() {
-            match result {
-                Ok(cards) => {
+    let mut first_error: Option<(usize, CommandError)> = None;
+    run_bounded_provider_queue(
+        missing.len(),
+        parallelism,
+        |queue_index| {
+            let position = missing[queue_index];
+            async {
+                let result = async {
                     let window = &input.windows[position];
-                    if let Some(contract) = input.checkpoint_contract {
-                        document_checkpoints::persist_generation_cards_best_effort(
-                            input.database,
-                            input.document_id,
-                            contract,
-                            window,
-                            &cards,
-                        );
-                    }
-                    document_store::mark_window_complete(
+                    document_store::mark_window_running(
                         input.database,
                         input.document_id,
                         input.job_id,
-                        window,
-                        cards.len(),
+                        window.window_index,
                     )?;
-                    by_window[position] = Some(cards);
-                    completed = completed.saturating_add(1);
-                    document_store::update_generation_progress(
+                    let images = if input.task.include_page_images {
+                        document_store::load_window_images(
+                            input.paths,
+                            &source_assets,
+                            window,
+                            input.plan.max_images_per_window,
+                        )?
+                    } else {
+                        Vec::new()
+                    };
+                    generation_slot(&input, &catalogs, position, &images).await
+                }
+                .await;
+                (position, result)
+            }
+        },
+        |(position, result)| match result {
+            Ok(cards) => {
+                let window = &input.windows[position];
+                if let Some(contract) = input.checkpoint_contract {
+                    document_checkpoints::persist_generation_cards_best_effort(
                         input.database,
                         input.document_id,
-                        completed,
-                    )?;
+                        contract,
+                        window,
+                        &cards,
+                    );
                 }
-                Err(error) => {
-                    if first_error.is_none() {
-                        first_error = Some(error);
-                    }
-                }
+                document_store::mark_window_complete(
+                    input.database,
+                    input.document_id,
+                    input.job_id,
+                    window,
+                    cards.len(),
+                )?;
+                by_window[position] = Some(cards);
+                completed = completed.saturating_add(1);
+                document_store::update_generation_progress(
+                    input.database,
+                    input.document_id,
+                    completed,
+                )?;
+                Ok(QueueControl::Continue)
             }
-        }
-        if let Some(error) = first_error {
-            return Err(error);
-        }
-        cursor = end;
+            Err(error) => {
+                let replace = match first_error.as_ref() {
+                    None => true,
+                    Some((failed_position, _)) => position < *failed_position,
+                };
+                if replace {
+                    first_error = Some((position, error));
+                }
+                Ok(QueueControl::Stop)
+            }
+        },
+    )
+    .await?;
+    if let Some((_, error)) = first_error {
+        return Err(error);
     }
 
     let mut generated = Vec::new();
@@ -308,10 +304,9 @@ pub(crate) async fn execute_generation_windows(
 async fn generation_slot(
     input: &GenerationExecution<'_>,
     catalogs: &[KnowledgeCatalog],
-    position: Option<usize>,
+    position: usize,
     images: &[document_intelligence::SourcePageImage],
-) -> Option<(usize, Result<Vec<Value>, CommandError>)> {
-    let position = position?;
+) -> Result<Vec<Value>, CommandError> {
     let window = &input.windows[position];
     let locator = window.source_locator();
     let started = Instant::now();
@@ -373,22 +368,19 @@ async fn generation_slot(
         ),
     }
 
-    Some((
-        position,
-        result.map_err(|error| {
-            CommandError::new(
-                error.code,
-                format!(
-                    "Card generation failed for source window {}/{} (source units {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
-                    position + 1,
-                    input.windows.len(),
-                    locator.first(),
-                    locator.last(),
-                    error.message,
-                ),
-            )
-        }),
-    ))
+    result.map_err(|error| {
+        CommandError::new(
+            error.code,
+            format!(
+                "Card generation failed for source window {}/{} (source units {}–{}): {} Completed windows are checkpointed; Retry generation resumes the remaining source windows instead of starting over.",
+                position + 1,
+                input.windows.len(),
+                locator.first(),
+                locator.last(),
+                error.message,
+            ),
+        )
+    })
 }
 
 async fn generate_window_with_recovery(
