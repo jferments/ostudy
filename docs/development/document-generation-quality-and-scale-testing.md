@@ -1,5 +1,7 @@
 # Document generation quality, scale, second-pass, and Practice-exit testing
 
+For generation token accounting, durable collection reuse, cache invalidation, and token-spike diagnosis, see [Generation efficiency, reuse, and usage diagnostics](generation-efficiency-and-usage.md).
+
 Use this checklist for the PR #38 follow-up motivated by real DeepSeek / Unsloth testing.
 
 ## Automated qualification
