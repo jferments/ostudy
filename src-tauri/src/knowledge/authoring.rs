@@ -29,7 +29,7 @@ use super::{
     runtime::check_canceled,
 };
 
-pub(crate) const AUTHORING_VERSION: i64 = 3;
+pub(crate) const AUTHORING_VERSION: i64 = 4;
 pub(crate) const CARD_SUPPORT_KEY: &str = "_ostudyKnowledge";
 const MAX_AUTHORING_SOURCES: usize = 100_000;
 
@@ -65,42 +65,118 @@ pub(crate) struct KnowledgeCatalog {
 }
 
 impl KnowledgeCatalog {
+    pub(crate) fn unit_alias(index: usize) -> String {
+        format!("K{index}")
+    }
+
+    pub(crate) fn unit_aliases(&self) -> Vec<String> {
+        (0..self.units.len()).map(Self::unit_alias).collect()
+    }
+
+    fn resolve_unit_id<'a>(&'a self, id: &str) -> Option<&'a KnowledgeUnit> {
+        if let Some(index) = id
+            .strip_prefix('K')
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|index| Self::unit_alias(*index) == id)
+        {
+            return self.units.get(index);
+        }
+        self.units.iter().find(|unit| unit.id == id)
+    }
+
+    pub(crate) fn support_schema(&self, maximum: usize) -> Value {
+        json!({"type":"array", "minItems":1, "maxItems":maximum,
+            "items":{"type":"string","enum":self.unit_aliases()}})
+    }
+
     pub(crate) fn prompt(&self) -> Result<String, CommandError> {
-        let mut evidence = BTreeMap::new();
-        let units = self.units.iter().map(|unit| {
-            let evidence_ids = if let Some(grounding) = &unit.content.grounding {
+        let mut native_evidence = BTreeMap::<String, (String, String)>::new();
+        for unit in &self.units {
+            if let Some(grounding) = &unit.content.grounding {
                 for reference in &grounding.evidence {
-                    evidence.insert(reference.id.clone(), json!({
-                        "id":reference.id,"sourceId":reference.source_id,"origin":reference.origin,
-                        "locator":reference.locator,"text":reference.excerpt,
-                        "selector":reference.selector,
-                    }));
+                    native_evidence.entry(reference.id.clone()).or_insert_with(|| {
+                        (reference.source_id.clone(), reference.excerpt.clone())
+                    });
                 }
-                grounding.evidence.iter().map(|reference| reference.id.clone()).collect::<Vec<_>>()
             } else {
-                let id = format!("legacy:{}", unit.id);
-                evidence.insert(id.clone(), json!({"id":id,"sourceId":unit.source_id,
-                    "origin":unit.origin,"text":unit.content.supporting_excerpt,
-                    "legacy":true}));
-                vec![id]
-            };
-            let details = unit.content.details.as_ref()
-                .map(|details| {
-                    details.validate(&unit.content.statement, unit.content.kind)?;
-                    details.prompt(&unit.content.statement)
-                }).transpose()?;
-            Ok(json!({
-                "details":details,
-                "id":unit.id,"title":unit.content.title,"kind":unit.content.kind,
-                "statement":unit.content.statement,"qualifications":unit.content.qualifications,
-                "topic":unit.content.topic,"origin":unit.origin,"evidenceIds":evidence_ids,
-                "importance":unit.content.grounding.as_ref().map(|grounding| grounding.importance),
-                "documentCore":self.document_core_units.contains(&unit.id),
-            }))
-        }).collect::<Result<Vec<_>, CommandError>>()?;
-        serde_json::to_string(&json!({"preparation":prompt::preparation(self),"units":units,"evidence":evidence.into_values().collect::<Vec<_>>(),
-            "trust":"Knowledge statements and priorities are model interpretations. Evidence is literal source material. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."}))
-            .map_err(CommandError::serialization)
+                native_evidence
+                    .entry(format!("legacy:{}", unit.id))
+                    .or_insert_with(|| {
+                        (unit.source_id.clone(), unit.content.supporting_excerpt.clone())
+                    });
+            }
+        }
+
+        let source_ids = native_evidence
+            .values()
+            .map(|(source_id, _)| source_id.clone())
+            .collect::<BTreeSet<_>>();
+        let source_aliases = source_ids
+            .into_iter()
+            .enumerate()
+            .map(|(index, source_id)| (source_id, format!("S{index}")))
+            .collect::<BTreeMap<_, _>>();
+        let evidence_aliases = native_evidence
+            .keys()
+            .enumerate()
+            .map(|(index, id)| (id.clone(), format!("E{index}")))
+            .collect::<BTreeMap<_, _>>();
+
+        let evidence = native_evidence
+            .iter()
+            .map(|(id, (source_id, text))| {
+                json!({
+                    "id": evidence_aliases[id],
+                    "source": source_aliases[source_id],
+                    "text": text,
+                })
+            })
+            .collect::<Vec<_>>();
+        let units = self
+            .units
+            .iter()
+            .enumerate()
+            .map(|(index, unit)| {
+                let evidence_ids = if let Some(grounding) = &unit.content.grounding {
+                    grounding
+                        .evidence
+                        .iter()
+                        .map(|reference| evidence_aliases[&reference.id].clone())
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![evidence_aliases[&format!("legacy:{}", unit.id)].clone()]
+                };
+                let details = unit
+                    .content
+                    .details
+                    .as_ref()
+                    .map(|details| {
+                        details.validate(&unit.content.statement, unit.content.kind)?;
+                        details.prompt(&unit.content.statement)
+                    })
+                    .transpose()?;
+                Ok(json!({
+                    "details": details,
+                    "id": Self::unit_alias(index),
+                    "title": unit.content.title,
+                    "kind": unit.content.kind,
+                    "statement": unit.content.statement,
+                    "qualifications": unit.content.qualifications,
+                    "topic": unit.content.topic,
+                    "origin": unit.origin,
+                    "evidenceIds": evidence_ids,
+                    "importance": unit.content.grounding.as_ref().map(|grounding| grounding.importance),
+                    "documentCore": self.document_core_units.contains(&unit.id),
+                }))
+            })
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        serde_json::to_string(&json!({
+            "preparation": prompt::preparation(self),
+            "units": units,
+            "evidence": evidence,
+            "trust": "Knowledge statements and priorities are model interpretations. Evidence is literal source material. Request-local K/E/S aliases are not durable identity. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."
+        }))
+        .map_err(CommandError::serialization)
     }
 
     pub(crate) fn fingerprint(&self) -> Result<String, CommandError> {
@@ -134,11 +210,17 @@ impl KnowledgeCatalog {
                 "Select distinct knowledge targets within this artifact's supported limit.",
             ));
         }
-        ids.iter().map(|id| {
-            self.units.iter().find(|unit| &unit.id == id)
-                .ok_or_else(|| invalid("The model selected a knowledge unit outside its supplied source context."))
-                .and_then(UnitSupport::from_unit)
-        }).collect()
+        ids.iter()
+            .map(|id| {
+                self.resolve_unit_id(id)
+                    .ok_or_else(|| {
+                        invalid(
+                            "The model selected a knowledge unit outside its supplied source context.",
+                        )
+                    })
+                    .and_then(UnitSupport::from_unit)
+            })
+            .collect()
     }
 
     pub(crate) fn validates(&self, support: &[UnitSupport], maximum: usize) -> bool {
@@ -505,11 +587,6 @@ pub(crate) fn publish_artifact_links(
         }
     }
     Ok(())
-}
-
-pub(crate) fn support_schema(maximum: usize) -> Value {
-    json!({"type":"array", "minItems":1, "maxItems":maximum,
-        "items":{"type":"string", "minLength":32, "maxLength":32}})
 }
 
 fn invalid(message: &str) -> CommandError {

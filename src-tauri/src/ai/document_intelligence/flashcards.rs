@@ -26,7 +26,7 @@ use super::{
 };
 
 pub(crate) const FLASHCARD_PROMPT_VERSION: i64 = 12;
-pub(crate) const FLASHCARD_SCHEMA_VERSION: i64 = 7;
+pub(crate) const FLASHCARD_SCHEMA_VERSION: i64 = 8;
 
 pub(crate) struct FlashcardGenerationLimits {
     pub maximum_cards: usize,
@@ -89,8 +89,11 @@ async fn request_flashcards_with_retry(
 ) -> Result<Vec<Value>, CommandError> {
     let AuthoringEvidence { images, knowledge } = evidence;
     task.question_policy.validate()?;
-    let schema =
-        assessment::generation_schema(flashcard_schema(maximum_cards), &task.question_policy);
+    let schema = assessment::generation_schema(
+        flashcard_schema(maximum_cards),
+        &task.question_policy,
+        knowledge,
+    );
     let maximum_tokens =
         flashcard_completion_token_ceiling(task, maximum_cards).max(completion_token_floor);
     let first = request_json(
@@ -347,6 +350,34 @@ mod tests {
     fn visible_generation_budget_still_scales_with_card_count() {
         assert!(generation_visible_completion_tokens(16) > generation_visible_completion_tokens(4));
     }
+    #[test]
+    fn request_schema_uses_compact_catalog_aliases_but_native_admission_stays_compatible() {
+        let catalog = crate::knowledge::authoring::tests::catalog_fixture();
+        let schema = assessment::generation_schema(
+            flashcard_schema(4),
+            &GenerationPolicy::default(),
+            &catalog,
+        );
+        let encoded = schema.to_string();
+        assert!(encoded.contains("\"K0\""));
+        assert!(!encoded.contains(&"a".repeat(32)));
+
+        let alias = json!({"cards":[{"card":{"type":"basic","front":"How many sides?","back":"Three"},"knowledgeUnitIds":["K0"]}]});
+        let native = json!({"cards":[{"card":{"type":"basic","front":"How many sides?","back":"Three"},"knowledgeUnitIds":["a".repeat(32)]}]});
+        assert_eq!(
+            authoring::card_support(&parse_knowledge_cards(alias, 1, &catalog).unwrap()[0])
+                .unwrap()[0]
+                .unit_id,
+            "a".repeat(32)
+        );
+        assert_eq!(
+            authoring::card_support(&parse_knowledge_cards(native, 1, &catalog).unwrap()[0])
+                .unwrap()[0]
+                .unit_id,
+            "a".repeat(32)
+        );
+    }
+
     #[test]
     fn knowledge_targets_survive_normalization_and_fabricated_ids_are_rejected() {
         let catalog = crate::knowledge::authoring::tests::catalog_fixture();

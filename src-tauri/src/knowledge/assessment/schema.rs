@@ -1,11 +1,17 @@
 use serde_json::{json, Value};
 
+use crate::knowledge::authoring::KnowledgeCatalog;
+
 use super::{
     policy::{GenerationPolicy, QuestionFamily},
     MAX_ASSESSMENT_UNITS, MAX_COMPONENTS,
 };
 
-pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) -> Value {
+pub(crate) fn generation_schema(
+    mut legacy: Value,
+    policy: &GenerationPolicy,
+    knowledge: &KnowledgeCatalog,
+) -> Value {
     let mut alternatives = Vec::new();
     if policy.allowed_types.contains(&QuestionFamily::Recall) {
         let mut recall = legacy["properties"]["cards"]["items"].take();
@@ -14,7 +20,7 @@ pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) ->
         }
         alternatives.push(json!({"type":"object", "additionalProperties":false,
             "required":["card","knowledgeUnitIds"], "properties":{
-                "card":recall, "knowledgeUnitIds":unit_ids(2)}}));
+                "card":recall, "knowledgeUnitIds":unit_ids(knowledge, 2)}}));
     }
     let mut questions = Vec::new();
     for kind in &policy.allowed_types {
@@ -36,7 +42,7 @@ pub(crate) fn generation_schema(mut legacy: Value, policy: &GenerationPolicy) ->
                             "items":{"type":"object","additionalProperties":false,
                                 "required":["key","stance","knowledgeUnitIds"],"properties":{
                                     "key":text(160),"stance":{"enum":["supports","contradicts"]},
-                                    "knowledgeUnitIds":unit_ids(2)}}}}}}}));
+                                    "knowledgeUnitIds":unit_ids(knowledge, 2)}}}}}}}));
     }
     legacy["properties"]["cards"]["items"] = json!({"oneOf":alternatives});
     legacy
@@ -128,8 +134,8 @@ fn item() -> Value {
 fn array(items: Value, maximum: usize) -> Value {
     json!({"type":"array","minItems":2,"maxItems":maximum,"items":items})
 }
-fn unit_ids(maximum: usize) -> Value {
-    let mut schema = crate::knowledge::authoring::support_schema(maximum.min(MAX_ASSESSMENT_UNITS));
+fn unit_ids(knowledge: &KnowledgeCatalog, maximum: usize) -> Value {
+    let mut schema = knowledge.support_schema(maximum.min(MAX_ASSESSMENT_UNITS));
     schema["uniqueItems"] = json!(true);
     schema
 }

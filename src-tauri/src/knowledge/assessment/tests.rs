@@ -255,9 +255,11 @@ fn policy_is_bounded_canonical_and_enforced_without_filler() {
     assert_eq!(fingerprint, policy.fingerprint().unwrap());
     policy.allowed_types = vec![QuestionFamily::Recall];
     assert!(admit_card(raw(0), proposal(0), &catalog_fixture(), &policy).is_err());
+    let catalog = catalog_fixture();
     assert!(!generation_schema(
         json!({"properties":{"cards":{"items":{"oneOf":[]}}}}),
-        &policy
+        &policy,
+        &catalog,
     )
     .to_string()
     .contains("single_choice"));

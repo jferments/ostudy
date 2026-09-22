@@ -93,6 +93,32 @@ mod tests {
     }
 
     #[test]
+    fn provider_projection_uses_compact_aliases_without_losing_exact_evidence() {
+        let catalog = catalog_fixture();
+        let native_unit = catalog.units[0].id.clone();
+        let native_source = catalog.units[0].source_id.clone();
+        let native_hash = catalog.units[0].source_hash.clone();
+        let value: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
+
+        assert_eq!(value["units"][0]["id"], "K0");
+        assert_eq!(value["units"][0]["statement"], "A triangle has three sides.");
+        assert_eq!(value["evidence"][0]["id"], "E0");
+        assert_eq!(value["evidence"][0]["source"], "S0");
+        assert_eq!(value["evidence"][0]["text"], "A triangle has three sides.");
+        assert!(value["evidence"][0].get("selector").is_none());
+        assert!(value["evidence"][0].get("locator").is_none());
+        assert!(value["evidence"][0].get("sourceHash").is_none());
+        assert!(!value["units"].to_string().contains(&native_unit));
+        assert!(!value["evidence"].to_string().contains(&native_source));
+        assert!(!value["evidence"].to_string().contains(&native_hash));
+
+        let support = catalog.select(&["K0".to_string()], 2).unwrap();
+        assert_eq!(support[0].unit_id, native_unit);
+        assert_eq!(support[0].source_id, native_source);
+        assert_eq!(support[0].source_hash, native_hash);
+    }
+
+    #[test]
     fn unrelated_collection_growth_does_not_inflate_any_authoring_request() {
         let mut catalog = catalog_fixture();
         catalog.preparation.evidence_structures = vec![structure(
