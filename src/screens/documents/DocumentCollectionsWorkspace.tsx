@@ -103,7 +103,7 @@ export function DocumentCollectionsWorkspace({
   }
 
   function openRanges(membership: DocumentCollectionMembership): void {
-    const ranges = loadedOrganization.ranges.filter((range) => range.membershipId === membership.id);
+    const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
     setDialog({
       kind: "ranges",
       membership,
@@ -171,7 +171,7 @@ export function DocumentCollectionsWorkspace({
         <CollectionEditorDialog
           dialog={dialog}
           setDialog={setDialog}
-          organization={loadedOrganization}
+          organization={organization}
           documents={documents}
           documentById={documentById}
           error={dialogError}
