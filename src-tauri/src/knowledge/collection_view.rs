@@ -1795,8 +1795,8 @@ mod tests {
             connection
                 .execute(
                     "INSERT INTO document_collections(
-                         id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
-                     ) VALUES(?1,NULL,'Week 1',1000,NULL,1,1,1)",
+                         id,parent_id,name,sort_order,created_at,updated_at,revision
+                     ) VALUES(?1,NULL,'Week 1',1000,1,1,1)",
                     [&collection],
                 )
                 .map_err(CommandError::database)?;
@@ -2235,8 +2235,8 @@ mod tests {
                 connection
                     .execute(
                         "INSERT INTO document_collections(
-                             id,parent_id,name,sort_order,archived_at,created_at,updated_at,revision
-                         ) VALUES(?1,NULL,'Week 2',1000,NULL,1,1,1)",
+                             id,parent_id,name,sort_order,created_at,updated_at,revision
+                         ) VALUES(?1,NULL,'Week 2',1000,1,1,1)",
                         [&other_collection],
                     )
                     .map_err(CommandError::database)?;

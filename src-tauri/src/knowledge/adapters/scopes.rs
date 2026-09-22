@@ -199,7 +199,7 @@ pub(crate) fn list_scope_choices(database: &Database) -> Result<Vec<ScopeChoice>
         let mut statement = connection
             .prepare(
                 "SELECT 'deck', id, name FROM decks WHERE deleted_at IS NULL AND archived_at IS NULL
-                 UNION ALL SELECT 'collection', id, name FROM document_collections WHERE archived_at IS NULL
+                 UNION ALL SELECT 'collection', id, name FROM document_collections
                  UNION ALL SELECT 'document', id, title FROM documents WHERE lifecycle_state <> 'archived'
                  UNION ALL SELECT 'guide', d.id, d.title FROM documents d
                  JOIN document_study_guides g ON g.document_id = d.id
