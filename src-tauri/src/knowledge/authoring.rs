@@ -94,15 +94,20 @@ impl KnowledgeCatalog {
         for unit in &self.units {
             if let Some(grounding) = &unit.content.grounding {
                 for reference in &grounding.evidence {
-                    native_evidence.entry(reference.id.clone()).or_insert_with(|| {
-                        (reference.source_id.clone(), reference.excerpt.clone())
-                    });
+                    native_evidence
+                        .entry(reference.id.clone())
+                        .or_insert_with(|| {
+                            (reference.source_id.clone(), reference.excerpt.clone())
+                        });
                 }
             } else {
                 native_evidence
                     .entry(format!("legacy:{}", unit.id))
                     .or_insert_with(|| {
-                        (unit.source_id.clone(), unit.content.supporting_excerpt.clone())
+                        (
+                            unit.source_id.clone(),
+                            unit.content.supporting_excerpt.clone(),
+                        )
                     });
             }
         }

@@ -101,7 +101,10 @@ mod tests {
         let value: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
 
         assert_eq!(value["units"][0]["id"], "K0");
-        assert_eq!(value["units"][0]["statement"], "A triangle has three sides.");
+        assert_eq!(
+            value["units"][0]["statement"],
+            "A triangle has three sides."
+        );
         assert_eq!(value["evidence"][0]["id"], "E0");
         assert_eq!(value["evidence"][0]["source"], "S0");
         assert_eq!(value["evidence"][0]["text"], "A triangle has three sides.");
