@@ -2004,7 +2004,7 @@ mod tests {
             .unwrap();
         let mut synthesis = native_synthesis(&collection, &plan).unwrap();
         synthesis.reduction_status = "reduced".into();
-        publish(&database, &plan, &synthesis, true).unwrap();
+        publish(&database, &plan, &synthesis, true, None).unwrap();
         let refreshed = refresh_native(&database, &collection).unwrap();
         assert!(refreshed.reduced);
         assert_eq!(refreshed.synthesis.reduction_status, "reduced");
