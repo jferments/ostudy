@@ -175,7 +175,7 @@ fn one_level_collection_contract_rejects_nested_storage() {
 }
 
 #[test]
-fn archived_collection_remains_explicitly_resolvable() {
+fn renamed_collection_remains_explicitly_resolvable() {
     let database = Database::open_in_memory().unwrap();
     database
         .with_connection(|connection| {
@@ -192,24 +192,25 @@ fn archived_collection_remains_explicitly_resolvable() {
                     expected_organization_revision: organization.revision,
                 },
             )?;
-            let archived = update_collection(
+            let renamed = update_collection(
                 connection,
                 UpdateDocumentCollectionInput {
                     operation_id: id('3'),
                     collection_id: folder.id.clone(),
-                    name: folder.name,
-                    archived: true,
+                    name: "Week 1 revised".to_string(),
                     revision: folder.revision,
                     expected_organization_revision: organization.revision,
                 },
             )?;
-            assert!(archived
-                .collections
-                .iter()
-                .find(|collection| collection.id == folder.id)
-                .unwrap()
-                .archived_at
-                .is_some());
+            assert_eq!(
+                renamed
+                    .collections
+                    .iter()
+                    .find(|collection| collection.id == folder.id)
+                    .unwrap()
+                    .name,
+                "Week 1 revised"
+            );
             let snapshot = resolve_selection(
                 connection,
                 SourceSelectionInput {

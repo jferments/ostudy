@@ -2531,7 +2531,12 @@ mod tests {
         .expect("bundle should begin");
         let claim = claim_batch(&fixture.database, &operation_id).expect("batch should claim");
         assert!(claim.claimed);
-        compose_collection_flashcards(&fixture.database, &operation_id, &claim)
+        compose_collection_flashcards(
+            &fixture.database,
+            &operation_id,
+            &claim,
+            &CancellationSignal::new(),
+        )
             .expect("flashcards should publish");
         record_artifact_failure(
             &fixture.database,
