@@ -3,13 +3,13 @@
 //! Keep all structures for the selected claims' primary and supporting sources;
 //! never mutate persisted evidence or clip the structure of an admitted table.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 
 use super::KnowledgeCatalog;
 
-pub(super) fn preparation(catalog: &KnowledgeCatalog) -> Value {
+fn selected_sources(catalog: &KnowledgeCatalog) -> BTreeSet<&str> {
     let mut sources = BTreeSet::new();
     for unit in &catalog.units {
         sources.insert(unit.source_id.as_str());
@@ -22,8 +22,13 @@ pub(super) fn preparation(catalog: &KnowledgeCatalog) -> Value {
             );
         }
     }
-    let summary = &catalog.preparation;
-    let structures = summary
+    sources
+}
+
+fn selected_structures(catalog: &KnowledgeCatalog) -> Vec<&Value> {
+    let sources = selected_sources(catalog);
+    catalog
+        .preparation
         .evidence_structures
         .iter()
         .filter(|value| {
@@ -31,6 +36,32 @@ pub(super) fn preparation(catalog: &KnowledgeCatalog) -> Value {
                 .get("sourceId")
                 .and_then(Value::as_str)
                 .is_some_and(|id| sources.contains(id))
+        })
+        .collect()
+}
+
+pub(super) fn preparation(
+    catalog: &KnowledgeCatalog,
+    source_aliases: &BTreeMap<String, String>,
+) -> Value {
+    let summary = &catalog.preparation;
+    let structures = selected_structures(catalog)
+        .into_iter()
+        .map(|value| {
+            let mut compact = value.clone();
+            if let Some(object) = compact.as_object_mut() {
+                if let Some(source_id) = object
+                    .remove("sourceId")
+                    .and_then(|value| value.as_str().map(str::to_string))
+                {
+                    if let Some(alias) = source_aliases.get(&source_id) {
+                        object.insert("source".to_string(), json!(alias));
+                    }
+                }
+                object.remove("occurrenceId");
+                object.remove("payloadHash");
+            }
+            compact
         })
         .collect::<Vec<_>>();
     // The counters still describe preparation of the selected source set, not
@@ -50,7 +81,7 @@ pub(super) fn preparation(catalog: &KnowledgeCatalog) -> Value {
 /// Stable identity for the evidence bytes/claims relevant to one authoring
 /// window. Global preparation counters are diagnostics, not semantic inputs.
 pub(super) fn request_identity(catalog: &KnowledgeCatalog) -> Value {
-    let preparation = preparation(catalog);
+    let evidence_structures = selected_structures(catalog);
     let selected_ids = catalog
         .units
         .iter()
@@ -64,7 +95,7 @@ pub(super) fn request_identity(catalog: &KnowledgeCatalog) -> Value {
     json!({
         "units": &catalog.units,
         "documentCoreUnits": document_core_units,
-        "evidenceStructures": preparation["evidenceStructures"].clone(),
+        "evidenceStructures": evidence_structures,
     })
 }
 
@@ -190,7 +221,19 @@ mod tests {
         ));
         let selected = catalog.select(&[catalog.units[0].id.clone()], 1).unwrap();
         let value: Value = serde_json::from_str(&catalog.prompt().unwrap()).unwrap();
-        assert_eq!(value["preparation"]["evidenceStructures"], json!(expected));
+        let projected = value["preparation"]["evidenceStructures"]
+            .as_array()
+            .unwrap();
+        assert_eq!(projected.len(), 2);
+        assert_eq!(projected[0]["source"], "S0");
+        assert_eq!(projected[1]["source"], "S1");
+        assert_eq!(projected[0]["payload"], expected[0]["payload"]);
+        assert_eq!(projected[1]["payload"], expected[1]["payload"]);
+        for structure in projected {
+            assert!(structure.get("sourceId").is_none());
+            assert!(structure.get("occurrenceId").is_none());
+            assert!(structure.get("payloadHash").is_none());
+        }
         assert_eq!(value["units"][0]["qualifications"], json!([excerpt]));
         assert_eq!(value["evidence"].as_array().unwrap().len(), 2);
         for evidence in value["evidence"].as_array().unwrap() {
@@ -228,10 +271,16 @@ mod tests {
             .as_array()
             .unwrap();
         assert_eq!(structures.len(), 1);
-        assert_eq!(structures[0]["sourceId"], catalog.units[0].source_id);
+        assert_eq!(structures[0]["source"], "S0");
+        assert!(structures[0].get("sourceId").is_none());
+        assert!(structures[0].get("occurrenceId").is_none());
+        assert!(structures[0].get("payloadHash").is_none());
         assert!(bounded.to_string().len() < full.to_string().len());
         catalog.units.clear();
-        assert_eq!(preparation(&catalog)["evidenceStructures"], json!([]));
+        assert_eq!(
+            preparation(&catalog, &BTreeMap::new())["evidenceStructures"],
+            json!([])
+        );
         assert_eq!(catalog.preparation.evidence_structures.len(), 2);
     }
 
@@ -245,9 +294,18 @@ mod tests {
         catalog.preparation.legacy_coverage_sources = 5;
         catalog.preparation.omitted_sources = 6;
         catalog.preparation.omitted_units = 7;
-        assert_eq!(
-            preparation(&catalog),
-            serde_json::to_value(&catalog.preparation).unwrap()
-        );
+        let aliases = BTreeMap::from([(
+            catalog.units[0].source_id.clone(),
+            "S0".to_string(),
+        )]);
+        let projected = preparation(&catalog, &aliases);
+        assert_eq!(projected["unpreparedSources"], 1);
+        assert_eq!(projected["unresolvedRegions"], 2);
+        assert_eq!(projected["unreadableRegions"], 3);
+        assert_eq!(projected["rejectedProposals"], 4);
+        assert_eq!(projected["legacyCoverageSources"], 5);
+        assert_eq!(projected["omittedSources"], 6);
+        assert_eq!(projected["omittedUnits"], 7);
+        assert_eq!(projected["evidenceStructures"], json!([]));
     }
 }

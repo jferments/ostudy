@@ -109,9 +109,22 @@ impl KnowledgeCatalog {
             }
         }
 
-        let source_ids = native_evidence
-            .values()
-            .map(|(source_id, _)| source_id.clone())
+        let source_ids = self
+            .units
+            .iter()
+            .flat_map(|unit| {
+                std::iter::once(unit.source_id.clone()).chain(
+                    unit.content
+                        .grounding
+                        .iter()
+                        .flat_map(|grounding| {
+                            grounding
+                                .evidence
+                                .iter()
+                                .map(|reference| reference.source_id.clone())
+                        }),
+                )
+            })
             .collect::<BTreeSet<_>>();
         let source_aliases = source_ids
             .into_iter()
@@ -173,7 +186,7 @@ impl KnowledgeCatalog {
             })
             .collect::<Result<Vec<_>, CommandError>>()?;
         serde_json::to_string(&json!({
-            "preparation": prompt::preparation(self),
+            "preparation": prompt::preparation(self, &source_aliases),
             "units": units,
             "evidence": evidence,
             "trust": "Knowledge statements and priorities are model interpretations. Evidence is literal source material. Request-local K/E/S aliases are not durable identity. Traceability does not establish truth or entailment; preserve conditions and conflicting source claims."
