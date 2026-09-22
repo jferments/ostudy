@@ -214,6 +214,14 @@ async fn execute_request(
         future,
     )
     .await;
+    crate::ai::concurrency::record_provider_outcome(
+        &task.network_scope,
+        result.is_ok(),
+        result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.safe.retryable),
+    );
     if result.is_err() {
         task.record_request_usage(None);
     }

@@ -14,7 +14,7 @@ use std::{
     },
 };
 
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 
 use crate::{
     error::CommandError,
@@ -23,6 +23,9 @@ use crate::{
 
 pub(crate) const CLOUD_DOCUMENT_PARALLELISM: usize = 4;
 pub(crate) const CLOUD_GLOBAL_PROVIDER_PARALLELISM: usize = 6;
+const CLOUD_INITIAL_PROVIDER_PARALLELISM: usize = 4;
+const CLOUD_MIN_PROVIDER_PARALLELISM: usize = 2;
+const CLOUD_SUCCESS_RAMP_REQUESTS: usize = 8;
 const USER_MANAGED_GLOBAL_PROVIDER_PARALLELISM: usize = 1;
 
 pub(crate) fn document_request_parallelism(network_scope: &str) -> usize {
@@ -33,15 +36,130 @@ pub(crate) fn document_request_parallelism(network_scope: &str) -> usize {
 }
 
 #[derive(Debug)]
+struct CloudAdaptiveState {
+    active: AtomicUsize,
+    limit: AtomicUsize,
+    maximum: usize,
+    successes: AtomicUsize,
+    notify: Notify,
+}
+
+impl CloudAdaptiveState {
+    fn new(maximum: usize) -> Self {
+        let maximum = maximum.max(1);
+        Self {
+            active: AtomicUsize::new(0),
+            limit: AtomicUsize::new(CLOUD_INITIAL_PROVIDER_PARALLELISM.min(maximum).max(1)),
+            maximum,
+            successes: AtomicUsize::new(0),
+            notify: Notify::new(),
+        }
+    }
+
+    async fn reserve(
+        &self,
+        cancellation: Option<&CancellationSignal>,
+    ) -> Result<(), CommandError> {
+        loop {
+            let notified = self.notify.notified();
+            let limit = self.limit.load(Ordering::Acquire);
+            let active = self.active.load(Ordering::Acquire);
+            if active < limit
+                && self
+                    .active
+                    .compare_exchange(active, active + 1, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                return Ok(());
+            }
+            match cancellation {
+                Some(signal) => tokio::select! {
+                    _ = signal.canceled() => return Err(provider_lane_canceled()),
+                    _ = notified => {}
+                },
+                None => notified.await,
+            }
+        }
+    }
+
+    fn release(&self) {
+        self.active.fetch_sub(1, Ordering::AcqRel);
+        self.notify.notify_waiters();
+    }
+
+    fn record_outcome(
+        &self,
+        succeeded: bool,
+        retryable_failure: bool,
+    ) -> Option<(usize, usize)> {
+        if retryable_failure {
+            self.successes.store(0, Ordering::Release);
+            let minimum = CLOUD_MIN_PROVIDER_PARALLELISM.min(self.maximum).max(1);
+            let previous = self
+                .limit
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                    Some(current.saturating_sub(1).max(minimum))
+                })
+                .ok()?;
+            let current = self.limit.load(Ordering::Acquire);
+            return (current != previous).then_some((previous, current));
+        }
+        if !succeeded {
+            return None;
+        }
+        let successes = self.successes.fetch_add(1, Ordering::AcqRel) + 1;
+        if successes < CLOUD_SUCCESS_RAMP_REQUESTS {
+            return None;
+        }
+        self.successes.store(0, Ordering::Release);
+        let previous = self
+            .limit
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                Some(current.saturating_add(1).min(self.maximum))
+            })
+            .ok()?;
+        let current = self.limit.load(Ordering::Acquire);
+        if current != previous {
+            self.notify.notify_waiters();
+            Some((previous, current))
+        } else {
+            None
+        }
+    }
+
+    #[cfg(test)]
+    fn limit(&self) -> usize {
+        self.limit.load(Ordering::Acquire)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ProviderSlot {
+    _permit: OwnedSemaphorePermit,
+    cloud: Option<Arc<CloudAdaptiveState>>,
+}
+
+impl Drop for ProviderSlot {
+    fn drop(&mut self) {
+        if let Some(cloud) = self.cloud.as_ref() {
+            cloud.release();
+        }
+    }
+}
+
+#[derive(Debug)]
 struct ProviderLanes {
     cloud: Arc<Semaphore>,
+    cloud_state: Arc<CloudAdaptiveState>,
     user_managed: Arc<Semaphore>,
 }
 
 impl ProviderLanes {
     fn new(cloud_slots: usize) -> Self {
+        let cloud_slots = cloud_slots.max(1);
         Self {
-            cloud: Arc::new(Semaphore::new(cloud_slots.max(1))),
+            cloud: Arc::new(Semaphore::new(cloud_slots)),
+            cloud_state: Arc::new(CloudAdaptiveState::new(cloud_slots)),
             user_managed: Arc::new(Semaphore::new(USER_MANAGED_GLOBAL_PROVIDER_PARALLELISM)),
         }
     }
@@ -57,19 +175,38 @@ impl ProviderLanes {
         &self,
         network_scope: &str,
         cancellation: Option<&CancellationSignal>,
-    ) -> Result<OwnedSemaphorePermit, CommandError> {
-        let acquire = self.lane(network_scope).acquire_owned();
+    ) -> Result<ProviderSlot, CommandError> {
         let signal = cancellation.cloned().or_else(current_signal);
-        match signal {
+        let acquire = self.lane(network_scope).acquire_owned();
+        let permit = match signal.as_ref() {
             Some(signal) => tokio::select! {
-                _ = signal.canceled() => Err(CommandError::new(
-                    "ai_request_canceled",
-                    "The AI request was canceled before a provider slot became available.",
-                )),
-                permit = acquire => permit.map_err(|_| provider_lane_closed()),
+                _ = signal.canceled() => return Err(provider_lane_canceled()),
+                permit = acquire => permit.map_err(|_| provider_lane_closed())?,
             },
-            None => acquire.await.map_err(|_| provider_lane_closed()),
+            None => acquire.await.map_err(|_| provider_lane_closed())?,
+        };
+        let cloud = (network_scope == "cloud").then(|| self.cloud_state.clone());
+        if let Some(state) = cloud.as_ref() {
+            state.reserve(signal.as_ref()).await?;
         }
+        Ok(ProviderSlot {
+            _permit: permit,
+            cloud,
+        })
+    }
+
+    fn record_outcome(
+        &self,
+        network_scope: &str,
+        succeeded: bool,
+        retryable_failure: bool,
+    ) -> Option<(usize, usize)> {
+        (network_scope == "cloud")
+            .then(|| {
+                self.cloud_state
+                    .record_outcome(succeeded, retryable_failure)
+            })
+            .flatten()
     }
 }
 
@@ -79,8 +216,37 @@ static PROVIDER_LANES: LazyLock<ProviderLanes> =
 pub(crate) async fn acquire_provider_slot(
     network_scope: &str,
     cancellation: Option<&CancellationSignal>,
-) -> Result<OwnedSemaphorePermit, CommandError> {
+) -> Result<ProviderSlot, CommandError> {
     PROVIDER_LANES.acquire(network_scope, cancellation).await
+}
+
+pub(crate) fn record_provider_outcome(
+    network_scope: &str,
+    succeeded: bool,
+    retryable_failure: bool,
+) {
+    if let Some((previous, current)) =
+        PROVIDER_LANES.record_outcome(network_scope, succeeded, retryable_failure)
+    {
+        crate::logging::debug_target(
+            "ai.concurrency",
+            "cloud_provider_parallelism_adapted",
+            "Adjusted the global cloud-provider lane from content-free request outcomes.",
+            serde_json::json!({
+                "previousLimit": previous,
+                "currentLimit": current,
+                "maximumLimit": CLOUD_GLOBAL_PROVIDER_PARALLELISM,
+                "cause": if retryable_failure { "retryable_failure" } else { "success_ramp" },
+            }),
+        );
+    }
+}
+
+fn provider_lane_canceled() -> CommandError {
+    CommandError::new(
+        "ai_request_canceled",
+        "The AI request was canceled before a provider slot became available.",
+    )
 }
 
 fn provider_lane_closed() -> CommandError {
@@ -223,6 +389,23 @@ mod tests {
         assert_eq!(observed_max(&lanes, "cloud").await, 2);
         assert_eq!(observed_max(&lanes, "local").await, 1);
         assert_eq!(observed_max(&lanes, "lan").await, 1);
+    }
+
+    #[test]
+    fn cloud_lane_backs_off_on_retryable_failures_and_ramps_after_successes() {
+        let lanes = ProviderLanes::new(6);
+        assert_eq!(lanes.cloud_state.limit(), 4);
+        assert_eq!(lanes.record_outcome("cloud", false, true), Some((4, 3)));
+        assert_eq!(lanes.record_outcome("cloud", false, true), Some((3, 2)));
+        assert_eq!(lanes.record_outcome("cloud", false, true), None);
+        for _ in 0..CLOUD_SUCCESS_RAMP_REQUESTS {
+            let result = lanes.record_outcome("cloud", true, false);
+            if result.is_some() {
+                assert_eq!(result, Some((2, 3)));
+            }
+        }
+        assert_eq!(lanes.cloud_state.limit(), 3);
+        assert_eq!(lanes.record_outcome("local", false, true), None);
     }
 
     #[tokio::test]
