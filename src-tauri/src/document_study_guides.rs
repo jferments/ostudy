@@ -1310,8 +1310,12 @@ fn guide_display_summary(summary: &str, sections: &[DocumentStudyGuideSection]) 
     }
 
     match sections {
-        [] => "This guide provides a source-grounded introduction to the selected material.".to_string(),
-        [section] => format!("This guide explains {}.", guide_display_title(&section.title)),
+        [] => "This guide provides a source-grounded introduction to the selected material."
+            .to_string(),
+        [section] => format!(
+            "This guide explains {}.",
+            guide_display_title(&section.title)
+        ),
         [first, second, ..] => format!(
             "This guide explains {} and connects it with {} across the source material.",
             guide_display_title(&first.title),

@@ -502,9 +502,7 @@ fn validate_generated_safety(section: &StudyGuideSectionContent) -> Result<(), C
             "A guide requires an overview and supported key points.",
         ));
     }
-    if section.overview.split_whitespace().count() < 8
-        || inventory_like_prose(&section.overview)
-    {
+    if section.overview.split_whitespace().count() < 8 || inventory_like_prose(&section.overview) {
         return Err(output_error(
             "A guide overview must be narrative prose rather than a topic inventory.",
         ));

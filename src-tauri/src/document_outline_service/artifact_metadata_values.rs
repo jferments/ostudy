@@ -277,7 +277,10 @@ mod tests {
         let desired =
             derive_desired_metadata(&outline(), Some(&candidate), "shock_notes.pdf", "pdf");
         assert_ne!(desired.document_title, candidate.document_title);
-        assert_eq!(desired.deck_title, "Gastrointestinal hormones and nervous system");
+        assert_eq!(
+            desired.deck_title,
+            "Gastrointestinal hormones and nervous system"
+        );
         assert!(looks_like_inventory_title("A / B / C"));
         assert!(looks_like_inventory_title("A, B, C, and D"));
         assert!(!looks_like_inventory_title("Gastrointestinal hormones and nervous system"));

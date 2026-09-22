@@ -94,7 +94,9 @@ fn stage_chunk(
         return Ok(Some(existing));
     }
     if input.data_base64.len() > BROWSER_IMAGE_CHUNK_MAX_BYTES.div_ceil(3) * 4 + 8 {
-        return Err(invalid("The image upload chunk exceeds the bounded transfer size."));
+        return Err(invalid(
+            "The image upload chunk exceeds the bounded transfer size.",
+        ));
     }
     let chunk = STANDARD
         .decode(&input.data_base64)
@@ -103,7 +105,9 @@ fn stage_chunk(
         || chunk.len() > BROWSER_IMAGE_CHUNK_MAX_BYTES
         || offset.saturating_add(chunk.len()) > total_bytes
     {
-        return Err(invalid("The image upload chunk is outside the expected file bounds."));
+        return Err(invalid(
+            "The image upload chunk is outside the expected file bounds.",
+        ));
     }
 
     let relative = AppPaths::staged_import_partial_relative_path(&input.operation_id);
@@ -122,7 +126,9 @@ fn stage_chunk(
     let current = usize::try_from(file.metadata().map_err(CommandError::io)?.len())
         .map_err(|_| invalid("The partial image upload is too large."))?;
     if current < offset || current > total_bytes {
-        return Err(invalid("The partial image upload has an invalid byte range."));
+        return Err(invalid(
+            "The partial image upload has an invalid byte range.",
+        ));
     }
 
     let overlap = current.saturating_sub(offset).min(chunk.len());
@@ -147,7 +153,9 @@ fn stage_chunk(
     let written = usize::try_from(file.metadata().map_err(CommandError::io)?.len())
         .map_err(|_| invalid("The partial image upload is too large."))?;
     if written > total_bytes {
-        return Err(invalid("The partial image upload exceeds the expected size."));
+        return Err(invalid(
+            "The partial image upload exceeds the expected size.",
+        ));
     }
     if !input.final_chunk {
         return Ok(None);
@@ -473,7 +481,9 @@ mod tests {
             data_base64: STANDARD.encode(&bytes[split..]),
             final_chunk: true,
         };
-        let staged = stage_chunk(&f.database, &f.paths, final_chunk).unwrap().unwrap();
+        let staged = stage_chunk(&f.database, &f.paths, final_chunk)
+            .unwrap()
+            .unwrap();
         assert_eq!(staged.byte_size, bytes.len() as i64);
         assert_eq!(f.count("staged_external_imports"), 1);
 
