@@ -405,7 +405,7 @@ fn balanced_digest(catalogs: &[KnowledgeCatalog], maximum: usize) -> Option<(Str
     ))
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Reduction {
     summary: String,
