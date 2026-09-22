@@ -30,6 +30,12 @@ struct RequestScope {
     provider: String,
 }
 
+impl Context {
+    pub(crate) fn provider_session_id(&self) -> String {
+        format!("ostudy:{}", self.operation_id)
+    }
+}
+
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GenerationContext")

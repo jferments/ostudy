@@ -27,6 +27,9 @@ pub(crate) async fn curate_document_cards(
         return Ok(cards);
     }
 
+    let original_candidates = cards.len();
+    let cards = deduplicate_candidates(cards);
+    let unique_candidates = cards.len();
     let outline_json = outline_context_for_curation(outline)?;
     let batches = into_curation_batches(cards);
     let parallelism = crate::ai::concurrency::document_request_parallelism(&task.network_scope)
@@ -40,7 +43,8 @@ pub(crate) async fn curate_document_cards(
             "model": task.model_id.as_str(),
             "batches": batches.len(),
             "parallelism": parallelism,
-            "candidates": batches.iter().map(Vec::len).sum::<usize>(),
+            "candidates": unique_candidates,
+            "duplicatesRemovedBeforeProvider": original_candidates.saturating_sub(unique_candidates),
         }),
     );
 
@@ -89,6 +93,14 @@ pub(crate) async fn curate_document_cards(
     let mut seen = HashSet::new();
     retained.retain(|card| seen.insert(card_identity(card)));
     Ok(retained)
+}
+
+fn deduplicate_candidates(cards: Vec<Value>) -> Vec<Value> {
+    let mut seen = HashSet::new();
+    cards
+        .into_iter()
+        .filter(|card| seen.insert(card_identity(card)))
+        .collect()
 }
 
 fn into_curation_batches(cards: Vec<Value>) -> Vec<Vec<Value>> {
@@ -256,6 +268,32 @@ fn normalize_identity_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn duplicate_candidates_are_removed_before_provider_curation() {
+        let first = json!({
+            "type":"basic",
+            "front":"What is preload?",
+            "back":"Ventricular filling before contraction.",
+            "tags":[]
+        });
+        let duplicate = json!({
+            "type":"basic",
+            "front":"  what   is PRELOAD? ",
+            "back":" ventricular filling before contraction. ",
+            "tags":["ignored-for-identity"]
+        });
+        let distinct = json!({
+            "type":"basic",
+            "front":"What is afterload?",
+            "back":"Resistance the ventricle must overcome.",
+            "tags":[]
+        });
+        let cards = deduplicate_candidates(vec![first, duplicate, distinct]);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0]["front"], "What is preload?");
+        assert_eq!(cards[1]["front"], "What is afterload?");
+    }
 
     #[test]
     fn curation_batches_are_bounded_without_losing_candidates() {

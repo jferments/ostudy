@@ -92,7 +92,7 @@ async fn request_json_inner(
     } else {
         Value::Array(multimodal_user_parts(request.user_text, request.images)?)
     };
-    let prepared = providers::prepare_document_request(
+    let mut prepared = providers::prepare_document_request(
         profile,
         request.system_prompt,
         user_content,
@@ -101,6 +101,7 @@ async fn request_json_inner(
         &task.reasoning_effort,
     )
     .map_err(gateway_to_command)?;
+    apply_openrouter_prompt_cache_session(task, &mut prepared);
 
     ensure_request_size(&prepared.body)?;
     if let Some(compatibility) = prepared.compatibility_body.as_ref() {
@@ -237,6 +238,23 @@ fn conservative_text_tokens(text: &str) -> usize {
     // deliberately conservative for mixed prose/JSON while remaining in the
     // same unit as the provider context window.
     text.len().div_ceil(CONSERVATIVE_TEXT_BYTES_PER_TOKEN)
+}
+
+fn apply_openrouter_prompt_cache_session(
+    task: &DocumentTaskContext,
+    prepared: &mut providers::PreparedDocumentRequest,
+) {
+    if task.provider_kind != "openrouter" || task.profile().require_zero_data_retention {
+        return;
+    }
+    let Some(diagnostics) = task.diagnostics.as_ref() else {
+        return;
+    };
+    let session_id = diagnostics.provider_session_id();
+    prepared.body["session_id"] = Value::String(session_id.clone());
+    if let Some(compatibility) = prepared.compatibility_body.as_mut() {
+        compatibility["session_id"] = Value::String(session_id);
+    }
 }
 
 fn ensure_request_size(body: &Value) -> Result<(), CommandError> {

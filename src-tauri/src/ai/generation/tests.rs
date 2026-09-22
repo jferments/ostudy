@@ -17,6 +17,19 @@ fn request() -> Value {
 }
 
 #[test]
+fn provider_session_id_is_content_free_and_operation_stable() {
+    let database = Database::open_in_memory().unwrap();
+    let mut operation = Operation::begin(&database, None, None, None, "session_fixture").unwrap();
+    let context = operation.context();
+    let first = context.provider_session_id();
+    let second = context.provider_session_id();
+    assert_eq!(first, second);
+    assert_eq!(first, format!("ostudy:{}", context.operation_id));
+    assert!(first.len() < 256);
+    operation.finish(true);
+}
+
+#[test]
 fn document_generation_accounts_for_every_attempt_and_preserves_unknown_usage() {
     let database = Database::open_in_memory().unwrap();
     let mut operation = Operation::begin(&database, None, None, None, "fixture").unwrap();
