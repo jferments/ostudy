@@ -56,10 +56,7 @@ impl CloudAdaptiveState {
         }
     }
 
-    async fn reserve(
-        &self,
-        cancellation: Option<&CancellationSignal>,
-    ) -> Result<(), CommandError> {
+    async fn reserve(&self, cancellation: Option<&CancellationSignal>) -> Result<(), CommandError> {
         loop {
             let notified = self.notify.notified();
             let limit = self.limit.load(Ordering::Acquire);
@@ -87,11 +84,7 @@ impl CloudAdaptiveState {
         self.notify.notify_waiters();
     }
 
-    fn record_outcome(
-        &self,
-        succeeded: bool,
-        retryable_failure: bool,
-    ) -> Option<(usize, usize)> {
+    fn record_outcome(&self, succeeded: bool, retryable_failure: bool) -> Option<(usize, usize)> {
         if retryable_failure {
             self.successes.store(0, Ordering::Release);
             let minimum = CLOUD_MIN_PROVIDER_PARALLELISM.min(self.maximum).max(1);
