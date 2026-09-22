@@ -17,10 +17,7 @@ use crate::{
         STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
-    knowledge::{
-        authoring::KnowledgeCatalog,
-        collection_view::CollectionGuideWindow,
-    },
+    knowledge::{authoring::KnowledgeCatalog, collection_view::CollectionGuideWindow},
     util::unix_time_millis,
 };
 
@@ -106,11 +103,10 @@ pub(crate) fn load_section(
         {
             return Ok(None);
         }
-        let section: GroundedStudyGuideSection =
-            match serde_json::from_str(&serialized) {
-                Ok(section) => section,
-                Err(_) => return Ok(None),
-            };
+        let section: GroundedStudyGuideSection = match serde_json::from_str(&serialized) {
+            Ok(section) => section,
+            Err(_) => return Ok(None),
+        };
         if !catalog.validates(&section.knowledge_support, catalog.units.len())
             || validate_study_guide_section_content(section.content.clone()).is_err()
         {
@@ -192,7 +188,9 @@ pub(crate) fn save_section(
     })
 }
 
-fn source_dependencies(catalog: &KnowledgeCatalog) -> Result<BTreeMap<String, String>, CommandError> {
+fn source_dependencies(
+    catalog: &KnowledgeCatalog,
+) -> Result<BTreeMap<String, String>, CommandError> {
     let mut result = BTreeMap::new();
     for unit in &catalog.units {
         insert_dependency(&mut result, &unit.source_id, &unit.source_hash)?;
@@ -250,8 +248,7 @@ fn validate_dependencies(
 mod tests {
     use super::*;
     use crate::{
-        document_study_guides::StudyGuideSectionContent,
-        knowledge::authoring::tests::fixture,
+        document_study_guides::StudyGuideSectionContent, knowledge::authoring::tests::fixture,
     };
 
     #[test]
