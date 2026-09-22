@@ -1202,8 +1202,9 @@ mod tests {
         let prompt = study_guide_system_prompt();
         assert!(!prompt.contains("PDF"));
         assert!(prompt.contains("canonical"));
-        assert!(prompt.contains("OUTLINE"));
-        assert!(prompt.contains("keyPoints are the primary teaching surface"));
+        assert!(prompt.contains("study guide"));
+        assert!(prompt.contains("narrative sentences"));
+        assert!(prompt.contains("keyPoints are concise supported factual propositions"));
         assert!(prompt.contains("subjectA, subjectB, and relationship"));
         assert!(prompt.contains("workedExamples"));
         assert!(prompt.contains("retrievalChecks"));
@@ -1240,9 +1241,13 @@ mod tests {
 
     #[test]
     fn soft_style_target_does_not_reject_or_truncate_valid_content() {
+        let overview =
+            "Preload reflects ventricular filling before systole and helps explain changes in stroke volume. "
+                .repeat(5);
+        assert!(overview.chars().count() > MAX_OVERVIEW_CHARS);
         let result = parse_study_guide_section(json!({
-            "overview": "x".repeat(MAX_OVERVIEW_CHARS + 1),
-            "keyPoints": ["A short point."],
+            "overview": overview,
+            "keyPoints": ["Preload reflects ventricular filling before systole."],
             "explanations": [],
             "importantTerms": [],
             "processSteps": [],
@@ -1251,13 +1256,13 @@ mod tests {
             "visualExplanations": []
         }))
         .unwrap();
-        assert_eq!(result.overview.chars().count(), MAX_OVERVIEW_CHARS + 1);
+        assert_eq!(result.overview, overview);
     }
     #[test]
     fn generated_guide_retains_exact_unit_selections_outside_reader_content() {
         let catalog = crate::knowledge::authoring::tests::catalog_fixture();
         let mut response = json!({"content":{
-            "overview":"A triangle has three sides.","keyPoints":["Triangles have three sides."],
+            "overview":"A triangle is a polygon with three sides. Its three edges meet at three vertices.","keyPoints":["Triangles have exactly three sides."],
             "explanations":[],"importantTerms":[],"processSteps":[],"comparisons":[],
             "commonMisconceptions":[],"visualExplanations":[]
         }, "knowledgeUnitIds":["a".repeat(32)]});
@@ -1273,13 +1278,16 @@ mod tests {
     #[test]
     fn guide_contract_handles_null_optionals_and_rejects_unseen_visuals() {
         let catalog = crate::knowledge::authoring::tests::catalog_fixture();
-        let mut response = json!({"content":{"overview":"A triangle has three sides.","keyPoints":["Three sides."],"explanations":null},"knowledgeUnitIds":["K0"]});
+        let mut response = json!({"content":{"overview":"A triangle is a polygon with three sides. Its three edges meet at three vertices.","keyPoints":["Triangles have exactly three sides."],"explanations":null},"knowledgeUnitIds":["K0"]});
         assert!(parse_section_with_images(response.clone(), &catalog, false).is_ok());
         response["content"]["visualExplanations"] =
             json!([{"title":"Diagram","explanation":"A displayed triangle."}]);
         let text_only = parse_section_with_images(response.clone(), &catalog, false).unwrap();
         assert!(text_only.content.visual_explanations.is_empty());
-        assert_eq!(text_only.content.overview, "A triangle has three sides.");
+        assert_eq!(
+            text_only.content.overview,
+            "A triangle is a polygon with three sides. Its three edges meet at three vertices."
+        );
         assert_eq!(
             parse_section_with_images(response.clone(), &catalog, true)
                 .unwrap()

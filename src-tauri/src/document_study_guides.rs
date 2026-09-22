@@ -1591,7 +1591,7 @@ mod tests {
         let summary = "A / B / C / D / E / F / G";
         assert_eq!(
             guide_display_summary(summary, &[section]),
-            "This guide focuses on ASCVD risk reduction and related topics."
+            "This guide explains ASCVD risk reduction and related topics."
         );
     }
 

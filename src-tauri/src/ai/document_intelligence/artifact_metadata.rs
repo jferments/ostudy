@@ -163,7 +163,7 @@ mod tests {
     #[test]
     fn prompt_forbids_generator_and_source_boilerplate() {
         let prompt = artifact_metadata_system_prompt().to_ascii_lowercase();
-        assert!(prompt.contains("subject-centered"));
+        assert!(prompt.contains("human-readable umbrella title"));
         assert!(prompt.contains("ai-generated"));
         assert!(prompt.contains("generated from"));
         assert!(prompt.contains("filenames"));
