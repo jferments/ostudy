@@ -63,7 +63,7 @@ fn targeted_repair_keeps_original_aliases_and_excludes_unrelated_evidence() {
         .map(|index| {
             format!(
                 "Distinct repair region {index}: physiology marker {index} {}. ",
-                "context ".repeat(65)
+                "context ".repeat(20)
             )
         })
         .collect::<String>();
