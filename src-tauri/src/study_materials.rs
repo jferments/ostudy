@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 pub(crate) mod composition;
+mod reuse;
 
 const MAX_COLLECTION_OVERLAY_DOC_BYTES: usize = 2 * 1024 * 1024;
 const MAX_COLLECTION_OVERLAY_TEXT_CHARS: usize = 500_000;

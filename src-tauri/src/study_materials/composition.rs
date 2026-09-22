@@ -20,7 +20,7 @@ use crate::{
             generate_collection_study_guide_topic_section, load_document_task_context,
             CollectionStudyGuideAuthoring,
         },
-        document_provider, AiRuntimeState,
+        document_provider, generation, AiRuntimeState,
     },
     authoring::card_commands::interactive,
     cards::questions::ValidatedQuestion,
@@ -43,7 +43,7 @@ use crate::{
 };
 
 use super::{
-    load_bundle_status, StudyTargetArtifactKind, StudyTargetBundleStatus, StudyTargetKind,
+    load_bundle_status, reuse, StudyTargetArtifactKind, StudyTargetBundleStatus, StudyTargetKind,
     StudyTargetRef,
 };
 
@@ -166,7 +166,27 @@ async fn compose(
                         "Collection study-guide authoring requires the configured AI runtime.",
                     )
                 })?;
-                compose_collection_guide(database, runtime, &input.operation_id, &claim).await
+                match generation::Operation::begin(
+                    database,
+                    Some(&input.operation_id),
+                    None,
+                    Some(&claim.target.id),
+                    "collection_study_guide",
+                ) {
+                    Ok(mut diagnostics) => {
+                        let result = compose_collection_guide(
+                            database,
+                            runtime,
+                            &input.operation_id,
+                            &claim,
+                            &diagnostics.context(),
+                        )
+                        .await;
+                        diagnostics.finish(result.is_ok());
+                        result
+                    }
+                    Err(error) => Err(error),
+                }
             }
         };
         if let Err(error) = result {
@@ -974,6 +994,7 @@ async fn compose_collection_guide(
     runtime: &AiRuntimeState,
     operation_id: &str,
     claim: &BatchClaim,
+    diagnostics: &generation::Context,
 ) -> Result<(), CommandError> {
     if !claim.provider_authorized {
         return Err(CommandError::new(
@@ -1012,6 +1033,8 @@ async fn compose_collection_guide(
         &task.model_id,
     )?;
     task.apply_provider_capabilities(&capabilities);
+    task.diagnostics = Some(diagnostics.clone());
+    let guide_contract = reuse::guide_contract(&task)?;
     let signal = CancellationSignal::new();
     let view = collection_view::ensure_reduced(database, runtime, &task, &claim.target.id, &signal)
         .await?;
@@ -1076,8 +1099,10 @@ async fn compose_collection_guide(
         let p3 = indices.get(3).copied();
         let (r0, r1, r2, r3) = tokio::join!(
             collection_guide_slot(
+                database,
                 runtime,
                 &task,
+                &guide_contract,
                 &collection_title,
                 &view,
                 &windows,
@@ -1085,8 +1110,10 @@ async fn compose_collection_guide(
                 p0
             ),
             collection_guide_slot(
+                database,
                 runtime,
                 &task,
+                &guide_contract,
                 &collection_title,
                 &view,
                 &windows,
@@ -1094,8 +1121,10 @@ async fn compose_collection_guide(
                 p1
             ),
             collection_guide_slot(
+                database,
                 runtime,
                 &task,
+                &guide_contract,
                 &collection_title,
                 &view,
                 &windows,
@@ -1103,8 +1132,10 @@ async fn compose_collection_guide(
                 p2
             ),
             collection_guide_slot(
+                database,
                 runtime,
                 &task,
+                &guide_contract,
                 &collection_title,
                 &view,
                 &windows,
@@ -1148,8 +1179,10 @@ async fn compose_collection_guide(
 }
 
 async fn collection_guide_slot(
+    database: &Database,
     runtime: &AiRuntimeState,
     task: &crate::ai::document_intelligence::DocumentTaskContext,
+    guide_contract: &str,
     collection_title: &str,
     view: &CollectionViewState,
     windows: &[collection_view::CollectionGuideWindow],
@@ -1160,32 +1193,81 @@ async fn collection_guide_slot(
     let window = windows.get(index)?;
     Some((
         index,
-        author_collection_guide_window(runtime, task, collection_title, view, window, signal).await,
+        author_collection_guide_window(
+            database,
+            runtime,
+            task,
+            guide_contract,
+            collection_title,
+            view,
+            window,
+            signal,
+        )
+        .await,
     ))
 }
 
 async fn author_collection_guide_window(
+    database: &Database,
     runtime: &AiRuntimeState,
     task: &crate::ai::document_intelligence::DocumentTaskContext,
+    guide_contract: &str,
     collection_title: &str,
     view: &CollectionViewState,
     window: &collection_view::CollectionGuideWindow,
     signal: &CancellationSignal,
 ) -> Result<CollectionGuideSection, CommandError> {
     let relationship_context = relationship_context(view, &window.topic_ids);
-    let generated = generate_collection_study_guide_topic_section(
-        runtime,
+    let cache_key = reuse::section_key(
         task,
+        &view.synthesis.collection_id,
         collection_title,
-        CollectionStudyGuideAuthoring {
-            topic_title: &window.title,
-            topic_summary: &window.topic_context,
-            relationship_context: &relationship_context,
-            knowledge: &window.catalog,
-        },
-        signal,
-    )
-    .await?;
+        window,
+        &relationship_context,
+    )?;
+    let generated = if let Some(saved) = reuse::load_section(
+        database,
+        &view.synthesis.collection_id,
+        &cache_key,
+        guide_contract,
+        &window.catalog,
+        task.diagnostics.as_ref(),
+    )? {
+        saved
+    } else {
+        let mut section_task = task.clone();
+        section_task.diagnostic_window_key = Some(cache_key.clone());
+        let generated = generate_collection_study_guide_topic_section(
+            runtime,
+            &section_task,
+            collection_title,
+            CollectionStudyGuideAuthoring {
+                topic_title: &window.title,
+                topic_summary: &window.topic_context,
+                relationship_context: &relationship_context,
+                knowledge: &window.catalog,
+            },
+            signal,
+        )
+        .await?;
+        section_task.ensure_current(database)?;
+        database.with_connection(|connection| {
+            collection_view::ensure_analysis_current(
+                connection,
+                &view.synthesis.collection_id,
+                &view.analysis_hash,
+            )
+        })?;
+        reuse::save_section(
+            database,
+            &view.synthesis.collection_id,
+            &cache_key,
+            guide_contract,
+            &window.catalog,
+            &generated,
+        )?;
+        generated
+    };
     let mut content = generated.content;
     if content.important_terms.is_empty() {
         content.important_terms = window

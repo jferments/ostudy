@@ -205,6 +205,19 @@ impl Context {
             finished: false,
         })
     }
+
+    pub(crate) fn reused(&self, stage: &str, cache_key: &str) {
+        warn_accounting(self.database.with_connection(|connection| {
+            connection
+                .execute(
+                    "INSERT INTO generation_reuse_events(operation_id,stage,cache_key,created_at)
+                     VALUES(?1,?2,?3,?4)",
+                    params![self.operation_id, stage, cache_key, unix_time_millis()?],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        }));
+    }
 }
 
 tokio::task_local! {

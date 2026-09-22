@@ -107,6 +107,16 @@ impl KnowledgeCatalog {
         )))
     }
 
+    /// Identity of the evidence actually supplied to one authoring request.
+    /// Collection-wide preparation counters are deliberately excluded so an
+    /// unrelated source does not invalidate an otherwise identical window.
+    pub(crate) fn request_fingerprint(&self) -> Result<String, CommandError> {
+        Ok(hash(
+            &serde_json::to_string(&prompt::request_identity(self))
+                .map_err(CommandError::serialization)?,
+        ))
+    }
+
     pub(crate) fn select(
         &self,
         ids: &[String],

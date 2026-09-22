@@ -47,6 +47,27 @@ pub(super) fn preparation(catalog: &KnowledgeCatalog) -> Value {
     })
 }
 
+/// Stable identity for the evidence bytes/claims relevant to one authoring
+/// window. Global preparation counters are diagnostics, not semantic inputs.
+pub(super) fn request_identity(catalog: &KnowledgeCatalog) -> Value {
+    let preparation = preparation(catalog);
+    let selected_ids = catalog
+        .units
+        .iter()
+        .map(|unit| unit.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let document_core_units = catalog
+        .document_core_units
+        .iter()
+        .filter(|id| selected_ids.contains(id.as_str()))
+        .collect::<Vec<_>>();
+    json!({
+        "units": &catalog.units,
+        "documentCoreUnits": document_core_units,
+        "evidenceStructures": preparation["evidenceStructures"].clone(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
