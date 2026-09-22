@@ -283,7 +283,9 @@ mod tests {
         );
         assert!(looks_like_inventory_title("A / B / C"));
         assert!(looks_like_inventory_title("A, B, C, and D"));
-        assert!(!looks_like_inventory_title("Gastrointestinal hormones and nervous system"));
+        assert!(!looks_like_inventory_title(
+            "Gastrointestinal hormones and nervous system"
+        ));
     }
 
     #[test]
