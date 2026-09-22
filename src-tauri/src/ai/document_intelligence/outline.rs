@@ -4,7 +4,7 @@ use super::contracts::DocumentOutline;
 use crate::{document_semantics::SemanticWindow, error::CommandError};
 use serde_json::json;
 
-pub(crate) const OUTLINE_PROMPT_VERSION: i64 = 8;
+pub(crate) const OUTLINE_PROMPT_VERSION: i64 = 9;
 pub(crate) const OUTLINE_SCHEMA_VERSION: i64 = 3;
 
 pub(super) fn outline_context_for_window(

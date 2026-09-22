@@ -138,6 +138,7 @@ fn deterministic_description(
 fn accepted_title(value: &str, original_filename: &str, source_format: &str) -> Option<String> {
     let normalized = normalize_metadata(value, ARTIFACT_TITLE_MAX_CHARS);
     if normalized.is_empty()
+        || looks_like_inventory_title(&normalized)
         || contains_generator_boilerplate(&normalized)
         || exact_source_document_title(
             &normalized,
@@ -152,6 +153,18 @@ fn accepted_title(value: &str, original_filename: &str, source_format: &str) -> 
         return None;
     }
     Some(normalized)
+}
+
+fn looks_like_inventory_title(value: &str) -> bool {
+    let trimmed = value.trim();
+    let comma_count = trimmed.matches(',').count();
+    let word_count = trimmed.split_whitespace().count();
+    trimmed.contains(" / ")
+        || trimmed.contains(" | ")
+        || trimmed.contains("; ")
+        || comma_count >= 2
+        || trimmed.lines().count() > 1
+        || word_count > 16
 }
 
 fn accepted_description(value: &str, original_filename: &str) -> Option<String> {
@@ -252,6 +265,22 @@ mod tests {
             "Shock physiology"
         );
         assert_eq!(normalize_metadata("αβγδε", 3), "αβγ");
+    }
+
+    #[test]
+    fn slash_and_keyword_inventory_titles_are_rejected_field_by_field() {
+        let candidate = DocumentArtifactMetadataCandidate {
+            document_title: "Enteric neurotransmitters / GI extrinsic nervous system / GI hormones / intrinsic nervous system".to_string(),
+            deck_title: "Gastrointestinal hormones and nervous system".to_string(),
+            deck_description: "Review gastrointestinal signaling and neural control.".to_string(),
+        };
+        let desired =
+            derive_desired_metadata(&outline(), Some(&candidate), "shock_notes.pdf", "pdf");
+        assert_ne!(desired.document_title, candidate.document_title);
+        assert_eq!(desired.deck_title, "Gastrointestinal hormones and nervous system");
+        assert!(looks_like_inventory_title("A / B / C"));
+        assert!(looks_like_inventory_title("A, B, C, and D"));
+        assert!(!looks_like_inventory_title("Gastrointestinal hormones and nervous system"));
     }
 
     #[test]

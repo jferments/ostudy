@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 5;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 6;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 2;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
@@ -322,12 +322,13 @@ pub(crate) fn publish_document_study_guide(
             "The selected learning plan does not belong to this document.",
         ));
     }
-    let normalized_overview = normalize_overview(overview);
+    let mut normalized_overview = normalize_overview(overview);
     let knowledge_by_topic = section_drafts
         .iter()
         .map(|draft| (draft.topic_id.clone(), draft.knowledge_support.clone()))
         .collect::<HashMap<_, _>>();
     let sections = normalize_complete_sections(&plan, section_drafts)?;
+    normalized_overview.summary = guide_display_summary(&normalized_overview.summary, &sections);
     let overview_json = serialize_json(&normalized_overview)?;
     let overview_text = overview_plain_text(&normalized_overview);
     let now = unix_time_millis()?;
@@ -1286,19 +1287,55 @@ fn guide_display_title(value: &str) -> String {
 
 fn guide_display_summary(summary: &str, sections: &[DocumentStudyGuideSection]) -> String {
     let clean = collapse_display_whitespace(summary);
-    let separator_count = clean.matches(" / ").count() + clean.matches("; ").count();
-    if separator_count < 4 && clean.chars().count() <= 520 {
-        return clean;
+    if !overview_looks_like_inventory(&clean)
+        && clean.split_whitespace().count() >= 5
+        && clean.chars().count() <= 520
+    {
+        return ensure_sentence_ending(clean);
     }
+
+    let narrative = sections
+        .iter()
+        .map(|section| collapse_display_whitespace(&section.topic_summary))
+        .filter(|value| {
+            value.split_whitespace().count() >= 5
+                && !overview_looks_like_inventory(value)
+                && value.chars().count() <= 300
+        })
+        .take(2)
+        .map(ensure_sentence_ending)
+        .collect::<Vec<_>>();
+    if !narrative.is_empty() {
+        return narrative.join(" ");
+    }
+
     match sections {
-        [] => "A source-grounded overview of the selected material.".to_string(),
-        [section] => format!("This guide focuses on {}.", section.title),
-        _ => format!(
-            "This guide is organized into {} source-grounded sections, beginning with {}.",
-            sections.len(),
-            sections[0].title
+        [] => "This guide provides a source-grounded introduction to the selected material.".to_string(),
+        [section] => format!("This guide explains {}.", guide_display_title(&section.title)),
+        [first, second, ..] => format!(
+            "This guide explains {} and connects it with {} across the source material.",
+            guide_display_title(&first.title),
+            guide_display_title(&second.title),
         ),
     }
+}
+
+fn overview_looks_like_inventory(value: &str) -> bool {
+    value.contains(" / ")
+        || value.contains(" | ")
+        || value.matches("; ").count() >= 2
+        || value.lines().count() > 2
+        || (value.matches(',').count() >= 4
+            && !value.contains('.')
+            && !value.contains('!')
+            && !value.contains('?'))
+}
+
+fn ensure_sentence_ending(mut value: String) -> String {
+    if !value.ends_with(['.', '!', '?']) {
+        value.push('.');
+    }
+    value
 }
 
 fn collapse_display_whitespace(value: &str) -> String {
@@ -1511,6 +1548,25 @@ mod tests {
         assert_eq!(
             source,
             "ASCVD risk reduction / Angina pectoris treatment / Atherosclerosis / Cholesterol"
+        );
+    }
+
+    #[test]
+    fn display_overview_uses_topic_narrative_before_generic_fallback() {
+        let section = DocumentStudyGuideSection {
+            topic_id: "a".repeat(32),
+            parent_topic_id: None,
+            sort_index: 0,
+            title: "GI hormones / neural control".to_string(),
+            topic_summary: "Gastrointestinal function is coordinated by endocrine signals and enteric neural circuits".to_string(),
+            content: content(),
+            content_text: String::new(),
+            content_hash: "b".repeat(64),
+            source_locator: SourceLocator::new(SourceUnitKind::Page, vec![1], None).unwrap(),
+        };
+        assert_eq!(
+            guide_display_summary("A / B / C / D", &[section]),
+            "Gastrointestinal function is coordinated by endocrine signals and enteric neural circuits."
         );
     }
 

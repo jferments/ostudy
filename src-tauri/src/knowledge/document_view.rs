@@ -29,7 +29,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashSet};
 
-const VIEW_VERSION: i64 = 3;
+const VIEW_VERSION: i64 = 4;
 const MAX_SECTIONS: usize = 160;
 const MAX_DIGEST_BYTES: usize = 24_000;
 const REDUCTION_OUTPUT: usize = crate::document_scale::GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS;
@@ -114,7 +114,7 @@ pub(crate) async fn ensure(input: ViewInput<'_>) -> Result<DocumentOutline, Comm
     // back locally instead of silently omitting the tail or truncating JSON.
     if let Some((digest, allowed)) = balanced_digest(input.catalogs, budget) {
         let schema = reduction_schema(&allowed);
-        let user = format!("Organize this balanced, bounded selection from the shared document knowledge. Every nonempty semantic window is represented, but this is not an exhaustive inventory. Preserve qualifications and contradictions. Summarize its broad themes; select only a few central unit IDs from the supplied selection. Absence from coreUnitIds does NOT mean a unit is unimportant. Do not introduce new factual claims or recreate source quotations.\n<knowledge-digest>\n{digest}\n</knowledge-digest>");
+        let user = format!("Organize this balanced, bounded selection from the shared document knowledge. Every nonempty semantic window is represented, but this is not an exhaustive inventory. Preserve qualifications and contradictions. Write summary as 1–3 complete narrative sentences that introduce and synthesize the document's broad subject. NEVER make summary a slash-separated, semicolon-separated, comma-separated, newline-separated, or keyword inventory. keyConcepts is the explicit place for concise concept labels. Select only a few central unit IDs from the supplied selection. Absence from coreUnitIds does NOT mean a unit is unimportant. Do not introduce new factual claims or recreate source quotations.\n<knowledge-digest>\n{digest}\n</knowledge-digest>");
         check_canceled(&signal)?;
         input.task.ensure_current(input.database)?;
         input
@@ -264,7 +264,7 @@ fn native_outline(
             "No supported knowledge units are available yet. Unresolved source analysis remains checkpointed; retry preparation rather than inventing learning content."));
     }
     Ok(DocumentOutline {
-        summary: whole_items(sections.iter().map(|s| s.title.as_str()), 8000, "; "),
+        summary: native_narrative_summary(&sections),
         learning_objectives: sections
             .iter()
             .flat_map(|s| s.learning_objectives.iter().cloned())
@@ -279,6 +279,47 @@ fn native_outline(
             .collect(),
         sections,
     })
+}
+
+fn native_narrative_summary(sections: &[OutlineSection]) -> String {
+    let labels = sections
+        .iter()
+        .map(|section| compact_topic_label(&section.title))
+        .filter(|label| !label.is_empty())
+        .take(3)
+        .collect::<Vec<_>>();
+    match labels.as_slice() {
+        [] => "This material presents source-grounded concepts for study.".to_string(),
+        [one] => format!("This material focuses on {one}."),
+        [one, two] => format!("This material explains {one} and {two}."),
+        [one, two, ..] => {
+            format!("This material explains {one}, {two}, and related concepts across the source.")
+        }
+    }
+}
+
+fn compact_topic_label(value: &str) -> String {
+    let mut labels = value
+        .split(" / ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .take(2)
+        .collect::<Vec<_>>();
+    labels.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    match labels.as_slice() {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [one, two] => format!("{one} and {two}"),
+        _ => unreachable!(),
+    }
+}
+
+fn inventory_like_summary(value: &str) -> bool {
+    let clean = value.trim();
+    clean.contains(" / ")
+        || clean.matches("; ").count() >= 2
+        || clean.lines().count() > 1
+        || clean.matches(',').count() >= 4
 }
 
 fn whole_items<'a>(
@@ -376,6 +417,11 @@ fn parse_reduction(value: Value, allowed: &[String]) -> Result<Reduction, Comman
     let result: Reduction = serde_json::from_value(value)
         .map_err(|_| invalid("Invalid knowledge overview structure."))?;
     super::contracts::bounded(&result.summary, 8000, "knowledge overview", false)?;
+    if result.summary.split_whitespace().count() < 5 || inventory_like_summary(&result.summary) {
+        return Err(invalid(
+            "The knowledge overview summary must be narrative prose rather than a topic inventory.",
+        ));
+    }
     for (values, max_len, max_chars) in [
         (&result.learning_objectives, 16, 1200),
         (&result.key_concepts, 24, 700),
@@ -422,6 +468,47 @@ mod tests {
     fn invented_global_priority_does_not_change_knowledge() {
         assert!(parse_reduction(json!({"summary":"Geometry","learningObjectives":[],"keyConcepts":[],"coreUnitIds":["x"]}),&["a".repeat(32)]).is_err());
     }
+    #[test]
+    fn native_fallback_uses_narrative_summary_instead_of_topic_inventory() {
+        let sections = vec![
+            OutlineSection {
+                title: "Enteric neurotransmitters / GI extrinsic nervous system".into(),
+                page_start: 1,
+                page_end: 2,
+                summary: String::new(),
+                learning_objectives: vec![],
+                key_concepts: vec![],
+            },
+            OutlineSection {
+                title: "GI hormones / intrinsic nervous system".into(),
+                page_start: 3,
+                page_end: 4,
+                summary: String::new(),
+                learning_objectives: vec![],
+                key_concepts: vec![],
+            },
+        ];
+        let summary = native_narrative_summary(&sections);
+        assert!(summary.starts_with("This material explains "));
+        assert!(!summary.contains(" / "));
+        assert!(!inventory_like_summary(&summary));
+    }
+
+    #[test]
+    fn reduction_rejects_keyword_inventory_summary() {
+        let error = parse_reduction(
+            json!({
+                "summary":"Enteric neurotransmitters / GI hormones / intrinsic nervous system",
+                "learningObjectives":[],
+                "keyConcepts":["GI hormones"],
+                "coreUnitIds":[]
+            }),
+            &[],
+        )
+        .expect_err("inventory summary must not be published");
+        assert_eq!(error.code, "invalid_semantic_content");
+    }
+
     #[test]
     fn native_labels_are_not_truncated_into_different_claims() {
         assert_eq!(

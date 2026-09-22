@@ -46,7 +46,6 @@ function DocumentsRoute() {
   const jobs = useDocumentJobs();
   if (!jobs) throw new Error("Missing job owner");
   return <section aria-label="Documents route">
-    <button onClick={() => { void jobs.generateStudyGuide(document); }}>Generate guide</button>
     <button onClick={() => { void jobs.stopStudyGuide(document); }}>Stop guide</button>
     <span role="status">{jobs.guideGeneratingDocumentIds.has(document.id) ? "Guide running" : "Idle"}</span>
     {jobs.errorMessage ? <p role="alert">{jobs.errorMessage}</p> : null}
@@ -80,60 +79,41 @@ beforeEach(() => {
 });
 
 describe("application-lifetime document jobs", () => {
-  it("retains a running guide across route unmount and completes elsewhere", async () => {
-    const request = deferred<{ revision: number }>();
-    mocks.guide.mockReturnValue(request.promise);
+  it("starts one automatic guide after card completion and keeps it alive across navigation", async () => {
+    let current = [retryDocument];
+    const guide = deferred<{ revision: number }>();
+    mocks.list.mockImplementation(async () => current);
+    mocks.start.mockImplementation(async () => {
+      current = [{ ...retryDocument, lifecycleState: "processing" }];
+    });
+    mocks.guide.mockReturnValue(guide.promise);
     open();
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "Generate guide" }));
-    expect(screen.getByRole("status").textContent).toBe("Guide running");
-    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-    expect(screen.queryByRole("region", { name: "Documents route" })).toBeNull();
-    expect(mocks.cancelGuide).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-    expect(screen.getByRole("status").textContent).toBe("Guide running");
-    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-    await act(async () => { request.resolve({ revision: 2 }); await request.promise; });
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("success", expect.stringContaining("revision 2")));
-    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-    expect(screen.getByRole("status").textContent).toBe("Idle");
-    expect(mocks.guide).toHaveBeenCalledTimes(1);
-    expect(mocks.cancelGuide).not.toHaveBeenCalled();
-  });
-  it("does not erase a guide failure on refresh or navigation", async () => {
-    const request = deferred<never>();
-    mocks.guide.mockReturnValue(request.promise);
-    open();
-    fireEvent.click(screen.getByRole("button", { name: "Generate guide" }));
-    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-    await act(async () => { request.reject(new Error("Guide contract failed")); await request.promise.catch(() => undefined); });
-    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Guide contract failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry cards" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id));
+    current = [{
+      ...retryDocument,
+      lifecycleState: "ready",
+      generatedDeckId: "d".repeat(32),
+      generatedCardCount: 6,
+      safeErrorCode: "",
+      safeErrorMessage: "",
+    }];
     fireEvent.click(screen.getByRole("button", { name: "Refresh documents" }));
-    await act(async () => { await Promise.resolve(); });
-    expect(screen.getByRole("alert").textContent).toContain("Guide contract failed");
-  });
-  it("guards duplicate start and stop intents", async () => {
-    const request = deferred<{ revision: number }>();
-    mocks.guide.mockReturnValue(request.promise);
-    open();
-    const start = screen.getByRole("button", { name: "Generate guide" });
-    fireEvent.click(start); fireEvent.click(start);
+    await waitFor(() => expect(mocks.guide).toHaveBeenCalledWith(retryDocument.id));
+    expect(screen.getByRole("status").textContent).toBe("Guide running");
+
+    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
+    expect(mocks.cancelGuide).not.toHaveBeenCalled();
+    await act(async () => { guide.resolve({ revision: 2 }); await guide.promise; });
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(
+      "success",
+      "Study guide revision 2 created automatically. Open it from Study Guides.",
+    ));
     expect(mocks.guide).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Stop guide" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop guide" }));
-    expect(mocks.cancelGuide).toHaveBeenCalledTimes(1);
-    await act(async () => { request.resolve({ revision: 1 }); await request.promise; });
   });
-  it("reports failed reconciliation without retrying a saved guide", async () => {
-    mocks.guide.mockResolvedValue({ revision: 3 });
-    mocks.refreshDecks.mockRejectedValue(new Error("Read failed"));
-    open();
-    fireEvent.click(screen.getByRole("button", { name: "Generate guide" }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Saved successfully"));
-    expect(mocks.guide).toHaveBeenCalledTimes(1);
-    expect(mocks.toast).toHaveBeenCalledWith("success", expect.stringContaining("revision 3"));
-  });
+
   it("hands flashcard generation to native ownership and observes durable completion", async () => {
     let current = [retryDocument];
     mocks.list.mockImplementation(async () => current);

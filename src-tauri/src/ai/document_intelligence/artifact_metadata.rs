@@ -10,8 +10,8 @@ use super::{
     transport::{request_json_cancellable, JsonTaskRequest},
 };
 
-pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 1;
-pub(crate) const ARTIFACT_METADATA_PROMPT_VERSION: i64 = 1;
+pub(crate) const ARTIFACT_METADATA_GENERATOR_VERSION: i64 = 2;
+pub(crate) const ARTIFACT_METADATA_PROMPT_VERSION: i64 = 2;
 pub(crate) const ARTIFACT_METADATA_SCHEMA_VERSION: i64 = 1;
 pub(crate) const ARTIFACT_TITLE_MAX_CHARS: usize = 120;
 pub(crate) const ARTIFACT_DESCRIPTION_MAX_CHARS: usize = 800;
@@ -63,7 +63,7 @@ pub(super) async fn request_document_artifact_metadata(
 
 fn artifact_metadata_system_prompt() -> String {
     format!(
-        "You are ostudy's learning-artifact metadata planner. Use only the supplied validated whole-document learning plan. Return one concise subject-centered document title, one concise subject-centered flashcard-deck title, and one educational deck description. Do not mention AI, generation, prompts, source files, filenames, file formats, uploads, or phrases such as 'generated from' or 'AI-generated'. Do not invent facts or copy a long summary into a title. Titles must contain 1–{ARTIFACT_TITLE_MAX_CHARS} characters and the description 1–{ARTIFACT_DESCRIPTION_MAX_CHARS} characters. Return only the required structured result. Metadata schema version: {ARTIFACT_METADATA_SCHEMA_VERSION}. Metadata prompt version: {ARTIFACT_METADATA_PROMPT_VERSION}."
+        "You are ostudy's learning-artifact metadata planner. Use only the supplied validated whole-document learning plan. Return one concise human-readable umbrella title for the document, one concise human-readable umbrella title for its flashcard deck, and one educational deck description. A title should normally be a 3–10 word noun phrase in sentence case that summarizes the subject as a whole, such as 'Gastrointestinal hormones and nervous system'. NEVER return a slash-separated, semicolon-separated, comma-list, keyword inventory, section inventory, or filename-like title. Do not mention AI, generation, prompts, source files, filenames, file formats, uploads, or phrases such as 'generated from' or 'AI-generated'. Do not invent facts or copy a long summary into a title. Titles must contain 1–{ARTIFACT_TITLE_MAX_CHARS} characters and the description 1–{ARTIFACT_DESCRIPTION_MAX_CHARS} characters. Return only the required structured result. Metadata schema version: {ARTIFACT_METADATA_SCHEMA_VERSION}. Metadata prompt version: {ARTIFACT_METADATA_PROMPT_VERSION}."
     )
 }
 
@@ -150,6 +150,14 @@ mod tests {
             schema["properties"]["deckDescription"]["maxLength"],
             json!(ARTIFACT_DESCRIPTION_MAX_CHARS),
         );
+    }
+
+    #[test]
+    fn prompt_requires_an_umbrella_title_instead_of_a_keyword_inventory() {
+        let prompt = artifact_metadata_system_prompt();
+        assert!(prompt.contains("Gastrointestinal hormones and nervous system"));
+        assert!(prompt.contains("NEVER return a slash-separated"));
+        assert!(prompt.contains("3–10 word noun phrase"));
     }
 
     #[test]

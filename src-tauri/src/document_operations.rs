@@ -70,7 +70,6 @@ pub fn start_document_flashcard_generation(
         let paths = task_app.state::<AppPaths>();
         let runtime = task_app.state::<AiRuntimeState>();
         let render_runtime = task_app.state::<PdfRenderRuntime>();
-        let postprocess_app = task_app.clone();
         let result = run_reserved_document_task(
             reservation,
             documents::retry_reserved_pdf_flashcard_generation(
@@ -84,10 +83,6 @@ pub fn start_document_flashcard_generation(
         .await;
         match result {
             Ok(value) => {
-                crate::document_outline_service::schedule_document_postprocessing(
-                    postprocess_app,
-                    document_id.clone(),
-                );
                 crate::logging::info_target(
                     "documents.generation",
                     "background_document_generation_succeeded",
@@ -119,7 +114,6 @@ pub fn start_document_flashcard_generation(
 /// be stopped through the matching document task identity.
 #[tauri::command]
 pub async fn run_document_flashcard_generation(
-    app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
@@ -142,10 +136,7 @@ pub async fn run_document_flashcard_generation(
         Err(error) if error.code == "ai_request_canceled" => {
             Err(documents::flashcard_generation_canceled_error())
         }
-        Ok(value) => {
-            crate::document_outline_service::schedule_document_postprocessing(app, document_id);
-            Ok(value)
-        }
+        Ok(value) => Ok(value),
         Err(error) => Err(error),
     }
 }

@@ -100,15 +100,13 @@ pub(crate) async fn generate_document_study_guide(
         generate_document_study_guide_impl(database, paths, runtime, input),
     )
     .await;
+    crate::document_outline_service::schedule_document_postprocessing(app, document_id.clone());
     match result {
         Err(error) if error.code == "ai_request_canceled" => Err(CommandError::new(
             "document_study_guide_canceled",
             CANCELED_MESSAGE,
         )),
-        Ok(value) => {
-            crate::document_outline_service::schedule_document_postprocessing(app, document_id);
-            Ok(value)
-        }
+        Ok(value) => Ok(value),
         Err(error) => Err(error),
     }
 }

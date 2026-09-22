@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
-import { InfoButton, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
+import { MetadataDialog, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
 import { ResponsiveActionGroup, type ResponsiveAction } from "../ui/patterns/ResponsiveActionGroup";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
 import { Button } from "../ui/primitives/Button";
@@ -38,12 +38,13 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     documents, generationProgress, learningPlans, clockNow, isLoading, isUploading, busyDocumentIds,
     cancelingDocumentIds, deletingDocumentIds, guideGeneratingDocumentIds,
     cancelingGuideDocumentIds, errorMessage, uploadDocument, retry, generateMore,
-    generateStudyGuide, stopStudyGuide, stopGeneration, openSource, deleteDocument,
+    stopStudyGuide, stopGeneration, openSource, deleteDocument,
   } = jobs;
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
   const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
+  const [generationInfoDocumentId, setGenerationInfoDocumentId] = useState<string | null>(null);
   const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
   const contained = new Set(containedDocumentIds);
   const looseDocuments = documents.filter((document) => !contained.has(document.id));
@@ -123,44 +124,63 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
             const learningPlan = learningPlans[document.id] ?? null;
             const canRetry = document.generatedDeckId === null && document.lifecycleState !== "processing";
             const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
-            const canGenerateGuide = document.lifecycleState !== "processing";
-            const actions: ResponsiveAction[] = [];
-            actions.push({
-              id: "view", label: document.sourceFormat === "image_bundle" ? "View collection" : "View", placement: "always-visible",
+            const actions: ResponsiveAction[] = [{
+              id: "view",
+              label: document.sourceFormat === "image_bundle" ? "View image collection" : "View",
+              placement: "always-visible",
+              presentation: "icon",
+              icon: "view",
               onSelect: () => document.sourceFormat === "image_bundle"
                 ? setImageWorkspaceDocumentId(document.id) : void openSource(document),
               disabled: document.sourceFormat === "image_bundle" ? deleting : busy,
+            }];
+            if (document.lifecycleState !== "processing") actions.push({
+              id: "delete",
+              label: "Delete document",
+              description: "Permanently delete this managed source and document-owned derivatives.",
+              placement: "always-visible",
+              presentation: "icon",
+              icon: "delete",
+              destructive: true,
+              onSelect: () => void deleteDocument(document),
+              disabled: busy,
+              loading: deleting,
+            });
+            actions.push({
+              id: "generation-info",
+              label: "Generation info",
+              placement: "overflow-only",
+              onSelect: () => setGenerationInfoDocumentId(document.id),
             });
             if (document.lifecycleState === "processing") actions.push({
-              id: "stop-generation", label: canceling ? "Stopping…" : "Stop generation",
-              placement: "always-visible", onSelect: () => void stopGeneration(document), disabled: canceling,
+              id: "stop-generation",
+              label: canceling ? "Stopping…" : "Stop generation",
+              placement: "overflow-only",
+              destructive: true,
+              onSelect: () => void stopGeneration(document),
+              disabled: canceling,
             });
-            if (canGenerateGuide) actions.push({
-              id: "generate-guide",
-              label: guideGenerating ? (cancelingGuide ? "Stopping study guide…" : "Generating study guide…") : "Generate study guide",
-              description: guideGenerating ? "Stop study guide generation. Saved topics remain available." : undefined,
-              icon: guideGenerating ? "stop" : undefined,
-              destructive: guideGenerating, placement: "always-visible",
-              variant: guideGenerating ? "secondary" : "primary",
-              onSelect: () => void (guideGenerating ? stopStudyGuide(document) : generateStudyGuide(document)),
-              disabled: guideGenerating ? cancelingGuide : busy,
+            if (guideGenerating) actions.push({
+              id: "stop-guide",
+              label: cancelingGuide ? "Stopping study guide…" : "Stop study guide generation",
+              placement: "overflow-only",
+              destructive: true,
+              onSelect: () => void stopStudyGuide(document),
+              disabled: cancelingGuide,
             });
             if (canRetry) actions.push({
-              id: "retry", label: cardBusy ? "Retrying…" : "Retry generation",
-              placement: "always-visible", variant: "primary",
-              onSelect: () => void retry(document), disabled: busy,
+              id: "retry",
+              label: cardBusy ? "Retrying…" : "Retry generation",
+              placement: "overflow-only",
+              onSelect: () => void retry(document),
+              disabled: busy,
             });
             if (canGenerateMore) actions.push({
-              id: "generate-more", label: cardBusy ? "Generating…" : "Generate more cards",
-              placement: "wide-and-medium", variant: "primary",
-              onSelect: () => void generateMore(document), disabled: busy,
-            });
-            if (document.lifecycleState !== "processing") actions.push({
-              id: "delete", label: "Delete document",
-              description: "Permanently delete this managed source and document-owned derivatives.",
-              placement: "wide-and-medium", presentation: "icon", icon: "delete", destructive: true,
-              onSelect: () => void deleteDocument(document), disabled: busy,
-              loading: deleting,
+              id: "generate-more",
+              label: cardBusy ? "Generating…" : "Generate more cards",
+              placement: "overflow-only",
+              onSelect: () => void generateMore(document),
+              disabled: busy,
             });
             return (
               <Surface as="article" key={document.id} className={styles.card}>
@@ -186,21 +206,6 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                     ) : guideGenerating ? (
                       <span className={styles.processingPhase} aria-live="polite">{cancelingGuide ? "Stopping study guide" : "Generating study guide"}</span>
                     ) : null}
-                    {document.lifecycleState !== "processing" ? (
-                      <InfoButton label={`View metadata for ${document.title}`} title={`${document.title} metadata`}
-                        description="Source and processing details for this document." className={styles.metadataButton}>
-                        <MetadataList>
-                          <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />
-                          <MetadataItem label={sourceUnitHeading(document.sourceUnitKind)} value={formatSourceUnitMetric(document)} />
-                          <MetadataItem label="Processing time" value={formatProcessingDuration(document.processingDurationMs)} />
-                          <MetadataItem label="API tokens" value={formatApiTokens(document, null)} />
-                          <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
-                          <MetadataItem label="Created" value={formatDate(document.createdAt)} />
-                          <MetadataItem label="SHA-256" value={document.sha256} />
-                        </MetadataList>
-                        <GenerationSummary report={document.generationSummary} />
-                      </InfoButton>
-                    ) : null}
                   </div>
                   <div className={styles.sourceSummary}>
                     <span className={styles.filename}>{document.originalFilename}</span>
@@ -219,7 +224,29 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                     <p className={styles.deckNote}>The previous generated deck was deleted. Retry generation to create a new deck from the retained document.</p>
                   ) : null}
                 </div>
-                <ResponsiveActionGroup label={`Actions for ${document.title}`} actions={actions} className={styles.actions} />
+                <ResponsiveActionGroup
+                  label={`Actions for ${document.title}`}
+                  overflowLabel={`More actions for ${document.title}`}
+                  actions={actions}
+                  className={styles.actions}
+                />
+                <MetadataDialog
+                  open={generationInfoDocumentId === document.id}
+                  title={`${document.title} generation info`}
+                  description="Source, processing, and latest generation details for this document."
+                  onClose={() => setGenerationInfoDocumentId(null)}
+                >
+                  <MetadataList>
+                    <MetadataItem label="Format and size" value={`${formatDocumentType(document.sourceFormat)} · ${formatBytes(document.byteSize)}`} />
+                    <MetadataItem label={sourceUnitHeading(document.sourceUnitKind)} value={formatSourceUnitMetric(document)} />
+                    <MetadataItem label="Processing time" value={formatProcessingDuration(document.processingDurationMs)} />
+                    <MetadataItem label="API tokens" value={formatApiTokens(document, live)} />
+                    <MetadataItem label="Updated" value={formatDate(document.updatedAt)} />
+                    <MetadataItem label="Created" value={formatDate(document.createdAt)} />
+                    <MetadataItem label="SHA-256" value={document.sha256} />
+                  </MetadataList>
+                  <GenerationSummary report={document.generationSummary} />
+                </MetadataDialog>
               </Surface>
             );
           })}

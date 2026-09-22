@@ -7,7 +7,7 @@
 
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
@@ -75,7 +75,6 @@ impl AdditionalDocumentContext {
 
 #[tauri::command]
 pub async fn generate_more_pdf_flashcards(
-    app: AppHandle,
     database: State<'_, Database>,
     paths: State<'_, AppPaths>,
     runtime: State<'_, AiRuntimeState>,
@@ -106,10 +105,7 @@ pub async fn generate_more_pdf_flashcards(
             "document_generation_canceled",
             CANCELED_MESSAGE,
         )),
-        Ok(value) => {
-            crate::document_outline_service::schedule_document_postprocessing(app, document_id);
-            Ok(value)
-        }
+        Ok(value) => Ok(value),
         Err(error) => Err(error),
     }
 }

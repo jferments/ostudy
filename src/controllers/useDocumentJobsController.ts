@@ -66,6 +66,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   const selectingFile = useRef(false);
   const stopping = useRef(new Set<string>());
   const backgroundFlashcardIds = useRef(new Set<string>());
+  const automaticGuideIds = useRef(new Set<string>());
   const latestDocuments = useRef(documents);
   latestDocuments.current = documents;
   const refreshLane = useRequestLane();
@@ -184,6 +185,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
             );
           }
         });
+        void ensureAutomaticStudyGuide(document);
         continue;
       }
       const message = document.safeErrorMessage || "Document generation failed.";
@@ -211,6 +213,37 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
           `Generation started; refreshing Documents failed: ${getErrorMessage(error)}`,
         );
       }
+    }
+  }
+
+  async function ensureAutomaticStudyGuide(document: DocumentSummary): Promise<void> {
+    if (automaticGuideIds.current.has(document.id)
+      || guideGeneratingDocumentIds.has(document.id)) return;
+    automaticGuideIds.current.add(document.id);
+    updateIdSet(setGuideGeneratingDocumentIds, document.id, true);
+    updateIdSet(setCancelingGuideDocumentIds, document.id, false);
+    try {
+      const guide = await generateDocumentStudyGuide(document.id);
+      await reconcileSaved();
+      showToast(
+        "success",
+        `Study guide revision ${guide.revision} created automatically. Open it from Study Guides.`,
+      );
+    } catch (error: unknown) {
+      const code = getErrorCode(error);
+      if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
+        showToast("info", "Automatic study-guide generation stopped. Saved topic progress can be reused.");
+      } else {
+        const message = getErrorMessage(error);
+        setErrorMessage(`Flashcards were saved, but automatic Study Guide generation failed: ${message}`);
+        showToast("error", `Flashcards were saved, but the Study Guide failed: ${message}`);
+      }
+      await refreshDocuments().catch(() => undefined);
+    } finally {
+      automaticGuideIds.current.delete(document.id);
+      stopping.current.delete(`guide:${document.id}`);
+      updateIdSet(setGuideGeneratingDocumentIds, document.id, false);
+      updateIdSet(setCancelingGuideDocumentIds, document.id, false);
     }
   }
 
@@ -296,6 +329,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     try {
       const result = await generateMoreDocumentFlashcards(document.id);
       await reconcileSaved();
+      void ensureAutomaticStudyGuide(document);
       if (result.createdCardCount === 0) {
         showToast("info", "The second pass did not find any additional non-duplicate cards to add.");
       } else {
@@ -308,38 +342,6 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       await handleGenerationFailure(error);
     } finally {
       updateIdSet(setBusyDocumentIds, document.id, false);
-    }
-  }
-
-  async function generateStudyGuide(document: DocumentSummary): Promise<void> {
-    if (document.lifecycleState === "processing"
-      || busyDocumentIds.has(document.id)
-      || guideGeneratingDocumentIds.has(document.id)) return;
-    updateIdSet(setGuideGeneratingDocumentIds, document.id, true);
-    updateIdSet(setCancelingGuideDocumentIds, document.id, false);
-    setErrorMessage(null);
-    try {
-      const guide = await generateDocumentStudyGuide(document.id);
-      await reconcileSaved();
-      showToast(
-        "success",
-        `Study guide revision ${guide.revision} created. Open it from Study Guides.`,
-      );
-    } catch (error: unknown) {
-      const code = getErrorCode(error);
-      if (code === "document_study_guide_canceled" || code === "ai_request_canceled") {
-        setErrorMessage(null);
-        showToast("info", "Study-guide generation stopped. Saved topic progress can be reused on retry.");
-      } else {
-        const message = getErrorMessage(error);
-        setErrorMessage(message);
-        showToast("error", message);
-      }
-      await refreshDocuments().catch(() => undefined);
-    } finally {
-      stopping.current.delete(`guide:${document.id}`);
-      updateIdSet(setGuideGeneratingDocumentIds, document.id, false);
-      updateIdSet(setCancelingGuideDocumentIds, document.id, false);
     }
   }
 
@@ -457,7 +459,6 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     uploadDocument,
     retry,
     generateMore,
-    generateStudyGuide,
     stopStudyGuide,
     stopGeneration,
     openSource,
