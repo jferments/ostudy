@@ -203,6 +203,10 @@ impl ActiveDocumentTasks {
             .unwrap_or(false)
     }
 
+    fn count(&self) -> usize {
+        self.tasks.lock().map(|tasks| tasks.len()).unwrap_or(1)
+    }
+
     fn is_canceled(&self, document_id: &str) -> bool {
         self.tasks
             .lock()
@@ -497,6 +501,10 @@ pub(crate) fn is_document_task_active(document_id: &str) -> bool {
 
 pub(crate) fn has_active_document_tasks() -> bool {
     ACTIVE_DOCUMENT_TASKS.has_any()
+}
+
+pub(crate) fn active_document_task_count() -> usize {
+    ACTIVE_DOCUMENT_TASKS.count()
 }
 
 pub(crate) fn is_document_task_canceled(document_id: &str) -> bool {

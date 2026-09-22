@@ -52,6 +52,7 @@ pub(crate) fn plan_parallel_workers(
         task_count,
         per_worker_memory_bytes,
         environment_worker_cap(environment_cap),
+        crate::task_cancellation::active_document_task_count().max(1),
     )
 }
 
@@ -89,9 +90,13 @@ fn calculate_parallel_workers(
     task_count: usize,
     per_worker_memory_bytes: u64,
     explicit_cap: Option<usize>,
+    active_document_tasks: usize,
 ) -> ParallelWorkPlan {
+    let active_document_tasks = active_document_tasks.max(1);
     let logical_cpus = snapshot.logical_cpus.max(1);
-    let working_memory_budget_bytes = working_memory_budget(snapshot.available_memory_bytes);
+    let cpu_worker_budget = (logical_cpus / active_document_tasks).max(1);
+    let working_memory_budget_bytes =
+        working_memory_budget(snapshot.available_memory_bytes) / active_document_tasks as u64;
     let memory_worker_limit = if working_memory_budget_bytes == 0 || per_worker_memory_bytes == 0 {
         usize::MAX
     } else {
@@ -109,7 +114,7 @@ fn calculate_parallel_workers(
         0
     } else {
         task_count
-            .min(logical_cpus)
+            .min(cpu_worker_budget)
             .min(memory_worker_limit)
             .min(environmental_limit)
             .max(1)
@@ -163,14 +168,34 @@ mod tests {
     #[test]
     fn worker_plan_can_be_cpu_limited_without_a_fixed_ceiling() {
         assert_eq!(
-            calculate_parallel_workers(snapshot(64, gib(128)), 100, 256 * MIB, None).worker_count,
+            calculate_parallel_workers(snapshot(64, gib(128)), 100, 256 * MIB, None, 1).worker_count,
             64
         );
     }
 
     #[test]
+    fn concurrent_documents_share_cpu_and_working_memory_budget() {
+        let value = snapshot(24, gib(32));
+        let single = calculate_parallel_workers(value, 100, 512 * MIB, None, 1);
+        let pair = calculate_parallel_workers(value, 100, 512 * MIB, None, 2);
+        let triple = calculate_parallel_workers(value, 100, 512 * MIB, None, 3);
+
+        assert_eq!(single.worker_count, 24);
+        assert_eq!(pair.worker_count, 12);
+        assert_eq!(triple.worker_count, 8);
+        assert_eq!(
+            pair.working_memory_budget_bytes,
+            single.working_memory_budget_bytes / 2
+        );
+        assert_eq!(
+            triple.working_memory_budget_bytes,
+            single.working_memory_budget_bytes / 3
+        );
+    }
+
+    #[test]
     fn worker_plan_is_memory_limited_before_machine_exhaustion() {
-        let plan = calculate_parallel_workers(snapshot(64, gib(4)), 100, 512 * MIB, None);
+        let plan = calculate_parallel_workers(snapshot(64, gib(4)), 100, 512 * MIB, None, 1);
         assert_eq!(plan.working_memory_budget_bytes, gib(3));
         assert_eq!(plan.worker_count, 6);
     }
@@ -179,11 +204,11 @@ mod tests {
     fn worker_plan_is_task_limited_and_accepts_an_operator_cap() {
         let value = snapshot(64, gib(128));
         assert_eq!(
-            calculate_parallel_workers(value, 3, 128 * MIB, None).worker_count,
+            calculate_parallel_workers(value, 3, 128 * MIB, None, 1).worker_count,
             3
         );
         assert_eq!(
-            calculate_parallel_workers(value, 100, 128 * MIB, Some(12)).worker_count,
+            calculate_parallel_workers(value, 100, 128 * MIB, Some(12), 1).worker_count,
             12
         );
     }
@@ -199,34 +224,34 @@ mod tests {
                 value.low_memory = true;
             }
             assert_eq!(
-                calculate_parallel_workers(value, 20, 128 * MIB, None).worker_count,
+                calculate_parallel_workers(value, 20, 128 * MIB, None, 1).worker_count,
                 1
             );
         }
         let mut thermal = snapshot(16, gib(32));
         thermal.thermal_limited = true;
         assert_eq!(
-            calculate_parallel_workers(thermal, 20, 128 * MIB, None).worker_count,
+            calculate_parallel_workers(thermal, 20, 128 * MIB, None, 1).worker_count,
             1
         );
         let mut background = snapshot(16, gib(32));
         background.foreground = false;
         assert_eq!(
-            calculate_parallel_workers(background, 20, 128 * MIB, None).worker_count,
+            calculate_parallel_workers(background, 20, 128 * MIB, None, 1).worker_count,
             1
         );
     }
 
     #[test]
     fn missing_memory_information_falls_back_to_cpu_and_task_bounds() {
-        let plan = calculate_parallel_workers(snapshot(24, 0), 100, 512 * MIB, None);
+        let plan = calculate_parallel_workers(snapshot(24, 0), 100, 512 * MIB, None, 1);
         assert_eq!(plan.worker_count, 24);
         assert_eq!(plan.working_memory_budget_bytes, 0);
     }
 
     #[test]
     fn queue_capacity_respects_remaining_memory_and_pipeline_depth() {
-        let plan = calculate_parallel_workers(snapshot(8, gib(8)), 20, 512 * MIB, None);
+        let plan = calculate_parallel_workers(snapshot(8, gib(8)), 20, 512 * MIB, None, 1);
         assert_eq!(queue_capacity(plan, 20, 256 * MIB, 2), 8);
     }
 }
