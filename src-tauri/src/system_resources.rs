@@ -168,7 +168,8 @@ mod tests {
     #[test]
     fn worker_plan_can_be_cpu_limited_without_a_fixed_ceiling() {
         assert_eq!(
-            calculate_parallel_workers(snapshot(64, gib(128)), 100, 256 * MIB, None, 1).worker_count,
+            calculate_parallel_workers(snapshot(64, gib(128)), 100, 256 * MIB, None, 1)
+                .worker_count,
             64
         );
     }
