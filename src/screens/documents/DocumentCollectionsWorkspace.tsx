@@ -103,7 +103,7 @@ export function DocumentCollectionsWorkspace({
   }
 
   function openRanges(membership: DocumentCollectionMembership): void {
-    const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
+    const ranges = loadedOrganization.ranges.filter((range) => range.membershipId === membership.id);
     setDialog({
       kind: "ranges",
       membership,
@@ -260,7 +260,7 @@ function CollectionPanel({
       >
         <FolderSources
           folder={folder}
-          organization={loadedOrganization}
+          organization={organization}
           documents={documents}
           onAdd={onAdd}
           onRanges={onRanges}
@@ -659,7 +659,7 @@ function parseRanges(value: string, document: DocumentSummary): SourceRangeInput
 
 function rangeLabel(membership: DocumentCollectionMembership, organization: DocumentCollectionOrganization, document: DocumentSummary | undefined): string {
   if (!document) return "Source unavailable";
-  const ranges = loadedOrganization.ranges.filter((range) => range.membershipId === membership.id);
+  const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
   if (!ranges.length) return `Whole document · ${document.sourceUnitCount} ${unitPlural(document.sourceUnitKind)}`;
   if (ranges.some((range) => range.sourceSha256 !== document.sha256)) return "Reading range needs review because the source changed";
   const pieces = ranges.map((range) => range.startUnit === range.endUnit ? String(range.startUnit) : `${range.startUnit}–${range.endUnit}`);
