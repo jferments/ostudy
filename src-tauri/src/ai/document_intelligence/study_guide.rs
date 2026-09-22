@@ -336,7 +336,15 @@ async fn request_study_guide_section_with_retry(
     match first {
         Ok(section) => Ok(section),
         Err(error) if guide_retryable(&error) => {
-            crate::task_cancellation::record_current_provider_retry();
+            if !crate::ai::generation::reserve_recovery(
+                task.diagnostics.as_ref(),
+                "guide_authoring",
+                task.diagnostic_window_key.as_deref(),
+                crate::ai::generation::RecoveryReason::ContractRepair,
+                &error.code,
+            ) {
+                return Err(error);
+            }
             crate::logging::warn_target(
                 "ai.document.study_guide",
                 "study_guide_repair_started",

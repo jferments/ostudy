@@ -112,7 +112,15 @@ async fn request_flashcards_with_retry(
     match first {
         Ok(cards) => Ok(cards),
         Err(error) if retryable_contract_error(&error) => {
-            crate::task_cancellation::record_current_provider_retry();
+            if !crate::ai::generation::reserve_recovery(
+                task.diagnostics.as_ref(),
+                "flashcard_authoring",
+                task.diagnostic_window_key.as_deref(),
+                crate::ai::generation::RecoveryReason::ContractRepair,
+                &error.code,
+            ) {
+                return Err(error);
+            }
             let detail = bounded_diagnostic(&error.message, 400);
             let repaired = format!(
                 "{user}\n\nA prior response failed local flashcard validation. Validation detail: {detail}. Generate a fresh response from the source and follow the JSON contract exactly. Every item must contain a supported card object, with knowledgeUnitIds for recall or assessment component bindings for interactive questions, using only the supplied catalog. For interactive questions, every graded answer component must have a binding: every option, true/false statement and false correction, matching pair, grouping item membership, or adjacent ordering edge. Prompt/category/isolated ordering-item context bindings are optional; do not omit graded bindings. The card object contains only that card type's fields. Do not discuss the failure. Return JSON only."

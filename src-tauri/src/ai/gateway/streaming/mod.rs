@@ -7,9 +7,12 @@ use serde_json::{json, Value};
 use tokio::time::{sleep, timeout, Instant};
 use url::Url;
 
-use crate::task_cancellation::{
-    current_signal, record_current_provider_activity, record_current_provider_request,
-    record_current_provider_retry, record_current_usage, CancellationSignal,
+use crate::{
+    ai::generation::{reserve_current_recovery, RecoveryReason},
+    task_cancellation::{
+        current_signal, record_current_provider_activity, record_current_provider_request,
+        record_current_usage, CancellationSignal,
+    },
 };
 
 use super::{
@@ -42,7 +45,7 @@ impl AiGateway {
         maximum_content_bytes: usize,
         cancellation: &CancellationSignal,
     ) -> Result<Value, AiGatewayError> {
-        self.post_sse_chat_json(
+        self.post_bounded_streaming_json(
             url,
             bearer,
             body,
@@ -69,7 +72,26 @@ impl AiGateway {
                 None,
             ));
         };
+        self.post_bounded_streaming_json(
+            url,
+            bearer,
+            body,
+            inactivity_timeout_ms,
+            maximum_content_bytes,
+            &cancellation,
+        )
+        .await
+    }
 
+    async fn post_bounded_streaming_json(
+        &self,
+        url: Url,
+        bearer: Option<&str>,
+        body: &Value,
+        inactivity_timeout_ms: i64,
+        maximum_content_bytes: usize,
+        cancellation: &CancellationSignal,
+    ) -> Result<Value, AiGatewayError> {
         let first = self
             .post_sse_chat_json(
                 url.clone(),
@@ -77,21 +99,26 @@ impl AiGateway {
                 body,
                 inactivity_timeout_ms,
                 maximum_content_bytes,
-                &cancellation,
+                cancellation,
             )
             .await;
         match first {
-            Err(first_error) if should_retry_document_stream_error(&first_error) => {
+            Err(first_error)
+                if should_retry_document_stream_error(&first_error)
+                    && reserve_current_recovery(
+                        RecoveryReason::TransientTransport,
+                        &first_error.safe.code,
+                    ) =>
+            {
                 let delay = document_retry_delay(&first_error);
                 let delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
                 let model = body.get("model").and_then(Value::as_str).and_then(|value| {
                     safe_metadata_string(value, MAX_SAFE_PROVIDER_METADATA_CHARS)
                 });
-                record_current_provider_retry();
                 crate::logging::warn_target(
                     "ai.gateway.retry",
                     "provider_request_retry",
-                    "A transient AI provider failure caused one bounded document request to be retried from scratch.",
+                    "A transient AI provider failure caused one bounded logical task to be retried from scratch.",
                     json!({
                         "endpointHost": url.host_str(),
                         "model": model.as_deref(),
@@ -110,7 +137,7 @@ impl AiGateway {
                         body,
                         inactivity_timeout_ms,
                         maximum_content_bytes,
-                        &cancellation,
+                        cancellation,
                     )
                     .await
                 {
@@ -118,7 +145,7 @@ impl AiGateway {
                         crate::logging::info_target(
                             "ai.gateway.retry",
                             "provider_request_retry_succeeded",
-                            "The bounded document request succeeded on its one transient retry.",
+                            "The bounded logical task succeeded on its one transient retry.",
                             json!({
                                 "endpointHost": url.host_str(),
                                 "model": model.as_deref(),
@@ -131,7 +158,7 @@ impl AiGateway {
                         crate::logging::warn_target(
                             "ai.gateway.retry",
                             "provider_request_retry_exhausted",
-                            "The bounded document request failed again after its one transient retry.",
+                            "The bounded logical task failed again after its transient retry.",
                             json!({
                                 "endpointHost": url.host_str(),
                                 "model": model.as_deref(),
@@ -140,7 +167,7 @@ impl AiGateway {
                             }),
                         );
                         second_error.safe.message = format!(
-                            "{} ostudy retried this bounded source-window request once from scratch, but the retry also failed.",
+                            "{} ostudy used the logical task's bounded transient recovery once, but that retry also failed.",
                             second_error.safe.message
                         );
                         Err(second_error)

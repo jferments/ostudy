@@ -137,9 +137,13 @@ async fn curation_slot(
         "Global document outline:\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\n\nCandidate flashcards:\n<ostudy-candidates>\n{}\n</ostudy-candidates>\n\nReturn the zero-based indices of candidates that should remain. Keep strong coverage of major learning objectives and a useful mix of recall and application. QUALITY GATE: reject a candidate unless its answer directly and completely answers its question and is supported by the document context. Reject question/answer mismatches, incomplete answers to multi-part questions, answers that are only headings or topic labels, unsupported numerical claims, reversed question/answer direction, vague prompts whose answer is not uniquely determined, and cards that require access to the original source to make sense. For definitions, keep only genuine term/definition pairs. Also remove globally minor or hyperspecific trivia, bibliography/citation artifacts, near-duplicates, and redundant cards that test the same knowledge in essentially the same way. When uncertain whether a candidate is semantically correct, drop it. Do not rewrite cards and do not invent replacements.",
         summaries.join("\n")
     );
+    let mut batch_task = task.clone();
+    batch_task.diagnostic_window_key = Some(crate::knowledge::contracts::hash(&format!(
+        "curation-batch-v1|{batch_index}|{user}"
+    )));
     Some((
         batch_index,
-        request_curation_with_retry(runtime, task, &user, batch.len()).await,
+        request_curation_with_retry(runtime, &batch_task, &user, batch.len()).await,
     ))
 }
 
@@ -170,6 +174,15 @@ async fn request_curation_with_retry(
     match first {
         Ok(indices) => Ok(indices),
         Err(error) if retryable_contract_error(&error) => {
+            if !crate::ai::generation::reserve_recovery(
+                task.diagnostics.as_ref(),
+                "flashcard_curation",
+                task.diagnostic_window_key.as_deref(),
+                crate::ai::generation::RecoveryReason::ContractRepair,
+                &error.code,
+            ) {
+                return Err(error);
+            }
             let repaired = format!(
                 "{user}\n\nThe prior response was invalid. Return a fresh JSON object containing only valid candidate indices."
             );

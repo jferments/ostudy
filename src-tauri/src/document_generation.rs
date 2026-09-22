@@ -21,11 +21,12 @@ use crate::{
     document_semantics::SemanticWindow,
     document_store,
     error::CommandError,
-    knowledge::authoring::{self, KnowledgeCatalog},
-    paths::AppPaths,
-    task_cancellation::{
-        record_current_provider_retry, set_current_task_phase, set_current_task_phase_range,
+    knowledge::{
+        authoring::{self, KnowledgeCatalog},
+        contracts::hash,
     },
+    paths::AppPaths,
+    task_cancellation::{set_current_task_phase, set_current_task_phase_range},
 };
 
 const MAX_GENERATED_CARDS: usize = 10_000;
@@ -327,9 +328,17 @@ async fn generation_slot(
             "cardBudget": input.plan.max_cards_per_window,
         }),
     );
+    let mut window_task = input.task.clone();
+    window_task.diagnostic_window_key = Some(hash(&format!(
+        "flashcard-window-v1|{}|{}|{}|{}",
+        input.document_id,
+        input.diagnostic_prefix,
+        window.window_index,
+        locator.stable_identity(),
+    )));
     let result = generate_window_with_recovery(WindowGenerationRequest {
         runtime: input.runtime,
-        task: input.task,
+        task: &window_task,
         document_title: input.document_title,
         outline: input.outline,
         window,
@@ -411,7 +420,15 @@ async fn generate_window_with_recovery(
             let reduced_budget = (input.maximum_cards / 2).max(2);
             let completion_token_floor =
                 document_intelligence::flashcard_completion_token_ceiling(input.task, first_budget);
-            record_current_provider_retry();
+            if !crate::ai::generation::reserve_recovery(
+                input.task.diagnostics.as_ref(),
+                "flashcard_authoring",
+                input.task.diagnostic_window_key.as_deref(),
+                crate::ai::generation::RecoveryReason::OutputCompaction,
+                &error.code,
+            ) {
+                return Err(error);
+            }
             crate::logging::info_target(
                 "ai.document.generation",
                 "document_generation_window_compact_retry",

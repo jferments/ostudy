@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use crate::{
     ai::{
         gateway::{normalized_usage, AiGatewayError, SafeAiError},
+        generation::{self, RecoveryReason},
         providers,
     },
     error::CommandError,
@@ -131,16 +132,26 @@ async fn request_json_inner(
             if allow_compatibility_retry && first_error.code == "ai_http_bad_request" =>
         {
             if let Some(compatibility) = prepared.compatibility_body.as_ref() {
-                execute_request(
-                    runtime,
-                    task,
-                    compatibility,
-                    prepared.url.clone(),
-                    bearer,
-                    cancellation,
+                if generation::reserve_recovery(
+                    task.diagnostics.as_ref(),
                     stage,
-                )
-                .await
+                    task.diagnostic_window_key.as_deref(),
+                    RecoveryReason::ProviderCompatibility,
+                    &first_error.code,
+                ) {
+                    execute_request(
+                        runtime,
+                        task,
+                        compatibility,
+                        prepared.url.clone(),
+                        bearer,
+                        cancellation,
+                        stage,
+                    )
+                    .await
+                } else {
+                    Err(first_error)
+                }
             } else {
                 Err(first_error)
             }

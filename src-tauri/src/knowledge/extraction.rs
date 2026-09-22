@@ -21,7 +21,7 @@ use crate::{
     database::Database,
     error::CommandError,
     paths::AppPaths,
-    task_cancellation::{record_current_provider_retry, CancellationSignal},
+    task_cancellation::CancellationSignal,
 };
 use serde_json::{json, Value};
 use std::{
@@ -433,8 +433,16 @@ where
         match decoded {
             Ok(report) => report,
             Err(error) if recoverable_envelope(&error) => {
+                if !crate::ai::generation::reserve_recovery(
+                    task.diagnostics.as_ref(),
+                    "knowledge_extraction",
+                    task.diagnostic_window_key.as_deref(),
+                    crate::ai::generation::RecoveryReason::ContractRepair,
+                    &error.code,
+                ) {
+                    return Err(error);
+                }
                 already_retried = true;
-                record_current_provider_retry();
                 check_canceled(cancellation)?;
                 crate::logging::warn_target(
                     "ai.knowledge.extraction",
@@ -450,8 +458,16 @@ where
     };
     check_canceled(cancellation)?;
     checkpoint.save(&report)?;
-    if !report.is_complete() && !already_retried {
-        record_current_provider_retry();
+    let repair_allowed = !report.is_complete()
+        && !already_retried
+        && crate::ai::generation::reserve_recovery(
+            task.diagnostics.as_ref(),
+            "knowledge_extraction",
+            task.diagnostic_window_key.as_deref(),
+            crate::ai::generation::RecoveryReason::ContractRepair,
+            "partial_coverage",
+        );
+    if repair_allowed {
         check_canceled(cancellation)?;
         crate::logging::warn_target("ai.knowledge.extraction","knowledge_extraction_repair_started",
             "Repairing only rejected proposals and uncovered sources; admitted siblings remain unchanged.",decode::report_diagnostic(&report));

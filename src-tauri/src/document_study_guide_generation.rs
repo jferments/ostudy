@@ -28,7 +28,10 @@ use crate::{
         STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
-    knowledge::authoring::{self, KnowledgeCatalog},
+    knowledge::{
+        authoring::{self, KnowledgeCatalog},
+        contracts::hash,
+    },
     paths::AppPaths,
     util::unix_time_millis,
 };
@@ -368,11 +371,18 @@ async fn generate_slot(
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let topic = &execution.plan.topics[index];
     let evidence = &execution.evidence[index];
+    let mut topic_task = execution.task.clone();
+    topic_task.diagnostic_window_key = Some(hash(&format!(
+        "document-guide-topic-v1|{}|{}|{}",
+        execution.document_id,
+        topic.id,
+        topic.source_locator.stable_identity(),
+    )));
     let result = async {
-        execution.task.ensure_current(execution.database)?;
+        topic_task.ensure_current(execution.database)?;
         let section = generate_study_guide_topic_section(
         execution.runtime,
-        execution.task,
+        &topic_task,
         execution.document_title,
         execution.plan,
         topic,
@@ -382,7 +392,7 @@ async fn generate_slot(
             knowledge: &catalogs[index],
         },
     ).await?;
-        execution.task.ensure_current(execution.database)?;
+        topic_task.ensure_current(execution.database)?;
         Ok(section)
     }.await.map_err(|error: CommandError| {
         crate::logging::error_target(

@@ -1,6 +1,11 @@
 //! Durable, content-free accounting for each physical generation request.
 //! Provider usage is authoritative. Payload sizes are separate diagnostics.
-use std::{fmt, future::Future};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    future::Future,
+    sync::{Arc, Mutex},
+};
 
 use rusqlite::{params, TransactionBehavior};
 use serde_json::{json, Value};
@@ -20,19 +25,113 @@ mod tests;
 pub(crate) struct Context {
     database: Database,
     pub(crate) operation_id: String,
+    recovery: Arc<Mutex<RecoveryLedger>>,
 }
 
 #[derive(Clone)]
 struct RequestScope {
     context: Context,
     stage: String,
-    logical_key: Option<String>,
+    logical_key: String,
     provider: String,
+}
+
+const MAX_RECOVERIES_PER_LOGICAL_TASK: usize = 2;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum RecoveryReason {
+    TransientTransport,
+    ProviderCompatibility,
+    ContractRepair,
+    OutputCompaction,
+}
+
+impl RecoveryReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::TransientTransport => "transient_transport",
+            Self::ProviderCompatibility => "provider_compatibility",
+            Self::ContractRepair => "contract_repair",
+            Self::OutputCompaction => "output_compaction",
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct RecoveryState {
+    reasons: HashSet<RecoveryReason>,
+}
+
+#[derive(Debug, Default)]
+struct RecoveryLedger {
+    tasks: HashMap<String, RecoveryState>,
 }
 
 impl Context {
     pub(crate) fn provider_session_id(&self) -> String {
         format!("ostudy:{}", self.operation_id)
+    }
+
+    fn logical_request_key(&self, stage: &str, logical_key: Option<&str>) -> String {
+        if let Some(key) = logical_key.filter(|key| {
+            key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit())
+        }) {
+            return key.to_ascii_lowercase();
+        }
+        hash(
+            format!(
+                "generation-logical-task-v1|{}|{stage}|{}",
+                self.operation_id,
+                logical_key.unwrap_or("stage-default")
+            )
+            .as_bytes(),
+        )
+    }
+
+    pub(crate) fn reserve_recovery(
+        &self,
+        stage: &str,
+        logical_key: Option<&str>,
+        reason: RecoveryReason,
+        trigger_code: &str,
+    ) -> bool {
+        let request_key = self.logical_request_key(stage, logical_key);
+        let ledger_key = format!("{stage}:{request_key}");
+        let allowed = match self.recovery.lock() {
+            Ok(mut ledger) => {
+                let state = ledger.tasks.entry(ledger_key).or_default();
+                if state.reasons.contains(&reason)
+                    || state.reasons.len() >= MAX_RECOVERIES_PER_LOGICAL_TASK
+                {
+                    false
+                } else {
+                    state.reasons.insert(reason);
+                    true
+                }
+            }
+            Err(_) => false,
+        };
+        let event = if allowed {
+            crate::task_cancellation::record_current_provider_retry();
+            "generation_recovery_reserved"
+        } else {
+            "generation_recovery_budget_exhausted"
+        };
+        crate::logging::debug_target(
+            "ai.generation.recovery",
+            event,
+            "Applied the bounded logical-task recovery policy without logging prompt or response content.",
+            json!({
+                "operationId": self.operation_id,
+                "stage": stage,
+                "requestKey": request_key,
+                "reason": reason.as_str(),
+                "triggerCode": trigger_code.chars().take(80).collect::<String>(),
+                "allowed": allowed,
+                "maximumRecoveries": MAX_RECOVERIES_PER_LOGICAL_TASK,
+            }),
+        );
+        allowed
     }
 }
 
@@ -104,6 +203,7 @@ impl Operation {
             context: Context {
                 database: database.clone(),
                 operation_id,
+                recovery: Arc::new(Mutex::new(RecoveryLedger::default())),
             },
             finished: false,
         })
@@ -240,17 +340,53 @@ pub(crate) async fn scoped_request<F: Future>(
     let Some(context) = context else {
         return future.await;
     };
+    let logical_key = context.logical_request_key(stage, logical_key);
     CURRENT_REQUEST
         .scope(
             RequestScope {
                 context,
                 stage: stage.to_string(),
-                logical_key: logical_key.map(str::to_string),
+                logical_key,
                 provider: provider.to_string(),
             },
             future,
         )
         .await
+}
+
+pub(crate) fn reserve_recovery(
+    context: Option<&Context>,
+    stage: &str,
+    logical_key: Option<&str>,
+    reason: RecoveryReason,
+    trigger_code: &str,
+) -> bool {
+    match context {
+        Some(context) => context.reserve_recovery(stage, logical_key, reason, trigger_code),
+        None => {
+            crate::task_cancellation::record_current_provider_retry();
+            true
+        }
+    }
+}
+
+pub(crate) fn reserve_current_recovery(
+    reason: RecoveryReason,
+    trigger_code: &str,
+) -> bool {
+    CURRENT_REQUEST
+        .try_with(|scope| {
+            scope.context.reserve_recovery(
+                &scope.stage,
+                Some(&scope.logical_key),
+                reason,
+                trigger_code,
+            )
+        })
+        .unwrap_or_else(|_| {
+            crate::task_cancellation::record_current_provider_retry();
+            true
+        })
 }
 
 pub(crate) fn start_current_attempt(body: &Value) -> Option<Attempt> {
@@ -259,7 +395,7 @@ pub(crate) fn start_current_attempt(body: &Value) -> Option<Attempt> {
             scope.context.start_attempt(
                 &scope.stage,
                 body,
-                scope.logical_key.as_deref(),
+                Some(&scope.logical_key),
                 &scope.provider,
             )
         })

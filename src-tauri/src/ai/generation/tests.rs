@@ -85,6 +85,46 @@ fn document_generation_accounts_for_every_attempt_and_preserves_unknown_usage() 
 }
 
 #[test]
+fn logical_task_recovery_budget_blocks_duplicate_and_third_nested_retries() {
+    let database = Database::open_in_memory().unwrap();
+    let mut operation = Operation::begin(&database, None, None, None, "recovery_fixture").unwrap();
+    let context = operation.context();
+    let key = hash(b"stable-window");
+
+    assert!(context.reserve_recovery(
+        "flashcard_authoring",
+        Some(&key),
+        RecoveryReason::TransientTransport,
+        "ai_provider_timeout",
+    ));
+    assert!(!context.reserve_recovery(
+        "flashcard_authoring",
+        Some(&key),
+        RecoveryReason::TransientTransport,
+        "ai_provider_timeout",
+    ));
+    assert!(context.reserve_recovery(
+        "flashcard_authoring",
+        Some(&key),
+        RecoveryReason::ContractRepair,
+        "ai_document_output_invalid",
+    ));
+    assert!(!context.reserve_recovery(
+        "flashcard_authoring",
+        Some(&key),
+        RecoveryReason::OutputCompaction,
+        "ai_document_output_truncated",
+    ));
+    assert!(context.reserve_recovery(
+        "flashcard_authoring",
+        Some(&hash(b"other-window")),
+        RecoveryReason::OutputCompaction,
+        "ai_document_output_truncated",
+    ));
+    operation.finish(true);
+}
+
+#[test]
 fn document_generation_interruption_and_startup_reconciliation_do_not_invent_zero_tokens() {
     let database = Database::open_in_memory().unwrap();
     let operation = Operation::begin(&database, None, None, None, "abandoned").unwrap();
