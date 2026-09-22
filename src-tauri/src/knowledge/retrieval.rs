@@ -48,16 +48,27 @@ pub struct RetrievalPreview {
     pub embedding_space: String,
 }
 
+pub(crate) struct RetrievalRequest<'a> {
+    pub scope: &'a StudyScope,
+    pub include_conversations: bool,
+    pub query: &'a str,
+    pub cancellation: &'a CancellationSignal,
+    pub diagnostics: Option<&'a generation::Context>,
+}
+
 pub(crate) async fn retrieve(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
-    scope: &StudyScope,
-    include_conversations: bool,
-    query: &str,
-    cancellation: &CancellationSignal,
-    diagnostics: Option<&generation::Context>,
+    request: RetrievalRequest<'_>,
 ) -> Result<RetrievalResult, CommandError> {
+    let RetrievalRequest {
+        scope,
+        include_conversations,
+        query,
+        cancellation,
+        diagnostics,
+    } = request;
     scope.validate()?;
     bounded(query, 8_000, "semantic search query", false)?;
     check_canceled(cancellation)?;

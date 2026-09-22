@@ -126,11 +126,13 @@ pub async fn search_semantic_material(
         database.inner(),
         paths.inner(),
         runtime.inner(),
-        &input.selection.scope,
-        input.selection.include_conversations,
-        &input.query,
-        &guard.signal,
-        Some(&context),
+        retrieval::RetrievalRequest {
+            scope: &input.selection.scope,
+            include_conversations: input.selection.include_conversations,
+            query: &input.query,
+            cancellation: &guard.signal,
+            diagnostics: Some(&context),
+        },
     )
     .await;
     diagnostics.finish(result.is_ok());

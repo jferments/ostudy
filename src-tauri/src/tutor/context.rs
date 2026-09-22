@@ -119,11 +119,13 @@ pub(crate) async fn build(
             database,
             paths,
             runtime,
-            scope,
-            input.include_conversations && input.mode != TutorMode::Hint,
-            &query,
-            cancellation,
-            None,
+            retrieval::RetrievalRequest {
+                scope,
+                include_conversations: input.include_conversations && input.mode != TutorMode::Hint,
+                query: &query,
+                cancellation,
+                diagnostics: None,
+            },
         )
         .await;
         merge_optional_retrieval(&mut sources, &mut notice, result)?;
