@@ -359,7 +359,13 @@ mod tests {
             &catalog,
         );
         let encoded = schema.to_string();
-        assert!(encoded.contains("\"K0\""));
+        let unit_ids = schema
+            .pointer(
+                "/properties/cards/items/oneOf/0/properties/knowledgeUnitIds/items",
+            )
+            .unwrap();
+        assert_eq!(unit_ids["pattern"], "^K(?:0|[1-9][0-9]*)$");
+        assert!(unit_ids.get("enum").is_none());
         assert!(!encoded.contains(&"a".repeat(32)));
 
         let alias = json!({"cards":[{"card":{"type":"basic","front":"How many sides?","back":"Three"},"knowledgeUnitIds":["K0"]}]});

@@ -115,6 +115,9 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         serialized_request_bytes = 0
         visible_response_bytes = 0
         coverage = 0
+        comparable_prefix_requests = 0
+        common_prefix_bytes = 0
+        bounded_prefix_requests = 0
         for row in rows:
             payload = row.get("payloadBytesJson")
             if isinstance(payload, str):
@@ -131,6 +134,14 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
             visible = payload.get("response", {}).get("visibleContentBytes")
             if valid_number(visible):
                 visible_response_bytes += visible
+            cache_prefix = payload.get("cachePrefix")
+            if isinstance(cache_prefix, dict) and cache_prefix.get("comparable") is True:
+                common = cache_prefix.get("commonPrefixBytes")
+                if valid_number(common):
+                    comparable_prefix_requests += 1
+                    common_prefix_bytes += int(common)
+                    if cache_prefix.get("measurementBounded") is True:
+                        bounded_prefix_requests += 1
             for name, path in INPUT_PAYLOAD_FIELDS.items():
                 value: Any = payload
                 for part in path:
@@ -149,6 +160,15 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
                 for name, value in totals_by_part.items()
             },
             "visibleResponseBytes": visible_response_bytes,
+            "cachePrefixDiagnostics": {
+                "comparableRequests": comparable_prefix_requests,
+                "commonPrefixBytes": common_prefix_bytes,
+                "averageCommonPrefixBytes": (
+                    common_prefix_bytes / comparable_prefix_requests
+                    if comparable_prefix_requests else None
+                ),
+                "boundedMeasurements": bounded_prefix_requests,
+            },
         }
 
     payload_diagnostics = payload_summary(requests)
@@ -162,6 +182,7 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
                 payload = json.loads(payload)
             except json.JSONDecodeError:
                 payload = None
+        cache_prefix = payload.get("cachePrefix") if isinstance(payload, dict) else None
         return {
             "requestId": row.get("requestId"),
             "operationId": row.get("operationId"),
@@ -177,6 +198,14 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
             "serializedRequestBytes": (
                 payload.get("serializedRequestBytes")
                 if isinstance(payload, dict) else None),
+            "commonPrefixBytes": (
+                cache_prefix.get("commonPrefixBytes")
+                if isinstance(cache_prefix, dict) and cache_prefix.get("comparable") is True
+                else None),
+            "commonPrefixMeasurementBounded": (
+                cache_prefix.get("measurementBounded")
+                if isinstance(cache_prefix, dict) and cache_prefix.get("comparable") is True
+                else None),
         }
 
     largest_input = [
@@ -231,6 +260,7 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
             "Missing/failed/interrupted usage is unknown, not zero. This is not a complete bill when usage is missing.",
             "Reasoning is contained in output; cached input is contained in input. Cache and reasoning rates use only requests reporting both fields.",
             "Local reuse means no provider request. Provider prompt caching still incurs a request.",
+            "Common-prefix bytes are content-free local measurements between comparable serialized requests; bounded measurements reached the in-memory 2 MiB sample cap. Provider cached-token counts remain authoritative for actual cache use.",
             "Payload byte categories are NON-BILLING diagnostics. Input-part percentages use serialized request bytes; visible response bytes are reported separately and are never substituted for provider-reported token shares.",
             "Attempt ordinals group the same logical section, or identical wire requests when no section identity is available.",
         ],
@@ -306,6 +336,9 @@ def render(report: dict[str, Any]) -> str:
                   f"(input share {percent(total['repeatInputPercentOfReportedInput'])}; "
                   f"output share {percent(total['repeatOutputPercentOfReportedOutput'])})",
                   f"Cache reads: {number(total['cachedInputTokens'])} tokens; covered-input rate: {percent(total['cacheReadPercentOfCoveredInput'])} ({total['cacheReadCoverageRequests']} requests)",
+                  f"Comparable request prefixes: {report['payloadByteDiagnostics']['cachePrefixDiagnostics']['comparableRequests']}; "
+                  f"average common prefix: {number(report['payloadByteDiagnostics']['cachePrefixDiagnostics']['averageCommonPrefixBytes'])} bytes; "
+                  f"bounded measurements: {report['payloadByteDiagnostics']['cachePrefixDiagnostics']['boundedMeasurements']}",
                   f"Reasoning: {number(total['reasoningTokens'])} tokens; covered-output share: {percent(total['reasoningPercentOfCoveredOutput'])} ({total['reasoningCoverageRequests']} requests)",
                   f"Local reuse: {json.dumps(report['localReuse'], ensure_ascii=False)}",
                   f"Payload byte diagnostics: "

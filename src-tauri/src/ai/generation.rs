@@ -26,6 +26,7 @@ pub(crate) struct Context {
     database: Database,
     pub(crate) operation_id: String,
     recovery: Arc<Mutex<RecoveryLedger>>,
+    prefix_history: Arc<Mutex<HashMap<String, PrefixSample>>>,
 }
 
 #[derive(Clone)]
@@ -67,6 +68,15 @@ struct RecoveryLedger {
     tasks: HashMap<String, RecoveryState>,
 }
 
+const CACHE_PREFIX_SAMPLE_MAX_BYTES: usize = 2 * 1024 * 1024;
+
+#[derive(Debug)]
+struct PrefixSample {
+    bytes: Vec<u8>,
+    request_hash: String,
+    truncated: bool,
+}
+
 impl Context {
     pub(crate) fn provider_session_id(&self) -> String {
         format!("ostudy:{}", self.operation_id)
@@ -86,6 +96,53 @@ impl Context {
             )
             .as_bytes(),
         )
+    }
+
+    fn observe_cache_prefix(&self, stage: &str, provider: &str, bytes: &[u8]) -> Value {
+        let sample_len = bytes.len().min(CACHE_PREFIX_SAMPLE_MAX_BYTES);
+        let current = &bytes[..sample_len];
+        let current_truncated = bytes.len() > sample_len;
+        let request_hash = hash(bytes);
+        let key = format!("{stage}|{provider}");
+        let Ok(mut history) = self.prefix_history.lock() else {
+            return json!({
+                "comparable": false,
+                "commonPrefixBytes": 0,
+                "measurementBounded": false,
+                "sampleLimitBytes": CACHE_PREFIX_SAMPLE_MAX_BYTES,
+            });
+        };
+        let previous = history.get(&key);
+        let common_prefix_bytes = previous
+            .map(|previous| {
+                previous
+                    .bytes
+                    .iter()
+                    .zip(current)
+                    .take_while(|(left, right)| left == right)
+                    .count()
+            })
+            .unwrap_or(0);
+        let measurement_bounded = previous.is_some_and(|previous| {
+            common_prefix_bytes == CACHE_PREFIX_SAMPLE_MAX_BYTES
+                && (previous.truncated || current_truncated)
+        });
+        let previous_request_hash = previous.map(|previous| previous.request_hash.clone());
+        history.insert(
+            key,
+            PrefixSample {
+                bytes: current.to_vec(),
+                request_hash,
+                truncated: current_truncated,
+            },
+        );
+        json!({
+            "comparable": previous_request_hash.is_some(),
+            "commonPrefixBytes": common_prefix_bytes,
+            "measurementBounded": measurement_bounded,
+            "sampleLimitBytes": CACHE_PREFIX_SAMPLE_MAX_BYTES,
+            "previousWireRequestHash": previous_request_hash,
+        })
     }
 
     pub(crate) fn reserve_recovery(
@@ -204,6 +261,7 @@ impl Operation {
                 database: database.clone(),
                 operation_id,
                 recovery: Arc::new(Mutex::new(RecoveryLedger::default())),
+                prefix_history: Arc::new(Mutex::new(HashMap::new())),
             },
             finished: false,
         })
@@ -267,7 +325,13 @@ impl Context {
         let request_key = logical_key
             .map(str::to_string)
             .unwrap_or_else(|| hash(&bytes));
-        let sizes = payload::measure(body)?;
+        let mut sizes = payload::measure(body)?;
+        if let Some(object) = sizes.as_object_mut() {
+            object.insert(
+                "cachePrefix".to_string(),
+                self.observe_cache_prefix(stage, provider, &bytes),
+            );
+        }
         let id = self.database.with_connection(|connection| {
             let tx = connection
                 .transaction_with_behavior(TransactionBehavior::Immediate)

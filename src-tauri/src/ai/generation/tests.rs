@@ -80,6 +80,21 @@ fn document_generation_accounts_for_every_attempt_and_preserves_unknown_usage() 
         assert!(!payload.contains("PRIVATE OUTPUT"));
         let parsed: Value = serde_json::from_str(&payload).unwrap();
         assert_eq!(parsed["response"]["visibleContentBytes"],14);
+
+        let retry_payload: String = connection.query_row(
+            "SELECT payload_bytes_json FROM generation_requests
+             WHERE error_code='ai_timeout'",
+            [],
+            |row| row.get(0),
+        ).map_err(CommandError::database)?;
+        let retry_payload: Value = serde_json::from_str(&retry_payload).unwrap();
+        assert_eq!(retry_payload["cachePrefix"]["comparable"], true);
+        assert!(retry_payload["cachePrefix"]["commonPrefixBytes"].as_u64().unwrap() > 0);
+        assert_eq!(
+            retry_payload["cachePrefix"]["previousWireRequestHash"],
+            parsed["wireRequestHash"]
+        );
+        assert!(retry_payload["cachePrefix"].get("prompt").is_none());
         Ok(())
     }).unwrap();
 }

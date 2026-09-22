@@ -69,10 +69,6 @@ impl KnowledgeCatalog {
         format!("K{index}")
     }
 
-    pub(crate) fn unit_aliases(&self) -> Vec<String> {
-        (0..self.units.len()).map(Self::unit_alias).collect()
-    }
-
     fn resolve_unit_id<'a>(&'a self, id: &str) -> Option<&'a KnowledgeUnit> {
         if let Some(index) = id
             .strip_prefix('K')
@@ -86,7 +82,8 @@ impl KnowledgeCatalog {
 
     pub(crate) fn support_schema(&self, maximum: usize) -> Value {
         json!({"type":"array", "minItems":1, "maxItems":maximum,
-            "items":{"type":"string","enum":self.unit_aliases()}})
+            "items":{"type":"string","minLength":2,"maxLength":16,
+                "pattern":"^K(?:0|[1-9][0-9]*)$"}})
     }
 
     pub(crate) fn prompt(&self) -> Result<String, CommandError> {

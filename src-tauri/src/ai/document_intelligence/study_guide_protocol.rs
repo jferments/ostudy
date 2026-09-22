@@ -9,16 +9,7 @@ pub(super) fn alias(index: usize) -> String {
 }
 
 pub(super) fn catalog_prompt(knowledge: &KnowledgeCatalog) -> Result<String, CommandError> {
-    let mut value: Value =
-        serde_json::from_str(&knowledge.prompt()?).map_err(CommandError::serialization)?;
-    let units = value
-        .get_mut("units")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| output_error("The native guide catalog is missing its units."))?;
-    for (index, unit) in units.iter_mut().enumerate() {
-        unit["id"] = json!(alias(index));
-    }
-    serde_json::to_string(&value).map_err(CommandError::serialization)
+    knowledge.prompt()
 }
 
 pub(super) fn schema(knowledge: &KnowledgeCatalog, images_attached: bool) -> Value {
@@ -28,10 +19,10 @@ pub(super) fn schema(knowledge: &KnowledgeCatalog, images_attached: bool) -> Val
         content["properties"]["visualExplanations"]["description"] =
             json!("No images are attached. Always return [].");
     }
+    let mut knowledge_ids = knowledge.support_schema(64);
+    knowledge_ids["uniqueItems"] = json!(true);
     json!({"type":"object","additionalProperties":false,"required":["content","knowledgeUnitIds"],
-        "properties":{"content":content,"knowledgeUnitIds":{
-            "type":"array","minItems":1,"maxItems":knowledge.units.len().min(64),"uniqueItems":true,
-            "items":{"type":"string","enum":(0..knowledge.units.len()).map(alias).collect::<Vec<_>>()}}}})
+        "properties":{"content":content,"knowledgeUnitIds":knowledge_ids}})
 }
 
 pub(super) fn resolve(
@@ -134,10 +125,10 @@ mod tests {
         assert!(knowledge.select(&ids, 64).is_err());
         let value: Value = serde_json::from_str(&catalog_prompt(&knowledge).unwrap()).unwrap();
         assert_eq!(value["units"][0]["id"], "K0");
-        assert_eq!(
-            schema(&knowledge, false)["properties"]["knowledgeUnitIds"]["items"]["enum"],
-            json!(["K0"])
-        );
+        let ids = &schema(&knowledge, false)["properties"]["knowledgeUnitIds"];
+        assert_eq!(ids["maxItems"], 64);
+        assert_eq!(ids["items"]["pattern"], "^K(?:0|[1-9][0-9]*)$");
+        assert!(ids["items"].get("enum").is_none());
     }
     #[test]
     fn compact_context_stays_valid_json_preserves_active_topic_and_reports_omissions() {
