@@ -661,20 +661,22 @@ mod tests {
     }
     #[test]
     fn registration_is_released_after_an_early_error_or_abandoned_future() {
-        let registry = ActiveDocumentTasks::default();
+        let document_id = "interrupted-document-registration";
         let signal;
         {
-            let task = registry.begin("interrupted-document").unwrap();
+            let task = ACTIVE_DOCUMENT_TASKS.begin(document_id).unwrap();
             signal = task.signal.clone();
             let _registration = DocumentRegistration {
-                registry: &registry,
-                document_id: "interrupted-document",
+                document_id: document_id.to_string(),
                 signal: task.signal,
             };
-            assert!(registry.has_any());
+            assert!(is_document_task_active(document_id));
         }
-        assert!(!registry.has_any());
+        assert!(!is_document_task_active(document_id));
         assert!(signal.is_canceled());
-        assert!(registry.begin("interrupted-document").is_ok());
+        ACTIVE_DOCUMENT_TASKS
+            .begin(document_id)
+            .expect("released document should register again");
+        ACTIVE_DOCUMENT_TASKS.finish(document_id);
     }
 }
