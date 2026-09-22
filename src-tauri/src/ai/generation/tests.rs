@@ -1,4 +1,13 @@
+use std::{
+    io::{Read, Write},
+    net::{TcpListener, TcpStream},
+    thread,
+};
+
+use url::Url;
+
 use super::*;
+use crate::{ai::gateway::AiGateway, task_cancellation};
 
 fn request() -> Value {
     json!({"model":"test-model","max_tokens":4096,"messages":[
@@ -121,4 +130,119 @@ fn document_generation_payload_parts_are_content_free_and_owner_stages_are_expli
         "guide_authoring"
     );
     assert_eq!(stage("unrecognized.rs"), "unclassified");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn physical_gateway_retry_records_two_attempts_for_one_logical_request() {
+    const DOCUMENT_ID: &str = "generation-ledger-retry";
+    let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
+    let url = Url::parse(&format!(
+        "http://{}/retry",
+        listener.local_addr().expect("mock address should resolve")
+    ))
+    .expect("mock URL should parse");
+    let server = thread::spawn(move || {
+        let (mut first, _) = listener.accept().expect("first request should arrive");
+        read_http_request(&mut first);
+        first
+            .write_all(
+                b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .expect("first response should write");
+        first.flush().expect("first response should flush");
+
+        let (mut second, _) = listener.accept().expect("retry request should arrive");
+        read_http_request(&mut second);
+        let body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"{}\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        write!(
+            second,
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .expect("streaming response should write");
+        second.flush().expect("streaming response should flush");
+    });
+
+    let database = Database::open_in_memory().expect("database should open");
+    let mut operation =
+        Operation::begin(&database, None, None, None, "gateway_retry_fixture")
+            .expect("diagnostic operation should begin");
+    let diagnostic_context = operation.context();
+    let request_key = hash(b"retry-window");
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    let result = task_cancellation::run_document_task(DOCUMENT_ID, async move {
+        scoped_request(
+            Some(diagnostic_context),
+            "guide_authoring",
+            Some(&request_key),
+            "openrouter",
+            async move {
+                gateway
+                    .post_document_json(url, None, &json!({ "model": "test" }), 5_000, 1_024)
+                    .await
+                    .map_err(|error| CommandError::new(error.safe.code, error.safe.message))
+            },
+        )
+        .await
+    })
+    .await
+    .expect("the bounded retry should succeed");
+    operation.finish(true);
+    assert_eq!(
+        result.pointer("/choices/0/message/content"),
+        Some(&json!("{}"))
+    );
+    server.join().expect("mock server should finish");
+
+    database
+        .with_connection(|connection| {
+            let mut statement = connection
+                .prepare(
+                    "SELECT attempt,status FROM generation_requests
+                     WHERE operation_id=?1 ORDER BY attempt",
+                )
+                .map_err(CommandError::database)?;
+            let rows = statement
+                .query_map([operation.context().operation_id], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(CommandError::database)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(CommandError::database)?;
+            assert_eq!(
+                rows,
+                vec![(1, "failed".to_string()), (2, "response".to_string())]
+            );
+            Ok(())
+        })
+        .expect("physical retry attempts should be durable");
+}
+
+fn read_http_request(stream: &mut TcpStream) {
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 4_096];
+    loop {
+        let count = stream.read(&mut buffer).expect("request bytes should read");
+        assert!(count > 0, "request closed before body completed");
+        bytes.extend_from_slice(&buffer[..count]);
+        let Some(header_end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") else {
+            continue;
+        };
+        let header_end = header_end + 4;
+        let headers = String::from_utf8_lossy(&bytes[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        if bytes.len() >= header_end.saturating_add(content_length) {
+            return;
+        }
+    }
 }

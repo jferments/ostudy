@@ -9,12 +9,7 @@ use serde_json::{json, Value};
 use tokio::sync::oneshot;
 use url::Url;
 
-use crate::{
-    ai::generation,
-    database::Database,
-    error::CommandError,
-    task_cancellation,
-};
+use crate::{error::CommandError, task_cancellation};
 
 use super::super::{client::AiGateway, contracts::AiGatewayError};
 
@@ -256,56 +251,19 @@ data: [DONE]
         (first_request, second_request)
     });
 
-    let database = Database::open_in_memory().expect("database should open");
-    let mut operation =
-        generation::Operation::begin(&database, None, None, None, "gateway_retry_fixture")
-            .expect("diagnostic operation should begin");
-    let diagnostic_context = operation.context();
-    let request_key = generation::hash(b"retry-window");
     let gateway = AiGateway::new().expect("gateway should initialize");
     let result: Value = task_cancellation::run_document_task(DOCUMENT_ID, async move {
-        generation::scoped_request(
-            Some(diagnostic_context),
-            "guide_authoring",
-            Some(&request_key),
-            "openrouter",
-            async move {
-                gateway
-                    .post_document_json(url, None, &json!({ "model": "test" }), 5_000, 1_024)
-                    .await
-                    .map_err(gateway_to_command)
-            },
-        )
-        .await
+        gateway
+            .post_document_json(url, None, &json!({ "model": "test" }), 5_000, 1_024)
+            .await
+            .map_err(gateway_to_command)
     })
     .await
     .expect("the bounded retry should succeed");
-    operation.finish(true);
     assert_eq!(
         result.pointer("/choices/0/message/content"),
         Some(&json!("{}"))
     );
-    database
-        .with_connection(|connection| {
-            let rows = connection
-                .prepare(
-                    "SELECT attempt,status FROM generation_requests
-                     WHERE operation_id=?1 ORDER BY attempt",
-                )
-                .map_err(CommandError::database)?
-                .query_map([operation.context().operation_id], |row| {
-                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-                })
-                .map_err(CommandError::database)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(CommandError::database)?;
-            assert_eq!(
-                rows,
-                vec![(1, "failed".to_string()), (2, "response".to_string())]
-            );
-            Ok(())
-        })
-        .expect("physical retry attempts should be durable");
 
     let (first, second) = server.join().expect("mock server should finish");
     assert!(first.contains("\"stream\":true"));
