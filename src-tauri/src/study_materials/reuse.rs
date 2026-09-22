@@ -447,8 +447,8 @@ mod tests {
 
     #[test]
     fn whole_guide_manifest_reuses_only_the_matching_active_guide() {
-        use crate::document_study_guides::StudyGuideOverview;
         use super::super::composition::CollectionGuideSection;
+        use crate::document_study_guides::StudyGuideOverview;
 
         let database = Database::open_in_memory().unwrap();
         let collection_id = "c".repeat(32);
@@ -470,7 +470,8 @@ mod tests {
                 block_key: "triangles".to_string(),
                 title: "Triangles".to_string(),
                 content: StudyGuideSectionContent {
-                    overview: "Triangles have three connected sides and three vertices.".to_string(),
+                    overview: "Triangles have three connected sides and three vertices."
+                        .to_string(),
                     key_points: vec![
                         "A triangle has three sides.".to_string(),
                         "Its sides meet at three vertices.".to_string(),

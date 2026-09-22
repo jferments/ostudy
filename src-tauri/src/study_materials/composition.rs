@@ -1081,11 +1081,7 @@ async fn compose_collection_guide(
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(CommandError::database)?;
             collections::ensure_snapshot_current(&tx, &claim.snapshot)?;
-            collection_view::ensure_analysis_current(
-                &tx,
-                &claim.target.id,
-                &view.analysis_hash,
-            )?;
+            collection_view::ensure_analysis_current(&tx, &claim.target.id, &view.analysis_hash)?;
             succeed_job(
                 &tx,
                 operation_id,
