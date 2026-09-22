@@ -276,7 +276,8 @@ async fn enrich_document_artifact_metadata(
     task.apply_provider_capabilities(&capabilities);
     task.diagnostics = diagnostics;
     let candidate =
-        document_intelligence::generate_document_artifact_metadata(runtime, &task, &outline).await?;
+        document_intelligence::generate_document_artifact_metadata(runtime, &task, &outline)
+            .await?;
     task.ensure_current(database)?;
 
     database.with_connection(|connection| {

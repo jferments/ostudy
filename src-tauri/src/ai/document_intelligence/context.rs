@@ -48,10 +48,7 @@ struct DocumentUsageAccumulator {
 }
 
 impl DocumentTaskContext {
-    pub(crate) fn for_profile(
-        database: &Database,
-        profile_id: &str,
-    ) -> Result<Self, CommandError> {
+    pub(crate) fn for_profile(database: &Database, profile_id: &str) -> Result<Self, CommandError> {
         context_from_request(database, load_profile_request(database, profile_id)?)?
             .with_saved_capabilities(database)
     }
