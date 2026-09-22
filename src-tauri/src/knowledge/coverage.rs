@@ -282,9 +282,13 @@ impl CoverageReceipt {
 }
 
 pub(crate) fn declaration_schema(catalog: &EvidenceCatalog) -> Value {
-    json!({"type":"array","maxItems":catalog.entries.len(),"items":{
+    declaration_schema_for_aliases(&catalog.aliases())
+}
+
+pub(crate) fn declaration_schema_for_aliases(aliases: &[String]) -> Value {
+    json!({"type":"array","maxItems":aliases.len(),"items":{
         "type":"object","additionalProperties":false,"required":["evidenceId","disposition"],
-        "properties":{"evidenceId":{"type":"string","enum":catalog.aliases()},
+        "properties":{"evidenceId":{"type":"string","enum":aliases},
             "disposition":{"type":"string","enum":["retained_metadata","no_learning","unreadable"]}}}})
 }
 

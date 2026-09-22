@@ -222,13 +222,48 @@ impl EvidenceCatalog {
         (0..self.entries.len()).map(Self::alias).collect()
     }
 
+    pub(crate) fn index_for_alias(&self, alias: &str) -> Option<usize> {
+        alias
+            .strip_prefix('E')
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|index| Self::alias(*index) == alias && *index < self.entries.len())
+    }
+
+    pub(crate) fn aliases_for_positions(
+        &self,
+        positions: &BTreeSet<usize>,
+    ) -> Vec<String> {
+        positions
+            .iter()
+            .copied()
+            .filter(|index| *index < self.entries.len())
+            .map(Self::alias)
+            .collect()
+    }
+
     pub(crate) fn prompt(&self, sources: &[SourceRecord]) -> Value {
+        self.prompt_for_positions(sources, None)
+    }
+
+    pub(crate) fn prompt_selection(
+        &self,
+        sources: &[SourceRecord],
+        positions: &BTreeSet<usize>,
+    ) -> Value {
+        self.prompt_for_positions(sources, Some(positions))
+    }
+
+    fn prompt_for_positions(
+        &self,
+        sources: &[SourceRecord],
+        positions: Option<&BTreeSet<usize>>,
+    ) -> Value {
         let mut image_index = 0;
         let evidence = self
             .entries
             .iter()
             .enumerate()
-            .map(|(index, reference)| {
+            .filter_map(|(index, reference)| {
                 let attachment = match &reference.selector {
                     EvidenceSelector::Image { .. } => {
                         image_index += 1;
@@ -236,11 +271,14 @@ impl EvidenceCatalog {
                     }
                     EvidenceSelector::Text { .. } => None,
                 };
-                json!({
+                if positions.is_some_and(|selected| !selected.contains(&index)) {
+                    return None;
+                }
+                Some(json!({
                     "id": Self::alias(index), "sourceId": reference.source_id,
                     "kind": if attachment.is_some() { "attached_image" } else { "text" },
                     "attachmentNumber": attachment, "text": reference.excerpt,
-                })
+                }))
             })
             .collect::<Vec<_>>();
         let sources = sources
@@ -266,10 +304,8 @@ impl EvidenceCatalog {
         }
         let mut positions = BTreeSet::new();
         for alias in aliases {
-            let index = alias
-                .strip_prefix('E')
-                .and_then(|value| value.parse::<usize>().ok())
-                .filter(|index| Self::alias(*index) == *alias && *index < self.entries.len())
+            let index = self
+                .index_for_alias(alias)
                 .ok_or_else(|| invalid("A knowledge unit selected an unknown evidence ID."))?;
             if !positions.insert(index) {
                 return Err(invalid("A knowledge unit repeated an evidence ID."));
