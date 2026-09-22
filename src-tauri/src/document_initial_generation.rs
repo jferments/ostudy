@@ -79,7 +79,46 @@ pub(crate) async fn process_and_generate_initial_flashcards(
     render_runtime: PdfRenderRuntime,
     document_id: &str,
 ) -> Result<InitialGenerationResult, CommandError> {
-    document_store::mark_document_processing(database, document_id)?;
+    process_initial_flashcards(
+        database,
+        paths,
+        runtime,
+        render_runtime,
+        document_id,
+        false,
+    )
+    .await
+}
+
+pub(crate) async fn process_reserved_initial_flashcards(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    render_runtime: PdfRenderRuntime,
+    document_id: &str,
+) -> Result<InitialGenerationResult, CommandError> {
+    process_initial_flashcards(
+        database,
+        paths,
+        runtime,
+        render_runtime,
+        document_id,
+        true,
+    )
+    .await
+}
+
+async fn process_initial_flashcards(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    render_runtime: PdfRenderRuntime,
+    document_id: &str,
+    processing_reserved: bool,
+) -> Result<InitialGenerationResult, CommandError> {
+    if !processing_reserved {
+        document_store::mark_document_processing(database, document_id)?;
+    }
     let mut stored = load_context(database, document_id)?;
     let source_path = paths.resolve_relative(&stored.source_relative_path);
     if !source_path.is_file() {

@@ -231,38 +231,70 @@ tokio::task_local! {
 /// A registered document is retired on success, failure, early foreground-service
 /// rejection, or future cancellation. Progress state must not remain stuck in
 /// the process registry until an application restart.
-struct DocumentRegistration<'a> {
-    registry: &'a ActiveDocumentTasks,
-    document_id: &'a str,
+struct DocumentRegistration {
+    document_id: String,
     signal: CancellationSignal,
 }
 
-impl Drop for DocumentRegistration<'_> {
+impl Drop for DocumentRegistration {
     fn drop(&mut self) {
         self.signal.cancel();
-        self.registry.finish(self.document_id);
+        ACTIVE_DOCUMENT_TASKS.finish(&self.document_id);
     }
 }
 
-pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
+/// A task reservation is created synchronously before a background command
+/// acknowledges Start. Stop and duplicate-start therefore see the exact native
+/// task identity even when the executor has not polled its future yet.
+pub(crate) struct ReservedDocumentTask {
+    task: ActiveDocumentTask,
+    _registration: DocumentRegistration,
+    _activity: crate::task_activity::ActivityGuard,
+    _foreground_execution: MobileForegroundExecution,
+}
+
+pub(crate) fn reserve_document_task(
+    document_id: &str,
+) -> Result<ReservedDocumentTask, CommandError> {
+    let activity = crate::task_activity::ActivityGuard::begin()?;
+    let task = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
+    let registration = DocumentRegistration {
+        document_id: document_id.to_string(),
+        signal: task.signal.clone(),
+    };
+    let foreground_execution = MobileForegroundExecution::begin(document_id)?;
+    Ok(ReservedDocumentTask {
+        task,
+        _registration: registration,
+        _activity: activity,
+        _foreground_execution: foreground_execution,
+    })
+}
+
+pub(crate) async fn run_reserved_document_task<T, F>(
+    reservation: ReservedDocumentTask,
+    future: F,
+) -> Result<T, CommandError>
 where
     F: Future<Output = Result<T, CommandError>>,
 {
-    let _activity = crate::task_activity::ActivityGuard::begin()?;
-    let task = ACTIVE_DOCUMENT_TASKS.begin(document_id)?;
-    let _registration = DocumentRegistration {
-        registry: &ACTIVE_DOCUMENT_TASKS,
-        document_id,
-        signal: task.signal.clone(),
-    };
-    let _foreground_execution = MobileForegroundExecution::begin(document_id)?;
+    let task = reservation.task.clone();
     let result = CURRENT_DOCUMENT_TASK.scope(task.clone(), future).await;
     if let Ok(mut diagnostic) = task.diagnostics.lock() {
         if let Some(operation) = diagnostic.as_mut() {
             operation.finish(result.is_ok());
         }
     }
+    drop(reservation);
     result
+}
+
+pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
+where
+    F: Future<Output = Result<T, CommandError>>,
+{
+    let reservation = reserve_document_task(document_id)?;
+    run_reserved_document_task(reservation, future).await
 }
 
 /// Bind once to the real document task so all phases and cloned model contexts
@@ -536,6 +568,18 @@ impl MobileForegroundExecution {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reservation_is_visible_to_stop_and_duplicate_start_before_polling() {
+        let document_id = "reserved-before-poll";
+        let reservation = reserve_document_task(document_id).unwrap();
+        assert!(is_document_task_active(document_id));
+        assert!(reserve_document_task(document_id).is_err());
+        cancel_document_task(document_id).unwrap();
+        assert!(is_document_task_canceled(document_id));
+        drop(reservation);
+        assert!(!is_document_task_active(document_id));
+    }
 
     #[tokio::test]
     async fn cancellation_is_scoped_to_one_document_task() {

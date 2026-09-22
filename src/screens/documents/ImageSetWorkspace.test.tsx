@@ -21,6 +21,7 @@ vi.mock("../../ipc/imageSets", () => ({
 }));
 vi.mock("../../ipc/documents", () => ({
   listDocuments: mocks.list, getDocumentGenerationProgress: vi.fn().mockResolvedValue(null),
+  startDocumentFlashcardGeneration: vi.fn(),
   retryDocumentFlashcardGeneration: mocks.cards,
   generateMoreDocumentFlashcards: mocks.more,
   cancelDocumentFlashcardGeneration: mocks.cancel, deleteDocument: vi.fn(),

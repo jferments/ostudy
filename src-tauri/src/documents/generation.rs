@@ -1,6 +1,9 @@
 use crate::{
     ai::AiRuntimeState, database::Database,
-    document_initial_generation::process_and_generate_initial_flashcards, error::CommandError,
+    document_initial_generation::{
+        process_and_generate_initial_flashcards, process_reserved_initial_flashcards,
+    },
+    error::CommandError,
     paths::AppPaths, pdf_render_backend::PdfRenderRuntime, util::validate_entity_id,
 };
 
@@ -9,6 +12,22 @@ use super::{
     lifecycle, repository,
 };
 
+pub(crate) fn validate_retry_pdf_flashcard_generation(
+    database: &Database,
+    document_id: &str,
+) -> Result<(), CommandError> {
+    validate_entity_id(document_id, "document")?;
+    let document =
+        database.with_connection(|connection| repository::load_document(connection, document_id))?;
+    if document.dto.generated_deck_id.is_some() {
+        return Err(CommandError::new(
+            "document_already_generated",
+            "This document already has a generated deck. Delete that deck before generating it again.",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn retry_pdf_flashcard_generation(
     database: &Database,
     paths: &AppPaths,
@@ -16,24 +35,64 @@ pub(crate) async fn retry_pdf_flashcard_generation(
     render_runtime: PdfRenderRuntime,
     input: RetryPdfGenerationInput,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
-    validate_entity_id(&input.document_id, "document")?;
-    let document = database
-        .with_connection(|connection| repository::load_document(connection, &input.document_id))?;
-    if document.dto.generated_deck_id.is_some() {
-        return Err(CommandError::new(
-            "document_already_generated",
-            "This document already has a generated deck. Delete that deck before generating it again.",
-        ));
-    }
-
-    let result = process_and_generate_initial_flashcards(
+    retry_pdf_flashcard_generation_inner(
         database,
         paths,
         runtime,
         render_runtime,
-        &input.document_id,
+        input,
+        false,
     )
-    .await;
+    .await
+}
+
+pub(crate) async fn retry_reserved_pdf_flashcard_generation(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    render_runtime: PdfRenderRuntime,
+    input: RetryPdfGenerationInput,
+) -> Result<DocumentGenerationResultDto, CommandError> {
+    retry_pdf_flashcard_generation_inner(
+        database,
+        paths,
+        runtime,
+        render_runtime,
+        input,
+        true,
+    )
+    .await
+}
+
+async fn retry_pdf_flashcard_generation_inner(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    render_runtime: PdfRenderRuntime,
+    input: RetryPdfGenerationInput,
+    processing_reserved: bool,
+) -> Result<DocumentGenerationResultDto, CommandError> {
+    validate_retry_pdf_flashcard_generation(database, &input.document_id)?;
+
+    let result = if processing_reserved {
+        process_reserved_initial_flashcards(
+            database,
+            paths,
+            runtime,
+            render_runtime,
+            &input.document_id,
+        )
+        .await
+    } else {
+        process_and_generate_initial_flashcards(
+            database,
+            paths,
+            runtime,
+            render_runtime,
+            &input.document_id,
+        )
+        .await
+    };
     let result = match result {
         Ok(result) => result,
         Err(error) => {

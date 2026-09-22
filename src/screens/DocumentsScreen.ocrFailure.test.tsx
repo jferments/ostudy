@@ -9,6 +9,7 @@ vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   importDocument: vi.fn(),
+  startDocumentFlashcardGeneration: vi.fn(),
   retryDocumentFlashcardGeneration: vi.fn(),
   generateMoreDocumentFlashcards: vi.fn(),
   cancelDocumentFlashcardGeneration: vi.fn(),

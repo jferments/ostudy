@@ -9,7 +9,7 @@ import {
   importDocument,
   listDocuments,
   openDocumentSource,
-  retryDocumentFlashcardGeneration,
+  startDocumentFlashcardGeneration,
   type DocumentGenerationProgress,
   type DocumentSummary,
 } from "../ipc/documents";
@@ -59,6 +59,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   const alive = useRef(true);
   const selectingFile = useRef(false);
   const stopping = useRef(new Set<string>());
+  const backgroundFlashcardIds = useRef(new Set<string>());
   const latestDocuments = useRef(documents);
   latestDocuments.current = documents;
   const refreshLane = useRequestLane();
@@ -137,6 +138,64 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     });
   }, [documents]);
 
+  useEffect(() => {
+    for (const document of documents) {
+      if (!backgroundFlashcardIds.current.has(document.id)
+        || document.lifecycleState === "processing") continue;
+
+      backgroundFlashcardIds.current.delete(document.id);
+      stopping.current.delete(`document:${document.id}`);
+      updateIdSet(setCancelingDocumentIds, document.id, false);
+      setGenerationProgress((current) => {
+        if (!(document.id in current)) return current;
+        const next = { ...current };
+        delete next[document.id];
+        return next;
+      });
+
+      if (document.safeErrorCode === "document_generation_canceled"
+        || document.safeErrorCode === "ai_request_canceled") {
+        setErrorMessage(null);
+        showToast("info", "Generation stopped. The document is still available to retry.");
+        continue;
+      }
+      if (document.lifecycleState === "ready" && document.generatedDeckId) {
+        setErrorMessage(null);
+        showGenerationSuccess(document.generatedCardCount, showToast);
+        void refreshDecks().catch((error: unknown) => {
+          if (alive.current) {
+            setErrorMessage(
+              `Saved successfully; refreshing the deck library failed: ${getErrorMessage(error)}`,
+            );
+          }
+        });
+        continue;
+      }
+      const message = document.safeErrorMessage || "Document generation failed.";
+      setErrorMessage(message);
+      showToast("error", message);
+    }
+  }, [documents, refreshDecks, showToast]);
+
+  async function startBackgroundFlashcardGeneration(documentId: string): Promise<void> {
+    backgroundFlashcardIds.current.add(documentId);
+    try {
+      await startDocumentFlashcardGeneration(documentId);
+    } catch (error) {
+      backgroundFlashcardIds.current.delete(documentId);
+      throw error;
+    }
+    try {
+      await refreshDocuments();
+    } catch (error: unknown) {
+      if (alive.current) {
+        setErrorMessage(
+          `Generation started; refreshing Documents failed: ${getErrorMessage(error)}`,
+        );
+      }
+    }
+  }
+
   async function reconcileSaved(): Promise<void> {
     try {
       await Promise.all([refreshDocuments(), refreshDecks()]);
@@ -178,19 +237,16 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     }
     if (!selected) return;
 
-    showToast(
-      "info",
-      "Document processing started. You can add more documents while this job runs.",
-    );
     let documentId: string | null = null;
     try {
       const imported = await importDocument(selected.id);
       documentId = imported.documentId;
       updateIdSet(setBusyDocumentIds, documentId, true);
-      await refreshDocuments();
-      const result = await retryDocumentFlashcardGeneration(documentId);
-      await reconcileSaved();
-      showGenerationSuccess(result.createdCardCount, showToast);
+      await startBackgroundFlashcardGeneration(documentId);
+      showToast(
+        "info",
+        "Document processing started. You can add more documents while this job runs.",
+      );
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {
@@ -199,13 +255,13 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   }
 
   async function retry(document: DocumentSummary): Promise<void> {
-    if (busyDocumentIds.has(document.id) || guideGeneratingDocumentIds.has(document.id)) return;
+    if (document.lifecycleState === "processing"
+      || busyDocumentIds.has(document.id)
+      || guideGeneratingDocumentIds.has(document.id)) return;
     updateIdSet(setBusyDocumentIds, document.id, true);
     setErrorMessage(null);
     try {
-      const result = await retryDocumentFlashcardGeneration(document.id);
-      await reconcileSaved();
-      showGenerationSuccess(result.createdCardCount, showToast);
+      await startBackgroundFlashcardGeneration(document.id);
     } catch (error: unknown) {
       await handleGenerationFailure(error);
     } finally {

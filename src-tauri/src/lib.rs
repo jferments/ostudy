@@ -353,6 +353,7 @@ pub fn run() {
             documents::commands::set_image_set_filters,
             documents::commands::amend_image_set,
             document_import::import_document,
+            document_operations::start_document_flashcard_generation,
             document_operations::run_document_flashcard_generation,
             document_more::generate_more_pdf_flashcards,
             document_operations::cancel_document_flashcard_generation,

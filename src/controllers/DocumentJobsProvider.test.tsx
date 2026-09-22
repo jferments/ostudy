@@ -6,13 +6,15 @@ import { DocumentJobsProvider, useDocumentJobs } from "./DocumentJobsProvider";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(), guide: vi.fn(), cancelGuide: vi.fn(), cancelDocument: vi.fn(),
-  progress: vi.fn(), toast: vi.fn(), refreshDecks: vi.fn(), confirm: vi.fn(),
+  progress: vi.fn(), start: vi.fn(), legacyCards: vi.fn(), toast: vi.fn(),
+  refreshDecks: vi.fn(), confirm: vi.fn(),
 }));
 vi.mock("../ipc/documents", () => ({
   listDocuments: mocks.list, getDocumentGenerationProgress: mocks.progress,
   cancelDocumentFlashcardGeneration: mocks.cancelDocument, deleteDocument: vi.fn(),
   generateMoreDocumentFlashcards: vi.fn(), importDocument: vi.fn(),
-  openDocumentSource: vi.fn(), retryDocumentFlashcardGeneration: vi.fn(),
+  openDocumentSource: vi.fn(), startDocumentFlashcardGeneration: mocks.start,
+  retryDocumentFlashcardGeneration: mocks.legacyCards,
 }));
 vi.mock("../ipc/studyGuides", () => ({
   generateDocumentStudyGuide: mocks.guide, cancelDocumentStudyGuideGeneration: mocks.cancelGuide,
@@ -23,6 +25,15 @@ vi.mock("../ui/overlays/overlayContext", () => ({ useConfirm: () => mocks.confir
 const document = { id: "a".repeat(32), title: "Geometry", revision: 1,
   lifecycleState: "ready", generatedDeckId: "b".repeat(32), analysisPendingItems: 0,
 } as unknown as DocumentSummary;
+const retryDocument = {
+  ...document,
+  id: "c".repeat(32),
+  lifecycleState: "failed",
+  generatedDeckId: null,
+  generatedCardCount: 0,
+  safeErrorCode: "",
+  safeErrorMessage: "",
+} as DocumentSummary;
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -37,6 +48,7 @@ function DocumentsRoute() {
     <button onClick={() => { void jobs.stopStudyGuide(document); }}>Stop guide</button>
     <span role="status">{jobs.guideGeneratingDocumentIds.has(document.id) ? "Guide running" : "Idle"}</span>
     {jobs.errorMessage ? <p role="alert">{jobs.errorMessage}</p> : null}
+    <button onClick={() => { void jobs.retry(retryDocument); }}>Retry cards</button>
     <button onClick={() => { void jobs.refreshDocuments(); }}>Refresh documents</button>
   </section>;
 }
@@ -58,6 +70,8 @@ beforeEach(() => {
   mocks.progress.mockResolvedValue(null);
   mocks.cancelGuide.mockResolvedValue(undefined);
   mocks.cancelDocument.mockResolvedValue(undefined);
+  mocks.start.mockResolvedValue(undefined);
+  mocks.legacyCards.mockResolvedValue(undefined);
   mocks.refreshDecks.mockResolvedValue(undefined);
   mocks.confirm.mockResolvedValue(true);
 });
@@ -116,5 +130,33 @@ describe("application-lifetime document jobs", () => {
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Saved successfully"));
     expect(mocks.guide).toHaveBeenCalledTimes(1);
     expect(mocks.toast).toHaveBeenCalledWith("success", expect.stringContaining("revision 3"));
+  });
+  it("hands flashcard generation to native ownership and observes durable completion", async () => {
+    let current = [retryDocument];
+    mocks.list.mockImplementation(async () => current);
+    mocks.start.mockImplementation(async () => {
+      current = [{ ...retryDocument, lifecycleState: "processing" }];
+    });
+    open();
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry cards" }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id));
+    expect(mocks.legacyCards).not.toHaveBeenCalled();
+
+    current = [{
+      ...retryDocument,
+      lifecycleState: "ready",
+      generatedDeckId: "d".repeat(32),
+      generatedCardCount: 6,
+      safeErrorCode: "",
+      safeErrorMessage: "",
+    }];
+    fireEvent.click(screen.getByRole("button", { name: "Refresh documents" }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(
+      "success",
+      "Created 6 flashcards in a new deck.",
+    ));
+    expect(mocks.refreshDecks).toHaveBeenCalled();
   });
 });

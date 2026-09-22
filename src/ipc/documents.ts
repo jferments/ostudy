@@ -170,6 +170,12 @@ export async function importDocumentAndGenerateFlashcards(
   return retryDocumentFlashcardGeneration(imported.documentId);
 }
 
+export async function startDocumentFlashcardGeneration(documentId: string): Promise<void> {
+  await invoke("start_document_flashcard_generation", {
+    input: { documentId },
+  });
+}
+
 export async function retryDocumentFlashcardGeneration(
   documentId: string,
 ): Promise<DocumentGenerationResult> {
