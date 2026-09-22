@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use crate::{
     ai::{document_intelligence::DocumentTaskContext, generation},
     database::Database,
@@ -18,6 +17,7 @@ use crate::{
     knowledge::{authoring::KnowledgeCatalog, collection_view::CollectionGuideWindow},
     util::unix_time_millis,
 };
+use rusqlite::{params, OptionalExtension, TransactionBehavior};
 
 const COLLECTION_SECTION_CACHE_VERSION: i64 = 1;
 
