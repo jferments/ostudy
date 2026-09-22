@@ -1078,6 +1078,15 @@ async fn compose_collection_guide(
             "networkScope": task.network_scope.as_str(),
         }),
     );
+    let authoring = CollectionGuideAuthoringContext {
+        database,
+        runtime,
+        task: &task,
+        guide_contract: &guide_contract,
+        collection_title: &collection_title,
+        view: &view,
+        signal: &signal,
+    };
     let mut sections = vec![None; windows.len()];
     let mut cursor = 0_usize;
     let mut completed_sections = 0_usize;
@@ -1098,50 +1107,10 @@ async fn compose_collection_guide(
         let p2 = indices.get(2).copied();
         let p3 = indices.get(3).copied();
         let (r0, r1, r2, r3) = tokio::join!(
-            collection_guide_slot(
-                database,
-                runtime,
-                &task,
-                &guide_contract,
-                &collection_title,
-                &view,
-                &windows,
-                &signal,
-                p0
-            ),
-            collection_guide_slot(
-                database,
-                runtime,
-                &task,
-                &guide_contract,
-                &collection_title,
-                &view,
-                &windows,
-                &signal,
-                p1
-            ),
-            collection_guide_slot(
-                database,
-                runtime,
-                &task,
-                &guide_contract,
-                &collection_title,
-                &view,
-                &windows,
-                &signal,
-                p2
-            ),
-            collection_guide_slot(
-                database,
-                runtime,
-                &task,
-                &guide_contract,
-                &collection_title,
-                &view,
-                &windows,
-                &signal,
-                p3
-            ),
+            collection_guide_slot(&authoring, &windows, p0),
+            collection_guide_slot(&authoring, &windows, p1),
+            collection_guide_slot(&authoring, &windows, p2),
+            collection_guide_slot(&authoring, &windows, p3),
         );
         for (index, result) in [r0, r1, r2, r3].into_iter().flatten() {
             sections[index] = Some(result?);
@@ -1178,91 +1147,79 @@ async fn compose_collection_guide(
     publish_collection_guide(database, operation_id, claim, &view, &content, work_total)
 }
 
+struct CollectionGuideAuthoringContext<'a> {
+    database: &'a Database,
+    runtime: &'a AiRuntimeState,
+    task: &'a crate::ai::document_intelligence::DocumentTaskContext,
+    guide_contract: &'a str,
+    collection_title: &'a str,
+    view: &'a CollectionViewState,
+    signal: &'a CancellationSignal,
+}
+
 async fn collection_guide_slot(
-    database: &Database,
-    runtime: &AiRuntimeState,
-    task: &crate::ai::document_intelligence::DocumentTaskContext,
-    guide_contract: &str,
-    collection_title: &str,
-    view: &CollectionViewState,
+    authoring: &CollectionGuideAuthoringContext<'_>,
     windows: &[collection_view::CollectionGuideWindow],
-    signal: &CancellationSignal,
     index: Option<usize>,
 ) -> Option<(usize, Result<CollectionGuideSection, CommandError>)> {
     let index = index?;
     let window = windows.get(index)?;
     Some((
         index,
-        author_collection_guide_window(
-            database,
-            runtime,
-            task,
-            guide_contract,
-            collection_title,
-            view,
-            window,
-            signal,
-        )
-        .await,
+        author_collection_guide_window(authoring, window).await,
     ))
 }
 
 async fn author_collection_guide_window(
-    database: &Database,
-    runtime: &AiRuntimeState,
-    task: &crate::ai::document_intelligence::DocumentTaskContext,
-    guide_contract: &str,
-    collection_title: &str,
-    view: &CollectionViewState,
+    authoring: &CollectionGuideAuthoringContext<'_>,
     window: &collection_view::CollectionGuideWindow,
-    signal: &CancellationSignal,
 ) -> Result<CollectionGuideSection, CommandError> {
-    let relationship_context = relationship_context(view, &window.topic_ids);
+    let relationship_context = relationship_context(authoring.view, &window.topic_ids);
     let cache_key = reuse::section_key(
-        task,
-        &view.synthesis.collection_id,
-        collection_title,
+        authoring.task,
+        &authoring.view.synthesis.collection_id,
+        authoring.collection_title,
         window,
         &relationship_context,
     )?;
     let generated = if let Some(saved) = reuse::load_section(
-        database,
-        &view.synthesis.collection_id,
+        authoring.database,
+        &authoring.view.synthesis.collection_id,
         &cache_key,
-        guide_contract,
+        authoring.guide_contract,
         &window.catalog,
-        task.diagnostics.as_ref(),
+        authoring.task.diagnostics.as_ref(),
     )? {
         saved
     } else {
-        let mut section_task = task.clone();
+        let mut section_task = authoring.task.clone();
         section_task.diagnostic_window_key = Some(cache_key.clone());
         let generated = generate_collection_study_guide_topic_section(
-            runtime,
+            authoring.runtime,
             &section_task,
-            collection_title,
+            authoring.collection_title,
             CollectionStudyGuideAuthoring {
                 topic_title: &window.title,
                 topic_summary: &window.topic_context,
                 relationship_context: &relationship_context,
                 knowledge: &window.catalog,
             },
-            signal,
+            authoring.signal,
         )
         .await?;
-        section_task.ensure_current(database)?;
-        database.with_connection(|connection| {
+        section_task.ensure_current(authoring.database)?;
+        authoring.database.with_connection(|connection| {
             collection_view::ensure_analysis_current(
                 connection,
-                &view.synthesis.collection_id,
-                &view.analysis_hash,
+                &authoring.view.synthesis.collection_id,
+                &authoring.view.analysis_hash,
             )
         })?;
         reuse::save_section(
-            database,
-            &view.synthesis.collection_id,
+            authoring.database,
+            &authoring.view.synthesis.collection_id,
             &cache_key,
-            guide_contract,
+            authoring.guide_contract,
             &window.catalog,
             &generated,
         )?;

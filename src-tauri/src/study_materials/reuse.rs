@@ -7,8 +7,6 @@
 use std::collections::BTreeMap;
 
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
-use serde_json::json;
-
 use crate::{
     ai::{document_intelligence::DocumentTaskContext, generation},
     database::Database,
