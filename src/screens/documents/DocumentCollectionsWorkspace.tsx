@@ -77,7 +77,8 @@ export function DocumentCollectionsWorkspace({
     );
   }
 
-  const folders = [...organization.collections]
+  const loadedOrganization = organization;
+  const folders = [...loadedOrganization.collections]
     .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
 
   async function deleteCurrent(folder: DocumentCollection): Promise<void> {
@@ -102,7 +103,7 @@ export function DocumentCollectionsWorkspace({
   }
 
   function openRanges(membership: DocumentCollectionMembership): void {
-    const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
+    const ranges = loadedOrganization.ranges.filter((range) => range.membershipId === membership.id);
     setDialog({
       kind: "ranges",
       membership,
@@ -140,7 +141,7 @@ export function DocumentCollectionsWorkspace({
         <CollectionPanel
           key={folder.id}
           folder={folder}
-          organization={organization}
+          organization={loadedOrganization}
           documents={documentById}
           mutationBusy={controller.busy}
           refreshDecks={refreshDecks}
@@ -170,7 +171,7 @@ export function DocumentCollectionsWorkspace({
         <CollectionEditorDialog
           dialog={dialog}
           setDialog={setDialog}
-          organization={organization}
+          organization={loadedOrganization}
           documents={documents}
           documentById={documentById}
           error={dialogError}
@@ -259,7 +260,7 @@ function CollectionPanel({
       >
         <FolderSources
           folder={folder}
-          organization={organization}
+          organization={loadedOrganization}
           documents={documents}
           onAdd={onAdd}
           onRanges={onRanges}
@@ -658,7 +659,7 @@ function parseRanges(value: string, document: DocumentSummary): SourceRangeInput
 
 function rangeLabel(membership: DocumentCollectionMembership, organization: DocumentCollectionOrganization, document: DocumentSummary | undefined): string {
   if (!document) return "Source unavailable";
-  const ranges = organization.ranges.filter((range) => range.membershipId === membership.id);
+  const ranges = loadedOrganization.ranges.filter((range) => range.membershipId === membership.id);
   if (!ranges.length) return `Whole document · ${document.sourceUnitCount} ${unitPlural(document.sourceUnitKind)}`;
   if (ranges.some((range) => range.sourceSha256 !== document.sha256)) return "Reading range needs review because the source changed";
   const pieces = ranges.map((range) => range.startUnit === range.endUnit ? String(range.startUnit) : `${range.startUnit}–${range.endUnit}`);
