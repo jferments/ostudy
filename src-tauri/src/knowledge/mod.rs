@@ -22,7 +22,6 @@ mod images;
 mod index;
 pub(crate) mod indexing;
 pub(crate) mod learning_context;
-mod parallel;
 pub(crate) mod planning;
 pub(crate) mod preparation;
 mod preparation_store;

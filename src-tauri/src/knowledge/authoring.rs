@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    ai::{document_intelligence::DocumentTaskContext, AiRuntimeState},
+    ai::{
+        concurrency::{run_bounded_provider_queue, QueueControl},
+        document_intelligence::DocumentTaskContext,
+        AiRuntimeState,
+    },
     database::Database,
     error::CommandError,
     paths::AppPaths,
@@ -227,12 +231,12 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
         } else {
             ranges.len().saturating_sub(1)
         };
-        let mut consumed = 0;
-        for wave in ranges[..process_count].chunks(parallelism) {
-            let groups = wave
-                .iter()
-                .map(|range| &pending[range.clone()])
-                .collect::<Vec<_>>();
+        let process_ranges = &ranges[..process_count];
+        let groups = process_ranges
+            .iter()
+            .map(|range| &pending[range.clone()])
+            .collect::<Vec<_>>();
+        if !groups.is_empty() {
             set_current_task_phase(
                 "understanding material",
                 None,
@@ -248,52 +252,71 @@ pub(crate) async fn prepare_document(input: DocumentPreparation<'_>) -> Result<(
                     .and_then(|source| source.locator.as_ref().map(|l| l.last())),
                 None,
             );
-            let outcomes = super::parallel::four(groups.len(), |index| {
+        }
+        let mut first_failure: Option<(usize, CommandError)> = None;
+        run_bounded_provider_queue(
+            groups.len(),
+            parallelism,
+            |index| {
                 let cancellation = &cancellation;
                 let group = groups[index];
                 async move {
-                    if retry_partial {
+                    let outcome = if retry_partial {
                         retry_units_batch(database, paths, runtime, task, group, cancellation).await
                     } else {
-                        ensure_units_batch(database, paths, runtime, task, group, cancellation)
-                            .await
-                    }
+                        ensure_units_batch(database, paths, runtime, task, group, cancellation).await
+                    };
+                    (index, outcome)
                 }
-            })
-            .await;
-            let mut failure = None;
-            for (group, outcome) in groups.iter().zip(outcomes) {
-                match outcome {
-                    Ok(_) => {
-                        for source in *group {
-                            let parent = source_parents
-                                .get(&source.id)
-                                .ok_or_else(repository::stale_source)?;
-                            if let Some(left) = remaining.get_mut(parent) {
-                                *left = left.saturating_sub(1);
-                                if *left == 0 {
-                                    completed += 1;
-                                }
+            },
+            |(index, outcome)| {
+                let group = groups[index];
+                let result = outcome.and_then(|_| {
+                    for source in group {
+                        let parent = source_parents
+                            .get(&source.id)
+                            .ok_or_else(repository::stale_source)?;
+                        if let Some(left) = remaining.get_mut(parent) {
+                            *left = left.saturating_sub(1);
+                            if *left == 0 {
+                                completed += 1;
                             }
                         }
                     }
-                    Err(error) if failure.is_none() => failure = Some(error),
-                    Err(_) => {}
-                }
-            }
-            set_current_task_phase(
-                "understanding material",
-                None,
-                completed,
-                seeds.len(),
-                None,
-                None,
-                None,
-            );
-            if let Some(error) = failure {
-                return Err(error);
-            }
-            consumed = wave.last().map_or(consumed, |range| range.end);
+                    Ok(())
+                });
+                let control = match result {
+                    Ok(()) => {
+                        set_current_task_phase(
+                            "understanding material",
+                            None,
+                            completed,
+                            seeds.len(),
+                            None,
+                            None,
+                            None,
+                        );
+                        QueueControl::Continue
+                    }
+                    Err(error) => {
+                        let replace = match first_failure.as_ref() {
+                            None => true,
+                            Some((failed_index, _)) => index < *failed_index,
+                        };
+                        if replace {
+                            first_failure = Some((index, error));
+                        }
+                        QueueControl::Stop
+                    }
+                };
+                Ok::<QueueControl, CommandError>(control)
+            },
+        )
+        .await?;
+        let consumed = process_ranges.last().map_or(0, |range| range.end);
+        drop(groups);
+        if let Some((_, error)) = first_failure {
+            return Err(error);
         }
         pending.drain(..consumed);
     }
