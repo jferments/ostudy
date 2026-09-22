@@ -294,10 +294,7 @@ mod tests {
         catalog.preparation.legacy_coverage_sources = 5;
         catalog.preparation.omitted_sources = 6;
         catalog.preparation.omitted_units = 7;
-        let aliases = BTreeMap::from([(
-            catalog.units[0].source_id.clone(),
-            "S0".to_string(),
-        )]);
+        let aliases = BTreeMap::from([(catalog.units[0].source_id.clone(), "S0".to_string())]);
         let projected = preparation(&catalog, &aliases);
         assert_eq!(projected["unpreparedSources"], 1);
         assert_eq!(projected["unresolvedRegions"], 2);

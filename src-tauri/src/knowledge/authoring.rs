@@ -114,15 +114,12 @@ impl KnowledgeCatalog {
             .iter()
             .flat_map(|unit| {
                 std::iter::once(unit.source_id.clone()).chain(
-                    unit.content
-                        .grounding
-                        .iter()
-                        .flat_map(|grounding| {
-                            grounding
-                                .evidence
-                                .iter()
-                                .map(|reference| reference.source_id.clone())
-                        }),
+                    unit.content.grounding.iter().flat_map(|grounding| {
+                        grounding
+                            .evidence
+                            .iter()
+                            .map(|reference| reference.source_id.clone())
+                    }),
                 )
             })
             .collect::<BTreeSet<_>>();
