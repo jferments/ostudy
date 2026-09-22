@@ -206,7 +206,10 @@ pub(crate) async fn execute_generation_windows(
         parallelism,
         |queue_index| {
             let position = missing[queue_index];
-            async {
+            let input = &input;
+            let catalogs = &catalogs;
+            let source_assets = &source_assets;
+            async move {
                 let result = async {
                     let window = &input.windows[position];
                     document_store::mark_window_running(
