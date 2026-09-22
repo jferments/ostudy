@@ -221,14 +221,14 @@ pub(crate) async fn execute_generation_windows(
                     let images = if input.task.include_page_images {
                         document_store::load_window_images(
                             input.paths,
-                            &source_assets,
+                            source_assets,
                             window,
                             input.plan.max_images_per_window,
                         )?
                     } else {
                         Vec::new()
                     };
-                    generation_slot(&input, &catalogs, position, &images).await
+                    generation_slot(input, catalogs, position, &images).await
                 }
                 .await;
                 (position, result)
