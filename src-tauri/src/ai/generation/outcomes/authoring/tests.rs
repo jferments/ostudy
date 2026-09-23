@@ -90,7 +90,10 @@ async fn document_authoring_outcomes_link_repair_without_claiming_publication() 
     assert_eq!(rows[0].3["nativeTask"]["state"], "continued");
     let last = &rows[1].3;
     assert_eq!(last["nativeLineage"]["previousRequestId"], rows[0].0);
-    assert_eq!(last["nativeLineage"]["recovery"]["reason"], "contract_repair");
+    assert_eq!(
+        last["nativeLineage"]["recovery"]["reason"],
+        "contract_repair"
+    );
     assert_eq!(last["nativeAuthoring"]["returnedItems"], 1);
     assert_eq!(last["nativeAuthoring"]["itemKind"], "cards");
     assert_eq!(last["nativeAuthoring"]["persistence"], "not_observed");
@@ -137,7 +140,10 @@ async fn document_authoring_outcomes_do_not_mix_parallel_artifact_results() {
     assert_eq!(rows[0].3["nativeAuthoring"]["returnedItems"], 3);
     assert_eq!(rows[1].3["nativeAuthoring"]["state"], "failed");
     assert!(rows[1].3["nativeAuthoring"]["returnedItems"].is_null());
-    assert_eq!(rows[1].3["nativeTask"]["errorCode"], "invalid_guide_support");
+    assert_eq!(
+        rows[1].3["nativeTask"]["errorCode"],
+        "invalid_guide_support"
+    );
     assert!(rows.iter().all(|row| {
         row.1 == "response" && row.3["nativeLineage"]["previousRequestId"].is_null()
     }));
@@ -179,13 +185,18 @@ async fn document_authoring_outcomes_keep_curation_batches_and_empty_selection_d
         .find(|row| row.3["nativeAuthoring"]["state"] == "returned")
         .unwrap();
     assert_eq!(empty.3["nativeAuthoring"]["returnedItems"], 0);
-    assert_eq!(empty.3["nativeAuthoring"]["itemKind"], "curation_selections");
+    assert_eq!(
+        empty.3["nativeAuthoring"]["itemKind"],
+        "curation_selections"
+    );
     let failed = rows
         .iter()
         .find(|row| row.3["nativeAuthoring"]["state"] == "failed")
         .unwrap();
     assert!(failed.3["nativeAuthoring"]["returnedItems"].is_null());
-    assert!(rows.iter().all(|row| row.3.get("nativeCheckpoint").is_none()));
+    assert!(rows
+        .iter()
+        .all(|row| row.3.get("nativeCheckpoint").is_none()));
 }
 
 #[tokio::test]
