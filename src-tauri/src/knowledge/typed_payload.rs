@@ -4,10 +4,33 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::contracts::{bounded, invalid, KnowledgeKind, MAX_UNIT_STATEMENT_CHARS};
+use super::contracts::{bounded, KnowledgeKind, MAX_UNIT_STATEMENT_CHARS};
 use crate::error::CommandError;
 
 mod wire;
+
+// Static rule identifiers are assigned where a check fails, never inferred from
+// provider text or human-readable error messages. Keep the outer extraction
+// error contract separate from these durable per-proposal diagnostic reasons.
+fn annotation_error(rule: &str, message: &str) -> CommandError {
+    CommandError::new(format!("knowledge_annotation_{rule}"), message)
+}
+
+pub(crate) fn rejection_rule(error: &CommandError) -> &str {
+    if error.code.starts_with("knowledge_annotation_") {
+        &error.code
+    } else {
+        "invalid_qualified_structure"
+    }
+}
+
+pub(crate) fn rejection_category(rule: &str) -> &str {
+    if rule.starts_with("knowledge_annotation_") {
+        "invalid_qualified_structure"
+    } else {
+        rule
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -84,7 +107,8 @@ impl<T> Shape<T> {
             }
         };
         if !valid {
-            return Err(invalid(
+            return Err(annotation_error(
+                "structural_bounds",
                 "Qualified knowledge exceeds its structural bounds.",
             ));
         }
@@ -161,12 +185,20 @@ impl<T> Shape<T> {
 impl StatementSpan {
     fn text<'a>(&self, statement: &'a str) -> Result<&'a str, CommandError> {
         if self.start >= self.end {
-            return Err(invalid("A qualified statement span is empty."));
+            return Err(annotation_error(
+                "span_empty",
+                "A qualified statement span is empty.",
+            ));
         }
         statement
             .get(self.start..self.end)
             .filter(|text| !text.trim().is_empty())
-            .ok_or_else(|| invalid("A qualified statement span is not a UTF-8 boundary."))
+            .ok_or_else(|| {
+                annotation_error(
+                    "span_boundary",
+                    "A qualified statement span is not a UTF-8 boundary.",
+                )
+            })
     }
 }
 
@@ -182,8 +214,9 @@ impl TypedPayload {
             "knowledge statement",
             false,
         )?;
-        let shape: Shape<wire::Selection> = serde_json::from_value(value)
-            .map_err(|_| invalid("Malformed qualified knowledge structure."))?;
+        let shape: Shape<wire::Selection> = serde_json::from_value(value).map_err(|_| {
+            annotation_error("malformed", "Malformed qualified knowledge structure.")
+        })?;
         let payload = Self {
             version: 1,
             shape: shape.map(|item| item.resolve(statement))?,
@@ -198,7 +231,10 @@ impl TypedPayload {
         kind: KnowledgeKind,
     ) -> Result<(), CommandError> {
         if self.version != 1 {
-            return Err(invalid("Unsupported qualified knowledge version."));
+            return Err(annotation_error(
+                "version",
+                "Unsupported qualified knowledge version.",
+            ));
         }
         self.shape.check_bounds()?;
         if let Shape::Quantity {
@@ -207,8 +243,10 @@ impl TypedPayload {
         {
             for bound in bounds {
                 bound_direction(subject, bound)?;
-                token_boundary(statement, &bound.label, |ch| "<>=≤≥≠".contains(ch))?;
-                token_boundary(statement, &bound.value, |ch| {
+                token_boundary(statement, &bound.label, "operator_token_split", |ch| {
+                    "<>=≤≥≠".contains(ch)
+                })?;
+                token_boundary(statement, &bound.value, "numeric_token_split", |ch| {
                     ch.is_ascii_digit() || "+-−.eE".contains(ch)
                 })?;
             }
@@ -233,14 +271,21 @@ impl TypedPayload {
                     if !matches!(
                         bound.label.as_str(),
                         "=" | "<" | ">" | "<=" | ">=" | "≤" | "≥" | "≠"
-                    ) || !bound
+                    ) {
+                        return Err(annotation_error(
+                            "quantity_operator",
+                            "A quantity requires an explicit comparison operator.",
+                        ));
+                    }
+                    if !bound
                         .value
                         .replace('−', "-")
                         .parse::<f64>()
                         .is_ok_and(f64::is_finite)
                     {
-                        return Err(invalid(
-                            "A quantity requires explicit operators and numeric literals.",
+                        return Err(annotation_error(
+                            "quantity_literal",
+                            "A quantity requires a finite numeric literal.",
                         ));
                     }
                 }
@@ -254,7 +299,8 @@ impl TypedPayload {
             }
         };
         if !compatible {
-            return Err(invalid(
+            return Err(annotation_error(
+                "kind_mismatch",
                 "Qualified structure does not match the knowledge kind.",
             ));
         }
@@ -290,6 +336,7 @@ impl TypedPayload {
 fn token_boundary(
     statement: &str,
     span: &StatementSpan,
+    rule: &str,
     belongs: impl Fn(char) -> bool,
 ) -> Result<(), CommandError> {
     span.text(statement)?;
@@ -299,7 +346,8 @@ fn token_boundary(
         .is_some_and(&belongs)
         || statement[span.end..].chars().next().is_some_and(belongs)
     {
-        return Err(invalid(
+        return Err(annotation_error(
+            rule,
             "A qualified selection cuts a numeric or comparison token.",
         ));
     }
@@ -315,7 +363,8 @@ fn bound_direction(
     } else if bound.value.end <= bound.label.start && bound.label.end <= subject.start {
         Ok(false)
     } else {
-        Err(invalid(
+        Err(annotation_error(
+            "quantity_order",
             "A quantity's operator must remain between its subject and value.",
         ))
     }
@@ -330,7 +379,10 @@ fn validate_dependencies(steps: usize, dependencies: &[Dependency]) -> Result<()
             || edge.before == edge.after
             || !edges.insert((edge.before, edge.after))
         {
-            return Err(invalid("Invalid or duplicate process dependency."));
+            return Err(annotation_error(
+                "dependency_invalid",
+                "Invalid or duplicate process dependency.",
+            ));
         }
     }
     let mut removed = BTreeSet::new();
@@ -349,7 +401,10 @@ fn validate_dependencies(steps: usize, dependencies: &[Dependency]) -> Result<()
         }
     }
     if removed.len() != steps {
-        return Err(invalid("Process dependencies contain a cycle."));
+        return Err(annotation_error(
+            "dependency_cycle",
+            "Process dependencies contain a cycle.",
+        ));
     }
     // No edges means no asserted order. Never invent order from list position.
     Ok(())

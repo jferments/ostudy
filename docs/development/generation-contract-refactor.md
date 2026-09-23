@@ -58,15 +58,45 @@ region-only dispositions, partial supporting sources, genuine rejection/missing
 source controls, and provider-call counts through the actual decoder/checkpoint
 loop. No live provider is needed for these regressions.
 
+## AC-02a: durable annotation validation causes
+
+The native typed-payload validator assigns `knowledge_annotation_*` rule IDs
+at the failing predicate. Missing phrases, invalid occurrences, malformed shapes,
+structural bounds, knowledge-kind mismatch, numeric/operator token splitting,
+invalid quantity order/operator/literal, dependency errors and persisted span or
+version failures no longer collapse into one indistinguishable cause.
+
+Extraction retains that rule in the existing rejected proposal `code` field.
+The revision-bound SQLite analysis receipt and targeted repair prompt preserve it.
+Content-free diagnostic reports keep `category = invalid_qualified_structure`
+for aggregation and add `rule` for the precise cause. Old receipts containing
+only the broad code still deserialize unchanged; the missing historical detail
+is not invented. Rule classification never parses provider prose or matches
+human-readable error messages, and diagnostic reports do not include draft text.
+
+The `document_` Fast regressions cover distinct rejection rules, actual SQLite
+checkpoint round trips, targeted-repair propagation, unchanged admitted siblings,
+legacy receipt serialization and valid repeated-phrase selection. Existing typed
+round-trip, quarantine and legacy tests now also run under the Fast filter.
+Numeric signs, strict/inclusive operators, finite values, process edges, evidence
+selection and all admission limits remain enforced.
+
+This is the validation-cause part of AC-02, not the whole outcome ledger. Durable
+physical-request/recovery linkage, before/after recovery gains and terminal-error
+export remain the next boundary. AC-03's independent optional-annotation admission
+has not been implemented by this change: an invalid annotation still leaves its
+proposal pending rather than silently being dropped or admitted as correct.
+
 ## Compatibility and non-goals
 
-This first increment does not change stored schema, prompt versions, provider
-selection, completion ceilings, evidence identities or checkpoint contracts. It
-neither clears retained source knowledge nor invalidates already-paid results.
+These increments do not change stored schema, prompt versions, provider
+selection, completion ceilings, evidence identities or checkpoint contracts. They
+neither clear retained source knowledge nor invalidate already-paid results.
 Existing [parallel publication lifecycle corrections](parallel-artifact-lifecycle-regression.md)
 remain necessary and separate from the contract work.
 
-AC-02 through AC-06 are remaining work, not completion claims. There is no measured
+AC-02 is partially implemented; its linked outcome ledger and AC-03 through AC-06
+remain unfinished. There is no measured
 real-provider saving for this increment until a new representative run is compared.
 Do not weaken assertions, drop qualifications, guess evidence or label partial
 material complete to reduce retry counts. No automatic merge is authorized.

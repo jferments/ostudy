@@ -169,7 +169,7 @@ fn admit(
             )
         })
         .transpose()
-        .map_err(|_| invalid("invalid_qualified_structure"))?;
+        .map_err(|error| invalid(super::super::typed_payload::rejection_rule(&error)))?;
     let content = KnowledgeUnitInput {
         details,
         title: proposal.title,
@@ -423,7 +423,7 @@ pub(crate) fn repair(
 pub(crate) fn report_diagnostic(report: &AnalysisReport) -> Value {
     json!({"acceptedUnits":report.accepted.len(),"rejectedUnits":report.rejected.len(),"uncoveredSources":report.missing_sources,
         "coverage":report.coverage.as_ref().map(|coverage| coverage.diagnostic()),
-        "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":r.code,
+        "complete":report.is_complete(),"rejections":report.rejected.iter().map(|r|json!({"slot":r.slot,"category":super::super::typed_payload::rejection_category(&r.code),"rule":r.code,
         "draftFingerprint":hash(&r.proposal.to_string())})).collect::<Vec<_>>()})
 }
 #[cfg(test)]
