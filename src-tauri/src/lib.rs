@@ -371,6 +371,7 @@ pub fn run() {
             document_study_guide_deletion::delete_document_study_guide,
             document_study_guide_commands::get_document_learning_plan,
             document_study_guide_commands::get_document_artifact_job,
+            document_study_guide_commands::list_latest_document_study_guide_jobs,
             document_study_guide_commands::save_document_study_guide_overlay,
             document_study_guide_commands::discard_document_study_guide_overlay,
             document_study_guide_commands::get_document_topic_card_projection,

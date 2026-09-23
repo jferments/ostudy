@@ -450,6 +450,69 @@ pub(crate) fn load_document_artifact_job(
     })
 }
 
+pub(crate) fn list_latest_document_artifact_jobs(
+    database: &Database,
+    artifact_kind: DocumentArtifactKind,
+) -> Result<Vec<DocumentArtifactJob>, CommandError> {
+    database.with_connection(|connection| {
+        let mut statement = connection
+            .prepare(
+                "SELECT id, document_id, plan_id, state, total_units, completed_units,
+                        safe_error_code, safe_error_message, api_token_count,
+                        api_token_usage_complete, created_at, started_at, updated_at, completed_at
+                 FROM document_artifact_jobs
+                 WHERE artifact_kind = ?1
+                 ORDER BY document_id, created_at DESC, id DESC",
+            )
+            .map_err(CommandError::database)?;
+        let rows = statement
+            .query_map([artifact_kind.as_db()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<i64>>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, i64>(10)?,
+                    row.get::<_, Option<i64>>(11)?,
+                    row.get::<_, i64>(12)?,
+                    row.get::<_, Option<i64>>(13)?,
+                ))
+            })
+            .map_err(CommandError::database)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::database)?;
+        let mut seen = std::collections::HashSet::new();
+        rows.into_iter()
+            .filter(|row| seen.insert(row.1.clone()))
+            .map(|row| {
+                Ok(DocumentArtifactJob {
+                    id: row.0,
+                    document_id: row.1,
+                    plan_id: row.2,
+                    artifact_kind,
+                    state: DocumentArtifactJobState::from_db(&row.3)?,
+                    total_units: to_usize(row.4)?,
+                    completed_units: to_usize(row.5)?,
+                    safe_error_code: row.6,
+                    safe_error_message: row.7,
+                    api_token_count: row.8,
+                    api_token_usage_complete: row.9 != 0,
+                    created_at: row.10,
+                    started_at: row.11,
+                    updated_at: row.12,
+                    completed_at: row.13,
+                })
+            })
+            .collect()
+    })
+}
+
 fn valid_transition(expected: DocumentArtifactJobState, next: DocumentArtifactJobState) -> bool {
     matches!(
         (expected, next),

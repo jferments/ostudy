@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
+import { isActiveArtifactJob, useDocumentArtifactProgress } from "../controllers/useDocumentArtifactProgress";
 import { MetadataDialog, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
 import { ResponsiveActionGroup, type ResponsiveAction } from "../ui/patterns/ResponsiveActionGroup";
 import { PageHeader, PageScaffold } from "../ui/patterns/WorkspacePatterns";
@@ -14,6 +15,7 @@ import {
   sourceUnitHeading, formatSourceUnitMetric, formatBytes, formatProcessingDuration,
   formatApiTokens, formatDate,
 } from "./documents/DocumentProgress";
+import { LearningArtifactProgressPanel } from "./documents/LearningArtifactProgress";
 import { GenerationSummary } from "./documents/GenerationSummary";
 import { CheckedLearningPlanPanel } from "./documents/CheckedLearningPlanPanel";
 import { ImageSetWorkspace } from "./documents/ImageSetWorkspace";
@@ -40,6 +42,10 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
     cancelingGuideDocumentIds, errorMessage, uploadDocument, retry, generateMore,
     stopStudyGuide, stopGeneration, openSource, deleteDocument,
   } = jobs;
+  const artifactProgress = useDocumentArtifactProgress(
+    isUploading || documents.some((document) => document.lifecycleState === "processing")
+      || busyDocumentIds.size > 0 || guideGeneratingDocumentIds.size > 0,
+  );
   const [imageWorkspaceDocumentId, setImageWorkspaceDocumentId] = useState<
     string | null | undefined
   >(undefined);
@@ -121,7 +127,8 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
       ) : (
         <div className={styles.list}>
           {looseDocuments.map((document) => {
-            const guideGenerating = guideGeneratingDocumentIds.has(document.id);
+            const guideJob = artifactProgress.jobs[document.id] ?? null;
+            const guideGenerating = guideGeneratingDocumentIds.has(document.id) || isActiveArtifactJob(guideJob);
             const cardBusy = busyDocumentIds.has(document.id);
             const deleting = deletingDocumentIds.has(document.id);
             const busy = cardBusy || deleting || guideGenerating;
@@ -129,6 +136,9 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
             const cancelingGuide = cancelingGuideDocumentIds.has(document.id);
             const live = generationProgress[document.id] ?? null;
             const learningPlan = learningPlans[document.id] ?? null;
+            const authoring = ["generating", "curating", "committing"].includes(live?.phase ?? "");
+            const showArtifacts = authoring || guideGenerating
+              || (document.lifecycleState !== "processing" && guideJob !== null);
             const canRetry = document.generatedDeckId === null && document.lifecycleState !== "processing";
             const canGenerateMore = document.generatedDeckId !== null && document.lifecycleState === "ready";
             const actions: ResponsiveAction[] = [{
@@ -218,13 +228,20 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
                     <span className={styles.filename}>{document.originalFilename}</span>
                     <span className={styles.cardCount}>{document.generatedCardCount} card{document.generatedCardCount === 1 ? "" : "s"}</span>
                   </div>
-                  {document.lifecycleState === "processing" ? (
-                    <>
-                      <GenerationProgressPanel document={document} progress={live} now={clockNow} />
-                      {learningPlan ? (
-                        <CheckedLearningPlanPanel document={document} plan={learningPlan} />
-                      ) : null}
-                    </>
+                  {showArtifacts ? (
+                    <LearningArtifactProgressPanel
+                      document={document}
+                      progress={live}
+                      guideJob={guideJob}
+                      guideStarting={guideGenerating}
+                      readFailed={artifactProgress.readFailed}
+                      now={clockNow}
+                    />
+                  ) : document.lifecycleState === "processing" ? (
+                    <GenerationProgressPanel document={document} progress={live} now={clockNow} />
+                  ) : null}
+                  {document.lifecycleState === "processing" && learningPlan ? (
+                    <CheckedLearningPlanPanel document={document} plan={learningPlan} />
                   ) : null}
                   {document.safeErrorMessage ? <InlineNotice kind="warning" className="tw:mt-4">{document.safeErrorMessage}</InlineNotice> : null}
                   {!document.generatedDeckId && document.generatedCardCount > 0 && document.lifecycleState === "ready" ? (

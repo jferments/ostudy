@@ -6,8 +6,9 @@ use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
     database::Database,
     document_artifacts::{
-        create_document_artifact_job, load_document_artifact_job, DocumentArtifactJob,
-        DocumentArtifactKind, DocumentArtifactProviderSnapshot,
+        create_document_artifact_job, list_latest_document_artifact_jobs,
+        load_document_artifact_job, DocumentArtifactJob, DocumentArtifactKind,
+        DocumentArtifactProviderSnapshot,
     },
     document_cost,
     document_domain::{
@@ -274,6 +275,13 @@ pub(crate) fn get_document_artifact_job(
     job_id: String,
 ) -> Result<DocumentArtifactJob, CommandError> {
     load_document_artifact_job(database.inner(), &job_id)
+}
+
+#[tauri::command]
+pub(crate) fn list_latest_document_study_guide_jobs(
+    database: State<'_, Database>,
+) -> Result<Vec<DocumentArtifactJob>, CommandError> {
+    list_latest_document_artifact_jobs(database.inner(), DocumentArtifactKind::StudyGuide)
 }
 
 #[tauri::command]
