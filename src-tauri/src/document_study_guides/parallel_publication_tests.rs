@@ -166,7 +166,10 @@ fn guide_first_preserves_flashcard_owned_error_and_completion_fields() {
                     },
                 )
                 .map_err(CommandError::database)?;
-            assert_eq!(state, ("card_error".into(), "Card diagnostic".into(), 4, 17));
+            assert_eq!(
+                state,
+                ("card_error".into(), "Card diagnostic".into(), 4, 17)
+            );
             Ok(())
         })
         .unwrap();
