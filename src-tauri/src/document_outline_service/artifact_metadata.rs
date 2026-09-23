@@ -198,7 +198,24 @@ fn load_source_title_hint(
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
-    Ok(source_title_hint_from_blocks(&rows))
+    if let Some(title) = source_title_hint_from_blocks(&rows) {
+        return Ok(Some(title));
+    }
+    let first_unit_text = transaction
+        .query_row(
+            "SELECT plain_text
+             FROM document_source_units
+             WHERE document_id = ?1
+             ORDER BY unit_number
+             LIMIT 1",
+            [document_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    Ok(first_unit_text
+        .as_deref()
+        .and_then(source_title_hint_from_text))
 }
 
 fn source_title_hint_from_blocks(blocks: &[(String, String, i64)]) -> Option<String> {
@@ -226,6 +243,30 @@ fn source_title_hint_from_blocks(blocks: &[(String, String, i64)]) -> Option<Str
         {
             return Some(title.trim().to_string());
         }
+    }
+    None
+}
+
+fn source_title_hint_from_text(value: &str) -> Option<String> {
+    let lines = value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    for (index, line) in lines.iter().enumerate() {
+        if !looks_like_chapter_marker(line) {
+            continue;
+        }
+        return lines
+            .iter()
+            .skip(index + 1)
+            .take(4)
+            .find(|candidate| {
+                candidate.chars().any(char::is_alphabetic)
+                    && candidate.split_whitespace().count() <= 12
+                    && !looks_like_chapter_marker(candidate)
+            })
+            .map(|title| (*title).to_string());
     }
     None
 }
@@ -518,6 +559,15 @@ mod source_title_tests {
         ];
         assert_eq!(
             source_title_hint_from_blocks(&blocks).as_deref(),
+            Some("Gastrointestinal Physiology")
+        );
+    }
+
+    #[test]
+    fn chapter_text_fallback_recovers_a_title_when_structural_roles_are_missing() {
+        let page = "339\nCHAPTER 8\nGastrointestinal Physiology\nStructure of the Gastrointestinal Tract, 339";
+        assert_eq!(
+            source_title_hint_from_text(page).as_deref(),
             Some("Gastrointestinal Physiology")
         );
     }

@@ -350,11 +350,21 @@ fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
 }
 
 fn native_narrative_summary(sections: &[OutlineSection]) -> String {
-    let labels = sections
-        .iter()
-        .map(|section| compact_topic_label(&section.title))
+    let mut indices = Vec::new();
+    if !sections.is_empty() {
+        indices.push(0);
+        if sections.len() > 2 {
+            indices.push(sections.len() / 2);
+        }
+        if sections.len() > 1 {
+            indices.push(sections.len() - 1);
+        }
+    }
+    indices.dedup();
+    let labels = indices
+        .into_iter()
+        .map(|index| compact_topic_label(&sections[index].title))
         .filter(|label| !label.is_empty())
-        .take(3)
         .collect::<Vec<_>>();
     match labels.as_slice() {
         [] => "This material presents source-grounded concepts for study.".to_string(),
@@ -589,6 +599,25 @@ mod tests {
         assert!(summary.starts_with("This material explains "));
         assert!(!summary.contains(" / "));
         assert!(!inventory_like_summary(&summary));
+    }
+
+    #[test]
+    fn native_summary_samples_beginning_middle_and_end_instead_of_only_early_sections() {
+        let sections = (0..5)
+            .map(|index| OutlineSection {
+                title: format!("Topic {index}"),
+                page_start: index + 1,
+                page_end: index + 1,
+                summary: String::new(),
+                learning_objectives: vec![],
+                key_concepts: vec![],
+            })
+            .collect::<Vec<_>>();
+        let summary = native_narrative_summary(&sections);
+        assert!(summary.contains("Topic 0"));
+        assert!(summary.contains("Topic 2"));
+        assert!(summary.contains("Topic 4"));
+        assert!(!summary.contains("Topic 1"));
     }
 
     #[test]
