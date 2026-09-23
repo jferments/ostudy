@@ -50,18 +50,27 @@ impl AnalysisReport {
                 .is_none_or(|coverage| coverage.unresolved() == 0)
     }
 
-    /// A partial evidence receipt is useful diagnostic state, not by itself a
-    /// reason to buy another interpretation request. Repair when a proposal was
-    /// actually rejected or an entire supplied source still has no admitted
-    /// knowledge/non-learning disposition.
+    /// Use the validated region receipt for recovery as well as completion.
+    /// A source can support another source's primary claim, or consist entirely
+    /// of explicit region dispositions, without owning a knowledge unit.
     pub(crate) fn requires_paid_repair(&self, sources: &[SourceRecord]) -> bool {
         if !self.rejected.is_empty() {
             return true;
         }
+        if let Some(coverage) = &self.coverage {
+            return !coverage.same_input_repair_sources().is_empty();
+        }
+        // Legacy receipts have no region states. Preserve their compatibility
+        // path, but include every admitted supporting source, not only primary.
         let covered = self
             .accepted
             .iter()
-            .map(|unit| unit.source_id.as_str())
+            .flat_map(|unit| {
+                unit.content
+                    .grounding
+                    .iter()
+                    .flat_map(|g| g.evidence.iter().map(|e| e.source_id.as_str()))
+            })
             .chain(self.no_learning.iter().map(String::as_str))
             .collect::<HashSet<_>>();
         sources
@@ -679,3 +688,6 @@ mod capacity_regression_tests {
 
 #[cfg(test)]
 mod typed_tests;
+
+#[cfg(test)]
+mod recovery_tests;
