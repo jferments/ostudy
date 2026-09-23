@@ -126,11 +126,43 @@ accounting gaps, unchanged usage and privacy. Production extraction tests run th
 real shared producer, decoder, bounded repair and SQLite checkpoint path, including
 a source-revision race whose failed commit must never claim saved knowledge.
 
-AC-02 remains partial: authoring/curation and operation-level terminal failures
-outside extraction, pre-provider failures with no physical request, and aggregate
-human-readable outcome reporting still need their owning integrations. AC-03's
-independent optional-annotation admission has not been implemented: an invalid
-annotation still leaves its proposal pending rather than being silently dropped.
+## AC-02c: authoring and curation outcomes
+
+`ai/document_intelligence/observed.rs` wraps the existing card, document-guide
+and collection-guide entry points through `ai/generation/outcomes/authoring.rs`.
+Curation attaches the same observer to each independently keyed batch, not the
+whole concurrently executing curation operation. Original request constructors
+still own stage attribution; prompts, schemas, native admission, retries and
+caller fallback policies are unchanged.
+
+The final observed request retains `nativeAuthoring` with a returned/failed state,
+its item kind (`cards`, `guide_sections` or `curation_selections`) and a returned
+item count. Failure leaves that count unknown; a valid empty selection reports
+zero. This boundary is explicitly `persistence = not_observed`: returned cards
+are not an imported deck, a returned guide section is not a committed guide, and
+successful curation is not an independent certificate of factual correctness.
+Existing extraction `nativeCheckpoint` measurements remain separate.
+
+Transport responses and native failures can coexist on the same request. A
+curation batch whose caller later retains validated candidates remains a failed
+curation task, not a fabricated successful provider selection. Recovery decisions
+link to the physical requests inside these scopes. Missing request accounting or
+pure local reuse never fabricates a request. The observer boxes its child before
+constructing its async state machine and passes the original result through even
+if its diagnostic write fails.
+
+Native Fast regressions exercise physical-attempt recording, repaired output,
+parallel card/guide isolation, separately keyed curation batches, valid empty
+selection versus failure, pre-request results, interruption, diagnostic-write
+failure, stage attribution and bounded wrapper size. These tests exercise the
+observer and real SQLite ledger with synthetic native results, not a live model
+or end-to-end factual-quality assessment.
+
+AC-02 remains partial: operation-level failures before/outside authoring,
+per-candidate authoring rejection details, and aggregate human-readable outcome
+reporting still need their owning integrations. AC-03's independent optional-
+annotation admission has not been implemented: an invalid annotation still
+leaves its proposal pending rather than being silently dropped.
 
 ## Compatibility and non-goals
 

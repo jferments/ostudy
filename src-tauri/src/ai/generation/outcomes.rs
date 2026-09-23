@@ -14,6 +14,8 @@ use serde_json::{json, Value};
 use super::{Context, RecoveryReason};
 use crate::error::CommandError;
 
+pub(crate) mod authoring;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Snapshot {

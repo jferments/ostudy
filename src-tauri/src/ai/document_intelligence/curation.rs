@@ -143,7 +143,14 @@ async fn curation_slot(
     )));
     Some((
         batch_index,
-        request_curation_with_retry(runtime, &batch_task, &user, batch.len()).await,
+        crate::ai::generation::outcomes::authoring::observe(
+            batch_task.diagnostics.as_ref(),
+            batch_task.diagnostic_window_key.as_deref(),
+            crate::ai::generation::outcomes::authoring::Kind::CurationSelection,
+            request_curation_with_retry(runtime, &batch_task, &user, batch.len()),
+            Vec::len,
+        )
+        .await,
     ))
 }
 
