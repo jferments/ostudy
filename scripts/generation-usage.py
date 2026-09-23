@@ -60,6 +60,30 @@ def valid_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
 
 
+def interval_union_ms(rows: list[dict[str, Any]]) -> int:
+    intervals = sorted(
+        (int(row["startedAt"]), int(row["finishedAt"]))
+        for row in rows
+        if valid_number(row.get("startedAt"))
+        and valid_number(row.get("finishedAt"))
+        and row["finishedAt"] >= row["startedAt"]
+    )
+    total = 0
+    current_start: int | None = None
+    current_end: int | None = None
+    for start, end in intervals:
+        if current_start is None:
+            current_start, current_end = start, end
+        elif start <= current_end:
+            current_end = max(current_end, end)
+        else:
+            total += current_end - current_start
+            current_start, current_end = start, end
+    if current_start is not None and current_end is not None:
+        total += current_end - current_start
+    return total
+
+
 def summarize(data: dict[str, Any]) -> dict[str, Any]:
     requests = data.get("requests", [])
     if not isinstance(requests, list):
@@ -84,6 +108,24 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
             row["inputTokens"] for row in repeated if valid_number(row.get("inputTokens")))
         result["repeatReportedOutputTokens"] = sum(
             row["outputTokens"] for row in repeated if valid_number(row.get("outputTokens")))
+        completed_durations = [
+            row["finishedAt"] - row["startedAt"] for row in rows
+            if valid_number(row.get("startedAt"))
+            and valid_number(row.get("finishedAt"))
+            and row["finishedAt"] >= row["startedAt"]
+        ]
+        repeat_durations = [
+            row["finishedAt"] - row["startedAt"] for row in repeated
+            if valid_number(row.get("startedAt"))
+            and valid_number(row.get("finishedAt"))
+            and row["finishedAt"] >= row["startedAt"]
+        ]
+        result["cumulativeRequestMs"] = sum(completed_durations)
+        result["requestDurationCoverageRequests"] = len(completed_durations)
+        result["repeatCumulativeRequestMs"] = sum(repeat_durations)
+        result["repeatDurationCoverageRequests"] = len(repeat_durations)
+        result["requestActiveWallClockMs"] = interval_union_ms(rows)
+        result["repeatActiveWallClockMs"] = interval_union_ms(repeated)
         cache_pairs = [row for row in rows if valid_number(row.get("inputTokens"))
                        and valid_number(row.get("cachedInputTokens"))]
         result["cacheReadPercentOfCoveredInput"] = percentage(
@@ -110,6 +152,9 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         result["repeatOutputPercentOfReportedOutput"] = percentage(
             result["repeatReportedOutputTokens"],
             result["outputTokens"] or 0)
+        result["repeatDurationPercentOfCumulativeRequestMs"] = percentage(
+            result["repeatCumulativeRequestMs"],
+            result["cumulativeRequestMs"])
         return result
 
     overall = totals(requests)
@@ -271,6 +316,8 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         "operationId": data.get("operationId"),
         "operation": operation,
         "wallClockMs": wall_clock_ms,
+        "repeatActivePercentOfOperationWallClock": percentage(
+            overall["repeatActiveWallClockMs"], wall_clock_ms or 0),
         "totals": overall,
         "stages": results,
         "operations": operation_results,
@@ -288,6 +335,7 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
             "Common-prefix bytes are content-free local measurements between comparable serialized requests; bounded measurements reached the in-memory 2 MiB sample cap. Provider cached-token counts remain authoritative for actual cache use.",
             "Payload byte categories are NON-BILLING diagnostics. Input-part percentages use serialized request bytes; visible response bytes are reported separately and are never substituted for provider-reported token shares.",
             "Attempt ordinals group the same logical section, or identical wire requests when no section identity is available.",
+            "Cumulative request duration sums provider-request intervals and therefore double-counts concurrent requests. Active wall-clock duration is the union of those intervals. Time occupied by repeated attempts is observable overhead, not a claim that eliminating them would save the same wall-clock time because sibling work may overlap.",
         ],
         "requests": requests,
     }
@@ -370,6 +418,10 @@ def render(report: dict[str, Any]) -> str:
                   f"Repeated logical requests: {total['repeatedLogicalRequests']} "
                   f"(input share {percent(total['repeatInputPercentOfReportedInput'])}; "
                   f"output share {percent(total['repeatOutputPercentOfReportedOutput'])})",
+                  f"Repeated-attempt provider time: cumulative {total['repeatCumulativeRequestMs'] / 1000:.2f}s "
+                  f"({percent(total['repeatDurationPercentOfCumulativeRequestMs'])} of covered request time); "
+                  f"active wall-clock {total['repeatActiveWallClockMs'] / 1000:.2f}s "
+                  f"({percent(report['repeatActivePercentOfOperationWallClock'])} of operation wall clock)",
                   f"Cache reads: {number(total['cachedInputTokens'])} tokens; covered-input rate: {percent(total['cacheReadPercentOfCoveredInput'])} ({total['cacheReadCoverageRequests']} requests)",
                   f"Comparable request prefixes: {report['payloadByteDiagnostics']['cachePrefixDiagnostics']['comparableRequests']}; "
                   f"average common prefix: {number(report['payloadByteDiagnostics']['cachePrefixDiagnostics']['averageCommonPrefixBytes'])} bytes; "

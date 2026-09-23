@@ -103,6 +103,36 @@ class GenerationUsageTests(unittest.TestCase):
         self.assertEqual(payload["inputParts"]["knowledgeUnits"]["bytes"], 900)
         self.assertEqual(payload["visibleResponseBytes"], 300)
 
+    def test_retry_report_measures_tokens_and_overlapping_provider_time_without_calling_it_saved_time(self):
+        report = USAGE.summarize({
+            "operationId": "a" * 32,
+            "operation": {
+                "id": "a" * 32,
+                "purpose": "document_generation",
+                "state": "succeeded",
+                "startedAt": 0,
+                "finishedAt": 10_000,
+            },
+            "requests": [
+                {"stage": "knowledge", "inputTokens": 100, "outputTokens": 10,
+                 "attempt": 1, "status": "response", "startedAt": 0, "finishedAt": 4_000},
+                {"stage": "knowledge", "inputTokens": 80, "outputTokens": 8,
+                 "attempt": 2, "status": "response", "startedAt": 4_000, "finishedAt": 7_000},
+                {"stage": "knowledge", "inputTokens": 70, "outputTokens": 7,
+                 "attempt": 2, "status": "response", "startedAt": 5_000, "finishedAt": 9_000},
+            ],
+        })
+        total = report["totals"]
+        self.assertEqual(total["repeatReportedInputTokens"], 150)
+        self.assertEqual(total["repeatCumulativeRequestMs"], 7_000)
+        self.assertEqual(total["repeatActiveWallClockMs"], 5_000)
+        self.assertEqual(total["cumulativeRequestMs"], 11_000)
+        self.assertAlmostEqual(total["repeatDurationPercentOfCumulativeRequestMs"], 7000 / 110)
+        self.assertEqual(report["repeatActivePercentOfOperationWallClock"], 50)
+        rendered = USAGE.render(report)
+        self.assertIn("cumulative 7.00s", rendered)
+        self.assertIn("active wall-clock 5.00s", rendered)
+
     def test_all_operation_report_attributes_provider_tokens_to_each_operation(self):
         report = USAGE.summarize({"operationId": "all", "requests": [
             {"operationId": "a" * 32, "stage": "guide_authoring",
