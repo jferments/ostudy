@@ -15,6 +15,11 @@ function NestedHarness() {
   const [inner, setInner] = useState(true);
   return outer ? <Dialog title="Outer dialog" onClose={() => setOuter(false)}><button type="button">Outer action</button>{inner ? <Dialog title="Inner dialog" onClose={() => setInner(false)}><button type="button">Inner action</button></Dialog> : null}</Dialog> : null;
 }
+function StableConfirmConsumer({ onRender }: { onRender: () => void }) {
+  useConfirm();
+  onRender();
+  return <span>Stable confirmation consumer</span>;
+}
 function ConfirmHarness() {
   const confirm = useConfirm();
   const [result, setResult] = useState("none");
@@ -66,6 +71,19 @@ describe("OverlayProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     await waitFor(() => expect(root.inert).toBe(false));
     expect(root.hasAttribute("aria-hidden")).toBe(false); view.unmount(); root.remove();
+  });
+  it("does not rerender confirm-only consumers when the overlay stack changes", async () => {
+    const onRender = vi.fn();
+    render(<OverlayProvider><StableConfirmConsumer onRender={onRender} /><FocusHarness /></OverlayProvider>);
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open dialog" }));
+    await screen.findByRole("dialog", { name: "Focus dialog" });
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Focus dialog" })).toBeNull());
+    expect(onRender).toHaveBeenCalledTimes(1);
   });
   it("provides an asynchronous destructive confirmation service", async () => {
     render(<OverlayProvider><ConfirmHarness /></OverlayProvider>);
