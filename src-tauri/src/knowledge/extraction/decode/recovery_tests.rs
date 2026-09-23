@@ -161,7 +161,10 @@ async fn document_region_only_receipt_does_not_buy_an_empty_repair() {
         false,
         |_| {
             calls += 1;
-            assert_eq!(calls, 1, "region disposition already accounts for the source");
+            assert_eq!(
+                calls, 1,
+                "region disposition already accounts for the source"
+            );
             std::future::ready(Ok(json!({
                 "units": [], "noLearningSourceIds": [],
                 "regionDispositions": [{"evidenceId": "E0", "disposition": "retained_metadata"}]

@@ -63,7 +63,10 @@ fn document_recovery_targets_only_exposed_unaccounted_sources_in_stable_order() 
         ("second", true, Disposition::RetainedMetadata),
         ("second", true, Disposition::Unresolved),
     ]);
-    assert_eq!(coverage.same_input_repair_sources(), vec!["first", "second"]);
+    assert_eq!(
+        coverage.same_input_repair_sources(),
+        vec!["first", "second"]
+    );
     assert_eq!(coverage.unresolved(), 5);
     assert_eq!(
         coverage.diagnostic()["sameInputRepairSources"],
