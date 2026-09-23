@@ -158,11 +158,37 @@ failure, stage attribution and bounded wrapper size. These tests exercise the
 observer and real SQLite ledger with synthetic native results, not a live model
 or end-to-end factual-quality assessment.
 
-AC-02 remains partial: operation-level failures before/outside authoring,
-per-candidate authoring rejection details, and aggregate human-readable outcome
-reporting still need their owning integrations. AC-03's independent optional-
+AC-02 remains partial: operation-level failures before/outside authoring and
+per-candidate authoring rejection details still need their owning integrations. AC-03's independent optional-
 annotation admission has not been implemented: an invalid annotation still
 leaves its proposal pending rather than being silently dropped.
+
+## AC-02d: readable recovery evidence
+
+The normal `python3 scripts/generation-usage.py` now renders native task states,
+linked recovery counts and their reported input/output usage, native failures,
+returned authoring item counts, and the leading checkpoint rejection rules.
+`--json` adds `nativeOutcomes` while preserving the existing raw request records,
+usage totals and byte diagnostics. `scripts/generation_outcomes.py` owns this
+read-only projection and never opens the library or contacts a provider itself.
+
+A recovery's before/after committed counts distinguish progress, no measured
+progress, regression and mixed progress. A missing baseline is unobserved, not
+zero gain. Authoring output remains explicitly not observed as persisted; empty
+curation can be a valid return. Reported token cost belongs to the linked follow-up
+request only, not its predecessor, and unknown usage is never imputed as zero.
+
+The reader checks supplied predecessors against operation, stage and logical task
+identity. Missing, duplicate, cross-task and interrupted accounting links are
+reported rather than reconstructed by timestamps. A resumed checkpoint may have
+recovery on physical attempt one. Legacy or unknown-version native records remain
+unobserved. Rejection histograms are labeled observations, not unique proposals:
+the same unresolved proposal can appear in successive committed snapshots.
+
+Behavioral tests cover these distinctions plus independent provider/native status,
+JSON re-import, unchanged input data, and a real read-only SQLite/CLI round trip
+from outside the repository directory. This report exposes the existing evidence;
+it does not change generation policy or establish factual or teaching quality.
 
 ## Compatibility and non-goals
 

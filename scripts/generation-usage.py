@@ -8,6 +8,7 @@ are a subset of input; neither is added to total tokens a second time.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 from collections import defaultdict
 import json
 import os
@@ -19,6 +20,13 @@ from typing import Any
 FIELDS = ("inputTokens", "outputTokens", "reasoningTokens", "cachedInputTokens",
           "cacheWriteTokens", "totalTokens", "cost")
 APP_IDENTIFIER = "io.github.jferments.ostudy"
+
+# Resolve the maintained sibling independently of the caller's current directory
+# and of importlib-based diagnostic/test consumers, without changing sys.path.
+_OUTCOME_SPEC = importlib.util.spec_from_file_location(
+    "ostudy_generation_outcomes", Path(__file__).with_name("generation_outcomes.py"))
+_OUTCOMES = importlib.util.module_from_spec(_OUTCOME_SPEC)
+_OUTCOME_SPEC.loader.exec_module(_OUTCOMES)
 
 
 def default_database_path() -> Path:
@@ -322,6 +330,7 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         "stages": results,
         "operations": operation_results,
         "localReuse": data.get("localReuse", []),
+        "nativeOutcomes": _OUTCOMES.summarize(requests),
         "payloadByteDiagnostics": payload_diagnostics,
         "largestReportedInputRequests": largest_input,
         "largestReportedOutputRequests": largest_output,
@@ -432,6 +441,7 @@ def render(report: dict[str, Any]) -> str:
                   f"{json.dumps(report['payloadByteDiagnostics'], ensure_ascii=False)}", "",
                   "Usage complete: " + ("yes" if report["usageComplete"] else "NO; percentages cover reported usage only"),
                   *report["notes"]])
+    lines.extend(_OUTCOMES.render(report["nativeOutcomes"]))
     return "\n".join(lines)
 
 
