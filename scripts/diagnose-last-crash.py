@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import subprocess
 import sys
 from typing import Any
@@ -63,22 +64,42 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
-def latest_process(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+def process_runs(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    runs: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
-    latest: dict[str, Any] | None = None
     for record in records:
         if record.get("stream") is not None:
             continue
         if record.get("event") == "process_start":
+            if current is not None:
+                runs.append(current)
             current = {"start": record, "exit": None}
-            latest = current
         elif record.get("event") == "process_exit":
             if current is None:
-                current = {"start": None, "exit": record}
-                latest = current
+                runs.append({"start": None, "exit": record})
             else:
                 current["exit"] = record
-    return latest
+                runs.append(current)
+                current = None
+    if current is not None:
+        runs.append(current)
+    return runs
+
+
+def latest_process(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    runs = process_runs(records)
+    return runs[-1] if runs else None
+
+
+def latest_crash_process(records: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+    runs = process_runs(records)
+    for run in reversed(runs):
+        exit_record = run.get("exit")
+        if isinstance(exit_record, dict):
+            code = exit_record.get("exit_code")
+            if isinstance(code, int) and code != 0:
+                return run, "latest_abnormal_exit"
+    return (runs[-1], "latest_run_fallback") if runs else (None, "no_launcher_run")
 
 
 def signal_details(exit_record: dict[str, Any] | None) -> dict[str, Any]:
@@ -97,6 +118,37 @@ def signal_details(exit_record: dict[str, Any] | None) -> dict[str, Any]:
         except ValueError:
             name = f"SIG{number}"
     return {"exitCode": code, "signalNumber": number, "signalName": name}
+
+
+def timestamp_ms(value: Any) -> int | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+    except ValueError:
+        return None
+
+
+def records_in_window(
+    records: list[dict[str, Any]],
+    started_at: Any,
+    finished_at: Any,
+) -> list[dict[str, Any]]:
+    start_ms = timestamp_ms(started_at)
+    finish_ms = timestamp_ms(finished_at)
+    if start_ms is None and finish_ms is None:
+        return records
+    selected: list[dict[str, Any]] = []
+    for record in records:
+        value = record.get("timestampMs")
+        if not isinstance(value, int):
+            continue
+        if start_ms is not None and value < start_ms:
+            continue
+        if finish_ms is not None and value > finish_ms + 2_000:
+            continue
+        selected.append(record)
+    return selected
 
 
 def recent_application_events(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -129,13 +181,13 @@ def bounded_command(args: list[str], timeout: float = 4.0) -> str | None:
     return output[-MAX_COMMAND_CHARS:] if output else None
 
 
-def kernel_evidence(start_timestamp: Any) -> list[str]:
+def kernel_evidence(start_timestamp: Any, end_timestamp: Any) -> list[str]:
     if not isinstance(start_timestamp, str):
         return []
-    output = bounded_command(
-        ["journalctl", "--no-pager", "-k", "--since", start_timestamp],
-        timeout=5.0,
-    )
+    command = ["journalctl", "--no-pager", "-k", "--since", start_timestamp]
+    if isinstance(end_timestamp, str):
+        command.extend(["--until", end_timestamp])
+    output = bounded_command(command, timeout=5.0)
     if not output:
         return []
     return [
@@ -150,13 +202,42 @@ def coredump_evidence(pid: Any) -> str | None:
     return bounded_command(["coredumpctl", "--no-pager", "info", str(pid)], timeout=5.0)
 
 
-def generation_usage(root: Path) -> dict[str, Any] | None:
+def latest_operation_before(database: Path, before_ms: int | None) -> str | None:
+    if before_ms is None or not database.is_file():
+        return None
+    try:
+        uri = database.expanduser().resolve(strict=True).as_uri() + "?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+            row = connection.execute(
+                """
+                SELECT id
+                FROM generation_operations
+                WHERE started_at <= ?
+                ORDER BY started_at DESC, id DESC
+                LIMIT 1
+                """,
+                (before_ms,),
+            ).fetchone()
+    except (OSError, sqlite3.Error):
+        return None
+    return row[0] if row and isinstance(row[0], str) else None
+
+
+def generation_usage(
+    root: Path,
+    database: Path,
+    before_ms: int | None,
+) -> dict[str, Any] | None:
     script = root / "scripts" / "generation-usage.py"
     if not script.is_file():
         return None
+    operation = latest_operation_before(database, before_ms)
+    command = [sys.executable, str(script), "--database", str(database), "--json"]
+    if operation:
+        command.extend(["--operation", operation])
     try:
         result = subprocess.run(
-            [sys.executable, str(script), "--json"],
+            command,
             check=False,
             capture_output=True,
             text=True,
@@ -193,7 +274,7 @@ def source_sha(root: Path) -> str | None:
 def build_report(root: Path) -> dict[str, Any]:
     resolved = paths()
     launcher_records = read_jsonl(resolved["launcherLog"])
-    process = latest_process(launcher_records)
+    process, process_selection = latest_crash_process(launcher_records)
     start = process.get("start") if process else None
     exit_record = process.get("exit") if process else None
     pid = (
@@ -220,16 +301,31 @@ def build_report(root: Path) -> dict[str, Any]:
     )
 
     app_records = read_jsonl(resolved["applicationLog"])
+    crash_window = records_in_window(
+        app_records,
+        process_details.get("startedAt"),
+        process_details.get("finishedAt"),
+    )
+    crash_finished_ms = timestamp_ms(process_details.get("finishedAt"))
     return {
         "schemaVersion": 1,
         "generatedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
         "sourceSha": source_sha(root),
         "paths": {key: str(value) for key, value in resolved.items()},
+        "processSelection": process_selection,
         "process": process_details,
-        "recentApplicationEvents": recent_application_events(app_records),
-        "latestGenerationUsage": generation_usage(root),
+        "lastApplicationEvent": crash_window[-1] if crash_window else None,
+        "recentApplicationEvents": recent_application_events(crash_window),
+        "crashGenerationUsage": generation_usage(
+            root,
+            resolved["database"],
+            crash_finished_ms,
+        ),
         "coredump": coredump_evidence(pid),
-        "kernelEvidence": kernel_evidence(process_details.get("startedAt")),
+        "kernelEvidence": kernel_evidence(
+            process_details.get("startedAt"),
+            process_details.get("finishedAt"),
+        ),
     }
 
 
@@ -238,6 +334,7 @@ def render(report: dict[str, Any]) -> str:
     lines = [
         "oStudy last-crash diagnostic",
         f"Source SHA: {report.get('sourceSha') or 'unknown'}",
+        f"Launcher selection: {report.get('processSelection')}",
         f"PID: {process.get('pid') or 'unknown'}",
         f"Start: {process.get('startedAt') or 'unknown'}",
         f"Exit: {process.get('finishedAt') or 'unknown'}",
@@ -247,10 +344,13 @@ def render(report: dict[str, Any]) -> str:
         f"Peak process-group RSS: {process.get('peakGroupRssBytes')} bytes",
         f"Minimum system MemAvailable: {process.get('minAvailableMemoryBytes')} bytes",
         "",
-        "Latest content-free generation usage:",
-        json.dumps(report.get("latestGenerationUsage"), indent=2, ensure_ascii=False),
+        "Content-free generation usage nearest the crash:",
+        json.dumps(report.get("crashGenerationUsage"), indent=2, ensure_ascii=False),
         "",
-        "Recent application events:",
+        "Last application event in the crash window:",
+        json.dumps(report.get("lastApplicationEvent"), ensure_ascii=False),
+        "",
+        "Recent application events in the crash window:",
     ]
     for event in report.get("recentApplicationEvents", []):
         lines.append(json.dumps(event, ensure_ascii=False, separators=(",", ":")))

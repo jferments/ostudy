@@ -119,7 +119,7 @@ For a local crash, start with the zero-placeholder summary:
 ./scripts/diagnose-last-crash.py --json
 ```
 
-It resolves the active launcher log, application log and library automatically, interprets negative subprocess exit codes as Unix signals, reports launcher-recorded resource pressure when available, includes the latest content-free generation-operation summary, and best-effort checks systemd coredump/kernel evidence. Older launcher logs remain useful: a legacy negative `exit_code` is still decoded even though resource sampling and the child PID were not recorded yet.
+It resolves the active launcher log, application log and library automatically, interprets negative subprocess exit codes as Unix signals, reports launcher-recorded resource pressure when available, correlates application events and the nearest retained generation operation to the selected crash window, and best-effort checks systemd coredump/kernel evidence. It selects the most recent abnormal launcher exit rather than blindly selecting the most recent launch, so reopening oStudy after a crash does not erase the useful diagnostic target. Older launcher logs remain useful: a legacy negative `exit_code` is still decoded even though resource sampling and the child PID were not recorded yet.
 
 Create a shareable local archive with:
 
