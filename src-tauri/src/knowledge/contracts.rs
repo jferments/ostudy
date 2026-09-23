@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use crate::{document_domain::SourceLocator, error::CommandError, util::validate_entity_id};
 
 pub(crate) const CONTENT_SCHEMA_VERSION: i64 = 1;
-pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 4;
+pub(crate) const EXTRACTION_PROMPT_VERSION: i64 = 5;
 pub(crate) const MAX_SOURCE_CHARS: usize = 8_000;
 pub(crate) const MAX_UNIT_STATEMENT_CHARS: usize = 3_000;
 // A storage ceiling, not a pedagogical quota per PDF page.

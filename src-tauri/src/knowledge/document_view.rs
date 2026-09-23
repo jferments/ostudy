@@ -370,8 +370,8 @@ fn native_narrative_summary(sections: &[OutlineSection]) -> String {
         [] => "This material presents source-grounded concepts for study.".to_string(),
         [one] => format!("This material focuses on {one}."),
         [one, two] => format!("This material explains {one} and {two}."),
-        [one, two, ..] => {
-            format!("This material explains {one}, {two}, and related concepts across the source.")
+        [one, two, three, ..] => {
+            format!("This material explains {one}, {two}, and {three} across the source.")
         }
     }
 }
