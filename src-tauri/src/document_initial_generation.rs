@@ -356,8 +356,11 @@ async fn process_initial_flashcards(
         ),
     );
     let card_future = Box::pin(async {
-        let checkpoint_identity =
-            CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
+        let checkpoint_identity = CheckpointIdentity::from_task(
+            &task,
+            &stored.extraction_backend,
+            &capability_fingerprint,
+        );
         let generation_contract = document_checkpoints::generation_contract_key(
             &checkpoint_identity,
             scale_plan,
@@ -394,22 +397,23 @@ async fn process_initial_flashcards(
             &source,
             &generation_windows,
         )?;
-        let generated_values = document_generation::execute_generation_windows(GenerationExecution {
-            database,
-            paths,
-            runtime,
-            task: &task,
-            document_id,
-            document_title: &stored.title,
-            outline: &outline,
-            plan: scale_plan,
-            windows: &generation_windows,
-            job_id: &job_id,
-            cached_cards: cached_generation,
-            checkpoint_contract: generation_contract.as_deref(),
-            diagnostic_prefix: "initial",
-        })
-        .await?;
+        let generated_values =
+            document_generation::execute_generation_windows(GenerationExecution {
+                database,
+                paths,
+                runtime,
+                task: &task,
+                document_id,
+                document_title: &stored.title,
+                outline: &outline,
+                plan: scale_plan,
+                windows: &generation_windows,
+                job_id: &job_id,
+                cached_cards: cached_generation,
+                checkpoint_contract: generation_contract.as_deref(),
+                diagnostic_prefix: "initial",
+            })
+            .await?;
         if generated_values.is_empty() {
             return Err(CommandError::new(
                 "document_generated_no_cards",
@@ -426,9 +430,13 @@ async fn process_initial_flashcards(
             .iter()
             .map(|card| card.generation_value())
             .collect::<Result<Vec<_>, _>>()?;
-        let curated_values =
-            document_intelligence::curate_document_cards(runtime, &task, &outline, generated_values)
-                .await?;
+        let curated_values = document_intelligence::curate_document_cards(
+            runtime,
+            &task,
+            &outline,
+            generated_values,
+        )
+        .await?;
         if curated_values.is_empty() {
             return Err(CommandError::new(
                 "document_generated_no_cards",

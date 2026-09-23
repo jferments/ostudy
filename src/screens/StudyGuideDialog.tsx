@@ -199,7 +199,7 @@ export function StudyGuideDialog({ documentId, documentTitle, showToast, onPract
           <section id="guide-overview" className={styles.overview}>
             <h2>Overview</h2><StudyMarkdown text={guide.overview.summary} />
             <GuideList title="Learning objectives" values={guide.overview.learningObjectives} />
-            <GuideList title="Key concepts" values={guide.overview.keyConcepts} />
+            <GuideConceptList values={guide.overview.keyConcepts} />
             {guideNote?.plainText ? <aside className={styles.personalNote}><strong>My guide note</strong><StudyMarkdown text={guideNote.plainText} /></aside> : null}
             <div className={styles.editorActions}>
               <Button variant="secondary" onClick={beginGuideNote}>{guideNote ? "Edit guide note" : "Add guide note"}</Button>
@@ -323,6 +323,23 @@ export function StudyGuideStructuredContent({
       </Disclosure>)}
     </div></section> : null}
   </div>;
+}
+function GuideConceptList({ values }: { values: string[] }) {
+  if (values.length === 0) return null;
+  return <section><h3>Key concepts</h3><dl className={styles.keyConcepts}>
+    {values.slice(0, 6).map((value) => {
+      const [title, caption] = splitOverviewConcept(value);
+      return <div key={value}>
+        <dt><StudyMarkdown text={title} inline /></dt>
+        {caption ? <dd><StudyMarkdown text={caption} /></dd> : null}
+      </div>;
+    })}
+  </dl></section>;
+}
+function splitOverviewConcept(value: string): [string, string] {
+  const separator = value.indexOf(" — ");
+  if (separator < 0) return [value, ""];
+  return [value.slice(0, separator).trim(), value.slice(separator + 3).trim()];
 }
 function GuideList({ title, values, ordered = false }: { title: string; values: string[]; ordered?: boolean }) {
   if (values.length === 0) return null;

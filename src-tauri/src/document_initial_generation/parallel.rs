@@ -5,9 +5,8 @@ use std::{future::Future, pin::Pin};
 use crate::error::CommandError;
 
 type ArtifactFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, CommandError>> + Send + 'a>>;
-type ArtifactPair<'a, C, G> = Pin<
-    Box<dyn Future<Output = (Result<C, CommandError>, Result<G, CommandError>)> + Send + 'a>,
->;
+type ArtifactPair<'a, C, G> =
+    Pin<Box<dyn Future<Output = (Result<C, CommandError>, Result<G, CommandError>)> + Send + 'a>>;
 
 pub(super) fn run<'a, C: Send + 'a, G: Send + 'a>(
     cards: ArtifactFuture<'a, C>,
@@ -38,7 +37,10 @@ mod tests {
         });
         let guide = Box::pin(async { Err::<(), _>(CommandError::new("guide_failed", "fixture")) });
         let mut pair = run(cards, guide);
-        assert_eq!(std::mem::size_of_val(&pair), 2 * std::mem::size_of::<usize>());
+        assert_eq!(
+            std::mem::size_of_val(&pair),
+            2 * std::mem::size_of::<usize>()
+        );
         std::future::poll_fn(|context| {
             assert!(pair.as_mut().poll(context).is_pending());
             assert!(entered.load(Ordering::SeqCst));

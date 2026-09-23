@@ -23,7 +23,7 @@ use crate::{
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
 pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 6;
-pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 2;
+pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 3;
 
 const MAX_GUIDE_SECTIONS: usize = 512;
 const MAX_OVERVIEW_CHARS: usize = 200_000;

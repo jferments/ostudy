@@ -65,7 +65,7 @@ function guide(): DocumentStudyGuide {
     overview: {
       summary: "How cardiac output is regulated.",
       learningObjectives: ["Explain preload"],
-      keyConcepts: ["Frank-Starling mechanism"],
+      keyConcepts: ["Frank-Starling mechanism — Increased ventricular filling can raise stroke volume by increasing myocardial fiber stretch."],
     },
     overviewText: "How cardiac output is regulated.",
     sections: [
@@ -253,6 +253,8 @@ describe("StudyGuideDialog", () => {
     renderGuide({ onClose });
 
     expect(await screen.findByText("Sarcomere stretch changes the force of contraction.")).toBeTruthy();
+    expect(screen.getByText("Frank-Starling mechanism")).toBeTruthy();
+    expect(screen.getByText(/Increased ventricular filling can raise stroke volume/u)).toBeTruthy();
     const workspace = screen.getByRole("region", { name: "Study guide · Physiology" });
     expect(workspace.getAttribute("data-inline-workspace")).toBe("true");
     expect(screen.queryByRole("dialog", { name: "Study guide · Physiology" })).toBeNull();

@@ -205,8 +205,15 @@ pub(crate) async fn generate_document_study_guide_from_plan(
     input: PreparedStudyGuideInput<'_>,
 ) -> Result<DocumentStudyGuide, CommandError> {
     let PreparedStudyGuideInput {
-        database, paths, runtime, task, document_id, document_title,
-        plan, chunks, maximum_images,
+        database,
+        paths,
+        runtime,
+        task,
+        document_id,
+        document_title,
+        plan,
+        chunks,
+        maximum_images,
     } = input;
     let provider = DocumentArtifactProviderSnapshot {
         profile_id: Some(task.profile_id.clone()),
@@ -228,7 +235,13 @@ pub(crate) async fn generate_document_study_guide_from_plan(
     // an observable failed artifact, not a tile stuck on an invented Pending.
     let result = async {
         let topic_evidence = build_topic_evidence(
-            database, paths, document_id, task, plan, chunks, maximum_images,
+            database,
+            paths,
+            document_id,
+            task,
+            plan,
+            chunks,
+            maximum_images,
         )?;
         execute_study_guide_generation(StudyGuideGenerationExecution {
             database,

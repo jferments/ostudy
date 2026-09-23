@@ -37,6 +37,8 @@ use crate::{
 };
 
 const STUDY_GUIDE_CHECKPOINT_CONTRACT: &str = "document-study-guide-v3-explicit-output-contract";
+const MAX_OVERVIEW_KEY_CONCEPTS: usize = 6;
+const MAX_OVERVIEW_CONCEPT_CAPTION_CHARS: usize = 180;
 
 #[derive(Clone, Debug)]
 pub(crate) struct StudyGuideTopicEvidence {
@@ -242,7 +244,7 @@ pub(crate) async fn execute_study_guide_generation(
     let overview = StudyGuideOverview {
         summary: execution.plan.summary.clone(),
         learning_objectives: execution.plan.learning_objectives.clone(),
-        key_concepts: execution.plan.key_concepts.clone(),
+        key_concepts: overview_key_concepts(execution.plan),
     };
     let guide = match publish_document_study_guide(
         execution.database,
@@ -441,6 +443,71 @@ fn validate_execution(execution: &StudyGuideGenerationExecution<'_>) -> Result<(
         }
     }
     Ok(())
+}
+
+fn overview_key_concepts(plan: &DocumentLearningPlan) -> Vec<String> {
+    let roots = plan
+        .topics
+        .iter()
+        .filter(|topic| topic.parent_topic_id.is_none())
+        .collect::<Vec<_>>();
+    let candidates = if roots.len() >= 3 {
+        roots
+    } else {
+        plan.topics.iter().collect::<Vec<_>>()
+    };
+    if candidates.is_empty() {
+        return plan
+            .key_concepts
+            .iter()
+            .take(MAX_OVERVIEW_KEY_CONCEPTS)
+            .cloned()
+            .collect();
+    }
+
+    evenly_spaced_indices(candidates.len(), MAX_OVERVIEW_KEY_CONCEPTS)
+        .into_iter()
+        .filter_map(|index| candidates.get(index).copied())
+        .map(|topic| {
+            let title = topic.title.trim();
+            let caption = brief_concept_caption(&topic.summary);
+            if caption.is_empty() || caption.eq_ignore_ascii_case(title) {
+                title.to_string()
+            } else {
+                format!("{title} — {caption}")
+            }
+        })
+        .filter(|value| !value.trim().is_empty())
+        .collect()
+}
+
+fn evenly_spaced_indices(length: usize, maximum: usize) -> Vec<usize> {
+    if length == 0 || maximum == 0 {
+        return Vec::new();
+    }
+    if length <= maximum {
+        return (0..length).collect();
+    }
+    let denominator = maximum.saturating_sub(1).max(1);
+    (0..maximum)
+        .map(|position| position * (length - 1) / denominator)
+        .collect()
+}
+
+fn brief_concept_caption(value: &str) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let sentence = compact
+        .find(". ")
+        .map_or(compact.as_str(), |index| &compact[..=index]);
+    if sentence.chars().count() <= MAX_OVERVIEW_CONCEPT_CAPTION_CHARS {
+        return sentence.to_string();
+    }
+    let mut shortened = sentence
+        .chars()
+        .take(MAX_OVERVIEW_CONCEPT_CAPTION_CHARS.saturating_sub(1))
+        .collect::<String>();
+    shortened.push('…');
+    shortened
 }
 
 fn study_guide_contract_key(task: &DocumentTaskContext, plan: &DocumentLearningPlan) -> String {
@@ -651,6 +718,39 @@ mod tests {
             images: Vec::new(),
         }];
         assert_ne!(plan.topics[0].id, evidence[0].topic_id);
+    }
+
+    #[test]
+    fn overview_uses_at_most_six_high_level_topics_with_brief_captions() {
+        let mut plan = plan();
+        plan.topics = (0..9)
+            .map(|index| LearningTopic {
+                id: format!("{:032x}", index + 1),
+                parent_topic_id: None,
+                sort_index: index,
+                title: format!("Major concept {}", index + 1),
+                summary: format!(
+                    "Explains the high-level relationship for concept {}. Secondary detail should not become the caption.",
+                    index + 1
+                ),
+                learning_objectives: Vec::new(),
+                key_concepts: Vec::new(),
+                source_locator: locator(index as i64 + 1),
+                evidence_chunk_indices: vec![index],
+                evidence_hashes: vec!["f".repeat(64)],
+                evidence_hash: "f".repeat(64),
+                anchor_hash: format!("{:064x}", index + 1),
+            })
+            .collect();
+
+        let concepts = overview_key_concepts(&plan);
+        assert_eq!(concepts.len(), MAX_OVERVIEW_KEY_CONCEPTS);
+        assert!(concepts.first().unwrap().starts_with("Major concept 1 — "));
+        assert!(concepts.last().unwrap().starts_with("Major concept 9 — "));
+        assert!(concepts.iter().all(|value| value.contains(" — Explains ")));
+        assert!(concepts
+            .iter()
+            .all(|value| !value.contains("Secondary detail")));
     }
 
     #[test]
