@@ -470,7 +470,11 @@ mod tests {
     #[test]
     fn unresolved_regions_inside_an_interpreted_source_do_not_force_paid_repair() {
         let (_, mut source, _, _) = fixture();
-        source.text = format!("{} {}", "A triangle has three sides. ".repeat(30), "Extra context.");
+        source.text = format!(
+            "{} {}",
+            "A triangle has three sides. ".repeat(30),
+            "Extra context."
+        );
         source.refresh_identity().unwrap();
         let sources = [source];
         let catalog = EvidenceCatalog::build(&sources, false).unwrap();
