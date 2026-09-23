@@ -79,6 +79,19 @@ After a successful large-document first pass:
 4. Confirm the model-facing whole-document digest covers sections near both the beginning and end of the source; the automated unit test protects this invariant for a 1–138-page example.
 5. Confirm no request contains the entire raw PDF or several complete outline JSON objects.
 
+## Document titles, topic headings, guides, and source-question quality
+
+For a textbook chapter or other source with a clear document-level heading:
+
+- the generated document/deck title must describe the broadest source scope, not one subsection or sampled concept;
+- a canonical title block, or a chapter marker followed by its heading, outranks a model-proposed narrow subsection title;
+- learning-topic headings must be concise human-readable umbrellas rather than slash-separated inventories of retained knowledge labels;
+- study-guide knowledge IDs are constrained to the exact aliases in that request's bounded catalog; a syntactically valid but nonexistent alias must be impossible under the provider schema and still fail closed under native admission;
+- source end-of-chapter questions, challenge prompts, and answer-choice inventories are study data, not ready-made generated cards;
+- Basic/critical-thinking recall must never flatten several answer choices into prose. If a choice assessment is appropriate and enabled, generation uses the typed interactive question contract; otherwise it rewrites the underlying concept as direct recall or application.
+
+For textbook acceptance, compare the generated title and major guide headings with the source's own chapter/table-of-contents hierarchy before judging local detail coverage.
+
 ## Card direction acceptance
 
 Use a successful text-heavy PDF generation with either DeepSeek or llama.cpp / Unsloth.

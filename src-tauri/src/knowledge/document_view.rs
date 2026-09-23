@@ -27,9 +27,9 @@ use crate::{
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-const VIEW_VERSION: i64 = 4;
+const VIEW_VERSION: i64 = 5;
 const MAX_SECTIONS: usize = 160;
 const MAX_DIGEST_BYTES: usize = 24_000;
 const REDUCTION_OUTPUT: usize = crate::document_scale::GLOBAL_OUTLINE_VISIBLE_COMPLETION_TOKENS;
@@ -216,7 +216,7 @@ fn native_outline(
                 }
             })
             .collect::<BTreeSet<_>>();
-        let title = whole_items(topics.iter().map(String::as_str), 240, " / ");
+        let title = representative_section_title(&units);
         // A clipped sentence can lose a negation or a condition. The native
         // fallback uses whole labels, not a chopped statement pretending to be
         // a complete explanation. Full statements/qualifications stay in units.
@@ -279,6 +279,70 @@ fn native_outline(
             .collect(),
         sections,
     })
+}
+
+fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
+    let mut candidates = BTreeMap::<String, (String, usize, usize)>::new();
+    let mut parent_groups = BTreeMap::<String, (String, usize, Vec<String>)>::new();
+    for (index, unit) in units.iter().enumerate() {
+        let raw = if unit.content.topic.trim().is_empty() {
+            unit.content.title.trim()
+        } else {
+            unit.content.topic.trim()
+        };
+        if raw.is_empty() {
+            continue;
+        }
+        let weight = match unit.content.grounding.as_ref().map(|g| g.importance) {
+            Some(Importance::Core) => 3,
+            Some(Importance::Supporting) | None => 2,
+            Some(Importance::Detail) => 1,
+        };
+        let label = compact_topic_label(raw);
+        if label.is_empty() {
+            continue;
+        }
+        let key = label.to_ascii_lowercase();
+        let entry = candidates.entry(key).or_insert((label.clone(), 0, index));
+        entry.1 = entry.1.saturating_add(weight);
+
+        if let Some((parent, child)) = raw.split_once(" — ") {
+            let parent = parent.trim();
+            let child = child.trim();
+            if !parent.is_empty() && !child.is_empty() {
+                let key = parent.to_ascii_lowercase();
+                let group = parent_groups
+                    .entry(key)
+                    .or_insert((parent.to_string(), 0, Vec::new()));
+                group.1 = group.1.saturating_add(weight);
+                if !group.2.iter().any(|value| value.eq_ignore_ascii_case(child)) {
+                    group.2.push(child.to_string());
+                }
+            }
+        }
+    }
+
+    if let Some((parent, _, children)) = parent_groups
+        .into_values()
+        .filter(|(_, _, children)| children.len() >= 2)
+        .max_by_key(|(_, score, children)| (*score, children.len()))
+    {
+        let child_summary = children.into_iter().take(2).collect::<Vec<_>>().join(" and ");
+        let combined = format!("{parent}: {child_summary}");
+        if combined.chars().count() <= 180 {
+            return combined;
+        }
+    }
+
+    candidates
+        .into_values()
+        .max_by(|left, right| {
+            left.1
+                .cmp(&right.1)
+                .then_with(|| right.2.cmp(&left.2))
+        })
+        .map(|(label, _, _)| label)
+        .unwrap_or_else(|| "Document overview".to_string())
 }
 
 fn native_narrative_summary(sections: &[OutlineSection]) -> String {
@@ -468,6 +532,35 @@ mod tests {
     fn invented_global_priority_does_not_change_knowledge() {
         assert!(parse_reduction(json!({"summary":"Geometry","learningObjectives":[],"keyConcepts":[],"coreUnitIds":["x"]}),&["a".repeat(32)]).is_err());
     }
+    #[test]
+    fn section_title_collapses_related_prefixed_topics_instead_of_joining_inventory() {
+        let base = crate::knowledge::authoring::tests::catalog_fixture().units[0].clone();
+        let topics = [
+            "Duodenal ulcers",
+            "Gastric acid secretion and buffering",
+            "Gastrointestinal physiology — gastric acid buffering",
+            "Gastrointestinal physiology — mucosal defense",
+            "Gastric ulcers",
+        ];
+        let units = topics
+            .iter()
+            .enumerate()
+            .map(|(index, topic)| {
+                let mut unit = base.clone();
+                unit.id = format!("{:032x}", index + 1);
+                unit.content.topic = (*topic).to_string();
+                unit
+            })
+            .collect::<Vec<_>>();
+        let refs = units.iter().collect::<Vec<_>>();
+        let title = representative_section_title(&refs);
+        assert_eq!(
+            title,
+            "Gastrointestinal physiology: gastric acid buffering and mucosal defense"
+        );
+        assert!(!title.contains(" / "));
+    }
+
     #[test]
     fn native_fallback_uses_narrative_summary_instead_of_topic_inventory() {
         let sections = vec![
