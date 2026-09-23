@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
 import { MetadataDialog, MetadataItem, MetadataList } from "../ui/overlays/MetadataDialog";
@@ -46,6 +46,13 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
   const [collectionGuide, setCollectionGuide] = useState<{ id: string; title: string } | null>(null);
   const [generationInfoDocumentId, setGenerationInfoDocumentId] = useState<string | null>(null);
   const [containedDocumentIds, setContainedDocumentIds] = useState<string[]>([]);
+  const handleContainedDocumentIdsChange = useCallback((next: string[]) => {
+    setContainedDocumentIds((current) => (
+      current.length === next.length && current.every((id, index) => id === next[index])
+        ? current
+        : next
+    ));
+  }, []);
   const contained = new Set(containedDocumentIds);
   const looseDocuments = documents.filter((document) => !contained.has(document.id));
 
@@ -98,7 +105,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
         refreshDecks={props.refreshDecks}
         onOpenDeck={props.onOpenDeck}
         onOpenGuide={(id, title) => setCollectionGuide({ id, title })}
-        onContainedDocumentIdsChange={setContainedDocumentIds}
+        onContainedDocumentIdsChange={handleContainedDocumentIdsChange}
       />
       <div className={styles.toolbar}>
         <strong>Loose documents</strong>
