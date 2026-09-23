@@ -108,7 +108,7 @@ python3 scripts/generation-usage.py --list
 python3 scripts/generation-usage.py --all --json
 ```
 
-No database path or operation ID is required for the ordinary diagnostic workflow. `--database` and `--operation` remain available as explicit overrides for archived/benchmark libraries or an older retained operation. The text report gives stage-level input/output shares, retry shares, provider cache-read coverage, reasoning share, local reuse, and content-free payload composition. JSON additionally exposes request records, per-operation shares, and the largest reported input/output requests.
+No database path or operation ID is required for the ordinary diagnostic workflow. `--database` and `--operation` remain available as explicit overrides for archived/benchmark libraries or an older retained operation. The text report gives stage-level input/output shares, retry shares, provider cache-read coverage, reasoning share, local reuse, and content-free payload composition. It also reports repeated-attempt provider time in two forms: **cumulative request time** (which double-counts concurrent requests) and **active wall-clock time** (the union of intervals in which at least one repeated attempt was in flight). Neither number is presented as guaranteed wall-clock savings because sibling requests can overlap. JSON additionally exposes request records, per-operation shares, and the largest reported input/output requests.
 
 A useful token-spike investigation is:
 

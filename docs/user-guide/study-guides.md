@@ -1,6 +1,6 @@
 # Study guides
 
-A study guide is a source-grounded learning artifact built from retained source knowledge. Individual-document guides use that document's learning plan; collection guides use the exact authorized folder/range snapshot and its compact cross-document synthesis. Both bring together an overview, learning objectives, key concepts, ordered sections, source labels, and links to relevant flashcards. A guide is not a replacement for checking the original sources.
+A study guide is a source-grounded learning artifact built from retained source knowledge. Individual-document guides use that document's learning plan; collection guides use the exact authorized folder/range snapshot and its compact cross-document synthesis. Both bring together an overview, learning objectives, a small set of high-level key concepts with brief explanatory captions, ordered sections, source labels, and links to relevant flashcards. A guide is not a replacement for checking the original sources.
 
 ## Create and find a guide
 

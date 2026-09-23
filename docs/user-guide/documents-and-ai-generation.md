@@ -12,7 +12,7 @@ The original document is not uploaded to the model as an opaque file. ostudy sta
 
 ## Import and generate
 
-Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. Flashcard generation starts automatically after source admission; **Generate study guide** remains available on the retained document. Watch the displayed progress and keep using other sections while work runs. Navigating away does not cancel the job. While a study guide is generating, its button contains a red stop-sign icon; click that same button to request cancellation.
+Open Documents and choose **Upload document**. Select a supported file; format detection is automatic rather than a parser selector. After local/source understanding and the shared learning plan are ready, initial **Flashcards** and **Study Guide** authoring start as sibling tasks instead of waiting on one another. Documents shows separate vertically stacked progress bars backed by committed flashcard windows and durable Study Guide sections. Either artifact can finish first; completion is shown independently. Navigating away does not cancel the native work.
 
 ### Upload an image collection
 
@@ -71,7 +71,7 @@ Diagnostics are designed to keep credentials, raw prompts/responses, reasoning t
 
 ## Progress and cancellation
 
-Progress reports the phases the application can actually observe. Non-PDF native extraction may be indeterminate until the parser returns known source-unit totals. Do not interpret an indeterminate indicator as a stalled or failed task merely because a percentage is unavailable.
+Progress reports the phases the application can actually observe. Non-PDF native extraction may be indeterminate until the parser returns known source-unit totals. Once shared understanding is complete, Flashcards progress uses committed generation windows and Study Guide progress uses durable completed sections; neither bar guesses from elapsed time. A green **Complete** state belongs to the individual artifact, so one can complete while the other remains active. Do not interpret an indeterminate indicator as a stalled or failed task merely because a percentage is unavailable.
 
 Stop controls request cancellation of their task. Study guides use a single generating/stop button rather than a second permanent button. Failures remain visible when you return to Documents and are not cleared by routine refreshes. Cancellation is cooperative: local extraction, network work, validation, and publication have explicit boundaries. Already committed reusable derivatives are retained, and a canceled guide regeneration leaves the previous published guide available.
 
@@ -81,7 +81,7 @@ On desktop, closing while document processing is active warns about interrupting
 
 ## Retry, more cards, and regeneration
 
-Retry reuses valid source/outline/generation checkpoints only when their versioned identities still match. Current knowledge remains reusable across different consuming models. Changed parser, prompt, schema, generation policy or source evidence can require rebuilding derivatives. A stale checkpoint is not trusted simply because it exists.
+Retry reuses valid source/outline/generation checkpoints only when their versioned identities still match. Current knowledge remains reusable across different consuming models. Changed parser, prompt, schema, generation policy or source evidence can require rebuilding derivatives. A stale checkpoint is not trusted simply because it exists. The live **Retries** diagnostic is recovery traffic, not a count of documents or failed pages: it distinguishes contract repair, output compaction, transient transport retry, and provider-compatibility retry. Successful admitted knowledge with merely unresolved internal coverage no longer automatically buys another provider request; paid repair is reserved for actual rejected proposals or a supplied source that received no admitted/non-learning disposition.
 
 Card generation checkpoints are window-scoped. Completed source windows remain checkpointed after a later window/provider failure, so retry resumes the remaining compatible windows instead of discarding already admitted work. Generated result summaries report what was requested, admitted, rejected and covered without turning a soft type mix into a hard quota.
 
