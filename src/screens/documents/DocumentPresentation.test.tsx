@@ -1,12 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as collections from "../../ipc/collections";
+import * as documentArtifactProgress from "../../ipc/documentArtifactProgress";
 import * as documentIpc from "../../ipc/documents";
 import * as studyGuideIpc from "../../ipc/studyGuides";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "../DocumentsScreen";
 
 vi.mock("../../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("../../ipc/documentArtifactProgress", () => ({
+  listLatestDocumentStudyGuideJobs: vi.fn(),
+}));
 vi.mock("../../ipc/documents", () => ({
   listDocuments: vi.fn(), getDocumentGenerationProgress: vi.fn(),
   importDocument: vi.fn(), startDocumentFlashcardGeneration: vi.fn(),
@@ -97,6 +101,7 @@ beforeEach(() => {
     revision: 1, collections: [], memberships: [], ranges: [],
   });
   vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+  vi.mocked(documentArtifactProgress.listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
   vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
   vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
   vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockResolvedValue({ revision: 1 } as studyGuideIpc.DocumentStudyGuide);
@@ -147,23 +152,32 @@ describe("Document job presentation", () => {
     expect(JSON.stringify(toast.mock.calls)).not.toMatch(/partial|unresolved/iu);
   });
 
-  it("offers automatic study-guide stop only through the overflow menu", async () => {
-    const before = makeDocument({ generatedDeckId: null, generatedCardCount: 0 });
-    const after = makeDocument();
-    vi.mocked(documentIpc.listDocuments).mockResolvedValue([before]);
-    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
-      vi.mocked(documentIpc.listDocuments).mockResolvedValue([after]);
-    });
-    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockReturnValue(new Promise(() => {}));
+  it("offers stop for a durable guide that is still running after flashcards finish", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(documentArtifactProgress.listLatestDocumentStudyGuideJobs).mockResolvedValue([{
+      id: "c".repeat(32),
+      documentId,
+      planId: "d".repeat(32),
+      artifactKind: "study_guide",
+      state: "generating",
+      totalUnits: 10,
+      completedUnits: 4,
+      safeErrorCode: "",
+      safeErrorMessage: "",
+      apiTokenCount: null,
+      apiTokenUsageComplete: false,
+      createdAt: 1,
+      startedAt: 2,
+      updatedAt: 3,
+      completedAt: null,
+    }]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await waitForCollectionDiscovery();
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
-    fireEvent.click(await screen.findByText("Retry generation"));
-    await waitFor(() => expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId));
-
+    await waitFor(() => expect(screen.getByText("4 / 10 sections")).toBeTruthy());
+    expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /study guide/iu })).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
     fireEvent.click(await screen.findByText("Stop study guide generation"));
     await waitFor(() => expect(
@@ -171,26 +185,31 @@ describe("Document job presentation", () => {
     ).toHaveBeenCalledWith(documentId));
   });
 
-  it("keeps automatic guide failures visible without hiding saved flashcards", async () => {
-    const before = makeDocument({ generatedDeckId: null, generatedCardCount: 0 });
-    const after = makeDocument();
-    vi.mocked(documentIpc.listDocuments).mockResolvedValue([before]);
-    vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockImplementation(async () => {
-      vi.mocked(documentIpc.listDocuments).mockResolvedValue([after]);
-    });
-    vi.mocked(studyGuideIpc.generateDocumentStudyGuide).mockRejectedValue(
-      new Error("The provider could not finish the guide."),
-    );
+  it("keeps durable guide failures visible without hiding saved flashcards", async () => {
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
+    vi.mocked(documentArtifactProgress.listLatestDocumentStudyGuideJobs).mockResolvedValue([{
+      id: "c".repeat(32),
+      documentId,
+      planId: "d".repeat(32),
+      artifactKind: "study_guide",
+      state: "failed",
+      totalUnits: 10,
+      completedUnits: 4,
+      safeErrorCode: "ai_provider_failed",
+      safeErrorMessage: "The provider could not finish the guide.",
+      apiTokenCount: null,
+      apiTokenUsageComplete: false,
+      createdAt: 1,
+      startedAt: 2,
+      updatedAt: 3,
+      completedAt: 4,
+    }]);
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
-    await waitForCollectionDiscovery();
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
-    fireEvent.click(await screen.findByText("Retry generation"));
-
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(
-      "Flashcards were saved, but automatic Study Guide generation failed",
-    ));
+    expect(await screen.findByText("Needs attention")).toBeTruthy();
+    expect(screen.getByText("The provider could not finish the guide.")).toBeTruthy();
     expect(screen.getByText("7 cards")).toBeTruthy();
+    expect(studyGuideIpc.generateDocumentStudyGuide).not.toHaveBeenCalled();
   });
 });
