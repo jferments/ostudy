@@ -138,6 +138,14 @@ impl DocumentTaskContext {
         (tokens, complete)
     }
 
+    /// Keep provider/profile/cancellation/diagnostic identity while accounting
+    /// one derived artifact independently from sibling artifact work.
+    pub(crate) fn fork_usage(&self) -> Self {
+        let mut fork = self.clone();
+        fork.usage = Arc::new(Mutex::new(DocumentUsageAccumulator::default()));
+        fork
+    }
+
     pub(super) fn profile(&self) -> &ProfileSnapshot {
         &self.profile
     }

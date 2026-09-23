@@ -177,7 +177,7 @@ export function DocumentsScreen(props: DocumentsScreenProps) {
               onSelect: () => void stopGeneration(document),
               disabled: canceling,
             });
-            if (guideGenerating) actions.push({
+            if (guideGenerating && document.lifecycleState !== "processing") actions.push({
               id: "stop-guide",
               label: cancelingGuide ? "Stopping study guide…" : "Stop study guide generation",
               placement: "overflow-only",

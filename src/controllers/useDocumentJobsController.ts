@@ -187,7 +187,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
             );
           }
         });
-        void ensureAutomaticStudyGuide(document);
+        // Initial guides are sibling native work, not a second frontend command.
         continue;
       }
       const message = document.safeErrorMessage || "Document generation failed.";
@@ -349,7 +349,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
 
   async function stopStudyGuide(document: DocumentSummary): Promise<void> {
     const key = `guide:${document.id}`;
-    if (!guideGeneratingDocumentIds.has(document.id) || stopping.current.has(key)) return;
+    if (stopping.current.has(key)) return;
     imageCollections.stopForDocument(document.id);
     stopping.current.add(key);
     updateIdSet(setCancelingGuideDocumentIds, document.id, true);

@@ -7,23 +7,30 @@ export function GenerationProgressPanel({ document, progress, now }: {
 }) {
   const stage = generationStage(document, progress);
   const percent = generationPercent(document, progress);
-  const promptTokens = progress?.promptTokens ?? 0;
-  const cacheRatio = promptTokens > 0 && progress ? Math.min(100, (progress.cachedPromptTokens / promptTokens) * 100) : null;
   return <div className={progressStyles.panel} aria-live="polite">
     <div className={progressStyles.heading}><span>{stage.title}</span><span>{percent === null ? "Working…" : `${percent}%`}</span></div>
     <Progress value={percent} max={100} label="Document generation progress" />
     <div className={progressStyles.detail}>{stage.detail}</div>
-    <dl className={progressStyles.stats}>
-      <div><dt>Elapsed</dt><dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd></div>
-      <div><dt>Requests</dt><dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd></div>
-      <div><dt>Provider</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
-      <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{formatRetryCount(progress)}</dd></div>
-      <div><dt>Reasoning</dt><dd>{progress ? `${progress.reasoningEffort} · ${formatTokenCount(progress.reasoningTokens)}` : "—"}</dd></div>
-      <div><dt>Prompt / output</dt><dd>{progress ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}` : "—"}</dd></div>
-      <div><dt>Prompt cache</dt><dd>{progress && cacheRatio !== null ? `${formatTokenCount(progress.cachedPromptTokens)} (${cacheRatio.toFixed(1)}%)` : "Awaiting usage"}</dd></div>
-    </dl>
+    <GenerationDiagnostics progress={progress} now={now} />
   </div>;
 }
+
+export function GenerationDiagnostics({ progress, now }: {
+  progress: DocumentGenerationProgress | null; now: number;
+}) {
+  const promptTokens = progress?.promptTokens ?? 0;
+  const cacheRatio = promptTokens > 0 && progress ? Math.min(100, (progress.cachedPromptTokens / promptTokens) * 100) : null;
+  return <dl className={progressStyles.stats}>
+    <div><dt>Elapsed</dt><dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd></div>
+    <div><dt>Requests</dt><dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd></div>
+    <div><dt>Provider</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
+    <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{formatRetryCount(progress)}</dd></div>
+    <div><dt>Reasoning</dt><dd>{progress ? `${progress.reasoningEffort} · ${formatTokenCount(progress.reasoningTokens)}` : "—"}</dd></div>
+    <div><dt>Prompt / output</dt><dd>{progress ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}` : "—"}</dd></div>
+    <div><dt>Prompt cache</dt><dd>{progress && cacheRatio !== null ? `${formatTokenCount(progress.cachedPromptTokens)} (${cacheRatio.toFixed(1)}%)` : "Awaiting usage"}</dd></div>
+  </dl>;
+}
+
 function formatRetryCount(progress: DocumentGenerationProgress | null): string {
   if (!progress) return "—";
   if (progress.retryCount === 0) return "0";
@@ -105,7 +112,7 @@ function ingestionStage(phase: string | undefined): { title: string; detail: str
     default: return null;
   }
 }
-function activeWindowDetail(progress: DocumentGenerationProgress | null, totalWindows: number, sourceUnitKind: string): string | null {
+export function activeWindowDetail(progress: DocumentGenerationProgress | null, totalWindows: number, sourceUnitKind: string): string | null {
   const start = progress?.currentWindow;
   if (start === null || start === undefined) return null;
   const end = progress?.currentWindowEnd ?? start;

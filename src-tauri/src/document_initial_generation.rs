@@ -30,6 +30,8 @@ use crate::{
     pdf_render_backend::PdfRenderRuntime,
 };
 
+mod parallel;
+
 const MAX_GENERATED_CARDS: usize = 10_000;
 
 #[derive(Clone, Debug)]
@@ -337,202 +339,245 @@ async fn process_initial_flashcards(
     let learning_plan =
         ensure_learning_plan_for_outline(database, document_id, &source, &outline, &chunks)?;
 
-    let checkpoint_identity =
-        CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
-    let generation_contract = document_checkpoints::generation_contract_key(
-        &checkpoint_identity,
-        scale_plan,
-        &outline,
-        scale_plan.max_cards_per_window,
-    );
-    let generation_contract = crate::knowledge::assessment::policy::checkpoint_contract(
-        generation_contract,
-        &task.question_policy,
-    )?;
-    let cached_generation = generation_windows
-        .iter()
-        .map(|window| {
-            generation_contract.as_deref().and_then(|contract| {
-                document_checkpoints::load_generation_cards_best_effort(
-                    database,
-                    document_id,
-                    contract,
-                    window,
-                )
-            })
-        })
-        .collect::<Vec<_>>();
-    let generation_completed = cached_generation
-        .iter()
-        .filter(|value| value.is_some())
-        .count();
-    document_store::update_generation_progress(database, document_id, generation_completed)?;
-
-    let job_id = document_store::create_generation_job(
-        database,
-        document_id,
-        &GenerationJobIdentity::from(&task),
-        &source,
-        &generation_windows,
-    )?;
-    let generated_values = document_generation::execute_generation_windows(GenerationExecution {
-        database,
-        paths,
-        runtime,
-        task: &task,
-        document_id,
-        document_title: &stored.title,
-        outline: &outline,
-        plan: scale_plan,
-        windows: &generation_windows,
-        job_id: &job_id,
-        cached_cards: cached_generation,
-        checkpoint_contract: generation_contract.as_deref(),
-        diagnostic_prefix: "initial",
-    })
-    .await?;
-    if generated_values.is_empty() {
-        return Err(CommandError::new(
-            "document_generated_no_cards",
-            "The document analysis found no material important enough to generate flashcards.",
-        ));
-    }
-    let grounded_candidates = attach_generated_card_source_windows(
-        database,
-        &job_id,
-        &generation_windows,
-        generated_values,
-    )?;
-    let generated_values = grounded_candidates
-        .iter()
-        .map(|card| card.generation_value())
-        .collect::<Result<Vec<_>, _>>()?;
-    let curated_values =
-        document_intelligence::curate_document_cards(runtime, &task, &outline, generated_values)
-            .await?;
-    if curated_values.is_empty() {
-        return Err(CommandError::new(
-            "document_generated_no_cards",
-            "The global relevance pass removed all generated cards as low-value or redundant.",
-        ));
-    }
-    let grounded_cards = retain_curated_card_provenance(grounded_candidates, curated_values)?;
-    if grounded_cards.len() > MAX_GENERATED_CARDS {
-        return Err(CommandError::new(
-            "too_many_generated_cards",
-            "The generated document exceeded ostudy's defensive card limit.",
-        ));
-    }
-
-    document_store::mark_job_committing(database, document_id, &job_id, grounded_cards.len())?;
-    let payload = build_generated_import_json(&stored, &grounded_cards)?;
-    let (api_token_count, api_token_usage_complete) = task.usage_summary();
-    let result = import_generated_flashcards_bytes_with_commit_context(
-        database,
-        payload.as_bytes(),
-        |connection, import_result, commit_context, now| {
-            link_imported_notes_to_topics(
-                connection,
+    let guide_task = task.fork_usage();
+    let guide_future = Box::pin(
+        crate::document_study_guide_commands::generate_document_study_guide_from_plan(
+            crate::document_study_guide_commands::PreparedStudyGuideInput {
+                database,
+                paths,
+                runtime,
+                task: &guide_task,
                 document_id,
-                &job_id,
-                &learning_plan,
-                &grounded_cards,
-                commit_context,
-                now,
-            )?;
-            connection
-                .execute(
-                    "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![document_id, import_result.deck_id, job_id, now],
-                )
-                .map_err(|error| {
-                    CommandError::database_at(
-                        "document_deck_provenance_insert_failed",
-                        format!("document={document_id} job={job_id}"),
-                        error,
-                    )
-                })?;
-            let document_changed = connection
-                .execute(
-                    "UPDATE documents
-                     SET lifecycle_state = 'ready', generated_note_count = ?1,
-                         generated_card_count = ?2, generated_deck_id = ?3,
-                         outline_completed_window_count = outline_window_count,
-                         generation_completed_window_count = generation_window_count,
-                         safe_error_code = '', safe_error_message = '',
-                         processing_duration_ms = CASE
-                             WHEN processing_started_at IS NULL THEN NULL
-                             ELSE MAX(0, ?4 - processing_started_at)
-                         END,
-                         api_token_count = ?5, api_token_usage_complete = ?6,
-                         updated_at = ?4, completed_at = ?4, revision = revision + 1
-                     WHERE id = ?7 AND lifecycle_state = 'processing'",
-                    params![
-                        import_result.created_note_count,
-                        import_result.created_card_count,
-                        import_result.deck_id,
-                        now,
-                        api_token_count,
-                        if api_token_usage_complete {
-                            1_i64
-                        } else {
-                            0_i64
-                        },
+                document_title: &stored.title,
+                plan: &learning_plan,
+                chunks: &chunks,
+                maximum_images: scale_plan.max_images_per_window,
+            },
+        ),
+    );
+    let card_future = Box::pin(async {
+        let checkpoint_identity =
+            CheckpointIdentity::from_task(&task, &stored.extraction_backend, &capability_fingerprint);
+        let generation_contract = document_checkpoints::generation_contract_key(
+            &checkpoint_identity,
+            scale_plan,
+            &outline,
+            scale_plan.max_cards_per_window,
+        );
+        let generation_contract = crate::knowledge::assessment::policy::checkpoint_contract(
+            generation_contract,
+            &task.question_policy,
+        )?;
+        let cached_generation = generation_windows
+            .iter()
+            .map(|window| {
+                generation_contract.as_deref().and_then(|contract| {
+                    document_checkpoints::load_generation_cards_best_effort(
+                        database,
                         document_id,
-                    ],
-                )
-                .map_err(|error| {
-                    CommandError::database_at(
-                        "document_generation_finalize_failed",
-                        format!("document={document_id} job={job_id}"),
-                        error,
+                        contract,
+                        window,
                     )
-                })?;
-            if document_changed != 1 {
-                return Err(CommandError::new(
-                    "document_changed",
-                    "The document changed before generated cards could be committed.",
-                ));
-            }
-            let job_changed = connection
-                .execute(
-                    "UPDATE document_generation_jobs
-                     SET state = 'succeeded', generated_candidate_count = ?1,
-                         generated_deck_id = ?2, safe_error_code = '',
-                         safe_error_message = '', updated_at = ?3, completed_at = ?3
-                     WHERE id = ?4 AND document_id = ?5 AND state = 'committing'",
-                    params![
-                        import_result.created_card_count,
-                        import_result.deck_id,
-                        now,
-                        job_id,
-                        document_id,
-                    ],
-                )
-                .map_err(|error| {
-                    CommandError::database_at(
-                        "document_generation_job_finalize_failed",
-                        format!("document={document_id} job={job_id}"),
-                        error,
+                })
+            })
+            .collect::<Vec<_>>();
+        let generation_completed = cached_generation
+            .iter()
+            .filter(|value| value.is_some())
+            .count();
+        document_store::update_generation_progress(database, document_id, generation_completed)?;
+
+        let job_id = document_store::create_generation_job(
+            database,
+            document_id,
+            &GenerationJobIdentity::from(&task),
+            &source,
+            &generation_windows,
+        )?;
+        let generated_values = document_generation::execute_generation_windows(GenerationExecution {
+            database,
+            paths,
+            runtime,
+            task: &task,
+            document_id,
+            document_title: &stored.title,
+            outline: &outline,
+            plan: scale_plan,
+            windows: &generation_windows,
+            job_id: &job_id,
+            cached_cards: cached_generation,
+            checkpoint_contract: generation_contract.as_deref(),
+            diagnostic_prefix: "initial",
+        })
+        .await?;
+        if generated_values.is_empty() {
+            return Err(CommandError::new(
+                "document_generated_no_cards",
+                "The document analysis found no material important enough to generate flashcards.",
+            ));
+        }
+        let grounded_candidates = attach_generated_card_source_windows(
+            database,
+            &job_id,
+            &generation_windows,
+            generated_values,
+        )?;
+        let generated_values = grounded_candidates
+            .iter()
+            .map(|card| card.generation_value())
+            .collect::<Result<Vec<_>, _>>()?;
+        let curated_values =
+            document_intelligence::curate_document_cards(runtime, &task, &outline, generated_values)
+                .await?;
+        if curated_values.is_empty() {
+            return Err(CommandError::new(
+                "document_generated_no_cards",
+                "The global relevance pass removed all generated cards as low-value or redundant.",
+            ));
+        }
+        let grounded_cards = retain_curated_card_provenance(grounded_candidates, curated_values)?;
+        if grounded_cards.len() > MAX_GENERATED_CARDS {
+            return Err(CommandError::new(
+                "too_many_generated_cards",
+                "The generated document exceeded ostudy's defensive card limit.",
+            ));
+        }
+
+        document_store::mark_job_committing(database, document_id, &job_id, grounded_cards.len())?;
+        let payload = build_generated_import_json(&stored, &grounded_cards)?;
+        let (api_token_count, api_token_usage_complete) = task.usage_summary();
+        let result = import_generated_flashcards_bytes_with_commit_context(
+            database,
+            payload.as_bytes(),
+            |connection, import_result, commit_context, now| {
+                link_imported_notes_to_topics(
+                    connection,
+                    document_id,
+                    &job_id,
+                    &learning_plan,
+                    &grounded_cards,
+                    commit_context,
+                    now,
+                )?;
+                connection
+                    .execute(
+                        "INSERT INTO document_decks (document_id, deck_id, job_id, created_at)
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![document_id, import_result.deck_id, job_id, now],
                     )
-                })?;
-            if job_changed != 1 {
-                return Err(CommandError::new(
-                    "document_job_changed",
-                    "The generation job changed before its commit completed.",
-                ));
-            }
-            Ok(())
-        },
-    )?;
-    document_checkpoints::clear_generation_checkpoints_best_effort(database, document_id);
-    Ok(InitialGenerationResult {
-        deck_id: result.deck_id,
-        created_note_count: result.created_note_count,
-        created_card_count: result.created_card_count,
-        skipped_duplicate_count: result.skipped_duplicate_count,
-    })
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "document_deck_provenance_insert_failed",
+                            format!("document={document_id} job={job_id}"),
+                            error,
+                        )
+                    })?;
+                let document_changed = connection
+                    .execute(
+                        "UPDATE documents
+                         SET lifecycle_state = 'ready', generated_note_count = ?1,
+                             generated_card_count = ?2, generated_deck_id = ?3,
+                             outline_completed_window_count = outline_window_count,
+                             generation_completed_window_count = generation_window_count,
+                             safe_error_code = '', safe_error_message = '',
+                             processing_duration_ms = CASE
+                                 WHEN processing_started_at IS NULL THEN NULL
+                                 ELSE MAX(0, ?4 - processing_started_at)
+                             END,
+                             api_token_count = ?5, api_token_usage_complete = ?6,
+                             updated_at = ?4, completed_at = ?4, revision = revision + 1
+                         WHERE id = ?7 AND lifecycle_state = 'processing'",
+                        params![
+                            import_result.created_note_count,
+                            import_result.created_card_count,
+                            import_result.deck_id,
+                            now,
+                            api_token_count,
+                            if api_token_usage_complete {
+                                1_i64
+                            } else {
+                                0_i64
+                            },
+                            document_id,
+                        ],
+                    )
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "document_generation_finalize_failed",
+                            format!("document={document_id} job={job_id}"),
+                            error,
+                        )
+                    })?;
+                if document_changed != 1 {
+                    return Err(CommandError::new(
+                        "document_changed",
+                        "The document changed before generated cards could be committed.",
+                    ));
+                }
+                let job_changed = connection
+                    .execute(
+                        "UPDATE document_generation_jobs
+                         SET state = 'succeeded', generated_candidate_count = ?1,
+                             generated_deck_id = ?2, safe_error_code = '',
+                             safe_error_message = '', updated_at = ?3, completed_at = ?3
+                         WHERE id = ?4 AND document_id = ?5 AND state = 'committing'",
+                        params![
+                            import_result.created_card_count,
+                            import_result.deck_id,
+                            now,
+                            job_id,
+                            document_id,
+                        ],
+                    )
+                    .map_err(|error| {
+                        CommandError::database_at(
+                            "document_generation_job_finalize_failed",
+                            format!("document={document_id} job={job_id}"),
+                            error,
+                        )
+                    })?;
+                if job_changed != 1 {
+                    return Err(CommandError::new(
+                        "document_job_changed",
+                        "The generation job changed before its commit completed.",
+                    ));
+                }
+                Ok(())
+            },
+        )?;
+        document_checkpoints::clear_generation_checkpoints_best_effort(database, document_id);
+        Ok(InitialGenerationResult {
+            deck_id: result.deck_id,
+            created_note_count: result.created_note_count,
+            created_card_count: result.created_card_count,
+            skipped_duplicate_count: result.skipped_duplicate_count,
+        })
+    });
+
+    let (cards, guide) = parallel::run(card_future, guide_future).await;
+    match guide {
+        Ok(guide) => crate::logging::info_target(
+            "documents.generation",
+            "parallel_study_guide_succeeded",
+            "The automatic Study Guide completed alongside flashcard generation.",
+            serde_json::json!({
+                "document": document_id,
+                "guide": guide.id,
+                "revision": guide.revision,
+            }),
+        ),
+        Err(error) => crate::logging::warn_target(
+            "documents.generation",
+            "parallel_study_guide_failed",
+            "Flashcard generation remains independent when the automatic Study Guide fails.",
+            serde_json::json!({
+                "document": document_id,
+                "code": error.code,
+                "detail": error.message.chars().take(400).collect::<String>(),
+            }),
+        ),
+    }
+    cards
 }
 
 fn load_context(

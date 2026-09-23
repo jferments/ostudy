@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
@@ -21,6 +21,10 @@ vi.mock("../ipc/documents", async () => {
 
 vi.mock("../platform/files", () => ({
   selectExternalImport: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../ipc/documentArtifactProgress", () => ({
+  listLatestDocumentStudyGuideJobs: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../ipc/studyGuides", async () => {
@@ -97,9 +101,11 @@ const progress: DocumentGenerationProgress = {
 describe("DocumentsScreen live generation progress", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(Date, "now").mockReturnValue(progress.startedAt + 90_000);
     documentIpcMocks.listDocuments.mockResolvedValue([document]);
     documentIpcMocks.getDocumentGenerationProgress.mockResolvedValue(progress);
   });
+  afterEach(() => { vi.restoreAllMocks(); });
 
   it("describes concurrent generation as an active window range without duplicating completed counts", async () => {
     documentIpcMocks.listDocuments.mockResolvedValue([

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentSummary } from "../ipc/documents";
 import { DocumentJobsProvider, useDocumentJobs } from "./DocumentJobsProvider";
@@ -36,18 +36,11 @@ const retryDocument = {
   safeErrorCode: "",
   safeErrorMessage: "",
 } as DocumentSummary;
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
 function DocumentsRoute() {
   const jobs = useDocumentJobs();
   if (!jobs) throw new Error("Missing job owner");
   return <section aria-label="Documents route">
     <button onClick={() => { void jobs.stopStudyGuide(document); }}>Stop guide</button>
-    <span role="status">{jobs.guideGeneratingDocumentIds.has(retryDocument.id) ? "Guide running" : "Idle"}</span>
     {jobs.errorMessage ? <p role="alert">{jobs.errorMessage}</p> : null}
     <button onClick={() => { void jobs.retry(retryDocument); }}>Retry cards</button>
     <button onClick={() => { void jobs.refreshDocuments(); }}>Refresh documents</button>
@@ -79,39 +72,27 @@ beforeEach(() => {
 });
 
 describe("application-lifetime document jobs", () => {
-  it("starts one automatic guide after card completion and keeps it alive across navigation", async () => {
+  it("does not launch a duplicate frontend guide when native cards finish, including after navigation", async () => {
     let current = [retryDocument];
-    const guide = deferred<{ revision: number }>();
     mocks.list.mockImplementation(async () => current);
     mocks.start.mockImplementation(async () => {
       current = [{ ...retryDocument, lifecycleState: "processing" }];
     });
-    mocks.guide.mockReturnValue(guide.promise);
     open();
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
-
     fireEvent.click(screen.getByRole("button", { name: "Retry cards" }));
     await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id));
-    current = [{
-      ...retryDocument,
-      lifecycleState: "ready",
-      generatedDeckId: "d".repeat(32),
-      generatedCardCount: 6,
-      safeErrorCode: "",
-      safeErrorMessage: "",
-    }];
-    fireEvent.click(screen.getByRole("button", { name: "Refresh documents" }));
-    await waitFor(() => expect(mocks.guide).toHaveBeenCalledWith(retryDocument.id));
-    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Guide running"));
 
     fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
     expect(mocks.cancelGuide).not.toHaveBeenCalled();
-    await act(async () => { guide.resolve({ revision: 2 }); await guide.promise; });
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(
-      "success",
-      "Study guide revision 2 created automatically. Open it from Study Guides.",
-    ));
-    expect(mocks.guide).toHaveBeenCalledTimes(1);
+    expect(mocks.cancelDocument).not.toHaveBeenCalled();
+    current = [{ ...retryDocument, lifecycleState: "ready", generatedDeckId: "d".repeat(32), generatedCardCount: 6 }];
+    fireEvent.click(screen.getByRole("button", { name: "Navigate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh documents" }));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("success", "Created 6 flashcards in a new deck."));
+    expect(mocks.guide).not.toHaveBeenCalled();
+    expect(mocks.start).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshDecks).toHaveBeenCalled();
   });
 
   it("hands flashcard generation to native ownership and observes durable completion", async () => {
@@ -122,24 +103,23 @@ describe("application-lifetime document jobs", () => {
     });
     open();
     await waitFor(() => expect(mocks.list).toHaveBeenCalled());
-
     fireEvent.click(screen.getByRole("button", { name: "Retry cards" }));
     await waitFor(() => expect(mocks.start).toHaveBeenCalledWith(retryDocument.id));
     expect(mocks.legacyCards).not.toHaveBeenCalled();
-
     current = [{
-      ...retryDocument,
-      lifecycleState: "ready",
-      generatedDeckId: "d".repeat(32),
-      generatedCardCount: 6,
-      safeErrorCode: "",
-      safeErrorMessage: "",
+      ...retryDocument, lifecycleState: "ready", generatedDeckId: "d".repeat(32),
+      generatedCardCount: 6, safeErrorCode: "", safeErrorMessage: "",
     }];
     fireEvent.click(screen.getByRole("button", { name: "Refresh documents" }));
-    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(
-      "success",
-      "Created 6 flashcards in a new deck.",
-    ));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith("success", "Created 6 flashcards in a new deck."));
     expect(mocks.refreshDecks).toHaveBeenCalled();
+  });
+
+  it("explicit stop reaches a native guide even when no frontend guide promise owns it", async () => {
+    open();
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Stop guide" }));
+    await waitFor(() => expect(mocks.cancelGuide).toHaveBeenCalledWith(document.id));
+    expect(mocks.guide).not.toHaveBeenCalled();
   });
 });

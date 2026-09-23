@@ -2,6 +2,7 @@ import type { DocumentGenerationProgress, DocumentSummary } from "../../ipc/docu
 import type { DocumentArtifactJob } from "../../ipc/studyGuides";
 import { Progress } from "../../ui/primitives/Progress";
 import { isActiveArtifactJob } from "../../controllers/useDocumentArtifactProgress";
+import { activeWindowDetail, GenerationDiagnostics } from "./DocumentProgress";
 import { progressStyles } from "./presentation";
 
 type ArtifactProgress = {
@@ -67,15 +68,13 @@ export function LearningArtifactProgressPanel({ document, progress, guideJob, gu
   readFailed: boolean;
   now: number;
 }) {
+  const activeWindows = progress?.phase === "generating"
+    ? activeWindowDetail(progress, document.generationWindowCount, document.sourceUnitKind) : null;
   return <div className={progressStyles.panel} aria-live="polite">
     <ArtifactRow label="Flashcards" progress={flashcardProgress(document, progress)} />
     <ArtifactRow label="Study Guide" progress={guideProgress(guideJob, guideStarting)} />
-    {progress ? <dl className={progressStyles.stats}>
-      <div><dt>Elapsed</dt><dd>{Math.floor(Math.max(0, now - progress.startedAt) / 60_000)}m {Math.floor(Math.max(0, now - progress.startedAt) / 1_000) % 60}s</dd></div>
-      <div><dt>Requests</dt><dd>{progress.providerRequestCount.toLocaleString()}</dd></div>
-      <div><dt>Retries</dt><dd>{progress.retryCount.toLocaleString()}</dd></div>
-      <div><dt>Prompt / output</dt><dd>{progress.promptTokens.toLocaleString()} / {progress.completionTokens.toLocaleString()}</dd></div>
-    </dl> : null}
+    {activeWindows ? <div className={progressStyles.detail}>{activeWindows}</div> : null}
+    {progress ? <GenerationDiagnostics progress={progress} now={now} /> : null}
     {guideJob?.safeErrorMessage ? <div className="tw:text-sm tw:text-destructive">{guideJob.safeErrorMessage}</div> : null}
     {readFailed ? <div className={progressStyles.detail}>Progress unavailable; showing the last saved status.</div> : null}
   </div>;

@@ -6,9 +6,9 @@ use crate::{
     ai::{document_intelligence, document_provider, AiRuntimeState},
     database::Database,
     document_artifacts::{
-        create_document_artifact_job, list_latest_document_artifact_jobs,
-        load_document_artifact_job, DocumentArtifactJob, DocumentArtifactKind,
-        DocumentArtifactProviderSnapshot,
+        create_document_artifact_job, fail_document_artifact_job,
+        list_latest_document_artifact_jobs, load_document_artifact_job, DocumentArtifactJob,
+        DocumentArtifactKind, DocumentArtifactProviderSnapshot,
     },
     document_cost,
     document_domain::{
@@ -173,16 +173,41 @@ async fn generate_document_study_guide_impl(
         &outline,
         &chunks,
     )?;
-    let topic_evidence = build_topic_evidence(
-        database.inner(),
-        paths.inner(),
-        &input.document_id,
-        &task,
-        &learning_plan,
-        &chunks,
-        scale_plan.max_images_per_window,
-    )?;
+    generate_document_study_guide_from_plan(PreparedStudyGuideInput {
+        database: database.inner(),
+        paths: paths.inner(),
+        runtime: runtime.inner(),
+        task: &task,
+        document_id: &input.document_id,
+        document_title: &stored.title,
+        plan: &learning_plan,
+        chunks: &chunks,
+        maximum_images: scale_plan.max_images_per_window,
+    })
+    .await
+}
 
+/// Immutable source/plan snapshot shared with the sibling flashcard author.
+/// This internal entry point deliberately does not reserve the document twice.
+pub(crate) struct PreparedStudyGuideInput<'a> {
+    pub database: &'a Database,
+    pub paths: &'a AppPaths,
+    pub runtime: &'a AiRuntimeState,
+    pub task: &'a document_intelligence::DocumentTaskContext,
+    pub document_id: &'a str,
+    pub document_title: &'a str,
+    pub plan: &'a DocumentLearningPlan,
+    pub chunks: &'a [SemanticChunk],
+    pub maximum_images: usize,
+}
+
+pub(crate) async fn generate_document_study_guide_from_plan(
+    input: PreparedStudyGuideInput<'_>,
+) -> Result<DocumentStudyGuide, CommandError> {
+    let PreparedStudyGuideInput {
+        database, paths, runtime, task, document_id, document_title,
+        plan, chunks, maximum_images,
+    } = input;
     let provider = DocumentArtifactProviderSnapshot {
         profile_id: Some(task.profile_id.clone()),
         provider_kind: task.provider_kind.clone(),
@@ -192,26 +217,40 @@ async fn generate_document_study_guide_impl(
         network_scope: task.network_scope.clone(),
     };
     let job = create_document_artifact_job(
-        database.inner(),
-        &input.document_id,
-        Some(&learning_plan.id),
+        database,
+        document_id,
+        Some(&plan.id),
         DocumentArtifactKind::StudyGuide,
         &provider,
-        learning_plan.topics.len(),
+        plan.topics.len(),
     )?;
-
-    execute_study_guide_generation(StudyGuideGenerationExecution {
-        database: database.inner(),
-        paths: paths.inner(),
-        runtime: runtime.inner(),
-        task: &task,
-        document_id: &input.document_id,
-        document_title: &stored.title,
-        plan: &learning_plan,
-        job_id: &job.id,
-        evidence: topic_evidence,
-    })
-    .await
+    // Publish the job before evidence preparation: a local preparation error is
+    // an observable failed artifact, not a tile stuck on an invented Pending.
+    let result = async {
+        let topic_evidence = build_topic_evidence(
+            database, paths, document_id, task, plan, chunks, maximum_images,
+        )?;
+        execute_study_guide_generation(StudyGuideGenerationExecution {
+            database,
+            paths,
+            runtime,
+            task,
+            document_id,
+            document_title,
+            plan,
+            job_id: &job.id,
+            evidence: topic_evidence,
+        })
+        .await
+    }
+    .await;
+    if let Err(error) = &result {
+        let (usage, complete) = task.usage_summary();
+        // The executor may already have saved Failed/Canceled. This only closes
+        // an earlier preparation failure; never overwrite a terminal success.
+        let _ = fail_document_artifact_job(database, &job.id, error, usage, complete);
+    }
+    result
 }
 
 #[tauri::command]
@@ -257,7 +296,7 @@ pub(crate) async fn read_document_source_asset(
 pub(crate) fn get_document_study_guide(
     database: State<'_, Database>,
     input: GetDocumentStudyGuideInput,
-) -> Result<Option<DocumentStudyGuide>, CommandError> {
+) -> Result<Option<DocumentStudyGuide, CommandError> {
     load_active_document_study_guide(database.inner(), &input.document_id)
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
 import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
 import { generateMoreDocumentFlashcards, listDocuments, retryDocumentFlashcardGeneration } from "../ipc/documents";
+import { listLatestDocumentStudyGuideJobs } from "../ipc/documentArtifactProgress";
 import type { StagedExternalFile } from "../ipc/externalFiles";
 import { amendImageSet, getImageSet, importImageSet, prepareImageSet,
   type AmendImageSetInput, type ImportImageSetInput } from "../ipc/imageSets";
@@ -38,6 +39,7 @@ interface Session {
   stopped: boolean;
   needsCards: boolean;
   needsGuide: boolean;
+  inspectNativeGuide: boolean;
 }
 interface Services {
   changed: () => Promise<void>;
@@ -132,12 +134,11 @@ export function useImageCollectionJobs(services: Services) {
           session.value.phase = "cards";
           service.current.activeDocument(id, false, true);
           publish(session);
-          // Native preparation and relevance selection, never user region editing.
-          // Additional generation requires the amended canonical source first.
           await prepareImageSet(id);
           if (session.stopped) break;
           const document = (await listDocuments()).find((item) => item.id === id);
           if (!document) throw new Error("The saved image collection could not be found.");
+          const initial = document.generatedDeckId === null;
           let count = 0;
           try {
             const result = document.generatedDeckId
@@ -148,15 +149,31 @@ export function useImageCollectionJobs(services: Services) {
             if (!document.generatedDeckId || getErrorCode(error) !== "document_no_additional_cards") throw error;
           }
           session.needsCards = false;
+          session.inspectNativeGuide = initial;
+          session.needsGuide = !initial;
           service.current.activeDocument(id, false, false);
           await service.current.changed();
           service.current.showToast(count > 0 ? "success" : "info", count > 0
             ? `Created ${count} flashcards from the image collection.`
             : "The existing deck already covers these images; no duplicate cards were added.");
         }
-        // Images added during a request belong to this collection, not another deck.
-        // Save them before building a guide from an already superseded snapshot.
+        // Save additions before deriving another guide from a superseded source.
         if (session.batches.length > 0) continue;
+        if (session.inspectNativeGuide && !session.stopped) {
+          // Initial cards and guides share one native launch. A failed status
+          // read must only repeat that read, never regenerate acknowledged cards.
+          const guide = (await listLatestDocumentStudyGuideJobs()).find((job) => job.documentId === id);
+          if (!guide || ["queued", "preparing", "generating", "committing"].includes(guide.state)) {
+            throw new Error("Cards were saved; the native Study Guide result is not available yet. Retry processing to refresh its status.");
+          }
+          session.inspectNativeGuide = false;
+          if (guide.state !== "succeeded") {
+            session.needsGuide = true;
+            throw Object.assign(new Error(guide.safeErrorMessage || "The automatic Study Guide did not complete. Saved cards remain available."), {
+              code: guide.state === "canceled" ? "document_study_guide_canceled" : guide.safeErrorCode,
+            });
+          }
+        }
         if (session.needsGuide && !session.stopped) {
           session.value.phase = "guide";
           service.current.activeDocument(id, true, true);
@@ -193,7 +210,7 @@ export function useImageCollectionJobs(services: Services) {
     let session = sessions.current.get(key);
     if (!session) {
       session = { key, value: { documentId, items: [], phase: "uploading", error: null },
-        batches: [], running: false, stopped: false, needsCards: false, needsGuide: false };
+        batches: [], running: false, stopped: false, needsCards: false, needsGuide: false, inspectNativeGuide: false };
       sessions.current.set(key, session);
     }
     const pendingBytes = session.batches.reduce((sum, batch) =>
@@ -222,7 +239,6 @@ export function useImageCollectionJobs(services: Services) {
     if (!session || session.running) return;
     const batch = session.batches.find((candidate) => candidate.selections.some((item) => item.id === id));
     const row = session.value.items.find((item) => item.id === id);
-    // Once a source write was attempted, its membership cannot change on retry.
     if (!batch || batch.request || row?.status !== "failed") return;
     batch.selections = batch.selections.filter((item) => item.id !== id);
     session.value.items = session.value.items.filter((item) => item.id !== id);
