@@ -296,7 +296,7 @@ pub(crate) async fn read_document_source_asset(
 pub(crate) fn get_document_study_guide(
     database: State<'_, Database>,
     input: GetDocumentStudyGuideInput,
-) -> Result<Option<DocumentStudyGuide, CommandError> {
+) -> Result<Option<DocumentStudyGuide>, CommandError> {
     load_active_document_study_guide(database.inner(), &input.document_id)
 }
 
