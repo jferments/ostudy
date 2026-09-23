@@ -275,30 +275,61 @@ pub(crate) fn reserve_document_task(
     })
 }
 
-pub(crate) async fn run_reserved_document_task<T, F>(
+type BoxedDocumentFuture<'a, T> =
+    std::pin::Pin<Box<dyn Future<Output = Result<T, CommandError>> + Send + 'a>>;
+
+fn run_reserved_document_task_boxed<'a, T>(
     reservation: ReservedDocumentTask,
-    future: F,
-) -> Result<T, CommandError>
+    future: BoxedDocumentFuture<'a, T>,
+) -> BoxedDocumentFuture<'a, T>
 where
-    F: Future<Output = Result<T, CommandError>>,
+    T: Send + 'a,
 {
-    let task = reservation.task.clone();
-    let result = CURRENT_DOCUMENT_TASK.scope(task.clone(), future).await;
-    if let Ok(mut diagnostic) = task.diagnostics.lock() {
-        if let Some(operation) = diagnostic.as_mut() {
-            operation.finish(result.is_ok());
+    Box::pin(async move {
+        let task = reservation.task.clone();
+        let result = CURRENT_DOCUMENT_TASK.scope(task.clone(), future).await;
+        if let Ok(mut diagnostic) = task.diagnostics.lock() {
+            if let Some(operation) = diagnostic.as_mut() {
+                operation.finish(result.is_ok());
+            }
         }
-    }
-    drop(reservation);
-    result
+        drop(reservation);
+        result
+    })
 }
 
-pub(crate) async fn run_document_task<T, F>(document_id: &str, future: F) -> Result<T, CommandError>
+/// Heap-box the caller's document future before it enters the task-local wrapper.
+///
+/// Document generation composes several large async state machines. Keeping those
+/// state machines inline through the cancellation/Tauri wrapper chain can make
+/// debug poll frames consume most of Tokio's worker-thread stack before the
+/// document pipeline itself is polled. This boundary keeps the child state on
+/// the heap while preserving the same cancellation identity and lifetime.
+pub(crate) fn run_reserved_document_task<'a, T, F>(
+    reservation: ReservedDocumentTask,
+    future: F,
+) -> BoxedDocumentFuture<'a, T>
 where
-    F: Future<Output = Result<T, CommandError>>,
+    T: Send + 'a,
+    F: Future<Output = Result<T, CommandError>> + Send + 'a,
 {
-    let reservation = reserve_document_task(document_id)?;
-    run_reserved_document_task(reservation, future).await
+    run_reserved_document_task_boxed(reservation, Box::pin(future))
+}
+
+pub(crate) fn run_document_task<'a, T, F>(
+    document_id: &str,
+    future: F,
+) -> BoxedDocumentFuture<'a, T>
+where
+    T: Send + 'a,
+    F: Future<Output = Result<T, CommandError>> + Send + 'a,
+{
+    let document_id = document_id.to_string();
+    let future: BoxedDocumentFuture<'a, T> = Box::pin(future);
+    Box::pin(async move {
+        let reservation = reserve_document_task(&document_id)?;
+        run_reserved_document_task_boxed(reservation, future).await
+    })
 }
 
 /// Bind once to the real document task so all phases and cloned model contexts
@@ -576,6 +607,28 @@ impl MobileForegroundExecution {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_task_wrapper_boxes_large_child_future_before_polling() {
+        const LARGE_CHILD_BYTES: usize = 256 * 1024;
+        let payload = [0x5a_u8; LARGE_CHILD_BYTES];
+        let child = async move {
+            std::hint::black_box(payload);
+            Ok::<(), CommandError>(())
+        };
+        assert!(
+            std::mem::size_of_val(&child) >= LARGE_CHILD_BYTES,
+            "fixture must remain a genuinely large inline async state"
+        );
+
+        let wrapped = run_document_task("boxed-large-child", child);
+        assert!(
+            std::mem::size_of_val(&wrapped) <= 2 * std::mem::size_of::<usize>(),
+            "document task boundary must retain only the boxed-future pointer"
+        );
+        drop(wrapped);
+        assert!(!is_document_task_active("boxed-large-child"));
+    }
 
     #[test]
     fn reservation_is_visible_to_stop_and_duplicate_start_before_polling() {

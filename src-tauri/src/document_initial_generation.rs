@@ -72,24 +72,46 @@ impl InitialDocumentContext {
     }
 }
 
-pub(crate) async fn process_and_generate_initial_flashcards(
-    database: &Database,
-    paths: &AppPaths,
-    runtime: &AiRuntimeState,
+type InitialGenerationFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<InitialGenerationResult, CommandError>>
+            + Send
+            + 'a,
+    >,
+>;
+
+pub(crate) fn process_and_generate_initial_flashcards<'a>(
+    database: &'a Database,
+    paths: &'a AppPaths,
+    runtime: &'a AiRuntimeState,
     render_runtime: PdfRenderRuntime,
-    document_id: &str,
-) -> Result<InitialGenerationResult, CommandError> {
-    process_initial_flashcards(database, paths, runtime, render_runtime, document_id, false).await
+    document_id: &'a str,
+) -> InitialGenerationFuture<'a> {
+    Box::pin(process_initial_flashcards(
+        database,
+        paths,
+        runtime,
+        render_runtime,
+        document_id,
+        false,
+    ))
 }
 
-pub(crate) async fn process_reserved_initial_flashcards(
-    database: &Database,
-    paths: &AppPaths,
-    runtime: &AiRuntimeState,
+pub(crate) fn process_reserved_initial_flashcards<'a>(
+    database: &'a Database,
+    paths: &'a AppPaths,
+    runtime: &'a AiRuntimeState,
     render_runtime: PdfRenderRuntime,
-    document_id: &str,
-) -> Result<InitialGenerationResult, CommandError> {
-    process_initial_flashcards(database, paths, runtime, render_runtime, document_id, true).await
+    document_id: &'a str,
+) -> InitialGenerationFuture<'a> {
+    Box::pin(process_initial_flashcards(
+        database,
+        paths,
+        runtime,
+        render_runtime,
+        document_id,
+        true,
+    ))
 }
 
 async fn process_initial_flashcards(
