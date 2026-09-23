@@ -51,4 +51,48 @@ describe("durable learning-artifact progress", () => {
     expect(screen.getAllByText("Complete")).toHaveLength(2);
     expect(screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))).toEqual(["100", "100"]);
   });
+
+  it("keeps flashcards running when the sibling guide finishes first", () => {
+    const processing = {
+      ...document, lifecycleState: "processing" as const, generatedDeckId: null,
+      generatedCardCount: 0, generationWindowCount: 15, generationCompletedWindowCount: 12,
+      safeErrorCode: "", safeErrorMessage: "",
+    };
+    render(<LearningArtifactProgressPanel document={processing} progress={null}
+      guideJob={{ ...job, state: "succeeded", completedUnits: 10, completedAt: 9 }}
+      guideStarting={false} readFailed={false} now={10} />);
+    expect(screen.getByText("12 / 15 windows")).toBeTruthy();
+    expect(screen.queryByText("Needs attention")).toBeNull();
+    expect(screen.getAllByText("Complete")).toHaveLength(1);
+    expect(screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))).toEqual(["80", "100"]);
+  });
+
+  it("shows a terminal card error even when a published guide keeps the document ready", () => {
+    const failedCards = {
+      ...document, generatedDeckId: null, generatedCardCount: 0,
+      generationWindowCount: 15, generationCompletedWindowCount: 12,
+      safeErrorCode: "ai_document_output_invalid", safeErrorMessage: "Card validation failed",
+    };
+    render(<LearningArtifactProgressPanel document={failedCards} progress={null}
+      guideJob={{ ...job, state: "succeeded", completedUnits: 10, completedAt: 9 }}
+      guideStarting={false} readFailed={false} now={10} />);
+    expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.queryByText("12 / 15 windows")).toBeNull();
+    expect(screen.getAllByText("Complete")).toHaveLength(1);
+    expect(screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-valuenow"))).toEqual(["80", "100"]);
+  });
+
+  it.each(["document_generation_canceled", "ai_request_canceled"])(
+    "shows stopped cards on a ready guide-only document for %s", (safeErrorCode) => {
+      expect(flashcardProgress({ ...document, generatedDeckId: null, safeErrorCode }, null))
+        .toEqual({ value: 100, status: "Stopped", complete: false, failed: true });
+    },
+  );
+
+  it("does not mistake a stale error for the result of an active retry", () => {
+    expect(flashcardProgress({
+      ...document, lifecycleState: "processing", generatedDeckId: null,
+      safeErrorCode: "ai_document_output_invalid",
+    }, null).failed).toBe(false);
+  });
 });

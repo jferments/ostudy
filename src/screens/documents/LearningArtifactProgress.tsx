@@ -24,8 +24,13 @@ export function flashcardProgress(
   if (document.lifecycleState !== "processing" && document.generatedDeckId) {
     return { value: 100, status: "Complete", complete: true, failed: false };
   }
-  if (document.lifecycleState === "failed") {
-    return { value, status: "Needs attention", complete: false, failed: true };
+  // A successful sibling guide keeps the document available as Ready. It does
+  // not erase a terminal flashcard error or turn unfinished windows into cards.
+  if (document.lifecycleState !== "processing"
+    && (document.lifecycleState === "failed" || document.safeErrorCode)) {
+    const stopped = document.safeErrorCode === "document_generation_canceled"
+      || document.safeErrorCode === "ai_request_canceled";
+    return { value, status: stopped ? "Stopped" : "Needs attention", complete: false, failed: true };
   }
   const status = progress?.phase === "curating" ? "Reviewing cards"
     : document.generationWindowCount > 0

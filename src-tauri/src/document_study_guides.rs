@@ -465,14 +465,28 @@ pub(crate) fn publish_document_study_guide(
                 .map_err(CommandError::database)?;
         }
 
+        // A published guide is independently available, but it cannot settle a
+        // sibling flashcard operation. That owner still needs `processing` for
+        // its guarded card commit and the frontend's terminal observation.
         let document_changed = transaction
             .execute(
                 "UPDATE documents
-                 SET lifecycle_state = CASE WHEN archived_at IS NULL THEN 'ready' ELSE 'archived' END,
-                     safe_error_code = CASE WHEN archived_at IS NULL THEN '' ELSE safe_error_code END,
-                     safe_error_message = CASE WHEN archived_at IS NULL THEN '' ELSE safe_error_message END,
+                 SET lifecycle_state = CASE
+                         WHEN lifecycle_state = 'processing' THEN lifecycle_state
+                         WHEN archived_at IS NULL THEN 'ready'
+                         ELSE 'archived'
+                     END,
+                     safe_error_code = CASE
+                         WHEN archived_at IS NULL AND lifecycle_state <> 'processing' THEN ''
+                         ELSE safe_error_code
+                     END,
+                     safe_error_message = CASE
+                         WHEN archived_at IS NULL AND lifecycle_state <> 'processing' THEN ''
+                         ELSE safe_error_message
+                     END,
                      completed_at = CASE
-                         WHEN archived_at IS NULL THEN COALESCE(completed_at, ?1)
+                         WHEN archived_at IS NULL AND lifecycle_state <> 'processing'
+                             THEN COALESCE(completed_at, ?1)
                          ELSE completed_at
                      END,
                      updated_at = ?1, revision = revision + 1
@@ -1767,3 +1781,7 @@ mod tests {
 #[cfg(test)]
 #[path = "document_study_guides/overlay_regression_tests.rs"]
 mod overlay_regression_tests;
+
+#[cfg(test)]
+#[path = "document_study_guides/parallel_publication_tests.rs"]
+mod parallel_publication_tests;
