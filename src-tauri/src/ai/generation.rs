@@ -17,6 +17,7 @@ use crate::{
     util::{generate_id, unix_time_millis, validate_entity_id},
 };
 
+pub(crate) mod outcomes;
 mod payload;
 #[cfg(test)]
 mod tests;
@@ -188,6 +189,7 @@ impl Context {
                 "maximumRecoveries": MAX_RECOVERIES_PER_LOGICAL_TASK,
             }),
         );
+        outcomes::recovery(self, stage, &request_key, reason, trigger_code, allowed);
         allowed
     }
 }
@@ -369,6 +371,7 @@ impl Context {
             tx.commit().map_err(CommandError::database)?;
             Ok(id)
         })?;
+        outcomes::started(self, stage, &request_key, &id);
         Ok(Attempt {
             context: self.clone(),
             id,
@@ -464,6 +467,7 @@ pub(crate) fn start_current_attempt(body: &Value) -> Option<Attempt> {
     match result {
         Ok(attempt) => Some(attempt),
         Err(error) => {
+            outcomes::accounting_gap();
             warn_accounting(Err(error));
             None
         }
@@ -579,6 +583,7 @@ pub(crate) fn reconcile_startup(database: &Database) -> Result<(), CommandError>
     database.with_connection(|connection| {
         let tx = connection.transaction().map_err(CommandError::database)?;
         let now = unix_time_millis()?;
+        outcomes::reconcile_in(&tx, now)?;
         tx.execute(
             "UPDATE generation_requests SET status='interrupted',finished_at=?1
                     WHERE status='started'",

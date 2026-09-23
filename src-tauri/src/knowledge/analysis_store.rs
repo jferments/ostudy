@@ -11,6 +11,8 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 
+mod diagnostics;
+
 pub(crate) fn window_id(sources: &[SourceRecord], contract: &str) -> Result<String, CommandError> {
     Ok(hash(
         &serde_json::to_string(&(
@@ -81,10 +83,14 @@ impl<'a> Checkpoint<'a> {
         })
     }
     pub(crate) fn load(&self) -> Result<Option<AnalysisReport>, CommandError> {
-        self.database.with_connection(|c| {
+        let report = self.database.with_connection(|c| {
             self.check(c)?;
             load_in(c, self.sources, self.contract)
-        })
+        })?;
+        if let Some(report) = &report {
+            diagnostics::baseline(report);
+        }
+        Ok(report)
     }
     pub(crate) fn units(&self) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError> {
         self.database.with_connection(|c| {
@@ -108,6 +114,8 @@ impl<'a> Checkpoint<'a> {
             Ok((outcome, revision))
         })?;
         self.revision = revision;
+        // Diagnostic failure cannot undo a committed knowledge checkpoint.
+        diagnostics::committed(report);
         Ok(outcome)
     }
     fn check(&self, c: &Connection) -> Result<(), CommandError> {

@@ -81,11 +81,56 @@ round-trip, quarantine and legacy tests now also run under the Fast filter.
 Numeric signs, strict/inclusive operators, finite values, process edges, evidence
 selection and all admission limits remain enforced.
 
-This is the validation-cause part of AC-02, not the whole outcome ledger. Durable
-physical-request/recovery linkage, before/after recovery gains and terminal-error
-export remain the next boundary. AC-03's independent optional-annotation admission
-has not been implemented by this change: an invalid annotation still leaves its
-proposal pending rather than silently being dropped or admitted as correct.
+## AC-02b: request-linked extraction outcomes
+
+`ai/generation/outcomes.rs` provides a producer-scoped observer. Physical request
+IDs are captured at request creation, not inferred by querying whichever request
+happened to finish most recently. The extraction producer owns the scope; waiting
+subscribers do not create duplicate records or turn subscriber cancellation into
+a false producer failure. The child future is boxed before task-local wrapping.
+
+The existing content-free `generation_requests.payload_bytes_json` envelope now
+also carries versioned native outcome objects. They do not alter payload byte
+measurements, provider status, token usage or attempt ordinals:
+
+- `nativeLineage` names the preceding observed physical request and the recovery
+  decision leading to this request. A resumed checkpoint can have a recovery with
+  no preceding request in the current producer; no historical ID is guessed.
+- `nativeRecoveryDecisions` retains allowed and denied decisions separately, keyed
+  by the four existing reasons. The same logical-task budget remains authoritative.
+- `nativeCheckpoint` contains bounded before/after counts and rejection-rule
+  histograms. `analysis_store` records it only after its transaction commits.
+  Signed deltas expose progress and regression rather than clamping failures to
+  zero. Duplicate final saves preserve the pre-request baseline and original gain.
+- `nativeTask` distinguishes running, continued, returned, failed, interrupted and
+  lost-linkage states. Returning partial knowledge is not a complete artifact or
+  proof of entailment. Terminal error codes are durable; error messages and draft
+  content are excluded. Startup reconciles an unfinished observed producer even
+  when its last provider response had already arrived.
+
+The normal `python3 scripts/generation-usage.py --json` and diagnostic archive
+already include these fields in each request's `payloadBytesJson`. They remain
+available after application-log rotation. They are excluded from device transfer
+with the existing operation-ledger sanitization. No schema migration is needed.
+
+A missing request-accounting write explicitly breaks linkage; a subsequent
+checkpoint cannot be attributed to the preceding paid request. Pure checkpoint
+reuse creates no fabricated request or usage. Native progress measures changes in
+admitted units, rejected proposals, unaccounted sources and unresolved regions;
+it does not establish improved factual accuracy, exhaustive recall or better
+teaching. Unknown legacy region counts and missing outcome records stay unknown.
+
+Native regressions cover interleaved scopes, allowed/denied recovery, durable
+before/after gains, zero gain, resume/reuse, interrupted producers, startup repair,
+accounting gaps, unchanged usage and privacy. Production extraction tests run the
+real shared producer, decoder, bounded repair and SQLite checkpoint path, including
+a source-revision race whose failed commit must never claim saved knowledge.
+
+AC-02 remains partial: authoring/curation and operation-level terminal failures
+outside extraction, pre-provider failures with no physical request, and aggregate
+human-readable outcome reporting still need their owning integrations. AC-03's
+independent optional-annotation admission has not been implemented: an invalid
+annotation still leaves its proposal pending rather than being silently dropped.
 
 ## Compatibility and non-goals
 
@@ -95,8 +140,7 @@ neither clear retained source knowledge nor invalidate already-paid results.
 Existing [parallel publication lifecycle corrections](parallel-artifact-lifecycle-regression.md)
 remain necessary and separate from the contract work.
 
-AC-02 is partially implemented; its linked outcome ledger and AC-03 through AC-06
-remain unfinished. There is no measured
-real-provider saving for this increment until a new representative run is compared.
+The remaining AC-02 integrations and AC-03 through AC-06 are unfinished. There is
+no measured real-provider saving until a representative run is compared.
 Do not weaken assertions, drop qualifications, guess evidence or label partial
 material complete to reduce retry counts. No automatic merge is authorized.

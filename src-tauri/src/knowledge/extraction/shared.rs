@@ -37,21 +37,28 @@ where
         &identity,
         subscriber,
         |signal| async move {
-            run_window_scoped(
-                WindowRunContext {
-                    database: input.database,
-                    sources: input.sources,
-                    contract: input.contract,
-                    catalog: input.catalog,
-                    cancellation: &signal,
-                    retry_partial: input.retry_partial,
-                    diagnostics: input.diagnostics,
-                    logical_key: input.logical_key,
-                },
-                call,
-            )
-            .await
-            .map(|_| ())
+            let mut observed = crate::ai::generation::outcomes::Task::new(
+                input.diagnostics,
+                "knowledge_extraction",
+                input.logical_key,
+            );
+            let result = observed
+                .scope(run_window_scoped(
+                    WindowRunContext {
+                        database: input.database,
+                        sources: input.sources,
+                        contract: input.contract,
+                        catalog: input.catalog,
+                        cancellation: &signal,
+                        retry_partial: input.retry_partial,
+                        diagnostics: input.diagnostics,
+                        logical_key: input.logical_key,
+                    },
+                    call,
+                ))
+                .await;
+            observed.finish(&result);
+            result.map(|_| ())
         },
     )
     .await?;
@@ -123,3 +130,6 @@ mod tests {
         assert_eq!(calls.get(), 1);
     }
 }
+
+#[cfg(test)]
+mod outcome_tests;
