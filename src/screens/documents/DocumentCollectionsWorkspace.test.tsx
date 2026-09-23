@@ -357,7 +357,9 @@ describe("Document collections workspace", () => {
 
   it("uses the committed mutation result directly instead of refetching after a folder write", async () => {
     renderWorkspace();
-    fireEvent.click(await screen.findByRole("button", { name: "+ New collection" }));
+    const create = await screen.findByRole("button", { name: "+ New collection" });
+    await waitFor(() => expect((create as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(create);
     const dialog = await screen.findByRole("dialog", { name: "Create document collection" });
     expect(dialog.getAttribute("data-width")).toBe("small");
     const body = dialog.querySelector("[data-collection-dialog-body]");
