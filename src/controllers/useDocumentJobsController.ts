@@ -37,6 +37,7 @@ function updateIdSet(
   active: boolean,
 ): void {
   setter((current) => {
+    if (current.has(id) === active) return current;
     const next = new Set(current);
     if (active) next.add(id);
     else next.delete(id);
@@ -147,6 +148,7 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
     );
     setCancelingDocumentIds((current) => {
       const next = new Set([...current].filter((id) => processing.has(id)));
+      if (next.size === current.size) return current;
       for (const id of current) {
         if (!next.has(id)) stopping.current.delete(`document:${id}`);
       }
