@@ -161,7 +161,12 @@ pub(super) fn started(context: &Context, stage: &str, key: &str, id: &str) {
         "linkageIncomplete": state.linkage_incomplete,
         }),
     );
-    write(context, id, "$.nativeTask", json!({"schemaVersion":1,"state":"running"}));
+    write(
+        context,
+        id,
+        "$.nativeTask",
+        json!({"schemaVersion":1,"state":"running"}),
+    );
     if let Some(previous) = previous {
         write(
             context,
@@ -218,7 +223,11 @@ pub(super) fn recovery(
         // Eight bounded slots (four native reasons x allowed/denied), not an
         // unbounded event array. A denial never erases the earlier allowance.
         let disposition = if allowed { "allowed" } else { "denied" };
-        let path = format!("$.nativeRecoveryDecisions.{}_{}", reason.as_str(), disposition);
+        let path = format!(
+            "$.nativeRecoveryDecisions.{}_{}",
+            reason.as_str(),
+            disposition
+        );
         write(context, id, &path, value.clone());
     }
     if allowed {
@@ -287,13 +296,15 @@ fn write(context: &Context, id: &str, path: &str, value: Value) {
 }
 
 pub(super) fn reconcile_in(connection: &Connection, now: i64) -> Result<(), CommandError> {
-    connection.execute(
-        "UPDATE generation_requests SET payload_bytes_json=json_set(payload_bytes_json,
+    connection
+        .execute(
+            "UPDATE generation_requests SET payload_bytes_json=json_set(payload_bytes_json,
            '$.nativeTask.state','interrupted','$.nativeTask.errorCode','native_process_interrupted',
            '$.nativeTask.reconciledAt',?1)
          WHERE json_extract(payload_bytes_json,'$.nativeTask.state')='running'",
-        [now],
-    ).map_err(CommandError::database)?;
+            [now],
+        )
+        .map_err(CommandError::database)?;
     Ok(())
 }
 

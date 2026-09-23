@@ -8,29 +8,43 @@ fn unit(title: &str) -> Value {
 }
 
 fn requests(database: &Database) -> Vec<(String, Value)> {
-    database.with_connection(|c| {
-        let mut query = c.prepare("SELECT id,payload_bytes_json FROM generation_requests ORDER BY attempt,id").map_err(CommandError::database)?;
-        let rows = query.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?)))
-            .map_err(CommandError::database)?;
-        rows.map(|row| {
-            let (id,text) = row.map_err(CommandError::database)?;
-            Ok((id,serde_json::from_str(&text).unwrap()))
-        }).collect()
-    }).unwrap()
+    database
+        .with_connection(|c| {
+            let mut query = c
+                .prepare(
+                    "SELECT id,payload_bytes_json FROM generation_requests ORDER BY attempt,id",
+                )
+                .map_err(CommandError::database)?;
+            let rows = query
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                .map_err(CommandError::database)?;
+            rows.map(|row| {
+                let (id, text) = row.map_err(CommandError::database)?;
+                Ok((id, serde_json::from_str(&text).unwrap()))
+            })
+            .collect()
+        })
+        .unwrap()
 }
 
 async fn scenario(improve: bool) {
     let (database, source, _, _) = crate::knowledge::authoring::tests::fixture();
     let sources = [source];
-    let catalog = EvidenceCatalog::build(&sources,false).unwrap();
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
     let contract = hash("outcome production regression");
     let authorization = hash("fixture authorization");
-    let operation = Operation::begin(&database,None,None,None,"extraction_fixture").unwrap();
+    let operation = Operation::begin(&database, None, None, None, "extraction_fixture").unwrap();
     let context = operation.context();
-    let key = analysis_store::window_id(&sources,&contract).unwrap();
+    let key = analysis_store::window_id(&sources, &contract).unwrap();
     let input = Window {
-        database:&database,sources:&sources,contract:&contract,catalog:&catalog,
-        authorization:&authorization,retry_partial:false,diagnostics:Some(&context),logical_key:Some(&key),
+        database: &database,
+        sources: &sources,
+        contract: &contract,
+        catalog: &catalog,
+        authorization: &authorization,
+        retry_partial: false,
+        diagnostics: Some(&context),
+        logical_key: Some(&key),
     };
     let calls = std::cell::Cell::new(0);
     let result = run(input,&CancellationSignal::new(),|call| {
@@ -56,19 +70,39 @@ async fn scenario(improve: bool) {
             }).await
         }
     }).await.unwrap();
-    assert_eq!(calls.get(),2);
-    assert_eq!(result[&sources[0].id].len(),if improve {2} else {1});
+    assert_eq!(calls.get(), 2);
+    assert_eq!(result[&sources[0].id].len(), if improve { 2 } else { 1 });
     let rows = requests(&database);
-    assert_eq!(rows.len(),2);
-    assert_eq!(rows[0].1["nativeCheckpoint"]["after"]["rejectionRules"]["knowledge_annotation_malformed"],1);
-    assert_eq!(rows[1].1["nativeLineage"]["recovery"]["triggerRequestId"],rows[0].0);
-    assert_eq!(rows[1].1["nativeCheckpoint"]["gain"]["hasNativeProgress"],improve);
-    assert_eq!(rows[1].1["nativeCheckpoint"]["after"]["protocolComplete"],improve);
-    assert_eq!(rows[1].1["nativeTask"]["state"],"returned");
-    assert!(!serde_json::to_string(&rows).unwrap().contains("PRIVATE_CONTENT"));
-    assert!(!serde_json::to_string(&rows).unwrap().contains(&sources[0].text));
-    run(input,&CancellationSignal::new(),|_|async { panic!("reuse must not buy another request") }).await.unwrap();
-    assert_eq!(requests(&database),rows);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0].1["nativeCheckpoint"]["after"]["rejectionRules"]["knowledge_annotation_malformed"],
+        1
+    );
+    assert_eq!(
+        rows[1].1["nativeLineage"]["recovery"]["triggerRequestId"],
+        rows[0].0
+    );
+    assert_eq!(
+        rows[1].1["nativeCheckpoint"]["gain"]["hasNativeProgress"],
+        improve
+    );
+    assert_eq!(
+        rows[1].1["nativeCheckpoint"]["after"]["protocolComplete"],
+        improve
+    );
+    assert_eq!(rows[1].1["nativeTask"]["state"], "returned");
+    assert!(!serde_json::to_string(&rows)
+        .unwrap()
+        .contains("PRIVATE_CONTENT"));
+    assert!(!serde_json::to_string(&rows)
+        .unwrap()
+        .contains(&sources[0].text));
+    run(input, &CancellationSignal::new(), |_| async {
+        panic!("reuse must not buy another request")
+    })
+    .await
+    .unwrap();
+    assert_eq!(requests(&database), rows);
 }
 
 #[tokio::test]
@@ -83,16 +117,24 @@ async fn document_outcomes_real_no_gain_repair_remains_explicitly_partial() {
 
 #[tokio::test]
 async fn document_outcomes_real_failed_checkpoint_never_claims_committed_knowledge() {
-    let (database,source,_,_) = crate::knowledge::authoring::tests::fixture();
-    let sources=[source];
-    let catalog=EvidenceCatalog::build(&sources,false).unwrap();
-    let contract=hash("failed outcome checkpoint");
-    let authorization=hash("fixture authorization");
-    let operation=Operation::begin(&database,None,None,None,"failure_fixture").unwrap();
-    let context=operation.context();
-    let key=analysis_store::window_id(&sources,&contract).unwrap();
-    let input=Window{database:&database,sources:&sources,contract:&contract,catalog:&catalog,
-        authorization:&authorization,retry_partial:false,diagnostics:Some(&context),logical_key:Some(&key)};
+    let (database, source, _, _) = crate::knowledge::authoring::tests::fixture();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let contract = hash("failed outcome checkpoint");
+    let authorization = hash("fixture authorization");
+    let operation = Operation::begin(&database, None, None, None, "failure_fixture").unwrap();
+    let context = operation.context();
+    let key = analysis_store::window_id(&sources, &contract).unwrap();
+    let input = Window {
+        database: &database,
+        sources: &sources,
+        contract: &contract,
+        catalog: &catalog,
+        authorization: &authorization,
+        retry_partial: false,
+        diagnostics: Some(&context),
+        logical_key: Some(&key),
+    };
     let error=run(input,&CancellationSignal::new(),|_| {
         let context=context.clone();let key=key.clone();let database=&database;let sources=&sources;
         async move {
@@ -105,12 +147,20 @@ async fn document_outcomes_real_failed_checkpoint_never_claims_committed_knowled
             }).await
         }
     }).await.unwrap_err();
-    let rows=requests(&database);assert_eq!(rows.len(),1);
+    let rows = requests(&database);
+    assert_eq!(rows.len(), 1);
     assert!(rows[0].1.get("nativeCheckpoint").is_none());
-    assert_eq!(rows[0].1["nativeTask"]["state"],"failed");
-    assert_eq!(rows[0].1["nativeTask"]["errorCode"],error.code);
-    database.with_connection(|c| {
-        let count:i64=c.query_row("SELECT COUNT(*) FROM knowledge_analysis_windows",[],|r|r.get(0)).map_err(CommandError::database)?;
-        assert_eq!(count,0);Ok(())
-    }).unwrap();
+    assert_eq!(rows[0].1["nativeTask"]["state"], "failed");
+    assert_eq!(rows[0].1["nativeTask"]["errorCode"], error.code);
+    database
+        .with_connection(|c| {
+            let count: i64 = c
+                .query_row("SELECT COUNT(*) FROM knowledge_analysis_windows", [], |r| {
+                    r.get(0)
+                })
+                .map_err(CommandError::database)?;
+            assert_eq!(count, 0);
+            Ok(())
+        })
+        .unwrap();
 }
