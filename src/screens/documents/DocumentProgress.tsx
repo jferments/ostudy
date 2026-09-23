@@ -17,12 +17,25 @@ export function GenerationProgressPanel({ document, progress, now }: {
       <div><dt>Elapsed</dt><dd>{formatLiveDuration(progress?.startedAt ?? null, now)}</dd></div>
       <div><dt>Requests</dt><dd>{progress ? progress.providerRequestCount.toLocaleString() : "—"}</dd></div>
       <div><dt>Provider</dt><dd>{formatProviderActivity(progress, now)}</dd></div>
-      <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{progress ? progress.retryCount.toLocaleString() : "—"}</dd></div>
+      <div><dt>Retries</dt><dd className={progress && progress.retryCount > 0 ? progressStyles.warning : undefined}>{formatRetryCount(progress)}</dd></div>
       <div><dt>Reasoning</dt><dd>{progress ? `${progress.reasoningEffort} · ${formatTokenCount(progress.reasoningTokens)}` : "—"}</dd></div>
       <div><dt>Prompt / output</dt><dd>{progress ? `${formatTokenCount(progress.promptTokens)} / ${formatTokenCount(progress.completionTokens)}` : "—"}</dd></div>
       <div><dt>Prompt cache</dt><dd>{progress && cacheRatio !== null ? `${formatTokenCount(progress.cachedPromptTokens)} (${cacheRatio.toFixed(1)}%)` : "Awaiting usage"}</dd></div>
     </dl>
   </div>;
+}
+function formatRetryCount(progress: DocumentGenerationProgress | null): string {
+  if (!progress) return "—";
+  if (progress.retryCount === 0) return "0";
+  const parts = [
+    ["contract", progress.contractRepairRetryCount ?? 0],
+    ["compact", progress.outputCompactionRetryCount ?? 0],
+    ["transport", progress.transientRetryCount ?? 0],
+    ["compat", progress.compatibilityRetryCount ?? 0],
+  ].filter(([, count]) => Number(count) > 0)
+    .map(([label, count]) => `${label} ${Number(count).toLocaleString()}`);
+  return parts.length ? `${progress.retryCount.toLocaleString()} · ${parts.join(" · ")}`
+    : progress.retryCount.toLocaleString();
 }
 function formatProviderActivity(progress: DocumentGenerationProgress | null, now: number): string {
   if (!progress) return "Preparing";

@@ -49,6 +49,25 @@ impl AnalysisReport {
                 .as_ref()
                 .is_none_or(|coverage| coverage.unresolved() == 0)
     }
+
+    /// A partial evidence receipt is useful diagnostic state, not by itself a
+    /// reason to buy another interpretation request. Repair when a proposal was
+    /// actually rejected or an entire supplied source still has no admitted
+    /// knowledge/non-learning disposition.
+    pub(crate) fn requires_paid_repair(&self, sources: &[SourceRecord]) -> bool {
+        if !self.rejected.is_empty() {
+            return true;
+        }
+        let covered = self
+            .accepted
+            .iter()
+            .map(|unit| unit.source_id.as_str())
+            .chain(self.no_learning.iter().map(String::as_str))
+            .collect::<HashSet<_>>();
+        sources
+            .iter()
+            .any(|source| !covered.contains(source.id.as_str()))
+    }
     pub(crate) fn refresh_coverage(&mut self, sources: &[SourceRecord]) {
         let used = self
             .accepted
@@ -448,6 +467,24 @@ mod tests {
         assert!(grounding.is_visible_in(&sources));
         assert!(!grounding.is_visible_in(&sources[..1]));
     }
+    #[test]
+    fn unresolved_regions_inside_an_interpreted_source_do_not_force_paid_repair() {
+        let (_, mut source, _, _) = fixture();
+        source.text = format!("{} {}", "A triangle has three sides. ".repeat(30), "Extra context.");
+        source.refresh_identity().unwrap();
+        let sources = [source];
+        let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+        assert!(catalog.entries.len() > 1);
+        let report = initial(
+            json!({"units":[unit(json!(["E0"]))],"noLearningSourceIds":[]}),
+            &catalog,
+            &sources,
+        )
+        .unwrap();
+        assert!(!report.is_complete());
+        assert!(!report.requires_paid_repair(&sources));
+    }
+
     #[test]
     fn empty_output_is_not_complete_without_explicit_non_learning_dispositions() {
         let (_, source, _, _) = fixture();

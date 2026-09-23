@@ -20,6 +20,10 @@ export interface DocumentGenerationProgress {
   reasoningEffort: string;
   providerRequestCount: number;
   retryCount: number;
+  transientRetryCount?: number;
+  compatibilityRetryCount?: number;
+  contractRepairRetryCount?: number;
+  outputCompactionRetryCount?: number;
   promptTokens: number;
   completionTokens: number;
   reasoningTokens: number;

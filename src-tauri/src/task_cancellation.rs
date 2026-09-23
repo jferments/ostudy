@@ -80,6 +80,10 @@ pub(crate) struct DocumentTaskProgress {
     pub reasoning_effort: String,
     pub provider_request_count: u64,
     pub retry_count: u64,
+    pub transient_retry_count: u64,
+    pub compatibility_retry_count: u64,
+    pub contract_repair_retry_count: u64,
+    pub output_compaction_retry_count: u64,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub reasoning_tokens: u64,
@@ -108,6 +112,10 @@ impl DocumentTaskProgress {
             reasoning_effort: "low".to_string(),
             provider_request_count: 0,
             retry_count: 0,
+            transient_retry_count: 0,
+            compatibility_retry_count: 0,
+            contract_repair_retry_count: 0,
+            output_compaction_retry_count: 0,
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
@@ -456,10 +464,29 @@ pub(crate) fn record_current_provider_request() {
     });
 }
 
-pub(crate) fn record_current_provider_retry() {
+pub(crate) fn record_current_provider_retry(reason: &str) {
     let _ = CURRENT_DOCUMENT_TASK.try_with(|task| {
         if let Ok(mut progress) = task.progress.lock() {
             progress.retry_count = progress.retry_count.saturating_add(1);
+            match reason {
+                "transient_transport" => {
+                    progress.transient_retry_count =
+                        progress.transient_retry_count.saturating_add(1);
+                }
+                "provider_compatibility" => {
+                    progress.compatibility_retry_count =
+                        progress.compatibility_retry_count.saturating_add(1);
+                }
+                "contract_repair" => {
+                    progress.contract_repair_retry_count =
+                        progress.contract_repair_retry_count.saturating_add(1);
+                }
+                "output_compaction" => {
+                    progress.output_compaction_retry_count =
+                        progress.output_compaction_retry_count.saturating_add(1);
+                }
+                _ => {}
+            }
         }
     });
 }
@@ -688,7 +715,7 @@ mod tests {
                 set_current_reasoning_effort("minimal");
                 set_current_task_phase("outline", Some(3), 2, 10, Some(5), Some(7), Some(1));
                 record_current_provider_request();
-                record_current_provider_retry();
+                record_current_provider_retry("contract_repair");
                 record_current_usage(DocumentTaskUsageDelta {
                     prompt_tokens: Some(1_000),
                     completion_tokens: Some(200),
@@ -707,6 +734,8 @@ mod tests {
         assert_eq!(progress.reasoning_effort, "minimal");
         assert_eq!(progress.provider_request_count, 1);
         assert_eq!(progress.retry_count, 1);
+        assert_eq!(progress.contract_repair_retry_count, 1);
+        assert_eq!(progress.transient_retry_count, 0);
         assert_eq!(progress.total_tokens, 1_200);
         assert_eq!(progress.reasoning_tokens, 80);
         assert_eq!(progress.cached_prompt_tokens, 600);

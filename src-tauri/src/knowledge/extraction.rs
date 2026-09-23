@@ -517,7 +517,7 @@ where
     };
     check_canceled(cancellation)?;
     checkpoint.save(&report)?;
-    let repair_allowed = !report.is_complete()
+    let repair_allowed = report.requires_paid_repair(sources)
         && !already_retried
         && crate::ai::generation::reserve_recovery(
             diagnostics,

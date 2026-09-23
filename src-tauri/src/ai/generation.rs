@@ -48,7 +48,7 @@ pub(crate) enum RecoveryReason {
 }
 
 impl RecoveryReason {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::TransientTransport => "transient_transport",
             Self::ProviderCompatibility => "provider_compatibility",
@@ -169,7 +169,7 @@ impl Context {
             Err(_) => false,
         };
         let event = if allowed {
-            crate::task_cancellation::record_current_provider_retry();
+            crate::task_cancellation::record_current_provider_retry(reason.as_str());
             "generation_recovery_reserved"
         } else {
             "generation_recovery_budget_exhausted"
@@ -428,7 +428,7 @@ pub(crate) fn reserve_recovery(
     match context {
         Some(context) => context.reserve_recovery(stage, logical_key, reason, trigger_code),
         None => {
-            crate::task_cancellation::record_current_provider_retry();
+            crate::task_cancellation::record_current_provider_retry(reason.as_str());
             true
         }
     }
@@ -445,7 +445,7 @@ pub(crate) fn reserve_current_recovery(reason: RecoveryReason, trigger_code: &st
             )
         })
         .unwrap_or_else(|_| {
-            crate::task_cancellation::record_current_provider_retry();
+            crate::task_cancellation::record_current_provider_retry(reason.as_str());
             true
         })
 }
