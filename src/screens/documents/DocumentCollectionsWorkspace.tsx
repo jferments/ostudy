@@ -121,13 +121,10 @@ export function DocumentCollectionsWorkspace({
 
   return (
     <section aria-label="Document collections" className="tw:mb-8 tw:grid tw:gap-4">
-      <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
-        <div className="tw:grid tw:gap-1">
+      <div className={`tw:flex tw:flex-wrap tw:items-center tw:gap-3 ${folders.length ? "tw:justify-between" : "tw:justify-end"}`}>
+        {folders.length ? (
           <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
-          <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">
-            Organize related sources and generate collection-wide study materials without leaving Documents.
-          </p>
-        </div>
+        ) : null}
         <Button
           size="small"
           disabled={controller.busy}
@@ -137,7 +134,7 @@ export function DocumentCollectionsWorkspace({
         </Button>
       </div>
       {controller.error ? <InlineNotice kind="error">{controller.error}</InlineNotice> : null}
-      {folders.length ? folders.map((folder) => (
+      {folders.map((folder) => (
         <CollectionPanel
           key={folder.id}
           folder={folder}
@@ -164,9 +161,7 @@ export function DocumentCollectionsWorkspace({
           onRemove={(membership) => void removeMembership(membership)}
           onDropDocument={(documentId) => addDroppedDocument(folder.id, documentId)}
         />
-      )) : (
-        <p className="tw:m-0 tw:text-sm tw:text-muted-foreground">No collections yet.</p>
-      )}
+      ))}
       {dialog ? (
         <CollectionEditorDialog
           dialog={dialog}

@@ -183,6 +183,22 @@ function renderWorkspace({
 }
 
 describe("Document collections workspace", () => {
+  it("keeps an empty collection area to the single create action", async () => {
+    vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValueOnce({
+      revision: 3,
+      collections: [],
+      memberships: [],
+      ranges: [],
+    });
+    renderWorkspace();
+
+    expect(await screen.findByRole("button", { name: "+ New collection" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Document collections" })).toBeNull();
+    expect(screen.queryByText("No collections yet.")).toBeNull();
+    expect(screen.queryByText(/Organize related sources/iu)).toBeNull();
+    expect(studyMaterials.getStudyTargetBundle).not.toHaveBeenCalled();
+  });
+
   it("browses collections locally and exposes canonical source ranges without resolving or preparing them", async () => {
     renderWorkspace();
     expect(await screen.findByRole("heading", { name: "Week 1" })).toBeTruthy();
