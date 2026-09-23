@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as collections from "../../ipc/collections";
 import * as documentIpc from "../../ipc/documents";
 import * as studyGuideIpc from "../../ipc/studyGuides";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
@@ -84,6 +85,9 @@ function renderDocuments() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValue({
+    revision: 1, collections: [], memberships: [], ranges: [],
+  });
   vi.mocked(documentIpc.listDocuments).mockResolvedValue([makeDocument()]);
   vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
   vi.mocked(documentIpc.startDocumentFlashcardGeneration).mockResolvedValue(undefined);
@@ -92,6 +96,27 @@ beforeEach(() => {
 });
 
 describe("Document job presentation", () => {
+  it("keeps document actions open while collection discovery settles", async () => {
+    let finish!: (value: collections.DocumentCollectionOrganization) => void;
+    vi.mocked(collections.getDocumentCollectionOrganization).mockReturnValueOnce(
+      new Promise((resolve) => { finish = resolve; }),
+    );
+    vi.mocked(documentIpc.listDocuments).mockResolvedValue([
+      makeDocument({ generatedDeckId: null, generatedCardCount: 0 }),
+    ]);
+    renderDocuments();
+
+    await screen.findByRole("heading", { name: "Cardiac physiology" });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
+    expect(await screen.findByText("Retry generation")).toBeTruthy();
+
+    await act(async () => {
+      finish({ revision: 1, collections: [], memberships: [], ranges: [] });
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Retry generation")).toBeTruthy();
+  });
+
   it("keeps nonfatal analysis details out of cards and successful generation toasts", async () => {
     const before = makeDocument({ generatedDeckId: null, generatedCardCount: 0, analysisPendingItems: 4 });
     const after = makeDocument({ analysisPendingItems: 4 });

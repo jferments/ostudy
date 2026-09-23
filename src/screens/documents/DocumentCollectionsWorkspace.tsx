@@ -63,16 +63,15 @@ export function DocumentCollectionsWorkspace({
 
   if (!organization) {
     return (
-      <section aria-label="Document collections" className="tw:mb-6 tw:grid tw:gap-3">
-        <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-2">
-          <h2 className="tw:m-0 tw:text-lg tw:font-semibold">Document collections</h2>
-          <Button size="small" disabled>New collection</Button>
+      <section aria-label="Document collections" className="tw:mb-8 tw:grid tw:gap-4">
+        <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-3">
+          <Button size="small" disabled>+ New collection</Button>
         </div>
         {controller.error ? (
           <InlineNotice kind="error">
             {controller.error} <Button size="small" onClick={() => void controller.load()}>Retry</Button>
           </InlineNotice>
-        ) : <p role="status" className="tw:m-0 tw:text-sm tw:text-muted-foreground">Loading collections…</p>}
+        ) : null}
       </section>
     );
   }

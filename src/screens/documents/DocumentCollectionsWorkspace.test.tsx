@@ -183,6 +183,28 @@ function renderWorkspace({
 }
 
 describe("Document collections workspace", () => {
+  it("keeps collection discovery quiet and preserves the empty chrome geometry", async () => {
+    let finish!: (value: collections.DocumentCollectionOrganization) => void;
+    vi.mocked(collections.getDocumentCollectionOrganization).mockReturnValueOnce(
+      new Promise((resolve) => { finish = resolve; }),
+    );
+    renderWorkspace();
+
+    const create = screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Document collections" })).toBeNull();
+    expect(screen.queryByText("Loading collections…")).toBeNull();
+
+    await act(async () => {
+      finish({ revision: 3, collections: [], memberships: [], ranges: [] });
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled)
+        .toBe(false);
+    });
+  });
+
   it("keeps an empty collection area to the single create action", async () => {
     vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValueOnce({
       revision: 3,
