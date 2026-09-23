@@ -74,9 +74,7 @@ impl InitialDocumentContext {
 
 type InitialGenerationFuture<'a> = std::pin::Pin<
     Box<
-        dyn std::future::Future<Output = Result<InitialGenerationResult, CommandError>>
-            + Send
-            + 'a,
+        dyn std::future::Future<Output = Result<InitialGenerationResult, CommandError>> + Send + 'a,
     >,
 >;
 
