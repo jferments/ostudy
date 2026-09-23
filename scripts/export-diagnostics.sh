@@ -66,10 +66,12 @@ cp "$ROOT_DIR/package.json" "$ROOT_DIR/versions.env" "$TEMP_DIR/"
 (
   set +e
   python3 "$SCRIPT_DIR/diagnose-last-crash.py"
+  exit 0
 ) > "$TEMP_DIR/last-crash.txt" 2>&1
 (
   set +e
   python3 "$SCRIPT_DIR/generation-usage.py"
+  exit 0
 ) > "$TEMP_DIR/latest-generation-usage.txt" 2>&1
 LOG_PATH="$(ostudy_resolve_application_diagnostic_log)"
 PREVIOUS_LOG_PATH="$(dirname -- "$LOG_PATH")/ostudy.previous.jsonl"

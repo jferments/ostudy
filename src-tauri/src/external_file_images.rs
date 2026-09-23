@@ -168,13 +168,7 @@ fn stage_chunk(
     drop(file);
 
     let bytes = fs::read(&path).map_err(CommandError::io)?;
-    let staged = stage_bytes(
-        database,
-        paths,
-        input.operation_id,
-        name.to_string(),
-        bytes,
-    )?;
+    let staged = stage_bytes(database, paths, input.operation_id, name.to_string(), bytes)?;
     match fs::remove_file(&path) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
