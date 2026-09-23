@@ -128,7 +128,36 @@ async fn document_complete_cross_source_receipt_uses_one_provider_call_and_reuse
     .await
     .unwrap();
     assert_eq!(calls, 1);
-    assert_eq!(result.values().map(Vec::len).sum::<usize>(), 1);
+    // Each supporting source exposes the same durable unit. Count identities,
+    // not source projections, and retain both native evidence bindings.
+    assert_eq!(result.len(), sources.len());
+    let primary = &result[&sources[0].id];
+    let supporting = &result[&sources[1].id];
+    assert_eq!(primary.len(), 1);
+    assert_eq!(supporting.len(), 1);
+    assert_eq!(primary[0].id, supporting[0].id);
+    assert_eq!(primary[0].source_id, sources[0].id);
+    assert_eq!(
+        serde_json::to_value(&primary[0]).unwrap(),
+        serde_json::to_value(&supporting[0]).unwrap()
+    );
+    let grounding = primary[0].content.grounding.as_ref().unwrap();
+    assert_eq!(grounding.evidence.len(), 2);
+    let bound_sources = grounding
+        .evidence
+        .iter()
+        .map(|reference| reference.source_id.as_str())
+        .collect::<HashSet<_>>();
+    let expected_sources = sources
+        .iter()
+        .map(|source| source.id.as_str())
+        .collect::<HashSet<_>>();
+    assert_eq!(bound_sources, expected_sources);
+    let receipt = crate::knowledge::analysis_store::load(&database, &sources, &contract)
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt.accepted.len(), 1);
+    assert!(receipt.is_complete());
     let reused = super::super::run_window(
         &database,
         &sources,
