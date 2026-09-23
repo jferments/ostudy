@@ -315,7 +315,11 @@ fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
                     .entry(key)
                     .or_insert((parent.to_string(), 0, Vec::new()));
                 group.1 = group.1.saturating_add(weight);
-                if !group.2.iter().any(|value| value.eq_ignore_ascii_case(child)) {
+                if !group
+                    .2
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(child))
+                {
                     group.2.push(child.to_string());
                 }
             }
@@ -327,7 +331,11 @@ fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
         .filter(|(_, _, children)| children.len() >= 2)
         .max_by_key(|(_, score, children)| (*score, children.len()))
     {
-        let child_summary = children.into_iter().take(2).collect::<Vec<_>>().join(" and ");
+        let child_summary = children
+            .into_iter()
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" and ");
         let combined = format!("{parent}: {child_summary}");
         if combined.chars().count() <= 180 {
             return combined;
@@ -336,11 +344,7 @@ fn representative_section_title(units: &[&KnowledgeUnit]) -> String {
 
     candidates
         .into_values()
-        .max_by(|left, right| {
-            left.1
-                .cmp(&right.1)
-                .then_with(|| right.2.cmp(&left.2))
-        })
+        .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.2.cmp(&left.2)))
         .map(|(label, _, _)| label)
         .unwrap_or_else(|| "Document overview".to_string())
 }

@@ -21,14 +21,18 @@ pub(super) fn derive_desired_metadata(
     original_filename: &str,
     source_format: &str,
 ) -> DesiredMetadata {
-    let source_title = source_title_hint
-        .and_then(|value| accepted_title(value, original_filename, source_format));
+    let source_title =
+        source_title_hint.and_then(|value| accepted_title(value, original_filename, source_format));
     let fallback_title = deterministic_title(outline, original_filename, source_format);
     let provider_document_title = provider_candidate
-        .and_then(|candidate| accepted_title(&candidate.document_title, original_filename, source_format))
+        .and_then(|candidate| {
+            accepted_title(&candidate.document_title, original_filename, source_format)
+        })
         .filter(|title| title_has_document_scope(title, outline));
     let provider_deck_title = provider_candidate
-        .and_then(|candidate| accepted_title(&candidate.deck_title, original_filename, source_format))
+        .and_then(|candidate| {
+            accepted_title(&candidate.deck_title, original_filename, source_format)
+        })
         .filter(|title| title_has_document_scope(title, outline));
     let provider_description = provider_candidate
         .and_then(|candidate| accepted_description(&candidate.deck_description, original_filename));
@@ -127,7 +131,11 @@ fn deterministic_title(
 
 fn repeated_parent_subject(outline: &DocumentOutline) -> Option<String> {
     let mut counts = std::collections::BTreeMap::<String, (String, usize)>::new();
-    for title in outline.sections.iter().map(|section| section.title.as_str()) {
+    for title in outline
+        .sections
+        .iter()
+        .map(|section| section.title.as_str())
+    {
         let Some((parent, _)) = title.split_once(" — ") else {
             continue;
         };
@@ -380,7 +388,8 @@ mod tests {
                 title: "GI regulatory substances".into(),
                 page_start: 1,
                 page_end: 9,
-                summary: "Hormones and neural regulators coordinate gastrointestinal function.".into(),
+                summary: "Hormones and neural regulators coordinate gastrointestinal function."
+                    .into(),
                 learning_objectives: vec![],
                 key_concepts: vec!["Gastrin".into()],
             },
@@ -422,19 +431,28 @@ mod tests {
         let mut outline = outline();
         outline.sections = vec![
             crate::ai::document_intelligence::OutlineSection {
-                title: "Motility".into(), page_start: 1, page_end: 10,
+                title: "Motility".into(),
+                page_start: 1,
+                page_end: 10,
                 summary: "GI motility and smooth muscle.".into(),
-                learning_objectives: vec![], key_concepts: vec!["Motility".into()],
+                learning_objectives: vec![],
+                key_concepts: vec!["Motility".into()],
             },
             crate::ai::document_intelligence::OutlineSection {
-                title: "Secretion".into(), page_start: 11, page_end: 20,
+                title: "Secretion".into(),
+                page_start: 11,
+                page_end: 20,
                 summary: "Salivary, gastric, and pancreatic secretion.".into(),
-                learning_objectives: vec![], key_concepts: vec!["Secretion".into()],
+                learning_objectives: vec![],
+                key_concepts: vec!["Secretion".into()],
             },
             crate::ai::document_intelligence::OutlineSection {
-                title: "Amino acid digestion".into(), page_start: 21, page_end: 30,
+                title: "Amino acid digestion".into(),
+                page_start: 21,
+                page_end: 30,
                 summary: "Protein digestion and absorption.".into(),
-                learning_objectives: vec![], key_concepts: vec!["Amino acid digestion".into()],
+                learning_objectives: vec![],
+                key_concepts: vec!["Amino acid digestion".into()],
             },
         ];
         assert!(!title_has_document_scope("Amino acid digestion", &outline));

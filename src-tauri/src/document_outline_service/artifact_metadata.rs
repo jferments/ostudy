@@ -212,16 +212,17 @@ fn source_title_hint_from_blocks(blocks: &[(String, String, i64)]) -> Option<Str
         if !looks_like_chapter_marker(text) {
             continue;
         }
-        if let Some((_, title, _)) = blocks
-            .iter()
-            .skip(index + 1)
-            .take(5)
-            .find(|(role, candidate, candidate_unit)| {
-                *candidate_unit == *unit
-                    && matches!(role.as_str(), "title" | "heading")
-                    && !candidate.trim().is_empty()
-                    && !looks_like_chapter_marker(candidate)
-            })
+        if let Some((_, title, _)) =
+            blocks
+                .iter()
+                .skip(index + 1)
+                .take(5)
+                .find(|(role, candidate, candidate_unit)| {
+                    *candidate_unit == *unit
+                        && matches!(role.as_str(), "title" | "heading")
+                        && !candidate.trim().is_empty()
+                        && !looks_like_chapter_marker(candidate)
+                })
         {
             return Some(title.trim().to_string());
         }
@@ -496,7 +497,6 @@ fn record_applied_values(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod source_title_tests {
     use super::*;
@@ -505,8 +505,16 @@ mod source_title_tests {
     fn chapter_marker_promotes_the_following_heading_to_document_scope() {
         let blocks = vec![
             ("heading".to_string(), "CHAPTER 8".to_string(), 1),
-            ("heading".to_string(), "Gastrointestinal Physiology".to_string(), 1),
-            ("heading".to_string(), "Structure of the Gastrointestinal Tract".to_string(), 1),
+            (
+                "heading".to_string(),
+                "Gastrointestinal Physiology".to_string(),
+                1,
+            ),
+            (
+                "heading".to_string(),
+                "Structure of the Gastrointestinal Tract".to_string(),
+                1,
+            ),
         ];
         assert_eq!(
             source_title_hint_from_blocks(&blocks).as_deref(),
