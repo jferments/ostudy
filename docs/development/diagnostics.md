@@ -112,12 +112,22 @@ Failure-only wrapper/build evidence is retained for 14 days. Small structured di
 
 ## Exporting bounded diagnostics
 
-Create a local archive containing environment/build context and bounded tails of the current and previous application logs:
+For a local crash, start with the zero-placeholder summary:
+
+```bash
+./scripts/diagnose-last-crash.py
+./scripts/diagnose-last-crash.py --json
+```
+
+It resolves the active launcher log, application log and library automatically, interprets negative subprocess exit codes as Unix signals, reports launcher-recorded resource pressure when available, includes the latest content-free generation-operation summary, and best-effort checks systemd coredump/kernel evidence. Older launcher logs remain useful: a legacy negative `exit_code` is still decoded even though resource sampling and the child PID were not recorded yet.
+
+Create a shareable local archive with:
 
 ```bash
 ./scripts/export-diagnostics.sh
-./scripts/export-diagnostics.sh /absolute/path/ostudy-diagnostics.tar.gz
 ```
+
+The archive now includes `last-crash.txt` and `latest-generation-usage.txt` automatically in addition to environment/build context and bounded tails of the current and previous application logs. An explicit output path remains optional.
 
 The resolver follows Tauri's application-data layout for the `io.github.jferments.ostudy` bundle. Development and test environments can override it with either `OSTUDY_APP_DATA_DIR` or the exact `OSTUDY_DIAGNOSTIC_LOG_PATH`. The archive excludes the learner database, cards, managed images, source documents, prompts, responses, and credentials.
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -17,6 +18,20 @@ from typing import Any
 
 FIELDS = ("inputTokens", "outputTokens", "reasoningTokens", "cachedInputTokens",
           "cacheWriteTokens", "totalTokens", "cost")
+APP_IDENTIFIER = "io.github.jferments.ostudy"
+
+
+def default_database_path() -> Path:
+    explicit = os.environ.get("OSTUDY_APP_DATA_DIR", "").strip()
+    if explicit:
+        app_data = Path(explicit).expanduser()
+    else:
+        data_home = os.environ.get("XDG_DATA_HOME", "").strip()
+        root = Path(data_home).expanduser() if data_home else Path.home() / ".local" / "share"
+        app_data = root / APP_IDENTIFIER
+    return app_data / "library.sqlite3"
+
+
 INPUT_PAYLOAD_FIELDS = {
     "systemInstructions": ("systemInstructionBytes",),
     "embeddedSchema": ("embeddedSchemaBytes",),
@@ -370,8 +385,12 @@ def render(report: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--database", type=Path, help="Existing library.sqlite3; opened read-only")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--database",
+        type=Path,
+        help="Existing library.sqlite3; defaults to the active oStudy library",
+    )
     source.add_argument("--input-json", type=Path, help="Content-free native diagnostic report")
     parser.add_argument("--operation", help="Operation ID; defaults to latest")
     parser.add_argument("--all", action="store_true", help="Aggregate all retained operations")
@@ -381,15 +400,16 @@ def main() -> int:
     try:
         if args.operation and args.all:
             parser.error("--operation and --all cannot be combined")
+        database = args.database or default_database_path()
         if args.list:
-            if args.database is None:
-                parser.error("--list requires --database")
-            print(json.dumps(list_operations(args.database), indent=2))
+            if args.input_json is not None:
+                parser.error("--list cannot be combined with --input-json")
+            print(json.dumps(list_operations(database), indent=2))
             return 0
         if args.input_json:
             data = json.loads(args.input_json.read_text(encoding="utf-8"))
         else:
-            data = read_database(args.database, args.operation, args.all)
+            data = read_database(database, args.operation, args.all)
         report = summarize(data)
         print(json.dumps(report, indent=2, allow_nan=False) if args.json else render(report))
         return 0

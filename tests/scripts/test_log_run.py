@@ -49,6 +49,18 @@ class BoundedJsonlWriterTests(unittest.TestCase):
             self.assertEqual(record["event"], "webview_error")
             self.assertNotIn("sensitive-value", raw.decode("utf-8"))
 
+    def test_negative_subprocess_status_is_named_as_a_signal(self) -> None:
+        details = LOG_RUN.termination_details(-11)
+        self.assertEqual(details["signal_number"], 11)
+        self.assertEqual(details["signal_name"], "SIGSEGV")
+        self.assertTrue(details["core_dump_candidate"])
+
+    def test_normal_exit_has_no_signal(self) -> None:
+        details = LOG_RUN.termination_details(0)
+        self.assertIsNone(details["signal_number"])
+        self.assertIsNone(details["signal_name"])
+        self.assertFalse(details["core_dump_candidate"])
+
 
 if __name__ == "__main__":
     unittest.main()

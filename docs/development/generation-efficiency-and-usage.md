@@ -99,16 +99,16 @@ Payload composition is a separate diagnostic. oStudy stores byte counts for appl
 
 ## Reporter
 
-The reporter opens an existing library database read-only:
+The reporter opens the active local library read-only and selects the latest generation operation by default:
 
 ```bash
-python3 scripts/generation-usage.py --database /path/to/library.sqlite3 --list
-python3 scripts/generation-usage.py --database /path/to/library.sqlite3 --operation <operation-id>
-python3 scripts/generation-usage.py --database /path/to/library.sqlite3 --operation <operation-id> --json
-python3 scripts/generation-usage.py --database /path/to/library.sqlite3 --all --json
+python3 scripts/generation-usage.py
+python3 scripts/generation-usage.py --json
+python3 scripts/generation-usage.py --list
+python3 scripts/generation-usage.py --all --json
 ```
 
-Use `--list` to locate recent operations. The text report gives stage-level input/output shares, retry shares, provider cache-read coverage, reasoning share, local reuse, and content-free payload composition. JSON additionally exposes request records, per-operation shares, and the largest reported input/output requests.
+No database path or operation ID is required for the ordinary diagnostic workflow. `--database` and `--operation` remain available as explicit overrides for archived/benchmark libraries or an older retained operation. The text report gives stage-level input/output shares, retry shares, provider cache-read coverage, reasoning share, local reuse, and content-free payload composition. JSON additionally exposes request records, per-operation shares, and the largest reported input/output requests.
 
 A useful token-spike investigation is:
 

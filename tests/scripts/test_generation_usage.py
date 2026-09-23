@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("generation_usage", ROOT / "scripts/generation-usage.py")
@@ -169,6 +170,14 @@ class GenerationUsageTests(unittest.TestCase):
         self.assertEqual(report["totals"]["totalTokens"], 15)
         self.assertEqual(report["totals"]["inputTokens"] + report["totals"]["outputTokens"], 15)
         json.dumps(report, allow_nan=False)
+
+    def test_active_library_path_is_resolved_without_fill_in_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.dict("os.environ", {"OSTUDY_APP_DATA_DIR": directory}):
+                self.assertEqual(
+                    USAGE.default_database_path(),
+                    Path(directory) / "library.sqlite3",
+                )
 
 
 if __name__ == "__main__":

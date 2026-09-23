@@ -168,14 +168,12 @@ fn stage_chunk(
     drop(file);
 
     let bytes = fs::read(&path).map_err(CommandError::io)?;
-    let staged = stage(
+    let staged = stage_bytes(
         database,
         paths,
-        StageImageFileInput {
-            operation_id: input.operation_id,
-            display_name: name.to_string(),
-            data_base64: STANDARD.encode(bytes),
-        },
+        input.operation_id,
+        name.to_string(),
+        bytes,
     )?;
     match fs::remove_file(&path) {
         Ok(()) => {}
@@ -276,9 +274,33 @@ fn stage(
     let bytes = STANDARD
         .decode(&input.data_base64)
         .map_err(|_| invalid("The image transfer is not valid base64."))?;
+    let operation_id = input.operation_id;
+    let display_name = name.to_string();
+    stage_bytes(database, paths, operation_id, display_name, bytes)
+}
+
+fn stage_bytes(
+    database: &Database,
+    paths: &AppPaths,
+    operation_id: String,
+    display_name: String,
+    bytes: Vec<u8>,
+) -> Result<StagedExternalFileDto, CommandError> {
+    validate_entity_id(&operation_id, "image upload")?;
+    let name = validate_image_name(&display_name)?;
     if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES {
         return Err(invalid("Use a nonempty still image no larger than 25 MB."));
     }
+    crate::logging::info_target(
+        "documents.image_upload",
+        "image_upload_native_admission_started",
+        "A completely staged browser image entered native admission.",
+        serde_json::json!({
+            "operation": operation_id.as_str(),
+            "bytes": bytes.len(),
+            "activeDocumentTasks": crate::task_cancellation::active_document_task_count(),
+        }),
+    );
     let kind = match detect_image_bytes(&bytes)?.0 {
         "image/png" => ExternalFileKind::Png,
         "image/jpeg" => ExternalFileKind::Jpeg,
@@ -289,11 +311,11 @@ fn stage(
     // Neither a filename nor a browser MIME type proves image validity.
     CanonicalImage::decode(&bytes)?;
     let hash = sha256_hex(&bytes);
-    let relative = AppPaths::staged_import_relative_path(&input.operation_id, kind.extension());
+    let relative = AppPaths::staged_import_relative_path(&operation_id, kind.extension());
     let now = unix_time_millis()?;
     let expires_at = now.saturating_add(7 * 24 * 60 * 60 * 1_000);
     let dto = StagedExternalFileDto {
-        id: input.operation_id,
+        id: operation_id,
         purpose: ExternalImportPurpose::Image,
         detected_kind: kind,
         display_name: name.to_string(),
@@ -303,6 +325,16 @@ fn stage(
         expires_at,
     };
     if let Some(existing) = existing(database, paths, &dto, &relative, now)? {
+        crate::logging::info_target(
+            "documents.image_upload",
+            "image_upload_native_admission_completed",
+            "Native image admission reused the already acknowledged staged selection.",
+            serde_json::json!({
+                "operation": dto.id.as_str(),
+                "bytes": dto.byte_size,
+                "reused": true,
+            }),
+        );
         return Ok(existing);
     }
 
@@ -350,8 +382,19 @@ fn stage(
             .map_err(CommandError::database)?;
         Ok(())
     })?;
-    existing(database, paths, &dto, &relative, now)?
-        .ok_or_else(|| invalid("The image upload receipt could not be read."))
+    let staged = existing(database, paths, &dto, &relative, now)?
+        .ok_or_else(|| invalid("The image upload receipt could not be read."))?;
+    crate::logging::info_target(
+        "documents.image_upload",
+        "image_upload_native_admission_completed",
+        "Native image admission completed without retaining a second encoded payload.",
+        serde_json::json!({
+            "operation": staged.id.as_str(),
+            "bytes": staged.byte_size,
+            "reused": false,
+        }),
+    );
+    Ok(staged)
 }
 
 fn existing(
