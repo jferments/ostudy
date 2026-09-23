@@ -190,8 +190,9 @@ describe("Document collections workspace", () => {
     );
     renderWorkspace();
 
-    const create = screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement;
-    expect(create.disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     expect(screen.queryByRole("heading", { name: "Document collections" })).toBeNull();
     expect(screen.queryByText("Loading collections…")).toBeNull();
 

@@ -83,6 +83,14 @@ function renderDocuments() {
   render(<OverlayProvider><DocumentsScreen showToast={showToast} refreshDecks={async () => []} /></OverlayProvider>);
   return showToast;
 }
+
+async function waitForCollectionDiscovery(): Promise<void> {
+  await waitFor(() => {
+    expect(
+      (screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+}
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(collections.getDocumentCollectionOrganization).mockResolvedValue({
@@ -127,6 +135,7 @@ describe("Document job presentation", () => {
     const toast = renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitForCollectionDiscovery();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
     fireEvent.click(await screen.findByText("Retry generation"));
 
@@ -149,6 +158,7 @@ describe("Document job presentation", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitForCollectionDiscovery();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
     fireEvent.click(await screen.findByText("Retry generation"));
     await waitFor(() => expect(studyGuideIpc.generateDocumentStudyGuide).toHaveBeenCalledWith(documentId));
@@ -174,6 +184,7 @@ describe("Document job presentation", () => {
     renderDocuments();
 
     await screen.findByRole("heading", { name: "Cardiac physiology" });
+    await waitForCollectionDiscovery();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
     fireEvent.click(await screen.findByText("Retry generation"));
 
