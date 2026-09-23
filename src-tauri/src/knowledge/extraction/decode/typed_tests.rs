@@ -313,7 +313,9 @@ fn document_annotation_legacy_diagnostics_and_valid_occurrences_are_preserved() 
         KnowledgeKind::Fact,
     )
     .unwrap();
-    let crate::knowledge::typed_payload::Shape::Quantity { subject, bounds, .. } = payload.shape
+    let crate::knowledge::typed_payload::Shape::Quantity {
+        subject, bounds, ..
+    } = payload.shape
     else {
         panic!("quantity expected");
     };
