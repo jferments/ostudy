@@ -80,6 +80,85 @@ def usage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def admission_summary(requests: list[dict[str, Any]]) -> dict[str, Any]:
+    """Counts concern examined candidates, not unique facts or saved cards."""
+    records = []
+    invalid = 0
+    boundaries: Counter[tuple[str, str]] = Counter()
+    rejections: Counter[tuple[str, str, bool]] = Counter()
+    flashcard_requests = sum(row.get("stage") == "flashcard_authoring" for row in requests)
+    for row in requests:
+        data = payload(row)
+        if "nativeAdmission" not in data:
+            continue
+        record = versioned(data["nativeAdmission"])
+        fields = ("examinedCandidates", "admittedCandidates", "rejectedCandidates")
+        if (row.get("stage") != "flashcard_authoring" or not record
+                or record.get("state") not in ("returned", "failed")
+                or record.get("persistence") != "not_observed"
+                or not all(count(record.get(key)) and record[key] <= 128 for key in fields)):
+            invalid += 1
+            continue
+        examined, admitted, rejected = (record[key] for key in fields)
+        declared, selected = record.get("declaredCandidates"), record.get("selectedCandidates")
+        entries = record.get("rejections")
+        if (not isinstance(entries, list) or len(entries) != rejected
+                or examined != admitted + rejected
+                or (declared is not None and (not count(declared) or declared < examined))
+                or (declared is None and examined != 0)
+                or (declared is not None and not count(record.get("unexaminedCandidates")))
+                or record.get("unexaminedCandidates") != (None if declared is None else declared - examined)):
+            invalid += 1
+            continue
+        if record["state"] == "returned":
+            valid_selection = (declared == examined and count(selected) and selected <= admitted
+                               and count(record.get("unselectedAdmittedCandidates"))
+                               and record["unselectedAdmittedCandidates"] == admitted - selected
+                               and record.get("failureBoundary") is None
+                               and record.get("errorCode") is None)
+        else:
+            valid_selection = (selected is None and record.get("unselectedAdmittedCandidates") is None)
+        indices = set()
+        valid_entries = True
+        for entry in entries:
+            if (not isinstance(entry, dict) or not count(entry.get("candidateIndex"))
+                    or entry["candidateIndex"] >= examined or entry["candidateIndex"] in indices
+                    or type(entry.get("retryable")) is not bool):
+                valid_entries = False
+                break
+            indices.add(entry["candidateIndex"])
+        if not valid_selection or not valid_entries:
+            invalid += 1
+            continue
+        records.append(record)
+        if record["state"] == "failed":
+            boundaries[(code(record.get("failureBoundary")), code(record.get("errorCode")))] += 1
+        for entry in entries:
+            rejections[(code(entry.get("rule")), code(entry.get("errorCode")), entry["retryable"])] += 1
+    selected_records = [record for record in records if record["state"] == "returned"]
+    totals = {key: sum(record[key] for record in records) if records else None
+              for key in ("examinedCandidates", "admittedCandidates", "rejectedCandidates")}
+    totals.update({key: sum(record[key] for record in selected_records) if selected_records else None
+                   for key in ("selectedCandidates", "unselectedAdmittedCandidates")})
+    return {
+        "observedRequests": len(records),
+        "unobservedFlashcardRequests": flashcard_requests - len(records),
+        "invalidRecords": invalid,
+        "selectionObservedRequests": len(selected_records),
+        "responseStates": dict(sorted(Counter(record["state"] for record in records).items())),
+        **totals,
+        "failureBoundaries": [
+            {"boundary": boundary, "errorCode": error, "requests": number}
+            for (boundary, error), number in sorted(boundaries.items())
+        ],
+        "rejectionObservations": [
+            {"rule": rule, "errorCode": error, "retryable": retryable, "observations": number}
+            for (rule, error, retryable), number in sorted(rejections.items())
+        ],
+        "persistence": "not_observed",
+    }
+
+
 def summarize(requests: list[dict[str, Any]]) -> dict[str, Any]:
     """Partition physical requests once; linked recovery is not attempt > 1.
 
@@ -177,6 +256,7 @@ def summarize(requests: list[dict[str, Any]]) -> dict[str, Any]:
         "unobservedRequests": len(requests) - observed,
         "requestStates": dict(sorted(states.items())),
         "checkpointRequests": checkpoints,
+        "candidateAdmission": admission_summary(requests),
         "unclassifiedRepeatedRequests": unclassified_repeats,
         "linkageOrRecordIssues": dict(sorted(problems.items())),
         "recoveryRequests": [
@@ -241,6 +321,23 @@ def render(report: dict[str, Any]) -> list[str]:
                      f"{row['returnedRequests']} requests ({row['emptyReturns']} empty); persistence not observed")
     for row in sorted(report["checkpointRejectionObservations"], key=lambda row: (-row["observations"], row["stage"], row["rule"]))[:20]:
         lines.append(f"  Rejection observation: {row['stage']} / {row['rule']}: {row['observations']}")
+    admission = report.get("candidateAdmission", {})
+    if admission:
+        lines.append(f"Candidate admission: {admission['observedRequests']} observed responses; "
+                     f"{admission['unobservedFlashcardRequests']} unobserved; "
+                     f"examined {number(admission['examinedCandidates'])}, "
+                     f"admitted {number(admission['admittedCandidates'])}, "
+                     f"rejected {number(admission['rejectedCandidates'])}")
+        lines.append(f"  Selected {number(admission['selectedCandidates'])}; "
+                     f"admitted but not selected {number(admission['unselectedAdmittedCandidates'])} "
+                     f"across {admission['selectionObservedRequests']} observed selections; persistence not observed")
+        for row in admission["failureBoundaries"]:
+            lines.append(f"  Admission failure: {row['boundary']} / {row['errorCode']}: {row['requests']} responses")
+        for row in sorted(admission["rejectionObservations"], key=lambda item: (-item["observations"], item["rule"]))[:20]:
+            lines.append(f"  Candidate rejection: {row['rule']} / {row['errorCode']}: {row['observations']} observations")
+        if admission["invalidRecords"]:
+            lines.append(f"  Invalid or unsupported admission records: {admission['invalidRecords']}")
+        lines.append("Candidate counts are observations, not unique facts or saved cards. Admission is separate from selection and does not certify factual quality. Retryable does not mean another request was sent.")
     if report["linkageOrRecordIssues"]:
         lines.append("Outcome record issues: " + json.dumps(report["linkageOrRecordIssues"], sort_keys=True))
     lines.extend(report["notes"])

@@ -7,6 +7,8 @@ use serde_json::json;
 use super::{write, Context, Task};
 use crate::error::CommandError;
 
+pub(crate) mod candidates;
+
 #[derive(Clone, Copy)]
 pub(crate) enum Kind {
     Flashcards,

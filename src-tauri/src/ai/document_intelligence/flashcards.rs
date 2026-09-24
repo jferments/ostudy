@@ -185,10 +185,27 @@ fn parse_knowledge_cards_with_policy(
     knowledge: &KnowledgeCatalog,
     policy: &GenerationPolicy,
 ) -> Result<Vec<Value>, CommandError> {
+    let mut report = crate::ai::generation::outcomes::authoring::candidates::Report::default();
+    let result = parse_observed_cards(value, maximum, knowledge, policy, &mut report);
+    report.finish(&result);
+    result
+}
+
+fn parse_observed_cards(
+    value: Value,
+    maximum: usize,
+    knowledge: &KnowledgeCatalog,
+    policy: &GenerationPolicy,
+    report: &mut crate::ai::generation::outcomes::authoring::candidates::Report,
+) -> Result<Vec<Value>, CommandError> {
+    report.boundary = "policy";
     policy.validate()?;
+    report.boundary = "response_envelope";
     let response: KnowledgeCards = serde_json::from_value(value).map_err(|_| {
         super::support::output_error("The model returned invalid knowledge-first cards.")
     })?;
+    report.declared = Some(response.cards.len());
+    report.boundary = "response_bounds";
     // The requested count is an authoring target, not a reason to throw away
     // usable paid output. Keep a separate bound against oversized responses.
     if maximum == 0 || maximum > MAX_WINDOW_CARDS || response.cards.len() > 128 {
@@ -200,25 +217,35 @@ fn parse_knowledge_cards_with_policy(
     let mut candidates = Vec::with_capacity(returned_count);
     let mut rejected_count = 0_usize;
     let mut first_rejection = None;
+    report.boundary = "candidate_admission";
     for (index, item) in response.cards.into_iter().enumerate() {
-        match admit_knowledge_card(item, knowledge, policy) {
-            Ok(card) => candidates.push(card),
+        let mut rule = "unclassified";
+        match admit_knowledge_card(item, knowledge, policy, &mut rule) {
+            Ok(card) => {
+                report.admitted += 1;
+                candidates.push(card);
+            }
             Err(error) if retryable_contract_error(&error) => {
+                report.rejected(index, rule, &error, true);
                 rejected_count = rejected_count.saturating_add(1);
                 crate::logging::debug_target(
                     "ai.document.generation",
                     "document_generation_candidate_rejected",
                     "A generated candidate failed admission; its content is not logged.",
-                    json!({"candidateIndex": index, "code": error.code}),
+                    json!({"candidateIndex": index, "code": error.code, "rule": rule}),
                 );
                 if first_rejection.is_none() {
                     first_rejection = Some(error);
                 }
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                report.rejected(index, rule, &error, false);
+                return Err(error);
+            }
         }
     }
     if candidates.is_empty() && returned_count != 0 {
+        report.boundary = "all_candidates_rejected";
         crate::logging::warn_target(
             "ai.document.generation",
             "document_generation_all_candidates_rejected",
@@ -244,6 +271,7 @@ fn parse_knowledge_cards_with_policy(
             }),
         );
     }
+    report.boundary = "selection";
     assessment::policy::select_cards(candidates, maximum, knowledge, policy)
 }
 
@@ -251,17 +279,22 @@ fn admit_knowledge_card(
     raw: Value,
     knowledge: &KnowledgeCatalog,
     policy: &GenerationPolicy,
+    rule: &mut &'static str,
 ) -> Result<Value, CommandError> {
+    *rule = "candidate_envelope";
     let item: KnowledgeCard = serde_json::from_value(raw).map_err(|_| {
         assessment::invalid("A generated card envelope has invalid fields or evidence types.")
     })?;
+    *rule = "flattened_choice_recall";
     reject_flattened_choice_recall(&item.card)?;
     if item.card["type"] == "interactive" {
+        *rule = "interactive_flat_bindings";
         if !item.knowledge_unit_ids.is_empty() {
             return Err(assessment::invalid(
                 "Interactive cards use component evidence, not a separate flat target list.",
             ));
         }
+        *rule = "assessment_missing";
         let proposal = item.assessment.ok_or_else(|| {
             assessment::invalid("Interactive cards require an assessment opportunity.")
         })?;
@@ -269,19 +302,24 @@ fn admit_knowledge_card(
         // Native question/Markdown errors are input errors here, not reasons to
         // abort independently grounded siblings. No database or provider call is
         // made by this preparation boundary.
+        *rule = "interactive_content";
         validate_candidate_content(item.card.clone())?;
+        *rule = "assessment_admission";
         return assessment::admit_card(item.card, proposal, knowledge, policy);
     }
+    *rule = "legacy_choice_format";
     if item.card["type"] == "multiple_choice" {
         return Err(assessment::invalid(
             "Generate single_choice as a typed question, not a legacy text-only multiple-choice card.",
         ));
     }
+    *rule = "recall_component_bindings";
     if item.assessment.is_some() {
         return Err(assessment::invalid(
             "Recall cards cannot carry unrelated component evidence.",
         ));
     }
+    *rule = "recall_disabled";
     if !policy
         .allowed_types
         .contains(&assessment::policy::QuestionFamily::Recall)
@@ -290,17 +328,23 @@ fn admit_knowledge_card(
             "The model returned a disabled recall question.",
         ));
     }
+    *rule = "knowledge_selection";
     let support = knowledge.select(&item.knowledge_unit_ids, 2)?;
     // Normalize one card at a time. Rejecting one sibling can never shift a
     // surviving card onto another card's selected knowledge IDs.
+    *rule = "recall_fields";
     let mut normalized = parse_flashcards(json!({"cards":[item.card]}), 1).map_err(|_| {
         assessment::invalid("A generated recall card has invalid fields, text, blanks or tags.")
     })?;
+    *rule = "normalized_card_missing";
     let mut card = normalized
         .pop()
         .ok_or_else(|| super::support::output_error("No validated card was returned."))?;
+    *rule = "recall_content";
     validate_candidate_content(card.clone())?;
+    *rule = "support_serialization";
     card[CARD_SUPPORT_KEY] = serde_json::to_value(support).map_err(CommandError::serialization)?;
+    *rule = "policy_fingerprint";
     card[assessment::CARD_POLICY_KEY] = Value::String(policy.fingerprint()?);
     Ok(card)
 }
@@ -575,3 +619,6 @@ mod budget_regressions {
 
 #[cfg(test)]
 mod admission_tests;
+
+#[cfg(test)]
+mod outcome_tests;

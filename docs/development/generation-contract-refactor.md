@@ -158,10 +158,10 @@ failure, stage attribution and bounded wrapper size. These tests exercise the
 observer and real SQLite ledger with synthetic native results, not a live model
 or end-to-end factual-quality assessment.
 
-AC-02 remains partial: operation-level failures before/outside authoring and
-per-candidate authoring rejection details still need their owning integrations. AC-03's independent optional-
-annotation admission has not been implemented: an invalid annotation still
-leaves its proposal pending rather than being silently dropped.
+AC-02 still needs operation-level failures before/outside provider requests.
+Candidate admission now has the separate AC-02e record below. AC-03's independent
+optional-annotation admission has not been implemented: an invalid annotation
+still leaves its proposal pending rather than being silently dropped.
 
 ## AC-02d: readable recovery evidence
 
@@ -189,6 +189,44 @@ Behavioral tests cover these distinctions plus independent provider/native statu
 JSON re-import, unchanged input data, and a real read-only SQLite/CLI round trip
 from outside the repository directory. This report exposes the existing evidence;
 it does not change generation policy or establish factual or teaching quality.
+
+## AC-02e: candidate admission outcomes
+
+The real flashcard parser now records `nativeAdmission` once per observed
+physical response. Each rejected candidate carries its response-local index,
+the static native validation boundary and the original error code. No card text,
+knowledge alias, rejected draft or error prose enters this projection. Nested
+assessment and content validators remain named boundaries, not a claim that all
+their internal failure predicates now have individual rule identifiers.
+
+Declared, examined, admitted, rejected and selected candidate counts are separate.
+Valid surplus cards not chosen by the existing selection policy are not rejected
+cards. An all-invalid response remains a failure with unknown selection, whereas
+a valid empty response has an observed zero selection. Malformed envelopes and
+responses over the hard limit do not falsely classify unexamined items as rejected.
+Original errors, accepted siblings, source associations, prompts, output budgets,
+retry eligibility and final import validation are unchanged.
+
+`ai/generation/outcomes/authoring/candidates.rs` collects bounded content-free
+metadata and performs one best-effort diagnostic write after the parser returns.
+Local-only parsing, absent request accounting and another task stage cannot
+fabricate a physical request. A failed diagnostic write never changes admission.
+The original result is passed through without erasing the first attempt's record
+when a subsequent recovery succeeds.
+
+The normal usage reporter exposes `nativeOutcomes.candidateAdmission` with
+coverage counts, response states, failure boundaries, rejection observations and
+selection totals. Unknown or inconsistent records stay unobserved. Counts concern
+response-local observations, not unique facts, saved cards or factual quality.
+An error being eligible under the existing bounded policy does not assert that
+resending the task is useful; that policy change remains AC-05.
+
+Eight native regressions exercise the actual parser and SQLite ledger, including
+partial/all rejection, valid empty output, envelope and size failures, selection,
+recovery linkage, diagnostic-write failure and missing/wrong request scope. Eight
+Python regressions verify readable aggregation, strict count validation, legacy
+unknowns, privacy, input immutability and unchanged provider/linkage semantics.
+No paid provider is involved in these tests.
 
 ## Compatibility and non-goals
 
