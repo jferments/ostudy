@@ -305,7 +305,9 @@ async fn document_candidate_outcomes_no_request_and_wrong_stage_cannot_claim_adm
     )
     .await;
     assert!(wrong_stage.unwrap().is_empty());
-    assert!(rows(&database)[0]["payload"].get("nativeAdmission").is_none());
+    assert!(rows(&database)[0]["payload"]
+        .get("nativeAdmission")
+        .is_none());
 }
 
 #[tokio::test]
