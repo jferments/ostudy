@@ -30,7 +30,8 @@ fn document_annotation_validated_wire_and_stored_bytes_are_unchanged() {
 fn document_annotation_debt_is_bound_to_statement_kind_draft_and_failure() {
     let statement = "v ≤ −2.050e1 m/s";
     let mut draft = quantity();
-    draft["unit"]["text"] = json!("PRIVATE_MISSING_PHRASE");
+    // Short enough to reach literal lookup, but absent from the statement.
+    draft["unit"]["text"] = json!("PRIVATE");
     let deferred =
         TypedPayload::admit_or_defer(draft.clone(), statement, KnowledgeKind::Fact).unwrap();
     assert_eq!(
@@ -70,6 +71,23 @@ fn document_annotation_debt_is_bound_to_statement_kind_draft_and_failure() {
         .to_string()
         .contains("PRIVATE"));
     assert!(TypedPayload::admit(stored, statement, KnowledgeKind::Fact).is_err());
+}
+
+#[test]
+fn document_annotation_invalid_selection_remains_distinct_from_absent_phrase() {
+    let statement = "v ≤ −2.050e1 m/s";
+    let mut draft = quantity();
+    draft["unit"]["text"] = json!("PRIVATE_MISSING_PHRASE");
+    let deferred =
+        TypedPayload::admit_or_defer(draft.clone(), statement, KnowledgeKind::Fact).unwrap();
+    assert_eq!(
+        deferred.deferred_rule(),
+        Some("knowledge_annotation_selection_invalid")
+    );
+    deferred.validate(statement, KnowledgeKind::Fact).unwrap();
+    assert_eq!(serde_json::to_value(&deferred).unwrap()["draft"], draft);
+    let prompt = deferred.prompt(statement).unwrap();
+    assert!(!prompt.to_string().contains("PRIVATE"));
 }
 
 #[test]
