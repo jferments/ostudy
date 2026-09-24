@@ -49,6 +49,28 @@ def snapshot(value: Any) -> dict[str, Any]:
     return value
 
 
+def deferred_annotations(value: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate the optional additive checkpoint observation independently.
+
+    Legacy snapshots never measured annotation debt. A malformed new field must
+    not overwrite otherwise valid core counts or be silently interpreted as zero.
+    """
+    record = value.get("deferredAnnotations")
+    if not isinstance(record, dict) or not count(record.get("count")):
+        return None
+    rules = record.get("rules")
+    if (not isinstance(rules, dict) or len(rules) > 128
+            or not count(value.get("acceptedUnits"))
+            or record["count"] > value["acceptedUnits"]
+            or any(not isinstance(rule, str) or not CODE.fullmatch(rule)
+                   or not rule.startswith("knowledge_annotation_")
+                   or not count(number) or number == 0 for rule, number in rules.items())
+            or sum(rules.values()) != record["count"]
+            or (value.get("protocolComplete") is True and record["count"] != 0)):
+        return None
+    return {"count": record["count"], "rules": dict(rules)}
+
+
 def checkpoint_progress(checkpoint: dict[str, Any]) -> str:
     before, after = snapshot(checkpoint.get("before")), snapshot(checkpoint.get("after"))
     if not before or not after:
@@ -60,6 +82,11 @@ def checkpoint_progress(checkpoint: dict[str, Any]) -> str:
     regressing = deltas[0] < 0 or any(delta > 0 for delta in deltas[1:])
     if before.get("unresolvedRegions") is not None and after.get("unresolvedRegions") is not None:
         change = after["unresolvedRegions"] - before["unresolvedRegions"]
+        improving |= change < 0
+        regressing |= change > 0
+    prior_annotations, next_annotations = deferred_annotations(before), deferred_annotations(after)
+    if prior_annotations is not None and next_annotations is not None:
+        change = next_annotations["count"] - prior_annotations["count"]
         improving |= change < 0
         regressing |= change > 0
     if improving and regressing:
@@ -179,6 +206,9 @@ def summarize(requests: list[dict[str, Any]]) -> dict[str, Any]:
     observed = 0
     unclassified_repeats = 0
     checkpoints = 0
+    annotation_requests = 0
+    annotation_count = 0
+    annotation_rules: Counter[tuple[str, str]] = Counter()
     native_keys = ("nativeTask", "nativeLineage", "nativeCheckpoint", "nativeAuthoring")
 
     for row in requests:
@@ -200,6 +230,14 @@ def summarize(requests: list[dict[str, Any]]) -> dict[str, Any]:
         after = snapshot(checkpoint.get("after"))
         if after:
             checkpoints += 1
+            annotations = deferred_annotations(after)
+            if annotations is not None:
+                annotation_requests += 1
+                annotation_count += annotations["count"]
+                for rule, number in annotations["rules"].items():
+                    annotation_rules[(stage, rule)] += number
+            elif after.get("deferredAnnotations") is not None:
+                problems["invalid_deferred_annotation_observation"] += 1
             histogram = after.get("rejectionRules")
             if isinstance(histogram, dict):
                 for rule, number in histogram.items():
@@ -256,6 +294,15 @@ def summarize(requests: list[dict[str, Any]]) -> dict[str, Any]:
         "unobservedRequests": len(requests) - observed,
         "requestStates": dict(sorted(states.items())),
         "checkpointRequests": checkpoints,
+        "deferredAnnotations": {
+            "observedCheckpointRequests": annotation_requests,
+            "unobservedCheckpointRequests": checkpoints - annotation_requests,
+            "observations": annotation_count if annotation_requests else None,
+            "ruleObservations": [
+                {"stage": stage, "rule": rule, "observations": number}
+                for (stage, rule), number in sorted(annotation_rules.items())
+            ],
+        },
         "candidateAdmission": admission_summary(requests),
         "unclassifiedRepeatedRequests": unclassified_repeats,
         "linkageOrRecordIssues": dict(sorted(problems.items())),
@@ -291,6 +338,7 @@ def summarize(requests: list[dict[str, Any]]) -> dict[str, Any]:
             "Checkpoint progress compares committed native counts; it does not certify factual accuracy, exhaustive coverage or teaching quality. Mixed progress preserves regressions.",
             "Recovery usage counts only each linked follow-up request, not its predecessor. Missing usage stays unknown. These costs are observations, not predicted savings.",
             "Rejection and decision observations are not unique rejected proposals or unique tasks; repeated snapshots can contain the same pending proposal.",
+            "Deferred annotations belong to admitted core knowledge, not rejected proposals. Their counts and rules are checkpoint observations, not unique outstanding tasks. Missing historical measurements stay unknown; annotation resolution alone can make native progress without adding knowledge units.",
             "Authoring returns (including valid empty curation selections) do not establish saved decks or guides. Artifact publication and pre-request operation failures are not observed here.",
         ],
     }
@@ -321,6 +369,13 @@ def render(report: dict[str, Any]) -> list[str]:
                      f"{row['returnedRequests']} requests ({row['emptyReturns']} empty); persistence not observed")
     for row in sorted(report["checkpointRejectionObservations"], key=lambda row: (-row["observations"], row["stage"], row["rule"]))[:20]:
         lines.append(f"  Rejection observation: {row['stage']} / {row['rule']}: {row['observations']}")
+    annotations = report.get("deferredAnnotations")
+    if annotations is not None:
+        lines.append(f"Deferred annotations: {number(annotations['observations'])} observations across "
+                     f"{annotations['observedCheckpointRequests']} measured checkpoints; "
+                     f"{annotations['unobservedCheckpointRequests']} checkpoint measurements unknown")
+        for row in sorted(annotations["ruleObservations"], key=lambda item: (-item["observations"], item["stage"], item["rule"]))[:20]:
+            lines.append(f"  Deferred annotation: {row['stage']} / {row['rule']}: {row['observations']} observations")
     admission = report.get("candidateAdmission", {})
     if admission:
         lines.append(f"Candidate admission: {admission['observedRequests']} observed responses; "

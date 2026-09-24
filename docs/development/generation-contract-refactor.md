@@ -298,6 +298,18 @@ publication enforce the same rule. Unaffected units keep all permitted question
 families. A policy with no supported family has an explicit empty-result schema;
 first-pass task planning and policy-aware repartitioning remain AC-04.
 
+Committed request diagnostics retain deferred annotations separately from rejected
+core proposals. Each newly observed extraction snapshot records a count and static
+rule histogram; an explicit zero is distinct from older snapshots that never
+measured this field. The reporter validates counts against admitted units and
+keeps malformed annotation diagnostics unknown without discarding usable core
+counts. Annotation resolution can register native progress without adding another
+core unit, while increasing debt remains a regression even alongside other gains.
+Both comparisons require measured annotation counts; no historical value is
+invented. The readable report labels repeated snapshots as observations, not
+unique outstanding tasks or factual-quality measurements. Failed checkpoint saves
+cannot claim committed annotations, and no draft text enters these diagnostics.
+
 Regression coverage includes no-retry extraction, retained-draft local recovery,
 independent core/evidence rejection, checkpoint round trips and tamper rejection,
 unchanged validated serialization, strict numeric/process rules, prompt privacy,

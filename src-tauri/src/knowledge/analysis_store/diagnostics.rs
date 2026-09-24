@@ -1,7 +1,7 @@
 //! Project only bounded native counts/rule IDs, never rejected drafts or source
 //! text, into the request ledger. Coverage is not a certificate of entailment.
 use super::AnalysisReport;
-use crate::ai::generation::outcomes::{self, Snapshot};
+use crate::ai::generation::outcomes::{self, DeferredAnnotations, Snapshot};
 
 fn snapshot(report: &AnalysisReport) -> Snapshot {
     let mut rejection_rules = std::collections::BTreeMap::new();
@@ -19,6 +19,19 @@ fn snapshot(report: &AnalysisReport) -> Snapshot {
         };
         *rejection_rules.entry(rule.to_string()).or_insert(0) += 1;
     }
+    let mut deferred = DeferredAnnotations::default();
+    for unit in &report.accepted {
+        if let Some(rule) = unit
+            .content
+            .details
+            .as_ref()
+            .and_then(|details| details.deferred_rule())
+        {
+            // The saved payload already passed strict state/rule validation.
+            deferred.count += 1;
+            *deferred.rules.entry(rule.to_string()).or_insert(0) += 1;
+        }
+    }
     Snapshot {
         accepted_units: report.accepted.len() as u32,
         rejected_proposals: report.rejected.len() as u32,
@@ -29,6 +42,7 @@ fn snapshot(report: &AnalysisReport) -> Snapshot {
             .map(|coverage| coverage.unresolved() as u32),
         protocol_complete: report.is_complete(),
         rejection_rules,
+        deferred_annotations: Some(deferred),
     }
 }
 

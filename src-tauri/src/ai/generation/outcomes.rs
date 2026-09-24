@@ -26,6 +26,15 @@ pub(crate) struct Snapshot {
     pub unresolved_regions: Option<u32>,
     pub protocol_complete: bool,
     pub rejection_rules: BTreeMap<String, u32>,
+    /// Absent in older observations; absence is not a measured zero.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deferred_annotations: Option<DeferredAnnotations>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub(crate) struct DeferredAnnotations {
+    pub count: u32,
+    pub rules: BTreeMap<String, u32>,
 }
 
 impl Snapshot {
@@ -37,13 +46,19 @@ impl Snapshot {
             .unresolved_regions
             .zip(before.unresolved_regions)
             .map(|(after, before)| i64::from(after) - i64::from(before));
+        let annotations = self
+            .deferred_annotations
+            .as_ref()
+            .zip(before.deferred_annotations.as_ref())
+            .map(|(after, before)| i64::from(after.count) - i64::from(before.count));
         json!({
             "acceptedUnitsDelta": accepted,
             "rejectedProposalsDelta": rejected,
             "unaccountedSourcesDelta": sources,
             "unresolvedRegionsDelta": regions,
-            "hasNativeProgress": accepted > 0 || rejected < 0 || sources < 0 || regions.is_some_and(|n| n < 0),
-            "hasNativeRegression": accepted < 0 || rejected > 0 || sources > 0 || regions.is_some_and(|n| n > 0),
+            "deferredAnnotationsDelta": annotations,
+            "hasNativeProgress": accepted > 0 || rejected < 0 || sources < 0 || regions.is_some_and(|n| n < 0) || annotations.is_some_and(|n| n < 0),
+            "hasNativeRegression": accepted < 0 || rejected > 0 || sources > 0 || regions.is_some_and(|n| n > 0) || annotations.is_some_and(|n| n > 0),
         })
     }
 }
@@ -314,3 +329,6 @@ pub(super) fn reconcile_in(connection: &Connection, now: i64) -> Result<(), Comm
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod annotation_tests;
