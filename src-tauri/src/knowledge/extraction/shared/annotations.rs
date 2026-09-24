@@ -71,13 +71,18 @@ fn demanded(kind: KnowledgeKind, policy: &GenerationPolicy) -> bool {
         QuestionFamily::Recall => false,
         QuestionFamily::Ordering => kind == KnowledgeKind::Process,
         QuestionFamily::Grouping => {
-            matches!(kind, KnowledgeKind::Definition | KnowledgeKind::Relationship)
+            matches!(
+                kind,
+                KnowledgeKind::Definition | KnowledgeKind::Relationship
+            )
         }
         QuestionFamily::Matching => matches!(
             kind,
             KnowledgeKind::Comparison | KnowledgeKind::Definition | KnowledgeKind::Relationship
         ),
-        QuestionFamily::SingleChoice | QuestionFamily::SelectAll | QuestionFamily::TrueFalse => true,
+        QuestionFamily::SingleChoice | QuestionFamily::SelectAll | QuestionFamily::TrueFalse => {
+            true
+        }
     })
 }
 
@@ -134,9 +139,14 @@ fn request(
     // The evidence renderer also preserves structural links, tables and qualifiers.
     for index in positions.iter().copied().collect::<Vec<_>>() {
         for neighbor in index.saturating_sub(1)..=index.saturating_add(1) {
-            if input.catalog.entries.get(neighbor).is_some_and(|reference| {
-                reference.source_id == input.catalog.entries[index].source_id
-            }) {
+            if input
+                .catalog
+                .entries
+                .get(neighbor)
+                .is_some_and(|reference| {
+                    reference.source_id == input.catalog.entries[index].source_id
+                })
+            {
                 positions.insert(neighbor);
             }
         }
@@ -239,7 +249,7 @@ where
                 // immutable; independently committed siblings are preserved.
                 let unobserved =
                     crate::ai::generation::outcomes::Task::new(None, "knowledge_extraction", None);
-                after = unobserved
+                let (merged, current) = unobserved
                     .scope(async {
                         let mut current = analysis_store::Checkpoint::open(
                             input.database,
@@ -254,9 +264,15 @@ where
                         {
                             current.save(&merged)?;
                         }
-                        Ok::<_, CommandError>(merged)
+                        Ok::<_, CommandError>((merged, current))
                     })
                     .await?;
+                after = merged;
+                // Continue from the reconciled revision. Reusing the stale
+                // checkpoint would force every later batch through fallback
+                // and suppress its otherwise attributable committed outcome.
+                checkpoint = current;
+                checkpoint.observe_reconciled(&after);
             }
         }
         crate::logging::info_target(
@@ -272,13 +288,25 @@ where
             no_gain = None;
             continue;
         }
-        let rules = batch.iter().map(|slot| {
-            let content = &before.accepted[*slot].content;
-            format!("{:?}:{}", content.kind,
-                content.details.as_ref().and_then(TypedPayload::deferred_rule).unwrap_or("none"))
-        }).collect::<BTreeSet<_>>();
+        let rules = batch
+            .iter()
+            .map(|slot| {
+                let content = &before.accepted[*slot].content;
+                format!(
+                    "{:?}:{}",
+                    content.kind,
+                    content
+                        .details
+                        .as_ref()
+                        .and_then(TypedPayload::deferred_rule)
+                        .unwrap_or("none")
+                )
+            })
+            .collect::<BTreeSet<_>>();
         let signature = hash(&serde_json::to_string(&rules).map_err(CommandError::serialization)?);
-        let count = no_gain.as_ref().filter(|(old, _)| old == &signature)
+        let count = no_gain
+            .as_ref()
+            .filter(|(old, _)| old == &signature)
             .map_or(1, |(_, count)| count + 1);
         no_gain = Some((signature, count));
         if count >= 2 {

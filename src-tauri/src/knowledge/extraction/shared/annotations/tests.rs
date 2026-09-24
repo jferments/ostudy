@@ -130,7 +130,8 @@ async fn document_annotation_demand_repairs_only_the_named_structure_and_reuses_
         demanded_run(input, &policy, |call| {
             calls.set(calls.get() + 1);
             assert_eq!(
-                call.schema["properties"]["annotationRepairs"]["items"]["properties"]["slot"]["enum"],
+                call.schema["properties"]["annotationRepairs"]["items"]["properties"]["slot"]
+                    ["enum"],
                 json!([0])
             );
             assert!(call.user.contains("MUST NOT be rewritten"));
@@ -145,10 +146,7 @@ async fn document_annotation_demand_repairs_only_the_named_structure_and_reuses_
     let saved = load(input);
     assert!(saved.deferred_annotations().is_empty());
     assert_eq!(saved.accepted[0].content.statement, "Sides = 3");
-    assert_eq!(
-        saved.accepted[0].content.qualifications,
-        ["For triangles."]
-    );
+    assert_eq!(saved.accepted[0].content.qualifications, ["For triangles."]);
     assert_eq!(serde_json::to_value(&saved.accepted[1]).unwrap(), original);
     assert_eq!(
         serde_json::to_value(&saved.accepted[0].content.grounding).unwrap(),
@@ -382,9 +380,8 @@ async fn document_annotation_ordering_repairs_only_the_process_graph() {
     ], "dependencies": [{"before": 0, "after": 1}]});
     let mut cyclic = fixed.clone();
     cyclic["dependencies"] = json!([{"before": 0, "after": 1}, {"before": 1, "after": 0}]);
-    content.details = Some(
-        TypedPayload::admit_or_defer(cyclic, &content.statement, content.kind).unwrap(),
-    );
+    content.details =
+        Some(TypedPayload::admit_or_defer(cyclic, &content.statement, content.kind).unwrap());
     save(input, &before);
     demanded_run(input, &policy(QuestionFamily::Ordering), |_| {
         let value = json!({"annotationRepairs": [{"slot": 0, "details": fixed}]});
@@ -397,7 +394,12 @@ async fn document_annotation_ordering_repairs_only_the_process_graph() {
     assert_eq!(content.statement, "Prepare, then heat.");
     assert_eq!(content.qualifications, ["Only after preparation."]);
     assert_eq!(
-        content.details.as_ref().unwrap().prompt(&content.statement).unwrap()["dependencies"],
+        content
+            .details
+            .as_ref()
+            .unwrap()
+            .prompt(&content.statement)
+            .unwrap()["dependencies"],
         json!([{"before": 0, "after": 1}])
     );
 }
@@ -462,4 +464,71 @@ async fn document_annotation_identical_no_gain_batches_stop_without_discarding_p
         serde_json::to_value(saved).unwrap(),
         serde_json::to_value(before).unwrap()
     );
+}
+
+#[tokio::test]
+async fn document_annotation_reconciled_revision_keeps_later_batch_outcomes_observable() {
+    let (database, source, _, _) = crate::knowledge::authoring::tests::fixture();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let contract = hash("continue after local publication reconciliation");
+    let mut input = input(&database, &sources, &catalog, &contract);
+    let mut before = retain(input);
+    for index in 1..=MAX_TARGETS {
+        let mut unit = before.accepted[0].clone();
+        unit.content.title = format!("Independent target {index}");
+        before.accepted.push(unit);
+    }
+    save(input, &before);
+    let operation = Operation::begin(&database, None, None, None, "annotation_test").unwrap();
+    let context = operation.context();
+    input.diagnostics = Some(&context);
+    let calls = Cell::new(0);
+    demanded_run(input, &policy(QuestionFamily::SingleChoice), |call| {
+        calls.set(calls.get() + 1);
+        if calls.get() == 1 {
+            let mut newer = before.clone();
+            newer.accepted[1].content.title = "Concurrent sibling".into();
+            save(input, &newer);
+        }
+        let mut attempt = context
+            .start_attempt(
+                "knowledge_extraction",
+                &json!({"model": "fixture", "messages": []}),
+                Some(&contract),
+                "fixture",
+            )
+            .unwrap();
+        attempt.response(&json!({"usage": {"prompt_tokens": 10, "completion_tokens": 5}}));
+        let slots = call.schema["properties"]["annotationRepairs"]["items"]["properties"]
+            ["slot"]["enum"].as_array().unwrap();
+        let value = json!({"annotationRepairs": slots.iter().map(|slot| {
+            json!({"slot": slot, "details": details()})
+        }).collect::<Vec<_>>()});
+        async move { Ok(value) }
+    })
+    .await
+    .unwrap();
+    assert_eq!(calls.get(), 2);
+    let saved = load(input);
+    assert!(saved.deferred_annotations().is_empty());
+    assert_eq!(saved.accepted[1].content.title, "Concurrent sibling");
+    database
+        .with_connection(|connection| {
+            let payload: String = connection
+                .query_row(
+                    "SELECT payload_bytes_json FROM generation_requests
+                     WHERE operation_id=?1 ORDER BY attempt DESC LIMIT 1",
+                    [&context.operation_id],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            let payload: Value = serde_json::from_str(&payload).unwrap();
+            let checkpoint = &payload["nativeCheckpoint"];
+            assert_eq!(checkpoint["before"]["deferredAnnotations"]["count"], 1);
+            assert_eq!(checkpoint["after"]["deferredAnnotations"]["count"], 0);
+            assert_eq!(checkpoint["gain"]["deferredAnnotationsDelta"], -1);
+            Ok(())
+        })
+        .unwrap();
 }

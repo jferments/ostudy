@@ -325,7 +325,10 @@ async fn process_initial_flashcards(
 
     // Explicit card-only support demand is resolved before the shared outline,
     // learning plan and sibling artifact catalogs can bind to unit hashes.
-    let chunk_indices = chunks.iter().map(|chunk| chunk.chunk_index).collect::<Vec<_>>();
+    let chunk_indices = chunks
+        .iter()
+        .map(|chunk| chunk.chunk_index)
+        .collect::<Vec<_>>();
     crate::knowledge::annotation_demand::prepare_document(
         crate::knowledge::authoring::DocumentPreparation {
             database,

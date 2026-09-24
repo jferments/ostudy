@@ -290,6 +290,27 @@ pub(crate) fn checkpoint(snapshot: Snapshot) {
     state.snapshot = Some(snapshot);
 }
 
+/// Adopt a reconciled durable baseline without attributing another writer's
+/// changes to this response. Later requests measure against the adopted state.
+pub(crate) fn checkpoint_reconciled(snapshot: Snapshot) {
+    let Some(current) = current() else {
+        return;
+    };
+    let Ok(mut state) = current.lock() else {
+        return;
+    };
+    if let Some(id) = &state.last_request {
+        write(
+            &state.context,
+            id,
+            "$.nativeCheckpointReconciliation",
+            json!({"schemaVersion": 1, "state": "reconciled", "gain": "not_observed"}),
+        );
+    }
+    state.before_request = None;
+    state.snapshot = Some(snapshot);
+}
+
 fn safe_code(code: &str) -> &str {
     if !code.is_empty()
         && code.len() <= 80

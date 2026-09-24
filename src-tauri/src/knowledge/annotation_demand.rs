@@ -23,8 +23,7 @@ pub(crate) fn scope<F: Future>(
     // Weights are preferences, not a requirement to manufacture an ordering or
     // classification board. An interactive-only request cannot use the admitted
     // core as a recall fallback and therefore has an actual support obligation.
-    let demand =
-        (!policy.allowed_types.contains(&QuestionFamily::Recall)).then(|| policy.clone());
+    let demand = (!policy.allowed_types.contains(&QuestionFamily::Recall)).then(|| policy.clone());
     CURRENT.scope(demand, Box::pin(future))
 }
 

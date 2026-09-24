@@ -53,3 +53,10 @@ pub(super) fn baseline(report: &AnalysisReport) {
 pub(super) fn committed(report: &AnalysisReport) {
     outcomes::checkpoint(snapshot(report));
 }
+
+impl super::Checkpoint<'_> {
+    /// Call only after a successful revision-checked local reconciliation.
+    pub(crate) fn observe_reconciled(&self, report: &AnalysisReport) {
+        outcomes::checkpoint_reconciled(snapshot(report));
+    }
+}
