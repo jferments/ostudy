@@ -68,7 +68,9 @@ impl TypedPayload {
                     draft_bytes: encoded.len(),
                     draft: (encoded.len() <= MAX_RETAINED_DRAFT_BYTES).then_some(value),
                 }));
-                Ok(deferred.repair_locally(statement, kind)?.unwrap_or(deferred))
+                Ok(deferred
+                    .repair_locally(statement, kind)?
+                    .unwrap_or(deferred))
             }
         }
     }
@@ -100,8 +102,7 @@ impl TypedPayload {
         };
         if !matches!(
             deferred.rule.as_str(),
-            "knowledge_annotation_malformed"
-                | "knowledge_annotation_occurrence_out_of_range"
+            "knowledge_annotation_malformed" | "knowledge_annotation_occurrence_out_of_range"
         ) {
             return Ok(None);
         }

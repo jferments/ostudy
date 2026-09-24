@@ -50,7 +50,10 @@ fn document_local_annotation_repairs_unique_occurrence_and_is_idempotent() {
         .unwrap()
         .is_none());
     assert_eq!(serde_json::to_value(original).unwrap(), bytes);
-    assert_eq!(repaired.prompt(statement).unwrap()["bounds"][0]["value"], "3");
+    assert_eq!(
+        repaired.prompt(statement).unwrap()["bounds"][0]["value"],
+        "3"
+    );
 }
 
 #[test]
@@ -89,7 +92,10 @@ fn document_local_annotation_keeps_repeated_phrase_selection_and_literal_values(
     let encoded = serde_json::to_value(&repaired).unwrap();
     assert_eq!(encoded["shape"]["subject"]["start"], 7);
     assert_eq!(encoded["shape"]["bounds"][0]["label"]["start"], 9);
-    assert_eq!(repaired.prompt(statement).unwrap()["bounds"][0]["value"], "2");
+    assert_eq!(
+        repaired.prompt(statement).unwrap()["bounds"][0]["value"],
+        "2"
+    );
 }
 
 #[test]
@@ -193,7 +199,11 @@ fn document_local_annotation_keeps_comparison_and_classification_structure() {
         "exclusion": selection("except overlap", 0)
     });
     for (draft, statement, kind) in [
-        (comparison, "speed: A fast; B slow.", KnowledgeKind::Comparison),
+        (
+            comparison,
+            "speed: A fast; B slow.",
+            KnowledgeKind::Comparison,
+        ),
         (
             classification,
             "type: A red; B blue, except overlap.",
@@ -261,5 +271,8 @@ fn document_first_pass_annotation_normalizes_without_changing_strict_admission()
     let admitted = TypedPayload::admit_or_defer(value, statement, KnowledgeKind::Fact).unwrap();
     assert!(admitted.deferred_rule().is_none());
     admitted.validate(statement, KnowledgeKind::Fact).unwrap();
-    assert_eq!(admitted.prompt(statement).unwrap()["bounds"][0]["value"], "3");
+    assert_eq!(
+        admitted.prompt(statement).unwrap()["bounds"][0]["value"],
+        "3"
+    );
 }
