@@ -500,8 +500,10 @@ async fn document_annotation_reconciled_revision_keeps_later_batch_outcomes_obse
             )
             .unwrap();
         attempt.response(&json!({"usage": {"prompt_tokens": 10, "completion_tokens": 5}}));
-        let slots = call.schema["properties"]["annotationRepairs"]["items"]["properties"]
-            ["slot"]["enum"].as_array().unwrap();
+        let slots = call.schema["properties"]["annotationRepairs"]["items"]["properties"]["slot"]
+            ["enum"]
+            .as_array()
+            .unwrap();
         let value = json!({"annotationRepairs": slots.iter().map(|slot| {
             json!({"slot": slot, "details": details()})
         }).collect::<Vec<_>>()});
