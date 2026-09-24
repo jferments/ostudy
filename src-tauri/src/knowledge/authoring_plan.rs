@@ -150,7 +150,7 @@ mod tests {
         })
         .unwrap();
 
-        assert!(visits <= catalog.units.len() * 2 - 1);
+        assert!(visits < catalog.units.len() * 2);
         assert_eq!(
             planned
                 .iter()

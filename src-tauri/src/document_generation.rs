@@ -325,7 +325,7 @@ async fn generation_slot(
     let mut root_task = input.task.clone();
     root_task.diagnostic_window_key = Some(root_key.clone());
 
-    let result = async {
+    let result: Result<Vec<Value>, CommandError> = async {
         let partitions = authoring_plan::partition_catalog(&catalogs[position], |knowledge| {
             document_intelligence::preflight_window_flashcards(
                 &root_task,
