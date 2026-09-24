@@ -16,7 +16,10 @@ fn stored(database: &Database, id: &str) -> (String, Option<Value>) {
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .map_err(CommandError::database)?;
-            Ok((state, value.map(|text| serde_json::from_str(&text).unwrap())))
+            Ok((
+                state,
+                value.map(|text| serde_json::from_str(&text).unwrap()),
+            ))
         })
         .unwrap()
 }
@@ -25,7 +28,9 @@ fn request_count(database: &Database) -> i64 {
     database
         .with_connection(|connection| {
             connection
-                .query_row("SELECT COUNT(*) FROM generation_requests", [], |row| row.get(0))
+                .query_row("SELECT COUNT(*) FROM generation_requests", [], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)
         })
         .unwrap()
@@ -125,7 +130,9 @@ fn document_operation_unsafe_error_codes_and_device_transfer_do_not_leak_content
         .with_connection(|connection| {
             generation::sanitize_for_device_transfer(connection)?;
             let count: i64 = connection
-                .query_row("SELECT COUNT(*) FROM generation_operations", [], |row| row.get(0))
+                .query_row("SELECT COUNT(*) FROM generation_operations", [], |row| {
+                    row.get(0)
+                })
                 .map_err(CommandError::database)?;
             assert_eq!(count, 0);
             Ok(())
@@ -156,7 +163,10 @@ async fn document_operation_real_task_owner_captures_failure_before_any_provider
         bind_document(&database);
         id = crate::task_cancellation::generation_context(&database)?
             .map(|context| context.operation_id);
-        Err::<(), _>(CommandError::new("document_source_missing", "PRIVATE SOURCE PATH"))
+        Err::<(), _>(CommandError::new(
+            "document_source_missing",
+            "PRIVATE SOURCE PATH",
+        ))
     })
     .await;
     assert_eq!(result.unwrap_err().code, "document_source_missing");
@@ -164,5 +174,7 @@ async fn document_operation_real_task_owner_captures_failure_before_any_provider
     assert_eq!(state, "failed");
     assert_eq!(outcome.unwrap()["errorCode"], "document_source_missing");
     assert_eq!(request_count(&database), 0);
-    assert!(!crate::task_cancellation::is_document_task_active(&document_id));
+    assert!(!crate::task_cancellation::is_document_task_active(
+        &document_id
+    ));
 }

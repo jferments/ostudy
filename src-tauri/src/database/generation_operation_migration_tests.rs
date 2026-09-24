@@ -25,16 +25,26 @@ fn document_operation_outcome_migration_preserves_legacy_rows_without_inventing_
     let oversized = format!("{{\"value\":\"{}\"}}", "x".repeat(1024));
     for invalid in ["not json", "[]", "null", oversized.as_str()] {
         assert!(connection
-            .execute("UPDATE generation_operations SET outcome_json=?1", [invalid])
+            .execute(
+                "UPDATE generation_operations SET outcome_json=?1",
+                [invalid]
+            )
             .is_err());
     }
     let outcome: Option<String> = connection
-        .query_row("SELECT outcome_json FROM generation_operations", [], |row| row.get(0))
+        .query_row(
+            "SELECT outcome_json FROM generation_operations",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     assert!(outcome.is_none());
     initialize_connection(&mut connection).unwrap();
     let before = connection.total_changes();
     initialize_connection(&mut connection).unwrap();
     assert_eq!(connection.total_changes(), before);
-    assert_eq!(entry::user_version(&connection).unwrap(), LATEST_SCHEMA_VERSION);
+    assert_eq!(
+        entry::user_version(&connection).unwrap(),
+        LATEST_SCHEMA_VERSION
+    );
 }
