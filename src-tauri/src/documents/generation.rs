@@ -61,6 +61,7 @@ async fn retry_pdf_flashcard_generation_inner(
     input: RetryPdfGenerationInput,
     processing_reserved: bool,
 ) -> Result<DocumentGenerationResultDto, CommandError> {
+    crate::ai::generation::outcomes::operation::bind_document(database);
     validate_retry_pdf_flashcard_generation(database, &input.document_id)?;
 
     let result = if processing_reserved {

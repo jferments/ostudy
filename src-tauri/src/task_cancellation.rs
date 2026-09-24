@@ -298,7 +298,7 @@ where
         let result = CURRENT_DOCUMENT_TASK.scope(task.clone(), future).await;
         if let Ok(mut diagnostic) = task.diagnostics.lock() {
             if let Some(operation) = diagnostic.as_mut() {
-                operation.finish(result.is_ok());
+                operation.finish_result(&result);
             }
         }
         drop(reservation);

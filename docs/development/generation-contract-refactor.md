@@ -158,7 +158,8 @@ failure, stage attribution and bounded wrapper size. These tests exercise the
 observer and real SQLite ledger with synthetic native results, not a live model
 or end-to-end factual-quality assessment.
 
-AC-02 still needs operation-level failures before/outside provider requests.
+Operation-owner capture is described in AC-02f; non-document owners still need
+to adopt its result-aware completion boundary.
 Candidate admission now has the separate AC-02e record below. AC-03's independent
 optional-annotation admission has not been implemented: an invalid annotation
 still leaves its proposal pending rather than being silently dropped.
@@ -228,11 +229,51 @@ Python regressions verify readable aggregation, strict count validation, legacy
 unknowns, privacy, input immutability and unchanged provider/linkage semantics.
 No paid provider is involved in these tests.
 
+## AC-02f: request-independent document operation results
+
+Migration 30 adds bounded nullable `generation_operations.outcome_json` through
+normal schema conversion. Existing rows remain NULL: neither a previous failure
+cause nor a successful artifact publication is reconstructed from request status.
+Migrations 1 through 29 and previously paid checkpoint identities are unchanged.
+
+`Operation::finish_result` receives the actual operation owner's Result and writes
+its terminal state, time and content-free error code atomically. The document task
+wrapper uses this boundary only after its child returns. Individual card/guide
+observers cannot finish their parent. Early document generation binds the same
+operation before source validation and ingestion, so a managed-source error can
+be retained even with no physical request. Diagnostic binding/writing is best
+effort and never replaces the original product result or authorizes another call.
+
+Startup records unfinished running operations as interrupted without claiming an
+observed return. Finished records cannot be overwritten by startup or a stale
+owner. An ordinary dropped legacy owner still reports interruption with unknown
+cause; owners that still call boolean-only `finish` retain unknown detailed
+outcomes. Other operation owners must explicitly adopt `finish_result`; their
+integration is not inferred from this document-task change.
+
+The normal usage report includes separate `operationRecords` and
+`operationOutcomes`, including zero-request operations in `--all`. Reads use the
+same SQLite snapshot as the request report. Older schema-27-through-29 libraries
+remain readable without alteration. JSON re-import retains operation evidence.
+Missing/ambiguous/unsupported records remain unobserved, and recorded request
+counts are not proof of complete provider accounting. Neither operation completion
+nor a native return certifies an artifact's publication or teaching quality.
+
+Native regressions cover zero-request errors, the actual document task wrapper,
+terminal immutability, interrupted startup, diagnostic-write failure, sanitized
+codes, device-transfer removal, and migration/legacy preservation. Reporter
+regressions include a read-only SQLite/CLI round trip and zero-request export.
+No live provider is needed. Remaining non-document owner integrations and the
+AC-03 through AC-06 behavioral work are still unfinished.
+
 ## Compatibility and non-goals
 
-These increments do not change stored schema, prompt versions, provider
-selection, completion ceilings, evidence identities or checkpoint contracts. They
-neither clear retained source knowledge nor invalidate already-paid results.
+AC-01 through AC-02e do not change schema. AC-02f adds migration 30, so a library
+opened by this build requires a schema-30-capable build afterwards; do not
+manually downgrade its schema metadata. Preserve a backup before testing schema
+changes. Prompt versions, providers, completion ceilings, evidence identities and
+checkpoint contracts are unchanged. Retained source knowledge is not cleared,
+and already-paid results are not invalidated.
 Existing [parallel publication lifecycle corrections](parallel-artifact-lifecycle-regression.md)
 remain necessary and separate from the contract work.
 

@@ -237,9 +237,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0029_remove_document_collection_archiving.sql"),
         rebuilds_tables: false,
     },
+    Migration {
+        version: 30,
+        name: "generation_operation_outcomes",
+        checksum: "c455d1673841bf499375f80f8ce8daeb234cd3ba74eddcc105981a8ec4bdf472",
+        sql: include_str!("../migrations/0030_generation_operation_outcomes.sql"),
+        rebuilds_tables: false,
+    },
 ];
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 29;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 30;
 
 #[derive(Clone)]
 pub struct Database {
@@ -977,3 +984,7 @@ mod entry_tests;
 #[cfg(test)]
 #[path = "database/image_source_migration_tests.rs"]
 mod image_source_migration_tests;
+
+#[cfg(test)]
+#[path = "database/generation_operation_migration_tests.rs"]
+mod generation_operation_migration_tests;

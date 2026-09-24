@@ -27,6 +27,10 @@ _OUTCOME_SPEC = importlib.util.spec_from_file_location(
     "ostudy_generation_outcomes", Path(__file__).with_name("generation_outcomes.py"))
 _OUTCOMES = importlib.util.module_from_spec(_OUTCOME_SPEC)
 _OUTCOME_SPEC.loader.exec_module(_OUTCOMES)
+_OPERATION_SPEC = importlib.util.spec_from_file_location(
+    "ostudy_generation_operations", Path(__file__).with_name("generation_operations.py"))
+_OPERATIONS = importlib.util.module_from_spec(_OPERATION_SPEC)
+_OPERATION_SPEC.loader.exec_module(_OPERATIONS)
 
 
 def default_database_path() -> Path:
@@ -312,6 +316,9 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         operation_results.append(values)
 
     operation = data.get("operation")
+    operation_records = data.get("operationRecords")
+    if operation_records is None and isinstance(operation, dict):
+        operation_records = [operation]
     wall_clock_ms = None
     if isinstance(operation, dict):
         started = operation.get("startedAt")
@@ -331,6 +338,8 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
         "operations": operation_results,
         "localReuse": data.get("localReuse", []),
         "nativeOutcomes": _OUTCOMES.summarize(requests),
+        "operationRecords": operation_records,
+        "operationOutcomes": _OPERATIONS.summarize(operation_records, requests),
         "payloadByteDiagnostics": payload_diagnostics,
         "largestReportedInputRequests": largest_input,
         "largestReportedOutputRequests": largest_output,
@@ -362,7 +371,8 @@ def read_database(path: Path, operation: str | None, all_operations: bool) -> di
                 "SELECT id FROM generation_operations ORDER BY started_at DESC,id DESC LIMIT 1").fetchone()
             operation = row[0] if row else None
         if not all_operations and operation is None:
-            return {"operationId": None, "operation": None, "requests": [], "localReuse": []}
+            return {"operationId": None, "operation": None, "requests": [], "localReuse": [],
+                    "operationRecords": []}
         operation_row = None
         if not all_operations:
             operation_row = connection.execute("""
@@ -389,6 +399,7 @@ def read_database(path: Path, operation: str | None, all_operations: bool) -> di
         """, args).fetchall()
         return {"operationId": "all" if all_operations else operation,
                 "operation": dict(operation_row) if operation_row is not None else None,
+                "operationRecords": _OPERATIONS.read_records(connection, operation, all_operations),
                 "requests": [dict(row) for row in rows],
                 "localReuse": [dict(row) for row in reuse]}
 
@@ -442,6 +453,7 @@ def render(report: dict[str, Any]) -> str:
                   "Usage complete: " + ("yes" if report["usageComplete"] else "NO; percentages cover reported usage only"),
                   *report["notes"]])
     lines.extend(_OUTCOMES.render(report["nativeOutcomes"]))
+    lines.extend(_OPERATIONS.render(report["operationOutcomes"]))
     return "\n".join(lines)
 
 

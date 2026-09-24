@@ -15,6 +15,7 @@ use super::{Context, RecoveryReason};
 use crate::error::CommandError;
 
 pub(crate) mod authoring;
+pub(crate) mod operation;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -298,6 +299,7 @@ fn write(context: &Context, id: &str, path: &str, value: Value) {
 }
 
 pub(super) fn reconcile_in(connection: &Connection, now: i64) -> Result<(), CommandError> {
+    operation::reconcile_in(connection, now)?;
     connection
         .execute(
             "UPDATE generation_requests SET payload_bytes_json=json_set(payload_bytes_json,
