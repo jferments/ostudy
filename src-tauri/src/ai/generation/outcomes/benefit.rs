@@ -267,7 +267,7 @@ fn observations(
             },
         )
         .map_err(CommandError::database)?;
-    let mut roots = BTreeSet::new();
+    let mut roots = BTreeSet::<String>::new();
     for row in rows {
         let (previous_id, before, after) = row.map_err(CommandError::database)?;
         let (Some(before), Some(after)) = (decode(&before), decode(&after)) else {
