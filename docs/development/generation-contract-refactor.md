@@ -407,9 +407,12 @@ durable job/plan identity proves publication; a lingering committing/interrupted
 job projection is reconciled to succeeded and the exact guide is returned.
 Initial flashcard retry likewise requires the committed generated deck,
 successful generation job, document-deck provenance and its immutable generation
-report before returning the original deck/count receipt. A deck without that
-matching success receipt is never guessed as a successful operation. Failed or
-rolled-back publication therefore still follows the normal retry path.
+report before returning the original deck/count receipt. Both lost-acknowledgment
+paths also write a content-free generation reuse event under the current durable
+operation, so a zero-provider-request recovery is measurable rather than inferred.
+A deck or guide without its matching success receipt is never guessed as a
+successful operation. Failed or rolled-back publication therefore still follows
+the normal retry path.
 
 Together these changes make recovery task-shaped: deterministic native fixes
 first, small coherent annotation repair only when demanded, lossless request

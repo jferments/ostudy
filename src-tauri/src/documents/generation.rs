@@ -117,6 +117,18 @@ async fn retry_pdf_flashcard_generation_inner(
 ) -> Result<DocumentGenerationResultDto, CommandError> {
     crate::ai::generation::outcomes::operation::bind_document(database);
     if let Some(result) = committed_initial_generation(database, &input.document_id)? {
+        let reuse_key = crate::ai::generation::hash(
+            format!(
+                "committed-flashcard-publication-v1|{}|{}",
+                input.document_id, result.deck_id
+            )
+            .as_bytes(),
+        );
+        crate::task_cancellation::record_current_generation_reuse(
+            database,
+            "flashcard_publication",
+            &reuse_key,
+        );
         crate::logging::info_target(
             "documents.generation",
             "document_generation_commit_reused",

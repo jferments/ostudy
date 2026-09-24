@@ -362,6 +362,16 @@ pub(crate) fn generation_context(
         .unwrap_or(Ok(None))
 }
 
+pub(crate) fn record_current_generation_reuse(
+    database: &crate::database::Database,
+    stage: &str,
+    cache_key: &str,
+) {
+    if let Ok(Some(context)) = generation_context(database) {
+        context.reused(stage, cache_key);
+    }
+}
+
 pub(crate) fn current_signal() -> Option<CancellationSignal> {
     CURRENT_DOCUMENT_TASK
         .try_with(|task| task.signal.clone())
@@ -634,6 +644,48 @@ impl MobileForegroundExecution {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn document_generation_local_reuse_receipt_completes_without_provider_requests() {
+        let database = crate::database::Database::open_in_memory().unwrap();
+        let document_id = "a".repeat(32);
+        let cache_key = crate::ai::generation::hash(b"published artifact receipt");
+        let scoped = database.clone();
+        run_document_task(&document_id, async move {
+            record_current_generation_reuse(&scoped, "guide_publication", &cache_key);
+            Ok::<(), CommandError>(())
+        })
+        .await
+        .unwrap();
+
+        database
+            .with_connection(|connection| {
+                let operation: (String, i64) = connection
+                    .query_row(
+                        "SELECT state,
+                                (SELECT COUNT(*) FROM generation_requests
+                                 WHERE operation_id = generation_operations.id)
+                         FROM generation_operations",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(operation, ("complete".to_string(), 0));
+                let reuse: (String, String, i64) = connection
+                    .query_row(
+                        "SELECT stage,cache_key,COUNT(*) FROM generation_reuse_events
+                         GROUP BY stage,cache_key",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(reuse.0, "guide_publication");
+                assert_eq!(reuse.1.len(), 64);
+                assert_eq!(reuse.2, 1);
+                Ok(())
+            })
+            .unwrap();
+    }
 
     #[test]
     fn document_task_wrapper_boxes_large_child_future_before_polling() {

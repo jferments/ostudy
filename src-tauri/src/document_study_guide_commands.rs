@@ -218,6 +218,18 @@ pub(crate) async fn generate_document_study_guide_from_plan(
         maximum_images,
     } = input;
     if let Some(guide_id) = recover_published_study_guide_job(database, document_id, &plan.id)? {
+        let reuse_key = crate::ai::generation::hash(
+            format!(
+                "committed-study-guide-publication-v1|{document_id}|{}|{guide_id}",
+                plan.id
+            )
+            .as_bytes(),
+        );
+        crate::task_cancellation::record_current_generation_reuse(
+            database,
+            "guide_publication",
+            &reuse_key,
+        );
         crate::logging::info_target(
             "ai.document.study_guide",
             "study_guide_published_job_reconciled",
