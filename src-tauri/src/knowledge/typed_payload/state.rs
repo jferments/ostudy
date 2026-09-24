@@ -9,6 +9,8 @@ use crate::{
     knowledge::contracts::{hash, is_hash, KnowledgeKind},
 };
 
+mod repair;
+
 const MAX_RETAINED_DRAFT_BYTES: usize = 12_000;
 
 /// The validated variant has the exact historical serialization. A deferred
@@ -57,7 +59,7 @@ impl TypedPayload {
                     return Err(error);
                 }
                 let encoded = value.to_string();
-                Ok(Self::Deferred(Box::new(DeferredAnnotation {
+                let deferred = Self::Deferred(Box::new(DeferredAnnotation {
                     deferred_version: 1,
                     kind,
                     statement_hash: hash(statement),
@@ -65,7 +67,8 @@ impl TypedPayload {
                     draft_hash: hash(&encoded),
                     draft_bytes: encoded.len(),
                     draft: (encoded.len() <= MAX_RETAINED_DRAFT_BYTES).then_some(value),
-                })))
+                }));
+                Ok(deferred.repair_locally(statement, kind)?.unwrap_or(deferred))
             }
         }
     }
@@ -81,6 +84,32 @@ impl TypedPayload {
             Self::Validated(payload) => payload.validate(statement, kind),
             Self::Deferred(deferred) => deferred.validate(statement, kind),
         }
+    }
+
+    /// Resolve only an unambiguous representation defect in a retained draft.
+    /// Stored bindings are checked first; strict admission checks the entire
+    /// candidate afterwards. Neither failure nor ambiguity mutates the debt.
+    pub(crate) fn repair_locally(
+        &self,
+        statement: &str,
+        kind: KnowledgeKind,
+    ) -> Result<Option<Self>, CommandError> {
+        self.validate(statement, kind)?;
+        let Self::Deferred(deferred) = self else {
+            return Ok(None);
+        };
+        if !matches!(
+            deferred.rule.as_str(),
+            "knowledge_annotation_malformed"
+                | "knowledge_annotation_occurrence_out_of_range"
+        ) {
+            return Ok(None);
+        }
+        Ok(deferred
+            .draft
+            .as_ref()
+            .and_then(|draft| repair::draft(draft, statement, kind))
+            .map(Self::Validated))
     }
 
     pub(crate) fn deferred_rule(&self) -> Option<&str> {
