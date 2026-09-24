@@ -15,6 +15,7 @@ use super::{Context, RecoveryReason};
 use crate::error::CommandError;
 
 pub(crate) mod authoring;
+pub(super) mod benefit;
 pub(crate) mod operation;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]

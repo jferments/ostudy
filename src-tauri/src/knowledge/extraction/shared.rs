@@ -39,30 +39,35 @@ where
         &identity,
         subscriber,
         |signal| async move {
-            // A failed local save returns before invoking the provider. A later
-            // attempt reopens the newest receipt rather than replaying a stale
-            // snapshot or purchasing another interpretation.
-            local::restore(input, &signal)?;
             let mut observed = crate::ai::generation::outcomes::Task::new(
                 input.diagnostics,
                 "knowledge_extraction",
                 input.logical_key,
             );
-            let result = observed
-                .scope(run_window_scoped(
-                    WindowRunContext {
-                        database: input.database,
-                        sources: input.sources,
-                        contract: input.contract,
-                        catalog: input.catalog,
-                        cancellation: &signal,
-                        retry_partial: input.retry_partial,
-                        diagnostics: input.diagnostics,
-                        logical_key: input.logical_key,
-                    },
-                    call,
-                ))
-                .await;
+            // Isolate local checkpoint observations from an enclosing authoring
+            // task. A failed save returns before any provider request, while a
+            // resumed attempt reads the newest receipt rather than a stale copy.
+            let restored = observed.scope(async { local::restore(input, &signal) }).await;
+            let result = match restored {
+                Ok(()) => {
+                    observed
+                        .scope(run_window_scoped(
+                            WindowRunContext {
+                                database: input.database,
+                                sources: input.sources,
+                                contract: input.contract,
+                                catalog: input.catalog,
+                                cancellation: &signal,
+                                retry_partial: input.retry_partial,
+                                diagnostics: input.diagnostics,
+                                logical_key: input.logical_key,
+                            },
+                            call,
+                        ))
+                        .await
+                }
+                Err(error) => Err(error),
+            };
             observed.finish(&result);
             result.map(|_| ())
         },

@@ -18,6 +18,57 @@ fn block<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
     tail.split_once(&end).map(|(body, _)| body.trim())
 }
 
+// Source IDs vary between sibling windows without changing their contract.
+// Normalize only identity-valued enums in this private comparison projection;
+// their cardinality and repeated identities remain, as do every semantic enum,
+// field constraint and provider control. Actual prompts/schemas are untouched.
+fn contract_shape(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(object.iter().map(|(key, value)| {
+            let normalized = if key == "enum" {
+                identity_enum(value).unwrap_or_else(|| contract_shape(value))
+            } else {
+                contract_shape(value)
+            };
+            (key.clone(), normalized)
+        }).collect()),
+        Value::Array(values) => Value::Array(values.iter().map(contract_shape).collect()),
+        value => value.clone(),
+    }
+}
+
+fn identity_enum(value: &Value) -> Option<Value> {
+    let values = value.as_array()?;
+    if values.is_empty() {
+        return None;
+    }
+    let mut identities = std::collections::BTreeMap::new();
+    let mut normalized = Vec::with_capacity(values.len());
+    for value in values {
+        let id = value.as_str()?;
+        if !matches!(id.len(), 32 | 64) || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        let next = identities.len();
+        let ordinal = *identities.entry(id).or_insert(next);
+        normalized.push(json!({"nativeIdentityBytes": id.len(), "ordinal": ordinal}));
+    }
+    Some(Value::Array(normalized))
+}
+
+fn system_contract(system: &str) -> String {
+    let Some((prefix, tail)) = system.split_once("<ostudy-output-schema>") else {
+        return system.to_string();
+    };
+    let Some((schema, suffix)) = tail.split_once("</ostudy-output-schema>") else {
+        return system.to_string();
+    };
+    let Ok(schema) = serde_json::from_str::<Value>(schema.trim()) else {
+        return system.to_string();
+    };
+    format!("{prefix}<ostudy-output-schema>{}</ostudy-output-schema>{suffix}", contract_shape(&schema))
+}
+
 pub(super) fn measure(body: &Value) -> Result<Value, CommandError> {
     let mut system = String::new();
     let mut user = String::new();
@@ -50,6 +101,19 @@ pub(super) fn measure(body: &Value) -> Result<Value, CommandError> {
             _ => {}
         }
     }
+    // Compare recovery strategies without storing source/user text. All wire
+    // controls and the full system/schema contract participate; operation-only
+    // routing IDs and variable source payloads do not.
+    let controls = body.as_object().map(|body| {
+        body.iter()
+            .filter(|(key, _)| !matches!(key.as_str(), "messages" | "input" | "session_id"))
+            .map(|(key, value)| (key, contract_shape(value)))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    });
+    let contract = super::hash(
+        &serde_json::to_vec(&(system_contract(&system), controls))
+            .map_err(CommandError::serialization)?,
+    );
     let schema_text = block(&system, "ostudy-output-schema").map_or(0, str::len);
     let mut user_parts = Map::new();
     if let Some(catalog) =
@@ -99,6 +163,7 @@ pub(super) fn measure(body: &Value) -> Result<Value, CommandError> {
     );
     Ok(json!({
         "schemaVersion": 1,
+        "requestContractFingerprint": contract,
         "wireRequestHash": super::hash(&serde_json::to_vec(body).map_err(CommandError::serialization)?),
         "serializedRequestBytes": serde_json::to_vec(body).map_err(CommandError::serialization)?.len(),
         "systemInstructionBytes": system.len().saturating_sub(schema_text),

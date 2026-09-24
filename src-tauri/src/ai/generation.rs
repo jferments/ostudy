@@ -159,13 +159,17 @@ impl Context {
     ) -> bool {
         let request_key = self.logical_request_key(stage, logical_key);
         let ledger_key = format!("{stage}:{request_key}");
-        let allowed = match self.recovery.lock() {
-            Ok(mut ledger) => ledger.reserve(ledger_key, reason),
-            Err(_) => false,
-        };
+        let ineffective = outcomes::benefit::stop(self, stage, &request_key, reason, trigger_code);
+        let allowed = !ineffective
+            && match self.recovery.lock() {
+                Ok(mut ledger) => ledger.reserve(ledger_key, reason),
+                Err(_) => false,
+            };
         let event = if allowed {
             crate::task_cancellation::record_current_provider_retry(reason.as_str());
             "generation_recovery_reserved"
+        } else if ineffective {
+            "generation_recovery_ineffective"
         } else {
             "generation_recovery_budget_exhausted"
         };

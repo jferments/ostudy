@@ -119,7 +119,10 @@ async fn document_shared_annotation_only_repair_persists_without_changing_core_o
             grounding
         );
         assert_eq!(saved.accepted[0].content.statement, "Sides = 3");
-        assert_eq!(saved.accepted[0].content.qualifications, ["For a triangle."]);
+        assert_eq!(
+            saved.accepted[0].content.qualifications,
+            ["For a triangle."]
+        );
     }
 }
 
@@ -223,5 +226,53 @@ async fn document_shared_failed_annotation_save_rolls_back_and_retries_without_p
         })
         .unwrap();
     resume(input).await;
+    assert!(load(input).deferred_annotations().is_empty());
+}
+
+#[tokio::test]
+async fn document_local_repair_does_not_attribute_its_save_to_an_enclosing_provider_request() {
+    use crate::ai::generation::{outcomes, Operation};
+
+    let (database, source, _, _) = crate::knowledge::authoring::tests::fixture();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    let contract = hash("isolated local annotation repair");
+    let input = window(&database, &sources, &catalog, &contract);
+    retained(input);
+    let operation = Operation::begin(&database, None, None, None, "local_repair_test").unwrap();
+    let context = operation.context();
+    let key = hash("enclosing guide request");
+    let mut parent = outcomes::Task::new(Some(&context), "guide_authoring", Some(&key));
+    let result = parent
+        .scope(async {
+            let mut attempt = context.start_attempt(
+                "guide_authoring",
+                &json!({"model": "fixture", "max_tokens": 3200, "messages": []}),
+                Some(&key),
+                "fixture",
+            )?;
+            attempt.response(&json!({"usage": {"prompt_tokens": 10, "completion_tokens": 2}}));
+            super::super::run(input, &CancellationSignal::new(), |_| async {
+                panic!("local repair must not request a model")
+            })
+            .await
+        })
+        .await;
+    parent.finish(&result);
+    result.unwrap();
+    database
+        .with_connection(|connection| {
+            let measured: Option<String> = connection
+                .query_row(
+                    "SELECT json_type(payload_bytes_json, '$.nativeCheckpoint')
+                     FROM generation_requests WHERE stage='guide_authoring'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            assert!(measured.is_none());
+            Ok(())
+        })
+        .unwrap();
     assert!(load(input).deferred_annotations().is_empty());
 }
