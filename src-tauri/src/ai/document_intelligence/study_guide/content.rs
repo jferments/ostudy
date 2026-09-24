@@ -638,4 +638,3 @@ fn object_schema(required: &[&str], properties: Value) -> Value {
         "properties": properties
     })
 }
-
