@@ -317,12 +317,13 @@ stable schema aliases, recall availability, forged-current-hash cache rejection,
 and the final publication boundary. Existing recovery-outcome fixtures now use an
 invalid core rather than an optional annotation to continue testing paid repair.
 
-This is not automatic factual entailment checking, semantic deduplication, or a
-new annotation repair scheduler. Targeted repairs of deferred annotations and
-broader representation simplification remain AC-05. Live-provider quality/cost
-acceptance remains AC-06; mock call-count reductions are not billing measurements.
+This is not automatic factual entailment checking or semantic deduplication.
+Demand-driven annotation repair, broader request-shape simplification and
+benefit-aware recovery are implemented under AC-05 below. Live-provider
+quality/cost evidence remains the AC-06 acceptance boundary; mock call-count
+reductions are not billing measurements.
 
-## AC-04: first-pass feasibility and lossless collection planning
+## AC-04: first-pass feasibility and lossless authoring planning
 
 Guide first passes receive the headroom previously reserved for repair: 3,200
 visible tokens for document topics and up to 6,144 for collection sections. The
@@ -335,61 +336,122 @@ The shared authoring evidence projection follows exact native text ranges and
 linked structural context. Whole tables, captions, footnotes and ambiguous
 structures retain their required context; the stored source is never clipped.
 
-`study_materials/composition/planning.rs` now compiles collection windows before
-section-cache identities, whole-guide manifests and progress totals are allocated.
-It uses the same complete request constructor as authoring. A context-budget
-failure bisects the unit sequence into nonempty children, preserving every unit,
-qualification, evidence dependency and topic role. For N units, binary planning
-visits at most 2N-1 candidates. The previous 75-percent truncation both dropped the
-tail and failed to decrease two- or three-unit inputs; that loop is removed.
+Collection composition still compiles its windows before section-cache identities,
+whole-guide manifests and progress totals are allocated. In addition,
+`knowledge/authoring_plan.rs` now owns the same lossless preflight rule for
+document Study Guide and flashcard authoring. The actual first-pass request
+constructor and schema are preflighted before dispatch. A context-budget failure
+bisects the ordered retained-unit catalog into nonempty children. No knowledge
+unit, qualification, grounding reference, question policy or source identity is
+dropped to manufacture a request that fits.
 
-An already-fitting window keeps its existing block identity. Split keys bind the
-original block and the child's exact evidence fingerprint. Only an indivisible
-unit may try the smaller existing completion plans. If it still cannot fit, the
-operation fails explicitly before dispatch rather than silently omitting it.
-Cancellation and non-context errors are not treated as reasons to split. Successful
-children use the existing durable section checkpoints and final publication path.
+For N retained units the binary planner visits at most 2N-1 candidates. A
+singleton that still cannot fit fails explicitly before provider dispatch.
+Cancellation and non-context errors are never interpreted as split requests.
+Already-fitting requests keep one child and their existing logical work shape.
 
-Seven native document regressions cover finite planning, exact conservation,
-qualifications and structural context, stable child keys, explicit singleton
-failure, cancellation and empty inputs. These establish task conservation, not
-that a model necessarily explains every supplied unit. Generalized document/card
-repartitioning and objective-level teaching coverage are not claimed by this
-collection-planning increment.
+Split flashcard children share the original window recovery family and divide the
+existing card capacity into nonzero unit-weighted budgets; their generated cards
+are reassembled in native unit order before the ordinary provenance, curation and
+transactional publication path. Split Study Guide children share the topic
+recovery family and are merged locally: source-derived topic overview remains
+stable, structured arrays are order-preserving and exact-value deduplicated, and
+the merged support must validate against the complete original catalog. Final
+checkpoint identity is still the complete topic/window contract rather than an
+individual transport fragment.
 
-## AC-05a: parent-scoped recovery for planned child tasks
+Native regressions cover finite planning, exact unit conservation, singleton
+failure, non-context failure, budget conservation, recovery-family ownership and
+merged provenance. These tests establish task conservation and native admission;
+they do not claim that a model necessarily teaches every supplied objective.
+Objective coverage is reviewed explicitly in AC-06.
 
-`ai/generation/recovery.rs` registers native-owned recovery families before any
-child request starts. The collection planner uses the original section request
-key as root and the exact future child request keys as members. Children retain
-separate physical requests, attempt ordinals, usage and outcome linkage, but draw
-from the original root's existing maximum of two distinct recovery categories,
-with each category usable once. Existing parent reservations remain spent.
+## AC-05: demand-driven repair, benefit-aware recovery and publication reconciliation
 
-Registration is atomic and idempotent for the same family. A used child cannot be
-reparented to a fresh allowance; a registered root cannot become a child. One lock
-serializes concurrent reservations. Unrelated roots, stages and operations retain
-independent allowances. Denial does not admit invalid output, mark a partial guide
-complete, delete accepted siblings or authorize another source interpretation.
+Optional structured annotations remain independent of admitted core knowledge.
+`knowledge/annotation_demand.rs` authorizes provider repair only when the
+artifact actually requires structured/graded support: an interactive-only
+flashcard policy has no Recall fallback. Mixed or recall-capable authoring,
+Study Guide explanation and ordinary extraction do not buy annotation repair.
 
-Each new physical request carries a content-free `recoveryScope` in its existing
-payload diagnostics, including version, root task key and applicable limits. The
-ordinary JSON reporter preserves it. Historical missing records stay unobserved.
-This scope metadata is durable; the allowance counter remains operation-local,
-like the pre-existing policy. This is not a cross-restart budget ledger or a learned
-estimate that every permitted retry will improve quality.
+Demanded annotation repair runs after the shared core interpretation is durable.
+`knowledge/extraction/shared/annotations.rs` sends only bounded immutable-core
+targets and their exact evidence closure, never the failed annotation draft. It
+cannot rewrite statements, qualifications, titles or evidence selections.
+Returned replacement details must pass the complete native typed-payload
+validator before the checkpoint changes. Unambiguous occurrence-only defects are
+still repaired locally first. Provider repairs are batched rather than expanding
+the whole extraction window, independently committed siblings survive a revision
+race, and unresolved debt remains explicit.
 
-Seven native regressions cover spent parents, atomic registration, reparenting,
-concurrency, root/stage/operation isolation, invalid inputs and a real SQLite
-request/usage round trip. The corresponding Documents-screen test fixtures now
-explicitly supply the independent collection and artifact-job reads and reset
-mock implementations between tests; retry still has to run through its real UI
-and invoke the native start command. No product assertion or gate is skipped.
+The annotation repair path stops changing shape rather than paying indefinitely:
+two no-gain batches with the same unresolved rule signature stop the remaining
+same strategy. More generally, `ai/generation/outcomes/benefit.rs` evaluates
+comparable same-contract sibling recoveries using committed native checkpoints or
+complete candidate-admission evidence. Two independent no-gain roots suppress a
+later identical ContractRepair strategy. Missing linkage, missing measurements,
+different provider/model/contract signatures, or partially observed guide output
+never become invented zero gain. A measured beneficial sibling prevents this
+suppression. Hard per-task recovery limits remain authoritative.
 
-Demand-driven deferred-annotation repair, recovery decisions based on measured
-benefit beyond these hard limits, broader representation simplification and the
-remaining local-publication recovery paths are unfinished AC-05 work. The existing
-targeted guide-field repair is a foundation, not completion of that broader stage.
+`ai/generation/recovery.rs` binds planned child request keys to their original
+logical root before dispatch. Children retain separate physical request IDs,
+attempt ordinals, usage and outcome linkage, but cannot mint new retry allowances.
+Registration is atomic and idempotent for the same family; used children cannot
+be reparented and nested roots cannot reset spent budget. Each physical request
+retains content-free recovery-scope diagnostics.
+
+Local publication recovery now closes the lost-acknowledgment boundary without
+another model request. A Study Guide retry first looks for an active guide whose
+durable job/plan identity proves publication; a lingering committing/interrupted
+job projection is reconciled to succeeded and the exact guide is returned.
+Initial flashcard retry likewise requires the committed generated deck,
+successful generation job, document-deck provenance and its immutable generation
+report before returning the original deck/count receipt. A deck without that
+matching success receipt is never guessed as a successful operation. Failed or
+rolled-back publication therefore still follows the normal retry path.
+
+Together these changes make recovery task-shaped: deterministic native fixes
+first, small coherent annotation repair only when demanded, lossless request
+partitioning when representation size is the problem, same-strategy suppression
+when comparable native evidence shows no benefit, and durable local receipt reuse
+when the provider work already committed.
+
+## AC-06: quality, coverage, latency and token acceptance
+
+The source implementation includes a read-only, hash-bound acceptance harness at
+`scripts/generation-contract-acceptance.py`, with behavioral coverage in
+`tests/scripts/test_generation_contract_acceptance.py` and operator procedure in
+[generation-contract-acceptance.md](generation-contract-acceptance.md).
+
+The comparator requires paired baseline/candidate evidence over the same source
+bytes and configuration. Complete acceptance spans textbook material, sparse
+slides, tables, numeric/qualified facts, cross-page material, assessments, images
+and collections, and includes both fresh and checkpoint-resume regimes. Cache
+state is recorded separately so a cold run is never silently compared with a warm
+run.
+
+Each run is bound to a full Git SHA, source/configuration hashes, one generation
+operation, raw usage export and exact published artifact bytes. Human review is
+bound to those artifact hashes and must separately pass factual support,
+preserved qualifications, useful coverage, readability, answer-key correctness,
+artifact publication and every declared learning objective. Missing artifacts,
+unknown usage, incomplete request accounting, failed/interrupted operations, or
+unknown availability remain incomplete; savings from another case cannot average
+them away.
+
+Token comparison sums provider-reported input and output once, keeping reasoning
+and cached-input fields as subsets. Completion latency uses operation bounds and
+first-usable latency uses an explicit artifact-availability observation rather
+than provider response time. Every case must meet explicit manifest limits for
+tokens, completion latency and first-usable latency. The tool refuses synthetic
+evidence as live-provider acceptance and never opens a user library, invokes a
+provider, changes source, changes PR state or authorizes merge.
+
+AC-06 source tooling is therefore implemented and statically testable. The final
+real-provider measurements and human quality review remain intentionally
+human-required evidence; no unit test or synthetic fixture can truthfully replace
+them.
 
 ## Compatibility and non-goals
 
@@ -397,21 +459,20 @@ AC-01 through AC-02e do not change schema. AC-02f adds migration 30, so a librar
 opened by this build requires a schema-30-capable build afterwards; do not
 manually downgrade its schema metadata. Preserve a backup before testing schema
 changes. AC-03 adds a versioned deferred annotation representation within existing
-JSON storage, not a SQL migration. Older binaries do not understand that new state;
-do not downgrade an already-updated library. Validated annotation bytes, absent
-annotations and previously compatible source receipts remain readable unchanged.
+JSON storage, not a SQL migration. Older binaries do not understand that new
+state; do not downgrade an already-updated library. Validated annotation bytes,
+absent annotations and previously compatible source receipts remain readable
+unchanged.
 
-AC-04 changes guide request planning as described above; provider/model selection,
-source identities and extraction checkpoint keys remain unchanged. Assessment
-schemas project annotation capabilities; native admission remains authoritative.
-Retained source knowledge is not cleared. Changes to an admitted unit's actual
-content naturally invalidate its dependent authored checkpoint through the existing
-content-hash check. Recovery scope adds no migration or provider request.
-Existing [parallel publication lifecycle corrections](parallel-artifact-lifecycle-regression.md)
-remain necessary and separate from the contract work.
+AC-04 through AC-05 add no migration and do not change provider/model selection,
+source identities or extraction checkpoint keys. Retained source knowledge is not
+cleared. Changes to admitted unit content naturally invalidate dependent authored
+checkpoints through existing content hashes. Recovery-scope and benefit evidence
+remain local diagnostics. Publication reconciliation upgrades only states already
+proven by durable artifact/provenance receipts; it cannot turn a rolled-back
+transaction into success.
 
-Remaining non-document AC-02 integrations, generalized document/card planning,
-the rest of AC-05 and AC-06 quality/cost acceptance are unfinished. There is no
-measured real-provider saving until a representative run is compared. Do not
-weaken assertions, drop qualifications, guess evidence or label partial material
-complete to reduce retry counts. No automatic merge is authorized.
+AC-06 adds only read-only comparison tooling and documentation. It does not
+establish a real-provider saving by itself. Full Linux/Android qualification,
+live-provider paired runs, rendered artifact review and manual accessibility
+acceptance remain distinct gates. No automatic merge is authorized.
