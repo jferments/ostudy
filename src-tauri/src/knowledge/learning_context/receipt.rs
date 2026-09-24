@@ -1,6 +1,8 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
+mod source_range;
+
 const MAX_ROWS: usize = 16384;
 
 pub(super) fn fingerprint(
@@ -218,8 +220,15 @@ pub(super) fn structures(
                 serde_json::from_str(&location).map_err(CommandError::serialization)?;
             let links: String = row.get(5).map_err(CommandError::database)?;
             let links: Value = serde_json::from_str(&links).map_err(CommandError::serialization)?;
+            // Native, revision-bound block locations are planning metadata, not
+            // model-authored evidence. Repeated text has no unique range.
+            let source_range = source_range::unique(&source.text, &block_text).map(
+                |(start, end)| json!({"version":1,"sourceHash":source.content_hash,
+                    "startByte":start,"endByte":end}),
+            );
             let value = json!({"sourceId":source.id,"occurrenceId":id,"payloadHash":sha,
-                "payload":payload,"location":location,"links":links});
+                "payload":payload,"location":location,"links":links,
+                "sourceRange":source_range});
             let size = serde_json::to_vec(&value)
                 .map_err(CommandError::serialization)?
                 .len();

@@ -1,13 +1,16 @@
 //! Request-only projection of preparation metadata. A collection's complete
 //! evidence store is not the context of every individual authoring window.
-//! Keep all structures for the selected claims' primary and supporting sources;
-//! never mutate persisted evidence or clip the structure of an admitted table.
+//! Select whole structures by native evidence ranges and their linked context.
+//! Ambiguous/legacy locations retain the complete selected-source view; persisted
+//! evidence and the structure of an admitted table are never clipped.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 
 use super::KnowledgeCatalog;
+
+mod dependencies;
 
 fn selected_sources(catalog: &KnowledgeCatalog) -> BTreeSet<&str> {
     let mut sources = BTreeSet::new();
@@ -27,7 +30,7 @@ fn selected_sources(catalog: &KnowledgeCatalog) -> BTreeSet<&str> {
 
 fn selected_structures(catalog: &KnowledgeCatalog) -> Vec<&Value> {
     let sources = selected_sources(catalog);
-    catalog
+    let candidates = catalog
         .preparation
         .evidence_structures
         .iter()
@@ -37,7 +40,8 @@ fn selected_structures(catalog: &KnowledgeCatalog) -> Vec<&Value> {
                 .and_then(Value::as_str)
                 .is_some_and(|id| sources.contains(id))
         })
-        .collect()
+        .collect();
+    dependencies::select(catalog, candidates)
 }
 
 pub(super) fn preparation(
@@ -60,6 +64,7 @@ pub(super) fn preparation(
                 }
                 object.remove("occurrenceId");
                 object.remove("payloadHash");
+                object.remove("sourceRange");
             }
             compact
         })
