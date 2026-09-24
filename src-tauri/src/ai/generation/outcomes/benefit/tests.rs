@@ -329,8 +329,8 @@ fn document_recovery_contract_matches_real_extraction_schemas_without_equating_s
         ));
         request
     };
-    let first_request = request(&[first.clone()]);
-    let second_request = request(&[second.clone()]);
+    let first_request = request(std::slice::from_ref(&first));
+    let second_request = request(std::slice::from_ref(&second));
     let fingerprint =
         |request: &Value| payload::measure(request).unwrap()["requestContractFingerprint"].clone();
     assert_eq!(fingerprint(&first_request), fingerprint(&second_request));
