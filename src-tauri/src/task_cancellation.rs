@@ -649,6 +649,21 @@ mod tests {
     async fn document_generation_local_reuse_receipt_completes_without_provider_requests() {
         let database = crate::database::Database::open_in_memory().unwrap();
         let document_id = "a".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                             id,title,original_filename,mime_type,byte_size,sha256,
+                             source_relative_path,lifecycle_state,created_at,updated_at
+                         ) VALUES (?1,'Fixture','fixture.pdf','application/pdf',1,?2,
+                                   'documents/fixture/fixture.pdf','ready',1,1)",
+                        rusqlite::params![document_id, "b".repeat(64)],
+                    )
+                    .map_err(CommandError::database)?;
+                Ok(())
+            })
+            .unwrap();
         let cache_key = crate::ai::generation::hash(b"published artifact receipt");
         let scoped = database.clone();
         run_document_task(&document_id, async move {
