@@ -143,7 +143,9 @@ fn document_operation_unsafe_error_codes_and_device_transfer_do_not_leak_content
 #[tokio::test]
 async fn document_operation_real_task_owner_captures_failure_before_any_provider_request() {
     let database = Database::open_in_memory().unwrap();
-    let document_id = crate::util::generate_id().unwrap();
+    let document_id = database
+        .with_connection(|connection| crate::util::generate_id(connection))
+        .unwrap();
     database
         .with_connection(|connection| {
             connection
