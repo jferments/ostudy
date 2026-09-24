@@ -19,7 +19,8 @@ pub(crate) fn partition_catalog(
         return Ok(vec![catalog.clone()]);
     }
 
-    let mut pending = vec![0..catalog.units.len()];
+    let mut pending = Vec::<Range<usize>>::with_capacity(catalog.units.len());
+    pending.push(0..catalog.units.len());
     let mut accepted = Vec::<(usize, KnowledgeCatalog)>::new();
     let mut visited = 0_usize;
     let maximum_visits = catalog.units.len().saturating_mul(2).saturating_sub(1);
