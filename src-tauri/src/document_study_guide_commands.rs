@@ -26,7 +26,8 @@ use crate::{
     },
     document_study_guides::{
         discard_study_guide_overlay, load_active_document_study_guide, load_document_study_guide,
-        save_study_guide_overlay, DocumentStudyGuide, SaveStudyGuideOverlayInput, StudyGuideOverlay,
+        save_study_guide_overlay, DocumentStudyGuide, SaveStudyGuideOverlayInput,
+        StudyGuideOverlay,
     },
     document_topic_links::{load_topic_card_ids, load_topic_card_projection, TopicCardProjection},
     document_visual_evidence::load_locator_images,
@@ -216,9 +217,7 @@ pub(crate) async fn generate_document_study_guide_from_plan(
         chunks,
         maximum_images,
     } = input;
-    if let Some(guide_id) =
-        recover_published_study_guide_job(database, document_id, &plan.id)?
-    {
+    if let Some(guide_id) = recover_published_study_guide_job(database, document_id, &plan.id)? {
         crate::logging::info_target(
             "ai.document.study_guide",
             "study_guide_published_job_reconciled",

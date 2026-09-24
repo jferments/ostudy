@@ -496,8 +496,8 @@ fn merge_topic_sections(
     } else {
         topic.summary.clone()
     };
-    let mut merged =
-        serde_json::to_value(StudyGuideSectionContent::default()).map_err(CommandError::serialization)?;
+    let mut merged = serde_json::to_value(StudyGuideSectionContent::default())
+        .map_err(CommandError::serialization)?;
     merged["overview"] = serde_json::Value::String(overview);
     for field in [
         "keyPoints",

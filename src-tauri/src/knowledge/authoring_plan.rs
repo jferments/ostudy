@@ -57,7 +57,10 @@ pub(crate) fn partition_catalog(
         .into_iter()
         .map(|(_, catalog)| catalog)
         .collect::<Vec<_>>();
-    let conserved = planned.iter().map(|catalog| catalog.units.len()).sum::<usize>();
+    let conserved = planned
+        .iter()
+        .map(|catalog| catalog.units.len())
+        .sum::<usize>();
     if conserved != catalog.units.len() {
         return Err(CommandError::new(
             "ai_document_context_budget",
@@ -134,11 +137,7 @@ mod tests {
                 unit
             })
             .collect();
-        catalog.document_core_units = catalog
-            .units
-            .iter()
-            .map(|unit| unit.id.clone())
-            .collect();
+        catalog.document_core_units = catalog.units.iter().map(|unit| unit.id.clone()).collect();
 
         let mut visits = 0_usize;
         let planned = partition_catalog(&catalog, |candidate| {
@@ -157,7 +156,11 @@ mod tests {
                 .iter()
                 .flat_map(|part| part.units.iter().map(|unit| unit.id.clone()))
                 .collect::<Vec<_>>(),
-            catalog.units.iter().map(|unit| unit.id.clone()).collect::<Vec<_>>()
+            catalog
+                .units
+                .iter()
+                .map(|unit| unit.id.clone())
+                .collect::<Vec<_>>()
         );
         assert!(planned.iter().all(|part| part.units.len() <= 2));
         assert!(planned.iter().all(|part| {
@@ -205,7 +208,10 @@ mod tests {
         assert!(budgets.iter().all(|budget| *budget >= 1));
         assert!(budgets[0] >= budgets[1]);
         catalog.units.clear();
-        assert_eq!(allocate_nonzero_budgets(0, &[]).unwrap(), Vec::<usize>::new());
+        assert_eq!(
+            allocate_nonzero_budgets(0, &[]).unwrap(),
+            Vec::<usize>::new()
+        );
     }
 
     #[test]
