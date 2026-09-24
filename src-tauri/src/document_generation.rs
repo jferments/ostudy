@@ -374,9 +374,7 @@ async fn generation_slot(
         );
 
         let mut cards = Vec::new();
-        for (index, (knowledge, maximum_cards)) in
-            partitions.iter().zip(budgets).enumerate()
-        {
+        for (index, (knowledge, maximum_cards)) in partitions.iter().zip(budgets).enumerate() {
             let mut child_task = root_task.clone();
             child_task.diagnostic_window_key = Some(if child_keys.len() == 1 {
                 root_key.clone()
