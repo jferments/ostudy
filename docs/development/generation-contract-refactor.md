@@ -66,20 +66,20 @@ structural bounds, knowledge-kind mismatch, numeric/operator token splitting,
 invalid quantity order/operator/literal, dependency errors and persisted span or
 version failures no longer collapse into one indistinguishable cause.
 
-Extraction retains that rule in the existing rejected proposal `code` field.
-The revision-bound SQLite analysis receipt and targeted repair prompt preserve it.
-Content-free diagnostic reports keep `category = invalid_qualified_structure`
-for aggregation and add `rule` for the precise cause. Old receipts containing
-only the broad code still deserialize unchanged; the missing historical detail
-is not invented. Rule classification never parses provider prose or matches
-human-readable error messages, and diagnostic reports do not include draft text.
+Historical rejected proposals retain their rule in `code`. Under AC-03, an
+independently admitted core carries a deferred annotation with its precise rule
+instead of being a rejected core proposal. The revision-bound SQLite receipt
+preserves this distinction. Content-free diagnostics expose deferred annotations
+separately; genuinely rejected cores still enter the targeted repair prompt.
+Old receipts containing only a broad error remain readable; local re-admission
+can determine a current rule from an actual retained draft, never from speculation.
+Rule classification does not parse provider prose or human-readable messages.
 
-The `document_` Fast regressions cover distinct rejection rules, actual SQLite
-checkpoint round trips, targeted-repair propagation, unchanged admitted siblings,
-legacy receipt serialization and valid repeated-phrase selection. Existing typed
-round-trip, quarantine and legacy tests now also run under the Fast filter.
-Numeric signs, strict/inclusive operators, finite values, process edges, evidence
-selection and all admission limits remain enforced.
+The `document_` Fast regressions cover distinct validation rules, real SQLite
+checkpoint round trips, preserved admitted siblings, legacy receipt serialization
+and valid repeated-phrase selection. Strict typed-shape tests retain numeric
+signs, strict/inclusive operators, finite values, process edges, evidence
+selection and every existing admission limit.
 
 ## AC-02b: request-linked extraction outcomes
 
@@ -132,8 +132,9 @@ a source-revision race whose failed commit must never claim saved knowledge.
 and collection-guide entry points through `ai/generation/outcomes/authoring.rs`.
 Curation attaches the same observer to each independently keyed batch, not the
 whole concurrently executing curation operation. Original request constructors
-still own stage attribution; prompts, schemas, native admission, retries and
-caller fallback policies are unchanged.
+still own stage attribution. This instrumentation does not change prompts,
+retries or caller fallback policies; AC-03 adds explicit annotation capability
+checks at assessment admission, checkpoint reuse and publication.
 
 The final observed request retains `nativeAuthoring` with a returned/failed state,
 its item kind (`cards`, `guide_sections` or `curation_selections`) and a returned
@@ -159,10 +160,8 @@ observer and real SQLite ledger with synthetic native results, not a live model
 or end-to-end factual-quality assessment.
 
 Operation-owner capture is described in AC-02f; non-document owners still need
-to adopt its result-aware completion boundary.
-Candidate admission now has the separate AC-02e record below. AC-03's independent
-optional-annotation admission has not been implemented: an invalid annotation
-still leaves its proposal pending rather than being silently dropped.
+to adopt its result-aware completion boundary. Candidate admission has the
+separate AC-02e record below.
 
 ## AC-02d: readable recovery evidence
 
@@ -205,8 +204,8 @@ Valid surplus cards not chosen by the existing selection policy are not rejected
 cards. An all-invalid response remains a failure with unknown selection, whereas
 a valid empty response has an observed zero selection. Malformed envelopes and
 responses over the hard limit do not falsely classify unexamined items as rejected.
-Original errors, accepted siblings, source associations, prompts, output budgets,
-retry eligibility and final import validation are unchanged.
+The observer preserves original errors, accepted siblings, source associations,
+output budgets and final import validation. It does not authorize recovery.
 
 `ai/generation/outcomes/authoring/candidates.rs` collects bounded content-free
 metadata and performs one best-effort diagnostic write after the parser returns.
@@ -263,21 +262,73 @@ Native regressions cover zero-request errors, the actual document task wrapper,
 terminal immutability, interrupted startup, diagnostic-write failure, sanitized
 codes, device-transfer removal, and migration/legacy preservation. Reporter
 regressions include a read-only SQLite/CLI round trip and zero-request export.
-No live provider is needed. Remaining non-document owner integrations and the
-AC-03 through AC-06 behavioral work are still unfinished.
+No live provider is needed. Remaining non-document owner integrations are separate
+from the AC-03 behavioral change below.
+
+## AC-03: independent core and annotation admission
+
+The extraction decoder first validates core content with no annotation: statement,
+qualifications, source authority and every evidence reference retain the existing
+checks. An invalid core is still rejected. Only after those checks pass does the
+strict typed-shape validator run. A known optional-annotation failure creates a
+native deferred record, not a rejected core and not a validated shape. Neither the
+statement nor its quantities, signs, qualifications or evidence is rewritten.
+
+`typed_payload/state.rs` keeps validated v1 payload serialization unchanged. Its
+disjoint deferred representation stores the original failure rule and binds the
+draft to the admitted statement and knowledge kind. Drafts up to 12,000 bytes are
+retained in the ordinary source-owned knowledge/checkpoint storage. Larger drafts
+retain an explicit fingerprint and byte count, not a fake structured payload.
+Stored bounded drafts must reproduce the recorded failure; corrupt validated
+payloads and unsupported versions cannot be reinterpreted as deferred state.
+
+A receipt with deferred annotations remains explicitly partial. That state alone
+does not authorize another whole-window provider request. Existing rejected core
+proposals and genuinely unaccounted sources still use bounded recovery. Historical
+annotation-rejected drafts can be re-admitted locally against the same current
+ordered evidence catalog; all core checks run again. Already valid knowledge and
+published learner artifacts are not reset.
+
+Authoring receives the original core and qualifications plus a compact deferred
+capability marker, never the failed annotation draft. Recall and guide explanation
+remain available. Conservatively, interactive assessment bindings cannot use a
+deferred unit: request schemas exclude those aliases without renumbering other
+units, and native new-response admission, checkpoint reuse and final transactional
+publication enforce the same rule. Unaffected units keep all permitted question
+families. A policy with no supported family has an explicit empty-result schema;
+first-pass task planning and policy-aware repartitioning remain AC-04.
+
+Regression coverage includes no-retry extraction, retained-draft local recovery,
+independent core/evidence rejection, checkpoint round trips and tamper rejection,
+unchanged validated serialization, strict numeric/process rules, prompt privacy,
+stable schema aliases, recall availability, forged-current-hash cache rejection,
+and the final publication boundary. Existing recovery-outcome fixtures now use an
+invalid core rather than an optional annotation to continue testing paid repair.
+
+This is not automatic factual entailment checking, semantic deduplication, or a
+new annotation repair scheduler. Targeted repairs of deferred annotations and
+broader representation simplification remain AC-05. Live-provider quality/cost
+acceptance remains AC-06; mock call-count reductions are not billing measurements.
 
 ## Compatibility and non-goals
 
 AC-01 through AC-02e do not change schema. AC-02f adds migration 30, so a library
 opened by this build requires a schema-30-capable build afterwards; do not
 manually downgrade its schema metadata. Preserve a backup before testing schema
-changes. Prompt versions, providers, completion ceilings, evidence identities and
-checkpoint contracts are unchanged. Retained source knowledge is not cleared,
-and already-paid results are not invalidated.
+changes. AC-03 adds a versioned deferred annotation representation within existing
+JSON storage, not a SQL migration. Older binaries do not understand that new state;
+do not downgrade an already-updated library. Validated annotation bytes, absent
+annotations and previously compatible source receipts remain readable unchanged.
+
+Providers, completion ceilings, source identities and extraction checkpoint keys
+are unchanged. New assessment schemas project annotation capabilities; native
+admission remains authoritative. Retained source knowledge is not cleared. Changes
+to an admitted unit's actual content naturally invalidate its dependent authored
+checkpoint through the existing content-hash check.
 Existing [parallel publication lifecycle corrections](parallel-artifact-lifecycle-regression.md)
 remain necessary and separate from the contract work.
 
-The remaining AC-02 integrations and AC-03 through AC-06 are unfinished. There is
-no measured real-provider saving until a representative run is compared.
+Remaining non-document AC-02 integrations and AC-04 through AC-06 are unfinished.
+There is no measured real-provider saving until a representative run is compared.
 Do not weaken assertions, drop qualifications, guess evidence or label partial
 material complete to reduce retry counts. No automatic merge is authorized.

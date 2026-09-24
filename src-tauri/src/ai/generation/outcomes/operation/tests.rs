@@ -93,7 +93,7 @@ fn document_operation_diagnostic_failure_does_not_change_the_original_result() {
         .unwrap();
     let result: Result<_, CommandError> = Ok("already committed elsewhere");
     operation.finish_result(&result);
-    assert_eq!(result.unwrap(), "already committed elsewhere");
+    assert!(matches!(result, Ok("already committed elsewhere")));
     assert_eq!(stored(&database, &id), ("running".into(), None));
     drop(operation);
     assert_eq!(stored(&database, &id), ("running".into(), None));

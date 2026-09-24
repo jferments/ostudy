@@ -52,10 +52,10 @@ async fn scenario(improve: bool) {
         calls.set(n+1);
         let value = if n==0 {
             let mut bad = unit("Other property");
-            bad["details"] = json!({});
+            bad["title"] = json!("");
             json!({"units":[unit("Sides"),bad],"noLearningSourceIds":[]})
         } else {
-            assert!(call.user.contains("knowledge_annotation_malformed"));
+            assert!(call.user.contains("invalid_unit_content"));
             json!({"repairs":[{"slot":1,"unit":if improve { unit("Other property") } else { Value::Null }}],
                 "additionalUnits":[],"noLearningSourceIds":[]})
         };
@@ -75,7 +75,7 @@ async fn scenario(improve: bool) {
     let rows = requests(&database);
     assert_eq!(rows.len(), 2);
     assert_eq!(
-        rows[0].1["nativeCheckpoint"]["after"]["rejectionRules"]["knowledge_annotation_malformed"],
+        rows[0].1["nativeCheckpoint"]["after"]["rejectionRules"]["invalid_unit_content"],
         1
     );
     assert_eq!(

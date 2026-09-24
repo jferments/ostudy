@@ -7,7 +7,9 @@ use serde_json::Value;
 use super::contracts::{bounded, KnowledgeKind, MAX_UNIT_STATEMENT_CHARS};
 use crate::error::CommandError;
 
+mod state;
 mod wire;
+pub(crate) use state::TypedPayload;
 
 // Static rule identifiers are assigned where a check fails, never inferred from
 // provider text or human-readable error messages. Keep the outer extraction
@@ -34,7 +36,7 @@ pub(crate) fn rejection_category(rule: &str) -> &str {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct TypedPayload {
+pub(crate) struct ValidatedPayload {
     pub version: u8,
     pub shape: Shape<StatementSpan>,
 }
@@ -202,7 +204,7 @@ impl StatementSpan {
     }
 }
 
-impl TypedPayload {
+impl ValidatedPayload {
     pub(crate) fn admit(
         value: Value,
         statement: &str,

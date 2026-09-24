@@ -28,7 +28,18 @@ pub(crate) fn generation_schema(
             questions.push(schema);
         }
     }
-    if !questions.is_empty() {
+    let graded_aliases = knowledge
+        .units
+        .iter()
+        .enumerate()
+        .filter(|(_, unit)| super::annotations::available(unit))
+        .map(|(index, _)| KnowledgeCatalog::unit_alias(index))
+        .collect::<Vec<_>>();
+    let mut graded_ids = unit_ids(knowledge, 2);
+    if graded_aliases.len() != knowledge.units.len() {
+        graded_ids["items"]["enum"] = json!(graded_aliases);
+    }
+    if !questions.is_empty() && !graded_aliases.is_empty() {
         alternatives.push(json!({"type":"object", "additionalProperties":false,
             "required":["card","assessment"], "properties":{
                 "card":{"type":"object","additionalProperties":false,
@@ -42,9 +53,16 @@ pub(crate) fn generation_schema(
                             "items":{"type":"object","additionalProperties":false,
                                 "required":["key","stance","knowledgeUnitIds"],"properties":{
                                     "key":text(160),"stance":{"enum":["supports","contradicts"]},
-                                    "knowledgeUnitIds":unit_ids(knowledge, 2)}}}}}}}));
+                                    "knowledgeUnitIds":graded_ids}}}}}}}));
     }
-    legacy["properties"]["cards"]["items"] = json!({"oneOf":alternatives});
+    if alternatives.is_empty() {
+        // No permitted, supported card family: represent the already-supported
+        // empty result rather than an invalid empty oneOf or invented grading.
+        legacy["properties"]["cards"] = json!({"type":"array","maxItems":0,
+            "items":{"type":"object"}});
+    } else {
+        legacy["properties"]["cards"]["items"] = json!({"oneOf":alternatives});
+    }
     legacy
 }
 

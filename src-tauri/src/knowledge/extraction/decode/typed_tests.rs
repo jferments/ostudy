@@ -65,7 +65,7 @@ fn document_qualified_units_round_trip_through_decoder_receipt_storage_and_autho
 }
 
 #[test]
-fn document_invalid_qualified_sibling_is_retained_for_repair_without_erasing_valid_content() {
+fn document_invalid_annotation_is_deferred_without_erasing_either_admitted_core() {
     let (_, mut source, _, _) = crate::knowledge::authoring::tests::fixture();
     source.text = "v ≤ −2.050e1 m/s".into();
     source.refresh_identity().unwrap();
@@ -75,13 +75,16 @@ fn document_invalid_qualified_sibling_is_retained_for_repair_without_erasing_val
     let mut bad = good.clone();
     bad["details"]["bounds"][0]["value"]["text"] = json!("invented value");
     let report = initial(json!({"units":[good,bad]}), &evidence, &sources).unwrap();
-    assert_eq!(report.accepted.len(), 1);
-    assert_eq!(report.rejected.len(), 1);
+    assert_eq!(report.accepted.len(), 2);
+    assert!(report.rejected.is_empty());
+    assert_eq!(report.deferred_annotations().len(), 1);
+    let details = report.accepted[1].content.details.as_ref().unwrap();
     assert_eq!(
-        report.rejected[0].code,
-        "knowledge_annotation_selection_absent"
+        details.deferred_rule(),
+        Some("knowledge_annotation_selection_absent")
     );
     assert!(!report.is_complete());
+    assert!(!report.requires_paid_repair(&sources));
     let before = serde_json::to_value(&report.accepted).unwrap();
     let repaired = repair(
         &report,
@@ -117,15 +120,16 @@ fn assert_rule(value: Value, expected: &str) {
     let sources = [source];
     let catalog = EvidenceCatalog::build(&sources, false).unwrap();
     let report = initial(json!({"units":[value]}), &catalog, &sources).unwrap();
-    assert!(report.accepted.is_empty());
-    assert_eq!(report.rejected.len(), 1);
-    assert_eq!(report.rejected[0].code, expected);
-    assert!(report.requires_paid_repair(&sources));
+    assert_eq!(report.accepted.len(), 1);
+    assert!(report.rejected.is_empty());
+    assert!(!report.requires_paid_repair(&sources));
+    assert!(!report.is_complete());
+    let details = report.accepted[0].content.details.as_ref().unwrap();
+    assert_eq!(details.deferred_rule(), Some(expected));
     let diagnostic = report_diagnostic(&report);
-    assert_eq!(diagnostic["rejections"][0]["rule"], expected);
     assert_eq!(
-        diagnostic["rejections"][0]["category"],
-        "invalid_qualified_structure"
+        diagnostic["deferredAnnotations"][0]["annotation"]["rule"],
+        expected
     );
     assert!(!diagnostic.to_string().contains(&sources[0].text));
 }
@@ -236,7 +240,7 @@ fn document_annotation_process_cycle_is_distinct_from_invalid_edge() {
 }
 
 #[test]
-fn document_annotation_rule_survives_checkpoint_and_enters_targeted_repair() {
+fn document_annotation_draft_survives_checkpoint_but_is_not_a_whole_window_repair_target() {
     let (database, mut source, _, _) = crate::knowledge::authoring::tests::fixture();
     source.text = "Only while moving, v ≤ −2.050e1 m/s. Not applicable at rest.".into();
     source.refresh_identity().unwrap();
@@ -248,6 +252,7 @@ fn document_annotation_rule_survives_checkpoint_and_enters_targeted_repair() {
     let good = proposal(&sources[0].text);
     let mut bad = good.clone();
     bad["details"]["unit"]["text"] = json!("PRIVATE_MISSING_PHRASE");
+    let draft = bad["details"].clone();
     let report = initial(json!({"units":[good,bad]}), &catalog, &sources).unwrap();
     let contract = hash("annotation-diagnostic-checkpoint");
     let mut checkpoint = Checkpoint::open(&database, &sources, &contract).unwrap();
@@ -257,18 +262,15 @@ fn document_annotation_rule_survives_checkpoint_and_enters_targeted_repair() {
         serde_json::to_value(&restored).unwrap(),
         serde_json::to_value(&report).unwrap()
     );
-    assert_eq!(restored.accepted.len(), 1);
-    assert_eq!(restored.rejected[0].slot, 1);
-    assert_eq!(
-        restored.repair_prompt()["rejectedProposals"][0]["code"],
-        "knowledge_annotation_selection_absent"
-    );
+    assert_eq!(restored.accepted.len(), 2);
+    assert_eq!(restored.repair_prompt()["rejectedProposals"], json!([]));
+    let details = serde_json::to_value(&restored.accepted[1].content.details).unwrap();
+    assert_eq!(details["draft"], draft);
     let diagnostic = report_diagnostic(&restored);
     assert!(!diagnostic.to_string().contains("PRIVATE_MISSING_PHRASE"));
-    assert_eq!(diagnostic["rejections"][0]["slot"], 1);
     assert_eq!(
-        diagnostic["rejections"][0]["draftFingerprint"],
-        hash(&restored.rejected[0].proposal.to_string())
+        diagnostic["deferredAnnotations"][0]["annotation"]["draftFingerprint"],
+        hash(&draft.to_string())
     );
     let repaired = repair(
         &restored,
@@ -278,10 +280,9 @@ fn document_annotation_rule_survives_checkpoint_and_enters_targeted_repair() {
     )
     .unwrap();
     assert_eq!(
-        serde_json::to_value(&repaired.accepted).unwrap(),
-        serde_json::to_value(&restored.accepted).unwrap()
+        serde_json::to_value(&repaired).unwrap(),
+        serde_json::to_value(&restored).unwrap()
     );
-    assert_eq!(repaired.rejected[0].code, restored.rejected[0].code);
     assert!(!repaired.is_complete());
 }
 
@@ -313,6 +314,9 @@ fn document_annotation_legacy_diagnostics_and_valid_occurrences_are_preserved() 
         KnowledgeKind::Fact,
     )
     .unwrap();
+    let crate::knowledge::typed_payload::TypedPayload::Validated(payload) = payload else {
+        panic!("validated annotation expected");
+    };
     let crate::knowledge::typed_payload::Shape::Quantity {
         subject, bounds, ..
     } = payload.shape
