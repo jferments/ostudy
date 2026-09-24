@@ -3,8 +3,7 @@ use crate::{
     ai::generation::{self, Operation},
     database::Database,
     knowledge::{
-        analysis_store::Checkpoint, contracts::hash, evidence::EvidenceCatalog,
-        extraction::decode,
+        analysis_store::Checkpoint, contracts::hash, evidence::EvidenceCatalog, extraction::decode,
     },
 };
 
@@ -103,8 +102,7 @@ async fn committed_observation(fail_save: bool) {
     .unwrap();
     let contract = hash("committed deferred annotation diagnostic");
     let key = crate::knowledge::analysis_store::window_id(&sources, &contract).unwrap();
-    let operation =
-        Operation::begin(&database, None, None, None, "annotation_fixture").unwrap();
+    let operation = Operation::begin(&database, None, None, None, "annotation_fixture").unwrap();
     let context = operation.context();
     let mut task = Task::new(Some(&context), "knowledge_extraction", Some(&key));
     if fail_save {
