@@ -24,14 +24,19 @@ fn block<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
 // field constraint and provider control. Actual prompts/schemas are untouched.
 fn contract_shape(value: &Value) -> Value {
     match value {
-        Value::Object(object) => Value::Object(object.iter().map(|(key, value)| {
-            let normalized = if key == "enum" {
-                identity_enum(value).unwrap_or_else(|| contract_shape(value))
-            } else {
-                contract_shape(value)
-            };
-            (key.clone(), normalized)
-        }).collect()),
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .map(|(key, value)| {
+                    let normalized = if key == "enum" {
+                        identity_enum(value).unwrap_or_else(|| contract_shape(value))
+                    } else {
+                        contract_shape(value)
+                    };
+                    (key.clone(), normalized)
+                })
+                .collect(),
+        ),
         Value::Array(values) => Value::Array(values.iter().map(contract_shape).collect()),
         value => value.clone(),
     }
@@ -66,7 +71,10 @@ fn system_contract(system: &str) -> String {
     let Ok(schema) = serde_json::from_str::<Value>(schema.trim()) else {
         return system.to_string();
     };
-    format!("{prefix}<ostudy-output-schema>{}</ostudy-output-schema>{suffix}", contract_shape(&schema))
+    format!(
+        "{prefix}<ostudy-output-schema>{}</ostudy-output-schema>{suffix}",
+        contract_shape(&schema)
+    )
 }
 
 pub(super) fn measure(body: &Value) -> Result<Value, CommandError> {

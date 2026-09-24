@@ -69,9 +69,9 @@ fn fingerprint(value: &Value) -> Option<&str> {
     if value["schemaVersion"] != 1 {
         return None;
     }
-    value["requestContractFingerprint"].as_str().filter(|value| {
-        value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-    })
+    value["requestContractFingerprint"]
+        .as_str()
+        .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 fn root(value: &Value) -> Option<&str> {
@@ -85,14 +85,18 @@ fn root(value: &Value) -> Option<&str> {
         };
         !stage.is_empty()
             && stage.len() <= 80
-            && stage.bytes().all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+            && stage
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
             && hash.len() == 64
             && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
     })
 }
 
 fn number(value: &Value) -> Option<u64> {
-    value.as_u64().filter(|number| *number <= u64::from(u32::MAX))
+    value
+        .as_u64()
+        .filter(|number| *number <= u64::from(u32::MAX))
 }
 
 fn snapshot(value: &Value) -> Option<[u64; 5]> {
@@ -114,9 +118,9 @@ fn snapshot(value: &Value) -> Option<[u64; 5]> {
         (&value["deferredAnnotations"]["rules"], numbers[4]),
     ] {
         let rules = rules.as_object()?;
-        let total = rules.values().try_fold(0_u64, |sum, value| {
-            sum.checked_add(number(value)?)
-        })?;
+        let total = rules
+            .values()
+            .try_fold(0_u64, |sum, value| sum.checked_add(number(value)?))?;
         if total != count {
             return None;
         }
@@ -246,8 +250,21 @@ fn observations(
         .map_err(CommandError::database)?;
     let rows = query
         .query_map(
-            params![context.operation_id, stage, provider, model, request, MAX_OBSERVATIONS],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+            params![
+                context.operation_id,
+                stage,
+                provider,
+                model,
+                request,
+                MAX_OBSERVATIONS
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
         )
         .map_err(CommandError::database)?;
     let mut roots = BTreeSet::new();

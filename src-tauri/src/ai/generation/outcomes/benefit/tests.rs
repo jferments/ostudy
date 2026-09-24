@@ -35,7 +35,9 @@ fn snapshot() -> outcomes::Snapshot {
 }
 
 fn response(context: &Context, stage: &str, key: &str, body: &Value) {
-    let mut attempt = context.start_attempt(stage, body, Some(key), "fixture").unwrap();
+    let mut attempt = context
+        .start_attempt(stage, body, Some(key), "fixture")
+        .unwrap();
     attempt.response(&json!({
         "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
     }));
@@ -50,20 +52,25 @@ async fn run(
 ) -> bool {
     let key = key(index);
     let mut task = outcomes::Task::new(Some(context), STAGE, Some(&key));
-    let result = task.scope(async {
-        response(context, STAGE, &key, &body);
-        outcomes::checkpoint(before);
-        let allowed = context.reserve_recovery(
-            STAGE, Some(&key), RecoveryReason::ContractRepair, "partial_coverage",
-        );
-        if allowed {
+    let result = task
+        .scope(async {
             response(context, STAGE, &key, &body);
-            outcomes::checkpoint(after.clone());
-            // A duplicate final checkpoint must not become a second sample.
-            outcomes::checkpoint(after);
-        }
-        Ok::<_, CommandError>(allowed)
-    }).await;
+            outcomes::checkpoint(before);
+            let allowed = context.reserve_recovery(
+                STAGE,
+                Some(&key),
+                RecoveryReason::ContractRepair,
+                "partial_coverage",
+            );
+            if allowed {
+                response(context, STAGE, &key, &body);
+                outcomes::checkpoint(after.clone());
+                // A duplicate final checkpoint must not become a second sample.
+                outcomes::checkpoint(after);
+            }
+            Ok::<_, CommandError>(allowed)
+        })
+        .await;
     task.finish(&result);
     result.unwrap()
 }
@@ -81,25 +88,49 @@ async fn document_recovery_stops_identical_no_gain_siblings_without_a_third_paid
     assert!(run(&context, 1, snapshot(), snapshot(), body(1)).await);
     assert!(run(&context, 2, snapshot(), snapshot(), body(2)).await);
     assert!(!run(&context, 3, snapshot(), snapshot(), body(3)).await);
-    database.with_connection(|connection| {
-        let counts: (i64, i64, i64) = connection.query_row(
-            "SELECT COUNT(*),SUM(input_tokens),SUM(output_tokens) FROM generation_requests", [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        ).map_err(CommandError::database)?;
-        assert_eq!(counts, (5, 50, 10));
-        let encoded: String = connection.query_row(
-            "SELECT payload_bytes_json FROM generation_requests WHERE request_key=?1", [key(3)],
-            |row| row.get(0),
-        ).map_err(CommandError::database)?;
-        let value: Value = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(value["nativeRecoveryPolicy"]["decision"], "stop_same_strategy");
-        assert_eq!(value["nativeRecoveryPolicy"]["noGainSiblingRoots"], 2);
-        assert_eq!(value["nativeRecoveryDecisions"]["contract_repair_denied"]["allowed"], false);
-        assert!(!encoded.contains("PRIVATE_SOURCE"));
-        Ok(())
-    }).unwrap();
-    assert!(!context.recovery.lock().unwrap().tasks.contains_key(&format!("{STAGE}:{}", key(3))));
-    assert!(context.reserve_recovery(STAGE, Some(&key(3)), RecoveryReason::TransientTransport, "ai_timeout"));
+    database
+        .with_connection(|connection| {
+            let counts: (i64, i64, i64) = connection
+                .query_row(
+                    "SELECT COUNT(*),SUM(input_tokens),SUM(output_tokens) FROM generation_requests",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!(counts, (5, 50, 10));
+            let encoded: String = connection
+                .query_row(
+                    "SELECT payload_bytes_json FROM generation_requests WHERE request_key=?1",
+                    [key(3)],
+                    |row| row.get(0),
+                )
+                .map_err(CommandError::database)?;
+            let value: Value = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(
+                value["nativeRecoveryPolicy"]["decision"],
+                "stop_same_strategy"
+            );
+            assert_eq!(value["nativeRecoveryPolicy"]["noGainSiblingRoots"], 2);
+            assert_eq!(
+                value["nativeRecoveryDecisions"]["contract_repair_denied"]["allowed"],
+                false
+            );
+            assert!(!encoded.contains("PRIVATE_SOURCE"));
+            Ok(())
+        })
+        .unwrap();
+    assert!(!context
+        .recovery
+        .lock()
+        .unwrap()
+        .tasks
+        .contains_key(&format!("{STAGE}:{}", key(3))));
+    assert!(context.reserve_recovery(
+        STAGE,
+        Some(&key(3)),
+        RecoveryReason::TransientTransport,
+        "ai_timeout"
+    ));
 }
 
 #[tokio::test]
@@ -148,7 +179,16 @@ async fn document_recovery_compares_only_the_same_provider_contract_and_failure_
     assert!(run(&context, 4, snapshot(), snapshot(), different_schema).await);
     let mut different_failure = snapshot();
     different_failure.rejection_rules = BTreeMap::from([("invalid_evidence_selection".into(), 1)]);
-    assert!(run(&context, 5, different_failure.clone(), different_failure, body(5)).await);
+    assert!(
+        run(
+            &context,
+            5,
+            different_failure.clone(),
+            different_failure,
+            body(5)
+        )
+        .await
+    );
     let (_, _other_operation, other) = operation();
     assert!(run(&other, 3, snapshot(), snapshot(), body(3)).await);
 }
@@ -170,13 +210,20 @@ async fn document_recovery_accounting_gap_does_not_borrow_an_earlier_failure() {
     }
     let key = key(3);
     let mut task = outcomes::Task::new(Some(&context), STAGE, Some(&key));
-    let result = task.scope(async {
-        response(&context, STAGE, &key, &body(3));
-        outcomes::checkpoint(snapshot());
-        outcomes::accounting_gap();
-        assert!(context.reserve_recovery(STAGE, Some(&key), RecoveryReason::ContractRepair, "partial_coverage"));
-        Ok::<_, CommandError>(())
-    }).await;
+    let result = task
+        .scope(async {
+            response(&context, STAGE, &key, &body(3));
+            outcomes::checkpoint(snapshot());
+            outcomes::accounting_gap();
+            assert!(context.reserve_recovery(
+                STAGE,
+                Some(&key),
+                RecoveryReason::ContractRepair,
+                "partial_coverage"
+            ));
+            Ok::<_, CommandError>(())
+        })
+        .await;
     task.finish(&result);
     result.unwrap();
 }
@@ -197,12 +244,17 @@ async fn cards(context: &Context, index: usize) -> bool {
     let body = body(index);
     let allowed = Cell::new(false);
     let result = outcomes::authoring::observe(
-        Some(context), Some(&key), outcomes::authoring::Kind::Flashcards,
+        Some(context),
+        Some(&key),
+        outcomes::authoring::Kind::Flashcards,
         async {
             response(context, "flashcard_authoring", &key, &body);
             let first = rejected_card();
             let retry = context.reserve_recovery(
-                "flashcard_authoring", Some(&key), RecoveryReason::ContractRepair, "ai_document_output_invalid",
+                "flashcard_authoring",
+                Some(&key),
+                RecoveryReason::ContractRepair,
+                "ai_document_output_invalid",
             );
             allowed.set(retry);
             if retry {
@@ -213,7 +265,8 @@ async fn cards(context: &Context, index: usize) -> bool {
             }
         },
         Vec::len,
-    ).await;
+    )
+    .await;
     assert!(result.is_err());
     allowed.get()
 }
@@ -231,7 +284,10 @@ fn document_recovery_contract_fingerprint_excludes_sources_but_preserves_all_wir
     let original = body(1);
     let measured = payload::measure(&original).unwrap();
     let fingerprint = &measured["requestContractFingerprint"];
-    assert_eq!(fingerprint, &payload::measure(&body(2)).unwrap()["requestContractFingerprint"]);
+    assert_eq!(
+        fingerprint,
+        &payload::measure(&body(2)).unwrap()["requestContractFingerprint"]
+    );
     assert!(!measured.to_string().contains("PRIVATE_SOURCE"));
     for (field, replacement) in [
         ("model", json!("changed")),
@@ -241,11 +297,17 @@ fn document_recovery_contract_fingerprint_excludes_sources_but_preserves_all_wir
     ] {
         let mut changed = original.clone();
         changed[field] = replacement;
-        assert_ne!(fingerprint, &payload::measure(&changed).unwrap()["requestContractFingerprint"]);
+        assert_ne!(
+            fingerprint,
+            &payload::measure(&changed).unwrap()["requestContractFingerprint"]
+        );
     }
     let mut changed = original;
     changed["messages"][0]["content"] = json!("Different system contract");
-    assert_ne!(fingerprint, &payload::measure(&changed).unwrap()["requestContractFingerprint"]);
+    assert_ne!(
+        fingerprint,
+        &payload::measure(&changed).unwrap()["requestContractFingerprint"]
+    );
 }
 
 #[test]
@@ -269,11 +331,13 @@ fn document_recovery_contract_matches_real_extraction_schemas_without_equating_s
     };
     let first_request = request(&[first.clone()]);
     let second_request = request(&[second.clone()]);
-    let fingerprint = |request: &Value| {
-        payload::measure(request).unwrap()["requestContractFingerprint"].clone()
-    };
+    let fingerprint =
+        |request: &Value| payload::measure(request).unwrap()["requestContractFingerprint"].clone();
     assert_eq!(fingerprint(&first_request), fingerprint(&second_request));
-    assert_ne!(fingerprint(&first_request), fingerprint(&request(&[first, second])));
+    assert_ne!(
+        fingerprint(&first_request),
+        fingerprint(&request(&[first, second]))
+    );
     let mut semantic = first_request.clone();
     semantic["response_format"] = json!({"enum": ["fact", "process"]});
     let original = fingerprint(&semantic);

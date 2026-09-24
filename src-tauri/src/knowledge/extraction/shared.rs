@@ -47,7 +47,9 @@ where
             // Isolate local checkpoint observations from an enclosing authoring
             // task. A failed save returns before any provider request, while a
             // resumed attempt reads the newest receipt rather than a stale copy.
-            let restored = observed.scope(async { local::restore(input, &signal) }).await;
+            let restored = observed
+                .scope(async { local::restore(input, &signal) })
+                .await;
             let result = match restored {
                 Ok(()) => {
                     observed
