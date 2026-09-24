@@ -79,7 +79,9 @@ impl GuideRepair {
         let mut scoped = knowledge.clone();
         if let Some(ids) = selected {
             let wanted = ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
-            scoped.units.retain(|unit| wanted.contains(unit.id.as_str()));
+            scoped
+                .units
+                .retain(|unit| wanted.contains(unit.id.as_str()));
             // Canonical IDs are already an admitted compatibility representation.
             // Resolve before narrowing the catalog so K aliases cannot drift.
             candidate["knowledgeUnitIds"] = json!(ids);
@@ -209,8 +211,7 @@ fn valid_field(field: &str, value: Option<&Value>) -> bool {
     // This satisfiable scaffold tests a field against the existing structural
     // validator. It is not model input, retained knowledge, or publishable work.
     let mut probe = json!(StudyGuideSectionContent {
-        overview: "This internal validation scaffold is never supplied as study material."
-            .into(),
+        overview: "This internal validation scaffold is never supplied as study material.".into(),
         key_points: vec!["This is an internal validation scaffold only.".into()],
         ..StudyGuideSectionContent::default()
     });
