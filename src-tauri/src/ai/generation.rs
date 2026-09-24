@@ -19,6 +19,7 @@ use crate::{
 
 pub(crate) mod outcomes;
 mod payload;
+mod recovery;
 #[cfg(test)]
 mod tests;
 
@@ -67,6 +68,9 @@ struct RecoveryState {
 #[derive(Debug, Default)]
 struct RecoveryLedger {
     tasks: HashMap<String, RecoveryState>,
+    parents: HashMap<String, String>,
+    family_roots: HashSet<String>,
+    started: HashSet<String>,
 }
 
 const CACHE_PREFIX_SAMPLE_MAX_BYTES: usize = 2 * 1024 * 1024;
@@ -156,17 +160,7 @@ impl Context {
         let request_key = self.logical_request_key(stage, logical_key);
         let ledger_key = format!("{stage}:{request_key}");
         let allowed = match self.recovery.lock() {
-            Ok(mut ledger) => {
-                let state = ledger.tasks.entry(ledger_key).or_default();
-                if state.reasons.contains(&reason)
-                    || state.reasons.len() >= MAX_RECOVERIES_PER_LOGICAL_TASK
-                {
-                    false
-                } else {
-                    state.reasons.insert(reason);
-                    true
-                }
-            }
+            Ok(mut ledger) => ledger.reserve(ledger_key, reason),
             Err(_) => false,
         };
         let event = if allowed {
@@ -328,6 +322,9 @@ impl Context {
             .map(str::to_string)
             .unwrap_or_else(|| hash(&bytes));
         let mut sizes = payload::measure(body)?;
+        if let Some(scope) = self.request_recovery_scope(stage, &request_key) {
+            sizes["recoveryScope"] = scope;
+        }
         if let Some(object) = sizes.as_object_mut() {
             object.insert(
                 "cachePrefix".to_string(),

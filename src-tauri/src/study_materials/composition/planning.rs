@@ -10,7 +10,7 @@ use crate::{
     task_cancellation::CancellationSignal,
 };
 
-use super::{ensure_bundle_running, hash_text, relationship_context, CollectionViewState};
+use super::{ensure_bundle_running, hash_text, relationship_context, reuse, CollectionViewState};
 
 pub(super) fn plan(
     task: &DocumentTaskContext,
@@ -20,9 +20,17 @@ pub(super) fn plan(
     signal: &CancellationSignal,
 ) -> Result<Vec<CollectionGuideWindow>, CommandError> {
     let mut planned = Vec::new();
+    let mut families = Vec::new();
     for window in windows {
         let relationships = relationship_context(view, &window.topic_ids);
-        planned.extend(split_with(window, |part| {
+        let root_key = reuse::section_key(
+            task,
+            &view.synthesis.collection_id,
+            title,
+            &window,
+            &relationships,
+        )?;
+        let parts = split_with(window, |part| {
             ensure_bundle_running(signal)?;
             preflight_collection_study_guide_section(
                 task,
@@ -34,7 +42,30 @@ pub(super) fn plan(
                     knowledge: &part.catalog,
                 },
             )
-        })?);
+        })?;
+        if parts.len() > 1 {
+            let child_keys = parts
+                .iter()
+                .map(|part| {
+                    reuse::section_key(
+                        task,
+                        &view.synthesis.collection_id,
+                        title,
+                        part,
+                        &relationships,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            families.push((root_key, child_keys));
+        }
+        planned.extend(parts);
+    }
+    // Only complete plans are registered. Registration spends nothing, retains
+    // existing parent reservations, and leaves physical request keys distinct.
+    if let Some(diagnostics) = &task.diagnostics {
+        for (root, children) in families {
+            diagnostics.bind_recovery_family("guide_authoring", &root, &children)?;
+        }
     }
     Ok(planned)
 }

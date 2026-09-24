@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as collectionIpc from "../ipc/collections";
+import * as artifactIpc from "../ipc/documentArtifactProgress";
 import * as documentIpc from "../ipc/documents";
 import * as studyGuideIpc from "../ipc/studyGuides";
 import * as platformFiles from "../platform/files";
@@ -9,6 +11,13 @@ import { DOCUMENT_FOLDER_DRAG_TYPE } from "./documents/documentFolderDrag";
 import { DocumentsScreen } from "./DocumentsScreen";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
+vi.mock("../ipc/collections", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../ipc/collections")>(),
+  getDocumentCollectionOrganization: vi.fn(),
+}));
+vi.mock("../ipc/documentArtifactProgress", () => ({
+  listLatestDocumentStudyGuideJobs: vi.fn(),
+}));
 vi.mock("../ipc/documents", () => ({
   listDocuments: vi.fn(),
   getDocumentGenerationProgress: vi.fn(),
@@ -121,7 +130,13 @@ function renderDocuments(showToast = vi.fn(), refreshDecks = vi.fn().mockResolve
 
 describe("DocumentsScreen", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    // All independent mount reads have explicit native fixtures. An absent
+    // Tauri bridge is not the error scenario exercised by document retry tests.
+    vi.mocked(collectionIpc.getDocumentCollectionOrganization).mockResolvedValue({
+      revision: 1, collections: [], memberships: [], ranges: [],
+    });
+    vi.mocked(artifactIpc.listLatestDocumentStudyGuideJobs).mockResolvedValue([]);
     vi.mocked(platformFiles.selectExternalImport).mockResolvedValue(null);
     vi.mocked(documentIpc.listDocuments).mockResolvedValue([]);
     vi.mocked(documentIpc.getDocumentGenerationProgress).mockResolvedValue(null);
@@ -286,6 +301,11 @@ describe("DocumentsScreen", () => {
     const { showToast } = renderDocuments();
 
     expect(await screen.findByText(failed.safeErrorMessage)).toBeTruthy();
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "+ New collection" }) as HTMLButtonElement).disabled)
+        .toBe(false);
+      expect(artifactIpc.listLatestDocumentStudyGuideJobs).toHaveBeenCalled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "More actions for Cardiac physiology" }));
     fireEvent.click(await screen.findByText("Retry generation"));
 

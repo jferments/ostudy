@@ -296,7 +296,7 @@ deferred unit: request schemas exclude those aliases without renumbering other
 units, and native new-response admission, checkpoint reuse and final transactional
 publication enforce the same rule. Unaffected units keep all permitted question
 families. A policy with no supported family has an explicit empty-result schema;
-first-pass task planning and policy-aware repartitioning remain AC-04.
+policy-aware repartitioning beyond the implemented guide planner remains pending.
 
 Committed request diagnostics retain deferred annotations separately from rejected
 core proposals. Each newly observed extraction snapshot records a count and static
@@ -322,6 +322,75 @@ new annotation repair scheduler. Targeted repairs of deferred annotations and
 broader representation simplification remain AC-05. Live-provider quality/cost
 acceptance remains AC-06; mock call-count reductions are not billing measurements.
 
+## AC-04: first-pass feasibility and lossless collection planning
+
+Guide first passes receive the headroom previously reserved for repair: 3,200
+visible tokens for document topics and up to 6,144 for collection sections. The
+joint writing target and complete-JSON instructions are supplied initially, and
+required key points are reflected in the provider schema. This reallocates
+existing maximum allowances rather than introducing a higher recovery ceiling.
+Guide field repair preserves independently valid fields under native ownership.
+
+The shared authoring evidence projection follows exact native text ranges and
+linked structural context. Whole tables, captions, footnotes and ambiguous
+structures retain their required context; the stored source is never clipped.
+
+`study_materials/composition/planning.rs` now compiles collection windows before
+section-cache identities, whole-guide manifests and progress totals are allocated.
+It uses the same complete request constructor as authoring. A context-budget
+failure bisects the unit sequence into nonempty children, preserving every unit,
+qualification, evidence dependency and topic role. For N units, binary planning
+visits at most 2N-1 candidates. The previous 75-percent truncation both dropped the
+tail and failed to decrease two- or three-unit inputs; that loop is removed.
+
+An already-fitting window keeps its existing block identity. Split keys bind the
+original block and the child's exact evidence fingerprint. Only an indivisible
+unit may try the smaller existing completion plans. If it still cannot fit, the
+operation fails explicitly before dispatch rather than silently omitting it.
+Cancellation and non-context errors are not treated as reasons to split. Successful
+children use the existing durable section checkpoints and final publication path.
+
+Seven native document regressions cover finite planning, exact conservation,
+qualifications and structural context, stable child keys, explicit singleton
+failure, cancellation and empty inputs. These establish task conservation, not
+that a model necessarily explains every supplied unit. Generalized document/card
+repartitioning and objective-level teaching coverage are not claimed by this
+collection-planning increment.
+
+## AC-05a: parent-scoped recovery for planned child tasks
+
+`ai/generation/recovery.rs` registers native-owned recovery families before any
+child request starts. The collection planner uses the original section request
+key as root and the exact future child request keys as members. Children retain
+separate physical requests, attempt ordinals, usage and outcome linkage, but draw
+from the original root's existing maximum of two distinct recovery categories,
+with each category usable once. Existing parent reservations remain spent.
+
+Registration is atomic and idempotent for the same family. A used child cannot be
+reparented to a fresh allowance; a registered root cannot become a child. One lock
+serializes concurrent reservations. Unrelated roots, stages and operations retain
+independent allowances. Denial does not admit invalid output, mark a partial guide
+complete, delete accepted siblings or authorize another source interpretation.
+
+Each new physical request carries a content-free `recoveryScope` in its existing
+payload diagnostics, including version, root task key and applicable limits. The
+ordinary JSON reporter preserves it. Historical missing records stay unobserved.
+This scope metadata is durable; the allowance counter remains operation-local,
+like the pre-existing policy. This is not a cross-restart budget ledger or a learned
+estimate that every permitted retry will improve quality.
+
+Seven native regressions cover spent parents, atomic registration, reparenting,
+concurrency, root/stage/operation isolation, invalid inputs and a real SQLite
+request/usage round trip. The corresponding Documents-screen test fixtures now
+explicitly supply the independent collection and artifact-job reads and reset
+mock implementations between tests; retry still has to run through its real UI
+and invoke the native start command. No product assertion or gate is skipped.
+
+Demand-driven deferred-annotation repair, recovery decisions based on measured
+benefit beyond these hard limits, broader representation simplification and the
+remaining local-publication recovery paths are unfinished AC-05 work. The existing
+targeted guide-field repair is a foundation, not completion of that broader stage.
+
 ## Compatibility and non-goals
 
 AC-01 through AC-02e do not change schema. AC-02f adds migration 30, so a library
@@ -332,15 +401,17 @@ JSON storage, not a SQL migration. Older binaries do not understand that new sta
 do not downgrade an already-updated library. Validated annotation bytes, absent
 annotations and previously compatible source receipts remain readable unchanged.
 
-Providers, completion ceilings, source identities and extraction checkpoint keys
-are unchanged. New assessment schemas project annotation capabilities; native
-admission remains authoritative. Retained source knowledge is not cleared. Changes
-to an admitted unit's actual content naturally invalidate its dependent authored
-checkpoint through the existing content-hash check.
+AC-04 changes guide request planning as described above; provider/model selection,
+source identities and extraction checkpoint keys remain unchanged. Assessment
+schemas project annotation capabilities; native admission remains authoritative.
+Retained source knowledge is not cleared. Changes to an admitted unit's actual
+content naturally invalidate its dependent authored checkpoint through the existing
+content-hash check. Recovery scope adds no migration or provider request.
 Existing [parallel publication lifecycle corrections](parallel-artifact-lifecycle-regression.md)
 remain necessary and separate from the contract work.
 
-Remaining non-document AC-02 integrations and AC-04 through AC-06 are unfinished.
-There is no measured real-provider saving until a representative run is compared.
-Do not weaken assertions, drop qualifications, guess evidence or label partial
-material complete to reduce retry counts. No automatic merge is authorized.
+Remaining non-document AC-02 integrations, generalized document/card planning,
+the rest of AC-05 and AC-06 quality/cost acceptance are unfinished. There is no
+measured real-provider saving until a representative run is compared. Do not
+weaken assertions, drop qualifications, guess evidence or label partial material
+complete to reduce retry counts. No automatic merge is authorized.
