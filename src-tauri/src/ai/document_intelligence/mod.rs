@@ -37,7 +37,9 @@ pub(crate) use observed::{
     generate_window_flashcards,
 };
 pub(crate) use outline::{OUTLINE_PROMPT_VERSION, OUTLINE_SCHEMA_VERSION};
-pub(crate) use study_guide::CollectionStudyGuideAuthoring;
+pub(crate) use study_guide::{
+    preflight_collection_study_guide_section, CollectionStudyGuideAuthoring,
+};
 pub(crate) use transport::{
     request_json_cancellable, request_json_cancellable_single_attempt, JsonTaskRequest,
 };

@@ -144,7 +144,7 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         ));
     }
     let system = collection_study_guide_system_prompt();
-    let (user, bounded_knowledge, completion_plan) = fit_collection_guide_request(
+    let (user, completion_plan) = fit_collection_guide_request(
         task,
         &system,
         collection_title,
@@ -153,20 +153,6 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         relationship_context,
         knowledge,
     )?;
-    if bounded_knowledge.units.len() < knowledge.units.len() {
-        crate::logging::info_target(
-            "ai.document.study_guide",
-            "collection_guide_catalog_budgeted",
-            "Budgeted one collection-guide section to the selected model context without rejecting the aggregate collection.",
-            json!({
-                "availableUnits": knowledge.units.len(),
-                "selectedUnits": bounded_knowledge.units.len(),
-                "contextWindowTokens": task.context_window_tokens(),
-                "initialVisibleCompletionTokens": completion_plan.initial_visible_tokens,
-                "repairVisibleCompletionTokens": completion_plan.repair_visible_tokens,
-            }),
-        );
-    }
     let section = request_study_guide_section_with_retry(
         runtime,
         task,
@@ -174,7 +160,7 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
         &user,
         AuthoringEvidence {
             images: &[],
-            knowledge: &bounded_knowledge,
+            knowledge,
         },
         completion_plan,
         Some(cancellation),
@@ -182,6 +168,25 @@ pub(crate) async fn generate_collection_study_guide_topic_section(
     .await?;
     validate_collection_section_quality(&section.content)?;
     Ok(section)
+}
+
+/// Run the real request constructor before the owner assigns checkpoint keys and
+/// progress totals. This makes no provider call and never removes knowledge.
+pub(crate) fn preflight_collection_study_guide_section(
+    task: &DocumentTaskContext,
+    collection_title: &str,
+    authoring: CollectionStudyGuideAuthoring<'_>,
+) -> Result<(), CommandError> {
+    fit_collection_guide_request(
+        task,
+        &collection_study_guide_system_prompt(),
+        collection_title,
+        authoring.topic_title,
+        authoring.topic_summary,
+        authoring.relationship_context,
+        authoring.knowledge,
+    )
+    .map(|_| ())
 }
 
 fn fit_collection_guide_request(
@@ -192,44 +197,40 @@ fn fit_collection_guide_request(
     topic_summary: &str,
     relationship_context: &str,
     knowledge: &KnowledgeCatalog,
-) -> Result<(String, KnowledgeCatalog, StudyGuideCompletionPlan), CommandError> {
-    for completion_plan in COLLECTION_GUIDE_COMPLETION_PLANS {
-        let mut bounded = knowledge.clone();
-        loop {
-            let user = collection_study_guide_user_prompt(
-                collection_title,
-                topic_title,
-                topic_summary,
-                relationship_context,
-                &bounded,
-            )?;
-            let schema = protocol::schema(&bounded, false);
-            let planned_user = format!("{user}\n\n{}", completion_plan.instructions());
-            let request = JsonTaskRequest {
-                system_prompt: system,
-                user_text: &planned_user,
-                schema: &schema,
-                // Reserve the full first-pass allowance before packing input.
-                // A recovery has the same already-preflighted ceiling.
-                max_tokens: task.completion_token_ceiling(completion_plan.repair_visible_tokens),
-                images: &[],
-            };
-            match ensure_context_budget(task, &request) {
-                Ok(()) => return Ok((user, bounded, completion_plan)),
-                Err(error)
-                    if error.code == "ai_document_context_budget" && bounded.units.len() > 1 =>
-                {
-                    let next_len = bounded.units.len().saturating_mul(3).div_ceil(4).max(1);
-                    bounded.units.truncate(next_len);
-                }
-                Err(error) if error.code == "ai_document_context_budget" => break,
-                Err(error) => return Err(error),
-            }
+) -> Result<(String, StudyGuideCompletionPlan), CommandError> {
+    let user = collection_study_guide_user_prompt(
+        collection_title,
+        topic_title,
+        topic_summary,
+        relationship_context,
+        knowledge,
+    )?;
+    let schema = protocol::schema(knowledge, false);
+    // Split multi-unit work before reducing its already reserved output budget.
+    // Only an indivisible unit may use the smaller compatible completion plans.
+    let choices = if knowledge.units.len() > 1 {
+        1
+    } else {
+        COLLECTION_GUIDE_COMPLETION_PLANS.len()
+    };
+    for completion_plan in COLLECTION_GUIDE_COMPLETION_PLANS.into_iter().take(choices) {
+        let planned_user = format!("{user}\n\n{}", completion_plan.instructions());
+        let request = JsonTaskRequest {
+            system_prompt: system,
+            user_text: &planned_user,
+            schema: &schema,
+            max_tokens: task.completion_token_ceiling(completion_plan.repair_visible_tokens),
+            images: &[],
+        };
+        match ensure_context_budget(task, &request) {
+            Ok(()) => return Ok((user, completion_plan)),
+            Err(error) if error.code == "ai_document_context_budget" => continue,
+            Err(error) => return Err(error),
         }
     }
     Err(CommandError::new(
         "ai_document_context_budget",
-        "The selected model context is too small for even one bounded collection-guide section.",
+        "This complete guide task must be partitioned before authoring; no knowledge units were discarded and no provider request was sent.",
     ))
 }
 

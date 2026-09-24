@@ -48,6 +48,8 @@ use super::{
     StudyTargetKind, StudyTargetRef,
 };
 
+mod planning;
+
 const MAX_COLLECTION_SOURCE_NOTES: usize = 10_000;
 pub(crate) const COLLECTION_GUIDE_SCHEMA_VERSION: i64 = 2;
 const MAX_COLLECTION_GUIDE_BYTES: usize = 2 * 1024 * 1024;
@@ -1061,7 +1063,6 @@ async fn compose_collection_guide(
             "This collection has no retained interpreted material available for a study guide.",
         ));
     }
-    let work_total = native_windows.len().saturating_add(1);
 
     let mut task = load_document_task_context(database)?;
     let capabilities = document_provider::load_document_provider_capabilities(
@@ -1091,6 +1092,8 @@ async fn compose_collection_guide(
         ));
     }
     let collection_title = collection_title(database, &claim.target.id)?;
+    let windows = planning::plan(&task, &collection_title, &view, windows, signal)?;
+    let work_total = windows.len().saturating_add(1);
     let section_keys = windows
         .iter()
         .map(|window| {
