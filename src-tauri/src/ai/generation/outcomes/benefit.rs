@@ -10,7 +10,7 @@ use super::{current, same, write, Context, RecoveryReason};
 use crate::error::CommandError;
 
 const REQUIRED_NO_GAIN_ROOTS: usize = 2;
-const MAX_OBSERVATIONS: usize = 256;
+const MAX_OBSERVATIONS: i64 = 256;
 
 pub(crate) fn stop(
     context: &Context,

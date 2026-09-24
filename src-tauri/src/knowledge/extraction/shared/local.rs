@@ -48,7 +48,26 @@ fn repair(
             changed = true;
         }
     }
+    if changed {
+        deduplicate(&mut result)?;
+    }
     Ok(changed.then_some(result))
+}
+
+/// Exact duplicates can converge when debt is resolved. Coalesce only fully
+/// identical admitted units, including every qualification and evidence binding;
+/// different claims or annotations remain distinct. No semantic guess is made.
+pub(super) fn deduplicate(report: &mut decode::AnalysisReport) -> Result<(), CommandError> {
+    let mut seen = HashSet::new();
+    let mut accepted = Vec::with_capacity(report.accepted.len());
+    for unit in &report.accepted {
+        let identity = serde_json::to_string(unit).map_err(CommandError::serialization)?;
+        if seen.insert(identity) {
+            accepted.push(unit.clone());
+        }
+    }
+    report.accepted = accepted;
+    Ok(())
 }
 
 #[cfg(test)]

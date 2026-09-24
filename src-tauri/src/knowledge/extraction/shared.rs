@@ -2,6 +2,7 @@
 //! rehydrate from current durable state rather than trusting another caller's DTO.
 use super::*;
 
+mod annotations;
 mod local;
 
 #[derive(Clone, Copy)]
@@ -19,7 +20,7 @@ pub(super) struct Window<'a> {
 pub(super) async fn run<F, Fut>(
     input: Window<'_>,
     subscriber: &CancellationSignal,
-    call: F,
+    mut call: F,
 ) -> Result<HashMap<String, Vec<KnowledgeUnit>>, CommandError>
 where
     F: FnMut(WindowCall) -> Fut,
@@ -34,6 +35,8 @@ where
         ))
         .map_err(CommandError::serialization)?,
     );
+    let demand = crate::knowledge::annotation_demand::current();
+    let core_call = &mut call;
     super::super::shared_preparation::join_or_run(
         input.database,
         &identity,
@@ -64,7 +67,7 @@ where
                                 diagnostics: input.diagnostics,
                                 logical_key: input.logical_key,
                             },
-                            call,
+                            core_call,
                         ))
                         .await
                 }
@@ -75,6 +78,10 @@ where
         },
     )
     .await?;
+    check_canceled(subscriber)?;
+    if let Some(policy) = demand {
+        annotations::run(input, &policy, subscriber, &mut call).await?;
+    }
     check_canceled(subscriber)?;
     analysis_store::Checkpoint::open(input.database, input.sources, input.contract)?.units()
 }

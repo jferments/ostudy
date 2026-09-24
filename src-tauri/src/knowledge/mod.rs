@@ -7,6 +7,7 @@
 
 pub(crate) mod adapters;
 pub(crate) mod analysis_store;
+pub(crate) mod annotation_demand;
 pub(crate) mod assessment;
 pub(crate) mod authoring;
 pub(crate) mod collection_scope;
