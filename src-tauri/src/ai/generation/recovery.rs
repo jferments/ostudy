@@ -39,8 +39,7 @@ impl RecoveryLedger {
         self.started.insert(key.clone());
         let root = self.root(&key).to_string();
         let state = self.tasks.entry(root).or_default();
-        if state.reasons.contains(&reason)
-            || state.reasons.len() >= MAX_RECOVERIES_PER_LOGICAL_TASK
+        if state.reasons.contains(&reason) || state.reasons.len() >= MAX_RECOVERIES_PER_LOGICAL_TASK
         {
             return false;
         }
