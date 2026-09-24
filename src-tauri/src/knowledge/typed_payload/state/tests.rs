@@ -15,7 +15,8 @@ fn document_annotation_validated_wire_and_stored_bytes_are_unchanged() {
         serde_json::to_value(&old).unwrap(),
         serde_json::to_value(&new).unwrap()
     );
-    let restored: TypedPayload = serde_json::from_value(serde_json::to_value(&old).unwrap()).unwrap();
+    let restored: TypedPayload =
+        serde_json::from_value(serde_json::to_value(&old).unwrap()).unwrap();
     restored.validate(statement, KnowledgeKind::Fact).unwrap();
     assert!(restored.deferred_rule().is_none());
     assert_eq!(
@@ -63,7 +64,11 @@ fn document_annotation_debt_is_bound_to_statement_kind_draft_and_failure() {
     assert_eq!(prompt["annotationState"], "deferred");
     assert_eq!(prompt["gradedBindingsAllowed"], false);
     assert!(!prompt.to_string().contains("PRIVATE"));
-    assert!(!deferred.diagnostic().unwrap().to_string().contains("PRIVATE"));
+    assert!(!deferred
+        .diagnostic()
+        .unwrap()
+        .to_string()
+        .contains("PRIVATE"));
     assert!(TypedPayload::admit(stored, statement, KnowledgeKind::Fact).is_err());
 }
 

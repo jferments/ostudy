@@ -15,7 +15,8 @@ use serde_json::{json, Value};
 fn defer(catalog: &mut KnowledgeCatalog, index: usize) {
     let unit = &mut catalog.units[index];
     unit.content.details = Some(
-        TypedPayload::admit_or_defer(json!({}), &unit.content.statement, unit.content.kind).unwrap(),
+        TypedPayload::admit_or_defer(json!({}), &unit.content.statement, unit.content.kind)
+            .unwrap(),
     );
 }
 
@@ -53,12 +54,9 @@ fn document_annotation_new_and_forged_cached_grading_reject_deferred_support() {
     for component in &mut record.components {
         component.units = catalog.select(&["K0".into()], 2).unwrap();
     }
-    record.opportunity_id = assessment::opportunity_id(
-        &record.question_hash,
-        &record.criterion,
-        &record.components,
-    )
-    .unwrap();
+    record.opportunity_id =
+        assessment::opportunity_id(&record.question_hash, &record.criterion, &record.components)
+            .unwrap();
     card[CARD_SUPPORT_KEY] = serde_json::to_value(record.support().unwrap()).unwrap();
     card[assessment::ASSESSMENT_KEY] = serde_json::to_value(&record).unwrap();
     record.validate_card(&card).unwrap();
@@ -86,7 +84,8 @@ fn document_annotation_schema_keeps_aliases_and_recall_but_excludes_deferred_gra
         .find(|item| item["properties"].get("assessment").is_some())
         .unwrap();
     assert_eq!(
-        interactive["properties"]["assessment"]["properties"]["components"]["items"]["properties"]["knowledgeUnitIds"]["items"]["enum"],
+        interactive["properties"]["assessment"]["properties"]["components"]["items"]["properties"]
+            ["knowledgeUnitIds"]["items"]["enum"],
         json!(["K1"])
     );
     let recall = alternatives

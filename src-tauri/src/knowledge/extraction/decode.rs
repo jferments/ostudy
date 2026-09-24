@@ -106,9 +106,11 @@ impl AnalysisReport {
         self.accepted
             .iter()
             .filter_map(|unit| {
-                unit.content.details.as_ref()?.diagnostic().map(|annotation| {
-                    json!({"sourceId": unit.source_id, "annotation": annotation})
-                })
+                unit.content
+                    .details
+                    .as_ref()?
+                    .diagnostic()
+                    .map(|annotation| json!({"sourceId": unit.source_id, "annotation": annotation}))
             })
             .collect()
     }
