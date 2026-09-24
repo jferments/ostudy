@@ -2,6 +2,8 @@
 //! rehydrate from current durable state rather than trusting another caller's DTO.
 use super::*;
 
+mod local;
+
 #[derive(Clone, Copy)]
 pub(super) struct Window<'a> {
     pub database: &'a Database,
@@ -37,6 +39,10 @@ where
         &identity,
         subscriber,
         |signal| async move {
+            // A failed local save returns before invoking the provider. A later
+            // attempt reopens the newest receipt rather than replaying a stale
+            // snapshot or purchasing another interpretation.
+            local::restore(input, &signal)?;
             let mut observed = crate::ai::generation::outcomes::Task::new(
                 input.diagnostics,
                 "knowledge_extraction",

@@ -136,7 +136,9 @@ fn assert_rule(value: Value, expected: &str) {
 
 #[test]
 fn document_annotation_shape_and_selection_failures_have_distinct_rules() {
-    let base = proposal("v ≤ −2.050e1 m/s");
+    // Repeated phrases cannot be normalized by guessing an occurrence. Unique
+    // occurrences are tested separately through the production decoder below.
+    let base = proposal("v ≤ −2.050e1 m/s; speed in m/s");
     let cases = [
         ("/details", json!({}), "knowledge_annotation_malformed"),
         (
@@ -156,7 +158,7 @@ fn document_annotation_shape_and_selection_failures_have_distinct_rules() {
         ),
         (
             "/details/unit/occurrence",
-            json!(1),
+            json!(2),
             "knowledge_annotation_occurrence_out_of_range",
         ),
         (
@@ -174,6 +176,30 @@ fn document_annotation_shape_and_selection_failures_have_distinct_rules() {
         let mut value = base.clone();
         *value.pointer_mut(path).unwrap() = replacement;
         assert_rule(value, expected);
+    }
+}
+
+#[test]
+fn document_unique_occurrence_is_normalized_but_strict_admission_still_rejects_it() {
+    let (_, mut source, _, _) = crate::knowledge::authoring::tests::fixture();
+    source.text = "v ≤ −2.050e1 m/s".into();
+    source.refresh_identity().unwrap();
+    let sources = [source];
+    let catalog = EvidenceCatalog::build(&sources, false).unwrap();
+    for occurrence in [1, 65] {
+        let mut value = proposal(&sources[0].text);
+        value["details"]["unit"]["occurrence"] = json!(occurrence);
+        assert!(crate::knowledge::typed_payload::TypedPayload::admit(
+            value["details"].clone(),
+            &sources[0].text,
+            KnowledgeKind::Fact,
+        )
+        .is_err());
+        let report = initial(json!({"units": [value]}), &catalog, &sources).unwrap();
+        assert!(report.is_complete());
+        assert!(!report.requires_paid_repair(&sources));
+        assert_eq!(report.accepted[0].content.statement, sources[0].text);
+        assert!(report.deferred_annotations().is_empty());
     }
 }
 
