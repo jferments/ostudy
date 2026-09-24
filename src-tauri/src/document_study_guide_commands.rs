@@ -7,8 +7,9 @@ use crate::{
     database::Database,
     document_artifacts::{
         create_document_artifact_job, fail_document_artifact_job,
-        list_latest_document_artifact_jobs, load_document_artifact_job, DocumentArtifactJob,
-        DocumentArtifactKind, DocumentArtifactProviderSnapshot,
+        list_latest_document_artifact_jobs, load_document_artifact_job,
+        recover_published_study_guide_job, DocumentArtifactJob, DocumentArtifactKind,
+        DocumentArtifactProviderSnapshot,
     },
     document_cost,
     document_domain::{
@@ -24,8 +25,8 @@ use crate::{
         execute_study_guide_generation, StudyGuideGenerationExecution, StudyGuideTopicEvidence,
     },
     document_study_guides::{
-        discard_study_guide_overlay, load_active_document_study_guide, save_study_guide_overlay,
-        DocumentStudyGuide, SaveStudyGuideOverlayInput, StudyGuideOverlay,
+        discard_study_guide_overlay, load_active_document_study_guide, load_document_study_guide,
+        save_study_guide_overlay, DocumentStudyGuide, SaveStudyGuideOverlayInput, StudyGuideOverlay,
     },
     document_topic_links::{load_topic_card_ids, load_topic_card_projection, TopicCardProjection},
     document_visual_evidence::load_locator_images,
@@ -215,6 +216,18 @@ pub(crate) async fn generate_document_study_guide_from_plan(
         chunks,
         maximum_images,
     } = input;
+    if let Some(guide_id) =
+        recover_published_study_guide_job(database, document_id, &plan.id)?
+    {
+        crate::logging::info_target(
+            "ai.document.study_guide",
+            "study_guide_published_job_reconciled",
+            "Recovered a previously published guide without another provider request.",
+            serde_json::json!({"document": document_id, "guide": guide_id}),
+        );
+        return load_document_study_guide(database, &guide_id);
+    }
+
     let provider = DocumentArtifactProviderSnapshot {
         profile_id: Some(task.profile_id.clone()),
         provider_kind: task.provider_kind.clone(),
