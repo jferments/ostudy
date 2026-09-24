@@ -24,7 +24,9 @@ class GenerationAcceptanceTests(unittest.TestCase):
         self.manifest_path = self.root / "manifest.json"
         self.manifest = {
             "schemaVersion": 1, "baselineSha": "a" * 40, "candidateSha": "b" * 40,
-            "limits": {"maxInputOutputTokenRatio": 1.0, "maxElapsedRatio": 1.0, "maxFirstUsableRatio": 1.0},
+            "limits": {"maxInputOutputTokenRatio": 1.0,
+                       "maxRecoveryInputOutputTokenRatio": 1.0,
+                       "maxElapsedRatio": 1.0, "maxFirstUsableRatio": 1.0},
             "cases": [self.make_case(kind) for kind in sorted(ACCEPTANCE.KINDS)],
         }
 
@@ -64,6 +66,7 @@ class GenerationAcceptanceTests(unittest.TestCase):
                 "sourceSetSha256": ACCEPTANCE.identity([source["sha256"]]),
                 "configurationSha256": configuration["sha256"],
                 "requestAccountingComplete": True,
+                "recoveryAccountingComplete": True,
                 "usage": self.write_file(f"{kind}-{side}-usage.json", usage),
                 "artifacts": artifacts,
                 "review": {
@@ -196,6 +199,51 @@ class GenerationAcceptanceTests(unittest.TestCase):
         self.assertIsNone(result["cases"][0]["candidate"]["inputOutputTokens"])
         self.assertIn("request_accounting_unconfirmed", self.codes(result))
 
+    def test_unconfirmed_recovery_accounting_does_not_become_zero(self):
+        self.run_record()["recoveryAccountingComplete"] = False
+        result = self.evaluate()
+        metrics = result["cases"][0]["candidate"]
+        self.assertIsNone(metrics["recoveryInputOutputTokens"])
+        self.assertIn("recovery_accounting_unconfirmed", self.codes(result))
+
+    def test_repeated_attempt_recovery_cost_is_not_hidden_by_lower_total_tokens(self):
+        self.claim_live_for_comparator_test()
+        self.change_usage(lambda data: data["requests"][0].update(attempt=2))
+        result = self.evaluate()
+        metrics = result["cases"][0]["candidate"]
+        self.assertEqual(metrics["inputOutputTokens"], 100)
+        self.assertEqual(metrics["recoveryProviderRequests"], 1)
+        self.assertEqual(metrics["recoveryInputOutputTokens"], 100)
+        self.assertEqual(metrics["recoveryTokenSharePercent"], 100.0)
+        self.assertEqual(result["verdict"], "rejected")
+        self.assertIn("recoveryInputOutputTokens_limit_exceeded", self.codes(result))
+
+    def test_native_recovery_lineage_counts_even_on_first_attempt(self):
+        self.claim_live_for_comparator_test()
+        lineage = {"nativeLineage": {"schemaVersion": 1, "previousRequestId": "prior",
+                   "recovery": {"schemaVersion": 1, "reason": "contract_repair",
+                                "triggerCode": "fixture_invalid", "allowed": True,
+                                "triggerRequestId": "prior"},
+                   "linkageIncomplete": False}}
+        self.change_usage(lambda data: data["requests"][0].update(
+            payloadBytesJson=json.dumps(lineage)))
+        result = self.evaluate()
+        metrics = result["cases"][0]["candidate"]
+        self.assertEqual(metrics["recoveryProviderRequests"], 1)
+        self.assertEqual(metrics["recoveryInputOutputTokens"], 100)
+        self.assertEqual(result["verdict"], "rejected")
+
+    def test_malformed_native_recovery_lineage_is_invalid_not_zero(self):
+        self.change_usage(lambda data: data["requests"][0].update(
+            payloadBytesJson=json.dumps({"nativeLineage": {"schemaVersion": 2}})))
+        self.assert_invalid("recovery_lineage_invalid")
+
+    def test_request_attempt_must_be_a_positive_integer(self):
+        for value in (None, 0, True, 1.5):
+            with self.subTest(value=value):
+                self.change_usage(lambda data: data["requests"][0].update(attempt=value))
+                self.assert_invalid("request_attempt_invalid")
+
     def test_partial_input_usage_stays_unknown(self):
         self.change_usage(lambda data: data["requests"][0].update(inputTokens=None))
         result = self.evaluate()
@@ -280,6 +328,10 @@ class GenerationAcceptanceTests(unittest.TestCase):
 
     def test_limits_are_explicit_not_invented_by_comparator(self):
         del self.manifest["limits"]
+        self.assert_invalid("explicit_comparison_limits_required")
+
+    def test_recovery_limit_is_explicit_not_invented_by_comparator(self):
+        del self.manifest["limits"]["maxRecoveryInputOutputTokenRatio"]
         self.assert_invalid("explicit_comparison_limits_required")
 
     def test_unstarted_unknown_request_cannot_be_declared_terminal(self):

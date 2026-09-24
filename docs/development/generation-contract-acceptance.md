@@ -75,6 +75,7 @@ The manifest is a JSON object with these fields:
 | `schemaVersion` | Integer `1`. |
 | `baselineSha`, `candidateSha` | Distinct, lowercase, full 40-character Git commit SHAs. These are operator attestations, not automatic binary provenance. |
 | `limits.maxInputOutputTokenRatio` | Explicit positive finite maximum candidate/baseline token ratio. No target is invented by the script. |
+| `limits.maxRecoveryInputOutputTokenRatio` | Explicit positive finite maximum candidate/baseline recovery-token ratio. Recovery spend is measured independently so lower first-pass cost cannot hide more retry/repair work. |
 | `limits.maxElapsedRatio` | Explicit positive finite maximum candidate/baseline operation-duration ratio. |
 | `limits.maxFirstUsableRatio` | Explicit positive finite maximum candidate/baseline first-usable-artifact latency ratio. |
 | `cases` | Between 1 and 128 paired cases; complete acceptance covers every required kind below. |
@@ -105,6 +106,9 @@ SHA-256 strings. `configurationSha256` is the configuration file's exact-byte
 SHA-256. `usage` is a file reference to that run's generation-usage JSON export.
 `requestAccountingComplete` must explicitly be `true`; recorded requests alone
 cannot establish that every physical attempt was accounted for.
+`recoveryAccountingComplete` must also explicitly be `true`. This attests that
+the exported rows and versioned native lineage are sufficient to classify
+recovery work for that run; missing recovery classification is unknown, not zero.
 
 `artifacts` contains exactly one file reference per requested artifact kind, with
 additional `kind` and `usableAt` fields. `usableAt` is the observed Unix timestamp
@@ -148,9 +152,10 @@ The script emits JSON and exits with `0` for accepted submitted evidence, `1` fo
 a measured/reviewed rejection, or `2` for incomplete or invalid evidence.
 There is no automatic provider rerun, source publication, PR-state change or merge.
 
-Acceptance requires every case to meet both quality and its explicitly selected
-cost/latency limits. An improvement in one document cannot average away a
-regression in another. Synthetic-only evidence always remains incomplete for
+Acceptance requires every case to meet quality plus its explicitly selected
+total-token, recovery-token and latency limits. An improvement in one document
+cannot average away a regression in another, and cheaper first-pass work cannot
+hide a recovery-cost regression. Synthetic-only evidence always remains incomplete for
 live-provider acceptance, even when its arithmetic and review declarations pass.
 
 The script recalculates token measurements from raw request rows, not supplied
@@ -164,6 +169,17 @@ Input plus output is counted once. Reasoning is already within output and cached
 input is already within input. Cache-read coverage is reported separately and
 unknown cache observations do not become zero hits. Token reduction is not a
 measured monetary-billing reduction, especially across different cache states.
+
+Recovery cost is recalculated from the raw physical-request rows rather than a
+supplied summary. A request is recovery work when its attempt ordinal is greater
+than one, or when versioned `nativeLineage.recovery` records an allowed native
+recovery reason even if that physical request is attempt one under a child key.
+The recognized native reasons are transient transport, provider compatibility,
+contract repair and output compaction. Malformed lineage is invalid evidence.
+Missing recovery-accounting attestation or missing input/output usage on a
+classified recovery request leaves recovery cost incomparable rather than
+silently treating it as zero. The output reports recovery request count,
+provider-reported recovery input/output tokens and recovery share of total tokens.
 
 Completion latency uses the operation's recorded start and finish, not the sum
 of overlapping provider intervals and not a precomputed duration from the export. Failed,

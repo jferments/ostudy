@@ -21,6 +21,8 @@ KINDS = frozenset({"textbook", "slides", "table", "numeric", "cross_page",
 CRITERIA = ("factualSupport", "preservedQualifications", "usefulCoverage",
             "readability", "answerKeyCorrectness", "artifactPublication")
 REGIMES = frozenset({"fresh", "resume"})
+RECOVERY_REASONS = frozenset({"transient_transport", "provider_compatibility",
+                              "contract_repair", "output_compaction"})
 MAX_JSON_BYTES = 32 * 1024 * 1024
 MAX_CASES = 128
 _CODE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
@@ -135,6 +137,39 @@ def issue(issues: list[dict[str, str]], code_value: str, *, rejected: bool = Fal
     issues.append(item)
 
 
+def request_payload(row: dict[str, Any]) -> dict[str, Any] | None:
+    payload = row.get("payloadBytesJson")
+    if payload is None:
+        return None
+    if isinstance(payload, str):
+        try:
+            payload = parse_json(payload.encode("utf-8"))
+        except (UnicodeError, EvidenceError) as error:
+            raise EvidenceError("recovery_lineage_invalid") from error
+    require(isinstance(payload, dict), "recovery_lineage_invalid")
+    return payload
+
+
+def is_recovery_request(row: dict[str, Any]) -> bool:
+    attempt = row.get("attempt")
+    require(natural(attempt) and attempt >= 1, "request_attempt_invalid")
+    repeated = attempt > 1
+    payload = request_payload(row)
+    if payload is None or "nativeLineage" not in payload:
+        return repeated
+    lineage = payload["nativeLineage"]
+    require(isinstance(lineage, dict) and lineage.get("schemaVersion") == 1,
+            "recovery_lineage_invalid")
+    recovery = lineage.get("recovery")
+    if recovery is None:
+        return repeated
+    require(isinstance(recovery, dict) and recovery.get("schemaVersion") == 1,
+            "recovery_lineage_invalid")
+    require(type(recovery.get("allowed")) is bool, "recovery_lineage_invalid")
+    require(recovery.get("reason") in RECOVERY_REASONS, "recovery_lineage_invalid")
+    return repeated or recovery["allowed"] is True
+
+
 def usage_metrics(report: Any, run: dict[str, Any], issues: list[dict[str, str]],
                   side: str) -> dict[str, Any]:
     require(isinstance(report, dict) and type(report.get("schemaVersion")) is int
@@ -162,6 +197,7 @@ def usage_metrics(report: Any, run: dict[str, Any], issues: list[dict[str, str]]
     cache_known = 0
     cached = 0
     cache_input = 0
+    recovery_rows: list[dict[str, Any]] = []
     for row in rows:
         require(isinstance(row, dict), "usage_request_invalid")
         request_id = row.get("requestId")
@@ -172,6 +208,8 @@ def usage_metrics(report: Any, run: dict[str, Any], issues: list[dict[str, str]]
         require(isinstance(row.get("provider"), str) and bool(row["provider"])
                 and isinstance(row.get("model"), str) and bool(row["model"]),
                 "provider_identity_missing")
+        if is_recovery_request(row):
+            recovery_rows.append(row)
         for field in totals:
             value = row.get(field)
             if natural(value):
@@ -196,6 +234,9 @@ def usage_metrics(report: Any, run: dict[str, Any], issues: list[dict[str, str]]
     accounted = run.get("requestAccountingComplete") is True
     if not accounted:
         issue(issues, "request_accounting_unconfirmed", side=side)
+    recovery_accounted = run.get("recoveryAccountingComplete") is True
+    if not recovery_accounted:
+        issue(issues, "recovery_accounting_unconfirmed", side=side)
     if not rows:
         reuse = report.get("localReuse")
         reuse_recorded = (isinstance(reuse, list) and any(
@@ -205,6 +246,19 @@ def usage_metrics(report: Any, run: dict[str, Any], issues: list[dict[str, str]]
             issue(issues, "zero_request_reuse_unconfirmed", side=side)
             accounted = False
     complete = accounted and not any(missing.values())
+    recovery_totals = {"inputTokens": 0, "outputTokens": 0}
+    recovery_missing = {field: 0 for field in recovery_totals}
+    for row in recovery_rows:
+        for field in recovery_totals:
+            value = row.get(field)
+            if natural(value):
+                recovery_totals[field] += value
+            else:
+                recovery_missing[field] += 1
+    if any(recovery_missing.values()):
+        issue(issues, "recovery_token_usage_incomplete", side=side)
+    recovery_complete = accounted and recovery_accounted and not any(recovery_missing.values())
+    recovery_tokens = sum(recovery_totals.values()) if recovery_complete else None
     return {
         "providerRequests": len(rows),
         "reportedInputTokens": (totals["inputTokens"]
@@ -214,6 +268,20 @@ def usage_metrics(report: Any, run: dict[str, Any], issues: list[dict[str, str]]
         "inputOutputTokens": sum(totals.values()) if complete else None,
         "missingInputUsageRequests": missing["inputTokens"],
         "missingOutputUsageRequests": missing["outputTokens"],
+        "recoveryProviderRequests": len(recovery_rows),
+        "recoveryReportedInputTokens": (
+            recovery_totals["inputTokens"] if not recovery_missing["inputTokens"]
+            and recovery_accounted else None),
+        "recoveryReportedOutputTokens": (
+            recovery_totals["outputTokens"] if not recovery_missing["outputTokens"]
+            and recovery_accounted else None),
+        "recoveryInputOutputTokens": recovery_tokens,
+        "recoveryTokenSharePercent": (
+            100.0 * recovery_tokens / sum(totals.values())
+            if recovery_tokens is not None and complete and sum(totals.values()) else
+            (0.0 if recovery_tokens == 0 and complete else None)),
+        "missingRecoveryInputUsageRequests": recovery_missing["inputTokens"],
+        "missingRecoveryOutputUsageRequests": recovery_missing["outputTokens"],
         "operationElapsedMs": elapsed,
         "cacheReadCoverageRequests": cache_known,
         "cacheReadPercentOfCoveredInput": 100.0 * cached / cache_input if cache_input else None,
@@ -312,9 +380,12 @@ def evaluate_case(root: Path, case: Any, baseline_sha: str, candidate_sha: str,
     require(case["baseline"]["cacheState"] == case["candidate"]["cacheState"],
             "cache_state_mismatch")
     ratios = {}
-    for metric, limit_name in (("inputOutputTokens", "maxInputOutputTokenRatio"),
-                               ("operationElapsedMs", "maxElapsedRatio"),
-                               ("firstUsableArtifactMs", "maxFirstUsableRatio")):
+    for metric, limit_name in (
+        ("inputOutputTokens", "maxInputOutputTokenRatio"),
+        ("recoveryInputOutputTokens", "maxRecoveryInputOutputTokenRatio"),
+        ("operationElapsedMs", "maxElapsedRatio"),
+        ("firstUsableArtifactMs", "maxFirstUsableRatio"),
+    ):
         before, after = results["baseline"][metric], results["candidate"][metric]
         ratio = None
         if before is not None and after is not None:
@@ -340,7 +411,9 @@ def evaluate(manifest_path: Path) -> dict[str, Any]:
             "distinct_source_heads_required")
     limits = manifest.get("limits")
     require(isinstance(limits, dict) and all(positive(limits.get(name)) for name in
-            ("maxInputOutputTokenRatio", "maxElapsedRatio", "maxFirstUsableRatio")), "explicit_comparison_limits_required")
+            ("maxInputOutputTokenRatio", "maxRecoveryInputOutputTokenRatio",
+             "maxElapsedRatio", "maxFirstUsableRatio")),
+            "explicit_comparison_limits_required")
     cases = manifest.get("cases")
     require(isinstance(cases, list) and 0 < len(cases) <= MAX_CASES, "case_count_invalid")
     results = []
@@ -368,7 +441,7 @@ def evaluate(manifest_path: Path) -> dict[str, Any]:
             "notes": [
                 "Verdict validates submitted measurements and review attestations; it does not independently prove build provenance, factual entailment or reviewer accuracy.",
                 "Every required case must meet both quality and explicit cost/latency limits; savings on one case cannot hide a regression on another.",
-                "Token comparisons sum provider-reported input and output once. Reasoning and cached input are subsets, not additional tokens. Token reduction is not a measured monetary-billing reduction.",
+                "Token comparisons sum provider-reported input and output once. Recovery-token cost is calculated separately from repeated attempts and versioned allowed native recovery lineage; reasoning and cached input remain subsets, not additional tokens. Token reduction is not a measured monetary-billing reduction.",
                 "Completion latency uses the recorded operation duration; first-usable latency uses hash-bound artifact availability observations, never provider response times. Neither sums overlapping request intervals. Accounting completeness, availability, cache state, fresh/resume regime and head identity are explicit operator attestations.",
                 "Synthetic runs cannot qualify live-provider acceptance. No provider, library or artifact was modified by this comparison.",
             ]}

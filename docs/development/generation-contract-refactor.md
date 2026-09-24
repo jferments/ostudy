@@ -441,10 +441,13 @@ unknown availability remain incomplete; savings from another case cannot average
 them away.
 
 Token comparison sums provider-reported input and output once, keeping reasoning
-and cached-input fields as subsets. Completion latency uses operation bounds and
-first-usable latency uses an explicit artifact-availability observation rather
-than provider response time. Every case must meet explicit manifest limits for
-tokens, completion latency and first-usable latency. The tool refuses synthetic
+and cached-input fields as subsets. Recovery spend is independently derived from
+repeated physical attempts and versioned allowed native recovery lineage, with
+its own explicit candidate/baseline token limit so first-pass savings cannot hide
+more repair work. Completion latency uses operation bounds and first-usable
+latency uses an explicit artifact-availability observation rather than provider
+response time. Every case must meet explicit manifest limits for total tokens,
+recovery tokens, completion latency and first-usable latency. The tool refuses synthetic
 evidence as live-provider acceptance and never opens a user library, invokes a
 provider, changes source, changes PR state or authorizes merge.
 
