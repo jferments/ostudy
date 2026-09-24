@@ -22,7 +22,7 @@ use super::{
     outline::outline_context_for_window,
     schemas::flashcard_schema,
     support::{bounded_diagnostic, collapse_contract_error, retryable_contract_error},
-    transport::{request_json, JsonTaskRequest},
+    transport::{ensure_context_budget, request_json, JsonTaskRequest},
 };
 
 pub(crate) const FLASHCARD_PROMPT_VERSION: i64 = 13;
@@ -42,11 +42,83 @@ pub(crate) async fn generate_window_flashcards(
     evidence: AuthoringEvidence<'_>,
     limits: FlashcardGenerationLimits,
 ) -> Result<Vec<Value>, CommandError> {
-    let AuthoringEvidence { knowledge, .. } = evidence;
+    let AuthoringEvidence { images, knowledge } = evidence;
     if knowledge.units.is_empty() {
         return Ok(Vec::new());
     }
     let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);
+    let (system, user) = flashcard_prompt(
+        task,
+        document_title,
+        outline,
+        window,
+        knowledge,
+        maximum_cards,
+    )?;
+    request_flashcards_with_retry(
+        runtime,
+        task,
+        &system,
+        &user,
+        AuthoringEvidence { images, knowledge },
+        maximum_cards,
+        limits.completion_token_floor,
+    )
+    .await
+}
+
+/// Exercise the exact first-pass prompt/schema/context calculation without
+/// dispatching a provider request. Owners use this to partition retained
+/// knowledge before allocating physical request work.
+pub(crate) fn preflight_window_flashcards(
+    task: &DocumentTaskContext,
+    document_title: &str,
+    outline: &DocumentOutline,
+    window: &SemanticWindow,
+    evidence: AuthoringEvidence<'_>,
+    limits: FlashcardGenerationLimits,
+) -> Result<(), CommandError> {
+    let AuthoringEvidence { images, knowledge } = evidence;
+    if knowledge.units.is_empty() {
+        return Ok(());
+    }
+    let maximum_cards = limits.maximum_cards.clamp(1, MAX_WINDOW_CARDS);
+    let (system, user) = flashcard_prompt(
+        task,
+        document_title,
+        outline,
+        window,
+        knowledge,
+        maximum_cards,
+    )?;
+    task.question_policy.validate()?;
+    let schema = assessment::generation_schema(
+        flashcard_schema(maximum_cards),
+        &task.question_policy,
+        knowledge,
+    );
+    let maximum_tokens =
+        flashcard_completion_token_ceiling(task, maximum_cards).max(limits.completion_token_floor);
+    ensure_context_budget(
+        task,
+        &JsonTaskRequest {
+            system_prompt: &system,
+            user_text: &user,
+            schema: &schema,
+            max_tokens: maximum_tokens,
+            images,
+        },
+    )
+}
+
+fn flashcard_prompt(
+    task: &DocumentTaskContext,
+    document_title: &str,
+    outline: &DocumentOutline,
+    window: &SemanticWindow,
+    knowledge: &KnowledgeCatalog,
+    maximum_cards: usize,
+) -> Result<(String, String), CommandError> {
     let outline_json = outline_context_for_window(outline, window)?;
     let system = format!(
         "{}\n{}",
@@ -56,19 +128,16 @@ pub(crate) async fn generate_window_flashcards(
     let locator = window.source_locator();
     let user = format!(
         "Document: {document_title}\nSemantic partition: {} (partition {})\nCanonical source bounds: {}–{}\n<ostudy-global-outline>\n{outline_json}\n</ostudy-global-outline>\nCreate at most {maximum_cards} high-value learning cards. Prefer core knowledge but preserve qualifications. Target one clear unit per recall card, or two for a necessary comparison. Ask a question whose missing knowledge belongs in the answer; do not condense a paragraph into a rambling question. Verify the complete question and answer against the native evidence supplied below. Omit unsupported cards. Headings alone are not factual answers. A source reference proves location, not entailment or truth. Return fewer cards, including zero, when warranted.",
-        window.partition_title, window.partition_index + 1, locator.first(), locator.last(),
+        window.partition_title,
+        window.partition_index + 1,
+        locator.first(),
+        locator.last(),
     );
-    let user = format!("{user}\n\nShared knowledge units and exact supporting source excerpts:\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nAuthor from these units. Recall cards use knowledgeUnitIds: one target, or at most two for a necessary comparison. Interactive cards instead use an assessment object with criterion, ambiguous=false, and component-level knowledgeUnitIds. Bind every graded answer component: each option for choice questions, the true/false statement (and correction when false), every matching pair, every grouping item membership, and every adjacent ordering edge. Prompt text, grouping category labels, and isolated ordering item labels may also carry context bindings but are not separately required. Use only unambiguous relations supported by this catalog. IDs must come from this catalog. Do not put IDs or provenance into visible card text or tags. Preserve each unit's conditions. A definition card is bidirectional: use it only when both directions are meaningful; otherwise use basic.", knowledge.prompt()?);
-    request_flashcards_with_retry(
-        runtime,
-        task,
-        &system,
-        &user,
-        evidence,
-        maximum_cards,
-        limits.completion_token_floor,
-    )
-    .await
+    let user = format!(
+        "{user}\n\nShared knowledge units and exact supporting source excerpts:\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nAuthor from these units. Recall cards use knowledgeUnitIds: one target, or at most two for a necessary comparison. Interactive cards instead use an assessment object with criterion, ambiguous=false, and component-level knowledgeUnitIds. Bind every graded answer component: each option for choice questions, the true/false statement (and correction when false), every matching pair, every grouping item membership, and every adjacent ordering edge. Prompt text, grouping category labels, and isolated ordering item labels may also carry context bindings but are not separately required. Use only unambiguous relations supported by this catalog. IDs must come from this catalog. Do not put IDs or provenance into visible card text or tags. Preserve each unit's conditions. A definition card is bidirectional: use it only when both directions are meaningful; otherwise use basic.",
+        knowledge.prompt()?
+    );
+    Ok((system, user))
 }
 
 pub(crate) fn flashcard_completion_token_ceiling(

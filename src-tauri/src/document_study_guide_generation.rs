@@ -5,6 +5,8 @@
 //! order. Local/LAN inference remains serial to avoid competing requests against a
 //! constrained llama.cpp server.
 
+use std::collections::HashSet;
+
 use sha2::{Digest, Sha256};
 
 use crate::{
@@ -24,12 +26,14 @@ use crate::{
     document_learning::{DocumentLearningPlan, LearningTopic},
     document_study_guides::{
         publish_document_study_guide, validate_study_guide_section_content, DocumentStudyGuide,
-        GroundedStudyGuideSection, StudyGuideOverview, StudyGuideSectionDraft,
-        STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION, STUDY_GUIDE_SCHEMA_VERSION,
+        GroundedStudyGuideSection, StudyGuideOverview, StudyGuideSectionContent,
+        StudyGuideSectionDraft, STUDY_GUIDE_ASSEMBLY_VERSION, STUDY_GUIDE_PROMPT_VERSION,
+        STUDY_GUIDE_SCHEMA_VERSION,
     },
     error::CommandError,
     knowledge::{
         authoring::{self, KnowledgeCatalog},
+        authoring_plan,
         contracts::hash,
     },
     paths::AppPaths,
@@ -373,32 +377,78 @@ async fn generate_slot(
 ) -> Result<GroundedStudyGuideSection, CommandError> {
     let topic = &execution.plan.topics[index];
     let evidence = &execution.evidence[index];
-    let mut topic_task = execution.task.clone();
-    topic_task.diagnostic_window_key = Some(hash(&format!(
-        "document-guide-topic-v1|{}|{}|{}",
+    let root_key = hash(&format!(
+        "document-guide-topic-v2|{}|{}|{}",
         execution.document_id,
         topic.id,
         topic.source_locator.stable_identity(),
-    )));
+    ));
+    let mut root_task = execution.task.clone();
+    root_task.diagnostic_window_key = Some(root_key.clone());
+
     let result = async {
-        topic_task.ensure_current(execution.database)?;
-        let section = generate_study_guide_topic_section(
-        execution.runtime,
-        &topic_task,
-        execution.document_title,
-        execution.plan,
-        topic,
-        &evidence.source_text,
-        AuthoringEvidence {
-            images: &evidence.images,
-            knowledge: &catalogs[index],
-        },
-    ).await?;
-        topic_task.ensure_current(execution.database)?;
-        Ok(section)
-    }.await.map_err(|error: CommandError| {
+        root_task.ensure_current(execution.database)?;
+        let partitions = authoring_plan::partition_catalog(&catalogs[index], |knowledge| {
+            crate::ai::document_intelligence::preflight_document_study_guide_section(
+                &root_task,
+                execution.document_title,
+                execution.plan,
+                topic,
+                &evidence.source_text,
+                AuthoringEvidence {
+                    images: &evidence.images,
+                    knowledge,
+                },
+            )
+        })?;
+        let child_keys = partitions
+            .iter()
+            .enumerate()
+            .map(|(part_index, knowledge)| {
+                Ok(hash(&format!(
+                    "document-guide-topic-child-v1|{root_key}|{part_index}|{}",
+                    knowledge.request_fingerprint()?
+                )))
+            })
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        if child_keys.len() > 1 {
+            if let Some(diagnostics) = root_task.diagnostics.as_ref() {
+                diagnostics.bind_recovery_family("guide_authoring", &root_key, &child_keys)?;
+            }
+        }
+
+        let mut partials = Vec::with_capacity(partitions.len());
+        for (part_index, knowledge) in partitions.iter().enumerate() {
+            let mut child_task = root_task.clone();
+            child_task.diagnostic_window_key = Some(if child_keys.len() == 1 {
+                root_key.clone()
+            } else {
+                child_keys[part_index].clone()
+            });
+            partials.push(
+                generate_study_guide_topic_section(
+                    execution.runtime,
+                    &child_task,
+                    execution.document_title,
+                    execution.plan,
+                    topic,
+                    &evidence.source_text,
+                    AuthoringEvidence {
+                        images: &evidence.images,
+                        knowledge,
+                    },
+                )
+                .await?,
+            );
+        }
+        root_task.ensure_current(execution.database)?;
+        merge_topic_sections(topic, &catalogs[index], partials)
+    }
+    .await
+    .map_err(|error: CommandError| {
         crate::logging::error_target(
-            "ai.document.study_guide", "study_guide_topic_failed",
+            "ai.document.study_guide",
+            "study_guide_topic_failed",
             "A guide topic failed; safe structural details are available without document or model content.",
             serde_json::json!({"document":execution.document_id,"topicIndex":index,
                 "unitStart":topic.source_locator.first(),"unitEnd":topic.source_locator.last(),
@@ -419,6 +469,96 @@ async fn generate_slot(
         )
     });
     result
+}
+
+fn merge_topic_sections(
+    topic: &LearningTopic,
+    catalog: &KnowledgeCatalog,
+    mut partials: Vec<GroundedStudyGuideSection>,
+) -> Result<GroundedStudyGuideSection, CommandError> {
+    if partials.len() == 1 {
+        return Ok(partials.remove(0));
+    }
+    if partials.is_empty() {
+        return Err(CommandError::new(
+            "document_study_guide_incomplete",
+            "A planned study-guide topic produced no validated subsection.",
+        ));
+    }
+
+    let overview = if topic.summary.trim().is_empty() {
+        partials
+            .iter()
+            .map(|section| section.content.overview.trim())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        topic.summary.clone()
+    };
+    let mut merged =
+        serde_json::to_value(StudyGuideSectionContent::default()).map_err(CommandError::serialization)?;
+    merged["overview"] = serde_json::Value::String(overview);
+    for field in [
+        "keyPoints",
+        "explanations",
+        "importantTerms",
+        "processSteps",
+        "comparisons",
+        "commonMisconceptions",
+        "callouts",
+        "tables",
+        "workedExamples",
+        "retrievalChecks",
+        "visualExplanations",
+    ] {
+        let target = merged
+            .get_mut(field)
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(|| CommandError::serialization("Invalid study-guide merge field."))?;
+        let mut seen = HashSet::new();
+        for partial in &partials {
+            let value =
+                serde_json::to_value(&partial.content).map_err(CommandError::serialization)?;
+            for item in value
+                .get(field)
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let identity = serde_json::to_string(item).map_err(CommandError::serialization)?;
+                if seen.insert(identity) {
+                    target.push(item.clone());
+                }
+            }
+        }
+    }
+    let content: StudyGuideSectionContent =
+        serde_json::from_value(merged).map_err(CommandError::serialization)?;
+    let content = validate_study_guide_section_content(content)?;
+
+    let mut seen_support = HashSet::new();
+    let mut knowledge_support = Vec::new();
+    for partial in partials {
+        for support in partial.knowledge_support {
+            if seen_support.insert(support.unit_id.clone()) {
+                knowledge_support.push(support);
+            }
+        }
+    }
+    if knowledge_support.is_empty()
+        || !catalog.validates(&knowledge_support, catalog.units.len().max(1))
+    {
+        return Err(CommandError::new(
+            "document_study_guide_invalid",
+            "A partitioned study-guide section lost or changed its retained knowledge support.",
+        ));
+    }
+    Ok(GroundedStudyGuideSection {
+        content,
+        knowledge_support,
+        catalog_fingerprint: catalog.fingerprint()?,
+    })
 }
 
 fn validate_execution(execution: &StudyGuideGenerationExecution<'_>) -> Result<(), CommandError> {
@@ -566,8 +706,10 @@ fn load_checkpoints(
             let Ok(section) = serde_json::from_str::<GroundedStudyGuideSection>(&json) else {
                 continue;
             };
-            if !catalogs[*index].validates(&section.knowledge_support, 64)
-                || catalogs[*index].fingerprint()? != section.catalog_fingerprint
+            if !catalogs[*index].validates(
+                &section.knowledge_support,
+                catalogs[*index].units.len().max(1),
+            ) || catalogs[*index].fingerprint()? != section.catalog_fingerprint
             {
                 continue;
             }

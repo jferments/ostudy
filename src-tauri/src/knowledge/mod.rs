@@ -10,6 +10,7 @@ pub(crate) mod analysis_store;
 pub(crate) mod annotation_demand;
 pub(crate) mod assessment;
 pub(crate) mod authoring;
+pub(crate) mod authoring_plan;
 pub(crate) mod collection_scope;
 pub(crate) mod collection_view;
 pub(crate) mod commands;

@@ -23,6 +23,7 @@ use crate::{
     error::CommandError,
     knowledge::{
         authoring::{self, KnowledgeCatalog},
+        authoring_plan,
         contracts::hash,
     },
     paths::AppPaths,
@@ -314,39 +315,90 @@ async fn generation_slot(
     let window = &input.windows[position];
     let locator = window.source_locator();
     let started = Instant::now();
-    crate::logging::debug_target(
-        "ai.document.generation",
-        "document_generation_window_started",
-        "A bounded card-generation window started without logging document content.",
-        serde_json::json!({
-            "provider": input.task.provider_kind.as_str(),
-            "model": input.task.model_id.as_str(),
-            "window": position + 1,
-            "sourceUnitStart": locator.first(),
-            "sourceUnitEnd": locator.last(),
-            "sourceTokens": window.token_estimate,
-            "cardBudget": input.plan.max_cards_per_window,
-        }),
-    );
-    let mut window_task = input.task.clone();
-    window_task.diagnostic_window_key = Some(hash(&format!(
-        "flashcard-window-v1|{}|{}|{}|{}",
+    let root_key = hash(&format!(
+        "flashcard-window-v2|{}|{}|{}|{}",
         input.document_id,
         input.diagnostic_prefix,
         window.window_index,
         locator.stable_identity(),
-    )));
-    let result = generate_window_with_recovery(WindowGenerationRequest {
-        runtime: input.runtime,
-        task: &window_task,
-        document_title: input.document_title,
-        outline: input.outline,
-        window,
-        images,
-        maximum_cards: input.plan.max_cards_per_window,
-        diagnostic_prefix: input.diagnostic_prefix,
-        knowledge: &catalogs[position],
-    })
+    ));
+    let mut root_task = input.task.clone();
+    root_task.diagnostic_window_key = Some(root_key.clone());
+
+    let result = async {
+        let partitions = authoring_plan::partition_catalog(&catalogs[position], |knowledge| {
+            document_intelligence::preflight_window_flashcards(
+                &root_task,
+                input.document_title,
+                input.outline,
+                window,
+                document_intelligence::AuthoringEvidence { images, knowledge },
+                document_intelligence::FlashcardGenerationLimits {
+                    maximum_cards: input.plan.max_cards_per_window,
+                    completion_token_floor: 0,
+                },
+            )
+        })?;
+        let budgets =
+            authoring_plan::allocate_nonzero_budgets(input.plan.max_cards_per_window, &partitions)?;
+        let child_keys = partitions
+            .iter()
+            .enumerate()
+            .map(|(index, knowledge)| {
+                Ok(hash(&format!(
+                    "flashcard-window-child-v1|{root_key}|{index}|{}",
+                    knowledge.request_fingerprint()?
+                )))
+            })
+            .collect::<Result<Vec<_>, CommandError>>()?;
+        if child_keys.len() > 1 {
+            if let Some(diagnostics) = root_task.diagnostics.as_ref() {
+                diagnostics.bind_recovery_family("flashcard_authoring", &root_key, &child_keys)?;
+            }
+        }
+
+        crate::logging::debug_target(
+            "ai.document.generation",
+            "document_generation_window_started",
+            "A bounded card-generation window started after finite request preflight.",
+            serde_json::json!({
+                "provider": input.task.provider_kind.as_str(),
+                "model": input.task.model_id.as_str(),
+                "window": position + 1,
+                "sourceUnitStart": locator.first(),
+                "sourceUnitEnd": locator.last(),
+                "sourceTokens": window.token_estimate,
+                "cardBudget": input.plan.max_cards_per_window,
+                "plannedSubrequests": partitions.len(),
+            }),
+        );
+
+        let mut cards = Vec::new();
+        for (index, (knowledge, maximum_cards)) in
+            partitions.iter().zip(budgets.into_iter()).enumerate()
+        {
+            let mut child_task = root_task.clone();
+            child_task.diagnostic_window_key = Some(if child_keys.len() == 1 {
+                root_key.clone()
+            } else {
+                child_keys[index].clone()
+            });
+            let mut generated = generate_window_with_recovery(WindowGenerationRequest {
+                runtime: input.runtime,
+                task: &child_task,
+                document_title: input.document_title,
+                outline: input.outline,
+                window,
+                images,
+                maximum_cards,
+                diagnostic_prefix: input.diagnostic_prefix,
+                knowledge,
+            })
+            .await?;
+            cards.append(&mut generated);
+        }
+        Ok(cards)
+    }
     .await;
 
     match &result {

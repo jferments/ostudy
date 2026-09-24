@@ -85,19 +85,82 @@ pub(crate) async fn generate_study_guide_topic_section(
     source_text: &str,
     evidence: AuthoringEvidence<'_>,
 ) -> Result<GroundedStudyGuideSection, CommandError> {
+    validate_document_guide_input(source_text, &evidence)?;
     let AuthoringEvidence { images, knowledge } = evidence;
-    if source_text.trim().is_empty() && images.is_empty() {
+    let (system, user) =
+        document_study_guide_prompt(task, document_title, plan, topic, images, knowledge)?;
+    request_study_guide_section_with_retry(
+        runtime,
+        task,
+        &system,
+        &user,
+        AuthoringEvidence { images, knowledge },
+        DOCUMENT_GUIDE_COMPLETION_PLAN,
+        None,
+    )
+    .await
+}
+
+/// Run the exact document-guide request constructor and context admission before
+/// dispatch. A caller may safely bisect retained knowledge only for this specific
+/// context-budget result; every other error remains authoritative.
+pub(crate) fn preflight_document_study_guide_section(
+    task: &DocumentTaskContext,
+    document_title: &str,
+    plan: &DocumentLearningPlan,
+    topic: &LearningTopic,
+    source_text: &str,
+    evidence: AuthoringEvidence<'_>,
+) -> Result<(), CommandError> {
+    validate_document_guide_input(source_text, &evidence)?;
+    let AuthoringEvidence { images, knowledge } = evidence;
+    let (system, user) =
+        document_study_guide_prompt(task, document_title, plan, topic, images, knowledge)?;
+    let schema = protocol::schema(knowledge, !images.is_empty());
+    let planned_user = format!(
+        "{user}\n\n{}",
+        DOCUMENT_GUIDE_COMPLETION_PLAN.instructions()
+    );
+    ensure_context_budget(
+        task,
+        &JsonTaskRequest {
+            system_prompt: &system,
+            user_text: &planned_user,
+            schema: &schema,
+            max_tokens: task
+                .completion_token_ceiling(DOCUMENT_GUIDE_COMPLETION_PLAN.initial_visible_tokens),
+            images,
+        },
+    )
+}
+
+fn validate_document_guide_input(
+    source_text: &str,
+    evidence: &AuthoringEvidence<'_>,
+) -> Result<(), CommandError> {
+    if source_text.trim().is_empty() && evidence.images.is_empty() {
         return Err(CommandError::new(
             "study_guide_topic_has_no_evidence",
             "This learning topic did not contain text or visual evidence that could support a study-guide section.",
         ));
     }
-    if knowledge.units.is_empty() {
+    if evidence.knowledge.units.is_empty() {
         return Err(CommandError::new(
             "study_guide_topic_has_no_knowledge",
             "This topic contains no supported knowledge units. No guide content was invented.",
         ));
     }
+    Ok(())
+}
+
+fn document_study_guide_prompt(
+    _task: &DocumentTaskContext,
+    document_title: &str,
+    plan: &DocumentLearningPlan,
+    topic: &LearningTopic,
+    images: &[super::SourcePageImage],
+    knowledge: &KnowledgeCatalog,
+) -> Result<(String, String), CommandError> {
     let global_context = compact_plan_context(plan, topic)?;
     let system = study_guide_system_prompt();
     let user = format!(
@@ -111,17 +174,11 @@ pub(crate) async fn generate_study_guide_topic_section(
     } else {
         "Use visualExplanations only for the images actually attached to this request."
     };
-    let user = format!("{user}\n{visual_instruction}\n\nShared knowledge catalog (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nGenerate content from these knowledge units while checking their original evidence and preserving qualifications. Return content plus knowledgeUnitIds naming only the units actually explained. Do not select every unit by default. These IDs are internal metadata, not guide prose.", protocol::catalog_prompt(knowledge)?);
-    request_study_guide_section_with_retry(
-        runtime,
-        task,
-        &system,
-        &user,
-        AuthoringEvidence { images, knowledge },
-        DOCUMENT_GUIDE_COMPLETION_PLAN,
-        None,
-    )
-    .await
+    let user = format!(
+        "{user}\n{visual_instruction}\n\nShared knowledge catalog (the same units used by flashcards and Tutor):\n<ostudy-knowledge>\n{}\n</ostudy-knowledge>\nGenerate content from these knowledge units while checking their original evidence and preserving qualifications. Return content plus knowledgeUnitIds naming only the units actually explained. Do not select every unit by default. These IDs are internal metadata, not guide prose.",
+        protocol::catalog_prompt(knowledge)?
+    );
+    Ok((system, user))
 }
 
 pub(crate) async fn generate_collection_study_guide_topic_section(
