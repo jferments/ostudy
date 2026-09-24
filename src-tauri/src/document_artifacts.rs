@@ -641,9 +641,9 @@ mod tests {
     fn published_guide_recovery_requires_durable_publication_evidence() {
         let database = Database::open_in_memory().unwrap();
         let document_id = "d".repeat(32);
-        let plan_id = "p".repeat(32);
-        let job_id = "j".repeat(32);
-        let guide_id = "g".repeat(32);
+        let plan_id = "b".repeat(32);
+        let job_id = "c".repeat(32);
+        let guide_id = "e".repeat(32);
         database
             .with_connection(|connection| {
                 connection
@@ -702,8 +702,8 @@ mod tests {
     fn interrupted_published_guide_is_recoverable_but_unpublished_job_is_not() {
         let database = Database::open_in_memory().unwrap();
         let document_id = "d".repeat(32);
-        let plan_id = "p".repeat(32);
-        let job_id = "j".repeat(32);
+        let plan_id = "b".repeat(32);
+        let job_id = "c".repeat(32);
         database
             .with_connection(|connection| {
                 connection
