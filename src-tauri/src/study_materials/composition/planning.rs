@@ -129,7 +129,10 @@ mod tests {
     }
 
     fn units(windows: &[CollectionGuideWindow]) -> Value {
-        json!(windows.iter().flat_map(|part| &part.catalog.units).collect::<Vec<_>>())
+        json!(windows
+            .iter()
+            .flat_map(|part| &part.catalog.units)
+            .collect::<Vec<_>>())
     }
 
     #[test]
