@@ -144,8 +144,7 @@ pub(crate) fn load_for_job(
         if json.len() > 65_536 {
             return Err(invalid());
         }
-        let report: GenerationReport =
-            serde_json::from_str(&json).map_err(|_| invalid())?;
+        let report: GenerationReport = serde_json::from_str(&json).map_err(|_| invalid())?;
         report.validate()?;
         Ok(report)
     })

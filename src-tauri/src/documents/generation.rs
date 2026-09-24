@@ -38,8 +38,8 @@ fn committed_initial_generation(
     database: &Database,
     document_id: &str,
 ) -> Result<Option<DocumentGenerationResultDto>, CommandError> {
-    let document =
-        database.with_connection(|connection| repository::load_document(connection, document_id))?;
+    let document = database
+        .with_connection(|connection| repository::load_document(connection, document_id))?;
     let Some(deck_id) = document.dto.generated_deck_id.clone() else {
         return Ok(None);
     };
