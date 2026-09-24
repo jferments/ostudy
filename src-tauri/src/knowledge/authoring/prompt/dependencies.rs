@@ -38,9 +38,7 @@ fn scopes(catalog: &KnowledgeCatalog) -> BTreeMap<&str, SourceScope<'_>> {
                 EvidenceSelector::Text {
                     start_byte,
                     end_byte,
-                } if start_byte < end_byte
-                    && end_byte - start_byte == reference.excerpt.len() =>
-                {
+                } if start_byte < end_byte && end_byte - start_byte == reference.excerpt.len() => {
                     scope.spans.push((*start_byte, *end_byte));
                 }
                 _ => scope.whole = true,
@@ -55,9 +53,7 @@ fn relevant(value: &Value, scope: &SourceScope<'_>) -> bool {
         return true;
     }
     let range = &value["sourceRange"];
-    let bounds = range["startByte"]
-        .as_u64()
-        .zip(range["endByte"].as_u64());
+    let bounds = range["startByte"].as_u64().zip(range["endByte"].as_u64());
     let Some((start, end)) = bounds else {
         return true;
     };
@@ -79,10 +75,7 @@ fn relevant(value: &Value, scope: &SourceScope<'_>) -> bool {
 /// The graph never expands retrieval permission or invents a missing dependency.
 /// Bidirectional closure conservatively includes a caption/footnote pointing to
 /// a selected table, as well as a table pointing to its supporting context.
-pub(super) fn select<'a>(
-    catalog: &KnowledgeCatalog,
-    candidates: Vec<&'a Value>,
-) -> Vec<&'a Value> {
+pub(super) fn select<'a>(catalog: &KnowledgeCatalog, candidates: Vec<&'a Value>) -> Vec<&'a Value> {
     let scopes = scopes(catalog);
     let mut occurrences: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
     for (index, value) in candidates.iter().enumerate() {
@@ -125,7 +118,9 @@ pub(super) fn select<'a>(
     for (index, value) in candidates.iter().enumerate() {
         let source = value["sourceId"].as_str().unwrap_or_default();
         if ambiguous_sources.contains(source)
-            || scopes.get(source).is_none_or(|scope| relevant(value, scope))
+            || scopes
+                .get(source)
+                .is_none_or(|scope| relevant(value, scope))
         {
             selected[index] = true;
             pending.push_back(index);

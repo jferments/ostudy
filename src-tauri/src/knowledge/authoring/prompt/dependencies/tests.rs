@@ -153,8 +153,7 @@ fn document_authoring_range_projection_does_not_guess_unresolved_links() {
         let mut selected = block(&source, "selected", 0, 20);
         selected["links"] = json!([link]);
         let possible_context = block(&source, "ambiguous", 100, 120);
-        catalog.preparation.evidence_structures =
-            vec![selected.clone(), possible_context.clone()];
+        catalog.preparation.evidence_structures = vec![selected.clone(), possible_context.clone()];
         assert_eq!(projected(&catalog), vec![&selected, &possible_context]);
     }
 }
@@ -185,7 +184,6 @@ fn document_authoring_request_identity_ignores_unselected_blocks_not_retained_ev
     assert_eq!(catalog.prompt().unwrap(), prompt);
     assert_eq!(catalog.request_fingerprint().unwrap(), request);
     assert_ne!(catalog.fingerprint().unwrap(), native);
-    catalog.preparation.evidence_structures[0]["payload"]["text"] =
-        json!("Changed qualifier.");
+    catalog.preparation.evidence_structures[0]["payload"]["text"] = json!("Changed qualifier.");
     assert_ne!(catalog.request_fingerprint().unwrap(), request);
 }

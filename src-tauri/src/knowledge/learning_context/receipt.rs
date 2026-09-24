@@ -222,10 +222,11 @@ pub(super) fn structures(
             let links: Value = serde_json::from_str(&links).map_err(CommandError::serialization)?;
             // Native, revision-bound block locations are planning metadata, not
             // model-authored evidence. Repeated text has no unique range.
-            let source_range = source_range::unique(&source.text, &block_text).map(
-                |(start, end)| json!({"version":1,"sourceHash":source.content_hash,
-                    "startByte":start,"endByte":end}),
-            );
+            let source_range =
+                source_range::unique(&source.text, &block_text).map(|(start, end)| {
+                    json!({"version":1,"sourceHash":source.content_hash,
+                    "startByte":start,"endByte":end})
+                });
             let value = json!({"sourceId":source.id,"occurrenceId":id,"payloadHash":sha,
                 "payload":payload,"location":location,"links":links,
                 "sourceRange":source_range});
