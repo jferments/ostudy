@@ -22,7 +22,7 @@ function rejectText(label, source, needle) {
 rejectText("successor README", successors, "PR #104 is the active successor");
 rejectText("successor README", successors, "PR #105 and PR #106 remain successor scopes");
 requireText("successor README", successors, "PR #105 is intentionally deferred");
-requireText("successor README", successors, "PR #106 is the active release-readiness successor");
+requireText("successor README", successors, "PR #106 is the active post-#104 stabilization, data-safety, packaging, and qualification tranche");
 
 for (const path of [
   "src-tauri/src/startup/pre_public_transition.rs",
