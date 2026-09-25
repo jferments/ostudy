@@ -69,6 +69,15 @@ impl KeyringSecretStore {
     }
 }
 
+fn classify_error(error: KeyringError) -> SecretStoreError {
+    match error {
+        KeyringError::NoDefaultStore
+        | KeyringError::NoStorageAccess(_)
+        | KeyringError::NotSupportedByStore(_) => SecretStoreError::Unavailable,
+        _ => SecretStoreError::Failed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,14 +96,5 @@ mod tests {
             development.service_for_namespace("ai_provider"),
             "io.github.jferments.ostudy.dev.ai_provider"
         );
-    }
-}
-
-fn classify_error(error: KeyringError) -> SecretStoreError {
-    match error {
-        KeyringError::NoDefaultStore
-        | KeyringError::NoStorageAccess(_)
-        | KeyringError::NotSupportedByStore(_) => SecretStoreError::Unavailable,
-        _ => SecretStoreError::Failed,
     }
 }
