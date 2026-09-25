@@ -147,6 +147,12 @@ Setup is complete.
 The initial standalone application build used ${CARGO_BUILD_JOBS} Cargo jobs.
 Cargo also reuses compiled dependencies on later builds.
 
+Verify the core development environment at any time with:
+  ./scripts/ostudy-dev doctor
+
+For native WebDriver/smoke prerequisites too:
+  ./scripts/ostudy-dev doctor --native-smoke
+
 Start the existing build quickly with:
   ./scripts/ostudy-dev run
 

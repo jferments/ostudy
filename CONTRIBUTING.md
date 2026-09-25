@@ -17,9 +17,12 @@ For a feature, explain the workflow, current workaround, desired first version, 
 For first-time Ubuntu/Debian development setup:
 
 ```bash
-./scripts/setup-ubuntu.sh
-./run-app.sh
+./scripts/ostudy-dev setup
+./scripts/ostudy-dev doctor
+./scripts/ostudy-dev run
 ```
+
+The repository-owned `doctor` command verifies ordinary local build requirements. Use `./scripts/ostudy-dev doctor --native-smoke` only when you also need WebDriver/native-smoke prerequisites. Neither path requires the repository owner's self-hosted runner registration, GitHub Actions environment, signing credentials, or runner VM configuration.
 
 For an already configured checkout after source changes:
 

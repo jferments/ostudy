@@ -48,9 +48,12 @@ GitHub is authoritative for published source, PRs, reviews, and exact-head Actio
 First-time Ubuntu/Debian setup:
 
 ```bash
-./scripts/setup-ubuntu.sh
-./run-app.sh
+./scripts/ostudy-dev setup
+./scripts/ostudy-dev doctor
+./scripts/ostudy-dev run
 ```
+
+`./scripts/ostudy-dev doctor` checks ordinary local build requirements. Add `--native-smoke` only when validating the WebDriver/native-smoke environment. Contributor setup does not require the owner's self-hosted runner identity, VM resource policy, GitHub Actions variables, or signing credentials; those are CI/release infrastructure, not source-build prerequisites.
 
 On an already configured checkout after source changes:
 

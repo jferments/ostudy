@@ -14,6 +14,7 @@ Usage:
 
 Linux:
   setup           Install/provision the Ubuntu/Debian development environment.
+  doctor          Verify core local build requirements; accepts doctor.sh options.
   build           Build the standalone desktop application.
   run             Run the existing standalone desktop build.
   desktop         Run Tauri desktop hot reload for deliberate development use.
@@ -51,6 +52,9 @@ case "$command" in
     ;;
   setup)
     exec "$SCRIPT_DIR/setup-ubuntu.sh" "$@"
+    ;;
+  doctor)
+    exec "$SCRIPT_DIR/doctor.sh" "$@"
     ;;
   build)
     exec "$SCRIPT_DIR/build.sh" "$@"

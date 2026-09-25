@@ -9,6 +9,7 @@ Normal Linux development uses ordinary terminal output. `scripts/ostudy-dev` is 
 ```bash
 ./scripts/ostudy-dev help
 ./scripts/ostudy-dev setup
+./scripts/ostudy-dev doctor
 ./scripts/ostudy-dev build
 ./scripts/ostudy-dev run
 ./scripts/ostudy-dev check-changed
@@ -31,7 +32,15 @@ The equivalent underlying command is:
 ./scripts/setup-ubuntu.sh
 ```
 
-The setup wrapper installs/provisions the pinned development environment and makes an initial standalone debug build. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
+The setup wrapper installs/provisions the pinned development environment and makes an initial standalone oStudy Dev build. It is not a routine command to repeat for every PR. Use [Linux installation](../installation/linux.md) for system prerequisites and optional OCR dependencies.
+
+Verify the ordinary contributor environment without rebuilding:
+
+```bash
+./scripts/ostudy-dev doctor
+```
+
+Use `./scripts/ostudy-dev doctor --native-smoke` when WebDriver/native-smoke tools are also required. These contributor diagnostics intentionally do **not** assert the private Actions runner name, runner account, KVM sizing, runner workspace, or GitHub environment; those belong to `scripts/runner/` and CI only.
 
 ## Existing Linux checkout: build and test-drive
 
